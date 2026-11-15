@@ -120,9 +120,10 @@ export async function runConnectorHelper(argv, { load = loadHostConfiguration, c
     const directory = configuration.paths.handoffDirectory, stateRoot = configuration.paths.stateRoot;
     const known = await withHandoff(configuration, rows => rows.map(row => row.connectionId), { createHandoff });
     if (options.connectionIds.some(id => !known.includes(id))) fail('fleet_record_absent');
-    const revision = pruneRevision(options.connectionIds, known);
-    if (!options.apply) { write(JSON.stringify({ version: 1, status: 'planned', total: known.length, selected: options.connectionIds.length, expectedRevision: revision }) + '\n'); return 0; }
-    if (options.expect !== revision) fail('fleet_revision_changed');
+    // Helper này KHÔNG có chế độ xem trước và không bao giờ in mã ghi: mã chỉ do fleet.mjs phát, sau khi đã hỏi connector (lúc còn
+    // chạy) rằng không mã nào trong danh sách còn được nhận. Ở đây connector đã dừng nên không hỏi lại được.
+    if (!options.apply || typeof options.expect !== 'string') fail('fleet_arguments');
+    if (options.expect !== pruneRevision(options.connectionIds, known)) fail('fleet_revision_changed');
     if (fs.existsSync(path.join(stateRoot, '.hermes-host.lock'))) fail('fleet_connector_running');
     const archive = path.join(stateRoot, 'handoff-archive'), stamp = now().toISOString().replace(/[-:]|\.\d+/g, '');
     try { fs.mkdirSync(archive, { mode: 0o700 }); } catch (cause) { if (cause.code !== 'EEXIST') throw cause; }

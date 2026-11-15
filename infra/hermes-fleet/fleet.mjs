@@ -97,7 +97,10 @@ export function runFleet(argv, { sys = realSystem(), loadConfig = loadFleetConfi
     return result.status === 'blocked' ? 3 : result.runtimeStatus === 'unverified' && apply && action === 'them-nguoi' ? 4 : 0;
   } catch (cause) {
     const known = cause instanceof FleetError;
+    // Lỗi hệ thống (ENOENT, EXDEV…) chỉ mang mã, lời gọi và đường dẫn trên máy chủ: đủ để biết bước nào hỏng, không có bí mật.
+    const system = !known && typeof cause?.code === 'string' ? { code: cause.code, syscall: cause.syscall ?? null, path: cause.path ?? null } : undefined;
     error(JSON.stringify({ error: known ? cause.code : 'loi_khong_ro', ...(known && cause.detail !== undefined ? { detail: cause.detail } : {}),
+      ...(system ? { detail: system } : {}),
       ...(known && Array.isArray(cause.detail) ? { blocksText: cause.detail.map(code => `${code}: ${BLOCK_TEXT[code] ?? ''}`) } : {}),
       instruction: 'Chạy lại lệnh KHÔNG có --apply để xem bước nào đã xong; bước đã xong sẽ được bỏ qua. Không xoá gì để thử lại.' }, null, 2) + '\n');
     return known && cause.code === 'ke_hoach_bi_chan' ? 3 : 1;

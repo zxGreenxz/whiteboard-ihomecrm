@@ -8,7 +8,7 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 import { applyNativeProfileUpdate, planNativeProfileUpdate } from '../hermes-zalo-native/profile-provisioning.mjs';
-import { SEED_MARKER, mcpRoute, profileEnv, pruneRevision, renderProfileConfig, trialIdentity } from './fleet-plan.mjs';
+import { SEED_MARKER, SEEDING_MARKER, mcpRoute, profileEnv, pruneRevision, renderProfileConfig, trialIdentity } from './fleet-plan.mjs';
 import { PLUGINS, SEED_INPUT_MAX_BYTES, runHomeHelper, seedProfile } from './helper-home.mjs';
 import { listChannels, runChannelHelper } from './helper-channel.mjs';
 import { pingConnector, runConnectorHelper } from './helper-connector.mjs';
@@ -29,6 +29,7 @@ test('gieo hồ sơ từ khuôn: ghi config/.env/SOUL/plugin một lần, không
   const route = mcpRoute('http://172.17.0.1:8740/mcp');
   const first = seedProfile({ profileDir, request: seedRequest(route) });
   assert.deepEqual(first, { version: 1, status: 'seeded', changed: true, plugins: Object.keys(PLUGINS) });
+  assert(!fs.existsSync(path.join(profileDir, SEEDING_MARKER)));                 // dấu "đang gieo" chỉ tồn tại trong lúc gieo
   assert.equal(fs.readFileSync(path.join(profileDir, 'config.yaml.upstream-default'), 'utf8'), 'model: {}\n');
   assert.equal(fs.readFileSync(path.join(profileDir, 'SOUL.md'), 'utf8'), '# SOUL giả cho test\n');
   for (const [name, source] of Object.entries(PLUGINS)) for (const file of source.files)
@@ -46,6 +47,11 @@ test('gieo hồ sơ từ khuôn: ghi config/.env/SOUL/plugin một lần, không
   const foreign = path.join(temp(t), 'khac'); fs.mkdirSync(foreign); fs.writeFileSync(path.join(foreign, '.env'), 'MCP_IHOMECRM_API_KEY=x\n');
   assert.throws(() => seedProfile({ profileDir: foreign, request: seedRequest(route) }), /fleet_profile_not_fresh/);
   assert.equal(fs.readFileSync(path.join(foreign, '.env'), 'utf8'), 'MCP_IHOMECRM_API_KEY=x\n');
+  // Lần gieo trước chết sau khi đã ghi .env (còn dấu "đang gieo", chưa có dấu xong): gieo lại được, không phải xoá tay.
+  const crashed = path.join(temp(t), 'dang-do'); fs.mkdirSync(crashed);
+  fs.writeFileSync(path.join(crashed, SEEDING_MARKER), '{}'); fs.writeFileSync(path.join(crashed, '.env'), 'HERMES_ZALO_PROFILE=cu\n'); fs.writeFileSync(path.join(crashed, 'config.yaml'), 'cu: true\n');
+  assert.equal(seedProfile({ profileDir: crashed, request: seedRequest(route) }).status, 'seeded');
+  assert(fs.readFileSync(path.join(crashed, '.env'), 'utf8').includes('HERMES_ZALO_PROFILE=lan\n') && !fs.existsSync(path.join(crashed, SEEDING_MARKER)));
   for (const request of [{ ...seedRequest(route), extra: 1 }, { ...seedRequest(route), version: 2 }, { ...seedRequest(route), env: '' }, null])
     assert.throws(() => seedProfile({ profileDir: path.join(temp(t)), request }), /fleet_seed_input/);
   assert.throws(() => seedProfile({ profileDir: 'tuong/doi', request: seedRequest(route) }), /fleet_arguments/);
@@ -202,15 +208,16 @@ test('ping connector thật qua HTTP: 200 là sống, 401 là chết, còn lại
 
 test('dọn handoff: mặc định chỉ xem; ghi cần đúng mã và connector đã dừng; bản ghi được CẤT, không xoá', async t => {
   const f = connectorFixture(t), planned = capture(), args = ['prune', '--config', '/c.json', '--connection-id', id('b')];
-  assert.equal(await runConnectorHelper(args, { ...f.deps, ...planned.io }), 0);
-  const plan = JSON.parse(planned.out());
-  assert.deepEqual(plan, { version: 1, status: 'planned', total: 2, selected: 1, expectedRevision: pruneRevision([id('b')], [id('a'), id('b')]) });
-  assert.deepEqual(fs.readdirSync(f.stateRoot), ['handoff']);                                              // xem trước không tạo gì
+  // Helper không có chế độ xem trước và không bao giờ in mã ghi: mã chỉ do fleet.mjs phát sau khi hỏi connector từng mã còn sống không.
+  assert.equal(await runConnectorHelper(args, { ...f.deps, ...planned.io }), 1);
+  assert.equal(planned.out(), ''); assert.equal(JSON.parse(planned.err()).error, 'fleet_arguments');
+  assert.deepEqual(fs.readdirSync(f.stateRoot), ['handoff']);
+  const plan = { expectedRevision: pruneRevision([id('b')], [id('a'), id('b')]) };
   const wrong = capture();
   assert.equal(await runConnectorHelper([...args, '--apply', '--expect', '0'.repeat(64)], { ...f.deps, ...wrong.io }), 1);
   assert.equal(JSON.parse(wrong.err()).error, 'fleet_revision_changed');
   const missing = capture();
-  assert.equal(await runConnectorHelper(['prune', '--config', '/c.json', '--connection-id', id('c')], { ...f.deps, ...missing.io }), 1);
+  assert.equal(await runConnectorHelper(['prune', '--config', '/c.json', '--connection-id', id('c'), '--apply', '--expect', plan.expectedRevision], { ...f.deps, ...missing.io }), 1);
   assert.equal(JSON.parse(missing.err()).error, 'fleet_record_absent');
   const running = connectorFixture(t, { lock: true }), busy = capture();
   assert.equal(await runConnectorHelper([...args, '--apply', '--expect', plan.expectedRevision], { ...running.deps, ...busy.io }), 1);

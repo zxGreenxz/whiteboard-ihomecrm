@@ -33,7 +33,7 @@ export const IMAGE_CONFIG = Object.freeze({ Env: ['PATH=/opt/hermes/bin:/usr/bin
 
 /** Facts của một máy chủ khoẻ: worker chạy, một sidecar dựng tay, một kênh `owner`, người mới có liên kết Zalo hoạt động. */
 export function addFacts(change = {}) {
-  return { memAvailableMb: 635, passwdUids: [0, 1000, 10004], homeUids: [10003], home: { exists: false }, imagePresent: true,
+  return { memAvailableMb: 800, passwdUids: [0, 1000, 10004], homeUids: [10003], home: { exists: false }, imagePresent: true,
     containers: [sidecarView(sidecarInspect())], worker: { running: true, id: WORKER_ID, image: `sha256:${'9'.repeat(64)}`, startedAt: '2026-01-02T02:00:00.000Z', native: true },
     template: { soul: true, envKeys: ['NINEROUTER_API_KEY'] },
     native: { ok: true, listenPort: 8991, revision: 'r1', newerThanWorker: false,

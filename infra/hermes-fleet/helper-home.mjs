@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { SEED_MARKER } from './fleet-plan.mjs';
+import { SEED_MARKER, SEEDING_MARKER } from './fleet-plan.mjs';
 
 export const SEED_INPUT_MAX_BYTES = 1048576;
 const RELEASE_INFRA = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -40,15 +40,18 @@ export function seedProfile({ profileDir, request, pluginRoot = RELEASE_INFRA, n
       !text(request.configYaml, 65536) || !text(request.env, 8192) || !text(request.soul, 524288)) fail('fleet_seed_input');
   const info = ownDirectory(profileDir), marker = path.join(profileDir, SEED_MARKER);
   if (fs.existsSync(marker)) return { version: 1, status: 'already_seeded', changed: false };
-  const envFile = path.join(profileDir, '.env'), configFile = path.join(profileDir, 'config.yaml');
-  // `hermes profile create` có thể để lại config.yaml/.env mặc định; một .env đã có biến thì không phải khung mới ⇒ dừng.
-  if (fs.existsSync(envFile) && assignments(fs.readFileSync(envFile, 'utf8'))) fail('fleet_profile_not_fresh');
+  const envFile = path.join(profileDir, '.env'), configFile = path.join(profileDir, 'config.yaml'), seeding = path.join(profileDir, SEEDING_MARKER);
+  // `hermes profile create` có thể để lại config.yaml/.env mặc định; một .env đã có biến thì không phải khung mới ⇒ dừng. Ngoại lệ: dấu
+  // "đang gieo" của chính helper này còn lại sau một lần chết giữa chừng ⇒ gieo lại từ đầu (container của người này chưa từng chạy).
+  const resumed = fs.existsSync(seeding);
+  if (!resumed && fs.existsSync(envFile) && assignments(fs.readFileSync(envFile, 'utf8'))) fail('fleet_profile_not_fresh');
   for (const file of [envFile, configFile, path.join(profileDir, 'SOUL.md')]) {
     if (fs.existsSync(file) && (fs.lstatSync(file).isSymbolicLink() || !fs.lstatSync(file).isFile())) fail('fleet_profile_refused');
   }
   // Bộ ghi mã (profile-provisioning) đòi thư mục hồ sơ 0700 và hai file 0600 của đúng chủ.
   if (process.platform !== 'win32' && (info.mode & 0o777) !== 0o700) fs.chmodSync(profileDir, 0o700);
-  if (fs.existsSync(configFile)) fs.renameSync(configFile, path.join(profileDir, 'config.yaml.upstream-default'));
+  if (!resumed) writeAtomic(seeding, JSON.stringify({ version: 1, startedAt: now().toISOString() }) + '\n', 0o600);
+  if (fs.existsSync(configFile) && !resumed) fs.renameSync(configFile, path.join(profileDir, 'config.yaml.upstream-default'));
   writeAtomic(configFile, request.configYaml, 0o600);
   writeAtomic(envFile, request.env, 0o600);
   writeAtomic(path.join(profileDir, 'SOUL.md'), request.soul, 0o644);
@@ -60,6 +63,7 @@ export function seedProfile({ profileDir, request, pluginRoot = RELEASE_INFRA, n
     for (const file of source.files) writeAtomic(path.join(target, file), fs.readFileSync(path.join(pluginRoot, source.from, file)), 0o644);
   }
   writeAtomic(marker, JSON.stringify({ version: 1, seededAt: now().toISOString() }) + '\n', 0o600);
+  fs.unlinkSync(seeding);
   return { version: 1, status: 'seeded', changed: true, plugins: Object.keys(PLUGINS) };
 }
 

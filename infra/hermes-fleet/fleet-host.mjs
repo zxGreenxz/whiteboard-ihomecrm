@@ -8,7 +8,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FleetError, SEED_MARKER, SIDECAR_LABEL, SIDECAR_VALUE, auditDropIn, auditDropInFile, auditScanConfig, channelProjection, connectionDigest,
+import { FleetError, SEED_MARKER, SEEDING_MARKER, SIDECAR_LABEL, SIDECAR_VALUE, auditDropIn, auditDropInFile, auditScanConfig, channelProjection, connectionDigest,
   containerName, envSourceOf, homeOf, planAdd, planPrune, planRecreate, planRemove, listRows, profileCreateArgs, profileDirOf, profileEnv,
   recreateArgs, redactArgs, renderProfileConfig, retiredContainer, routeEndpoint, sharedEnvFrom, sidecarArgs, sidecarView, soulSourceOf, validateAddRequest } from './fleet-plan.mjs';
 
@@ -36,7 +36,21 @@ export function realSystem({ log = line => process.stderr.write(line + '\n') } =
       return { status: result.status ?? 1, stdout: result.stdout ?? Buffer.alloc(0), stderr: result.stderr ?? Buffer.alloc(0), failed: result.error !== undefined,
         timedOut: result.error?.code === 'ETIMEDOUT' };
     },
-    read: file => { try { return fs.readFileSync(file, 'utf8'); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } },
+    // Nhiều file root đọc nằm trong thư mục do UID của trợ lý sở hữu (gateway_state.json, .env, SOUL.md của hồ sơ khuôn…): không theo
+    // symlink (O_NOFOLLOW), không treo ở FIFO/thiết bị (O_NONBLOCK + chỉ nhận file thường), có trần kích thước.
+    read(file, max = 1048576) {
+      let fd;
+      try { fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0)); }
+      catch (error) { if (error.code === 'ENOENT') return null; if (error.code === 'ELOOP') fail('tep_khong_an_toan', file); throw error; }
+      try {
+        if (!fs.fstatSync(fd).isFile()) fail('tep_khong_an_toan', file);
+        const buffer = Buffer.alloc(max + 1); let length = 0, count;
+        while (length <= max && (count = fs.readSync(fd, buffer, length, buffer.length - length, null)) > 0) length += count;
+        if (length > max) fail('tep_qua_lon', file);
+        return buffer.toString('utf8', 0, length);
+      } finally { fs.closeSync(fd); }
+    },
+    ensureDir: (directory, mode) => { fs.mkdirSync(directory, { recursive: true, mode }); },
     readdir: directory => { try { return fs.readdirSync(directory); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } },
     mkdir(directory, mode, uid) { fs.mkdirSync(directory, { mode }); fs.chownSync(directory, uid, uid); fs.chmodSync(directory, mode); },
     write(file, text, mode) {
@@ -96,11 +110,21 @@ function nativeFacts(sys, config, worker) {
 function homeFacts(sys, config, name) {
   const home = homeOf(config, name), profileDir = profileDirOf(config, name), info = sys.stat(home);
   if (!info) return { exists: false };
-  const env = sys.read(posix.join(profileDir, '.env'));
+  const env = sys.read(posix.join(profileDir, '.env'), 131072), profileConfig = sys.read(posix.join(profileDir, 'config.yaml'), 262144);
   return { exists: true, uid: info.uid, private: info.dir && !info.link && info.mode === 0o700 && info.uid === info.gid && info.uid !== 0,
     profileDir: sys.stat(profileDir)?.dir === true, seeded: sys.stat(posix.join(profileDir, SEED_MARKER)) !== null,
-    skills: sys.stat(posix.join(home, '.hermes', 'ihome-official-skills', 'current')) !== null,
+    seeding: sys.stat(posix.join(profileDir, SEEDING_MARKER)) !== null,
+    // deploy.sh đổi symlink `current` TRƯỚC khi nối khối skills vào config: chỉ coi là xong khi config của hồ sơ đã trỏ tới cây đó.
+    skills: sys.stat(posix.join(home, '.hermes', 'ihome-official-skills', 'current')) !== null && (profileConfig ?? '').includes('ihome-official-skills/current'),
     hasEnv: env !== null && env.split(/\r?\n/).some(line => /^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=/.test(line)) };
+}
+/** Đăng ký kiểm học tập gồm HAI nửa: drop-in của unit và mục trong danh sách gốc. Thiếu một nửa là dở dang, phải làm tiếp/gỡ nốt. */
+function auditFacts(sys, config, name) {
+  const dropIn = sys.stat(auditDropInFile(config, name)) !== null;
+  let listed, broken = false;
+  try { listed = (JSON.parse(sys.read(config.audit.scanConfig) ?? 'null')?.profilesRoots ?? []).includes(posix.join(homeOf(config, name), '.hermes', 'profiles')); }
+  catch { listed = true; broken = true; } // file hỏng: kế hoạch thêm người bị chặn TRƯỚC khi tạo kênh; gỡ thì vẫn coi là còn dở
+  return { dropIn, listed, registered: dropIn && listed, broken };
 }
 function baseFacts(sys, config) {
   const raw = inspectAll(sys), worker = workerFacts(config, raw);
@@ -120,13 +144,20 @@ function gatewayState(sys, view) {
       zalo: state.platforms?.zalo_personal?.state ?? null };
   } catch { return null; }
 }
-/** Dòng `tool_call_timing` của connector (journal) cho biết kết nối nào vừa gọi CRM: chỉ có 8 ký tự băm của ID kết nối. */
+/** Dòng `tool_call_timing` của connector (journal) cho biết kết nối nào vừa gọi CRM: chỉ có 8 ký tự băm của ID kết nối.
+ * Chỉ `tools/list` và `tools/call` là việc của trợ lý. `authenticate` thì chính công cụ cũng sinh ra (helper-connector check gửi
+ * MCP `ping`), nên không bao giờ được tính là bằng chứng trợ lý đã nối. */
+const CRM_OPERATIONS = Object.freeze(['tools/list', 'tools/call']);
 function callEvidence(sys, unit, sinceEpoch) {
   const result = sys.exec('journalctl', ['-u', unit, '-o', 'cat', '--no-pager', '-g', 'tool_call_timing', '--since', `@${Math.floor(sinceEpoch)}`]);
   const rows = [];
   for (const line of out(result).split('\n')) {
     if (!line.startsWith('{')) continue;
-    try { const row = JSON.parse(line); if (row.event === 'tool_call_timing' && typeof row.connection === 'string') rows.push(row); } catch { /* bỏ dòng hỏng */ }
+    try {
+      const row = JSON.parse(line);
+      if (row.event === 'tool_call_timing' && typeof row.connection === 'string' && row.outcome === 'ok' && CRM_OPERATIONS.includes(row.operation) &&
+          Date.parse(row.ts) / 1000 >= Math.floor(sinceEpoch)) rows.push(row);
+    } catch { /* bỏ dòng hỏng */ }
   }
   return rows;
 }
@@ -135,7 +166,9 @@ export function gatherAddFacts(sys, config, rawRequest) {
   const request = validateAddRequest(rawRequest, config), connector = config.connectors[request.connector];
   const facts = { ...baseFacts(sys, config), memAvailableMb: memAvailableMb(sys) };
   facts.passwdUids = (sys.read('/etc/passwd') ?? '').split('\n').map(line => Number(line.split(':')[2])).filter(Number.isInteger);
-  facts.homeUids = sys.readdir(config.profilesRoot).map(entry => sys.stat(posix.join(config.profilesRoot, entry))?.uid).filter(Number.isInteger);
+  facts.homeUids = [config.profilesRoot, config.archiveRoot].flatMap(root => sys.readdir(root).map(entry => sys.stat(posix.join(root, entry))?.uid)).filter(Number.isInteger);
+  facts.profileNames = sys.readdir(config.profilesRoot).filter(entry => entry !== request.name)
+    .flatMap(entry => sys.readdir(posix.join(config.profilesRoot, entry, '.hermes', 'profiles')));
   facts.home = homeFacts(sys, config, request.name);
   facts.imagePresent = sys.exec('docker', ['image', 'inspect', '--format', '{{.Id}}', config.image]).status === 0;
   const envSource = sys.read(envSourceOf(config));
@@ -143,7 +176,7 @@ export function gatherAddFacts(sys, config, rawRequest) {
     envKeys: (envSource ?? '').split(/\r?\n/).map(line => /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*\S/.exec(line)?.[1]).filter(Boolean) };
   facts.native = nativeFacts(sys, config, facts.worker);
   facts.route = { reachable: routeReachable(sys, facts.worker, connector.route) };
-  facts.audit = { registered: sys.stat(auditDropInFile(config, request.name)) !== null };
+  facts.audit = auditFacts(sys, config, request.name);
   let connectionId = request.connectionId ?? null;
   if (!request.trial) {
     const result = asUser(sys, connector.user, SCRIPTS.connector, ['binding', '--config', connector.config, '--binding-id', request.bindingId]);
@@ -163,7 +196,7 @@ export function gatherRemoveFacts(sys, config, name) {
   const facts = baseFacts(sys, config);
   facts.home = homeFacts(sys, config, name);
   facts.native = nativeFacts(sys, config, facts.worker);
-  facts.audit = { registered: sys.stat(auditDropInFile(config, name)) !== null };
+  facts.audit = auditFacts(sys, config, name);
   return facts;
 }
 export function gatherListFacts(sys, config) {
@@ -181,7 +214,7 @@ export function gatherListFacts(sys, config) {
   for (const connector of Object.values(config.connectors)) {
     for (const row of callEvidence(sys, connector.unit, since)) {
       const entry = facts.lastCalls[row.connection] ??= { any: null, tool: null };
-      if (row.outcome === 'ok') { entry.any = row.ts; if (row.operation === 'tools/call') entry.tool = row.ts; }
+      entry.any = row.ts; if (row.operation === 'tools/call') entry.tool = row.ts;
     }
   }
   return facts;
@@ -208,6 +241,9 @@ function replaceSidecar(sys, view, args) {
     sys.exec('docker', ['rm', '-f', view.name]); sys.exec('docker', ['rename', old, view.name]);
     fail('tao_sidecar_loi', { container: view.name, loi: created.stderr.toString('utf8').trim().slice(0, 300), giu_lai: view.name });
   }
+  // Bản cũ chỉ còn để lùi tay: tắt tự khởi động (sau khi bản mới đã tạo xong), nếu không lần Docker khởi động lại có thể chạy cả bản cũ
+  // lẫn bản mới trên cùng một home.
+  sys.exec('docker', ['update', '--restart', 'no', old]);
   return { container: view.name, replaced: old, id: out(created).trim().slice(0, 12) };
 }
 function recreateFromInspect(sys, raw, name, workerId) {
@@ -221,9 +257,15 @@ function currentWorker(sys, config) {
 }
 function registerAudit(sys, config, name, { remove = false } = {}) {
   const dropIn = auditDropInFile(config, name);
-  if (remove) sys.unlink(dropIn); else sys.write(dropIn, auditDropIn(config, name), 0o644);
-  let current = null; try { current = JSON.parse(sys.read(config.audit.scanConfig) ?? 'null'); } catch { fail('audit_cau_hinh_hong'); }
-  sys.write(config.audit.scanConfig, JSON.stringify(auditScanConfig(current, config, name, { remove }), null, 2) + '\n', 0o644);
+  let current = null; try { current = JSON.parse(sys.read(config.audit.scanConfig) ?? 'null'); } catch { fail('audit_cau_hinh_hong', config.audit.scanConfig); }
+  const next = JSON.stringify(auditScanConfig(current, config, name, { remove }), null, 2) + '\n';
+  try {
+    sys.ensureDir(posix.dirname(config.audit.scanConfig), 0o755); sys.ensureDir(config.audit.dropInDir, 0o755);
+    // Thứ tự để lần chạy lại luôn thấy "còn dở" nếu hỏng giữa hai lần ghi (auditFacts đòi đủ hai nửa khi thêm, còn một nửa là gỡ tiếp):
+    // thêm = drop-in rồi danh sách; gỡ = danh sách rồi drop-in. Gốc có trong danh sách mà thiếu drop-in làm job kiểm đỏ cho mọi hồ sơ.
+    if (remove) { sys.write(config.audit.scanConfig, next, 0o644); sys.unlink(dropIn); }
+    else { sys.write(dropIn, auditDropIn(config, name), 0o644); sys.write(config.audit.scanConfig, next, 0o644); }
+  } catch (error) { if (error instanceof FleetError) throw error; fail('audit_ghi_loi', { ma: error.code ?? null, duong: error.path ?? null }); }
   if (sys.exec('systemctl', ['daemon-reload']).status !== 0) fail('systemctl_loi');
 }
 /** Chạy lệnh có xem trước của một helper: lần một lấy expectedRevision, lần hai ghi với đúng mã đó (cùng stdin). */
@@ -245,7 +287,7 @@ function verify(sys, config, assistant, connector, { limitMs = 240000 } = {}) {
   for (let waited = 0; waited <= limitMs; waited += 5000) {
     const inspect = JSON.parse(docker(sys, ['inspect', assistant.container]))[0], view = sidecarView(inspect);
     const started = Date.parse(view.startedAt ?? '') / 1000, gateway = gatewayState(sys, view);
-    const evidence = digest && Number.isFinite(started) ? callEvidence(sys, connector.unit, started).filter(row => row.connection === digest && row.outcome === 'ok') : [];
+    const evidence = digest && Number.isFinite(started) ? callEvidence(sys, connector.unit, started).filter(row => row.connection === digest) : [];
     const last = evidence.at(-1);
     result = { container: view.running ? 'running' : 'stopped', restarts: inspect.RestartCount ?? 0, gateway: gateway?.state ?? null, zalo: gateway?.zalo ?? null,
       mounts: view.mounts.map(mount => `${mount.type}:${mount.target}`), homeOnly: view.mounts.filter(mount => mount.type === 'bind').length === 1 && view.home === assistant.home,
@@ -275,7 +317,9 @@ export function applyAdd(sys, config, rawRequest, expect) {
   }
   if (state.channel === 'pending') {
     const tokenFile = posix.join(posix.dirname(config.worker.nativeConfig), `${assistant.name}.issued.${randomUUID()}.token`);
-    planThenApply(sys, config.worker.uid, SCRIPTS.operator, ['create', '--config', config.worker.nativeConfig, '--profile', assistant.name, ...identityArgs, '--token-file', tokenFile], 'operator');
+    // `create` cho người mới; `rotate` cấp token mới cho kênh đã thu hồi của người được thêm lại (giữ binding/generation/journal cũ).
+    planThenApply(sys, config.worker.uid, SCRIPTS.operator, [assistant.channelAction, '--config', config.worker.nativeConfig, '--profile', assistant.name,
+      ...(assistant.channelAction === 'create' ? identityArgs : []), '--token-file', tokenFile], 'operator');
     mark('channel');
   }
   if (state.seed === 'pending') {

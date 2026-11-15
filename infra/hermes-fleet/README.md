@@ -61,7 +61,12 @@ Hồ sơ mới nhận: `config.yaml` từ khuôn [`khuon/config.yaml`](khuon/con
    install -D -m 0755 infra/hermes-fleet/netwatch/fleet-netwatch.sh /usr/local/libexec/ihome-hermes/fleet-netwatch.sh
    install -m 0644 infra/hermes-fleet/netwatch/ihome-hermes-fleet-netwatch.{service,timer} /etc/systemd/system/
    systemctl daemon-reload && systemctl enable --now ihome-hermes-fleet-netwatch.timer
-   systemctl disable --now hermes-owner-netwatch.timer   # sau khi bộ mới đã chạy một lượt sạch
+   ```
+
+   Bộ canh mới và công cụ chỉ thấy container mang nhãn `com.ihomecrm.component=hermes-sidecar`. Trước khi tắt bộ canh cũ, chạy `liet-ke` và đối chiếu: **mọi** trợ lý đang chạy (kể cả container dựng tay) phải có trong danh sách. Thiếu một container thì nó không được canh và không được tạo lại; `them-nguoi` / `tao-lai-sidecar` dừng với `sidecar_khong_nhan` khi thấy container chung network namespace với worker mà không mang nhãn. Đủ rồi mới chạy:
+
+   ```sh
+   systemctl disable --now hermes-owner-netwatch.timer
    ```
 
    Bộ canh `docker restart` một sidecar khi host gọi được nhà cung cấp model mà trong container không gọi được ở hai lần đo. Sidecar bám worker đã bị **thay** (ID khác) thì restart không cứu được: bộ canh ghi một dòng mức `err` (`journalctl -p err -t ihome-hermes-fleet-netwatch`) và chờ quản trị chạy `tao-lai-sidecar`.
@@ -85,7 +90,7 @@ Quản trị:
 
    Đọc `blocksText` nếu bị chặn. Các lý do thường gặp: từ network namespace của worker không mở được cổng của connector (cửa nội bộ Docker của connector đó chưa bật); liên kết Zalo chưa hoạt động; connector không giữ mã của kết nối đang chọn (người dùng tạo kết nối mới rồi bấm lại "Dùng kết nối này"); connector từ chối mã (hết hạn/thu hồi); nick Zalo đã có kênh ở hồ sơ khác; RAM không đủ.
 4. Chọn lúc vắng rồi chạy lại kèm `--apply --expect <mã>`. Bước khởi động lại worker **ngắt tạm mọi trợ lý và mọi nick Zalo của worker**; launcher chờ worker drain xong mới thay, có thể lâu, không được ngắt giữa chừng. Sau đó mọi sidecar được tạo lại theo worker mới (bản cũ còn dưới tên `<container>-old-<giờ>`).
-5. Đọc kết quả: `runtimeStatus: "verified"` nghĩa là container chạy, gateway `running`, Zalo `connected`, **và** nhật ký connector có lời gọi thành công của đúng kết nối đó sau lúc container khởi động (`crmEvidence`). `unverified` (mã thoát 4) thì chưa coi là xong: xem `docker logs hermes-<tên>` và chạy lại lệnh xem kế hoạch.
+5. Đọc kết quả: `runtimeStatus: "verified"` nghĩa là container chạy, gateway `running`, Zalo `connected`, **và** nhật ký connector có lời gọi thành công của đúng kết nối đó sau lúc container khởi động (`crmEvidence`). Bằng chứng chỉ tính `tools/list` / `tools/call` của trợ lý, không tính lời hỏi dò của chính công cụ. `unverified` (mã thoát 4) thì chưa coi là xong: xem `docker logs hermes-<tên>` và chạy lại lệnh xem kế hoạch.
 6. Kỹ năng chuẩn đã được `them-nguoi` cài vào home mới từ chính bản phát hành đang chạy công cụ. Sau mỗi bản phát hành kỹ năng về sau, chạy lại cho **từng** home (`liet-ke` cho biết các home đang có):
 
    ```sh
@@ -109,9 +114,9 @@ Dùng để đo RAM khi hai container cùng chạy, kiểm cách ly (`docker exe
 
 ## Gỡ, tạo lại, dọn
 
-- **`go-nguoi`** chỉ gỡ thứ do công cụ dựng (container mang nhãn `com.ihomecrm.fleet.name`, hoặc home có dấu `.ihome-fleet-seeded`); `hermes-owner` dựng tay bị từ chối. Container được dừng, tắt tự khởi động và đổi tên `hermes-<tên>-da-go-<giờ>`; home chuyển sang `archiveRoot/<tên>-<giờ>` (vẫn chứa mã CRM của người đó: giữ quyền 0700 và nhắc người dùng thu hồi kết nối ở `/settings/hermes`). Token kênh cũ hết hiệu lực ở lần khởi động lại worker kế tiếp; công cụ không khởi động lại worker khi gỡ. Tên đã gỡ không dùng lại được cho kênh mới (kênh đã thu hồi không tạo lại): chọn tên khác.
-- **`tao-lai-sidecar`** dựng lại đúng cấu hình đang chạy của từng sidecar, chỉ đổi `--network` (thay cho script `w3-recreate-sidecar.py` ngoài repo, vốn chỉ biết `hermes-owner`). Chạy ngay sau mọi lần **thay** container worker. Sidecar lệch bộ cờ khoá (không read-only, thêm capability, mở cổng, bind ngoài home…) bị từ chối và nêu rõ chỗ lệch, không nhân bản cấu hình lỏng.
-- **`don-handoff`**: kho handoff có trần 64 bản ghi, connector không tự xoá; đầy thì tạo kết nối mới hỏng với `handoff_capacity`. Quản trị tra SQL (chỉ đọc) lấy ID các kết nối **đã thu hồi**, xem trước lúc connector đang chạy (công cụ hỏi connector từng mã; mã còn được nhận thì từ chối), rồi dừng sạch connector, chạy `--apply --expect <mã>`, và khởi động lại. Bản ghi được chuyển sang `<stateRoot>/handoff-archive/`, không xoá. Ghi lúc connector đang chạy bị từ chối: mỗi thư mục handoff chỉ một tiến trình ghi.
+- **`go-nguoi`** chỉ gỡ thứ do công cụ dựng (container mang nhãn `com.ihomecrm.fleet.name`, hoặc, khi chưa có container, home thuộc một UID trong `uidRange`; cả hai đều do root đặt); `hermes-owner` dựng tay bị từ chối. Container được dừng, tắt tự khởi động và đổi tên `hermes-<tên>-da-go-<giờ>`; home chuyển sang `archiveRoot/<tên>-<giờ>` (vẫn chứa mã CRM của người đó: giữ quyền 0700 và nhắc người dùng thu hồi kết nối ở `/settings/hermes`). Token kênh cũ hết hiệu lực ở lần khởi động lại worker kế tiếp; công cụ không khởi động lại worker khi gỡ. Gỡ được cả lượt thêm dở (chưa có container): dấu sở hữu khi đó là UID của home nằm trong `uidRange`. **Thêm lại người đã gỡ: dùng đúng tên cũ.** Kênh đã thu hồi vẫn giữ cặp nick bot–nick người dùng, nên tên khác bị chặn (`nick_zalo_da_co_kenh`); với tên cũ, `them-nguoi` cấp token mới cho chính kênh đó (`operator.mjs rotate`) và dựng home mới. UID của home đã cất không được cấp lại cho người khác.
+- **`tao-lai-sidecar`** dựng lại đúng cấu hình đang chạy của từng sidecar, chỉ đổi `--network` (thay cho script `w3-recreate-sidecar.py` ngoài repo, vốn chỉ biết `hermes-owner`). Chạy ngay sau mọi lần **thay** container worker. Sidecar lệch bộ cờ khoá (không read-only, thêm capability, `security-opt` ngoài `no-new-privileges`, mở cổng, bind ngoài home, namespace của host…) bị từ chối và nêu rõ chỗ lệch, không nhân bản cấu hình lỏng. Sidecar **đang dừng** được để yên (hiện `stopped`): tạo lại là làm nó chạy lại, nên chỉ làm khi nêu đích danh bằng `--chi`. Bản cũ `-old-<giờ>` bị tắt tự khởi động.
+- **`don-handoff`**: kho handoff có trần 64 bản ghi, connector không tự xoá; đầy thì tạo kết nối mới hỏng với `handoff_capacity`. Quản trị tra SQL (chỉ đọc) lấy ID các kết nối **đã thu hồi**, xem trước lúc connector đang chạy (công cụ hỏi connector từng mã; mã còn được nhận thì từ chối và **không phát mã ghi**), rồi dừng sạch connector, chạy `--apply --expect <mã>`, và khởi động lại. Chỉ nêu ID mà SQL báo đã thu hồi: connector từ chối mã cả với kết nối hết hạn còn tự hồi được, và vòng gia hạn lấy danh sách kết nối từ chính kho này, nên cất nhầm bản ghi là mất kết nối đó. Bản ghi được chuyển sang `<stateRoot>/handoff-archive/`, không xoá. Ghi lúc connector đang chạy bị từ chối: mỗi thư mục handoff chỉ một tiến trình ghi.
 - Container `-old-<giờ>` / `-da-go-<giờ>` và home đã cất do quản trị tự dọn khi không cần lùi nữa; công cụ không xoá.
 
 ## Giới hạn đã biết
@@ -122,6 +127,10 @@ Dùng để đo RAM khi hai container cùng chạy, kiểm cách ly (`docker exe
 - Không có lệnh SQL liệt kê "ai đang chờ kích hoạt": quản trị tự tra ID.
 - Kỹ năng chuẩn cài theo từng home; quên chạy `deploy.sh` cho một home thì home đó giữ bộ kỹ năng cũ.
 - Máy 2 GB chỉ đủ thêm một trợ lý; cửa RAM từ chối người kế tiếp.
+- Mọi sidecar chung network namespace với worker và với nhau; token kênh đi HTTP loopback tới cầu. Một trợ lý chạy được mã tuỳ ý có thể nghe cổng loopback trong namespace đó. Khuôn tắt các toolset terminal, file và chạy mã; đừng bật lại cho trợ lý của người không phải chủ khi chưa tách namespace.
+- `deploy.sh` do root chạy và ghi `config.yaml` trong thư mục hồ sơ do UID của trợ lý sở hữu, qua một tên file tạm đoán được. Lần cài đầu trong `them-nguoi` chạy trước khi trợ lý có tiến trình nào; các lần chạy lại về sau (bước 6) có cùng điểm yếu đã có với home dựng tay. Việc sau: cho `deploy.sh` dùng file tạm ở thư mục của root.
+- `tao-lai-sidecar` truyền lại biến môi trường của container cũ qua đối số `docker run` (thấy được bằng `ps` trong lúc lệnh chạy). Container do công cụ dựng chỉ có ba biến đường dẫn; đừng đặt bí mật vào env của sidecar dựng tay.
+- Root đọc vài file trong home của trợ lý (`gateway_state.json`, `.env`, `config.yaml`) và SOUL, `.env` của hồ sơ khuôn: chỉ nhận file thường, không theo symlink, có trần kích thước. File không đạt thì lệnh dừng với `tep_khong_an_toan` / `tep_qua_lon`.
 
 ## Đã kiểm và chưa kiểm
 
