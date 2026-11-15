@@ -99,7 +99,7 @@ Hỏng giữa chừng: **không xoá gì để thử lại**. Chạy lại lện
 
 ## Người thử trên connector TEST
 
-`--thu-khong-kenh --connection-id <uuid>` chỉ dùng được với connector có `trial: true` (TEST). Nó dựng đủ home, hồ sơ, mã CRM và container, nhưng **không** tạo kênh Zalo, không khởi động lại worker, không đụng sidecar khác, không đăng ký kiểm học tập. Hồ sơ nhận một kênh giả trỏ vào `trialBridgePort`, một cổng không ai nghe trong network namespace của worker (công cụ từ chối nếu cổng đó trùng cổng cầu thật), nên gateway đứng ở trạng thái thử lại kết nối Zalo và không chạm cầu thật. Gọi thử CRM bằng:
+`--thu-khong-kenh --connection-id <uuid>` chỉ dùng được với connector có `trial: true` (TEST). Nó dựng đủ home, hồ sơ, mã CRM và container, nhưng **không** tạo kênh Zalo, không khởi động lại worker, không đụng sidecar khác, không đăng ký kiểm học tập. Hồ sơ nhận một kênh giả trỏ vào `trialBridgePort`, một cổng không ai nghe trong network namespace của worker (công cụ từ chối nếu cổng đó trùng cổng cầu thật), nên gateway đứng ở trạng thái thử lại kết nối Zalo (`gateway_state: degraded`) và không chạm cầu thật; bước kiểm của người thử chấp nhận trạng thái đó, của người thật thì không. Gọi thử CRM bằng:
 
 ```sh
 docker exec hermes-<tên> hermes --profile <tên> chat -q "<câu hỏi>" --oneshot -Q --max-turns 4 --source fleet-thu

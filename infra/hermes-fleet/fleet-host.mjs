@@ -225,6 +225,9 @@ function trialChannel(assistant, connector) {
   return channelProjection({ ...assistant.identity, mainUid: assistant.identity.pairedUid, profile: assistant.name, generation: randomUUID(),
     token: `hzn_${randomBytes(32).toString('hex')}`, listenPort: connector.trialBridgePort });
 }
+/** Người thật: gateway `running` và Zalo `connected`. Người thử chỉ có kênh giả (cổng không ai nghe) nên Hermes v0.22.2 để gateway ở
+ * `degraded` — mọi nền tảng đang chờ thử lại, tiến trình vẫn sống và MCP vẫn nối (gateway/run_startup.py). */
+const gatewayReady = (assistant, state, zalo) => assistant.trial ? ['running', 'degraded'].includes(state) : state === 'running' && zalo === 'connected';
 function verify(sys, config, assistant, connector, { limitMs = 240000 } = {}) {
   const digest = assistant.connectionId ? connectionDigest(assistant.connectionId) : null;
   let result = { container: 'unknown' };
@@ -236,12 +239,11 @@ function verify(sys, config, assistant, connector, { limitMs = 240000 } = {}) {
     result = { container: view.running ? 'running' : 'stopped', restarts: inspect.RestartCount ?? 0, gateway: gateway?.state ?? null, zalo: gateway?.zalo ?? null,
       mounts: view.mounts.map(mount => `${mount.type}:${mount.target}`), homeOnly: view.mounts.filter(mount => mount.type === 'bind').length === 1 && view.home === assistant.home,
       crmEvidence: last ? { seen: true, operation: last.operation, at: last.ts, calls: evidence.length } : { seen: false } };
-    const gatewayReady = gateway?.state === 'running' && (assistant.trial || gateway.zalo === 'connected');
-    if (view.running && gatewayReady && last) break;
+    if (view.running && gatewayReady(assistant, gateway?.state, gateway?.zalo) && last) break;
     if ((inspect.RestartCount ?? 0) > 3) break;
     sys.sleep(5000);
   }
-  const ok = result.container === 'running' && result.gateway === 'running' && result.homeOnly && result.crmEvidence?.seen === true && (assistant.trial || result.zalo === 'connected');
+  const ok = result.container === 'running' && gatewayReady(assistant, result.gateway, result.zalo) && result.homeOnly && result.crmEvidence?.seen === true;
   return { ...result, runtimeStatus: ok ? 'verified' : 'unverified' };
 }
 

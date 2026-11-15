@@ -13,7 +13,7 @@ const ROOT = '/var/lib/ihome-hermes-profiles', OWNER = `${ROOT}/owner/.hermes/pr
 const base = file => path.basename(file);
 
 /** Máy chủ giả: docker, setpriv + helper, journalctl, systemctl và vài lệnh file, đủ để chạy trọn một lượt điều phối. */
-function fakeServer({ containers = [sidecarInspect()], channels, alive = true, binding, evidence = true, connectorActive = true, failRun = null } = {}) {
+function fakeServer({ containers = [sidecarInspect()], channels, alive = true, binding, evidence = true, connectorActive = true, failRun = null, gatewayState } = {}) {
   const calls = [], logs = [], state = { containers: new Map([['ihome-zalo-worker', workerInspect()], ...containers.map(raw => [raw.Name.slice(1), raw])]),
     channels: channels ?? [{ profile: 'owner', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '200', unissued: false }], nativeMtime: Date.parse('2026-01-02T01:00:00Z'),
     files: new Map([[ROOT, { dir: true, uid: 0, mode: 0o711 }], [`${ROOT}/owner`, { dir: true, uid: 10003, mode: 0o700 }],
@@ -39,7 +39,8 @@ function fakeServer({ containers = [sidecarInspect()], channels, alive = true, b
       labels, containerId: String(state.containers.size).repeat(64).slice(0, 64) });
     raw.State.StartedAt = new Date(clock).toISOString(); raw.Mounts = raw.Mounts.filter(mount => mount.Type === 'bind' || args.join(' ').includes('type=volume'));
     state.containers.set(name, raw);
-    state.files.set(`${home}/.hermes/profiles/${raw.Config.Cmd[1]}/gateway_state.json`, { text: JSON.stringify({ gateway_state: 'running', active_agents: 0,
+    const isTrial = labels[FLEET_LABELS.trial] === 'true';
+    state.files.set(`${home}/.hermes/profiles/${raw.Config.Cmd[1]}/gateway_state.json`, { text: JSON.stringify({ gateway_state: gatewayState ?? (isTrial ? 'degraded' : 'running'), active_agents: 0,
       updated_at: new Date(clock).toISOString(), platforms: { zalo_personal: { state: labels[FLEET_LABELS.trial] === 'true' ? 'retrying' : 'connected' } } }), uid, mode: 0o644 });
     return ok(raw.Id + '\n');
   }
@@ -169,7 +170,7 @@ test('thêm người thử trên connector TEST: không đụng worker, kênh Za
   assert.equal(server.state.containers.get('hermes-owner').Id, sidecarInspect().Id);                        // hermes-owner không bị đụng
   assert.equal(server.state.channels.length, 1);
   assert.equal(server.state.containers.get('hermes-thu1').Config.Labels[FLEET_LABELS.trial], 'true');
-  assert.equal(result.runtimeStatus, 'verified'); assert.equal(result.verification.zalo, 'retrying');
+  assert.equal(result.runtimeStatus, 'verified'); assert.equal(result.verification.zalo, 'retrying'); assert.equal(result.verification.gateway, 'degraded');
   assert(!server.state.files.has('/etc/systemd/system/ihome-hermes-learning-audit.service.d/fleet-thu1.conf'));
 });
 
@@ -186,6 +187,10 @@ test('ghi bị từ chối khi kế hoạch bị chặn, mã lệch, hoặc khô
   const result = applyAdd(silent.sys, cfg, trialRequest(), trialPlan.expectedRevision);
   assert.deepEqual(result.verification.crmEvidence, { seen: false });
   assert.equal(result.runtimeStatus, 'unverified');                               // container chạy mà connector chưa thấy gọi ⇒ chưa xác minh
+  // Người thật mà gateway chỉ `degraded` (Zalo chưa nối) thì KHÔNG được báo đã kiểm, dù connector đã thấy gọi.
+  const degraded = fakeServer({ gatewayState: 'degraded' }), realPlan = planFor(degraded.sys, cfg, 'them-nguoi', realRequest());
+  const half = applyAdd(degraded.sys, cfg, realRequest(), realPlan.expectedRevision);
+  assert.equal(half.verification.crmEvidence.seen, true); assert.equal(half.runtimeStatus, 'unverified');
   // Tạo container mới hỏng: tên cũ được trả lại, lỗi nêu rõ container.
   const broken = fakeServer({ containers: [sidecarInspect(), sidecarInspect({ name: 'hermes-thu1', profile: 'thu1', home: `${ROOT}/thu1`, uid: 10100, running: false, containerId: '8'.repeat(64),
     labels: { [FLEET_LABELS.name]: 'thu1', [FLEET_LABELS.trial]: 'true' } })], failRun: 'hermes-thu1' });
