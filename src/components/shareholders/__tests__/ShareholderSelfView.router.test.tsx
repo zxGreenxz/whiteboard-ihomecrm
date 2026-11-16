@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-// Bộ định tuyến tab "Tổng quan" của cổ đông tự xem (máy tính) — Đợt 2:
-//   ready=false (công tắc sổ tổng tắt) ⇒ THÂN CŨ; ready=true (SHADOW/CANONICAL/FROZEN) ⇒ màn sổ tổng và
-//   KHÔNG đọc bảng phân bổ cũ; 42501 ⇒ không số nào; lỗi ⇒ câu tiếng Việt + tải lại; E3 hỏi đúng công ty của cổ đông.
+// Bộ định tuyến tab "Tổng quan" của cổ đông tự xem (máy tính) — sau Đợt 3 (D3.14) chỉ còn sổ tổng:
+//   ready=true (SHADOW/CANONICAL/FROZEN) ⇒ màn sổ tổng; ready=false (sổ tổng tắt) ⇒ một câu, không số nào,
+//   không còn thân cũ đọc bảng phân bổ; 42501 ⇒ không số nào; lỗi ⇒ câu tiếng Việt + tải lại; E3 hỏi đúng công ty.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { createElement, type ReactNode } from 'react';
+import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Shareholder } from '@/hooks/useShareholders';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
@@ -14,41 +14,14 @@ const h = vi.hoisted(() => ({
   },
   ledgerHook: vi.fn(),
   refetch: vi.fn(),
-  allocations: vi.fn(),
-  distributions: vi.fn(),
-  shareBuildings: vi.fn(),
   newView: vi.fn(),
 }));
-
-const okQuery = (data: unknown) => ({
-  data, status: 'success' as const, fetchStatus: 'idle' as const, isLoading: false, isError: false, error: null, refetch: vi.fn(),
-});
 
 vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
   useMyProfitLedger: (org: string | null, options?: unknown) => {
     h.ledgerHook(org, options);
     return { ...h.ledger, refetch: h.refetch };
   },
-}));
-vi.mock('@/hooks/useShareholderProfit', () => ({
-  useProfitAllocations: () => {
-    h.allocations();
-    return okQuery([{ id: 'a1', shareholder_id: 'sh-1', building_id: 'b1', period_month: '2026-08-01', amount: 4_000_000, percent: 20 }]);
-  },
-  useShareholderDistributions: () => {
-    h.distributions();
-    return okQuery([{ id: 'd1', shareholder_id: 'sh-1', voucher_date: '2026-09-02', name: 'Chi lợi nhuận', total_amount: 1_000_000 }]);
-  },
-  computeShareholderSummary: () => ({ 'sh-1': { accrued: 4_000_000, paid: 1_000_000, remaining: 3_000_000 } }),
-}));
-vi.mock('@/hooks/useShareholders', () => ({
-  useMyShareBuildings: () => {
-    h.shareBuildings();
-    return okQuery([{ id: 'b1', name: 'Toà Một' }]);
-  },
-}));
-vi.mock('@/pages/reports/finance/ProfitHubShell', () => ({
-  ProfitHubSlot: ({ name, children }: { name: string; children?: ReactNode }) => createElement('div', { 'data-slot': name }, children),
 }));
 vi.mock('@/components/shareholders/ShareholderLedgerSelfView', () => ({
   default: (props: { ledger: MyProfitLedger; access: unknown }) => {
@@ -58,6 +31,7 @@ vi.mock('@/components/shareholders/ShareholderLedgerSelfView', () => ({
 }));
 
 import ShareholderSelfView from '../ShareholderSelfView';
+import { PROFIT_LEDGER_OFF_TEXT } from '../MyProfitLedgerGate';
 
 const me = (over: Record<string, unknown> = {}) => ({
   id: 'sh-1', user_id: 'u-1', auth_user_id: 'auth-1', name: 'Cổ đông 1', note: null, is_active: true,
@@ -72,7 +46,6 @@ const ledger = (over: Partial<MyProfitLedger> = {}): MyProfitLedger => ({
 
 const access = { canViewPercent: false, canViewBuildingTotals: false, canAdvanceOwn: false };
 const view = (shareholder: Shareholder = me()) => render(<ShareholderSelfView me={shareholder} {...access} />);
-const legacyMounted = () => h.allocations.mock.calls.length + h.distributions.mock.calls.length + h.shareBuildings.mock.calls.length > 0;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -86,38 +59,34 @@ describe('ShareholderSelfView — bộ định tuyến sổ tổng', () => {
     expect(h.ledgerHook).toHaveBeenCalledWith('org-a', undefined);
   });
 
-  it('LEGACY (ready=false) ⇒ thân cũ, số cũ, không tỷ lệ %', () => {
+  it('sổ tổng tắt (ready=false) ⇒ một câu báo tắt, không số nào, không màn sổ tổng', () => {
     h.ledger = { data: ledger(), error: null, isError: false, isFetching: false };
     view();
-    expect(legacyMounted()).toBe(true);
-    expect(screen.queryByTestId('ledger-view')).toBeNull();
-    expect(document.body.textContent).toContain('Được chia (luỹ kế)');
-    expect(document.body.textContent).toMatch(/3\.000\.000/);
-    // Tỷ lệ cổ phần (20% trong bảng phân bổ) không hiện; "100%" của vòng cơ cấu theo nhà là cơ cấu phần của mình.
-    expect(document.body.textContent).not.toMatch(/tỷ lệ/i);
-    expect(document.body.textContent).not.toContain('20%');
+    expect(screen.getByRole('status').textContent).toBe(PROFIT_LEDGER_OFF_TEXT);
+    expect(h.newView).not.toHaveBeenCalled();
+    // Cả màn chỉ có đúng câu báo tắt: không số E3 nào (4.000.000 / 1.000.000 / 3.000.000), không thân cũ.
+    expect(document.body.textContent).toBe(PROFIT_LEDGER_OFF_TEXT);
   });
 
-  it.each(['SHADOW', 'CANONICAL', 'FROZEN'] as const)('%s (ready=true) ⇒ màn sổ tổng, KHÔNG đọc bảng phân bổ cũ', (route) => {
+  it.each(['SHADOW', 'CANONICAL', 'FROZEN'] as const)('%s (ready=true) ⇒ màn sổ tổng', (route) => {
     h.ledger = { data: ledger({ route, ready: true }), error: null, isError: false, isFetching: false };
     view();
     expect(document.querySelector('[data-probe="ledger-view"]')?.textContent).toBe(`route ${route}`);
     expect(h.newView).toHaveBeenCalledWith(expect.objectContaining({ access }));
-    expect(legacyMounted()).toBe(false);
+    expect(screen.queryByText(PROFIT_LEDGER_OFF_TEXT)).toBeNull();
   });
 
-  it('máy chủ nói không xem được (42501 ⇒ null) ⇒ không số nào, không thân cũ', () => {
+  it('máy chủ nói không xem được (42501 ⇒ null) ⇒ không số nào', () => {
     h.ledger = { data: null, error: null, isError: false, isFetching: false };
     view();
     expect(screen.getByRole('status').textContent).toMatch(/chưa xem được phần lợi nhuận/);
-    expect(legacyMounted()).toBe(false);
     expect(h.newView).not.toHaveBeenCalled();
   });
 
-  it('đang tải ⇒ chưa mount thân cũ (chưa biết công tắc)', () => {
+  it('đang tải ⇒ chưa mount màn nào', () => {
     view();
-    expect(legacyMounted()).toBe(false);
     expect(h.newView).not.toHaveBeenCalled();
+    expect(screen.queryByText(PROFIT_LEDGER_OFF_TEXT)).toBeNull();
   });
 
   it('lỗi ⇒ câu tiếng Việt theo mã máy, không lộ mã; Tải lại gọi lại E3', () => {
@@ -131,13 +100,11 @@ describe('ShareholderSelfView — bộ định tuyến sổ tổng', () => {
     expect(alert.textContent).not.toContain('PROFIT_LEDGER');
     fireEvent.click(screen.getByRole('button', { name: 'Tải lại' }));
     expect(h.refetch).toHaveBeenCalled();
-    expect(legacyMounted()).toBe(false);
   });
 
   it('dòng cổ đông thiếu công ty ⇒ báo lỗi, không gọi E3 với công ty đoán', () => {
     view(me({ organization_id: undefined }));
     expect(h.ledgerHook).toHaveBeenCalledWith(null, undefined);
     expect(screen.getByRole('alert').textContent).toMatch(/Chưa xác định được công ty/);
-    expect(legacyMounted()).toBe(false);
   });
 });

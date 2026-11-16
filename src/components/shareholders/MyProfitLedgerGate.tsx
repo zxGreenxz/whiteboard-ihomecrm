@@ -2,7 +2,9 @@
 // tab "Tạm ứng LN". Bốn trạng thái, không trạng thái nào hiện 0 đ thay cho số chưa có:
 //   chưa biết công ty / đang tải / lỗi (câu tiếng Việt theo mã máy, nút Tải lại) / máy chủ nói không
 //   xem được (42501 ⇒ hook trả null: ẩn số, chỉ một câu nhắc) — rồi mới tới dữ liệu.
-// Thân con chỉ mount khi đã có E3 ⇒ nhánh cũ (đọc bảng phân bổ) không chạy trước khi biết công tắc.
+// Thân con chỉ mount khi đã có E3. Sổ tổng tắt (`ready = false`) ⇒ tab "Tổng quan" tự xem (máy tính + điện thoại)
+// dùng ProfitLedgerOffNotice — từ Đợt 3 (D3.14) web không còn thân cũ đọc bảng phân bổ; tab "Tạm ứng LN" tự xử lý
+// `ready = false` (ẩn số dư, giữ danh sách phiếu của mình).
 
 import type { ReactNode } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -12,6 +14,14 @@ import { profitLedgerErrorMessage } from '@/lib/profitLedger/errors';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 
 const BOX = 'rounded-md border p-4 text-sm';
+
+/** Câu khi sổ tổng đang tắt (route LEGACY ⇒ E3 `ready = false`): không hiện số nào thay cho số sổ tổng. */
+export const PROFIT_LEDGER_OFF_TEXT = 'Sổ lợi nhuận đang tắt ở công ty này nên chưa có số để hiện — liên hệ chủ công ty.';
+
+/** Màn tự xem khi sổ tổng tắt: một câu, không số, không đọc bảng phân bổ cũ. */
+export function ProfitLedgerOffNotice() {
+  return <p role="status" className={`${BOX} text-muted-foreground`}>{PROFIT_LEDGER_OFF_TEXT}</p>;
+}
 
 export function MyProfitLedgerGate({ organizationId, query, hiddenText, children }: {
   /** Công ty của dòng cổ đông; null ⇒ chưa gọi được E3. */
@@ -49,7 +59,7 @@ export function MyProfitLedgerGate({ organizationId, query, hiddenText, children
     <>
       {query.isError && !query.isFetching && (
         <div role="alert" className="mb-3 rounded-md border border-amber-400 p-3 text-sm">
-          <p>Chưa cập nhật được lợi nhuận của bạn — đang hiện số của lần tải trước.</p>
+          <p>Chưa cập nhật được lợi nhuận của bạn — đang hiện kết quả của lần tải trước.</p>
           <Button type="button" variant="outline" size="sm" className="mt-2" onClick={reload}>Tải lại</Button>
         </div>
       )}

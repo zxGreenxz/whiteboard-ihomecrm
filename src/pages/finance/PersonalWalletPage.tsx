@@ -37,11 +37,6 @@ import {
 } from "@/lib/personalFinance/selectors";
 import { MoneyRangeError } from "@/lib/personalFinance/money";
 import { useMyShareholder } from "@/hooks/useShareholders";
-import {
-  useProfitAllocations,
-  useShareholderDistributions,
-  computeShareholderSummary,
-} from "@/hooks/useShareholderProfit";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useMyProfitLedger } from "@/hooks/profit-ledger/useProfitLedgerQueries";
 import { canUse } from "@/lib/permissionPages";
@@ -98,9 +93,8 @@ function walletAppLaunch() {
  * Dòng "Từ công ty" — CHỈ cho cổ đông có trang Báo cáo Lợi Nhuận (reports_finance.profit_distribution;
  * người chỉ có quyền tạm ứng xem phần lợi nhuận ở trang lương). Đợt 2 đọc sổ tổng (E3):
  *   sổ tổng đã chạy (`ready`) ⇒ số sổ tổng: được chia · đã nhận (+ chờ duyệt) · qua lương · còn được nhận / đang tạm ứng;
- *   công tắc còn tắt ⇒ dòng CŨ (không có %, Đợt 3 xoá) — không hiện số sổ tổng như số chính thức;
+ *   sổ tổng tắt ⇒ một dòng báo tắt, không số nào (dòng cũ đọc bảng phân bổ đã gỡ ở Đợt 3 — D3.14);
  *   máy chủ nói không xem được (42501 ⇒ null) ⇒ ẩn dòng, không báo lỗi trang.
- * Nhánh sổ tổng không đọc bảng phân bổ (dòng cũ chỉ mount khi đã biết công tắc còn tắt).
  */
 function ShareholderNotice() {
   const me = useMyShareholder();
@@ -137,7 +131,12 @@ function ShareholderNotice() {
     return <p role="status">Đang tải phần lợi nhuận cổ đông…</p>;
   }
   if (ledger.data === null) return null;
-  if (!ledger.data.ready) return <LegacyShareholderNotice shareholderId={me.data.id} />;
+  if (!ledger.data.ready)
+    return (
+      <aside className="pf-card pf-muted" data-testid="shareholder-ledger-off">
+        Từ công ty: sổ lợi nhuận đang tắt, chưa có số.
+      </aside>
+    );
   const l = ledger.data;
   const balance = selfBalanceView(l);
   const viaSalary = salaryNet(l);
@@ -151,38 +150,6 @@ function ShareholderNotice() {
   );
 }
 
-/** Dòng "Từ công ty" CŨ (công tắc sổ tổng còn tắt) — giữ nguyên cách tính cũ, Đợt 3 (D3.14) xoá. */
-function LegacyShareholderNotice({ shareholderId }: { shareholderId: string }) {
-  const allocations = useProfitAllocations();
-  const distributions = useShareholderDistributions();
-  if (allocations.error || distributions.error)
-    return (
-      <p role="alert">
-        Chưa tải được phần lợi nhuận cổ đông.{" "}
-        <button
-          onClick={() => {
-            void allocations.refetch();
-            void distributions.refetch();
-          }}
-        >
-          Thử lại
-        </button>
-      </p>
-    );
-  if (allocations.isLoading || distributions.isLoading)
-    return <p role="status">Đang tải phần lợi nhuận cổ đông…</p>;
-  const total = computeShareholderSummary(
-    [shareholderId],
-    allocations.data ?? [],
-    distributions.data ?? [],
-  )[shareholderId];
-  return total ? (
-    <aside className="pf-card pf-muted">
-      Từ công ty: Được chia {money(total.accrued)} · Đã ứng {money(total.paid)}{" "}
-      · Còn được nhận {money(total.remaining)}
-    </aside>
-  ) : null;
-}
 export default function PersonalWalletPage() {
   const query = usePersonalFinance();
   const permissionQuery = usePersonalFinancePermissions();

@@ -268,7 +268,7 @@ export interface MyBuildingTotal {
 export interface MyProfitLedger {
   organization_id: string;
   route: ProfitLedgerRoute;
-  /** true từ SHADOW trở đi: màn tự xem đọc sổ tổng; false (LEGACY) giữ thân cũ. */
+  /** true từ SHADOW trở đi: màn tự xem đọc sổ tổng; false (LEGACY): màn tự xem chỉ hiện câu báo sổ tổng tắt (thân cũ gỡ ở D3.14). */
   ready: boolean;
   shareholder: { id: string; name: string };
   balance: number;

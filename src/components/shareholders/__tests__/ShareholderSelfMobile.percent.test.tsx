@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// Tab "Của tôi" (điện thoại): dòng "tỷ lệ X%" của cổ đông CHỈ khi được cấp quyền xem tỷ lệ — ở cả thân cũ
-// (công tắc sổ tổng tắt) lẫn màn sổ tổng; màn sổ tổng không đọc bảng phân bổ cũ.
+// Tab "Của tôi" (điện thoại): dòng "tỷ lệ X%" của cổ đông CHỈ khi được cấp quyền xem tỷ lệ (màn sổ tổng);
+// sổ tổng tắt ⇒ một câu, không số nào — thân cũ đọc bảng phân bổ đã gỡ ở Đợt 3 (D3.14).
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,31 +9,12 @@ import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 
 const h = vi.hoisted(() => ({
   ledgerData: undefined as unknown,
-  allocations: vi.fn(),
   distribute: vi.fn(),
   cancel: vi.fn(),
 }));
 
-const okQuery = (data: unknown) => ({
-  data, status: 'success' as const, fetchStatus: 'idle' as const, isLoading: false, isError: false, error: null, refetch: vi.fn(),
-});
-
 vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
   useMyProfitLedger: () => ({ data: h.ledgerData, error: null, isError: false, isFetching: false, refetch: vi.fn() }),
-}));
-vi.mock('@/hooks/useShareholderProfit', () => ({
-  useProfitAllocations: () => {
-    h.allocations();
-    return okQuery([
-      { id: 'a1', shareholder_id: 'sh-1', building_id: 'b1', period_month: '2026-08-01', amount: 4_000_000, percent: 20 },
-      { id: 'a2', shareholder_id: 'sh-1', building_id: 'b2', period_month: '2026-08-01', amount: 1_000_000, percent: 20 },
-    ]);
-  },
-  useShareholderDistributions: () => okQuery([]),
-  computeShareholderSummary: () => ({ 'sh-1': { accrued: 5_000_000, paid: 0, remaining: 5_000_000 } }),
-}));
-vi.mock('@/hooks/useShareholders', () => ({
-  useMyShareBuildings: () => okQuery([{ id: 'b1', name: 'Toà Một' }, { id: 'b2', name: 'Toà Hai' }]),
 }));
 vi.mock('@/components/shareholders/ProfitDistributeDialog', () => ({
   default: (props: Record<string, unknown>) => {
@@ -49,6 +30,7 @@ vi.mock('@/components/shareholders/ProfitPayoutCancelDialog', () => ({
 }));
 
 import ShareholderSelfMobile from '../ShareholderSelfMobile';
+import { PROFIT_LEDGER_OFF_TEXT } from '../MyProfitLedgerGate';
 
 const me = {
   id: 'sh-1', user_id: 'u-1', auth_user_id: 'auth-1', name: 'Cổ đông 1', note: null, is_active: true,
@@ -75,30 +57,28 @@ const view = (access: { canViewPercent?: boolean; canViewBuildingTotals?: boolea
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
-describe('ShareholderSelfMobile — thân cũ (công tắc tắt)', () => {
+describe('ShareholderSelfMobile — sổ tổng tắt (ready=false)', () => {
   beforeEach(() => { h.ledgerData = ledger({ route: 'LEGACY', ready: false }); });
 
-  it('thiếu quyền xem tỷ lệ ⇒ không "tỷ lệ X%" dù bảng phân bổ mang %', () => {
-    view();
-    expect(h.allocations).toHaveBeenCalled();
-    expect(document.body.textContent).toContain('Cổ đông · 2 toà nhà');
-    expect(document.body.textContent).not.toMatch(/tỷ lệ/);
-  });
-
-  it('được cấp quyền xem tỷ lệ ⇒ "tỷ lệ 20%" như trước', () => {
-    view({ canViewPercent: true });
-    expect(document.body.textContent).toContain('Cổ đông · tỷ lệ 20% · 2 toà nhà');
+  it.each([false, true])('quyền xem tỷ lệ = %s ⇒ chỉ một câu báo tắt: không số, không tỷ lệ, không nút tạm ứng', (canViewPercent) => {
+    view({ canViewPercent, canAdvanceOwn: true });
+    expect(screen.getByRole('status').textContent).toBe(PROFIT_LEDGER_OFF_TEXT);
+    expect(screen.queryByTestId('self-mobile-hero-sub')).toBeNull();
+    expect(screen.queryByTestId('self-mobile-balance')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Chi tạm ứng cho tôi/ })).toBeNull();
+    // Cả màn chỉ có đúng câu báo tắt: không số, không tỷ lệ, không số toà.
+    expect(document.body.textContent).toBe(PROFIT_LEDGER_OFF_TEXT);
   });
 });
 
 describe('ShareholderSelfMobile — màn sổ tổng (ready)', () => {
-  it('không đọc bảng phân bổ cũ; thiếu quyền ⇒ không tỷ lệ, không thẻ số toà', () => {
+  it('thiếu quyền ⇒ không tỷ lệ, không thẻ số toà', () => {
     h.ledgerData = ledger({
       percent_rows: [{ building_id: 'b1', building_name: 'Toà Một', percent: 20 }],
       building_totals: [{ period_month: '2026-08-01', building_id: 'b1', building_name: 'Toà Một', revenue: 90_000_000, expense: 30_000_000, profit: 60_000_000 }],
     });
     view();
-    expect(h.allocations).not.toHaveBeenCalled();
+    expect(screen.queryByText(PROFIT_LEDGER_OFF_TEXT)).toBeNull();
     expect(screen.getByTestId('self-mobile-hero-sub').textContent).toBe('Cổ đông · 2 toà nhà');
     expect(screen.queryByTestId('self-percent-card')).toBeNull();
     expect(screen.queryByTestId('self-building-totals-card')).toBeNull();
@@ -125,7 +105,7 @@ describe('ShareholderSelfMobile — màn sổ tổng (ready)', () => {
     expect(document.body.textContent).not.toContain('2026-11-15');
   });
 
-  it('nút tạm ứng theo quyền: CANONICAL mở hộp cho chính mình; LEGACY không tới đây (thân cũ)', () => {
+  it('nút tạm ứng theo quyền: CANONICAL mở hộp cho chính mình (sổ tổng tắt không có nút — xem trên)', () => {
     h.ledgerData = ledger();
     view({ canAdvanceOwn: true });
     fireEvent.click(screen.getByRole('button', { name: /Chi tạm ứng cho tôi/ }));
