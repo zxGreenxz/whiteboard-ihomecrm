@@ -52,16 +52,13 @@ vi.mock("@/components/quick-entry/EmbeddedQuickEntry", () => ({
 vi.mock("@/components/layout/MainLayout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-// Dòng "Từ công ty" (D2.18): cổ đông, quyền trang Báo cáo Lợi Nhuận, sổ tổng E3 và nhánh cũ.
+// Dòng "Từ công ty" (D2.18): cổ đông, quyền trang Báo cáo Lợi Nhuận, sổ tổng E3 (nhánh cũ gỡ ở D3.14).
 const profit = vi.hoisted(() => ({
   shareholder: null as Record<string, unknown> | null,
   perms: {} as Record<string, unknown>,
   ledger: { data: undefined as unknown, error: null as unknown },
   ledgerHook: vi.fn(),
   refetchLedger: vi.fn(),
-  legacyAllocations: vi.fn(),
-  legacyDistributions: vi.fn(),
-  legacySummary: vi.fn(),
 }));
 vi.mock("@/hooks/useShareholders", () => ({
   useMyShareholder: () => ({ data: profit.shareholder, error: null, refetch: vi.fn() }),
@@ -75,20 +72,6 @@ vi.mock("@/hooks/profit-ledger/useProfitLedgerQueries", () => ({
     return options?.enabled === false
       ? { data: undefined, error: null, refetch: profit.refetchLedger }
       : { ...profit.ledger, refetch: profit.refetchLedger };
-  },
-}));
-vi.mock("@/hooks/useShareholderProfit", () => ({
-  useProfitAllocations: () => {
-    profit.legacyAllocations();
-    return { data: [], error: null, isLoading: false, refetch: vi.fn() };
-  },
-  useShareholderDistributions: () => {
-    profit.legacyDistributions();
-    return { data: [], error: null, isLoading: false, refetch: vi.fn() };
-  },
-  computeShareholderSummary: (ids: string[]) => {
-    profit.legacySummary(ids);
-    return { [ids[0]!]: { accrued: 7_000_000, paid: 2_000_000, remaining: 5_000_000 } };
   },
 }));
 vi.mock("@/components/personal-finance/CompanyFinance", () => ({
@@ -364,16 +347,14 @@ describe("dòng \"Từ công ty\" đọc sổ tổng (D2.18)", () => {
     paid_via_salary: 3_500_000, advance_recovered: 500_000, marker: null, months: [], payouts: [], salary: [], ...over,
   });
   const line = () => document.querySelector("aside.pf-card")?.textContent ?? null;
-  const legacyMounted = () => profit.legacyAllocations.mock.calls.length + profit.legacyDistributions.mock.calls.length > 0;
 
-  it("sổ tổng đã chạy ⇒ số E3 (được chia · đã nhận + chờ duyệt · qua lương · còn được nhận), không đọc bảng phân bổ", () => {
+  it("sổ tổng đã chạy ⇒ số E3 (được chia · đã nhận + chờ duyệt · qua lương · còn được nhận)", () => {
     profit.shareholder = shareholder;
     profit.perms = { reports_finance: { profit_distribution: true } };
     profit.ledger = { data: ledger(), error: null };
     render(<PersonalWalletPage />);
     expect(profit.ledgerHook).toHaveBeenCalledWith("org-a", { enabled: true });
     expect(line()).toBe("Từ công ty: Được chia 7.000.000 ₫ · Đã nhận 2.000.000 ₫ (+ chờ duyệt 500.000 ₫) · Qua lương 3.000.000 ₫ · Còn được nhận 1.500.000 ₫");
-    expect(legacyMounted()).toBe(false);
   });
 
   it("đang tạm ứng ⇒ \"Đang tạm ứng\" số dương", () => {
@@ -391,17 +372,17 @@ describe("dòng \"Từ công ty\" đọc sổ tổng (D2.18)", () => {
     render(<PersonalWalletPage />);
     expect(line()).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(legacyMounted()).toBe(false);
   });
 
-  it("công tắc còn tắt (ready=false) ⇒ dòng CŨ như trước (không có %)", () => {
+  it("sổ tổng tắt (ready=false) ⇒ một dòng báo tắt, không số nào (dòng cũ đã gỡ ở D3.14)", () => {
     profit.shareholder = shareholder;
     profit.perms = { reports_finance: { profit_distribution: true } };
     profit.ledger = { data: ledger({ route: "LEGACY", ready: false }), error: null };
     render(<PersonalWalletPage />);
-    expect(legacyMounted()).toBe(true);
-    expect(profit.legacySummary).toHaveBeenCalledWith(["sh-1"]);
-    expect(line()).toBe("Từ công ty: Được chia 7.000.000 ₫ · Đã ứng 2.000.000 ₫ · Còn được nhận 5.000.000 ₫");
+    expect(line()).toBe("Từ công ty: sổ lợi nhuận đang tắt, chưa có số.");
+    expect(screen.getByTestId("shareholder-ledger-off")).toBeTruthy();
+    expect(screen.queryByTestId("shareholder-ledger-notice")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("không có trang Báo cáo Lợi Nhuận (chỉ quyền tạm ứng) ⇒ không dòng, không gọi sổ tổng", () => {
@@ -412,7 +393,6 @@ describe("dòng \"Từ công ty\" đọc sổ tổng (D2.18)", () => {
     expect(line()).toBeNull();
     expect(document.body.textContent).not.toContain("phần lợi nhuận cổ đông");
     expect(profit.ledgerHook).toHaveBeenCalledWith("org-a", { enabled: false });
-    expect(legacyMounted()).toBe(false);
   });
 
   it("E3 lỗi ⇒ báo tại chỗ + Thử lại (không im lặng, không hiện 0)", () => {
