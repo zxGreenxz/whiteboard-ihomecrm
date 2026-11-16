@@ -379,13 +379,20 @@ it('lý do điều chỉnh focus đúng ô dòng nhà, giữ số đã nhập', 
  fireEvent.focus(amount); fireEvent.change(amount, { target: { value: '-123' } }); fireEvent.blur(amount); await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(button);
  await waitFor(() => expect(document.activeElement).toBe(reason)); expect(reason.getAttribute('aria-invalid')).toBe('true'); expect(amount.value).toBe('-123'); expect(state.closeCalls).toHaveLength(0);
 });
-it('thiếu cách xử lý residual vẫn bấm validation và focus select của đúng nhà', async () => {
- const button = await mountClose({ unallocated_profit: 100000, shareholder_percent_total: 90, shareholder_allocated_amount: 900000 }); expect((button as HTMLButtonElement).disabled).toBe(false); fireEvent.click(button);
- const select = screen.getByRole('combobox', { name: 'Cách xử lý phần chưa phân bổ 15KV' }); await waitFor(() => expect(document.activeElement).toBe(select)); expect(select.getAttribute('aria-invalid')).toBe('true');expect(document.getElementById(select.getAttribute('aria-describedby')??'')?.getAttribute('role')).toBe('alert'); expect(state.closeCalls).toHaveLength(0);
+it('residual chưa chọn gì: mặc định Giữ lại lợi nhuận, lý do để trống vẫn chốt được và gửi câu mặc định', async () => {
+ const button = await mountClose({ unallocated_profit: 100000, shareholder_percent_total: 90, shareholder_allocated_amount: 900000 });
+ const select = screen.getByRole('combobox', { name: 'Cách xử lý phần chưa phân bổ 15KV' }); expect(select.textContent).toContain('Giữ lại lợi nhuận');
+ expect((screen.getByLabelText('Lý do xử lý phần chưa phân bổ 15KV') as HTMLInputElement).value).toBe('');
+ fireEvent.click(button); const hop = await screen.findByRole('alertdialog'); expect(select.getAttribute('aria-invalid')).not.toBe('true');
+ fireEvent.click(within(hop).getByText('Chốt 1 nhà')); await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+ expect((state.closeCalls[0] as { adjustments: unknown[] }).adjustments).toEqual([
+  { building_id: B1, adjustment_amount: 0, adjustment_reason: null, unallocated_disposition: 'RETAINED_EARNINGS', unallocated_disposition_reason: 'Giữ lại lợi nhuận — không ghi lý do' },
+ ]);
 });
-it('có disposition nhưng thiếu lý do residual focus đúng ô reason', async () => {
- const button = await mountClose({ unallocated_profit: 100000, unallocated_disposition: 'RETAINED_EARNINGS', shareholder_percent_total: 90, shareholder_allocated_amount: 900000 }); expect((button as HTMLButtonElement).disabled).toBe(false); fireEvent.click(button);
- const reason = screen.getByLabelText('Lý do xử lý phần chưa phân bổ 15KV'); await waitFor(() => expect(document.activeElement).toBe(reason)); expect(reason.getAttribute('aria-invalid')).toBe('true');expect(document.getElementById(reason.getAttribute('aria-describedby')??'')?.getAttribute('role')).toBe('alert'); expect(state.closeCalls).toHaveLength(0);
+it('lý do residual đã ghi nhưng quá ngắn focus đúng ô reason, không mở hộp chốt', async () => {
+ const button = await mountClose({ unallocated_profit: 100000, unallocated_disposition: 'RETAINED_EARNINGS', shareholder_percent_total: 90, shareholder_allocated_amount: 900000 }); expect((button as HTMLButtonElement).disabled).toBe(false);
+ const reason = screen.getByLabelText('Lý do xử lý phần chưa phân bổ 15KV'); fireEvent.change(reason, { target: { value: 'ngắn' } }); fireEvent.click(button);
+ await waitFor(() => expect(document.activeElement).toBe(reason)); expect(reason.getAttribute('aria-invalid')).toBe('true');expect(document.getElementById(reason.getAttribute('aria-describedby')??'')?.getAttribute('role')).toBe('alert'); expect(screen.queryByRole('alertdialog')).toBeNull(); expect(state.closeCalls).toHaveLength(0);
 });
 
 describe("ProfitLockTab — rà 21/10 (F20 dò chi cố định, F07 nhãn, F60 lý do)", () => {

@@ -9,6 +9,7 @@ import {
   UNALLOCATED_REASON_SYSTEM_MESSAGE,
   UNLOCK_REASON_SYSTEM_MESSAGE,
   buildProfitCloseAdjustments,
+  defaultUnallocatedDispositionReason,
   hasUnallocatedProfitResidual,
   isSystemMessageReason,
   mergeProfitCloseDrafts,
@@ -35,10 +36,23 @@ describe("profit close draft initialization", () => {
       b1: {
         adjustmentAmount: 0,
         adjustmentReason: "",
-        unallocatedDisposition: null,
+        unallocatedDisposition: "RETAINED_EARNINGS",
         unallocatedDispositionReason: "",
       },
     });
+  });
+
+  it("chưa chọn hoặc chốt kiểu cũ ⇒ nháp mặc định giữ lại; câu lý do mặc định nạp lại thành ô trống", () => {
+    const drafts = mergeProfitCloseDrafts(
+      [
+        { buildingId: "cu", locked: true, unallocatedDisposition: "LEGACY_RETAINED_UNALLOCATED", unallocatedDispositionReason: "Chốt trước V3" },
+        { buildingId: "macdinh", locked: true, unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: defaultUnallocatedDispositionReason("CARRY_FORWARD") },
+      ],
+      {},
+      new Set(),
+    );
+    expect(drafts.cu).toMatchObject({ unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "Chốt trước V3" });
+    expect(drafts.macdinh).toMatchObject({ unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "" });
   });
 
   it("reuses only the signed snapshot adjustment, never a stale absolute adjusted value", () => {
@@ -211,6 +225,40 @@ describe("profit close adjustment validation", () => {
         },
       ).valid,
     ).toBe(true);
+  });
+
+  it("lý do xử lý phần chưa phân bổ không bắt buộc; đã ghi thì vẫn phải 8–500 ký tự", () => {
+    const draftOf = (reason: string): ProfitCloseDraftMap => ({
+      b1: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: reason },
+    });
+    const options = { reclose: false, overallReason: "", unallocatedProfitByBuilding: { b1: 25_000 } };
+    expect(validateProfitCloseDrafts(["b1"], draftOf(""), options).valid).toBe(true);
+    expect(validateProfitCloseDrafts(["b1"], draftOf("   "), options).valid).toBe(true);
+    expect(validateProfitCloseDrafts(["b1"], draftOf("ngắn"), options).rowErrors.b1).toBe(
+      "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự",
+    );
+  });
+
+  it("ô lý do để trống ⇒ gửi câu mặc định đủ 8–500 ký tự theo cách xử lý; nháp thiếu cách xử lý ⇒ giữ lại", () => {
+    const payload = buildProfitCloseAdjustments(
+      ["b1", "b2", "b3"],
+      {
+        b1: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "  " },
+        b2: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "" },
+        b3: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: null, unallocatedDispositionReason: "" },
+      },
+      { b1: 25_000, b2: -40, b3: 10 },
+    );
+    expect(payload.map((row) => [row.unallocated_disposition, row.unallocated_disposition_reason])).toEqual([
+      ["RETAINED_EARNINGS", "Giữ lại lợi nhuận — không ghi lý do"],
+      ["CARRY_FORWARD", "Chuyển kỳ sau — không ghi lý do"],
+      ["RETAINED_EARNINGS", "Giữ lại lợi nhuận — không ghi lý do"],
+    ]);
+    for (const row of payload) {
+      const reason = row.unallocated_disposition_reason ?? "";
+      expect(reason.length).toBeGreaterThanOrEqual(8);
+      expect(isSystemMessageReason(reason)).toBe(false);
+    }
   });
 
   it("uses the exact residual threshold and rejects unknown dispositions", () => {

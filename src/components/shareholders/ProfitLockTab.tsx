@@ -61,6 +61,8 @@ import {
   type ProfitClosePreviewRow,
 } from "@/hooks/useShareholderProfit";
 import {
+  DEFAULT_UNALLOCATED_DISPOSITION,
+  unallocatedReasonProblem,
   buildProfitCloseAdjustments,
   buildProfitPreviewAdjustments,
   describeTotalGroupExpansion,
@@ -478,8 +480,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           row.unallocated_disposition_reason ??
           ""
         ).trim();
-        // F60: độ dài 8–500 VÀ không phải nguyên câu báo lỗi (cùng luật validateProfitCloseDrafts).
-        return !disposition || reasonProblem(reason, 8, 500) !== null;
+        // Lý do không bắt buộc; đã ghi thì 8–500 ký tự VÀ không phải nguyên câu báo lỗi
+        // (F60 — cùng luật validateProfitCloseDrafts).
+        return !disposition || unallocatedReasonProblem(reason) !== null;
       }),
     [activeDrafts, selectedRows],
   );
@@ -665,7 +668,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       const current = drafts[buildingId] ?? {
         adjustmentAmount: 0,
         adjustmentReason: "",
-        unallocatedDisposition: null,
+        unallocatedDisposition: DEFAULT_UNALLOCATED_DISPOSITION,
         unallocatedDispositionReason: "",
       };
       return {
@@ -789,7 +792,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     void focusFirstError({ ...fields, ...(overallError ? { overallReason: overallError } : {}) });
   };
   const reportResidualRows = () => {
-    const errors = Object.fromEntries(invalidResidualRows.map(row => [row.building_id, !normalizeUnallocatedDisposition(activeDrafts[row.building_id]?.unallocatedDisposition ?? row.unallocated_disposition) ? 'Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau' : reasonProblem(activeDrafts[row.building_id]?.unallocatedDispositionReason ?? row.unallocated_disposition_reason ?? '', 8, 500) === 'SYSTEM_MESSAGE' ? UNALLOCATED_REASON_SYSTEM_MESSAGE : 'Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự']));
+    const errors = Object.fromEntries(invalidResidualRows.map(row => [row.building_id, !normalizeUnallocatedDisposition(activeDrafts[row.building_id]?.unallocatedDisposition ?? row.unallocated_disposition) ? 'Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau' : unallocatedReasonProblem(activeDrafts[row.building_id]?.unallocatedDispositionReason ?? row.unallocated_disposition_reason ?? '') === 'SYSTEM_MESSAGE' ? UNALLOCATED_REASON_SYSTEM_MESSAGE : 'Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự']));
     setRowErrors(errors);
     focusCloseRows(errors);
   };
@@ -1010,16 +1013,22 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const lockedRowCount = rows.filter((row) => row.current_snapshot?.status === "LOCKED").length;
   const organizationName =
     organizations.find((o) => o.organization_id === organizationId)?.organization_name ?? "—";
+  // Lúc XEM: nhà người dùng đã sửa thì theo nháp; chưa động vào thì ưu tiên giá trị ĐÃ LƯU
+  // (kể cả chốt kiểu cũ LEGACY_RETAINED_UNALLOCATED) rồi mới tới mặc định "Giữ lại" của nháp.
+  const dirtyDraftIds: Record<string, true> = form.scopeKey === scopeKey ? form.dirty : {};
+  const shownDisposition = (row: (typeof rows)[number]) => {
+    const drafted = activeDrafts[row.building_id]?.unallocatedDisposition ?? null;
+    const stored =
+      row.unallocated_disposition ??
+      row.current_snapshot?.unallocated_disposition ??
+      null;
+    return dirtyDraftIds[row.building_id] ? drafted ?? stored : stored ?? drafted;
+  };
   const residualNote = rows
     .filter((row) => hasUnallocatedProfitResidual(row.unallocated_profit))
     .map(
       (row) =>
-        `${unallocatedDispositionLabel(
-          activeDrafts[row.building_id]?.unallocatedDisposition ??
-            row.unallocated_disposition ??
-            row.current_snapshot?.unallocated_disposition ??
-            null,
-        )} · ${row.building_name}`,
+        `${unallocatedDispositionLabel(shownDisposition(row))} · ${row.building_name}`,
     );
 
   return (
@@ -1488,20 +1497,17 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   const draft = activeDrafts[row.building_id] ?? {
                     adjustmentAmount: row.current_snapshot?.adjustment_amount ?? 0,
                     adjustmentReason: row.current_snapshot?.adjustment_reason ?? "",
-                    unallocatedDisposition: normalizeUnallocatedDisposition(
-                      row.unallocated_disposition ??
-                      row.current_snapshot?.unallocated_disposition,
-                    ),
+                    unallocatedDisposition:
+                      normalizeUnallocatedDisposition(
+                        row.unallocated_disposition ??
+                        row.current_snapshot?.unallocated_disposition,
+                      ) ?? DEFAULT_UNALLOCATED_DISPOSITION,
                     unallocatedDispositionReason:
                       row.unallocated_disposition_reason ??
                       row.current_snapshot?.unallocated_disposition_reason ??
                       "",
                   };
-                  const viewDisposition =
-                    activeDrafts[row.building_id]?.unallocatedDisposition ??
-                    row.unallocated_disposition ??
-                    row.current_snapshot?.unallocated_disposition ??
-                    null;
+                  const viewDisposition = shownDisposition(row);
                   const rowError = rowErrors[row.building_id];
                   const dispositionError = rowError?.includes("chưa phân bổ");
                   const amountError = rowError?.startsWith('Số điều chỉnh') ? rowError : undefined;
@@ -1512,11 +1518,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                     normalizeUnallocatedDisposition(
                       draft.unallocatedDisposition,
                     );
-                  // F60: cùng luật validateProfitCloseDrafts — độ dài 8–500 và không chép câu báo lỗi.
-                  const dispositionReasonProblem = reasonProblem(
+                  // Cùng luật validateProfitCloseDrafts: để trống được; đã ghi thì 8–500 ký tự và
+                  // không chép câu báo lỗi (F60).
+                  const dispositionReasonProblem = unallocatedReasonProblem(
                     draft.unallocatedDispositionReason,
-                    8,
-                    500,
                   );
                   // Chỉ báo đỏ sau lần bấm "Chốt" đầu tiên (xem closeAttempted) — báo từ lúc mở
                   // trang thì dòng chữ lỗi hiện/ẩn theo từng phím, dòng cao thấp liên tục.
@@ -1676,7 +1681,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                           {hasResidual ? rowEditable ? (
                             <>
                               <Select
-                                value={draft.unallocatedDisposition ?? ""}
+                                value={draft.unallocatedDisposition ?? DEFAULT_UNALLOCATED_DISPOSITION}
                                 onValueChange={(value) =>
                                   updateDraft(row.building_id, {
                                     unallocatedDisposition:
@@ -1700,7 +1705,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                                     unallocatedDispositionReason: event.target.value,
                                   })
                                 }
-                                placeholder="Lý do xử lý (ít nhất 8 ký tự)"
+                                placeholder="Lý do xử lý (không bắt buộc)"
                                 maxLength={500}
                                 aria-invalid={dispositionInvalid}
                                 aria-describedby={dispositionInvalid?`${row.building_id}:unallocatedError`:undefined}
@@ -1721,7 +1726,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                           ) : (
                             <div className="space-y-1 text-xs">
                               {/* Lúc xem hiện giá trị đã lưu (kể cả chốt kiểu cũ LEGACY_RETAINED_UNALLOCATED);
-                                  draft chuẩn hoá giá trị cũ thành null chỉ để buộc chọn lại khi SỬA. */}
+                                  khi SỬA, nháp đổi giá trị cũ thành mặc định "Giữ lại lợi nhuận". */}
                               <Badge variant={viewDisposition ? "secondary" : "destructive"}>
                                 {unallocatedDispositionLabel(viewDisposition)}
                               </Badge>
