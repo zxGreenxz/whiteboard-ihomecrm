@@ -281,6 +281,38 @@ const HAM_TACH_MOI = [
   "public.income_voucher_splittable_v1(uuid)",
   "public.invoice_amount_parts_v1(jsonb)",
 ];
+/**
+ * Migration 20261116015253 — RPC kiểm phiên bản ném PT409 (HTTP 409) thay 40001 mà PostgREST tự chạy lại
+ * tới 504. File đó thay 30 hàm (phần lớn ngoài phạm vi test này) nên KHÔNG chạy cả file: lấy đúng câu tạo của
+ * năm hàm quyết toán từ chính file, sau khi kiểm thân đang chạy (do chuỗi trên dựng) khớp md5 production mà
+ * file ghim — tức file chỉ đổi mã lỗi của đúng các thân này.
+ */
+const FILE_PT409 = "supabase/migrations/20261116015253_rpc_cas_tra_409_thay_40001.sql";
+const HAM_PT409 = [
+  "public.landlord_operation_upsert_v1(uuid,text,numeric,date,uuid[],text,boolean,numeric,boolean,date,numeric,timestamp with time zone,numeric,text)",
+  "public.landlord_portal_confirm_v1(text,text,text,date,integer,text)",
+  "public.landlord_settlement_close_v1(uuid,date,text,text)",
+  "public.landlord_settlement_confirm_v1(text,date,integer,text)",
+  "public.landlord_settlement_note_update_v1(uuid,date,integer,text)",
+];
+let ketQuaPt409: { ham: string; truoc: string; sau: string; cu: string; moi: string }[] = [];
+async function apPt409() {
+  const sql = readFileSync(FILE_PT409, "utf8").replace(/\r/g, "");
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const md5Than = async (ham: string) =>
+    (await db.query<{ m: string }>("SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = to_regprocedure($1)", [ham])).rows[0]?.m ?? "";
+  for (const ham of HAM_PT409) {
+    // Dòng ghim của khối kiểm trước: (hàm, md5 cũ, md5 mới, SECURITY, proconfig, quyền).
+    const ghim = new RegExp(`\\('${esc(ham)}', '([0-9a-f]{32})', '([0-9a-f]{32})', (?:true|false), '`).exec(sql);
+    if (!ghim) throw new Error(`${FILE_PT409} không ghim ${ham}`);
+    const ten = ham.slice(0, ham.indexOf("("));
+    const dau = sql.indexOf(`CREATE OR REPLACE FUNCTION ${ten}(`);
+    const cuoi = sql.indexOf("$function$;", sql.indexOf("AS $function$", dau) + "AS $function$".length);
+    const truoc = await md5Than(ham);
+    await chay(sql.slice(dau, cuoi + "$function$;".length));
+    ketQuaPt409.push({ ham, truoc, sau: await md5Than(ham), cu: ghim[1], moi: ghim[2] });
+  }
+}
 let md5GocTach: Record<string, string> = {};
 let md5LuotMotTach: Record<string, string> = {};
 let hashSauTach: string[] = [];
@@ -504,8 +536,19 @@ beforeAll(async () => {
   md5LuotMotTach = await md5Cua([CONG_THUC, ...HAM_TACH_MOI]);
   await chay(sqlTach);
   hashSauTach = await hashCacThang();
+  await apPt409();
 }, 60000);
 afterAll(() => db.close());
+
+describe("migration 20261116015253 — xung đột phiên bản ném PT409", () => {
+  it("năm hàm quyết toán: thân do chuỗi trên dựng = bản production file ghim; sau khi thay = bản mới", () => {
+    expect(ketQuaPt409.map((x) => x.ham)).toEqual(HAM_PT409);
+    for (const x of ketQuaPt409) {
+      expect(x.truoc, x.ham).toBe(x.cu);
+      expect(x.sau, x.ham).toBe(x.moi);
+    }
+  });
+});
 
 describe("công thức quyết toán tháng", () => {
   it("tách đúng ai giữ tiền, % quản lý, phần chủ nhà và số chủ nhà phải trả", async () => {
@@ -739,7 +782,7 @@ describe("chốt tháng", () => {
       await expectLoi("SELECT public.landlord_settlement_reopen_v1($1, '2025-02-01'::date, 'ngắn')", [TOA_A], "22023");
       expect(await rpc<Json>("public.landlord_settlement_reopen_v1($1, '2025-02-01'::date, 'sửa phiếu chi tháng 2')", [TOA_A]))
         .toEqual({ status: "REOPENED", revision: 2 });
-      await expectLoi("SELECT public.landlord_settlement_close_v1($1, '2025-02-01'::date, $2, null)", [TOA_A, h1], "40001");
+      await expectLoi("SELECT public.landlord_settlement_close_v1($1, '2025-02-01'::date, $2, null)", [TOA_A, h1], "PT409");
       expect(await rpc<Json>("public.landlord_settlement_close_v1($1, '2025-02-01'::date, $2, 'chốt lại')", [TOA_A, sauSua.live_hash]))
         .toEqual({ status: "CLOSED", revision: 3 });
       const daChot = await rpc<Json>("public.landlord_settlement_month_v1($1, $2::date)", [TOA_A, "2025-02-01"]);
@@ -1415,13 +1458,13 @@ describe("vòng 6 (review chéo trước phát hành): chống ghi đè cài đ�
   const caiDat = async () =>
     landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A])).current!;
 
-  it("lưu kèm updated_at đã cũ ⇒ 40001, không ghi đè số người khác vừa lưu; đọc lại rồi lưu thì được; null ⇒ không kiểm", async () => {
+  it("lưu kèm updated_at đã cũ ⇒ PT409, không ghi đè số người khác vừa lưu; đọc lại rồi lưu thì được; null ⇒ không kiểm", async () => {
     await trongGiaoDich(async () => {
       await asUser(CHU_A);
       const daThay = (await caiDat()).updated_at;
       // người khác lưu số dư đầu kỳ 200.000 trong lúc hộp này đang mở
       await caiToaA(30, "2025-01-01", 200_000, true);
-      await expectLoi(`SELECT ${UPSERT_CAS}`, [TOA_A, [SO_CHU_NHA], daThay], "40001");
+      await expectLoi(`SELECT ${UPSERT_CAS}`, [TOA_A, [SO_CHU_NHA], daThay], "PT409");
       const sau = await caiDat();
       expect(sau.opening_balance).toBe(200_000);
       expect(sau.note ?? null).not.toBe("chỉ sửa ghi chú");
@@ -1696,7 +1739,7 @@ describe("tiền cố định: cài đặt", () => {
       await asUser(CHU_A);
       const daThay = (await dieuKhoan()).updated_at;
       await caiCoDinh(30, 1_000_000);
-      await expectLoi(`SELECT ${UPSERT_CD}`, [TOA_A, 30, [SO_CHU_NHA], null, daThay, 2_000_000], "40001");
+      await expectLoi(`SELECT ${UPSERT_CD}`, [TOA_A, 30, [SO_CHU_NHA], null, daThay, 2_000_000], "PT409");
       expect((await dieuKhoan()).manager_fixed_amount).toBe(1_000_000);
       await caiCoDinh(30, 2_000_000, null, (await dieuKhoan()).updated_at);
       expect((await dieuKhoan()).manager_fixed_amount).toBe(2_000_000);
@@ -2213,7 +2256,7 @@ describe("v3: hạng mục thu chi", () => {
 });
 
 describe("v3: ghi chú bàn giao", () => {
-  it("tháng mở ⇒ 55000; đã chốt: sửa được, y nguyên ⇒ UNCHANGED, hiện ở gói tháng và link chủ nhà; lần chốt cũ ⇒ 40001; quyền", async () => {
+  it("tháng mở ⇒ 55000; đã chốt: sửa được, y nguyên ⇒ UNCHANGED, hiện ở gói tháng và link chủ nhà; lần chốt cũ ⇒ PT409; quyền", async () => {
     await trongGiaoDich(async () => {
       await asUser(CHU_A);
       await expectLoi(`SELECT ${BAN_GIAO}`, [TOA_A, "2025-01-01", 1, "x"], "55000");
@@ -2238,7 +2281,7 @@ describe("v3: ghi chú bàn giao", () => {
       expect((await rpc<Json>(BAN_GIAO, [TOA_A, "2025-02-01", 1, "   "])).status).toBe("UPDATED");
       expect(((await thang(TOA_A, "2025-02-01")).closed as Json).note).toBeNull();
       await rpc("public.landlord_settlement_reopen_v1($1, '2025-02-01'::date, 'sửa phiếu chi tháng 2')", [TOA_A]);
-      await expectLoi(`SELECT ${BAN_GIAO}`, [TOA_A, "2025-02-01", 1, "lần chốt cũ"], "40001");
+      await expectLoi(`SELECT ${BAN_GIAO}`, [TOA_A, "2025-02-01", 1, "lần chốt cũ"], "PT409");
       await expectLoi(`SELECT ${BAN_GIAO}`, [TOA_A, "2025-02-01", 2, "đang mở"], "55000");
       expect((await chotCoGhiChu("2025-02-01", "chốt lại")).revision).toBe(3);
       // lần chốt mới bắt đầu từ ghi chú lúc chốt lại, không mang bản sửa của lần trước
@@ -2256,7 +2299,7 @@ describe("v3: chủ nhà xác nhận đã xem số liệu", () => {
 
       await asUser(null);
       await expectLoi(`SELECT ${XAC_NHAN}`, [token, "2025-01-01", 1, null], "55000");
-      await expectLoi(`SELECT ${XAC_NHAN}`, [token, "2025-02-01", 2, null], "40001");
+      await expectLoi(`SELECT ${XAC_NHAN}`, [token, "2025-02-01", 2, null], "PT409");
       await expectLoi(`SELECT ${XAC_NHAN}`, ["khong-phai-token-0123456789abcdefgh", "2025-02-01", 1, null], "P0002");
       await expectLoi(`SELECT ${XAC_NHAN}`, ["sai", "2025-02-01", 1, null], "P0002");
       await expectLoi(`SELECT ${XAC_NHAN}`, [token, "2025-02-01", 1, "x".repeat(501)], "22023");
@@ -2281,7 +2324,7 @@ describe("v3: chủ nhà xác nhận đã xem số liệu", () => {
       const febMo = (ov.months as Json[]).find((m) => String(m.period_month).startsWith("2025-02"))!;
       expect([febMo.close_revision, febMo.confirmed_at]).toEqual([null, null]);
       await asUser(null);
-      await expectLoi(`SELECT ${XAC_NHAN}`, [token, "2025-02-01", 1, null], "40001");
+      await expectLoi(`SELECT ${XAC_NHAN}`, [token, "2025-02-01", 1, null], "PT409");
       await expectLoi(`SELECT ${XAC_NHAN}`, [token, "2025-02-01", 2, null], "55000");
 
       await asUser(CHU_A);

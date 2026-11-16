@@ -1112,8 +1112,11 @@ export const landlordShareUrl = (origin: string, token: string) => `${origin.rep
 
 // ─────────────────────────────── lỗi ───────────────────────────────
 
-/** Mã lỗi mà RPC quyết toán RAISE kèm câu tiếng Việt viết cho người dùng. */
-const MA_LOI_CO_CAU = new Set(['22023', '55000', '42501', '40001', 'P0002', '23505']);
+/**
+ * Mã lỗi mà RPC quyết toán RAISE kèm câu tiếng Việt viết cho người dùng. Xung đột lần chốt / cài đặt
+ * là PT409 (HTTP 409) từ 20261116015253; giữ 40001 cho bản server cũ.
+ */
+const MA_LOI_CO_CAU = new Set(['22023', '55000', '42501', 'PT409', '40001', 'P0002', '23505']);
 const CO_DAU_TIENG_VIET = /[À-ỹ]/;
 
 /**

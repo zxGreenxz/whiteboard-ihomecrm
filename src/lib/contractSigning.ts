@@ -163,7 +163,8 @@ export type ContractSigningSnapshot = z.infer<typeof contractSigningSnapshotSche
 export function signingErrorMessage(error: unknown): string {
   if(error instanceof FinancialWorkflowError)return workflowErrorMessage(error,'ghi nhận ký hợp đồng');
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
-  if (code === '40001') return 'Phiên bản nháp, tài liệu hoặc thông tin khách đã thay đổi. Tải lại, kiểm tra và xuất lại trước khi ký.';
+  // PT409 (HTTP 409) từ 20261116015253; 40001 là mã cũ mà PostgREST tự chạy lại tới 504.
+  if (code === 'PT409' || code === '40001') return 'Phiên bản nháp, tài liệu hoặc thông tin khách đã thay đổi. Tải lại, kiểm tra và xuất lại trước khi ký.';
   if (code === '42501' || code === '28000') return 'Bạn không có quyền thực hiện thao tác này.';
   if (code === '55P03') return 'Phòng đang có cọc hoặc giữ chỗ. Nhánh ký từ nháp chưa hỗ trợ chuyển nguồn giữ chỗ này.';
   if (code === '55000') {

@@ -224,7 +224,7 @@ export const useMemberAuthorization = (membershipId: string | null) =>
     queryKey: authzKeys.member(membershipId ?? '∅'),
     enabled: !!membershipId,
     // Không cache: `version` là khoá chống ghi chen, đọc lại số cũ sẽ khiến
-    // người dùng ăn lỗi 40001 dù không ai sửa gì.
+    // người dùng ăn lỗi xung đột phiên bản (PT409) dù không ai sửa gì.
     staleTime: 0,
     gcTime: 0,
     queryFn: () =>

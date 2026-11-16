@@ -57,6 +57,8 @@ describe('persisted contract drafts', () => {
     expect(marked?.indexOf('BẢN NHÁP')).toBeLessThan(marked?.indexOf('HỢP ĐỒNG') ?? 0);
   });
   it('distinguishes concurrency and permission failures for the user', () => {
+    // PT409 = mã server trả từ 20261116015253; 40001 = mã cũ còn nhận.
+    expect(draftErrorMessage({ code: 'PT409' })).toContain('người khác');
     expect(draftErrorMessage({ code: '40001' })).toContain('người khác');
     expect(draftErrorMessage({ code: '42501' })).toContain('quyền');
     expect(draftErrorMessage({ code: '22023' }).toLowerCase()).toContain('thông tin');

@@ -198,7 +198,7 @@ export interface UpsertLandlordOperationInput {
   termsFrom: string | null;
   /** Số cọc trước kỳ ở sổ chủ nhà mà màn đã hiện — server chỉ nhận xác nhận khi đúng số này. */
   openingSeenPreStart: number | null;
-  /** updated_at của cấu hình lúc hộp NẠP nháp — người khác lưu sau đó thì server từ chối (40001). */
+  /** updated_at của cấu hình lúc hộp NẠP nháp — người khác lưu sau đó thì server từ chối (PT409). */
   expectedUpdatedAt: string | null;
   /** Người giữ cọc đang hiện cho tháng termsFrom (null: server giữ của điều khoản tháng đó). */
   depositHolder: DepositHolder | null;
@@ -353,7 +353,7 @@ export interface UpdateHandoverNoteInput {
   buildingId: string;
   /** 'YYYY-MM-01' */
   month: string;
-  /** closed.revision đang hiện — mở chốt / chốt lại sau đó thì server từ chối (40001). */
+  /** closed.revision đang hiện — mở chốt / chốt lại sau đó thì server từ chối (PT409). */
   revision: number;
   note: string | null;
 }
@@ -375,7 +375,7 @@ export const useUpdateLandlordHandoverNote = () => {
       if (receipt.revision !== input.revision) throw new TypeError('Chưa xác nhận được ghi chú bàn giao');
       return receipt;
     },
-    // 40001 (vừa mở chốt / chốt lại) cũng phải nạp lại để thấy lần chốt mới
+    // PT409 (vừa mở chốt / chốt lại) cũng phải nạp lại để thấy lần chốt mới
     onSettled: () => invalidate(),
   });
 };
@@ -431,7 +431,7 @@ export const useConfirmLandlordMonth = () => {
       if (error) throw error;
       return confirmReceiptSchema.parse(data);
     },
-    // lỗi mạng vẫn có thể là server ĐÃ ghi; 40001 = lần chốt đã đổi ⇒ nạp lại gói của link trong mọi trường hợp
+    // lỗi mạng vẫn có thể là server ĐÃ ghi; PT409 = lần chốt đã đổi ⇒ nạp lại gói của link trong mọi trường hợp
     onSettled: (_d, _e, input) => qc.invalidateQueries({ queryKey: landlordSettlementKeys.publicAll(input.token) }),
   });
 };
