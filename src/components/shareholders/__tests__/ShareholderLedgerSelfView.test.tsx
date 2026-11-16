@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 // Màn cổ đông tự xem theo sổ tổng (máy tính): chỉ tiền của chính mình; tỷ lệ % / số toà chỉ khi có quyền
 // VÀ máy chủ gửi kèm; phiếu tự lập còn chờ thì "Huỷ yêu cầu"; nút "Chi tạm ứng cho tôi" theo quyền + công tắc.
+// Chủ yêu cầu 16/11/2026: bỏ thẻ "Doanh thu và lợi nhuận toà đã chốt"; bảng Nhà × Tháng có bộ lọc nhà tự tạo.
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 
 const h = vi.hoisted(() => ({ distribute: vi.fn(), cancel: vi.fn() }));
@@ -52,7 +53,12 @@ const SENSITIVE = {
   building_totals: [{ period_month: `${new Date().getFullYear()}-08-01`, building_id: 'b1', building_name: 'Toà Một', revenue: null, expense: 40_000_000, profit: 60_000_000 }],
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeAll(() => {
+  globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { value() {}, configurable: true });
+  Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', { value() { return false; }, configurable: true });
+});
+beforeEach(() => { vi.clearAllMocks(); window.localStorage.clear(); });
 afterEach(cleanup);
 
 describe('ShareholderLedgerSelfView — tiền của chính mình', () => {
@@ -86,12 +92,12 @@ describe('ShareholderLedgerSelfView — tỷ lệ % và số toà theo quyền',
     expect(document.body.textContent).not.toMatch(/60\.000\.000/);
   });
 
-  it('có quyền + máy chủ gửi ⇒ thẻ "Tỷ lệ của bạn" và thẻ doanh thu / lợi nhuận toà (doanh thu null ⇒ "—")', () => {
+  it('có quyền + máy chủ gửi ⇒ thẻ "Tỷ lệ của bạn"; thẻ doanh thu / lợi nhuận toà đã bỏ dù có quyền và có dữ liệu', () => {
     view(ledger(SENSITIVE), { canViewPercent: true, canViewBuildingTotals: true });
     expect(screen.getByTestId('self-percent-card').textContent).toMatch(/Toà Một20%/);
-    const totals = screen.getByTestId('self-building-totals-card');
-    expect(totals.textContent).toMatch(/60\.000\.000/);
-    expect(within(totals).getAllByRole('cell').map((c) => c.textContent)).toContain('—');
+    expect(screen.queryByTestId('self-building-totals-card')).toBeNull();
+    expect(screen.queryByText(/Doanh thu và lợi nhuận toà đã chốt/)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/60\.000\.000/);
     expect(kpis().textContent).not.toContain('%');
   });
 
@@ -99,6 +105,93 @@ describe('ShareholderLedgerSelfView — tỷ lệ % và số toà theo quyền',
     view(ledger(), { canViewPercent: true, canViewBuildingTotals: true });
     expect(screen.queryByTestId('self-percent-card')).toBeNull();
     expect(screen.queryByTestId('self-building-totals-card')).toBeNull();
+  });
+});
+
+describe('ShareholderLedgerSelfView — bộ lọc nhà của bảng Nhà × Tháng', () => {
+  const headers = () => screen.getAllByRole('columnheader').map((c) => c.textContent);
+  const createFilter = (name: string, building: string) => {
+    fireEvent.click(screen.getByRole('button', { name: /Tạo bộ lọc/ }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Tên bộ lọc'), { target: { value: name } });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: building }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lưu bộ lọc' }));
+  };
+
+  it('mặc định "Tất cả": đủ cột nhà và "Tổng chia" là tổng cả tháng', () => {
+    view(ledger());
+    expect(headers()).toEqual(expect.arrayContaining(['Toà Hai', 'Toà Một', 'Tổng chia']));
+    expect(screen.getByRole('button', { name: 'Tất cả' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('tạo bộ lọc ⇒ chỉ còn cột nhà đã chọn, tổng theo nhà đang hiện; KPI và phiếu không đổi; "Tất cả" trả lại đủ cột', () => {
+    view(ledger());
+    const kpiBefore = kpis().textContent;
+    createFilter('Chỉ Toà Một', 'Toà Một');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(headers()).toContain('Toà Một');
+    expect(headers()).not.toContain('Toà Hai');
+    expect(headers()).toContain('Tổng 1 nhà');
+    const row = screen.getByRole('cell', { name: 'T8' }).closest('tr') as HTMLElement;
+    expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual(['T8', expect.stringMatching(/^4\.000\.000/), expect.stringMatching(/^4\.000\.000/)]);
+    expect(screen.getByRole('button', { name: 'Chỉ Toà Một' }).getAttribute('aria-pressed')).toBe('true');
+    expect(kpis().textContent).toBe(kpiBefore);
+    expect(screen.getAllByRole('button', { name: 'Huỷ yêu cầu' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tất cả' }));
+    expect(headers()).toEqual(expect.arrayContaining(['Toà Hai', 'Toà Một', 'Tổng chia']));
+  });
+
+  it('bộ lọc lưu trên trình duyệt theo công ty + cổ đông: mở lại vẫn còn và đang chọn; cổ đông khác không thấy', () => {
+    view(ledger());
+    createFilter('Chỉ Toà Hai', 'Toà Hai');
+    cleanup();
+    view(ledger());
+    expect(screen.getByRole('button', { name: 'Chỉ Toà Hai' }).getAttribute('aria-pressed')).toBe('true');
+    expect(headers()).not.toContain('Toà Một');
+    cleanup();
+    view(ledger({ shareholder: { id: 'sh-2', name: 'Cổ đông 2' } }));
+    expect(screen.queryByRole('button', { name: 'Chỉ Toà Hai' })).toBeNull();
+    expect(headers()).toEqual(expect.arrayContaining(['Toà Hai', 'Toà Một']));
+  });
+
+  it('bộ lọc trỏ nhà đã rời sổ ⇒ bảng báo rõ, hộp sửa đếm 0 nhà và không cho lưu bộ lọc rỗng', () => {
+    window.localStorage.setItem(
+      'ihome:ln-nha-thang:bo-loc:v1:org-a:sh-1',
+      JSON.stringify({ activeId: 'p1', presets: [{ id: 'p1', name: 'Nhà cũ', keys: ['nha-da-roi-so'] }] }),
+    );
+    view(ledger());
+    expect(screen.getByText(/Bộ lọc “Nhà cũ” không có nhà nào có phần chia/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Sửa bộ lọc/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).toContain('Nhà hiển thị (0/2)');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lưu bộ lọc' }));
+    expect(within(dialog).getByRole('alert').textContent).toBe('Chọn ít nhất một nhà');
+    expect(JSON.parse(window.localStorage.getItem('ihome:ln-nha-thang:bo-loc:v1:org-a:sh-1') ?? '{}').presets[0].keys).toEqual(['nha-da-roi-so']);
+  });
+
+  it('thiếu tên hoặc chưa chọn nhà ⇒ báo lỗi trong hộp, không tạo; sửa đổi tên và xoá bộ lọc được', () => {
+    view(ledger());
+    fireEvent.click(screen.getByRole('button', { name: /Tạo bộ lọc/ }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lưu bộ lọc' }));
+    expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toBe('Nhập tên bộ lọc');
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Tên bộ lọc'), { target: { value: 'Cụm thử' } });
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lưu bộ lọc' }));
+    expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toBe('Chọn ít nhất một nhà');
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Toà Một' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lưu bộ lọc' }));
+    expect(screen.getByRole('button', { name: 'Cụm thử' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Sửa bộ lọc/ }));
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Tên bộ lọc'), { target: { value: 'Cụm đổi tên' } });
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lưu bộ lọc' }));
+    expect(screen.getByRole('button', { name: 'Cụm đổi tên' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cụm thử' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Sửa bộ lọc/ }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Xoá bộ lọc' }));
+    expect(screen.queryByRole('button', { name: 'Cụm đổi tên' })).toBeNull();
+    expect(headers()).toEqual(expect.arrayContaining(['Toà Hai', 'Toà Một', 'Tổng chia']));
   });
 });
 

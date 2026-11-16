@@ -1,21 +1,25 @@
 // Cổ đông TỰ XEM theo SỔ TỔNG (E3) — máy tính. Chỉ mount khi máy chủ báo sổ tổng đã chạy (`ready`).
 // Hiện TIỀN CỦA CHÍNH MÌNH: được chia (sau mốc đã trả đủ), đã nhận, đang chờ duyệt, trả qua lương,
-// còn được nhận / đang tạm ứng, lịch sử phiếu. Tỷ lệ % và doanh thu / lợi nhuận toà CHỈ hiện khi chủ
-// cấp quyền riêng VÀ máy chủ gửi kèm mảng tương ứng (thiếu quyền ⇒ máy chủ bỏ hẳn khoá).
+// còn được nhận / đang tạm ứng, lịch sử phiếu. Tỷ lệ % CHỈ hiện khi chủ cấp quyền riêng VÀ máy chủ gửi
+// kèm mảng tương ứng (thiếu quyền ⇒ máy chủ bỏ hẳn khoá). Thẻ "Doanh thu và lợi nhuận toà đã chốt" đã bỏ
+// khỏi màn máy tính (chủ yêu cầu 16/11/2026); bảng Nhà × Tháng có bộ lọc nhà người xem tự tạo.
 
 import { useMemo, useState } from 'react';
 import { HandCoins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useBuildingFilterState } from '@/hooks/useBuildingFilterState';
 import { formatCurrency } from '@/lib/utils';
 import { formatISODateVN } from '@/lib/vnDate';
 import { ProfitHubSlot } from '@/pages/reports/finance/ProfitHubShell';
+import { activeBuildingFilter, applyBuildingFilter, buildingFilterStorageKey } from '@/lib/profitLedger/buildingFilters';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 import {
   amountsByBuilding, buildingColumns, buildingMatrix, ledgerYears, monthlyAmounts, monthsInScope, newestFirst,
-  payoutStatusLabel, periodLabel, periodMonthNumber, periodYear, salaryNet, selfAdvanceBlockedNote, selfBalanceView,
+  payoutStatusLabel, periodLabel, salaryNet, selfAdvanceBlockedNote, selfBalanceView,
 } from '@/lib/profitLedger/selfView';
 import { cancelTargetFromMyPayout, type ProfitPayoutCancelTarget } from '@/lib/profitLedger/vouchers';
+import { BuildingFilterBar } from './BuildingFilterBar';
 import { DonutBreakdown, MiniBars } from './profitCharts';
 import ProfitDistributeDialog from './ProfitDistributeDialog';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
@@ -27,13 +31,11 @@ const MUTED = { color: 'var(--ph-ink-4)' } as const;
 export interface ShareholderSelfAccess {
   /** shareholder_profit.view_percent — thẻ "Tỷ lệ của bạn". */
   canViewPercent: boolean;
-  /** shareholder_profit.view_building_totals — thẻ doanh thu / lợi nhuận toà đã chốt. */
+  /** shareholder_profit.view_building_totals — thẻ số toà ở màn điện thoại (màn máy tính đã bỏ thẻ này). */
   canViewBuildingTotals: boolean;
   /** shareholder_profit.advance_own_cashbook — nút "Chi tạm ứng cho tôi". */
   canAdvanceOwn: boolean;
 }
-
-const dash = (value: number | null) => (value === null ? '—' : formatCurrency(value));
 
 export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: MyProfitLedger; access: ShareholderSelfAccess }) {
   const [year, setYear] = useState(currentYear());
@@ -50,7 +52,10 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
   const yearMonths = useMemo(() => monthsInScope(ledger.months, year, null), [ledger.months, year]);
   const scopedMonths = useMemo(() => monthsInScope(ledger.months, year, monthNumber), [ledger.months, year, monthNumber]);
   const yearTotal = yearMonths.reduce((s, m) => s + m.amount, 0);
-  const buildingsEver = useMemo(() => buildingColumns(ledger.months).length, [ledger.months]);
+  const allBuildings = useMemo(() => buildingColumns(ledger.months), [ledger.months]);
+  const buildingsEver = allBuildings.length;
+  const [filters, setFilters] = useBuildingFilterState(buildingFilterStorageKey(ledger.organization_id, ledger.shareholder.id));
+  const activeFilter = activeBuildingFilter(filters);
 
   const monthlyChart = useMemo(
     () => monthlyAmounts(ledger.months, year).map((value, i) => ({ label: `T${i + 1}`, value: value ?? 0, empty: value === null || value === 0 })),
@@ -60,14 +65,13 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
   const byBuilding = useMemo(() => amountsByBuilding(scopedMonths).map(({ name, value }) => ({ name, value })), [scopedMonths]);
   const columns = useMemo(() => buildingColumns(scopedMonths), [scopedMonths]);
   const matrix = useMemo(() => buildingMatrix(scopedMonths, columns), [scopedMonths, columns]);
+  // Bộ lọc nhà chỉ đổi cột được bày ở bảng Nhà × Tháng; KPI, biểu đồ và phiếu giữ nguyên toàn bộ.
+  const shown = useMemo(() => applyBuildingFilter(columns, matrix, activeFilter?.keys ?? null), [columns, matrix, activeFilter]);
 
   const payouts = useMemo(() => newestFirst(ledger.payouts), [ledger.payouts]);
   const counted = ledger.payouts.filter((p) => !p.excluded_by_marker);
-  // Hai thẻ nhạy cảm: cần CẢ quyền của người xem LẪN khoá máy chủ gửi (thiếu một trong hai ⇒ không thẻ).
+  // Thẻ nhạy cảm: cần CẢ quyền của người xem LẪN khoá máy chủ gửi (thiếu một trong hai ⇒ không thẻ).
   const percentRows = access.canViewPercent ? ledger.percent_rows : undefined;
-  const buildingTotals = access.canViewBuildingTotals && ledger.building_totals
-    ? ledger.building_totals.filter((t) => periodYear(t.period_month) === year && (monthNumber === null || periodMonthNumber(t.period_month) === monthNumber))
-    : undefined;
   const marker = ledger.marker ? periodLabel(ledger.marker.settled_through_month) : null;
   const scopeText = monthNumber === null ? `năm ${year}` : `tháng ${monthNumber}/${year}`;
 
@@ -158,28 +162,33 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
         <div className="ph-card">
           <div className="ph-card__head">
             <div className="ph-card__title">LN được chia Nhà × Tháng — {year}</div>
+            <BuildingFilterBar buildings={allBuildings} state={filters} onChange={setFilters} />
           </div>
           {matrix.length === 0 ? (
             <div className="ph-empty">Chưa có phần chia trong {scopeText}.</div>
+          ) : shown.rows.length === 0 ? (
+            <div className="ph-empty">Bộ lọc “{activeFilter?.name}” không có nhà nào có phần chia trong {scopeText}.</div>
           ) : (
             <div className="ph-tbl__scroll">
               <table className="ph-tbl">
                 <thead>
                   <tr>
                     <th style={{ width: 110 }}>Tháng</th>
-                    {columns.map((c) => <th key={c.key} className="num">{c.name}</th>)}
-                    <th className="num">Tổng chia</th>
+                    {shown.columns.map((c) => <th key={c.key} className="num">{c.name}</th>)}
+                    <th className="num" title={activeFilter ? 'Tổng của các nhà đang hiện theo bộ lọc' : undefined}>
+                      {activeFilter ? `Tổng ${shown.columns.length} nhà` : 'Tổng chia'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {matrix.map((row) => (
+                  {shown.rows.map((row) => (
                     <tr key={row.period} className={row.month === (highlightMonth ?? -1) + 1 ? 'is-current' : undefined}>
                       <td className="name">
                         T{row.month}
                         {row.excluded && <span className="ph-inline ph-inline--soft" title="Nằm trong mốc đã trả đủ — không tính vào số còn được nhận">đã trả đủ</span>}
                       </td>
                       {row.cells.map((v, i) => (
-                        <td key={columns[i]?.key ?? i} className="num">{v === null ? <span style={MUTED}>—</span> : formatCurrency(v)}</td>
+                        <td key={shown.columns[i]?.key ?? i} className="num">{v === null ? <span style={MUTED}>—</span> : formatCurrency(v)}</td>
                       ))}
                       <td className="num strong">{formatCurrency(row.total)}</td>
                     </tr>
@@ -289,42 +298,6 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
-        )}
-
-        {buildingTotals && (
-          <div className="ph-card" data-testid="self-building-totals-card">
-            <div className="ph-card__head">
-              <div className="ph-card__title">Doanh thu và lợi nhuận toà đã chốt — {scopeText}</div>
-            </div>
-            {buildingTotals.length === 0 ? (
-              <div className="ph-empty">Chưa có tháng nào đã chốt trong {scopeText}.</div>
-            ) : (
-              <div className="ph-tbl__scroll">
-                <table className="ph-tbl">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 90 }}>Tháng</th>
-                      <th>Toà</th>
-                      <th className="num">Doanh thu</th>
-                      <th className="num">Chi phí</th>
-                      <th className="num">Lợi nhuận</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {buildingTotals.map((t) => (
-                      <tr key={`${t.period_month}:${t.building_id}`}>
-                        <td>{periodLabel(t.period_month)}</td>
-                        <td className="name">{t.building_name ?? '—'}</td>
-                        <td className="num">{dash(t.revenue)}</td>
-                        <td className="num">{dash(t.expense)}</td>
-                        <td className="num strong">{formatCurrency(t.profit)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             )}
           </div>
         )}

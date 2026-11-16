@@ -18,6 +18,7 @@
   "files": [
     "src/lib/profitCommissionChecks.ts",
     "src/pages/deposits/DepositRefundMobilePanel.tsx",
+    "src/hooks/useBuildingFilterState.ts",
     "src/hooks/useProfitCommissionChecks.ts",
     "src/components/reports/ProfitCommissionChecks.tsx",
     "src/lib/staffDay.ts",
@@ -679,6 +680,7 @@
     "src/components/services/DeleteServiceDialog.tsx",
     "src/components/services/EditServiceDialog.tsx",
     "src/components/settings/TheMoiTruongTest.tsx",
+    "src/components/shareholders/BuildingFilterBar.tsx",
     "src/components/shareholders/ManagerSalaryPayoutDialog.tsx",
     "src/components/shareholders/PersonalTxnDialog.tsx",
     "src/components/shareholders/ProfitDistributeDialog.tsx",
@@ -1899,6 +1901,7 @@
     "src/components/network-center/share/SharedCameraPlayer.tsx",
     "src/pages/public/CameraSharePage.tsx",
     "src/pages/public/__tests__/CameraSharePage.test.tsx",
+    "src/lib/profitLedger/buildingFilters.ts",
     "src/lib/profitLedger/route.ts",
     "src/lib/profitLedger/readPrimitives.ts",
     "src/lib/profitLedger/sharedReaders.ts",
