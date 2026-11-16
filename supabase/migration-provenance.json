@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-16T04:04:56.901Z",
+  "generatedAt": "2026-11-16T10:18:15.897Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 952,
     "unknown": 80,
-    "catalog-proven": 206,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -14349,6 +14349,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-16T04:04:23.816Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261116090142_chi_phieu_da_duyet_qua_khoa_thang_ln.sql",
+      "version": "20261116090142",
+      "name": "chi_phieu_da_duyet_qua_khoa_thang_ln",
+      "scheme": "timestamp14",
+      "sha256": "8a023335917fdb5cd6d14d151d54ae51949e4c8c81428a995e040fa6aff55f1d",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.income_expenses_check_profit_lock"
       ]
     },
     {
