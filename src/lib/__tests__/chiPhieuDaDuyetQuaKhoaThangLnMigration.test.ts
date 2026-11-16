@@ -18,7 +18,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const TEN_FILE = '20261116090142_chi_phieu_da_duyet_qua_khoa_thang_ln.sql';
-const FILE = process.env.CHI_QUA_KHOA_MIGRATION_FILE ?? `supabase/migrations/${TEN_FILE}`;
+const FILE = process.env.CHI_QUA_KHOA_MIGRATION_FILE
+  ?? 'supabase/migrations/20261116090142_chi_phieu_da_duyet_qua_khoa_thang_ln.sql';
 const KHOA_KY = 'supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql';
 const PROD_MD5 = '6e016a8f60e83129cfb6cf2ad2829fb5';
 // Chỉ cho scripts/dot-bien.mjs: thân trigger bị đột biến không khớp md5 ghim nên bỏ phép ghim và
