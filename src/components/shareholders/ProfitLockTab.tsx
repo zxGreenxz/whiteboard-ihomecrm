@@ -1,7 +1,7 @@
 import { QueryRegion, type RegionQuery } from "@/components/errors/QueryRegion";
 import { LoadingState, RefreshBar } from "@/components/loading/LoadingState";
 import { focusFirstError } from "@/lib/formErrors";
-import { profitActionErrorMessage } from "@/lib/profitFeedback";
+import { profitActionErrorMessage, ProfitPriorCommittedError } from "@/lib/profitFeedback";
 import { FinancialWorkflowError } from "@/lib/financialWorkflow";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -880,6 +880,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       }));
       setCloseAttemptScope(null);
     } catch(error) {
+      // Lượt trước đã ghi xong ⇒ số liệu đang tải lại bên dưới; đóng hộp để nó không đổi nghĩa dưới tay.
+      if (error instanceof ProfitPriorCommittedError) setConfirmOpen(false);
       setActionError(profitActionErrorMessage(error,'thay đổi trạng thái chốt lợi nhuận'));
     }
   };
@@ -911,6 +913,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             ) as Record<string, true>,
       }));
     } catch(error) {
+      if (error instanceof ProfitPriorCommittedError) setResetOpen(false);
       setActionError(profitActionErrorMessage(error,'thay đổi trạng thái chốt lợi nhuận'));
     }
   };
@@ -942,7 +945,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       setUnlockOpen(false);
       setUnlockGuard(null);
       setUnlockReason("");
-    } catch(error) { setActionError(profitActionErrorMessage(error,'mở khóa lợi nhuận')); }
+    } catch(error) {
+      if (error instanceof ProfitPriorCommittedError) setUnlockOpen(false);
+      setActionError(profitActionErrorMessage(error,'mở khóa lợi nhuận'));
+    }
   };
 
   const staleCount = rows.filter(

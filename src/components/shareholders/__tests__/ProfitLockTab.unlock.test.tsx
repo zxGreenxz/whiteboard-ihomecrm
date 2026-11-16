@@ -18,6 +18,8 @@ import {
 } from "@/lib/profitReportChecks";
 import { UNALLOCATED_REASON_SYSTEM_MESSAGE, UNLOCK_REASON_SYSTEM_MESSAGE } from "@/lib/profitClose";
 import { readProfitState } from "@/lib/profitReadModels";
+import { FinancialWorkflowError } from "@/lib/financialWorkflow";
+import { ProfitPriorCommittedError } from "@/lib/profitFeedback";
 
 const state = vi.hoisted(() => ({
   unlockCalls: [] as unknown[],
@@ -28,6 +30,7 @@ const state = vi.hoisted(() => ({
   closingStatus: [] as unknown[],
   preview: undefined as ProfitClosePreview | undefined,
   closeCalls: [] as unknown[],
+  closeRejects: null as Error | null,
   lockChecks: {
     checks: null as ProfitReportChecksResult | null,
     isLoading: false,
@@ -60,7 +63,7 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
     isError: state.closeError !== null,
     error: state.closeError,
     variables: state.closeVariables,
-    mutateAsync: async (input: unknown) => { state.closeCalls.push(input); },
+    mutateAsync: async (input: unknown) => { state.closeCalls.push(input); if (state.closeRejects) throw state.closeRejects; },
   }),
   useResetProfitPeriod: () => ({ isPending: false, mutateAsync: async (input: unknown) => { state.resetCalls.push(input); } }),
   useUnlockProfitMonth: () => ({
@@ -213,6 +216,7 @@ beforeEach(() => {
   state.profitState = TRANG_THAI;
   state.preview = undefined;
   state.closeCalls = [];
+  state.closeRejects = null;
   state.postLock = undefined;
   state.postLockArgs = null;
   state.previewArgs = [];
@@ -435,6 +439,23 @@ describe("ProfitLockTab — rà 21/10 (F20 dò chi cố định, F07 nhãn, F60 
     expect(chot.disabled).toBe(false);
     fireEvent.click(chot);
     await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+  });
+
+  // 16/11/2026: lượt chốt trước (mất phản hồi) hoá ra đã ghi xong ⇒ số liệu tải lại bên dưới; hộp đang
+  // mở sẽ đổi nghĩa (Chốt → Chốt lại) nên phải đóng. Lỗi khác thì hộp giữ nguyên để sửa rồi bấm lại.
+  it("lượt trước đã ghi xong: đóng hộp xác nhận; lỗi khác thì hộp vẫn mở", async () => {
+    const button = await mountClose();
+    fireEvent.click(button);
+    let hop = await screen.findByRole("alertdialog");
+    state.closeRejects = new FinancialWorkflowError("Chưa chốt được", "failure", []);
+    fireEvent.click(within(hop).getByRole("button", { name: "Chốt 1 nhà" }));
+    await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+    hop = await screen.findByRole("alertdialog");
+    await waitFor(() => expect(within(hop).getByRole("alert").textContent).toContain("Chưa chốt được"));
+    state.closeRejects = new ProfitPriorCommittedError("chốt lợi nhuận");
+    fireEvent.click(within(hop).getByRole("button", { name: "Chốt 1 nhà" }));
+    await waitFor(() => expect(state.closeCalls).toHaveLength(2));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
   it("đang dò thì chờ; dò lỗi thì phải tick (không chặn cứng)", async () => {

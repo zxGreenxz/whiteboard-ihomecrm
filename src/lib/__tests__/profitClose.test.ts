@@ -429,7 +429,7 @@ describe("profit close V2 boundaries", () => {
     expect(hookSource).toContain('supabase.rpc("profit_unlock_v2"');
     // Khoá idempotency do runProfitWrite cấp (tiền tố profit-unlock-, lấy từ dấu chờ đối chiếu).
     expect(hookSource).toMatch(/runProfitWrite\(workflow\.current, 'unlock'/);
-    expect(hookSource).toMatch(/p_reason: reason,\s*p_idempotency_key: idempotencyKey,/);
+    expect(hookSource).toMatch(/p_reason: markReason\(reason\),\s*p_idempotency_key: idempotencyKey,/);
     expect(hookSource).not.toMatch(/unlock_profit_month_v\d/);
     expect(uiSource).not.toMatch(/unlock_profit_month_v\d/);
     expect(uiSource).toContain("Lý do mở khoá");

@@ -2,7 +2,7 @@ import {readProfitMonthly,readProfitAllocations,readManagerAllocations,readShare
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { useRef } from "react";
 import { FinancialWorkflowError, isConfirmedFinancialRejection } from "@/lib/financialWorkflow";
-import { profitActionErrorMessage, readProfitActionResult } from "@/lib/profitFeedback";
+import { profitActionErrorMessage, ProfitPriorCommittedError, readProfitActionResult } from "@/lib/profitFeedback";
 import { useMemo } from "react";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { batBuoc } from "@/lib/queryGuard";
@@ -557,6 +557,16 @@ const profitKeyReused = (error: unknown): boolean =>
 /** Dấu nội bộ: lượt trước đã ghi xong trên máy chủ, lượt này KHÔNG ghi gì. So bằng định danh. */
 const PROFIT_PRIOR_COMMITTED: ProfitWriteResult = Object.freeze({ run_id: '', affected_buildings: 0, idempotent_replay: true });
 
+/** Lý do tối đa máy chủ nhận (reason must contain 8..1000 characters). */
+const PROFIT_REASON_MAX = 1000;
+type ProfitReasonMarker = (reason: string) => string;
+const keepReason: ProfitReasonMarker = (reason) => reason;
+/** Ghi chú gắn vào lý do của lượt GỬI LẠI — mỗi lần gửi một mã khác nhau (xem runProfitWrite). */
+const resendReasonMarker = (): ProfitReasonMarker => {
+  const note = ` (gửi lại sau lượt chưa rõ kết quả, mã ${crypto.randomUUID().slice(0, 8)})`;
+  return (reason) => reason.slice(0, PROFIT_REASON_MAX - note.length) + note;
+};
+
 /**
  * Chạy một lệnh ghi lợi nhuận (chốt / chốt lại / mở khoá / đặt lại) qua bộ điều phối, có ĐỐI CHIẾU
  * lượt trước chưa rõ kết quả.
@@ -566,25 +576,33 @@ const PROFIT_PRIOR_COMMITTED: ProfitWriteResult = Object.freeze({ run_id: '', af
  * giờ gỡ dấu: tài khoản đó trên máy đó bị chặn chốt tháng ấy VĨNH VIỄN ("Chưa xác nhận xong yêu cầu
  * chốt lợi nhuận trước đó…"), tải lại trang hay đăng xuất không gỡ được.
  *
- * CÁCH ĐỐI CHIẾU: máy chủ idempotent theo `p_idempotency_key` (bảng profit_close_runs, khoá
+ * CÁCH ĐỐI CHIẾU: máy chủ ghi mỗi `p_idempotency_key` đúng một lần (bảng profit_close_runs, khoá
  * advisory theo khoá rồi theo tháng). Khoá gửi đi nay là khoá ghi trong dấu, nên lượt sau gửi yêu cầu
  * HIỆN TẠI dưới ĐÚNG khoá cũ và để máy chủ phân xử:
  *   - khoá chưa ghi ⇒ lượt trước không ghi gì; yêu cầu hiện tại chạy như mới, đủ mọi phép kiểm
  *     trạng thái của máy chủ (nhà đã chốt, hash nguồn, phiếu chờ duyệt…);
- *   - khoá đã ghi, cùng nội dung ⇒ máy chủ trả lại kết quả cũ (idempotent_replay), không ghi lần hai;
- *   - khoá đã ghi, khác nội dung ⇒ 23505: lượt trước ĐÃ ghi xong. Gỡ dấu, tải lại số liệu, báo người
- *     dùng kiểm trạng thái rồi làm tiếp — lượt này không ghi gì.
+ *   - khoá đã ghi ⇒ 23505 "khoá đã dùng cho yêu cầu khác": lượt trước ĐÃ ghi xong. Gỡ dấu, tải lại số
+ *     liệu, báo người dùng kiểm trạng thái rồi làm tiếp — lượt này không ghi gì.
  * Máy chủ từ chối vì lý do khác (hash cũ, thiếu quyền…) thì hiện ĐÚNG lý do đó và giữ dấu: lần bấm
  * sau lại hỏi bằng khoá cũ. Mất phản hồi lần nữa cũng giữ dấu. Dấu của bản web cũ (khoá gửi đi khi đó
  * là khoá ngẫu nhiên không lưu) đi nhánh "khoá chưa ghi": an toàn vì máy chủ xếp hàng mọi lệnh cùng
  * tháng và tự từ chối chốt nhà đã chốt / mở nhà không còn khoá / đặt lại trên trạng thái cũ.
+ *
+ * KHÔNG ĐƯỢC ĐỂ MÁY CHỦ "TRẢ LẠI KẾT QUẢ CŨ" (idempotent replay) ở lượt gửi lại: với chốt / chốt lại,
+ * lớp bọc `_profit_write_close_v2` vẫn chạy sau khi phần lõi trả kết quả cũ — nó ghi đè 5 cột phân bổ
+ * của profit_monthly theo số của lượt CŨ (hoặc ném 55000 nếu dòng đã bị đặt lại). Nếu giữa hai lượt
+ * có người mở khoá / đặt lại / chốt lại thì đó là ghi sai hoặc kẹt. Với mở khoá / đặt lại, kết quả cũ
+ * báo "đã mở" trong khi nhà có thể đã khoá lại. Vì thế lượt gửi lại gắn vào lý do một ghi chú có mã
+ * riêng mỗi lần gửi: nội dung luôn khác lượt trước nên khoá đã ghi thì máy chủ luôn trả 23505, không
+ * bao giờ trả kết quả cũ. Nếu máy chủ vẫn trả `idempotent_replay` thì coi như 23505 — không báo
+ * thành công cho một lệnh không chạy.
  */
 async function runProfitWrite(
   guard: ReturnType<typeof persistentFinancialWorkflow>,
   kind: 'close' | 'unlock' | 'reset',
   operation: string,
   input: { organizationId: string; periodMonth: string },
-  send: (idempotencyKey: string) => Promise<ProfitWriteResult>,
+  send: (idempotencyKey: string, markReason: ProfitReasonMarker) => Promise<ProfitWriteResult>,
   onPriorCommitted: () => void,
 ): Promise<ProfitWriteResult> {
   // Giữ trong object: callback gán, TypeScript không thu hẹp nhầm về undefined sau try.
@@ -593,11 +611,13 @@ async function runProfitWrite(
   try {
     result = await guard.run(
       `${input.organizationId}:${input.periodMonth}`, operation,
-      (progress) => send(`profit-${kind}-${progress.requestKey}`),
+      (progress) => send(`profit-${kind}-${progress.requestKey}`, keepReason),
       async (_prior, progress) => {
         // progress.requestKey ở nhánh này là khoá của lượt trước (đọc từ dấu).
-        try { return { result: await send(`profit-${kind}-${progress.requestKey}`) }; }
-        catch (error) {
+        try {
+          const resent = await send(`profit-${kind}-${progress.requestKey}`, resendReasonMarker());
+          return { result: resent.idempotent_replay ? PROFIT_PRIOR_COMMITTED : resent };
+        } catch (error) {
           if (profitKeyReused(error)) return { result: PROFIT_PRIOR_COMMITTED };
           if (isConfirmedFinancialRejection(error)) recovery.rejection = { error };
           throw error;
@@ -615,10 +635,7 @@ async function runProfitWrite(
   }
   if (result === PROFIT_PRIOR_COMMITTED) {
     onPriorCommitted();
-    throw new FinancialWorkflowError(
-      `Yêu cầu ${operation} gửi trước đó đã được máy chủ ghi xong; lần bấm này không ghi thêm gì. Số liệu đang được tải lại — kiểm tra trạng thái các nhà rồi thực hiện tiếp phần còn lại.`,
-      'failure', [],
-    );
+    throw new ProfitPriorCommittedError(operation);
   }
   return result;
 }
@@ -630,7 +647,7 @@ export const useCloseProfitPeriod = () => {
     mutationFn: async (input: CloseProfitPeriodInput) => {
       if (!input.organizationId) throw new FinancialWorkflowError("Không xác định được tổ chức", 'failure', []);
       // Chốt và chốt lại dùng chung tiền tố khoá: dấu của lượt chốt vẫn đối chiếu được khi lượt sau là chốt lại.
-      return runProfitWrite(workflow.current, 'close', "chốt lợi nhuận", input, async (idempotencyKey) => {
+      return runProfitWrite(workflow.current, 'close', "chốt lợi nhuận", input, async (idempotencyKey, markReason) => {
       if (!input.expectedSourceHash) throw new FinancialWorkflowError("Thiếu mã nguồn dữ liệu để chốt", 'failure', []);
       if (input.buildingIds.length === 0) throw new FinancialWorkflowError("Không có nhà để chốt", 'failure', []);
       const rpcName = input.reclose ? PROFIT_CLOSE_RPC.reclose : PROFIT_CLOSE_RPC.close;
@@ -667,7 +684,7 @@ export const useCloseProfitPeriod = () => {
         p_period_month: input.periodMonth,
         p_building_ids: input.buildingIds,
         p_adjustments: input.adjustments,
-        p_reason: reason,
+        p_reason: markReason(reason),
         p_idempotency_key: idempotencyKey,
         p_expected_source_hash: input.expectedSourceHash,
       });
@@ -762,10 +779,18 @@ export function unlockProfitMonthErrorMessage(message: string | null | undefined
 export const useUnlockProfitMonth = () => {
   const qc = useQueryClient();
   const workflow = useRef(persistentFinancialWorkflow('profit-unlock'));
+  const refresh = () => {
+    invalidateProfitCloseQueries(qc);
+    qc.invalidateQueries({ queryKey: ["income-expenses"] });
+    // Nút Huỷ ở màn Thu chi đọc trạng thái khoá qua hai reader này (giữ 30 giây):
+    // không làm mới thì vừa mở khoá xong nút vẫn mờ vì "tháng đã chốt".
+    qc.invalidateQueries({ queryKey: ["income-cancel-eligibility"] });
+    qc.invalidateQueries({ queryKey: ["flex-cancel-eligibility"] });
+  };
   return useMutation({
     mutationFn: async (input: UnlockProfitMonthInput): Promise<UnlockProfitMonthResult> => {
       if (!input.organizationId) throw new FinancialWorkflowError("Không xác định được tổ chức", 'failure', []);
-      return runProfitWrite(workflow.current, 'unlock', "mở khóa lợi nhuận", input, async (idempotencyKey) => {
+      return runProfitWrite(workflow.current, 'unlock', "mở khóa lợi nhuận", input, async (idempotencyKey, markReason) => {
       if (!/^\d{4}-\d{2}-01$/.test(input.periodMonth)) {
         throw new FinancialWorkflowError("Kỳ mở khoá phải là ngày đầu tháng (YYYY-MM-01)", 'failure', []);
       }
@@ -778,21 +803,16 @@ export const useUnlockProfitMonth = () => {
       const { data, error } = await supabase.rpc("profit_unlock_v2", {
         p_organization_id: input.organizationId,
         p_period_month: input.periodMonth,
-        p_reason: reason,
+        p_reason: markReason(reason),
         p_idempotency_key: idempotencyKey,
         p_building_ids: buildingIds,
       });
       if (error) throw error;
       return readProfitActionResult(data,buildingIds.length);
-    }, () => invalidateProfitCloseQueries(qc));
+    }, refresh);
     },
     onSuccess: (result, input) => {
-      invalidateProfitCloseQueries(qc);
-      qc.invalidateQueries({ queryKey: ["income-expenses"] });
-      // Nút Huỷ ở màn Thu chi đọc trạng thái khoá qua hai reader này (giữ 30 giây):
-      // không làm mới thì vừa mở khoá xong nút vẫn mờ vì "tháng đã chốt".
-      qc.invalidateQueries({ queryKey: ["income-cancel-eligibility"] });
-      qc.invalidateQueries({ queryKey: ["flex-cancel-eligibility"] });
+      refresh();
       const thang = `${input.periodMonth.slice(5, 7)}/${input.periodMonth.slice(0, 4)}`;
       toast.success(
         `Đã mở khoá ${result.affected_buildings} toà tháng ${thang} — sửa/ghi phiếu của tháng này được, lý do đã được lưu lại. Phần đã phân bổ cho cổ đông đã bị xoá, PHẢI chốt lại sau khi sửa xong.`,
@@ -808,7 +828,7 @@ export const useResetProfitPeriod = () => {
   return useMutation({
     mutationFn: async (input: ResetProfitPeriodInput) => {
       if (!input.organizationId) throw new FinancialWorkflowError("Không xác định được tổ chức", 'failure', []);
-      return runProfitWrite(workflow.current, 'reset', "đặt lại lợi nhuận", input, async (idempotencyKey) => {
+      return runProfitWrite(workflow.current, 'reset', "đặt lại lợi nhuận", input, async (idempotencyKey, markReason) => {
       if (!input.expectedStateHash) throw new FinancialWorkflowError("Thiếu mã trạng thái snapshot để đặt lại", 'failure', []);
       if (input.expectedSnapshotIds.length === 0) throw new FinancialWorkflowError("Không có snapshot để đặt lại", 'failure', []);
       if (input.reason.trim().length < 8 || input.reason.trim().length > 1000) {
@@ -817,7 +837,7 @@ export const useResetProfitPeriod = () => {
       const { data, error } = await supabase.rpc("profit_reset_checked_v2", {
         p_organization_id: input.organizationId,
         p_period_month: input.periodMonth,
-        p_reason: input.reason.trim(),
+        p_reason: markReason(input.reason.trim()),
         p_idempotency_key: idempotencyKey,
         p_expected_state_hash: input.expectedStateHash,
         p_expected_snapshot_ids: [...input.expectedSnapshotIds].sort(),
