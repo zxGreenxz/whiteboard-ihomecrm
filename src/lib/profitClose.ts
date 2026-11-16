@@ -124,16 +124,21 @@ export function hasUnallocatedProfitResidual(value: unknown): boolean {
 }
 
 function seedDraft(row: ProfitCloseDraftSeed): ProfitCloseDraft {
-  const storedReason = row.unallocatedDispositionReason?.trim() ?? "";
+  const storedDisposition = normalizeUnallocatedDisposition(
+    row.unallocatedDisposition,
+  );
+  // Lý do chỉ đi kèm cách xử lý người dùng đã chọn. Chưa chọn / chốt kiểu cũ ⇒ ô trống:
+  // không để câu backfill "…without an explicit decision" thành lý do của quyết định mới.
+  const storedReason = storedDisposition
+    ? row.unallocatedDispositionReason?.trim() ?? ""
+    : "";
   return {
     // A locked snapshot contributes only its signed adjustment. Its old absolute
     // adjusted profit must never become the base for a fresh server calculation.
     adjustmentAmount: row.locked ? finiteMoney(row.snapshotAdjustmentAmount) : 0,
     adjustmentReason: row.locked ? row.snapshotAdjustmentReason?.trim() ?? "" : "",
     // Chưa chọn (hoặc chốt kiểu cũ) ⇒ mặc định giữ lại lợi nhuận.
-    unallocatedDisposition:
-      normalizeUnallocatedDisposition(row.unallocatedDisposition) ??
-      DEFAULT_UNALLOCATED_DISPOSITION,
+    unallocatedDisposition: storedDisposition ?? DEFAULT_UNALLOCATED_DISPOSITION,
     unallocatedDispositionReason: isDefaultUnallocatedDispositionReason(storedReason)
       ? ""
       : storedReason,

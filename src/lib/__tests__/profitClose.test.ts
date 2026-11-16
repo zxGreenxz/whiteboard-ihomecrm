@@ -51,7 +51,8 @@ describe("profit close draft initialization", () => {
       {},
       new Set(),
     );
-    expect(drafts.cu).toMatchObject({ unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "Chốt trước V3" });
+    // Lý do backfill của chốt kiểu cũ không đi theo quyết định mới.
+    expect(drafts.cu).toMatchObject({ unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "" });
     expect(drafts.macdinh).toMatchObject({ unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "" });
   });
 
@@ -241,20 +242,23 @@ describe("profit close adjustment validation", () => {
 
   it("ô lý do để trống ⇒ gửi câu mặc định đủ 8–500 ký tự theo cách xử lý; nháp thiếu cách xử lý ⇒ giữ lại", () => {
     const payload = buildProfitCloseAdjustments(
-      ["b1", "b2", "b3"],
+      ["b1", "b2", "b3", "b4"],
       {
         b1: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "  " },
         b2: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "" },
         b3: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: null, unallocatedDispositionReason: "" },
+        // nháp gieo sẵn mặc định nhưng nhà KHÔNG còn phần dư ⇒ không gửi cách xử lý
+        b4: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "ghi thừa lý do" },
       },
-      { b1: 25_000, b2: -40, b3: 10 },
+      { b1: 25_000, b2: -40, b3: 10, b4: 0.009 },
     );
     expect(payload.map((row) => [row.unallocated_disposition, row.unallocated_disposition_reason])).toEqual([
       ["RETAINED_EARNINGS", "Giữ lại lợi nhuận — không ghi lý do"],
       ["CARRY_FORWARD", "Chuyển kỳ sau — không ghi lý do"],
       ["RETAINED_EARNINGS", "Giữ lại lợi nhuận — không ghi lý do"],
+      [null, null],
     ]);
-    for (const row of payload) {
+    for (const row of payload.slice(0, 3)) {
       const reason = row.unallocated_disposition_reason ?? "";
       expect(reason.length).toBeGreaterThanOrEqual(8);
       expect(isSystemMessageReason(reason)).toBe(false);

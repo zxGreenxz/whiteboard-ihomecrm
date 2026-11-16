@@ -1804,11 +1804,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       {isEditing && closeAttempted && hasInvalidResidualDisposition && (
         <Alert variant="destructive">
           <ShieldAlert className="h-4 w-4" />
-          <AlertTitle>Chưa có cách xử lý phần lợi nhuận còn dư</AlertTitle>
+          <AlertTitle>Lý do xử lý phần lợi nhuận còn dư chưa hợp lệ</AlertTitle>
           <AlertDescription>
             {invalidResidualRows.length} nhà ĐANG CHỌN còn phần chưa phân bổ từ 0,01đ
             trở lên: {invalidResidualRows.map((row) => row.building_name).join(" · ")}.
-            Chọn “Giữ lại lợi nhuận” hoặc “Chuyển kỳ sau” và nhập lý do 8–500 ký tự
+            Lý do không bắt buộc — để trống ô lý do, hoặc ghi đủ 8–500 ký tự
             cho từng nhà, hoặc bỏ chọn chúng để chốt các nhà còn lại trước.
           </AlertDescription>
         </Alert>
