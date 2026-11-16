@@ -10,8 +10,9 @@ journal nào để tra. Bộ này xuất journal của các dịch vụ Hermes r
 | `systemd/ihome-hermes-log-keeper.timer` | 3 phút sau khởi động, rồi mỗi 15 phút. |
 
 Unit được giữ log (đổi bằng biến `UNITS` trong unit): `hermes-connector`, `hermes-connector-test`, `ihome-hermes-learning-audit`,
-`ihome-hermes-learning-ingest`, `hermes-owner-netwatch`. Unit chưa có trên máy thì bỏ qua. Log container `hermes-owner` do Docker giữ
-riêng, không thuộc bộ này.
+`ihome-hermes-learning-ingest`, `hermes-owner-netwatch`, `ihome-hermes-fleet-netwatch` (canh mạng cho nhiều trợ lý, thay dần
+`hermes-owner-netwatch`; giữ cả hai). Unit chưa có trên máy thì bỏ qua. Log container `hermes-owner` / `hermes-<tên>` do Docker giữ
+riêng, không thuộc bộ này. Danh sách mặc định nằm trong script: máy đã cài phải chạy lại dòng `install` (mục "Cài") mới nhận unit mới.
 
 Hành vi cần biết:
 

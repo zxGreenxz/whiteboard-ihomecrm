@@ -42,7 +42,8 @@ cho vai NOLOGIN riêng `hermes_learning_ingest`).
 
 ## Kiểm học tập làm gì (`learning_audit.py`)
 
-Quét mọi hồ sơ dưới `/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/*` (bỏ thư mục ẩn như `.deleted`):
+Quét mọi hồ sơ dưới `/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/*` (bỏ thư mục ẩn như `.deleted`). Mỗi trợ lý có home riêng
+thì khai thêm gốc ở `profilesRoots` (mục "Nhiều home"); mỗi hồ sơ, ở gốc nào cũng vậy, được kiểm:
 
 1. **Tên tool chết** trong skill local (`skills/**/*.md`, trừ `.archive`, `.hub`…) và bộ nhớ (`memories/MEMORY.md`, `USER.md`,
    mục ngăn bằng `\n§\n`): mọi `crm_*` (kể cả dạng `mcp__ihomecrm__crm_*`) không thuộc `catalogToolNames()`, mọi mã thao tác
@@ -72,6 +73,36 @@ Quét mọi hồ sơ dưới `/var/lib/ihome-hermes-profiles/owner/.hermes/profi
    trước (nguyên văn, cắt 160 ký tự; chỉ bí mật kỹ thuật bị che). `state.db` (WAL) mở `file:…?mode=ro`; mở tại chỗ không được thì
    đọc **bản sao** (db + `-wal`)
    trong thư mục tạm riêng. UTF-8 hỏng trong tin nhắn ⇒ U+FFFD.
+
+### Nhiều home (`profilesRoots`)
+
+Mặc định job chỉ kiểm một gốc (`profilesRoot`, home của `owner`). Khoá cấu hình `profilesRoots` nhận 1..32 đường tuyệt đối, mỗi đường là
+thư mục `.hermes/profiles` của một home (`/var/lib/ihome-hermes-profiles/<tên>/.hermes/profiles`); dòng lệnh: lặp `--profiles-root`.
+Có mục thì danh sách này **thay** `profilesRoot`, nên gốc của `owner` cũng phải liệt kê và nên đứng đầu; vắng/rỗng ⇒ đúng một gốc như
+trước, báo cáo, outbox và trạng thái giữ nguyên (riêng khi gốc hỏng, báo cáo có thêm `profilesRootErrors`). `officialSkillsDir` vẫn
+một đường; `realProfiles` vẫn là danh sách tên (mặc định `owner`).
+
+- Mỗi gốc được ghim và quét riêng: hồ sơ phải nằm trong gốc **của nó**, mọi lớp chặn symlink/đường ra ngoài giữ nguyên cho từng gốc.
+- Tên hồ sơ là khoá của trạng thái, outbox và ánh xạ nạp ⇒ phải **duy nhất giữa các gốc**. Tên đã gặp ở gốc đứng trước thì hồ sơ ở gốc
+  sau không quét, không gộp; báo cáo có thêm một mục lỗi cho tên đó (`duplicate_profile_name`, lý do "trùng tên hồ sơ giữa hai home"),
+  lần chạy thoát mã 1 (`<hồ sơ>:duplicate_profile`). Thứ tự trong `profilesRoots` quyết định bản nào giữ tên.
+- Một gốc hỏng (vắng, là symlink, không phải thư mục) không che gốc khác: các gốc còn lại vẫn quét và vẫn có outbox. Báo cáo ghi
+  `profilesRootErrors: [{root, error}]` cho từng gốc hỏng, `profilesRootError` giữ lỗi của gốc hỏng đầu tiên, mã thoát 1.
+  **Bảo thủ:** có bất kỳ gốc nào hỏng thì lần chạy đó không ghi đè trạng thái của hồ sơ nào, kể cả hồ sơ ở gốc tốt — lần sau gửi lại
+  đề xuất cũ, SQL bỏ trùng theo khoá.
+- `--config-optional <file>`: như `--config`, nhưng file vắng thì dùng mặc định; file có mà sai (JSON hỏng, khoá lạ, sai kiểu, đường tương
+  đối, đường lặp, quá 32 gốc) vẫn là lỗi cấu hình, mã 2. Không dùng cùng `--config`. Unit production đọc
+  `/etc/ihome-hermes-fleet/learning-audit.json` theo cách này (file không bí mật; khác với `/etc/ihome-hermes/learning-audit.json` của job nạp):
+
+  ```json
+  {
+    "profilesRoots": [
+      "/var/lib/ihome-hermes-profiles/owner/.hermes/profiles",
+      "/var/lib/ihome-hermes-profiles/<tên>/.hermes/profiles"
+    ],
+    "realProfiles": ["owner", "<tên>"]
+  }
+  ```
 
 ### Dữ liệu hồ sơ không được tin
 
@@ -130,20 +161,37 @@ xuất = sha256(hồ sơ | loại | nguồn | nội dung chuẩn hoá) — ổn 
 
 ### Sandbox (`ihome-hermes-learning-audit.service`)
 
-Job có `CAP_DAC_READ_SEARCH` (đọc được file 0600 của uid 10003) nên sandbox **chỉ gắn những đường cần đọc**:
+Job có `CAP_DAC_READ_SEARCH` (đọc được file 0600 của uid Hermes: `owner` là 10003, mỗi trợ lý khác một uid riêng) nên sandbox **chỉ gắn
+những đường cần đọc**:
 `TemporaryFileSystem=/var/lib:ro /var/backups:ro /var/log:ro /opt:ro /srv:ro`, rồi `BindReadOnlyPaths=` đúng `skills/`,
 `memories/`, `.curator_backups/`, `state.db`, `state.db-wal`, `state.db-shm` của từng hồ sơ (owner, tkt, tkh, tkj, abc1,
 abeager3), bộ skill chuẩn, `/opt/ihome-hermes/node` và `/opt/ihome-hermes/current`. `.env`, `config.yaml`, `auth*`, `pending_messages/`…
-của hồ sơ và mọi thứ khác của `.hermes` **không có trong sandbox**; `/etc/ihome-hermes*`, `/etc/shadow`, `/etc/ssh`… bị giấu
-(`InaccessiblePaths=`). Mã còn ghim gốc hồ sơ một lần, từ chối gốc/hồ sơ/thư mục con (`skills`, `memories`, `.curator_backups`)
+của hồ sơ và mọi thứ khác của `.hermes` **không có trong sandbox**; `/etc/ihome-hermes`, `/etc/ihome-hermes-test`, `/etc/shadow`,
+`/etc/ssh`… bị giấu (`InaccessiblePaths=`; riêng `/etc/ihome-hermes-fleet` — cấu hình không bí mật của job này — thì không). Mã còn
+ghim từng gốc hồ sơ một lần, từ chối gốc/hồ sơ/thư mục con (`skills`, `memories`, `.curator_backups`)
 là symlink, mở file bằng `O_NOFOLLOW` + so dev/ino + đường thật của fd (`/proc/self/fd`), từ chối đường `..`/tuyệt đối lấy từ
 sổ curator — lớp chặn thứ hai. File CÓ mà bị từ chối ⇒ phát hiện mức cao `unsafe_profile_file`.
 
-**Thêm hồ sơ**: thêm một dòng `BindReadOnlyPaths=` như các hồ sơ có sẵn (drop-in
-`systemctl edit ihome-hermes-learning-audit.service`), `daemon-reload`. Hồ sơ không được gắn thì job kiểm không thấy; nếu hồ sơ
-đó có ánh xạ trong cấu hình nạp, job nạp báo `missingProfiles` (mã 1 ⇒ cảnh báo). Hồ sơ người dùng thật mới (có ánh xạ nạp) còn phải thêm vào
-`realProfiles` của job kiểm (`--real-profiles owner,<hồ sơ>` trong `ExecStart` qua drop-in, mặc định chỉ `owner`): chỉ hồ sơ trong danh sách này mới
-được đếm "bó tay", nhận cảnh báo của cả lần kiểm và làm job đỏ khi tràn cảnh báo.
+**Thêm hồ sơ** — hai trường hợp:
+
+1. **Hồ sơ mới trong cùng home `owner`** (như `tkt`, `tkh`…): thêm một dòng `BindReadOnlyPaths=` như các hồ sơ có sẵn (drop-in
+   `systemctl edit ihome-hermes-learning-audit.service`), `daemon-reload`. Không cần đổi `profilesRoots`.
+2. **Trợ lý mới có home riêng** (`/var/lib/ihome-hermes-profiles/<tên>`, container `hermes-<tên>`, uid riêng): làm bằng công cụ
+   `infra/hermes-fleet`, không sửa unit. Công cụ sinh drop-in `/etc/systemd/system/ihome-hermes-learning-audit.service.d/fleet-<tên>.conf`
+   — gắn chỉ đọc đúng `skills`, `memories`, `.curator_backups`, `state.db`, `state.db-wal`, `state.db-shm` của
+   `<home>/.hermes/profiles/<tên>` — và thêm gốc `<home>/.hermes/profiles` vào `profilesRoots` của `/etc/ihome-hermes-fleet/learning-audit.json`
+   (mục "Nhiều home"). Hai thứ đi cùng nhau: gốc có trong file mà thiếu drop-in thì sandbox không có thư mục đó ⇒ job báo gốc hỏng (mã 1)
+   và không ghi đè trạng thái.
+
+Hồ sơ không được gắn thì job kiểm không thấy; nếu hồ sơ đó có ánh xạ trong cấu hình nạp, job nạp báo `missingProfiles` (mã 1 ⇒ cảnh báo).
+Cả hai trường hợp, hồ sơ người dùng thật mới còn cần:
+
+- một mục ánh xạ hồ sơ → (công ty, người dùng) trong `profiles` của `/etc/ihome-hermes/learning-audit.json` (cấu hình của job nạp
+  `ingest.mjs`; tối đa 32 hồ sơ, tên khớp `^[a-z0-9][a-z0-9_-]{0,63}$`). Không có ánh xạ thì đề xuất của hồ sơ đó nằm lại outbox, không vào
+  CRM, và job nạp chỉ ghi `skipped … no_mapping` vào journal (không đỏ);
+- tên trong `realProfiles` của job kiểm (mặc định chỉ `owner`): ghi ở `/etc/ihome-hermes-fleet/learning-audit.json`, hoặc
+  `--real-profiles owner,<hồ sơ>` trong `ExecStart` qua drop-in (cờ dòng lệnh thắng file). Chỉ hồ sơ trong danh sách này mới được đếm
+  "bó tay", nhận cảnh báo của cả lần kiểm và làm job đỏ khi tràn cảnh báo.
 
 Thử tay (sau khi cài): `systemctl start ihome-hermes-learning-audit.service` (ghi đúng vào thư mục của job, không ghi hồ sơ),
 rồi `journalctl -u ihome-hermes-learning-audit -n 20` và `cat /var/lib/ihome-hermes-learning-audit/private/latest.txt`. Bản in

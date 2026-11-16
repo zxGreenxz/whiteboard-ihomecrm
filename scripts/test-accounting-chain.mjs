@@ -1911,6 +1911,26 @@ BEGIN
     RAISE EXCEPTION 'Rollback fixture has no shareholder allocation to reserve';
   END IF;
 
+  -- Đợt 3 sổ tổng lợi nhuận (migration 20261115113530, X4) thu EXECUTE của
+  -- distribute_shareholder_profit_v1 khỏi authenticated: chi lợi nhuận đi qua
+  -- shareholder_profit_ledger_payout_v1. Từ đó kịch bản giữ chỗ cũ bên dưới chỉ
+  -- còn kiểm cửa đã đóng; khối payout_stale_approval và phần payout của khối
+  -- canary_ledger tự bỏ qua khi không có phiếu giữ chỗ.
+  IF NOT has_function_privilege(
+    'public.distribute_shareholder_profit_v1(uuid,numeric,uuid,date,text,text)', 'EXECUTE'
+  ) THEN
+    BEGIN
+      PERFORM public.distribute_shareholder_profit_v1(
+        v_shareholder, v_payout_amount, v_account_payout, '2099-01-31',
+        'Retired shareholder payout door', 'acct-profit-payout-retired-0001'
+      );
+      RAISE EXCEPTION 'Retired shareholder payout writer is still executable';
+    EXCEPTION WHEN SQLSTATE '42501' THEN
+      NULL;
+    END;
+    PERFORM set_config('accounting_test.payout_amount', '0', true);
+    PERFORM set_config('accounting_test.payout_voucher', '', true);
+  ELSE
   BEGIN
     PERFORM public.distribute_shareholder_profit_v1(
       v_shareholder,
@@ -1958,6 +1978,7 @@ BEGIN
     (v_profit_payout->>'profit_voucher_id')::text,
     true
   );
+  END IF;
 
   v_reverse_result := public.reverse_invoice_collection_v5(
     v_collection_two_id, '2099-02-02',
@@ -2150,9 +2171,9 @@ RESET ROLE;
 
 DO $payout_stale_approval$
 DECLARE
-  v_payout_voucher uuid := current_setting(
+  v_payout_voucher uuid := nullif(current_setting(
     'accounting_test.payout_voucher'
-  )::uuid;
+  ), '')::uuid;
   v_profit_monthly uuid;
   v_shareholder_link uuid;
   v_original_percent numeric;
@@ -2162,6 +2183,10 @@ DECLARE
   v_request_state text;
   v_status text;
 BEGIN
+  -- Sau Đợt 3 (X4) không còn phiếu giữ chỗ kiểu cũ để thử duyệt khi nguồn lệch.
+  IF v_payout_voucher IS NULL THEN
+    RETURN;
+  END IF;
   SELECT monthly.id, link.id, link.percent
     INTO v_profit_monthly, v_shareholder_link, v_original_percent
   FROM public.profit_payout_reservations reservation
@@ -2281,7 +2306,7 @@ DECLARE
   v_count integer;
   v_amount numeric;
   v_payout_amount numeric := current_setting('accounting_test.payout_amount')::numeric;
-  v_payout_voucher uuid := current_setting('accounting_test.payout_voucher')::uuid;
+  v_payout_voucher uuid := nullif(current_setting('accounting_test.payout_voucher'), '')::uuid;
   v_virtual_account uuid := current_setting('accounting_test.virtual_account')::uuid;
   v_legacy_payment uuid := current_setting('accounting_test.legacy_payment')::uuid;
   v_legacy_source uuid := current_setting('accounting_test.legacy_source')::uuid;
@@ -2417,6 +2442,8 @@ BEGIN
 
   PERFORM app_private.end_accounting_chain_write_v1();
 
+  -- Không có phiếu giữ chỗ kiểu cũ (sau Đợt 3, X4) thì không còn phiếu để thử đổi sổ.
+  IF v_payout_voucher IS NOT NULL THEN
   BEGIN
     UPDATE public.income_expenses
        SET account_id = v_virtual_account
@@ -2433,6 +2460,7 @@ BEGIN
   EXCEPTION WHEN SQLSTATE '42501' THEN
     NULL;
   END;
+  END IF;
 
   SELECT count(*), COALESCE(sum(operation_row.amount_vnd), 0)
     INTO v_count, v_amount
@@ -2477,7 +2505,8 @@ BEGIN
     ON feature_row.feature_key = operation_row.feature_key
    AND feature_row.config_version = operation_row.config_version
   WHERE operation_row.feature_key = 'shareholder_profit.distribute.v2';
-  IF v_count <> 1 OR abs(v_amount - v_payout_amount) >= 0.01 THEN
+  IF v_count <> (CASE WHEN v_payout_voucher IS NULL THEN 0 ELSE 1 END)
+     OR abs(v_amount - v_payout_amount) >= 0.01 THEN
     RAISE EXCEPTION 'Payout canary ledger mismatch: rows %, amount %',
       v_count, v_amount;
   END IF;

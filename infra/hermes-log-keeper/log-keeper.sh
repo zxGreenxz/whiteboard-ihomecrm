@@ -6,7 +6,9 @@
 # Mã thoát: 0 = mọi unit xuất được; 1 = có unit lỗi (đọc journal hoặc ghi đĩa) — con trỏ unit đó KHÔNG tiến, lượt sau xuất lại.
 set -euo pipefail
 umask 027
-UNITS="${UNITS:-hermes-connector.service hermes-connector-test.service ihome-hermes-learning-audit.service ihome-hermes-learning-ingest.service hermes-owner-netwatch.service}"
+# ihome-hermes-fleet-netwatch = canh mạng cho N trợ lý (infra/hermes-fleet), thay dần hermes-owner-netwatch; giữ cả hai. Unit chưa có trên
+# máy ⇒ journalctl không ra dòng nào ⇒ "không có gì mới" (xem dưới), không phải lỗi.
+UNITS="${UNITS:-hermes-connector.service hermes-connector-test.service ihome-hermes-learning-audit.service ihome-hermes-learning-ingest.service hermes-owner-netwatch.service ihome-hermes-fleet-netwatch.service}"
 LOG_DIR="${LOG_DIR:-/var/log/ihome-hermes}"
 STATE_DIR="${STATE_DIR:-/var/lib/ihome-hermes-log-keeper}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"

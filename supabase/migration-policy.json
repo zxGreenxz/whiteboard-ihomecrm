@@ -810,6 +810,21 @@
       "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/387",
       "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
       "why": "File 20261026234255 (C07) có khối $requires$ ghim md5 thân app_private.hermes_invoice_action_step_v3 (5569ec5b) mà 20261104165619 (Hoá đơn J06 — thu tiền không nói kỳ thì tự chọn hoá đơn khớp đúng số còn nợ, #387) thay bằng thân md5 c1067869. Chạy lại file gốc trên production đã áp 165619 thì khối kiểm ném đúng câu này. Đo 05/11 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK)."
+    },
+    {
+      "file": "20261115113530_so_tong_loi_nhuan_chuyen_doi.sql",
+      "sha256": "a952228aa40e88b79d614ba9e00323b3ee7236ef94e2f30f9d3d1d2e81d08f4a",
+      "expectedSqlState": "55000",
+      "expectedMessage": "D3A_NEN: thiếu nền Đợt 1 — áp đủ năm migration Đợt 1 trước: app_private.profit_ledger_luong_backfill_v1(uuid,numeric,numeric,text,uuid,date)",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261115113530_so_tong_loi_nhuan_chuyen_doi.json",
+      "supersededBy": {
+        "file": "20261115213226_so_tong_loi_nhuan_don_ham_ghi_bu.sql",
+        "sha256": "3edfe826ef6f8f511b14077461a8347caee44a1f7612b8f86655b446416ce62d",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261115213226_so_tong_loi_nhuan_don_ham_ghi_bu.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/434",
+      "lop": "migration chuyển đổi dữ liệu một lần có chốt đo; hàm một lần nó gọi đã được migration sau dọn",
+      "why": "D3a (sổ tổng lợi nhuận Đợt 3) chuyển đổi dữ liệu MỘT lần trước khi bật chi theo sổ tổng: công tắc OFF→SHADOW, ghi bù phần lợi nhuận đã trả qua phiếu lương bằng app_private.profit_ledger_luong_backfill_v1, mốc đã trả đủ. Sau D3b (ON) chạy lại phải ngã — trước đây ngã ở X1 hoặc ở dấu vân tay số dư (DETAIL đổi theo dữ liệu, ghim không bền). 20261115213226 dọn hàm ghi bù một lần, nên chạy lại D3a dừng ngay ở tiền kiểm đầu tiên với câu cố định này. Đo 15/11/2026 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK) sau khi áp 20261115213226; ca test soTongLoiNhuanChuyenDoiMigration.test.ts ghim đúng SQLSTATE + câu."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",

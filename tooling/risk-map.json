@@ -88,6 +88,7 @@
         "infra/hermes-zalo-router/**",
         "infra/hermes-zalo-native/**",
         "infra/hermes-learning-audit/**",
+        "infra/hermes-fleet/**",
         "worker/deploy/**",
         "worker/Dockerfile",
         "worker/.dockerignore",

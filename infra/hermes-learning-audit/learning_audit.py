@@ -20,6 +20,12 @@ rời hồ sơ; một mục hỏng chỉ thành phát hiện, không làm hỏng
 CCCD, email, STK — chủ chốt 31/10: công ty nhỏ, nhân viên nội bộ dùng chung); chỉ BÍ MẬT KỸ THUẬT (mật khẩu, token/JWT/Bearer,
 khoá API, khối PEM) bị che, vì đó là an ninh hệ thống chứ không phải riêng tư.
 Không ghi gì vào thư mục hồ sơ: SQLite mở `mode=ro`, file chỉ đọc. Chỉ dùng thư viện chuẩn Python 3.10+.
+
+Nhiều home (mỗi trợ lý một home riêng): `profilesRoots` liệt kê 1..32 thư mục `.hermes/profiles`; vắng/rỗng ⇒ chỉ `profilesRoot` như
+trước. Mỗi gốc được ghim và quét riêng (hồ sơ phải nằm trong gốc CỦA NÓ). Tên hồ sơ là khoá của trạng thái, outbox và ánh xạ nạp nên
+phải duy nhất giữa các gốc: tên đã gặp ở gốc đứng trước thì hồ sơ ở gốc sau không quét, không gộp, chỉ thành một mục lỗi. Một gốc
+hỏng không che gốc khác (các gốc còn lại vẫn quét, `profilesRootErrors` nêu từng gốc hỏng), nhưng có BẤT KỲ gốc nào hỏng thì lần
+chạy đó không ghi đè trạng thái — của mọi hồ sơ, kể cả hồ sơ ở gốc tốt: lần sau gửi lại, SQL bỏ trùng.
 """
 from __future__ import annotations
 
@@ -46,6 +52,9 @@ VN_TZ = timezone(timedelta(hours=7))
 DEFAULTS: dict[str, Any] = {
     # Host: /var/lib/ihome-hermes-profiles/owner/.hermes được mount vào container tại /home/hermes/.hermes.
     'profilesRoot': '/var/lib/ihome-hermes-profiles/owner/.hermes/profiles',
+    # Nhiều home: /var/lib/ihome-hermes-profiles/<tên>/.hermes/profiles của từng trợ lý. Có mục thì THAY profilesRoot (gốc của owner
+    # cũng phải liệt kê, đứng đầu); rỗng ⇒ chỉ profilesRoot.
+    'profilesRoots': [],
     'officialSkillsDir': '/var/lib/ihome-hermes-profiles/owner/.hermes/ihome-official-skills/current',
     'catalogModule': '/opt/ihome-hermes/current/infra/hermes-broker/catalog-names.mjs',
     'node': '/opt/ihome-hermes/node/bin/node',
@@ -65,8 +74,9 @@ DEFAULTS: dict[str, Any] = {
 CONFIG_TYPES: dict[str, Any] = {
     'profilesRoot': str, 'officialSkillsDir': str, 'catalogModule': str, 'node': str, 'outDir': str, 'stateFile': str,
     'catalogTimeoutSeconds': (int, float), 'windowHours': (int, float), 'firstRunLookbackHours': (int, float),
-    'keepReports': int, 'realProfiles': list, 'realSources': list,
+    'keepReports': int, 'realProfiles': list, 'realSources': list, 'profilesRoots': list,
 }
+MAX_PROFILE_ROOTS = 32      # bằng trần số hồ sơ có ánh xạ của job nạp (ingest.mjs)
 
 MAX_TITLE = 200
 MAX_CONTENT = 3500          # một phần của đề xuất; SQL nhận tới 4000 ký tự. Dài hơn ⇒ tách phần, không cắt im lặng
@@ -1498,7 +1508,11 @@ def summarize(report: dict[str, Any]) -> str:
     gen = parse_ts(report['generatedAt']) or datetime.now(timezone.utc)
     lines = [f'Kiểm học tập Hermes — {gen.astimezone(VN_TZ).strftime("%d/%m/%Y %H:%M")} giờ VN '
              f'(cửa sổ "bó tay" {report["window"]["hours"]} giờ)']
-    if report.get('profilesRootError'):
+    if report.get('profilesRootError') and len(report.get('profilesRoots') or []) > 1:
+        # Nhiều gốc: nêu từng gốc hỏng; hồ sơ dưới các gốc còn lại vẫn được kiểm (liệt kê bên dưới).
+        for item in report.get('profilesRootErrors') or []:
+            lines.append(f'• LỖI: thư mục hồ sơ {item["root"]} không kiểm được ({item["error"]}) — không kiểm hồ sơ nào dưới gốc này')
+    elif report.get('profilesRootError'):
         lines.append(f'• LỖI: thư mục hồ sơ không kiểm được ({report["profilesRootError"]}) — không kiểm hồ sơ nào')
     cat = report['catalog']
     lines.append('• Danh mục tên CRM: ' + (f'đủ ({len(cat["tools"])} tool, {len(cat["actions"])} thao tác)' if cat['status'] == 'ok'
@@ -1560,20 +1574,44 @@ def summarize(report: dict[str, Any]) -> str:
     return '\n'.join(lines)
 
 
+def read_config_file(path: str, optional: bool) -> dict[str, Any]:
+    """Cấu hình JSON ghi đè mặc định. `optional` (--config-optional): file VẮNG ⇒ {} (dùng mặc định). Mọi trường hợp khác — không đọc
+    được vì quyền, không phải JSON, sai khuôn — vẫn là lỗi: file có mà hỏng không được lặng lẽ thành "dùng mặc định"."""
+    try:
+        text = Path(path).read_text(encoding='utf-8')
+    except FileNotFoundError:
+        if optional:
+            return {}
+        raise
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError('config phải là object JSON')
+    unknown = set(data) - set(DEFAULTS)
+    if unknown:
+        raise ValueError('khoá config lạ: ' + ', '.join(sorted(unknown)))
+    return data
+
+
+def profile_roots(cfg: dict[str, Any]) -> list[str]:
+    """Các gốc hồ sơ theo thứ tự cấu hình: `profilesRoots` nếu có mục, không thì đúng một gốc `profilesRoot` như trước."""
+    return list(cfg.get('profilesRoots') or [cfg['profilesRoot']])
+
+
 def build_config(args: argparse.Namespace) -> dict[str, Any]:
     cfg = dict(DEFAULTS)
-    if args.config:
-        data = json.loads(Path(args.config).read_text(encoding='utf-8'))
-        if not isinstance(data, dict):
-            raise ValueError('config phải là object JSON')
-        unknown = set(data) - set(DEFAULTS)
-        if unknown:
-            raise ValueError('khoá config lạ: ' + ', '.join(sorted(unknown)))
-        cfg.update(data)
-    for key in ('profilesRoot', 'officialSkillsDir', 'catalogModule', 'node', 'stateFile', 'outDir'):
+    optional = getattr(args, 'config_optional', None)
+    if args.config and optional:
+        raise ValueError('--config và --config-optional không dùng cùng lúc')
+    if args.config or optional:
+        cfg.update(read_config_file(args.config or optional, optional=not args.config))
+    for key in ('officialSkillsDir', 'catalogModule', 'node', 'stateFile', 'outDir'):
         value = getattr(args, key, None)
         if value:
             cfg[key] = value
+    # --profiles-root lặp lại được: một lần ⇒ đúng một gốc như trước (bỏ profilesRoots của file cấu hình); nhiều lần ⇒ nhiều gốc.
+    roots = [value for value in (getattr(args, 'profilesRoot', None) or []) if value]
+    if roots:
+        cfg['profilesRoot'], cfg['profilesRoots'] = roots[0], (roots if len(roots) > 1 else [])
     if args.real_profiles:
         cfg['realProfiles'] = [p for p in args.real_profiles.split(',') if p]
     if args.window_hours:
@@ -1583,6 +1621,10 @@ def build_config(args: argparse.Namespace) -> dict[str, Any]:
         if isinstance(value, bool) or not isinstance(value, kind) \
                 or (isinstance(value, list) and not all(isinstance(item, str) for item in value)):
             raise ValueError(f'khoá config sai kiểu: {key}')
+    roots = cfg['profilesRoots']
+    if len(roots) > MAX_PROFILE_ROOTS or len({os.path.normpath(root) for root in roots}) != len(roots) \
+            or not all(os.path.isabs(root) for root in roots):
+        raise ValueError(f'profilesRoots phải là tối đa {MAX_PROFILE_ROOTS} đường tuyệt đối, không lặp')
     return cfg
 
 
@@ -1594,9 +1636,21 @@ def error_profile(name: str, cfg: dict[str, Any], why: str) -> dict[str, Any]:
             'degraded': ['profile']}
 
 
+def duplicate_profile(name: str, cfg: dict[str, Any], skipped_root: str, first_root: str) -> dict[str, Any]:
+    """Hồ sơ trùng tên với hồ sơ ở một gốc đứng trước: KHÔNG quét, không gộp (trạng thái, outbox và ánh xạ nạp đều khoá theo tên) — chỉ
+    một mục lỗi cùng khuôn `error_profile`, làm lần chạy đỏ để người vận hành đổi tên một trong hai."""
+    why = (f'trùng tên hồ sơ giữa hai home: bản ở {one_line(skipped_root, 300, hide=False)} không được quét '
+           f'(đã kiểm bản ở {one_line(first_root, 300, hide=False)})')
+    return {'profile': one_line(name, 80, hide=False), 'real': name in cfg['realProfiles'], 'counts': {},
+            'findings': [{'kind': 'duplicate_profile_name', 'severity': 'high', 'file': '.', 'detail': why}],
+            'proposals': [], 'autoApplied': [], 'refusals': None, 'errors': [why], 'degraded': ['duplicate_profile']}
+
+
 def run_audit(cfg: dict[str, Any], now: datetime,
               use_state: bool = True) -> tuple[dict[str, Any], dict[str, Any], Optional[dict[str, Any]]]:
-    """⇒ (báo cáo đủ — private, outbox chỉ đề xuất — cho job nạp, trạng thái mới hoặc None khi không được ghi đè trạng thái)."""
+    """⇒ (báo cáo đủ — private, outbox chỉ đề xuất — cho job nạp, trạng thái mới hoặc None khi không được ghi đè trạng thái).
+    Nhiều gốc hồ sơ: quét lần lượt theo thứ tự cấu hình; gốc hỏng được ghi lại rồi quét tiếp gốc sau; tên hồ sơ trùng thì bản ở gốc
+    đứng trước giữ tên. Có bất kỳ gốc nào hỏng ⇒ trạng thái mới là None (không ghi đè), cho mọi hồ sơ."""
     state_path = Path(cfg['stateFile']) if use_state else None
     state = load_state(state_path)
     catalog = load_catalog(cfg)
@@ -1605,31 +1659,40 @@ def run_audit(cfg: dict[str, Any], now: datetime,
     outbox_profiles: list[dict[str, Any]] = []
     prior_profiles: dict[str, Any] = state.get('profiles', {})
     next_profiles: dict[str, Any] = {}
-    root_error: Optional[str] = None
-    try:
-        # Gốc hồ sơ ghim một lần: từ đây mọi hồ sơ phải nằm trong gốc đã phân giải này.
-        profiles_root = canonical_root(Path(cfg['profilesRoot']))
-        if not _is_dir_no_follow(profiles_root):
-            raise OSError('không phải thư mục')
-        roots = list_profiles(profiles_root)
-    except OSError as error:
-        root_error, roots, profiles_root = type(error).__name__, [], Path(cfg['profilesRoot'])
-    for root in roots:
-        name = root.name
-        prior = dict(prior_profiles.get(name) or {})
-        if prior:
-            prior['lastRunAt'] = state.get('lastRunAt')
+    configured = profile_roots(cfg)
+    root_errors: list[dict[str, str]] = []
+    seen: dict[str, str] = {}   # tên hồ sơ ⇒ gốc (theo cấu hình) đã giữ tên đó
+    for configured_root in configured:
         try:
-            audit = ProfileAudit(name, root, profiles_root, cfg, catalog, official, prior, now)
-            result = audit.run()
-        except Exception as error:  # noqa: BLE001 — thư mục hồ sơ bị tráo/hỏng: báo, giữ trạng thái cũ, lần sau kiểm lại
-            profiles_out.append(error_profile(name, cfg, type(error).__name__))
-            if prior_profiles.get(name):
-                next_profiles[name] = prior_profiles[name]
+            # Gốc hồ sơ ghim một lần: từ đây mọi hồ sơ CỦA GỐC NÀY phải nằm trong gốc đã phân giải này.
+            profiles_root = canonical_root(Path(configured_root))
+            if not _is_dir_no_follow(profiles_root):
+                raise OSError('không phải thư mục')
+            roots = list_profiles(profiles_root)
+        except OSError as error:
+            root_errors.append({'root': one_line(configured_root, 300, hide=False), 'error': type(error).__name__})
             continue
-        profiles_out.append(result)
-        outbox_profiles.append({'profile': name, 'proposals': result['proposals']})
-        next_profiles[name] = audit.next_state
+        for root in roots:
+            name = root.name
+            if name in seen:
+                profiles_out.append(duplicate_profile(name, cfg, configured_root, seen[name]))
+                continue
+            seen[name] = configured_root
+            prior = dict(prior_profiles.get(name) or {})
+            if prior:
+                prior['lastRunAt'] = state.get('lastRunAt')
+            try:
+                audit = ProfileAudit(name, root, profiles_root, cfg, catalog, official, prior, now)
+                result = audit.run()
+            except Exception as error:  # noqa: BLE001 — thư mục hồ sơ bị tráo/hỏng: báo, giữ trạng thái cũ, lần sau kiểm lại
+                profiles_out.append(error_profile(name, cfg, type(error).__name__))
+                if prior_profiles.get(name):
+                    next_profiles[name] = prior_profiles[name]
+                continue
+            profiles_out.append(result)
+            outbox_profiles.append({'profile': name, 'proposals': result['proposals']})
+            next_profiles[name] = audit.next_state
+    root_error: Optional[str] = root_errors[0]['error'] if root_errors else None
     report: dict[str, Any] = {
         'schemaVersion': SCHEMA_VERSION, 'generatedAt': iso(now), 'firstRun': not state,
         'window': {'hours': cfg['windowHours'], 'from': iso(now - timedelta(hours=float(cfg['windowHours']))), 'to': iso(now)},
@@ -1644,15 +1707,20 @@ def run_audit(cfg: dict[str, Any], now: datetime,
             'refusalsReal': sum((p['refusals'] or {}).get('count', 0) for p in profiles_out if p['real']),
         },
     }
+    if len(configured) > 1:
+        report['profilesRoots'] = [one_line(root, 300, hide=False) for root in configured]
     if root_error:
+        # profilesRootError = lỗi của gốc hỏng ĐẦU TIÊN (khoá cũ, giữ cho bản tóm tắt/journal); profilesRootErrors nêu đủ từng gốc.
         report['profilesRootError'] = root_error
+        report['profilesRootErrors'] = root_errors
     if catalog['status'] != 'ok':
         report['notice'] = 'không kiểm được tên tool: ' + catalog['reason']
     report['degraded'] = degraded_reasons(report)
     report['summaryVi'] = summarize(report)
     outbox = {'schemaVersion': SCHEMA_VERSION, 'kind': 'hermes-learning-outbox', 'generatedAt': iso(now),
               'profiles': outbox_profiles}
-    # Gốc hồ sơ hỏng: giữ trạng thái cũ (ghi trạng thái rỗng sẽ làm lần sau coi như lần đầu và sót mục sổ).
+    # Gốc hồ sơ hỏng: giữ trạng thái cũ (ghi trạng thái rỗng sẽ làm lần sau coi như lần đầu và sót mục sổ). Nhiều gốc cũng vậy, bảo thủ:
+    # MỘT gốc hỏng là không ghi đè trạng thái của hồ sơ nào — hồ sơ ở gốc tốt lần sau gửi lại đề xuất cũ, SQL bỏ trùng.
     next_state = None if root_error else {'schemaVersion': SCHEMA_VERSION, 'lastRunAt': iso(now), 'profiles': next_profiles}
     return report, outbox, next_state
 
@@ -1706,7 +1774,10 @@ def counts_line(report: dict[str, Any]) -> dict[str, Any]:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description='Kiểm học tập Hermes (chỉ đọc hồ sơ).')
     parser.add_argument('--config', help='file JSON ghi đè cấu hình mặc định')
-    parser.add_argument('--profiles-root', dest='profilesRoot')
+    parser.add_argument('--config-optional', dest='config_optional',
+                        help='như --config nhưng file vắng thì dùng mặc định (file có mà sai vẫn là lỗi); không dùng cùng --config')
+    parser.add_argument('--profiles-root', dest='profilesRoot', action='append',
+                        help='thư mục .hermes/profiles; lặp lại cờ này để kiểm nhiều home')
     parser.add_argument('--official-skills', dest='officialSkillsDir')
     parser.add_argument('--catalog-module', dest='catalogModule')
     parser.add_argument('--node', dest='node')
