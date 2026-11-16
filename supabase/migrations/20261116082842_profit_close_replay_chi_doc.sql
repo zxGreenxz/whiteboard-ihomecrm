@@ -15,8 +15,9 @@
 --       profit_allocations;
 --     · nhà đã đặt lại rồi chốt mới (dòng profit_monthly mới) ⇒ thêm cả một dòng
 --       profit_unallocated_decisions gắn run cũ vào bản chốt mới.
---   Web đã né (lượt gửi lại luôn khác nội dung), nhưng Hermes hoặc gateway tự gửi lại cùng request vẫn
---   đi vào đường này.
+--   Web không gửi lại cùng khoá (mỗi lượt gọi sinh khoá mới), nhưng nơi gọi khác — tích hợp gọi thẳng RPC
+--   qua PostgREST, hoặc lớp HTTP / gateway tự gửi lại nguyên request — vẫn đi vào đường này.
+--   Lưu ý cho nơi gọi: kết quả replay là ảnh của LƯỢT CŨ, không phải trạng thái hiện tại của tháng.
 --
 -- LÀM GÌ
 --   Thay thân ĐÚNG MỘT hàm: thêm một nhánh ngay sau lời gọi phần lõi — kết quả mang
@@ -63,7 +64,7 @@ BEGIN
     IF f.bao_mat IS DISTINCT FROM r.bao_mat OR f.cau_hinh IS DISTINCT FROM r.cau_hinh
        OR NOT (COALESCE(string_to_array(NULLIF(r.quyen, ''), ','), '{}'::text[])
                <@ COALESCE(string_to_array(NULLIF(f.quyen, ''), ','), '{}'::text[])) THEN
-      RAISE EXCEPTION 'Thuộc tính % đã khác production đã rà (SECURITY DEFINER %, proconfig %, EXECUTE cho [%], cần có [%]) — rà lại',
+      RAISE EXCEPTION 'Thuộc tính % đã khác bản đã ghim (SECURITY DEFINER %, proconfig %, EXECUTE cho [%], cần có [%]) — rà lại',
         r.ham, f.bao_mat, f.cau_hinh, f.quyen, r.quyen USING ERRCODE = '55000';
     END IF;
   END LOOP;

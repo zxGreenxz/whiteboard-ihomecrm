@@ -539,6 +539,53 @@ describe('20261116082842 — replay là thao tác chỉ đọc (chạy thật tr
     });
   });
 
+  it('replay của một lượt CHỐT LẠI (RECLOSE) sau lượt chốt lại nữa: thân cũ ghi đè 5 cột bằng số của lượt giữa; thân mới giữ nguyên', async () => {
+    const kichBan = async (db: PGlite) => {
+      await chot(db, 'CLOSE', 'k1');
+      await doiTyLeCoDong(db, D, 80);
+      const { args, ketQua } = await chot(db, 'RECLOSE', 'k2', [D]);
+      await doiTyLeCoDong(db, D, 60);
+      await chot(db, 'RECLOSE', 'k4', [D]);
+      const hienTai = await namCot(db, D);
+      // Bản chốt hiện tại: 60% của 3.500.000, khớp profit_allocations.
+      expect(hienTai).toMatchObject({ shareholder_percent_total: '60.0000', shareholder_allocated_amount: '2100000.00',
+        unallocated_profit: '1400000.00', tong_phan_bo: '2100000.00' });
+      return { args, ketQua, hienTai, anh: await anhDuLieu(db) };
+    };
+
+    await ca(cu, async () => {
+      const { args } = await kichBan(cu);
+      await goi(cu, args);
+      // LỖI CŨ: 5 cột quay về số của lượt k2 (80%) trong khi profit_allocations là của lượt k4 (60%).
+      expect(await namCot(cu, D)).toMatchObject({ shareholder_percent_total: '80.0000',
+        shareholder_allocated_amount: '2800000.00', unallocated_profit: '700000.00', tong_phan_bo: '2100000.00' });
+    });
+
+    await ca(moi, async () => {
+      const { args, ketQua, hienTai, anh } = await kichBan(moi);
+      expect(await goi(moi, args)).toEqual({ ...ketQua, idempotent_replay: true });
+      expect(await namCot(moi, D)).toEqual(hienTai);
+      expect(await anhDuLieu(moi)).toEqual(anh);
+    });
+  });
+
+  it('replay sau MỞ KHOÁ (chưa chốt lại): thân mới không ghi gì vào bản nháp đang mở', async () => {
+    // Mở khoá giữ nguyên 5 cột nên thân cũ ghi lại đúng các số đó — ca này không đỏ trên thân cũ; nó khoá
+    // việc thân mới không chạm bản nháp (trạng thái DRAFT, lý do UNLOCKED, không sinh lại phân bổ).
+    await ca(moi, async () => {
+      const { args, ketQua } = await chot(moi, 'CLOSE', 'k1');
+      await moi.query(
+        `SELECT public._profit_state_change_v2('UNLOCK', $1, $2::date, $3, $4, ARRAY[$5::uuid], NULL)`,
+        [ORG, AUG, 'Mo khoa thu nghiem', 'khoa-mo-khoa-u1', D]);
+      const anh = await anhDuLieu(moi);
+      expect(await goi(moi, args)).toEqual({ ...ketQua, idempotent_replay: true });
+      expect(await anhDuLieu(moi)).toEqual(anh);
+      expect((await moi.query<{ status: string }>(
+        `SELECT status FROM public.profit_monthly WHERE building_id = $1 AND period_month = $2::date`, [D, AUG])).rows)
+        .toEqual([{ status: 'DRAFT' }]);
+    });
+  });
+
   it('cùng khoá nhưng KHÁC nội dung vẫn bị phần lõi từ chối 23505 (nhánh trả sớm không nuốt lỗi)', async () => {
     await ca(moi, async () => {
       const { args } = await chot(moi, 'CLOSE', 'k1');
