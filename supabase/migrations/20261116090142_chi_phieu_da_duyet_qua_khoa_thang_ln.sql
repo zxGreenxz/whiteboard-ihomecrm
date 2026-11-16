@@ -18,7 +18,10 @@
 --   lại. Gặp thật 16/11/2026 với một phiếu hoa hồng ngày tháng 09/2026.
 --   Ghi sổ không đổi lợi nhuận tháng: public.fa_accrual_allocations (nguồn của Chốt LN và dấu
 --   vân tay chốt) chỉ đọc phiếu đã duyệt, số tiền, kỳ, hạng mục — không đọc cột ghi sổ hay
---   sổ quỹ. Tiền chỉ vào sổ quỹ ở NGÀY CHI, do khoá sổ quỹ (posting lines) canh riêng.
+--   sổ quỹ. Tiền vào sổ quỹ ở ngày chi do người chi chọn. Khoá SỔ QUỸ không đổi và vẫn áp
+--   riêng: bút toán theo ngày chi (a01_ie_posting_lines_check_lock), đầu phiếu theo NGÀY PHIẾU
+--   (trg_ie_check_lock_*: sổ đã chốt & bàn giao qua ngày phiếu thì ghi sổ vẫn bị
+--   [CASHBOOK_CLOSED]).
 --
 -- LÀM GÌ
 --   Chỉ thay public.income_expenses_check_profit_lock(): DỰNG TỪ THÂN ĐANG CHẠY production
@@ -27,9 +30,12 @@
 --     A. GHI SỔ phiếu đã duyệt: OLD đã duyệt, chưa xoá, posting_status UNPOSTED / REVERSED →
 --        NEW POSTED; chỉ đổi các cột dấu ghi sổ {posting_status, active_posting_id_v2,
 --        posting_id, reversed_by_posting_id, posted_at_v2, posting_version, account_id};
---        có token FINANCE_V2_LIFECYCLE của chính phiếu trong chính transaction (chỉ RPC vòng
---        đời V2 cấp qua finance_v2_begin_canonical_op); bút toán được trỏ tới là bút toán
---        POSTING thật của phiếu, chưa bị đảo, đúng sổ quỹ ghi lên đầu phiếu.
+--        có token FINANCE_V2_LIFECYCLE của chính phiếu trong chính transaction; bút toán được
+--        trỏ tới là bút toán POSTING thật của phiếu, chưa bị đảo, đúng sổ quỹ ghi lên đầu phiếu.
+--        Token do finance_v2_begin_canonical_op cấp cho mọi RPC vòng đời V2, và một số writer
+--        definer khác cũng tự cấp (phí cố định, cọc giữ chỗ, huỷ…). Vì vậy ngoại lệ mở cho MỌI
+--        đường definer ghi sổ một phiếu đã duyệt chờ ghi sổ, không riêng nút Chi; rào thật là
+--        phép so delta + bút toán thật, không phải token.
 --     B. THÊM ảnh chứng từ khi phiếu đã duyệt còn chờ ghi sổ: scope ANNOTATE, chỉ cột
 --        attachments đổi và bản mới chứa đủ mọi ảnh cũ (chỉ thêm, không gỡ).
 --
@@ -37,7 +43,7 @@
 --   Lập, sửa, xoá, huỷ, DUYỆT, huỷ duyệt, khôi phục, hoàn tác ghi sổ (đảo bút toán), đổi số
 --   tiền / ngày / toà / hạng mục, gỡ ảnh, sửa ghi chú, thêm ảnh lên phiếu đã ghi sổ hoặc chưa
 --   duyệt. "Duyệt và Chi" một phiếu chờ duyệt của tháng đã chốt vẫn bị chặn ở bước duyệt.
---   Ghi sổ theo đường cũ (cầu a85, không token vòng đời V2) không được miễn.
+--   Ghi sổ không có token vòng đời V2 (sửa tay, cầu a85 đường cũ) không được miễn.
 --
 -- KHÔNG ĐỤNG
 --   Không sửa dữ liệu. Không đổi hàm ghi sổ, hàm bổ sung ảnh, khoá sổ quỹ, cửa chặn chốt,
@@ -93,8 +99,8 @@ BEGIN
   END IF;
   v_md5 := md5(pg_get_functiondef('public.income_expenses_check_profit_lock()'::regprocedure));
   -- 6e016a8f…: thân 20261022172918 đang chạy production.
-  -- 21708165…: thân của chính file này (lượt hai).
-  IF v_md5 <> ALL (ARRAY['6e016a8f60e83129cfb6cf2ad2829fb5', '217081650d1ed2267247bcdd8e21e5dc']) THEN
+  -- 7b53d80e…: thân của chính file này (lượt hai).
+  IF v_md5 <> ALL (ARRAY['6e016a8f60e83129cfb6cf2ad2829fb5', '7b53d80e714d95f125199d55201d928f']) THEN
     RAISE EXCEPTION 'public.income_expenses_check_profit_lock() KHÁC bản đã rà (md5 %) — DỪNG, chụp lại pg_get_functiondef rồi rà lại.',
       v_md5 USING ERRCODE = '55000';
   END IF;
@@ -181,7 +187,8 @@ BEGIN
     -- kiểm, không tin lời writer:
     --   · phiếu đã duyệt, chưa xoá, đang chờ ghi sổ (UNPOSTED / REVERSED) sang POSTED;
     --   · chỉ các cột dấu ghi sổ đổi (duyệt, số tiền, ngày, toà, hạng mục… giữ nguyên);
-    --   · token vòng đời V2 của CHÍNH phiếu trong CHÍNH transaction (chỉ RPC vòng đời V2 cấp);
+    --   · token vòng đời V2 của CHÍNH phiếu trong CHÍNH transaction (chỉ hàm definer cấp được,
+    --     người dùng không tự đặt; không riêng hàm của nút Chi — nên các vế còn lại mới là rào);
     --   · bút toán được trỏ tới là bút toán POSTING thật của phiếu, chưa bị đảo, đúng sổ quỹ
     --     vừa ghi lên đầu phiếu.
     IF OLD.approval_status = 'APPROVED'

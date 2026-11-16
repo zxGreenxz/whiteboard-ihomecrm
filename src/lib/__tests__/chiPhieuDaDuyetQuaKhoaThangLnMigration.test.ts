@@ -533,6 +533,45 @@ describe('ảnh chứng từ của lần chi', () => {
       }
     });
   });
+
+  it('phiếu đã xoá mềm: thêm ảnh vẫn chặn', async () => {
+    await trongGiaoDich(async () => {
+      await chay('ALTER TABLE public.income_expenses DISABLE TRIGGER a02_ie_profit_lock_upd');
+      await db.query('UPDATE public.income_expenses SET deleted_at = now() WHERE id = $1', [P.choChi]);
+      await chay('ALTER TABLE public.income_expenses ENABLE TRIGGER a02_ie_profit_lock_upd');
+      await scope(P.choChi, 'ANNOTATE');
+      await biChan(THEM_ANH, [P.choChi, j([ANH_CU, ANH_MOI])]);
+    });
+  });
+});
+
+// Test trên chép tay hai câu UPDATE của RPC. Phép so tĩnh này buộc bản chép và danh sách cột được
+// miễn trong trigger khớp định nghĩa SỐNG của RPC: RPC đóng dấu thêm một cột thì ca này đỏ, thay vì
+// test hành vi vẫn xanh còn nút Chi hỏng lại trên production.
+describe('danh sách cột miễn khớp RPC sống', () => {
+  const cotSet = (set: string) => [...set.matchAll(/([a-z_0-9]+)\s*=/g)].map((m) => m[1]).sort();
+
+  it('câu đóng dấu ghi sổ của post_approved_income_expense_v2 đổi đúng các cột được miễn + updated_at', () => {
+    const rpc = liveFunctionSql('public', 'post_approved_income_expense_v2');
+    const set = /UPDATE public\.income_expenses ie\s+SET([\s\S]*?)WHERE ie\.id = v_voucher/.exec(rpc)?.[1] ?? '';
+    const cot = cotSet(set);
+    expect(cot.length).toBeGreaterThan(0);
+    const than = sliceFunction(FILE, DAU_HAM, '$function$;');
+    const mien = /to_jsonb\(OLD\) - v_mien - ARRAY\[([^\]]+)\]\)\s+IS NOT DISTINCT FROM\s+\(to_jsonb\(NEW\) - v_mien - ARRAY\[([^\]]+)\]\) THEN\s+IF EXISTS/
+      .exec(than);
+    const ten = (x: string | undefined) => [...(x ?? '').matchAll(/'([a-z_0-9]+)'/g)].map((m) => m[1]).sort();
+    expect(ten(mien?.[1])).toEqual(ten(mien?.[2]));
+    expect(than).toMatch(/v_mien := ARRAY\[[^\]]*'updated_at'\]/);
+    expect(cot).toEqual([...ten(mien?.[1]), 'updated_at'].sort());
+    expect(cotSet(DONG_DAU.slice(DONG_DAU.indexOf('SET')))).toEqual(cot);
+  });
+
+  it('annotate_income_expense_v1 chỉ ghi attachments và notes lên đầu phiếu', () => {
+    const rpc = liveFunctionSql('public', 'annotate_income_expense_v1');
+    const cau = [...rpc.matchAll(/UPDATE public\.income_expenses\s+SET([\s\S]*?)WHERE id = p_voucher/g)];
+    expect(cau).toHaveLength(1);
+    expect(cotSet(cau[0][1])).toEqual(['attachments', 'notes']);
+  });
 });
 
 describe('khoá cũ và ngoại lệ cũ giữ nguyên', () => {

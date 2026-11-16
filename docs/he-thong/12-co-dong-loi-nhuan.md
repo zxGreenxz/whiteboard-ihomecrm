@@ -139,7 +139,9 @@ Không cần mở khoá/xoá allocation bằng nhiều DML client như flow cũ.
   / Thu và tự kiểm delta: (A) đóng dấu ghi sổ `UNPOSTED`/`REVERSED` → `POSTED` của phiếu đã duyệt, chỉ các cột dấu
   ghi sổ đổi, có token vòng đời V2 của chính phiếu, bút toán trỏ tới là bút toán thật chưa đảo đúng sổ quỹ; (B) scope
   `ANNOTATE` chỉ **thêm** ảnh chứng từ khi phiếu đã duyệt còn chờ ghi sổ. Duyệt, huỷ duyệt, hoàn tác ghi sổ, huỷ,
-  sửa, gỡ ảnh, sửa ghi chú vẫn bị khoá; ngày chi do khoá sổ quỹ canh riêng.
+  sửa, gỡ ảnh, sửa ghi chú vẫn bị khoá. Token do mọi writer definer của vòng đời V2 cấp nên (A) mở cho mọi đường
+  definer ghi sổ phiếu đã duyệt, không riêng nút Chi. Khoá **sổ quỹ** không đổi: sổ đã chốt & bàn giao qua **ngày
+  phiếu** thì ghi sổ vẫn bị `[CASHBOOK_CLOSED]`.
 - **Phát sinh sau chốt**: `public.profit_post_lock_vouchers_v1(p_from, p_to, p_building_ids)` (chỉ đọc, DEFINER,
   quyền `can_access_building`, anon ⇒ 42501) trả toà×tháng đã chốt và các phiếu đã duyệt đóng góp KQKD vào tháng
   đã chốt (theo `fa_accrual_allocations`) mà **tạo hoặc duyệt sau lúc chốt** — thu tiền hoá đơn tháng đã chốt, hoặc
