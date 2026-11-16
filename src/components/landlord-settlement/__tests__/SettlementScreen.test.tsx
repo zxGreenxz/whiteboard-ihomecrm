@@ -243,8 +243,9 @@ it('Bàn giao — link chủ nhà, tháng đã chốt chưa xác nhận: có nú
   expect(m.confirm).toHaveBeenCalledWith({ token: 'tok-abc', month: '2026-10-01', revision: 3, note: 'Khớp sổ' });
 });
 
-it('Bàn giao — 40001 (vừa mở chốt / chốt lại): báo tải lại, không báo thành công; trang nạp lần chốt mới vẫn GIỮ ghi chú đang gõ, gửi lại đúng lần chốt mới', async () => {
-  m.confirm.mockRejectedValueOnce({ code: '40001', message: 'Bên quản lý vừa chốt lại tháng này' });
+// PT409 = mã server trả từ 20261116015253; 40001 = mã cũ (PostgREST tự chạy lại tới 504) vẫn nhận.
+it.each(['PT409', '40001'])('Bàn giao — %s (vừa mở chốt / chốt lại): báo tải lại, không báo thành công; trang nạp lần chốt mới vẫn GIỮ ghi chú đang gõ, gửi lại đúng lần chốt mới', async (code) => {
+  m.confirm.mockRejectedValueOnce({ code, message: 'Bên quản lý vừa chốt lại tháng này' });
   const p = { mode: 'public' as const, buildingId: undefined, token: 'tok' };
   const { rerender } = ve({ ...p, month: closedMonth() });
   fireEvent.click(tab(/Bàn giao/));

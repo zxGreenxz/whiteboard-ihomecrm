@@ -17,7 +17,7 @@ import { LoadingState } from '@/components/loading/LoadingState';
 //    chuẩn hoá 18 binding thành 1 binding 18 phạm vi — tương đương hoàn toàn.
 //
 // 2. KHOÁ CHỐNG GHI CHEN. `version` đọc lúc mở hộp thoại được gửi lại khi lưu.
-//    Máy chủ so lệch thì trả 40001 và ta mời tải lại, thay vì âm thầm đè lên
+//    Máy chủ so lệch thì trả PT409 (HTTP 409) và ta mời tải lại, thay vì âm thầm đè lên
 //    thay đổi của người khác.
 
 import { useEffect, useMemo, useRef, useState } from 'react';

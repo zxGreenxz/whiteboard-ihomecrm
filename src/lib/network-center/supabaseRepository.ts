@@ -177,7 +177,8 @@ function denialMessage(
   if (stableError.includes("NETWORK_CENTER_OFF")) {
     return "Network Center đang tắt cho tòa nhà này";
   }
-  if (rpcName === "network_center_update_settings_v1" && error.code === "40001") {
+  // Phiên bản cài đặt đã đổi: PT409 (HTTP 409) từ 20261116015253; 40001 là mã cũ.
+  if (rpcName === "network_center_update_settings_v1" && (error.code === "PT409" || error.code === "40001")) {
     return "Cài đặt đã thay đổi; vui lòng tải lại trước khi lưu";
   }
   if (error.code === "42501") return `Bạn không có quyền ${operationName(rpcName)}.`;

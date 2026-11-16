@@ -153,9 +153,10 @@ export const useCancelVoucherFlex = () => {
           // Cờ chế độ phía client đã cũ — kéo lại rồi mới báo.
           queryClient.invalidateQueries({ queryKey: ["finance-v2-routes"] });
         }
-        // 40001 = CAS chặn: người khác vừa đụng phiếu. Kéo lại danh sách để lần
-        // bấm sau cầm đúng version, nếu không người dùng bấm mãi vẫn 40001.
-        if (error.code === "40001") {
+        // CAS chặn: người khác vừa đụng phiếu. Kéo lại danh sách để lần bấm sau
+        // cầm đúng version, nếu không người dùng bấm mãi vẫn bị chặn. Server trả
+        // PT409 (HTTP 409) từ 20261116015253; 40001 là mã cũ (PostgREST tự chạy lại tới 504).
+        if (error.code === "PT409" || error.code === "40001") {
           queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
           queryClient.invalidateQueries({ queryKey: ["flex-cancel-eligibility"] });
         }

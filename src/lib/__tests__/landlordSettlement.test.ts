@@ -274,6 +274,11 @@ describe('câu báo lỗi', () => {
     const msg = 'Còn 2 phiếu chờ duyệt trong tháng 01/2025 — duyệt hoặc huỷ trước khi chốt';
     expect(landlordErrorMessage({ code: '55000', message: msg }, 'x')).toBe(msg);
   });
+  it('xung đột lần chốt / cài đặt (PT409 từ 20261116015253, 40001 cũ) hiện nguyên câu tiếng Việt của server', () => {
+    const msg = 'Bên quản lý vừa mở chốt hoặc chốt lại tháng 10/2026 — tải lại trang để xem số mới rồi xác nhận';
+    expect(landlordErrorMessage({ code: 'PT409', message: msg }, 'x')).toBe(msg);
+    expect(landlordErrorMessage({ code: '40001', message: msg }, 'x')).toBe(msg);
+  });
   it('lỗi thô của Postgres đi qua friendlyError, không lộ câu tiếng Anh', () => {
     const out = landlordErrorMessage({ code: '42501', message: 'permission denied for function landlord_settlement_month_v1' }, 'Chưa tải được');
     expect(out).not.toMatch(/permission denied/);

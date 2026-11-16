@@ -81,6 +81,7 @@ describe('sign exact persisted draft, without automatic money',()=>{
     expect(()=>buildContractSigningArgs(id,{...input,boundary:{state:'VERIFIED',readings:[{...input.boundary.readings[0],reading:Infinity}]}})).toThrow();
   });
   it('classifies stale/hold/permission failures without hiding signing status',()=>{
+    expect(signingErrorMessage({code:'PT409'})).toMatch(/phiên bản/i);
     expect(signingErrorMessage({code:'40001'})).toMatch(/phiên bản/i);
     expect(signingErrorMessage({code:'42501'})).toMatch(/quyền/);
     expect(signingErrorMessage({code:'55P03'})).toMatch(/giữ/);

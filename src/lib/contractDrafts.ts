@@ -168,7 +168,8 @@ export async function markDraftDocx(blob: Blob, revision: number): Promise<Blob>
 export function draftErrorMessage(error: unknown): string {
   if (error instanceof FinancialWorkflowError) return workflowFeedbackDescription(error);
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
-  if (code === '40001') return 'Bản nháp đã được người khác cập nhật. Đóng và mở lại để tải phiên bản mới; nội dung đang nhập vẫn được giữ trong cửa sổ này.';
+  // PT409 (HTTP 409) từ 20261116015253; 40001 là mã cũ mà PostgREST tự chạy lại tới 504.
+  if (code === 'PT409' || code === '40001') return 'Bản nháp đã được người khác cập nhật. Đóng và mở lại để tải phiên bản mới; nội dung đang nhập vẫn được giữ trong cửa sổ này.';
   if (code === '42501' || code === '28000') return 'Bạn không có quyền thực hiện thao tác với bản nháp này.';
   if (code === '22023' || error instanceof z.ZodError) return 'Thông tin bản nháp chưa hợp lệ. Kiểm tra lại các trường đã nhập.';
   if (code === '55000') {

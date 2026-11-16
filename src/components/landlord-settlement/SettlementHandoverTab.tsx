@@ -1,6 +1,6 @@
 // Tab "Bàn giao" của Quyết toán vận hành v3: ghi chú bàn giao của quản lý (sửa được sau khi chốt) và xác
 // nhận "đã xem số liệu" của chủ nhà trên link /qt/:token. Cả hai gắn với ĐÚNG lần chốt đang hiện
-// (closed.revision): bên quản lý mở chốt / chốt lại thì server từ chối (40001) và trang nạp lại.
+// (closed.revision): bên quản lý mở chốt / chốt lại thì server từ chối (PT409 ⇒ HTTP 409) và trang nạp lại.
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CheckCircle2, Clock } from 'lucide-react';
@@ -21,6 +21,8 @@ import {
 import { Eyebrow, SectionCard } from './SettlementParts';
 
 const errCode = (e: unknown) => (e && typeof e === 'object' ? (e as { code?: unknown }).code : undefined);
+// Lần chốt đã đổi. Server trả PT409 từ 20261116015253; 40001 là mã cũ (PostgREST tự chạy lại tới 504).
+const laLanChotDaDoi = (e: unknown) => errCode(e) === 'PT409' || errCode(e) === '40001';
 
 /** Màn quản trị, tháng đã chốt: sửa ghi chú bàn giao của lần chốt `revision`. */
 function AdminNoteEditor({ month, buildingId, revision }: { month: SettlementMonth; buildingId: string; revision: number }) {
@@ -49,7 +51,7 @@ function AdminNoteEditor({ month, buildingId, revision }: { month: SettlementMon
       else toast.success('Đã lưu ghi chú bàn giao');
     } catch (e) {
       const msg = landlordErrorMessage(e, 'Chưa lưu được ghi chú bàn giao');
-      setError(errCode(e) === '40001' ? `${msg} Trang đang nạp lại số mới.` : msg);
+      setError(laLanChotDaDoi(e) ? `${msg} Trang đang nạp lại số mới.` : msg);
     }
   };
 
@@ -101,7 +103,7 @@ function LandlordConfirmForm({ month, submitConfirm, revision, disabled }: {
         toast.success(`Đã xác nhận đã xem số liệu ${monthLabel(month.period_month).toLowerCase()}`);
       }
     } catch (e) {
-      setError(errCode(e) === '40001'
+      setError(laLanChotDaDoi(e)
         ? 'Bên quản lý vừa mở chốt hoặc chốt lại tháng này — trang đang tải lại số mới, xem lại rồi xác nhận.'
         : landlordErrorMessage(e, 'Chưa xác nhận được'));
     } finally {

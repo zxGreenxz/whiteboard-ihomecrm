@@ -57,7 +57,7 @@ it('sửa ghi chú bàn giao: gửi đúng tháng + revision; biên nhận lệc
   await expect(result.current.mutateAsync({ buildingId: TOA, month: '2026-10-01', revision: 3, note: null })).rejects.toThrow();
 });
 
-it('chủ nhà xác nhận: gửi token + tháng + revision; lỗi 40001 vẫn nạp lại gói của link', async () => {
+it('chủ nhà xác nhận: gửi token + tháng + revision; lỗi PT409 (lần chốt đã đổi) vẫn nạp lại gói của link', async () => {
   const invalidate = vi.spyOn(qc, 'invalidateQueries');
   state.rpc.mockResolvedValue({ data: { status: 'CONFIRMED', confirmed_at: '2026-11-03T02:12:00Z' }, error: null });
   const { result } = renderHook(() => useConfirmLandlordMonth(), { wrapper });
@@ -66,10 +66,10 @@ it('chủ nhà xác nhận: gửi token + tháng + revision; lỗi 40001 vẫn n
   expect(state.rpc).toHaveBeenCalledWith('landlord_settlement_confirm_v1', {
     p_token: 'tok', p_month: '2026-10-01', p_revision: 3, p_note: null,
   });
-  state.rpc.mockResolvedValue({ data: null, error: { code: '40001', message: 'Bên quản lý vừa chốt lại tháng này' } });
+  state.rpc.mockResolvedValue({ data: null, error: { code: 'PT409', message: 'Bên quản lý vừa chốt lại tháng này' } });
   invalidate.mockClear();
   await expect(result.current.mutateAsync({ token: 'tok', month: '2026-10-01', revision: 3, note: null }))
-    .rejects.toMatchObject({ code: '40001' });
+    .rejects.toMatchObject({ code: 'PT409' });
   await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: landlordSettlementKeys.publicAll('tok') }));
   // biên nhận thiếu trường ⇒ không báo đã xác nhận
   state.rpc.mockResolvedValue({ data: { status: 'CONFIRMED' }, error: null });
