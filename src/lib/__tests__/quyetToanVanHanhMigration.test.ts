@@ -295,7 +295,7 @@ const HAM_PT409 = [
   "public.landlord_settlement_confirm_v1(text,date,integer,text)",
   "public.landlord_settlement_note_update_v1(uuid,date,integer,text)",
 ];
-let ketQuaPt409: { ham: string; truoc: string; sau: string; cu: string; moi: string }[] = [];
+const ketQuaPt409: { ham: string; truoc: string; sau: string; cu: string; moi: string }[] = [];
 async function apPt409() {
   const sql = readFileSync(FILE_PT409, "utf8").replace(/\r/g, "");
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
