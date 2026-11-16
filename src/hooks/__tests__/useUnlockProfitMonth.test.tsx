@@ -160,12 +160,16 @@ describe("useUnlockProfitMonth — mở khoá có lý do qua profit_unlock_v2", 
   });
 });
 
-it('phản hồi chưa xác nhận không báo thành công và không gọi lại cùng tháng',async()=>{
+// 16/11/2026: lần bấm sau KHÔNG bị chặn vĩnh viễn nữa — hỏi lại máy chủ bằng ĐÚNG khoá của lượt
+// trước (máy chủ idempotent theo khoá), không bao giờ gửi khoá mới khi lượt trước chưa rõ kết quả.
+it('phản hồi chưa xác nhận không báo thành công; bấm lại cùng tháng chỉ hỏi lại bằng đúng khoá cũ',async()=>{
  state.goiHam.mockResolvedValue({data:null,error:null});
  const {result}=dungHook();
  await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('Chưa xác nhận');});
- await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('Chưa xác nhận');});
- expect(state.goiHam).toHaveBeenCalledTimes(1);expect(state.toastSuccess).not.toHaveBeenCalled();
+ await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toMatchObject({outcome:'unknown'});});
+ expect(state.goiHam).toHaveBeenCalledTimes(2);expect(state.toastSuccess).not.toHaveBeenCalled();
+ const khoa=state.goiHam.mock.calls.map(call=>(call[1] as {p_idempotency_key:string}).p_idempotency_key);
+ expect(khoa[0]).toMatch(/^profit-unlock-[0-9a-f-]{36}$/);expect(khoa[1]).toBe(khoa[0]);
 });
 
 describe("unlockProfitMonthErrorMessage", () => {
