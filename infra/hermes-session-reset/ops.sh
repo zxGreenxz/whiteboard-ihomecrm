@@ -9,6 +9,8 @@
 #   bash ops.sh uninstall --profile owner [--purge-settings] [--activate restart|none] [--apply]
 #
 # Không có --apply thì chỉ in kế hoạch. Không in config.yaml/.env; chỉ đọc vài khóa của plugin.
+# Container: --container <tên> nếu truyền; không thì hermes-<hồ sơ> nếu có container tên đó (trợ lý có home riêng), còn lại
+# hermes-owner (hồ sơ nằm chung home của owner, vd. tkt). Dòng đầu in container đã chọn.
 set -euo pipefail
 
 PLUGIN=ihome-session-reset
@@ -20,7 +22,8 @@ HERMES_PY=/opt/hermes/.venv/bin/python
 REGISTER_MARK="$PLUGIN: đã đăng ký hook pre_gateway_dispatch"   # dòng log do register() ghi
 GATEWAY_MARK="tiến trình gateway"                                 # chỉ tiến trình `hermes … gateway run`
 
-CONTAINER=hermes-owner
+DEFAULT_CONTAINER=hermes-owner
+CONTAINER=""                 # rỗng ⇒ chọn theo hồ sơ sau khi đọc tham số (xem đầu file)
 WORKER=ihome-zalo-worker
 PROFILE=""
 MODE=""
@@ -37,7 +40,7 @@ BACKUP_ROOT="${IHOME_BACKUP_ROOT:-/root/ihome-hermes-backups/session-reset}"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'DỪNG: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
 
 COMMAND="${1:-}"
 [ -n "$COMMAND" ] || usage
@@ -65,6 +68,19 @@ case "$COMMAND" in probe|install|set-mode|status|uninstall) ;; *) usage ;; esac
 [[ "$PROFILE" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]] || die "--profile <tên hồ sơ> bắt buộc (vd. tkt, owner)"
 case "$ACTIVATE" in live|restart|none) ;; *) die "--activate phải là live|restart|none" ;; esac
 [[ "$KEEP_BACKUPS" =~ ^[1-9][0-9]*$ ]] || die "IHOME_KEEP_BACKUPS phải là số nguyên dương"
+
+# Không truyền --container: trợ lý có home riêng chạy trong container hermes-<hồ sơ>; hồ sơ không có container riêng (tkt, tkh…) nằm
+# chung home của owner ⇒ hermes-owner như trước. Chỉ hỏi Docker tên có phải CONTAINER hay không (ảnh/volume trùng tên không tính).
+if [ -n "$CONTAINER" ]; then
+  CONTAINER_FROM="theo --container"
+elif docker inspect --type container "hermes-$PROFILE" >/dev/null 2>&1; then
+  CONTAINER="hermes-$PROFILE"
+  CONTAINER_FROM="container riêng của hồ sơ $PROFILE"
+else
+  CONTAINER="$DEFAULT_CONTAINER"
+  CONTAINER_FROM="mặc định: không có container hermes-$PROFILE"
+fi
+say "Container: $CONTAINER ($CONTAINER_FROM)"
 
 # Lệnh ghi/đổi chỉ chạy khi có --apply; không thì in kế hoạch.
 act() {

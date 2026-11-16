@@ -1286,6 +1286,189 @@ class LearningAuditTest(unittest.TestCase):
         self.assertEqual(fx.state.read_bytes(), kept)  # không ghi trạng thái rỗng (lần sau không bị coi như lần đầu)
         self.assertEqual(fx.outboxes()[-1]['profiles'], [])
 
+    # ---------------------------------------------------------------- nhiều home (profilesRoots)
+
+    def other_home(self, name: str) -> Path:
+        """Home riêng của một trợ lý khác: <tmp>/homes/<tên>/.hermes/profiles/<tên>. Trả thư mục hồ sơ."""
+        prof = self.tmp / 'homes' / name / '.hermes' / 'profiles' / name
+        (prof / 'skills' / 'productivity').mkdir(parents=True)
+        (prof / 'memories').mkdir(parents=True)
+        make_state_db(prof / 'state.db', [])
+        return prof
+
+    def test_one_root_gives_the_same_report_outbox_and_state_as_before(self):
+        fx = self.fx
+        fx.skill(fx.owner, 'productivity/crm-task-management', NEW_TASK_SKILL)
+        (fx.owner / 'memories' / 'MEMORY.md').write_text('Tạo việc CRM bằng crm_action_run task.create.', encoding='utf-8')
+        make_state_db(fx.owner / 'state.db', [('s1', 'zalo_personal', 'assistant', NOW.timestamp() - 60, 'CRM hiện không cho phép khóa phòng.')])
+        plain = la.run_audit(fx.config(), NOW, use_state=False)
+        report = plain[0]
+        # Khuôn báo cáo một gốc không thêm khoá nào (job nạp, trang duyệt và người vận hành đọc đúng các khoá này).
+        self.assertEqual(list(report), ['schemaVersion', 'generatedAt', 'firstRun', 'window', 'catalog', 'official', 'profiles', 'totals',
+                                        'degraded', 'summaryVi'])
+        self.assertEqual([p['profile'] for p in report['profiles']], ['owner', 'tkt'])
+        self.assertEqual(len(lessons(profile(report, 'owner'))), 1)
+        self.assertEqual(profile(report, 'owner')['refusals']['count'], 1)
+        # Cùng gốc đó khai qua profilesRoots (một mục) hay qua profilesRoot: báo cáo, outbox, trạng thái bằng nhau từng khoá.
+        self.assertEqual(la.run_audit(fx.config(profilesRoots=[str(fx.profiles)]), NOW, use_state=False), plain)
+        self.assertEqual(la.run_audit(fx.config(profilesRoot=str(self.tmp / 'khong-dung'), profilesRoots=[str(fx.profiles)]), NOW,
+                                      use_state=False), plain)
+        # Gốc duy nhất hỏng: vẫn khoá cũ profilesRootError + câu tóm tắt cũ, thêm danh sách từng gốc.
+        broken, outbox, state = la.run_audit(fx.config(profilesRoot=str(self.tmp / 'khong-co')), NOW, use_state=False)
+        self.assertEqual((broken['profilesRootError'], broken['profiles'], outbox['profiles'], state), ('OSError', [], [], None))
+        self.assertEqual(broken['profilesRootErrors'], [{'root': str(self.tmp / 'khong-co'), 'error': 'OSError'}])
+        self.assertNotIn('profilesRoots', broken)
+        self.assertIn('• LỖI: thư mục hồ sơ không kiểm được (OSError) — không kiểm hồ sơ nào\n', broken['summaryVi'])
+        self.assertEqual(broken['degraded'], ['profiles_root:OSError'])
+
+    def test_several_roots_are_scanned_each_pinned_to_its_own_root(self):
+        fx = self.fx
+        other = self.other_home('tro-ly-2')
+        (fx.owner / 'memories' / 'MEMORY.md').write_text('Tạo việc CRM bằng crm_action_run task.create.', encoding='utf-8')
+        (other / 'memories' / 'MEMORY.md').write_text('Tạo phiếu chi bằng crm_action_run expense.create.', encoding='utf-8')
+        make_state_db(other / 'state.db', [('s9', 'zalo_personal', 'assistant', NOW.timestamp() - 60, 'CRM hiện không cho phép khóa phòng.')])
+        roots = [str(fx.profiles), str(other.parent)]
+        cfg = fx.config(profilesRoots=roots, realProfiles=['owner', 'tro-ly-2'])
+        report, outbox, state = la.run_audit(cfg, NOW, use_state=False)
+        self.assertEqual([p['profile'] for p in report['profiles']], ['owner', 'tkt', 'tro-ly-2'])
+        self.assertEqual(report['profilesRoots'], roots)
+        self.assertNotIn('profilesRootError', report)
+        self.assertEqual(report['degraded'], [])
+        self.assertIn('expense.create', lessons(profile(report, 'tro-ly-2'))[0]['content'])
+        self.assertIn('task.create', lessons(profile(report, 'owner'))[0]['content'])
+        self.assertEqual((profile(report, 'tro-ly-2')['real'], profile(report, 'tro-ly-2')['refusals']['count']), (True, 1))
+        self.assertEqual([p['profile'] for p in outbox['profiles']], ['owner', 'tkt', 'tro-ly-2'])
+        self.assertEqual(sorted(state['profiles']), ['owner', 'tkt', 'tro-ly-2'])
+        # Lần sau chỉ báo mục mới của TỪNG hồ sơ: trạng thái khoá theo tên hồ sơ, không lẫn giữa hai home.
+        self.assertEqual(run_main([*fx.argv(NOW), '--profiles-root', roots[1], '--real-profiles', 'owner,tro-ly-2'])[0], 0)
+        with (other / 'memories' / 'MEMORY.md').open('a', encoding='utf-8') as handle:
+            handle.write('\n§\nKhoá phòng bằng crm_action_run task.create trước khi nhận cọc.')
+        later, _, _ = la.run_audit(cfg, NOW + timedelta(hours=1), use_state=True)
+        self.assertEqual((len(lessons(profile(later, 'owner'))), len(lessons(profile(later, 'tro-ly-2')))), (0, 1))
+        # Hồ sơ phải nằm trong gốc CỦA NÓ: gốc thứ hai "liệt kê" một thư mục nằm dưới gốc thứ nhất ⇒ không đọc, chỉ báo.
+        ghost = fx.profiles / '.ghost'
+        (ghost / 'memories').mkdir(parents=True)
+        (ghost / 'memories' / 'MEMORY.md').write_text('GHOST-LESSON: xoá phiếu bằng crm_action_run expense.create.', encoding='utf-8')
+        listed = la.list_profiles
+        with mock.patch.object(la, 'list_profiles', lambda root: [ghost] if Path(root) == other.parent else listed(root)):
+            crossed, crossed_box, _ = la.run_audit(cfg, NOW, use_state=False)
+        self.assertEqual([p['profile'] for p in crossed['profiles']], ['owner', 'tkt', '.ghost'])
+        self.assertEqual([f['kind'] for f in profile(crossed, '.ghost')['findings']], ['unsafe_profile_file'])
+        self.assertNotIn('GHOST-LESSON', json.dumps([crossed, crossed_box], ensure_ascii=False))
+        self.assertEqual([p['profile'] for p in crossed_box['profiles']], ['owner', 'tkt'])
+
+    def test_same_profile_name_in_two_homes_is_scanned_once_and_reported(self):
+        fx = self.fx
+        second = Fixture(self.tmp / 'second')
+        (fx.owner / 'memories' / 'MEMORY.md').write_text('HOME-A: tạo việc CRM bằng crm_action_run task.create.', encoding='utf-8')
+        (second.owner / 'memories' / 'MEMORY.md').write_text('HOME-B: tạo phiếu chi bằng crm_action_run expense.create.', encoding='utf-8')
+        roots = [str(fx.profiles), str(second.profiles)]
+        report, outbox, state = la.run_audit(fx.config(profilesRoots=roots), NOW, use_state=False)
+        # Bản ở gốc đứng trước giữ tên; bản ở gốc sau không quét, không gộp vào đề xuất / outbox / trạng thái.
+        self.assertEqual([p['profile'] for p in report['profiles']], ['owner', 'tkt', 'owner', 'tkt'])
+        kept, skipped = [p for p in report['profiles'] if p['profile'] == 'owner']
+        self.assertIn('HOME-A', lessons(kept)[0]['content'])
+        self.assertEqual((skipped['proposals'], skipped['autoApplied'], skipped['counts'], skipped['refusals']), ([], [], {}, None))
+        self.assertEqual([(f['kind'], f['severity']) for f in skipped['findings']], [('duplicate_profile_name', 'high')])
+        self.assertIn('trùng tên hồ sơ giữa hai home', skipped['errors'][0])
+        self.assertIn(roots[1], skipped['errors'][0])
+        self.assertNotIn('HOME-B', json.dumps([report, outbox, state], ensure_ascii=False))
+        self.assertEqual([p['profile'] for p in outbox['profiles']], ['owner', 'tkt'])
+        self.assertEqual((outbox, state), la.run_audit(fx.config(), NOW, use_state=False)[1:])  # đúng như khi chỉ kiểm home đứng trước
+        self.assertEqual(report['degraded'], ['owner:duplicate_profile', 'tkt:duplicate_profile'])
+        self.assertIn('LỖI: trùng tên hồ sơ giữa hai home', report['summaryVi'])
+        # Thứ tự cấu hình quyết định bản nào giữ tên.
+        swapped, _, _ = la.run_audit(fx.config(profilesRoots=roots[::-1]), NOW, use_state=False)
+        self.assertIn('HOME-B', lessons(swapped['profiles'][0])[0]['content'])
+        self.assertNotIn('HOME-A', json.dumps(swapped, ensure_ascii=False))
+        # Trùng tên là lỗi của lần chạy (mã 1 ⇒ OnFailure), nhưng mọi gốc đều đọc được nên trạng thái vẫn tiến.
+        rc, printed = run_main([*fx.argv(NOW), '--profiles-root', roots[1]])
+        self.assertEqual(rc, 1)
+        self.assertEqual(json.loads(printed)['degraded'], ['owner:duplicate_profile', 'tkt:duplicate_profile'])
+        self.assertEqual(sorted(json.loads(fx.state.read_text(encoding='ascii'))['profiles']), ['owner', 'tkt'])
+
+    def test_one_broken_root_does_not_hide_the_others_but_keeps_the_previous_state(self):
+        fx = self.fx
+        other = self.other_home('tro-ly-2')
+        missing = self.tmp / 'homes' / 'da-go' / '.hermes' / 'profiles'
+        (fx.owner / 'memories' / 'MEMORY.md').write_text('Tạo việc CRM bằng crm_action_run task.create.', encoding='utf-8')
+        (other / 'memories' / 'MEMORY.md').write_text('Tạo phiếu chi bằng crm_action_run expense.create.', encoding='utf-8')
+        argv = [*fx.argv(NOW), '--profiles-root', str(missing), '--profiles-root', str(other.parent), '--real-profiles', 'owner,tro-ly-2']
+        missing.mkdir(parents=True)
+        self.assertEqual(run_main(argv)[0], 0)
+        kept = fx.state.read_bytes()
+        self.assertEqual(sorted(json.loads(kept)['profiles']), ['owner', 'tkt', 'tro-ly-2'])
+        # Lần sau: một gốc bị gỡ, một gốc bị tráo thành symlink; gốc đầu vẫn tốt và có bài học mới.
+        missing.rmdir()
+        with (fx.owner / 'memories' / 'MEMORY.md').open('a', encoding='utf-8') as handle:
+            handle.write('\n§\nKhoá phòng bằng crm_action_run task.create trước khi nhận cọc.')
+        argv[argv.index('--now') + 1] = la.iso(NOW + timedelta(days=1))
+        with fake_symlinks({os.path.realpath(other.parent)}):
+            rc, printed = run_main(argv)
+        self.assertEqual(rc, 1)  # systemd báo lỗi (OnFailure)
+        line = json.loads(printed)
+        self.assertEqual((line['profilesRootError'], line['profiles'], line['degraded']), ('OSError', 2, ['profiles_root:OSError']))
+        report = json.loads((fx.out / 'private' / 'latest.json').read_text(encoding='utf-8'))
+        self.assertEqual(report['profilesRootErrors'], [{'root': str(missing), 'error': 'OSError'}, {'root': str(other.parent), 'error': 'OSError'}])
+        self.assertEqual(report['profilesRootError'], 'OSError')
+        # Gốc tốt vẫn được quét đủ và vẫn có nhịp kiểm + đề xuất mới trong outbox.
+        self.assertEqual([p['profile'] for p in report['profiles']], ['owner', 'tkt'])
+        self.assertIn('Khoá phòng', lessons(profile(report, 'owner'))[0]['content'])
+        self.assertEqual([p['profile'] for p in fx.outboxes()[-1]['profiles']], ['owner', 'tkt'])
+        self.assertEqual(len(lessons(fx.outboxes()[-1]['profiles'][0])), 1)
+        for root in (missing, other.parent):
+            self.assertIn(f'• LỖI: thư mục hồ sơ {root} không kiểm được (OSError) — không kiểm hồ sơ nào dưới gốc này', report['summaryVi'])
+        self.assertIn('• Hồ sơ owner (người dùng thật):', report['summaryVi'])
+        # Bảo thủ: có gốc hỏng thì KHÔNG ghi đè trạng thái — của mọi hồ sơ, kể cả hồ sơ ở gốc tốt.
+        self.assertEqual(fx.state.read_bytes(), kept)
+        # Gốc về lại: bài học mới của owner được gửi lại (SQL bỏ trùng theo khoá), trạng thái tiến.
+        missing.mkdir()
+        argv[argv.index('--now') + 1] = la.iso(NOW + timedelta(days=2))
+        self.assertEqual(run_main(argv)[0], 0)
+        resent = fx.outboxes()[-1]['profiles'][0]['proposals']
+        self.assertEqual([item['dedupeKey'] for item in resent], [item['dedupeKey'] for item in fx.outboxes()[-2]['profiles'][0]['proposals']])
+        self.assertNotEqual(fx.state.read_bytes(), kept)
+
+    def test_config_optional_absent_uses_defaults_and_present_is_read_like_config(self):
+        fx = self.fx
+        other = self.other_home('tro-ly-2')
+        (other / 'memories' / 'MEMORY.md').write_text('Tạo phiếu chi bằng crm_action_run expense.create.', encoding='utf-8')
+        # File vắng (cả thư mục vắng): như không truyền gì.
+        absent = self.tmp / 'etc' / 'ihome-hermes-fleet' / 'learning-audit.json'
+        rc, printed = run_main([*fx.argv(NOW), '--config-optional', str(absent), '--stdout'])
+        self.assertEqual(rc, 0)
+        self.assertEqual([p['profile'] for p in json.loads(printed)['profiles']], ['owner', 'tkt'])
+        self.assertNotIn('profilesRoots', json.loads(printed))
+        # File có: đọc như --config. Không truyền --profiles-root để danh sách gốc của file có hiệu lực.
+        absent.parent.mkdir(parents=True)
+        absent.write_text(json.dumps({'profilesRoots': [str(fx.profiles), str(other.parent)], 'realProfiles': ['owner', 'tro-ly-2']}), encoding='utf-8')
+        without_root = fx.argv(NOW)[2:]
+        self.assertNotIn('--profiles-root', without_root)
+        rc, printed = run_main([*without_root, '--config-optional', str(absent), '--stdout'])
+        self.assertEqual(rc, 0)
+        report = json.loads(printed)
+        self.assertEqual([(p['profile'], p['real']) for p in report['profiles']], [('owner', True), ('tkt', False), ('tro-ly-2', True)])
+        self.assertEqual(report, json.loads(run_main([*without_root, '--config', str(absent), '--stdout'])[1]))
+        # Một --profiles-root trên dòng lệnh thắng danh sách của file: đúng một gốc như trước.
+        rc, printed = run_main([*fx.argv(NOW), '--config-optional', str(absent), '--stdout'])
+        self.assertEqual([p['profile'] for p in json.loads(printed)['profiles']], ['owner', 'tkt'])
+        # File có mà sai (JSON hỏng, khoá lạ, sai kiểu, đường tương đối, lặp, quá 32 gốc) vẫn là lỗi cấu hình — không lặng lẽ dùng mặc định.
+        many = [str(self.tmp / f'home-{index}') for index in range(la.MAX_PROFILE_ROOTS + 1)]
+        for bad in ('{', json.dumps({'profileRoots': []}), json.dumps({'profilesRoots': str(fx.profiles)}),
+                    json.dumps({'profilesRoots': ['tuong/doi']}), json.dumps({'profilesRoots': [str(fx.profiles), str(fx.profiles)]}),
+                    json.dumps({'profilesRoots': [str(fx.profiles), 7]}), json.dumps({'profilesRoots': many})):
+            absent.write_text(bad, encoding='utf-8')
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(la.main([*without_root, '--config-optional', str(absent), '--stdout']), 2, bad)
+            self.assertEqual(json.loads(err.getvalue())['code'], 'config_invalid')
+        absent.write_text(json.dumps({'profilesRoots': many[:la.MAX_PROFILE_ROOTS]}), encoding='utf-8')
+        self.assertEqual(run_main([*without_root, '--config-optional', str(absent), '--stdout'])[0], 1)  # đúng khuôn; 32 gốc đều vắng ⇒ mã 1
+        # --config (bắt buộc) vắng file vẫn là lỗi; hai cờ không dùng cùng lúc.
+        absent.write_text('{}', encoding='utf-8')
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(la.main([*fx.argv(NOW), '--config', str(self.tmp / 'khong-co.json'), '--stdout']), 2)
+            self.assertEqual(la.main([*fx.argv(NOW), '--config', str(absent), '--config-optional', str(absent), '--stdout']), 2)
+
     def test_symlinked_profile_subdirectories_are_refused(self):
         fx = self.fx
         fx.skill(fx.owner, 'productivity/crm-task-management', NEW_TASK_SKILL)

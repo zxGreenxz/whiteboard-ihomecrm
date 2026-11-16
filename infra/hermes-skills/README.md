@@ -12,7 +12,7 @@ tự viết, không gắn phiên bản với connector.
 | Lớp | Ở đâu | Ai sửa | Vai trò |
 | --- | --- | --- | --- |
 | 1. Luật cứng | connector (`infra/hermes-broker`) + DB | PR + migration | Quyền, khuôn tham số, xem trước / xác nhận, tool nghỉ hưu bị ẩn và bị từ chối. Bot hiểu sai thì máy chủ chặn. |
-| 2. Hướng dẫn chuẩn | SOUL + skill trong thư mục này | PR cùng connector | Cách dùng đúng tool hiện hành. Triển khai vào `skills.external_dirs` của hồ sơ. Curator không chọn skill ngoài để sửa / cất (`tools/skill_usage.is_curation_eligible` trả False); `tools/skill_manager_guards.py` chỉ chặn XOÁ. Bảo vệ thật là file root:root 0644 — tiến trình Hermes (uid 10003) không ghi được (`deploy.sh` từ chối `--owner` trùng uid đó). Khác lớp 3 thì theo lớp 2. |
+| 2. Hướng dẫn chuẩn | SOUL + skill trong thư mục này | PR cùng connector | Cách dùng đúng tool hiện hành. Triển khai vào `skills.external_dirs` của hồ sơ. Curator không chọn skill ngoài để sửa / cất (`tools/skill_usage.is_curation_eligible` trả False); `tools/skill_manager_guards.py` chỉ chặn XOÁ. Bảo vệ thật là file root:root 0644 — tiến trình Hermes (uid = chủ của thư mục `.hermes` của home: `owner` là 10003, mỗi trợ lý khác một uid riêng) không ghi được (`deploy.sh` lấy uid đó từ chủ của `--root` và từ chối `--owner` trùng). Khác lớp 3 thì theo lớp 2. |
 | 3. Tự học | curator + bộ nhớ Hermes (vẫn bật) | bot | Kinh nghiệm riêng; có thể lỗi thời. Cổng kiểm học tập đối chiếu với connector bằng `infra/hermes-broker/catalog-names.mjs`. |
 
 ## Nội dung
@@ -82,6 +82,18 @@ nền tảng, ghi thật trên Linux/CI), chưa chạy trên VPS.
    `config.yaml` từng hồ sơ (kiểm YAML bằng PyYAML hoặc js-yaml của release — ghi thật mà không kiểm được thì dừng; sao lưu ở
    `/root/ihome-hermes-skills-backups/<stamp>-<pid>/` chỉ để đối chiếu). Kiểm hết trước khi đổi; lỗi thì không đổi gì. Chạy lại
    cùng bản ⇒ `KHÔNG ĐỔI GÌ`.
+
+   **Trợ lý có home riêng** (`/var/lib/ihome-hermes-profiles/<tên>`, container `hermes-<tên>`): mỗi home có cây `ihome-official-skills`
+   riêng, nên chạy riêng một lượt với `--root` của home đó:
+
+   ```bash
+   bash $S/deploy.sh --root /var/lib/ihome-hermes-profiles/<tên>/.hermes --profiles "<tên>" --dry-run
+   bash $S/deploy.sh --root /var/lib/ihome-hermes-profiles/<tên>/.hermes --profiles "<tên>"
+   ```
+
+   Không truyền `--hermes-uid` thì `deploy.sh` lấy uid của Hermes từ chủ (uid số) của thư mục `--root` — `.hermes` thuộc uid của trợ lý
+   đó — và in ra ở dòng đầu; không đọc được thì dừng. Home `owner` (`.hermes` thuộc uid 10003) cho ra 10003 như trước. `--hermes-uid <uid>`
+   để chỉ định tay.
 3. SOUL v4.42 (điều phối viên làm, ngoài PR này) cho mọi hồ sơ: dòng 32 "Skill có sẵn: `crm-room-communications` …
    `crm-task-management` …" trỏ sang `ihome-crm-*`; dòng 31 (luật cũ `crm_task_create` khi không có `task.create`) và dòng 10
    (`crm_expense_input_options`, đã gỡ) bỏ hoặc sửa.

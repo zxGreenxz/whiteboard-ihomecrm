@@ -31,6 +31,12 @@ profile_of_path() { printf '%s' "$1" | sed -n 's#.*/profiles/\([^/]*\)/.*#\1#p';
 cmd="$1"; shift
 case "$cmd" in
   inspect)
+    [ "${1:-}" = --type ] && shift 2
+    name="${@: -1}"
+    case " ${FAKE_CONTAINERS:-hermes-owner ihome-zalo-worker} " in
+      *" $name "*) ;;
+      *) echo "Error: No such object: $name" >&2; exit 1 ;;
+    esac
     [ "${1:-}" = -f ] || exit 0
     case "$2" in
       '{{.State.Running}}') echo true ;;
@@ -432,6 +438,53 @@ class OpsScriptTest(unittest.TestCase):
         calls = self.docker_calls()
         self.assertLess(calls.index("restart -t 180 hermes-owner"), calls.index(f"config unset plugins.entries.{PLUGIN}"))
         self.assertEqual(self.mode("owner"), "")
+
+    # ------------------------------------------------------------------ chọn container
+
+    FLEET = "hermes-owner hermes-tkt ihome-zalo-worker"  # máy có thêm container riêng của hồ sơ tkt
+
+    def test_profile_without_its_own_container_uses_hermes_owner(self):
+        """Hồ sơ nằm chung home của owner (tkt, tkh…): không có container hermes-<hồ sơ> ⇒ hermes-owner như trước."""
+        result = self.ops("install", "--profile", "tkt")
+        self.assert_ok(result)
+        self.assertEqual(result.stdout.splitlines()[0], "Container: hermes-owner (mặc định: không có container hermes-tkt)")
+        calls = self.docker_calls()
+        self.assertEqual(calls.splitlines()[0], "inspect --type container hermes-tkt")
+        self.assertIn("exec hermes-owner ", calls)
+        self.assertNotIn("exec hermes-tkt", calls)
+        owner = self.ops("status", "--profile", "owner", FAKE_CONTAINERS=self.FLEET)
+        self.assert_ok(owner)
+        self.assertEqual(owner.stdout.splitlines()[0], "Container: hermes-owner (container riêng của hồ sơ owner)")
+
+    def test_container_of_the_profile_is_used_when_it_exists(self):
+        """Trợ lý có home riêng chạy trong container hermes-<hồ sơ>: mọi lệnh docker đi vào đúng container đó."""
+        fleet = {"FAKE_CONTAINERS": self.FLEET, "FAKE_CMD": '["--profile","tkt","gateway","run"]'}
+        result = self.ops("set-mode", "daily", "--profile", "tkt", "--apply", **fleet)
+        self.assert_ok(result)
+        self.assertEqual(result.stdout.splitlines()[0], "Container: hermes-tkt (container riêng của hồ sơ tkt)")
+        calls = self.docker_calls()
+        self.assertIn(f"exec hermes-tkt hermes --profile tkt config set plugins.entries.{PLUGIN}.settings.mode daily", calls)
+        self.assertNotIn("hermes-owner", calls)  # không lệnh docker nào chạm container của owner
+        self.assertEqual((self.mode("tkt"), self.mode("owner")), ("daily", ""))
+        # Kế hoạch khởi động lại cũng nhắm đúng container của hồ sơ.
+        self.log.write_text("", encoding="utf-8")
+        (self.tkt / "gateway_state.json").write_text((self.owner / "gateway_state.json").read_text(encoding="utf-8"), encoding="utf-8")
+        plan = self.ops("install", "--profile", "tkt", "--activate", "restart", **fleet)
+        self.assert_ok(plan)
+        self.assertIn("gateway đang phục vụ: tkt", plan.stdout)
+        self.assertIn("[kế hoạch] docker restart -t 180 hermes-tkt", plan.stdout)
+        self.assertNotIn("hermes-owner", plan.stdout + self.docker_calls())
+
+    def test_explicit_container_wins_over_the_profile_container(self):
+        result = self.ops("status", "--profile", "tkt", "--container", "hermes-owner", FAKE_CONTAINERS=self.FLEET)
+        self.assert_ok(result)
+        self.assertEqual(result.stdout.splitlines()[0], "Container: hermes-owner (theo --container)")
+        calls = self.docker_calls()
+        self.assertNotIn("hermes-tkt", calls)  # không dò, không chạm container riêng của hồ sơ
+        self.assertIn("exec hermes-owner ", calls)
+        missing = self.ops("status", "--profile", "tkt", "--container", "hermes-khong-co", FAKE_CONTAINERS=self.FLEET)
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("không thấy container hermes-khong-co", missing.stderr)
 
     def test_bad_arguments(self):
         self.assertNotEqual(self.ops("install").returncode, 0)
