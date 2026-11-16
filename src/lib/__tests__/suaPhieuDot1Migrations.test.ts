@@ -264,7 +264,13 @@ describe("M2 khoa_thang_loi_nhuan_tuyet_doi", () => {
   it("trigger phiếu không còn cửa vượt: chủ, super admin, không đăng nhập, ngoài KQKD", () => {
     const fn = thanHamDangChay("income_expenses_check_profit_lock");
     expect(fn).not.toMatch(CUA_VUOT);
-    expect(fn).not.toContain("'ANNOTATE'");
+    // 16/11/2026 (chủ chốt: phiếu đã duyệt của tháng đã chốt vẫn chi được — migration
+    // 20261116090142): ANNOTATE trở lại ở đúng MỘT chỗ, chỉ để THÊM ảnh chứng từ cho phiếu đã duyệt
+    // còn chờ ghi sổ (bước ảnh của nút Chi). Gỡ ảnh, sửa ghi chú, phiếu đã ghi sổ vẫn khoá — Bổ sung.
+    expect(fn.split("'ANNOTATE'")).toHaveLength(2);
+    expect(fn).toMatch(
+      /IF v_scope = 'ANNOTATE'\s+AND OLD\.approval_status = 'APPROVED'\s+AND OLD\.deleted_at IS NULL\s+AND OLD\.posting_status IN \('UNPOSTED', 'REVERSED'\)\s+AND jsonb_typeof\(NEW\.attachments\) = 'array'\s+AND NEW\.attachments @> COALESCE\(OLD\.attachments, '\[\]'::jsonb\)\s+AND \(to_jsonb\(OLD\) - v_mien - 'attachments'::text\)\s+IS NOT DISTINCT FROM\s+\(to_jsonb\(NEW\) - v_mien - 'attachments'::text\) THEN/,
+    );
     expect(fn).toContain("app_private.assert_profit_month_open_v2(");
     // Xét cả vị trí cũ và mới.
     expect(fn).toMatch(/OLD\.building_id, OLD\.voucher_date/);

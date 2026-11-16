@@ -117,7 +117,7 @@ Phiếu thu của hoá đơn (lần thu còn hiệu lực) hiện **Hình thức
 - **Tạo bản sao** từ phiếu đã huỷ; **Khôi phục phiếu** và **Huỷ duyệt** chỉ dành cho super admin.
 
 ::: danger Kỳ đã khoá không sửa được
-Phiếu có ngày nằm trong **tháng đã chốt lợi nhuận** bị khoá với mọi người, kể cả chủ công ty (muốn sửa phải nhờ chủ công ty mở khoá tháng, có lý do). Phiếu thuộc **kỳ sổ quỹ đã chốt & bàn giao** bị khoá vĩnh viễn — sai sót xử lý bằng phiếu điều chỉnh ở kỳ hiện tại. Cả hai trường hợp vẫn **Bổ sung** ảnh/ghi chú được.
+Phiếu có ngày nằm trong **tháng đã chốt lợi nhuận** bị khoá với mọi người, kể cả chủ công ty (muốn sửa phải nhờ chủ công ty mở khoá tháng, có lý do). Phiếu thuộc **kỳ sổ quỹ đã chốt & bàn giao** bị khoá vĩnh viễn — sai sót xử lý bằng phiếu điều chỉnh ở kỳ hiện tại. Cả hai trường hợp vẫn **Bổ sung** ảnh/ghi chú được. Riêng phiếu **đã duyệt nhưng chưa chi/thu** của tháng đã chốt lợi nhuận vẫn bấm **Chi**/**Thu** được (kèm ảnh chứng từ): tiền vào sổ quỹ ở ngày chi, lợi nhuận tháng đã chốt không đổi.
 :::
 
 ## Trên điện thoại

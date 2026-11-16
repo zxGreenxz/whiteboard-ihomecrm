@@ -22,6 +22,9 @@ import { profitPostLockSchema } from '@/lib/profitPostLock';
 
 const FILE = process.env.KHOA_KY_MIGRATION_FILE ?? 'supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql';
 const KHOA_NGAY = 'supabase/migrations/20260925073251_khoa_thang_loi_nhuan_tuyet_doi.sql';
+// Định nghĩa SỐNG của trigger phiếu từ 16/11/2026 (thêm ngoại lệ ghi sổ / thêm ảnh cho phiếu đã duyệt
+// chờ ghi sổ). Áp tiếp sau hai lượt của file khoá kỳ để các ca hành vi đo thân đang chạy.
+const CHI_QUA_KHOA = 'supabase/migrations/20261116090142_chi_phieu_da_duyet_qua_khoa_thang_ln.sql';
 const PROD_MD5 = '877f88c3b7371acb6633ce5f091e85d4';
 const PROD_MD5_CUA_CHOT = 'a388bdb80d2ff6a213c4e2866f7e49fa';
 const MIG_DIR = join(process.cwd(), 'supabase', 'migrations');
@@ -171,7 +174,9 @@ beforeAll(async () => {
       repeat_parent_id uuid, repeat_cycle text DEFAULT 'NONE', repeat_infinity boolean DEFAULT false,
       repeat_count integer DEFAULT 0, repeat_remaining integer DEFAULT 0, repeat_next_date date,
       repeat_auto_approve boolean DEFAULT true, handover_id uuid, verified_at timestamptz, verified_by uuid,
-      verified_by_name text, verified_note text, posting_mode text, posting_status text, review_state text);
+      verified_by_name text, verified_note text, posting_mode text, posting_status text, review_state text,
+      posting_version bigint NOT NULL DEFAULT 0, active_posting_id_v2 uuid, posting_id uuid,
+      reversed_by_posting_id uuid, posted_at_v2 timestamptz);
     CREATE TABLE public.income_expense_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), income_expense_id uuid,
       amount numeric, unit_price numeric DEFAULT 0, quantity numeric DEFAULT 1, accounting_class text,
       income_expense_type_id uuid, start_date date, end_date date, description text);
@@ -181,6 +186,10 @@ beforeAll(async () => {
       fee_category text, default_amount numeric, not_applicable boolean NOT NULL DEFAULT false, deleted_at timestamptz);
     CREATE TABLE app_private.ie_flex_writer_xids(income_expense_id uuid, transaction_id xid8, backend_pid integer,
       scope text);
+    CREATE TABLE app_private.ie_transition_authorization(income_expense_id uuid PRIMARY KEY, xid xid8 NOT NULL,
+      purpose text NOT NULL, granted_at timestamptz NOT NULL DEFAULT clock_timestamp());
+    CREATE TABLE public.income_expense_postings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), voucher_id uuid,
+      account_id uuid, event_kind text, reversal_of_id uuid);
 
     -- Như production: lớp KQKD của dòng do trigger BEFORE "set_ie_item_accounting_class" điền (xếp
     -- SAU a02 theo tên); tổng phiếu do trigger AFTER tính lại (cập nhật dòng phiếu).
@@ -315,6 +324,9 @@ beforeAll(async () => {
     throw new Error(`md5 lượt hai chưa ghim: trigger ${md5SauLuotMot}, cửa chặn chốt ${md5CuaChotSauLuotMot}`);
   }
   await chay(sql);
+  // Từ đây trigger phiếu chạy thân SỐNG (20261116090142): mọi ca hành vi bên dưới đo thân đó.
+  await chay(readFileSync(CHI_QUA_KHOA, 'utf8'));
+  await chay(readFileSync(CHI_QUA_KHOA, 'utf8'));
 }, 120_000);
 afterAll(() => db.close());
 
