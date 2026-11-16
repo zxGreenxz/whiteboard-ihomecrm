@@ -132,6 +132,14 @@ Không cần mở khoá/xoá allocation bằng nhiều DML client như flow cũ.
 - **Thu mới nợ cũ** vẫn đi: phiếu theo hoá đơn (tháng KQKD = tháng hoá đơn) không bị cửa kỳ chặn — thu tiền hoá
   đơn của tháng đã chốt (kèm tiền thối/hoàn trả gắn hoá đơn) và duyệt khoản đó vẫn làm được. Phiếu chờ duyệt có kỳ
   trong tháng đã chốt (dữ liệu trước khoá kỳ) vẫn huỷ/xoá được.
+- **Chi / Thu phiếu đã duyệt vẫn đi** (chủ chốt 16/11/2026, migration
+  [20261116090142](../../supabase/migrations/20261116090142_chi_phieu_da_duyet_qua_khoa_thang_ln.sql)): cửa chặn
+  chốt chỉ đòi hết phiếu chờ duyệt, nên tháng có thể chốt khi còn phiếu **đã duyệt chưa chi**. Ghi sổ không đổi lợi
+  nhuận tháng (`fa_accrual_allocations` không đọc cột ghi sổ / sổ quỹ), nên trigger miễn đúng hai bước của nút Chi
+  / Thu và tự kiểm delta: (A) đóng dấu ghi sổ `UNPOSTED`/`REVERSED` → `POSTED` của phiếu đã duyệt, chỉ các cột dấu
+  ghi sổ đổi, có token vòng đời V2 của chính phiếu, bút toán trỏ tới là bút toán thật chưa đảo đúng sổ quỹ; (B) scope
+  `ANNOTATE` chỉ **thêm** ảnh chứng từ khi phiếu đã duyệt còn chờ ghi sổ. Duyệt, huỷ duyệt, hoàn tác ghi sổ, huỷ,
+  sửa, gỡ ảnh, sửa ghi chú vẫn bị khoá; ngày chi do khoá sổ quỹ canh riêng.
 - **Phát sinh sau chốt**: `public.profit_post_lock_vouchers_v1(p_from, p_to, p_building_ids)` (chỉ đọc, DEFINER,
   quyền `can_access_building`, anon ⇒ 42501) trả toà×tháng đã chốt và các phiếu đã duyệt đóng góp KQKD vào tháng
   đã chốt (theo `fa_accrual_allocations`) mà **tạo hoặc duyệt sau lúc chốt** — thu tiền hoá đơn tháng đã chốt, hoặc
