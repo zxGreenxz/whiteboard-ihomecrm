@@ -21,6 +21,33 @@ export function unallocatedDispositionLabel(
 
 export const UNALLOCATED_PROFIT_TOLERANCE = 0.01;
 
+// Chủ chốt 16/11/2026: phần chưa phân bổ MẶC ĐỊNH giữ lại lợi nhuận, ô lý do không bắt buộc.
+// Hàm chốt và CHECK `profit_monthly_unallocated_reason_v3` vẫn đòi lý do 8–500 ký tự, nên ô
+// để trống thì gửi câu mặc định dưới đây (cùng cách `Chốt lợi nhuận lần đầu …` của ghi chú chốt).
+export const DEFAULT_UNALLOCATED_DISPOSITION: ProfitUnallocatedDisposition =
+  "RETAINED_EARNINGS";
+
+export function defaultUnallocatedDispositionReason(
+  disposition: ProfitUnallocatedDisposition,
+): string {
+  return `${unallocatedDispositionLabel(disposition)} — không ghi lý do`;
+}
+
+/** Lý do đã lưu chỉ là câu mặc định ⇒ nạp lại nháp thành ô trống, không bày như lý do người gõ. */
+export function isDefaultUnallocatedDispositionReason(text: string): boolean {
+  const normalized = normalizeReasonText(text);
+  return (["RETAINED_EARNINGS", "CARRY_FORWARD"] as const).some(
+    (disposition) =>
+      normalizeReasonText(defaultUnallocatedDispositionReason(disposition)) ===
+      normalized,
+  );
+}
+
+/** Lỗi ô lý do xử lý phần chưa phân bổ: để trống là hợp lệ; đã ghi thì 8–500 ký tự, không chép câu báo lỗi. */
+export function unallocatedReasonProblem(text: string): ReasonProblem | null {
+  return text.trim() === "" ? null : reasonProblem(text, 8, 500);
+}
+
 export interface ProfitCloseDraft {
   adjustmentAmount: number;
   adjustmentReason: string;
@@ -97,16 +124,24 @@ export function hasUnallocatedProfitResidual(value: unknown): boolean {
 }
 
 function seedDraft(row: ProfitCloseDraftSeed): ProfitCloseDraft {
+  const storedDisposition = normalizeUnallocatedDisposition(
+    row.unallocatedDisposition,
+  );
+  // Lý do chỉ đi kèm cách xử lý người dùng đã chọn. Chưa chọn / chốt kiểu cũ ⇒ ô trống:
+  // không để câu backfill "…without an explicit decision" thành lý do của quyết định mới.
+  const storedReason = storedDisposition
+    ? row.unallocatedDispositionReason?.trim() ?? ""
+    : "";
   return {
     // A locked snapshot contributes only its signed adjustment. Its old absolute
     // adjusted profit must never become the base for a fresh server calculation.
     adjustmentAmount: row.locked ? finiteMoney(row.snapshotAdjustmentAmount) : 0,
     adjustmentReason: row.locked ? row.snapshotAdjustmentReason?.trim() ?? "" : "",
-    unallocatedDisposition: normalizeUnallocatedDisposition(
-      row.unallocatedDisposition,
-    ),
-    unallocatedDispositionReason:
-      row.unallocatedDispositionReason?.trim() ?? "",
+    // Chưa chọn (hoặc chốt kiểu cũ) ⇒ mặc định giữ lại lợi nhuận.
+    unallocatedDisposition: storedDisposition ?? DEFAULT_UNALLOCATED_DISPOSITION,
+    unallocatedDispositionReason: isDefaultUnallocatedDispositionReason(storedReason)
+      ? ""
+      : storedReason,
   };
 }
 
@@ -198,19 +233,21 @@ export function buildProfitCloseAdjustments(
       ? hasUnallocatedProfitResidual(unallocatedProfitByBuilding[buildingId])
       : draft.unallocatedDisposition !== null;
     const unallocatedDisposition = hasResidual
-      ? normalizeUnallocatedDisposition(draft.unallocatedDisposition)
+      ? normalizeUnallocatedDisposition(draft.unallocatedDisposition) ??
+        DEFAULT_UNALLOCATED_DISPOSITION
       : null;
-    const unallocatedDispositionReason = hasResidual
-      ? draft.unallocatedDispositionReason.trim()
-      : "";
+    // Ô lý do để trống ⇒ gửi câu mặc định (máy chủ vẫn đòi 8–500 ký tự).
+    const unallocatedDispositionReason = unallocatedDisposition
+      ? draft.unallocatedDispositionReason.trim() ||
+        defaultUnallocatedDispositionReason(unallocatedDisposition)
+      : null;
     return {
       building_id: buildingId,
       adjustment_amount: adjustmentAmount,
       adjustment_reason:
         adjustmentAmount === 0 ? null : adjustmentReason || null,
       unallocated_disposition: unallocatedDisposition,
-      unallocated_disposition_reason:
-        unallocatedDispositionReason || null,
+      unallocated_disposition_reason: unallocatedDispositionReason,
     };
   });
 }
@@ -246,6 +283,7 @@ const PROFIT_SYSTEM_MESSAGES: readonly string[] = [
   "Đang cập nhật preview theo điều chỉnh mới nhất",
   "Lý do (ít nhất 8 ký tự)",
   "Lý do xử lý (ít nhất 8 ký tự)",
+  "Lý do xử lý (không bắt buộc)",
   "Không bắt buộc",
   "Không bắt buộc cho lần chốt đầu",
   "Bắt buộc: lý do đặt lại",
@@ -365,7 +403,7 @@ export function validateProfitCloseDrafts(
           "Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau";
         continue;
       }
-      const problem = reasonProblem(draft.unallocatedDispositionReason, 8, 500);
+      const problem = unallocatedReasonProblem(draft.unallocatedDispositionReason);
       if (problem) {
         rowErrors[buildingId] =
           problem === "LENGTH"
