@@ -1,7 +1,8 @@
 # Kiểm học tập Hermes — CHỈ ĐỌC hồ sơ (/var/lib/ihome-hermes-profiles). Cài theo infra/hermes-learning-audit/README.md.
-# User riêng ihome-hermes-audit chỉ có CAP_DAC_READ_SEARCH (đọc được file 0600 của uid 10003, không ghi được). Sandbox CHỈ gắn
-# (chỉ đọc) đúng các đường cần đọc: skills/, memories/, .curator_backups/, state.db* của từng hồ sơ, bộ skill chuẩn, node và
-# bản phát hành. Bí mật của hồ sơ (.env, config.yaml, auth…), của Hermes (.hermes/*) và của connector không có trong sandbox.
+# User riêng ihome-hermes-audit chỉ có CAP_DAC_READ_SEARCH (đọc được file 0600 của uid Hermes — owner 10003, mỗi trợ lý khác một uid
+# riêng — không ghi được). Sandbox CHỈ gắn (chỉ đọc) đúng các đường cần đọc: skills/, memories/, .curator_backups/, state.db* của
+# từng hồ sơ, bộ skill chuẩn, node và bản phát hành. Bí mật của hồ sơ (.env, config.yaml, auth…), của Hermes (.hermes/*) và của
+# connector không có trong sandbox.
 # Tiến trình node (đọc danh mục tên tool) chạy KHÔNG có CAP_DAC_READ_SEARCH (learning_audit.py xoá tập ambient trước exec).
 # Đầu ra /var/lib/ihome-hermes-learning-audit: private/ (0700) báo cáo đủ + trạng thái; outbox/ (0750) chỉ đề xuất cho job nạp.
 [Unit]
@@ -20,7 +21,9 @@ AmbientCapabilities=CAP_DAC_READ_SEARCH
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH
 NoNewPrivileges=yes
 Environment=PYTHONIOENCODING=utf-8
-ExecStart=/usr/bin/python3 -I -B -X utf8 /opt/ihome-hermes/current/infra/hermes-learning-audit/learning_audit.py
+# --config-optional: file KHÔNG bí mật do công cụ infra/hermes-fleet ghi (profilesRoots = thư mục .hermes/profiles của từng home, gốc
+# của owner đứng đầu; realProfiles = hồ sơ người dùng thật). File vắng ⇒ mặc định (chỉ home owner); file có mà sai ⇒ job dừng mã 2.
+ExecStart=/usr/bin/python3 -I -B -X utf8 /opt/ihome-hermes/current/infra/hermes-learning-audit/learning_audit.py --config-optional /etc/ihome-hermes-fleet/learning-audit.json
 StateDirectory=ihome-hermes-learning-audit
 StateDirectoryMode=0750
 ProtectSystem=strict
@@ -32,8 +35,13 @@ TemporaryFileSystem=/var/lib:ro /var/backups:ro /var/log:ro /opt:ro /srv:ro
 BindPaths=/var/lib/ihome-hermes-learning-audit
 BindReadOnlyPaths=/opt/ihome-hermes/node /opt/ihome-hermes/current
 BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/ihome-official-skills
-# Hồ sơ Hermes (owner = người dùng thật; tkt/tkh/tkj nghiệm thu; abc1/abeager3 thử cũ). Thêm hồ sơ mới = thêm một dòng
-# (README › "Thêm hồ sơ"); hồ sơ không được gắn thì job kiểm không thấy, job nạp báo "missingProfiles" nếu hồ sơ có ánh xạ.
+# Hồ sơ trong home của owner (owner = người dùng thật; tkt/tkh/tkj nghiệm thu; abc1/abeager3 thử cũ). Hồ sơ không được gắn thì job
+# kiểm không thấy, job nạp báo "missingProfiles" nếu hồ sơ có ánh xạ. Thêm hồ sơ (README › "Thêm hồ sơ"):
+#  - hồ sơ mới trong CÙNG home owner: thêm một dòng như dưới đây (drop-in);
+#  - trợ lý mới có home riêng /var/lib/ihome-hermes-profiles/<tên>: KHÔNG sửa file này. Công cụ infra/hermes-fleet sinh drop-in
+#    /etc/systemd/system/ihome-hermes-learning-audit.service.d/fleet-<tên>.conf, mỗi drop-in gắn chỉ đọc đúng skills, memories,
+#    .curator_backups, state.db, state.db-wal, state.db-shm của <home>/.hermes/profiles/<tên>, và thêm gốc đó vào
+#    /etc/ihome-hermes-fleet/learning-audit.json. Gốc có trong file mà thiếu drop-in ⇒ job báo gốc hỏng, không ghi đè trạng thái.
 BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/state.db-shm
 BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/state.db-shm
 BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/state.db-shm
@@ -41,7 +49,7 @@ BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkj/ski
 BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/state.db-shm
 BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/state.db-shm
 # CAP_DAC_READ_SEARCH đọc được mọi file còn thấy: giấu bí mật của host và connector (production + TEST). Mã còn từ chối symlink
-# và đường ra ngoài hồ sơ; đây là lớp chặn thứ hai.
+# và đường ra ngoài hồ sơ; đây là lớp chặn thứ hai. /etc/ihome-hermes-fleet (cấu hình không bí mật của job này) cố ý KHÔNG giấu.
 InaccessiblePaths=-/etc/ihome-hermes -/etc/ihome-hermes-test -/etc/shadow -/etc/shadow- -/etc/gshadow -/etc/gshadow- -/etc/ssh -/etc/sudoers -/etc/sudoers.d -/etc/cloudflared -/etc/letsencrypt
 PrivateNetwork=yes
 PrivateDevices=yes

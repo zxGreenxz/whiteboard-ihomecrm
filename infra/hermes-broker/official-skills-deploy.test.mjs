@@ -66,8 +66,13 @@ function fixture(t) {
   return { tmp, root, initial, rel1: release(join(tmp, 'rel1'), SHA1), bak: join(tmp, 'bak') };
 }
 const id = () => (LINUX ? `${process.getuid()}:${process.getgid()}` : '0:0');
-const deployArgs = (fx, rel, profiles, ...extra) => ['--release', posix(rel), '--profiles', profiles, '--root', posix(fx.root),
-  '--backup-dir', posix(fx.bak), '--owner', id(), ...extra];
+const baseArgs = (fx, rel, profiles, ...extra) => ['--release', posix(rel), '--profiles', profiles, '--root', posix(fx.root),
+  '--backup-dir', posix(fx.bak), ...extra];
+// Cây giả thuộc chính người chạy test (chown cần root) nên --owner là uid người chạy, và uid "của Hermes" phải khai tay (10003): để
+// deploy.sh tự lấy từ chủ của --root thì chủ skill trùng uid Hermes, ghi thật bị từ chối. Phép tự lấy có test riêng (baseArgs).
+const deployArgs = (fx, rel, profiles, ...extra) => [...baseArgs(fx, rel, profiles), '--owner', id(), '--hermes-uid', '10003', ...extra];
+// uid chủ của một đường như bash thấy (Git Bash trên Windows ánh xạ SID thành số, khác process.getuid()).
+const uidOf = path => spawnSync(BASH, ['-c', 'stat -L -c %u -- "$1"', '_', posix(path)], { encoding: 'utf8' }).stdout.trim();
 const cfgPath = (fx, profile) => join(fx.root, 'profiles', profile, 'config.yaml');
 const configOf = (fx, profile) => readFileSync(cfgPath(fx, profile), 'utf8');
 const YAML_PASS = /Kiểm YAML \((PyYAML|js-yaml)\): đạt/;
@@ -96,7 +101,64 @@ test('deploy.sh --dry-run: kiểm YAML ứng viên, in kế hoạch, không ghi 
   // Chủ skill trùng uid Hermes ⇒ Hermes ghi được skill chuẩn ⇒ ghi thật bị từ chối.
   const hermesOwner = bash(DEPLOY, [...deployArgs(fx, fx.rel1, 'owner'), '--owner', '10003:10003']);
   assert.notEqual(hermesOwner.code, 0);
-  assert.match(hermesOwner.out, /trùng uid của Hermes/);
+  assert.match(hermesOwner.out, /--owner trùng uid của Hermes \(10003, lấy từ --hermes-uid\)/);
+});
+
+test('deploy.sh không có --hermes-uid: uid của Hermes = chủ của --root (mỗi home một uid); chủ skill trùng uid đó ⇒ từ chối; không đọc được chủ ⇒ dừng', t => {
+  const fx = fixture(t);
+  const rootUid = uidOf(fx.root);
+  assert.match(rootUid, /^\d+$/, 'bash đọc được uid chủ của cây giả');
+  const refused = /--owner trùng uid của Hermes/, noProfile = /không thấy .*khong-co\/config\.yaml/;
+  // Chạy khô: in uid đã lấy và nguồn của nó, kế hoạch như thường.
+  const dry = bash(DEPLOY, baseArgs(fx, fx.rel1, 'owner', '--dry-run'));
+  assert.equal(dry.code, 0, dry.out);
+  assert.ok(dry.out.includes(`uid của Hermes: ${rootUid} (lấy từ chủ của ${posix(fx.root)})`), dry.out);
+  assert.match(dry.out, /sẽ nối khối skills\.external_dirs/);
+  // Ghi thật. Phép chặn đứng TRƯỚC bước kiểm hồ sơ, nên hồ sơ không có (khong-co) cho biết lượt chạy dừng ở đâu mà không ghi gì:
+  // dừng vì "trùng uid" = phép chặn bắn; dừng vì "không thấy config.yaml" = đã lọt qua phép chặn.
+  const real = (script, ...extra) => bash(script, baseArgs(fx, fx.rel1, 'khong-co', ...extra));
+  const same = real(DEPLOY, '--owner', `${rootUid}:${rootUid}`);
+  assert.notEqual(same.code, 0);
+  assert.ok(same.out.includes(`--owner trùng uid của Hermes (${rootUid}, lấy từ chủ của ${posix(fx.root)})`), same.out);
+  assert.doesNotMatch(same.out, noProfile);
+  // 10003 không còn là mặc định ghi cứng: home này thuộc uid khác thì chủ 10003 không bị coi là Hermes.
+  if (rootUid !== '10003') {
+    const foreign = real(DEPLOY, '--owner', '10003:10003');
+    assert.notEqual(foreign.code, 0);
+    assert.doesNotMatch(foreign.out, refused);
+    assert.match(foreign.out, noProfile);
+  }
+  // --hermes-uid chỉ định tay thắng phép tự lấy, theo cả hai chiều.
+  const manual = real(DEPLOY, '--hermes-uid', '4242', '--owner', `${rootUid}:${rootUid}`);
+  assert.doesNotMatch(manual.out, refused);
+  assert.match(manual.out, noProfile);
+  assert.match(real(DEPLOY, '--hermes-uid', '4242', '--owner', '4242:4242').out, /--owner trùng uid của Hermes \(4242, lấy từ --hermes-uid\)/);
+  // Không đọc được chủ của --root (thư mục vắng / không phải thư mục) ⇒ dừng với lỗi rõ, kể cả chạy khô; --hermes-uid sai khuôn ⇒ dừng.
+  for (const root of [join(fx.tmp, 'khong-co-home', '.hermes'), cfgPath(fx, 'owner')]) {
+    const lost = bash(DEPLOY, ['--release', posix(fx.rel1), '--profiles', 'owner', '--root', posix(root), '--backup-dir', posix(fx.bak), '--dry-run']);
+    assert.notEqual(lost.code, 0);
+    assert.match(lost.out, /không đọc được chủ của thư mục --root .* truyền --hermes-uid <uid>/);
+  }
+  assert.match(real(DEPLOY, '--hermes-uid', 'abc').out, /uid của Hermes phải là số/);
+  assert.ok(!existsSync(join(fx.root, 'ihome-official-skills')) && !existsSync(fx.bak), 'không lượt nào ở trên ghi gì');
+  assert.equal(configOf(fx, 'owner'), fx.initial.owner);
+
+  // Đột biến: bản deploy.sh bị làm hỏng phép chặn phải bị chính ca "same" ở trên bắt (lọt qua phép chặn ⇒ dừng ở "không thấy config").
+  const source = readFileSync(DEPLOY, 'utf8');
+  const mutants = [
+    ['ghi cứng lại uid 10003', source.replace(/^HERMES_UID=''.*$/m, 'HERMES_UID=10003')],
+    ['lấy một uid khác chủ của --root', source.replace('HERMES_UID="$(stat -L -c %u -- "$ROOT" 2>/dev/null)"', 'HERMES_UID="$(( $(id -u) + 1 ))"')],
+    ['bỏ phép so chủ với uid Hermes', source.replace('[ "$OWNER_UID" = "$HERMES_UID" ]', 'false')],
+  ].filter(([name]) => rootUid !== '10003' || !name.includes('10003'));   // người chạy test đúng là uid 10003 thì đột biến đầu vô nghĩa
+  for (const [index, [name, mutated]] of mutants.entries()) {
+    assert.notEqual(mutated, source, `đột biến "${name}" phải đổi được mã`);
+    const script = join(fx.tmp, `deploy-mutant-${index}.sh`);
+    writeFileSync(script, mutated);
+    const run = real(script, '--owner', `${rootUid}:${rootUid}`);
+    assert.notEqual(run.code, 0, name);
+    assert.doesNotMatch(run.out, refused, `đột biến "${name}" phải làm phép chặn không bắn`);
+    assert.match(run.out, noProfile, name);
+  }
 });
 
 test('deploy.sh ghi thật: cây skill đúng quyền, symlink tương đối, external_dirs có kiểm YAML; chạy lại không đổi gì; đổi bản ⇒ đổi symlink + chạm config; chết giữa chừng ⇒ lần sau chạm lại', { skip: LINUX_ONLY }, t => {

@@ -1,0 +1,56 @@
+# Khuôn config.yaml cho hồ sơ trợ lý mới (infra/hermes-fleet). KHÔNG chứa bí mật, server MCP hay nền tảng:
+# công cụ tự đặt `mcp_servers` (cửa nội bộ) và `platforms.zalo_personal`; mã CRM do profile-provisioning-cli ghi sau;
+# khối `skills.external_dirs` do infra/hermes-skills/deploy.sh nối thêm. Giữ khuôn này khớp cấu hình đã duyệt của hồ sơ
+# đang chạy (model, múi giờ, toolset tắt, tool_search auto). Đổi model/nhà cung cấp: sửa ở đây rồi phát hành.
+model:
+  provider: ninerouter
+  default: cx/gpt-6-luna
+  context_length: 272000
+providers:
+  ninerouter:
+    base_url: http://172.17.0.1:20128/v1
+    key_env: NINEROUTER_API_KEY
+    stale_timeout_seconds: 90
+  custom:
+    stale_timeout_seconds: 90
+gateway:
+  standalone: true
+plugins:
+  enabled:
+    - ihome-session-reset
+    - ihome-zalo-native
+  entries:
+    ihome-session-reset:
+      settings:
+        mode: daily
+  disabled: []
+tools:
+  tool_search:
+    enabled: auto
+agent:
+  agent_cache:
+    idle_ttl_secs: 14400
+  execution_guidance: false
+  disabled_toolsets:
+    - file
+    - tts
+    - todo
+    - session_search
+    - connections
+    - delegation
+    - cronjob
+    - terminal
+    - browser
+    - code_execution
+    - clarify
+onboarding:
+  seen:
+    busy_input_prompt: true
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+    offer_version: 2
+timezone: Asia/Ho_Chi_Minh
+cron:
+  wrap_response: false

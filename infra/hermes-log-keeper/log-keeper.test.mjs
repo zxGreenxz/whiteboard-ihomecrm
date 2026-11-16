@@ -109,6 +109,26 @@ test('unit không có journal ⇒ không tạo file rỗng; journalctl lỗi ⇒
   assert.ok(!existsSync(join(env.STATE_DIR, 'a.service.cursor')), 'lỗi 3 lần liền ⇒ bỏ con trỏ');
 });
 
+test('UNITS mặc định giữ cả hai unit canh mạng (hermes-owner-netwatch + ihome-hermes-fleet-netwatch); unit chưa có trên máy ⇒ không lỗi, không tạo file', { skip }, () => {
+  const { journal, env, run } = setup();
+  const day = { TODAY: '2026-11-15', UNITS: '' };                    // UNITS rỗng ⇒ script dùng danh sách mặc định
+  const fleet = join(env.LOG_DIR, 'ihome-hermes-fleet-netwatch', '2026-11-15.log');
+  writeFileSync(join(journal, 'hermes-owner-netwatch.service'), 'o1 owner\n');
+  const first = run(day);                                            // máy chưa cài unit fleet: chỉ unit cũ có journal
+  assert.equal(first.failedUnits, 0, 'unit mặc định chưa có trên máy không phải lỗi');
+  assert.deepEqual(lines(join(env.LOG_DIR, 'hermes-owner-netwatch', '2026-11-15.log')), ['o1 owner']);
+  assert.ok(!existsSync(fleet), 'unit chưa có ⇒ không tạo file rỗng');
+  assert.ok(!existsSync(join(env.STATE_DIR, 'ihome-hermes-fleet-netwatch.service.cursor')), 'unit chưa có ⇒ chưa có con trỏ');
+  for (const unit of ['hermes-connector', 'hermes-connector-test', 'ihome-hermes-learning-audit', 'ihome-hermes-learning-ingest']) {
+    assert.ok(existsSync(join(env.LOG_DIR, unit)) && !existsSync(join(env.LOG_DIR, unit, '2026-11-15.log')), `${unit} vẫn nằm trong danh sách mặc định`);
+  }
+  writeFileSync(join(journal, 'ihome-hermes-fleet-netwatch.service'), 'f1 fleet\nf2 fleet\n');   // cài unit fleet sau đó
+  appendFileSync(join(journal, 'hermes-owner-netwatch.service'), 'o2 owner\n');
+  assert.equal(run(day).failedUnits, 0);
+  assert.deepEqual(lines(fleet), ['f1 fleet', 'f2 fleet'], 'unit fleet xuất hiện ⇒ được giữ log mà không cần đổi UNITS');
+  assert.deepEqual(lines(join(env.LOG_DIR, 'hermes-owner-netwatch', '2026-11-15.log')), ['o1 owner', 'o2 owner'], 'unit cũ vẫn được giữ');
+});
+
 test('ghi đĩa lỗi ⇒ thoát 1, con trỏ KHÔNG tiến; gỡ lỗi rồi chạy lại ⇒ xuất bù đủ dòng', { skip }, () => {
   const { journal, env, run, exec } = setup();
   writeFileSync(join(journal, 'a.service'), 'w1\nw2\n');

@@ -1419,6 +1419,25 @@
       ]
     },
     {
+      "id": "hermes-fleet",
+      "$comment": "Công cụ mỗi người một trợ lý Hermes (infra/hermes-fleet): kế hoạch thuần, helper theo từng UID và điều phối trên máy chủ giả. Đổi bộ ghi hồ sơ, operator kênh, handoff hay launcher worker cũng chạy lại vì công cụ gọi thẳng các file đó.",
+      "sourcePaths": [
+        "infra/hermes-fleet/**",
+        "infra/hermes-zalo-native/profile-provisioning.mjs",
+        "infra/hermes-zalo-native/profile-provisioning-cli.mjs",
+        "infra/hermes-zalo-native/operator.mjs",
+        "infra/hermes-zalo-native/plugin.yaml",
+        "infra/hermes-broker/connection-handoff.mjs",
+        "infra/hermes-runtime/host-config.mjs",
+        "worker/lib/hermes-native-files.js",
+        "worker/deploy/zalo-worker.sh"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-fleet/**/*.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-assistant-capabilities-ui",
       "sourcePaths": [
         "supabase/migrations/*_hermes_domain_*.sql",
@@ -2336,6 +2355,7 @@
         "infra/hermes-learning-audit/**/*.test.mjs",
         "infra/hermes-log-keeper/**/*.test.mjs",
         "infra/hermes-session-reset/**/*.test.mjs",
+        "infra/hermes-fleet/**/*.test.mjs",
         "worker/deploy/**/*.test.mjs",
         "scripts/__tests__/thu-public-execute-sql.test.mjs"
       ],
