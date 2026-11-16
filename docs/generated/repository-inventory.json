@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1852,
-  "soFileDocBangFs": 483,
-  "tongLoiGoi": 1283,
-  "khongPhanLoaiDuoc": 584,
+  "tongSoFileTest": 1853,
+  "soFileDocBangFs": 484,
+  "tongLoiGoi": 1292,
+  "khongPhanLoaiDuoc": 585,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 67,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 73,
+      "soFile": 74,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 201,
+      "soFile": 202,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -282,6 +282,15 @@
         "ma-nguon": 3
       },
       "khongPhanLoaiDuoc": 6
+    },
+    {
+      "file": "src/lib/__tests__/soTongLoiNhuanChuyenDoiMigration.test.ts",
+      "soGoi": 9,
+      "loai": {
+        "sql": 6,
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-log-keeper/log-keeper.test.mjs",
