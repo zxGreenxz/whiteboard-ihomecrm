@@ -1,5 +1,5 @@
 // Thanh bộ lọc nhà của bảng "LN được chia Nhà × Tháng": chip "Tất cả" + các bộ lọc người xem tự tạo.
-// Bộ lọc chỉ đổi cột nào được BÀY; lưu trên trình duyệt (xem hooks/useBuildingFilterState).
+// Bộ lọc chỉ đổi cột nào được BÀY; lưu theo tài khoản trên máy chủ (xem hooks/useBuildingFilterState).
 
 import { useState, type FormEvent } from 'react';
 import { Plus, SlidersHorizontal } from 'lucide-react';
@@ -28,11 +28,14 @@ interface DraftState {
   keys: string[];
 }
 
-export function BuildingFilterBar({ buildings, state, onChange }: {
+export function BuildingFilterBar({ buildings, state, onChange, syncError = null, onRetry }: {
   /** Mọi nhà chọn được (kể cả nhà ngoài năm/tháng đang xem). */
   buildings: readonly BuildingColumn[];
   state: BuildingFilterState;
   onChange: (next: BuildingFilterState) => void;
+  /** Chưa đọc / chưa lưu được lên tài khoản (bộ lọc vẫn dùng được trên trình duyệt này). */
+  syncError?: string | null;
+  onRetry?: () => void;
 }) {
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +92,14 @@ export function BuildingFilterBar({ buildings, state, onChange }: {
         <button type="button" className="ph-mini-btn" disabled={buildings.length === 0} onClick={() => open({ editingId: null, name: '', keys: [] })}>
           <Plus className="mr-1 inline h-3 w-3" aria-hidden="true" />Tạo bộ lọc
         </button>
+        {syncError && (
+          <p role="status" className="basis-full text-[11px] text-amber-800">
+            {syncError}
+            {onRetry && (
+              <button type="button" className="ml-2 font-semibold underline" onClick={onRetry}>Thử lại</button>
+            )}
+          </p>
+        )}
       </div>
 
       <Dialog open={draft !== null} onOpenChange={(next) => { if (!next) close(); }}>
@@ -96,7 +107,8 @@ export function BuildingFilterBar({ buildings, state, onChange }: {
           <DialogHeader>
             <DialogTitle>{draft?.editingId ? 'Sửa bộ lọc nhà' : 'Tạo bộ lọc nhà'}</DialogTitle>
             <DialogDescription>
-              Chọn các nhà muốn hiện trong bảng Nhà × Tháng. Bộ lọc chỉ đổi cách xem và lưu trên trình duyệt này.
+              Chọn các nhà muốn hiện trong bảng Nhà × Tháng. Bộ lọc chỉ đổi cách xem và được lưu theo tài khoản của bạn
+              (mở lại trên máy hay trình duyệt khác vẫn còn).
             </DialogDescription>
           </DialogHeader>
           {draft && (
