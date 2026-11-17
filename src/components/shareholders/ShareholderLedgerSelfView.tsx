@@ -12,7 +12,7 @@ import { useBuildingFilterState } from '@/hooks/useBuildingFilterState';
 import { formatCurrency } from '@/lib/utils';
 import { formatISODateVN } from '@/lib/vnDate';
 import { ProfitHubSlot } from '@/pages/reports/finance/ProfitHubShell';
-import { activeBuildingFilter, applyBuildingFilter, buildingFilterStorageKey } from '@/lib/profitLedger/buildingFilters';
+import { activeBuildingFilter, applyBuildingFilter } from '@/lib/profitLedger/buildingFilters';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 import {
   amountsByBuilding, buildingColumns, buildingMatrix, ledgerYears, monthlyAmounts, monthsInScope, newestFirst,
@@ -54,7 +54,8 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
   const yearTotal = yearMonths.reduce((s, m) => s + m.amount, 0);
   const allBuildings = useMemo(() => buildingColumns(ledger.months), [ledger.months]);
   const buildingsEver = allBuildings.length;
-  const [filters, setFilters] = useBuildingFilterState(buildingFilterStorageKey(ledger.organization_id, ledger.shareholder.id));
+  const filterStore = useBuildingFilterState(ledger.organization_id, ledger.shareholder.id);
+  const filters = filterStore.state;
   const activeFilter = activeBuildingFilter(filters);
 
   const monthlyChart = useMemo(
@@ -162,7 +163,13 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
         <div className="ph-card">
           <div className="ph-card__head">
             <div className="ph-card__title">LN được chia Nhà × Tháng — {year}</div>
-            <BuildingFilterBar buildings={allBuildings} state={filters} onChange={setFilters} />
+            <BuildingFilterBar
+              buildings={allBuildings}
+              state={filters}
+              onChange={filterStore.update}
+              syncError={filterStore.syncError}
+              onRetry={filterStore.retry}
+            />
           </div>
           {matrix.length === 0 ? (
             <div className="ph-empty">Chưa có phần chia trong {scopeText}.</div>

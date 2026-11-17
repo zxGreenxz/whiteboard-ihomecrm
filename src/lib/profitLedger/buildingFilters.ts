@@ -1,6 +1,7 @@
 // Bộ lọc nhà cho bảng "LN được chia Nhà × Tháng" của màn cổ đông tự xem (chủ yêu cầu 16/11/2026).
-// Chỉ là cách BÀY cột: lưu trên trình duyệt của người xem (theo công ty + cổ đông), không gửi máy chủ
-// và không đổi số liệu nào của sổ tổng.
+// Chỉ là cách BÀY cột, không đổi số liệu nào của sổ tổng. Lưu THEO TÀI KHOẢN trên máy chủ (bảng
+// public.settings, khoá `buildingFilterSettingKey`) để theo người dùng sang trình duyệt / máy khác và cả
+// cửa sổ ẩn danh (chủ yêu cầu 17/11/2026); bản trên trình duyệt (`buildingFilterStorageKey`) chỉ là bộ đệm.
 
 import type { BuildingColumn, MatrixRow } from './selfView';
 
@@ -24,8 +25,27 @@ export function emptyBuildingFilterState(): BuildingFilterState {
   return { presets: [], activeId: null };
 }
 
+/** Khoá bộ đệm trên trình duyệt (localStorage) — mở màn ngay, dùng tạm khi máy chủ chưa đọc / ghi được. */
 export function buildingFilterStorageKey(organizationId: string, shareholderId: string): string {
   return `ihome:ln-nha-thang:bo-loc:v1:${organizationId}:${shareholderId}`;
+}
+
+/**
+ * Khoá dòng `public.settings` (duy nhất theo user_id + key): mỗi TÀI KHOẢN một bản, tách theo công ty + cổ
+ * đông (một người có thể thuộc nhiều công ty).
+ */
+export function buildingFilterSettingKey(organizationId: string, shareholderId: string): string {
+  return `ln_nha_thang_bo_loc:v1:${organizationId}:${shareholderId}`;
+}
+
+/** Giá trị jsonb đọc từ máy chủ ⇒ trạng thái đã làm sạch (cùng luật với bản trên trình duyệt). */
+export function parseBuildingFilterValue(value: unknown): BuildingFilterState {
+  if (value === null || value === undefined) return emptyBuildingFilterState();
+  return parseBuildingFilterState(JSON.stringify(value));
+}
+
+export function sameBuildingFilterState(a: BuildingFilterState, b: BuildingFilterState): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILDING_FILTER_MAX_PRESETS, BUILDING_FILTER_NAME_MAX, activeBuildingFilter, applyBuildingFilter, buildingFilterDraftError,
-  buildingFilterStorageKey, parseBuildingFilterState, removeBuildingFilter, upsertBuildingFilter,
+  buildingFilterSettingKey, buildingFilterStorageKey, parseBuildingFilterState, parseBuildingFilterValue, removeBuildingFilter,
+  sameBuildingFilterState, upsertBuildingFilter,
   type BuildingFilterState,
 } from '../buildingFilters';
 import type { BuildingColumn, MatrixRow } from '../selfView';
@@ -47,6 +48,26 @@ describe('lưu / đọc bộ lọc', () => {
   it('khoá lưu tách theo công ty và cổ đông', () => {
     expect(buildingFilterStorageKey('org-a', 'sh-1')).not.toBe(buildingFilterStorageKey('org-b', 'sh-1'));
     expect(buildingFilterStorageKey('org-a', 'sh-1')).not.toBe(buildingFilterStorageKey('org-a', 'sh-2'));
+  });
+
+  it('khoá trên tài khoản (public.settings) tách theo công ty và cổ đông, khác khoá bộ đệm trình duyệt', () => {
+    expect(buildingFilterSettingKey('org-a', 'sh-1')).toBe('ln_nha_thang_bo_loc:v1:org-a:sh-1');
+    expect(buildingFilterSettingKey('org-a', 'sh-1')).not.toBe(buildingFilterSettingKey('org-b', 'sh-1'));
+    expect(buildingFilterSettingKey('org-a', 'sh-1')).not.toBe(buildingFilterSettingKey('org-a', 'sh-2'));
+    expect(buildingFilterSettingKey('org-a', 'sh-1')).not.toBe(buildingFilterStorageKey('org-a', 'sh-1'));
+  });
+
+  it('giá trị jsonb từ tài khoản đọc cùng luật làm sạch; rỗng / lạ ⇒ trạng thái rỗng', () => {
+    expect(parseBuildingFilterValue(state)).toEqual(state);
+    expect(parseBuildingFilterValue(null)).toEqual({ presets: [], activeId: null });
+    expect(parseBuildingFilterValue(undefined)).toEqual({ presets: [], activeId: null });
+    expect(parseBuildingFilterValue('chuỗi lạ')).toEqual({ presets: [], activeId: null });
+    expect(parseBuildingFilterValue({ presets: [{ id: 'p1', name: '  ', keys: ['a'] }], activeId: 'p1' })).toEqual({ presets: [], activeId: null });
+  });
+
+  it('so hai trạng thái theo nội dung', () => {
+    expect(sameBuildingFilterState(state, JSON.parse(JSON.stringify(state)) as BuildingFilterState)).toBe(true);
+    expect(sameBuildingFilterState(state, { ...state, activeId: null })).toBe(false);
   });
 
   it('đọc lại đúng thứ đã lưu', () => {

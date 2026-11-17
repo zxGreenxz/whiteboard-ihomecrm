@@ -2,12 +2,39 @@
 // Màn cổ đông tự xem theo sổ tổng (máy tính): chỉ tiền của chính mình; tỷ lệ % / số toà chỉ khi có quyền
 // VÀ máy chủ gửi kèm; phiếu tự lập còn chờ thì "Huỷ yêu cầu"; nút "Chi tạm ứng cho tôi" theo quyền + công tắc.
 // Chủ yêu cầu 16/11/2026: bỏ thẻ "Doanh thu và lợi nhuận toà đã chốt"; bảng Nhà × Tháng có bộ lọc nhà tự tạo.
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 
 const h = vi.hoisted(() => ({ distribute: vi.fn(), cancel: vi.fn() }));
+// Bảng public.settings giả (bộ lọc nhà lưu theo tài khoản) + người đang đăng nhập.
+const db = vi.hoisted(() => ({ rows: new Map<string, Record<string, unknown>>(), user: { id: 'user-1' } }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: db.user }) }));
+vi.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    from: () => {
+      const where: Record<string, unknown> = {};
+      let payload: Record<string, unknown> = {};
+      const builder = {
+        select: () => builder,
+        eq: (column: string, value: unknown) => { where[column] = value; return builder; },
+        maybeSingle: async () => {
+          const row = db.rows.get(`${String(where.user_id)}|${String(where.key)}`);
+          return { data: row ? { value: row.value } : null, error: null };
+        },
+        upsert: (next: Record<string, unknown>) => { payload = next; return builder; },
+        single: async () => {
+          const row = { id: `row-${db.rows.size + 1}`, ...payload };
+          db.rows.set(`${String(payload.user_id)}|${String(payload.key)}`, row);
+          return { data: row, error: null };
+        },
+      };
+      return builder;
+    },
+  },
+}));
 
 vi.mock('@/pages/reports/finance/ProfitHubShell', () => ({
   ProfitHubSlot: ({ name, children }: { name: string; children?: ReactNode }) => createElement('div', { 'data-slot': name }, children),
@@ -45,8 +72,15 @@ const ledger = (over: Partial<MyProfitLedger> = {}): MyProfitLedger => ({
 });
 
 const NO_ACCESS: ShareholderSelfAccess = { canViewPercent: false, canViewBuildingTotals: false, canAdvanceOwn: false };
-const view = (l: MyProfitLedger, access: Partial<ShareholderSelfAccess> = {}) =>
-  render(<ShareholderLedgerSelfView ledger={l} access={{ ...NO_ACCESS, ...access }} />);
+const view = (l: MyProfitLedger, access: Partial<ShareholderSelfAccess> = {}) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <ShareholderLedgerSelfView ledger={l} access={{ ...NO_ACCESS, ...access }} />
+    </QueryClientProvider>,
+  );
+};
+const SETTING_KEY = 'ln_nha_thang_bo_loc:v1:org-a:sh-1';
 const kpis = () => document.querySelector('[data-slot="kpis"]') as HTMLElement;
 const SENSITIVE = {
   percent_rows: [{ building_id: 'b1', building_name: 'Toà Một', percent: 20 }],
@@ -58,7 +92,7 @@ beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { value() {}, configurable: true });
   Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', { value() { return false; }, configurable: true });
 });
-beforeEach(() => { vi.clearAllMocks(); window.localStorage.clear(); });
+beforeEach(() => { vi.clearAllMocks(); window.localStorage.clear(); db.rows.clear(); db.user = { id: 'user-1' }; });
 afterEach(cleanup);
 
 describe('ShareholderLedgerSelfView — tiền của chính mình', () => {
@@ -142,32 +176,41 @@ describe('ShareholderLedgerSelfView — bộ lọc nhà của bảng Nhà × Th�
     expect(headers()).toEqual(expect.arrayContaining(['Toà Hai', 'Toà Một', 'Tổng chia']));
   });
 
-  it('bộ lọc lưu trên trình duyệt theo công ty + cổ đông: mở lại vẫn còn và đang chọn; cổ đông khác không thấy', () => {
+  it('bộ lọc lưu theo tài khoản (công ty + cổ đông): mở lại — kể cả trình duyệt khác — vẫn còn và đang chọn; cổ đông / tài khoản khác không thấy', async () => {
     view(ledger());
     createFilter('Chỉ Toà Hai', 'Toà Hai');
+    await waitFor(() => expect(db.rows.get(`user-1|${SETTING_KEY}`)).toBeTruthy());
+    expect(db.rows.get(`user-1|${SETTING_KEY}`)).toMatchObject({ organization_id: 'org-a', key: SETTING_KEY });
     cleanup();
+    window.localStorage.clear(); // trình duyệt khác / cửa sổ ẩn danh: không còn bộ đệm
     view(ledger());
-    expect(screen.getByRole('button', { name: 'Chỉ Toà Hai' }).getAttribute('aria-pressed')).toBe('true');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Chỉ Toà Hai' }).getAttribute('aria-pressed')).toBe('true'));
     expect(headers()).not.toContain('Toà Một');
     cleanup();
     view(ledger({ shareholder: { id: 'sh-2', name: 'Cổ đông 2' } }));
     expect(screen.queryByRole('button', { name: 'Chỉ Toà Hai' })).toBeNull();
     expect(headers()).toEqual(expect.arrayContaining(['Toà Hai', 'Toà Một']));
+    cleanup();
+    window.localStorage.clear();
+    db.user = { id: 'user-2' };
+    view(ledger());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tất cả' }).getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.queryByRole('button', { name: 'Chỉ Toà Hai' })).toBeNull();
   });
 
-  it('bộ lọc trỏ nhà đã rời sổ ⇒ bảng báo rõ, hộp sửa đếm 0 nhà và không cho lưu bộ lọc rỗng', () => {
-    window.localStorage.setItem(
-      'ihome:ln-nha-thang:bo-loc:v1:org-a:sh-1',
-      JSON.stringify({ activeId: 'p1', presets: [{ id: 'p1', name: 'Nhà cũ', keys: ['nha-da-roi-so'] }] }),
-    );
+  it('bộ lọc trỏ nhà đã rời sổ ⇒ bảng báo rõ, hộp sửa đếm 0 nhà và không cho lưu bộ lọc rỗng', async () => {
+    db.rows.set(`user-1|${SETTING_KEY}`, {
+      id: 'r1', user_id: 'user-1', key: SETTING_KEY, organization_id: 'org-a',
+      value: { activeId: 'p1', presets: [{ id: 'p1', name: 'Nhà cũ', keys: ['nha-da-roi-so'] }] },
+    });
     view(ledger());
-    expect(screen.getByText(/Bộ lọc “Nhà cũ” không có nhà nào có phần chia/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Bộ lọc “Nhà cũ” không có nhà nào có phần chia/)).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /Sửa bộ lọc/ }));
     const dialog = screen.getByRole('dialog');
     expect(dialog.textContent).toContain('Nhà hiển thị (0/2)');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Lưu bộ lọc' }));
     expect(within(dialog).getByRole('alert').textContent).toBe('Chọn ít nhất một nhà');
-    expect(JSON.parse(window.localStorage.getItem('ihome:ln-nha-thang:bo-loc:v1:org-a:sh-1') ?? '{}').presets[0].keys).toEqual(['nha-da-roi-so']);
+    expect((db.rows.get(`user-1|${SETTING_KEY}`)?.value as { presets: { keys: string[] }[] }).presets[0]?.keys).toEqual(['nha-da-roi-so']);
   });
 
   it('thiếu tên hoặc chưa chọn nhà ⇒ báo lỗi trong hộp, không tạo; sửa đổi tên và xoá bộ lọc được', () => {
