@@ -86,8 +86,14 @@ lease (75 giây). Chuỗi phiên chỉ dùng được cho `GET /recorders/:id`, 
 `/sessions/:id[/renew|/playback]`; live, live-view, archive và ảnh thu nhỏ `/preview`
 trả 403 `SHARE_SCOPE_DENIED` (ảnh thu nhỏ dùng chung hai chỗ toàn gateway với nhân viên).
 Khung giờ của lượt chia sẻ luôn nằm trong quá khứ lúc tạo, nên khách không theo dõi
-được gần như trực tiếp. Khách luôn xem bản chuyển mã SD/HD (H.264), mỗi lượt một người
-xem, toàn gateway tối đa 2 luồng khách cùng lúc để còn chỗ cho xem lại của nhân viên.
+được gần như trực tiếp. Khách luôn xem bản chuyển mã SD/HD (H.264). Mỗi lượt xem được
+trên 2 máy cùng lúc (một máy = một lần đăng nhập, tức một chuỗi phiên `cs_…`): cùng máy
+mở lại thì thay luồng của chính nó, máy thứ ba thay chỗ máy đang xem lâu nhất. Toàn
+gateway vẫn tối đa 2 luồng khách cùng lúc vì mỗi luồng là một bộ chuyển mã riêng. Khi
+đã đầy: lượt đang xin còn luồng của chính nó thì luồng đó nhường (khách mở lại link luôn
+vào được); lượt chưa có luồng nào thì lượt khác đang giữ 2 luồng nhường luồng mở trước;
+hai lượt mỗi bên một luồng thì lượt thứ ba nhận `PLAYBACK_BUSY`. Luồng đã nhường không
+được trả lại nếu bên mới mở hỏng (đầu ghi lỗi): máy đó bấm thử lại là vào chỗ trống.
 Không cần đổi `live-config.json`, ingress hay unit; chỉ cần release gateway mới sau
 khi migration đã áp. Gateway cũ nhận chuỗi `cs_…` sẽ trả 401 như JWT sai.
 

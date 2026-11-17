@@ -58,6 +58,8 @@ export function boundedSignal(ms: number, signal?: AbortSignal): AbortSignal {
   if (signal?.aborted) stop(); else signal?.addEventListener("abort", stop, { once: true });
   return controller.signal;
 }
+/** Mã cổng trả khi phiên xem thật sự không còn (bị thay chỗ, hết lease, hết quyền): khác với cổng bận hay lỗi mạng. */
+const SESSION_ENDED = ["SESSION_NOT_FOUND", "SESSION_EXPIRED", "SESSION_OWNER_MISMATCH", "SHARE_ENDED", "LOGIN_REQUIRED", "CAMERA_ACCESS_DENIED"];
 export class CameraLiveError extends Error {
   constructor(readonly code: string) { super(messages[code] ?? "Không thể kết nối video. Vui lòng thử lại."); }
 }
@@ -189,7 +191,7 @@ export class CameraLiveConnection {
         audioState();
       };
       peer.onconnectionstatechange = () => {
-        if (peer.connectionState === "failed" && !this.stopped) this.fail("Không thiết lập được đường truyền video. Hãy thử lại hoặc đổi mạng.");
+        if (peer.connectionState === "failed" && !this.stopped) void this.transportFailed();
       };
       await peer.setLocalDescription(await peer.createOffer());
       await new Promise<void>((resolve) => {
@@ -254,6 +256,22 @@ export class CameraLiveConnection {
     try { await liveRequest(`/sessions/${this.sessionId}/renew`, "POST", undefined, this.abort.signal, undefined, undefined, this.options.accessToken); }
     catch (error) { if (!this.stopped) this.fail(error instanceof CameraLiveError ? error.message : "Phiên xem bị ngắt.", error instanceof CameraLiveError ? error.code : undefined); }
     finally { this.renewing = false; }
+  }
+  /**
+   * Cổng đóng luồng (máy khác thay chỗ, hết lease) thì phía trình duyệt cũng kết thúc bằng "failed", khoảng 16 giây sau
+   * và thường trước kỳ gia hạn kế tiếp. Hỏi cổng trước khi đổ cho mạng của người xem: chỉ khi cổng nói rõ phiên đã
+   * kết thúc mới báo theo mã đó; cổng bận, chưa xác minh được hay không gọi được thì vẫn là lỗi đường truyền.
+   */
+  private async transportFailed() {
+    const id = this.sessionId;
+    if (id) {
+      try { await liveRequest(`/sessions/${id}/renew`, "POST", undefined, this.abort.signal, undefined, undefined, this.options.accessToken); }
+      catch (error) {
+        if (this.stopped) return;
+        if (error instanceof CameraLiveError && SESSION_ENDED.includes(error.code)) { this.fail(error.message, error.code); return; }
+      }
+    }
+    if (!this.stopped) this.fail("Không thiết lập được đường truyền video. Hãy thử lại hoặc đổi mạng.");
   }
   private fail(message: string, code?: string) { this.stop(); if (code) this.options.onErrorCode?.(code); this.options.onState("error", message); }
   private releaseSession(): Promise<void> {

@@ -18,8 +18,11 @@ type ShareQuality = "sd" | "hd";
 interface Selection extends CameraShareSpan { base: number; speed: number; quality: ShareQuality; generation: number }
 
 const RECOVERABLE = ["CAMERA_UNAVAILABLE", "PLAYBACK_CONTROL_FAILED", "PLAYBACK_CONTROL_UNAVAILABLE", "SESSION_NOT_FOUND"];
-/** Mỗi lượt chia sẻ chỉ một người xem: mở ở máy/tab khác thì cổng đóng phiên ở đây, gia hạn nhận SESSION_NOT_FOUND. */
-const DISPLACED = "Lượt chia sẻ đang được mở ở máy hoặc tab khác nên máy này đã dừng. Bấm Thử lại để xem tiếp tại đây.";
+/**
+ * Cổng đã đóng phiên ở máy này (SESSION_NOT_FOUND) mà lượt vẫn còn hạn. Hai nguyên do không phân biệt được từ đây:
+ * máy nghỉ quá một kỳ lease (tắt màn hình), hoặc lượt đã đủ 2 máy và máy khác vừa thay chỗ.
+ */
+const DISPLACED = "Máy này đã dừng xem vì màn hình tắt lâu, hoặc link đang được mở ở máy hoặc tab khác (mỗi link xem được trên 2 máy cùng lúc). Bấm Thử lại để xem tiếp tại đây.";
 const EXPIRY_RECHECK_MARGIN_MS = 3000;
 const qualityLabel: Record<ShareQuality, string> = { sd: "SD", hd: "HD" };
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -285,6 +288,6 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
       <Button type="submit" variant="outline" className="min-h-11">Đi tới</Button>
     </form>
     {jumpError && <p role="alert" className="text-sm text-destructive">{jumpError}</p>}
-    <p className="text-xs text-muted-foreground">Giờ Việt Nam (UTC+7). Vị trí trên thanh là ước tính — đối chiếu ngày giờ in trên hình. Mỗi lúc chỉ một máy xem được; mở ở máy khác thì máy này dừng.{lead > 0 && ` Đầu ghi này cho xem từ ${cameraTimeLabel(span.from)}, sau đầu khung giờ ${lead / 1000} giây.`}</p>
+    <p className="text-xs text-muted-foreground">Giờ Việt Nam (UTC+7). Vị trí trên thanh là ước tính — đối chiếu ngày giờ in trên hình. Link này xem được trên 2 máy cùng lúc; mở thêm máy thứ ba thì máy đang xem lâu nhất dừng.{lead > 0 && ` Đầu ghi này cho xem từ ${cameraTimeLabel(span.from)}, sau đầu khung giờ ${lead / 1000} giây.`}</p>
   </div>;
 }

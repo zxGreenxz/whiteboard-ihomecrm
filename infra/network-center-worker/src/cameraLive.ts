@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { z } from "zod";
 import { pipeline } from "node:stream/promises";
@@ -58,6 +58,8 @@ const MAX_SESSIONS = 24;
 const MAX_USER_SESSIONS = 16;
 // Guests re-encode recordings on the camera host; staff playback must keep room.
 const MAX_SHARE_SESSIONS = 2;
+/** Devices that may watch one share at once (the guest plus the person who sent the link). */
+const MAX_SHARE_VIEWERS = 2;
 const BODY_MAX = 65_536;
 const shareToken = /^cs_[A-Za-z0-9_-]{43}$/u;
 const shareQualities: PlaybackQuality[] = ["sd", "hd"];
@@ -69,8 +71,11 @@ const shareSchema = z.object({
 export class LiveError extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
 }
-/** A guest share is one recorded channel inside one window; `start`/`end` are epoch milliseconds. */
-export interface LiveShareScope { channel: number; start: number; end: number }
+/**
+ * A guest share is one recorded channel inside one window; `start`/`end` are epoch milliseconds.
+ * `viewer` names the login (one share session string, i.e. one browser tab) without keeping the string itself.
+ */
+export interface LiveShareScope { channel: number; start: number; end: number; viewer: string }
 export interface LiveActor { id: string; expiresAt: number; share?: LiveShareScope }
 function assertShareScope(actor: LiveActor, channel: number, range: PlaybackRange) {
   if (!actor.share) return;
@@ -167,7 +172,7 @@ export function createLiveDependencies(config: LiveConfig, fatal: () => void, re
         if (share.recorder_id !== recorder.id || share.organization_id !== recorder.organizationId || share.building_id !== recorder.buildingId || !recorder.channels.includes(share.channel)) throw new LiveError(403, "CAMERA_ACCESS_DENIED");
         const expiresAt = Date.parse(share.expires_at); const start = Date.parse(share.window_start); const end = Date.parse(share.window_end);
         if (!(expiresAt > Date.now()) || !(end > start)) throw new LiveError(401, "SHARE_ENDED");
-        return { id: `share:${share.share_id}`, expiresAt, share: { channel: share.channel, start, end } };
+        return { id: `share:${share.share_id}`, expiresAt, share: { channel: share.channel, start, end, viewer: createHash("sha256").update(token).digest("hex").slice(0, 32) } };
       }
       const headers = { apikey: config.publishableKey, Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
       const user = await request(`${config.supabaseUrl}/auth/v1/user`, { headers, redirect: "error", signal: AbortSignal.timeout(5000) });
@@ -219,7 +224,7 @@ export function validateOffer(offer: string) {
 
 interface Session {
   id: string; actorId: string; recorder: LiveRecorder; expiresAt: number; location?: string; closed: boolean; playbackUntil?: number | undefined;
-  encodedLiveKey?: string; share?: boolean;
+  encodedLiveKey?: string; share?: boolean; viewer?: string;
   viewId?: string; pending?: Promise<void>; closing?: Promise<void>;
   playback?: PlaybackRange; controlling?: boolean; abort: AbortController;
 }
@@ -227,7 +232,8 @@ export class LiveSessions {
   private readonly sessions = new Map<string, Session>();
   private readonly cancelledViews = new Map<string, { actorId: string; expiresAt: number }>();
   private readonly now: () => number;
-  constructor(private readonly dependencies: LiveDependencies) { this.now = dependencies.now ?? Date.now; }
+  /** `guestStreams` is the gateway-wide cap on guest transcodes; production always runs with the default. */
+  constructor(private readonly dependencies: LiveDependencies, private readonly guestStreams = MAX_SHARE_SESSIONS) { this.now = dependencies.now ?? Date.now; }
   get size() { return this.sessions.size; }
   async start(actor: LiveActor, recorder: LiveRecorder, channel: number, offer: string, range?: PlaybackRange, liveQuality?: PlaybackQuality, viewId?: string) {
     validateOffer(offer);
@@ -245,11 +251,26 @@ export class LiveSessions {
       assertShareScope(actor, channel, playback);
       // From here on the session, its lease and the recorder all use the moved range (the same object when the lead is 0).
       playback = guestRecorderRange(playback, liveVendor(recorder.vendor).playbackStartLead);
-      // One viewer per share: a reload or a second device replaces the previous stream.
-      await Promise.all([...this.sessions.values()].filter((s) => s.actorId === actor.id).map(async (s) => { await this.close(s); await s.pending; }));
-      // Checked after the await and before the synchronous reservation below, so two racing starts cannot both pass.
-      if ([...this.sessions.values()].some((s) => s.actorId === actor.id)) throw new LiveError(429, "CAMERA_LIMIT");
-      if ([...this.sessions.values()].filter((s) => s.share).length >= MAX_SHARE_SESSIONS) throw new LiveError(429, "PLAYBACK_BUSY");
+      // Two devices per share. A reload, retry or quality change replaces that same device's stream; one device more
+      // takes the place of the stream that has been open longest (the map keeps sessions in start order).
+      const viewer = actor.share.viewer;
+      const guests = () => [...this.sessions.values()].filter((s) => s.share);
+      const own = guests().filter((s) => s.actorId === actor.id);
+      const others = own.filter((s) => s.viewer !== viewer);
+      const displaced = [...own.filter((s) => s.viewer === viewer), ...others.slice(0, Math.max(0, others.length - (MAX_SHARE_VIEWERS - 1)))];
+      // Every guest stream is its own transcode, so the gateway-wide cap stays. When it is still full, this share's own
+      // older stream gives way first (a guest who reopens the link always gets in, as before); a share with nothing left
+      // to give takes the second stream of another share, so every share keeps at least its first viewer.
+      if (guests().length - displaced.length >= this.guestStreams) {
+        const spare = own.find((s) => !displaced.includes(s))
+          ?? guests().find((s) => s.actorId !== actor.id && guests().filter((o) => o.actorId === s.actorId).length > 1);
+        if (spare) displaced.push(spare);
+      }
+      await Promise.all(displaced.map(async (s) => { await this.close(s); await s.pending; }));
+      // Checked after the await and before the synchronous reservation below, so racing starts cannot pass the limits.
+      const remaining = guests().filter((s) => s.actorId === actor.id);
+      if (remaining.some((s) => s.viewer === viewer) || remaining.length >= MAX_SHARE_VIEWERS) throw new LiveError(429, "CAMERA_LIMIT");
+      if (guests().length >= this.guestStreams) throw new LiveError(429, "PLAYBACK_BUSY");
     }
     if (this.sessions.size >= MAX_SESSIONS || [...this.sessions.values()].filter((s) => s.actorId === actor.id).length >= MAX_USER_SESSIONS) throw new LiveError(429, "CAMERA_LIMIT");
     const encodedLiveKey = !playback && (liveQuality === "hd" || liveQuality === "fullhd") ? `${recorder.id}/${channel}/${liveQuality}` : undefined;
@@ -260,7 +281,7 @@ export class LiveSessions {
     if (playback && [...this.sessions.values()].filter((s) => s.playbackUntil).length >= 4) throw new LiveError(429, "PLAYBACK_BUSY");
     // Reserve before awaiting upstream: simultaneous requests cannot bypass the session limit.
     const playbackUntil = playback ? this.now() + (Date.parse(playback.end) - Date.parse(playback.position ?? playback.start)) / (playback.speed ?? 1) + 30_000 : undefined;
-    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil, ...(actor.share ? { share: true } : {}), ...(viewId ? { viewId } : {}), ...(encodedLiveKey ? { encodedLiveKey } : {}), ...(playback ? { playback } : {}), abort: new AbortController() };
+    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil, ...(actor.share ? { share: true, viewer: actor.share.viewer } : {}), ...(viewId ? { viewId } : {}), ...(encodedLiveKey ? { encodedLiveKey } : {}), ...(playback ? { playback } : {}), abort: new AbortController() };
     this.sessions.set(session.id, session);
     let settled!: () => void;
     session.pending = new Promise<void>((resolve) => { settled = resolve; });
