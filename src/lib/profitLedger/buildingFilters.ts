@@ -25,7 +25,7 @@ export function emptyBuildingFilterState(): BuildingFilterState {
   return { presets: [], activeId: null };
 }
 
-/** Khoá bộ đệm trên trình duyệt (localStorage) — mở màn ngay, dùng tạm khi máy chủ chưa đọc / ghi được. */
+/** Khoá bộ đệm trên trình duyệt (xem hooks/useBuildingFilterState) — mở màn ngay, dùng tạm khi máy chủ chưa đọc / ghi được. */
 export function buildingFilterStorageKey(organizationId: string, shareholderId: string): string {
   return `ihome:ln-nha-thang:bo-loc:v1:${organizationId}:${shareholderId}`;
 }
