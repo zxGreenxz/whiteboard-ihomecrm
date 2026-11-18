@@ -263,7 +263,8 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
                     <tr key={p.voucher_id} style={p.excluded_by_marker ? { opacity: 0.6 } : undefined}>
                       <td>{formatISODateVN(p.voucher_date)}</td>
                       <td>
-                        {p.voucher_code ?? '—'}
+                        {/* Mã phiếu đứng riêng một phần tử: nhãn "Tạm ứng" là chú thích kèm, không dính vào mã (tìm / chép mã được). */}
+                        <span>{p.voucher_code ?? '—'}</span>
                         {p.is_advance && <span className="ph-inline ph-inline--first">Tạm ứng</span>}
                         {p.excluded_by_marker && <span className="ph-keep" style={{ marginLeft: 4 }}>trước mốc</span>}
                       </td>

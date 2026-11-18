@@ -189,6 +189,18 @@ describe('ShareholderLedgerSelfView — tiền của chính mình', () => {
     expect(within(card).queryByRole('button')).toBeNull();
   });
 
+  it('bảng phiếu: mã phiếu tạm ứng đứng RIÊNG một phần tử (nhãn "Tạm ứng" không dính vào mã — tìm đúng mã được)', () => {
+    view(ledger());
+    // Như spec e2e (Playwright getByText exact xét TOÀN BỘ chữ của phần tử, kể cả con): phải có một phần tử mà toàn bộ
+    // chữ đúng bằng mã. Trước đây mã là chữ trần cạnh nhãn ⇒ chữ của cả ô là "PC-CHOTạm ứng", không phần tử nào khớp.
+    // (getByText của testing-library chỉ xét chữ TRỰC TIẾP của phần tử nên không bắt được lỗi này.)
+    const exactly = (code: string) => Array.from(document.querySelectorAll('td *, td'))
+      .filter((el) => (el.textContent ?? '').trim() === code);
+    expect(exactly('PC-CHO').length).toBeGreaterThan(0);
+    expect(exactly('PC-DUYET').length).toBeGreaterThan(0);
+    expect(exactly('PC-CHO')[0]!.closest('td')?.textContent).toMatch(/PC-CHO.*Tạm ứng/);
+  });
+
   it('chưa có lần chốt nào ⇒ thẻ nói rõ, không để trống', () => {
     view(ledger());
     expect(screen.getByTestId('self-settlements-card').textContent).toMatch(/chưa chốt chi lợi nhuận lần nào/);

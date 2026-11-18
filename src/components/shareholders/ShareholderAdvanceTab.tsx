@@ -201,7 +201,8 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
                   <tr key={p.voucher_id}>
                     <td>{formatISODateVN(p.voucher_date)}</td>
                     <td>
-                      {p.voucher_code ?? '—'}
+                      {/* Mã phiếu đứng riêng một phần tử: nhãn "Tạm ứng" là chú thích kèm, không dính vào mã (tìm / chép mã được). */}
+                      <span>{p.voucher_code ?? '—'}</span>
                       {p.is_advance && <span className="ph-inline ph-inline--first">Tạm ứng</span>}
                     </td>
                     <td>{payoutStatusLabel(p)}</td>
