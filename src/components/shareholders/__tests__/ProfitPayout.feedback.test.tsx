@@ -36,6 +36,20 @@ const m = vi.hoisted(() => ({
   fetching: false,
   previewError: false,
   refetch: vi.fn(),
+  /** Có thêm cổ đông thứ hai "Bình" (s2) trong sổ tổng; tháng riêng của từng cổ đông (mặc định dùng `months`). */
+  secondShareholder: false,
+  monthsBy: {} as Record<string, { month: string; allocated: number; selectable: boolean; unpaid_through: number }[]>,
+  /**
+   * Mô phỏng `placeholderData: keepPreviousData`: bật ⇒ khoá xem trước MỚI (cổ đông / tháng / sổ khác lần trước) chưa tải
+   * xong — hook trả lại số của lần trước (có thể của cổ đông / tháng KHÁC) kèm isPlaceholderData + isFetching.
+   */
+  hold: false,
+  lastSettle: null as { key: string; data: Record<string, unknown> } | null,
+  /** Tháng mà xem trước trả lỗi (khi chủ tự chọn) và lỗi trả về. */
+  failMonth: null as string | null,
+  failError: null as unknown,
+  /** Xem trước tạm ứng kèm cảnh báo "vượt ước tính các tháng chưa chốt" của máy chủ. */
+  exceedsEstimate: false,
 }));
 const ok = (data: unknown) => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, isSuccess: true, isFetching: false, isPlaceholderData: false, error: null, refetch: vi.fn() });
 // Ô tick / hộp xác nhận của Radix đo kích thước bằng ResizeObserver — jsdom không có.
@@ -68,6 +82,9 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
     organization_id: org, route: m.route, as_of: '2026-11-18T00:00:00Z',
     shareholders: [
       { shareholder_id: 's', name: 'An', is_active: true, is_deleted: false, has_login: true, marker: null, allocated: 0, payouts_approved: 0, payouts_pending: 0, salary_investment: 0, salary_advance_offset: 0, balance: 60_000, status: 'OWED', open_advance: 0, needs_review_count: m.reviewCount },
+      ...(m.secondShareholder
+        ? [{ shareholder_id: 's2', name: 'Bình', is_active: true, is_deleted: false, has_login: true, marker: null, allocated: 0, payouts_approved: 0, payouts_pending: 0, salary_investment: 0, salary_advance_offset: 0, balance: 30_000, status: 'OWED', open_advance: 0, needs_review_count: 0 }]
+        : []),
       { shareholder_id: 'gone', name: 'Đã xoá', is_active: true, is_deleted: true, has_login: false, marker: null, allocated: 0, payouts_approved: 0, payouts_pending: 0, salary_investment: 0, salary_advance_offset: 0, balance: 5, status: 'OWED', open_advance: 0, needs_review_count: 0 },
     ],
   }) : { ...ok(undefined), status: 'pending', isSuccess: false }),
@@ -75,25 +92,36 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
   useProfitSettlementPreview: (input: SettleInput) => {
     m.settleCalls.push({ shareholderId: input.shareholderId, throughMonth: input.throughMonth, accountId: input.accountId });
     if (!input.shareholderId) return { ...ok(undefined), status: 'pending', isSuccess: false };
-    const through = input.throughMonth ?? m.months[m.months.length - 1]?.month ?? null;
-    const row = m.months.find((x) => x.month === through);
+    // Tháng tự chọn mà máy chủ từ chối (vd 22023 SETTLE_MONTH): như react-query khi khoá mới lỗi — không còn số giữ tạm.
+    if (input.throughMonth !== null && input.throughMonth === m.failMonth) {
+      return { ...ok(undefined), status: 'error', isSuccess: false, isError: true, error: m.failError, refetch: m.refetch };
+    }
+    const key = `${input.shareholderId}|${input.throughMonth}|${input.accountId}`;
+    if (m.hold && m.lastSettle && m.lastSettle.key !== key) {
+      return { ...ok(m.lastSettle.data), isFetching: true, isPlaceholderData: true, refetch: m.refetch };
+    }
+    const months = m.monthsBy[input.shareholderId] ?? m.months;
+    const through = input.throughMonth ?? months[months.length - 1]?.month ?? null;
+    const row = months.find((x) => x.month === through);
     const recognized = row ? row.unpaid_through : null;
     const settleable = recognized !== null && recognized > 0;
     const offset = settleable ? Math.min(recognized, m.advanceOutstanding) : null;
     const cash = settleable && offset !== null ? recognized - offset : null;
-    const selectable = m.months.filter((x) => x.selectable);
+    const selectable = months.filter((x) => x.selectable);
     const blocked = m.route !== 'CANONICAL' ? 'ROUTE'
       : m.reviewCount > 0 ? 'SALARY_REVIEW_PENDING'
       : !settleable ? 'NOTHING_TO_SETTLE'
       : cash !== null && cash > 0 && !input.accountId ? 'ACCOUNT_REQUIRED' : null;
+    const data = {
+      route: m.route, shareholder_id: input.shareholderId, months, min_through_month: selectable[0]?.month ?? null,
+      through_month: through, position: positionOf(months[months.length - 1]?.unpaid_through ?? 0),
+      recognized_amount: recognized, advance_offset_amount: offset, cash_amount: cash,
+      advance_left: offset === null ? null : m.advanceOutstanding - offset, advance_pending: m.advancePending,
+      settlements: m.settlements, can_submit: blocked === null, blocked_reason: blocked,
+    };
+    m.lastSettle = { key, data };
     return {
-      ...ok({
-        route: m.route, shareholder_id: input.shareholderId, months: m.months, min_through_month: selectable[0]?.month ?? null,
-        through_month: through, position: positionOf(m.months[m.months.length - 1]?.unpaid_through ?? 0),
-        recognized_amount: recognized, advance_offset_amount: offset, cash_amount: cash,
-        advance_left: offset === null ? null : m.advanceOutstanding - offset, advance_pending: m.advancePending,
-        settlements: m.settlements, can_submit: blocked === null, blocked_reason: blocked,
-      }),
+      ...ok(data),
       isFetching: m.fetching,
       isError: m.previewError,
       error: m.previewError ? { code: '40P01', message: 'deadlock detected' } : null,
@@ -109,7 +137,13 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
       ...ok({
         route: m.route, shareholder_id: input.shareholderId, maker_kind: 'CUSTODIAN_ADVANCE', payee_is_maker: true,
         can_submit: !blocked && input.amount !== null && !!input.accountId, blocked_reason: blocked,
-        warnings: input.amount === null ? [] : [{ code: 'ADVANCE', advance_amount: input.amount }, { code: 'NEEDS_OWNER_APPROVAL' }],
+        warnings: input.amount === null ? [] : [
+          { code: 'ADVANCE', advance_amount: input.amount },
+          ...(m.exceedsEstimate
+            ? [{ code: 'ADVANCE_EXCEEDS_ESTIMATE', outstanding_advance: m.advanceOutstanding + m.advancePending + input.amount - 100_000, open_estimate: 0 }]
+            : []),
+          { code: 'NEEDS_OWNER_APPROVAL' },
+        ],
         position: m.hidePosition ? null : {
           ...base,
           after_advance: input.amount === null ? null : { advance_pending: base.advance_pending + input.amount, balance: base.balance - input.amount },
@@ -150,6 +184,8 @@ beforeEach(() => {
   m.route = 'CANONICAL'; m.months = MONTHS.map((x) => ({ ...x })); m.advanceOutstanding = 40_000; m.advancePending = 0; m.overoffset = 0;
   m.markerMonth = '2026-08-01'; m.settlements = []; m.reviewCount = 0; m.settleCalls = []; m.advanceCalls = []; m.access = [];
   m.advanceBlocked = null; m.hidePosition = false; m.fetching = false; m.previewError = false;
+  m.secondShareholder = false; m.monthsBy = {}; m.hold = false; m.lastSettle = null; m.failMonth = null; m.failError = null;
+  m.exceedsEstimate = false;
   m.settle.mockResolvedValue({ settlement_id: 'st-9', through_month: '2026-10-01', recognized_amount: 100_000, advance_offset_amount: 40_000, cash_amount: 60_000, voucher_id: 'v9', approval_request_id: 'r9', state: 'PENDING_APPROVAL', code: 'PC2611999' });
   m.advance.mockResolvedValue({ voucher_id: 'v8', code: 'PC2611888', amount: 50_000, within_amount: 0, advance_amount: 50_000, balance_before: 60_000, maker_kind: 'CUSTODIAN_ADVANCE' });
   m.voidSettle.mockResolvedValue({ settlement_id: 'st-0', state: 'VOID' });
@@ -393,6 +429,126 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     expect(date.value).toBe('31/02/2026');
     expect(m.settle).not.toHaveBeenCalled();
   });
+
+  // R5 (review chéo 18/11) — mức hộp thoại; hook giả trả đúng thứ hook thật ném ở lượt đối chiếu (hook thật + máy chủ
+  // giả: ProfitDistributeDialog.reconcile.test.tsx).
+  it('"Kiểm tra lại kết quả" gặp PT409 số liệu vừa đổi (lần trước CHƯA ghi) ⇒ gỡ khoá, tải lại xem trước, không còn nút đối chiếu', async () => {
+    m.settle
+      .mockRejectedValueOnce(new FinancialWorkflowError('Chưa xác nhận được kết quả chốt chi lợi nhuận.', 'unknown', []))
+      .mockRejectedValueOnce({ code: 'PT409', message: 'PROFIT_LEDGER_SETTLE_CHANGED: số liệu vừa đổi so với lúc xem trước — tải lại rồi xem trước lần nữa', details: '{"cash_amount": 40000, "expected_cash": 60000}' });
+    render(dialog());
+    pickAccount();
+    fireEvent.click(submitButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' }));
+    expect(await screen.findByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeNull();
+    expect(submitButton().disabled).toBe(false);
+    expect(noteInput().closest('fieldset')?.disabled).toBe(false);
+    expect(m.refetch).toHaveBeenCalled();
+    expect(m.settle).toHaveBeenCalledTimes(2);
+    expect(ownerProps.onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+  it('"Kiểm tra lại kết quả" gặp lỗi khác (hook vẫn báo chưa rõ kết quả: mất mạng, 55000…) ⇒ VẪN khoá', async () => {
+    m.settle
+      .mockRejectedValueOnce(new FinancialWorkflowError('Chưa xác nhận được kết quả chốt chi lợi nhuận.', 'unknown', []))
+      .mockRejectedValueOnce(new FinancialWorkflowError('Chưa đối chiếu xong yêu cầu chốt chi lợi nhuận trước đó.', 'unknown', [], { code: '55000', message: 'PROFIT_LEDGER_FROZEN: x' }));
+    render(dialog());
+    pickAccount();
+    fireEvent.click(submitButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' }));
+    await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Lập phiếu chờ duyệt' })).toBeNull();
+    expect(noteInput().closest('fieldset')?.disabled).toBe(true);
+  });
+
+  // R6 (review chéo 18/11): tháng tự chọn mà xem trước lỗi ⇒ về tháng mặc định, không khoá ô tháng.
+  it.each([
+    ['22023 PROFIT_LEDGER_SETTLE_MONTH', { code: '22023', message: 'PROFIT_LEDGER_SETTLE_MONTH: tháng chốt phải là tháng đã chốt lợi nhuận của cổ đông', details: '{"through_month": "2026-09-01", "min": "2026-10-01", "max": "2026-10-01"}' }, /Tháng này chưa chốt chi được/],
+    ['lỗi bất kỳ (mất mạng)', { code: '', message: 'FetchError: Failed to fetch' }, /Mất kết nối/],
+  ])('tháng tự chọn mà xem trước lỗi (%s) ⇒ quay về tháng mặc định của máy chủ, nói vì sao, ô tháng không khoá', async (_name, error, reason) => {
+    m.failMonth = '2026-09-01';
+    m.failError = error;
+    render(dialog());
+    expect(select('throughMonth')!.value).toBe('2026-10-01');
+    fireEvent.change(select('throughMonth')!, { target: { value: '2026-09-01' } });
+    expect(m.settleCalls.some((c) => c.throughMonth === '2026-09-01')).toBe(true);
+    const notice = await screen.findByTestId('profit-settle-month-reset');
+    expect(notice.textContent).toMatch(/Đã quay về tháng mặc định vì không xem trước được tháng 09\/2026/);
+    expect(notice.textContent).toMatch(reason);
+    expect(m.settleCalls.at(-1)).toMatchObject({ shareholderId: 's', throughMonth: null });
+    await waitFor(() => expect(select('throughMonth')!.value).toBe('2026-10-01'));
+    expect(select('throughMonth')!.disabled).toBe(false);
+    expect(text('profit-settle-recognized')).toMatch(/100\.000/);
+    // Chủ chọn lại tháng khác: câu báo cũ biến mất.
+    m.failMonth = null;
+    fireEvent.change(select('throughMonth')!, { target: { value: '2026-09-01' } });
+    await waitFor(() => expect(text('profit-settle-recognized')).toMatch(/60\.000/));
+    expect(screen.queryByTestId('profit-settle-month-reset')).toBeNull();
+  });
+
+  // R8 (review chéo 18/11): đổi cổ đông / đổi tháng — hook giả mô phỏng keepPreviousData (số giữ tạm của lần trước,
+  // kèm isPlaceholderData): số của cổ đông / tháng CŨ không được hiện như số mới, không được gửi.
+  it('đổi cổ đông: số giữ tạm là của cổ đông CŨ ⇒ không hiện, không gửi; tải xong thì gửi đúng số của cổ đông mới', async () => {
+    m.secondShareholder = true;
+    m.monthsBy = { s2: [{ month: '2026-10-01', allocated: 70_000, selectable: true, unpaid_through: 70_000 }] };
+    const view = render(dialog());
+    pickAccount();
+    expect(text('profit-settle-recognized')).toMatch(/100\.000/);
+    m.hold = true;
+    fireEvent.change(select('shareholderId')!, { target: { value: 's2' } });
+    expect(m.settleCalls.at(-1)).toMatchObject({ shareholderId: 's2', throughMonth: null });
+    // Hook đang trả số của "An" (100.000 / 60.000) kèm isPlaceholderData: hộp không hiện số đó cho "Bình".
+    expect(screen.queryByTestId('profit-settle-recognized')).toBeNull();
+    expect(screen.queryByTestId('profit-settle-cash')).toBeNull();
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/100\.000|60\.000/);
+    fireEvent.click(submitButton());
+    expect(await screen.findByText(/Đang tính số chốt — đợi kết quả rồi bấm lại/)).toBeTruthy();
+    expect(m.settle).not.toHaveBeenCalled();
+    m.hold = false;
+    view.rerender(dialog());
+    await waitFor(() => expect(text('profit-settle-recognized')).toMatch(/70\.000/));
+    expect(text('profit-settle-cash')).toMatch(/30\.000/);
+    m.settle.mockResolvedValueOnce({ settlement_id: 'st-8', through_month: '2026-10-01', recognized_amount: 70_000, advance_offset_amount: 40_000, cash_amount: 30_000, voucher_id: 'v8', approval_request_id: 'r8', state: 'PENDING_APPROVAL', code: null });
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(1));
+    expect(m.settle).toHaveBeenCalledWith(expect.objectContaining({ shareholderId: 's2', throughMonth: '2026-10-01', expectedRecognized: 70_000, expectedCash: 30_000 }));
+  });
+  it('đổi tháng: số giữ tạm là của tháng CŨ ⇒ không hiện, không gửi, ô tháng không khoá chớp; tải xong gửi đúng số tháng mới', async () => {
+    const view = render(dialog());
+    pickAccount();
+    m.hold = true;
+    fireEvent.change(select('throughMonth')!, { target: { value: '2026-09-01' } });
+    expect(m.settleCalls.at(-1)).toMatchObject({ shareholderId: 's', throughMonth: '2026-09-01' });
+    expect(screen.queryByTestId('profit-settle-recognized')).toBeNull();
+    expect(select('throughMonth')!.disabled).toBe(false);
+    expect(select('throughMonth')!.value).toBe('2026-09-01');
+    fireEvent.click(submitButton());
+    expect(await screen.findByText(/Đang tính số chốt — đợi kết quả rồi bấm lại/)).toBeTruthy();
+    expect(m.settle).not.toHaveBeenCalled();
+    m.hold = false;
+    view.rerender(dialog());
+    await waitFor(() => expect(text('profit-settle-recognized')).toMatch(/60\.000/));
+    m.settle.mockResolvedValueOnce({ settlement_id: 'st-7', through_month: '2026-09-01', recognized_amount: 60_000, advance_offset_amount: 40_000, cash_amount: 20_000, voucher_id: 'v7', approval_request_id: 'r7', state: 'PENDING_APPROVAL', code: null });
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(1));
+    expect(m.settle).toHaveBeenCalledWith(expect.objectContaining({ shareholderId: 's', throughMonth: '2026-09-01', expectedRecognized: 60_000, expectedCash: 20_000 }));
+  });
+  it('đổi sổ quỹ: số giữ tạm của ĐÚNG cổ đông + tháng vẫn hiện (không chớp) nhưng chưa gửi được cho tới khi tải xong', async () => {
+    const view = render(dialog());
+    pickAccount('a1');
+    m.hold = true;
+    pickAccount('a2');
+    expect(text('profit-settle-cash')).toMatch(/60\.000/);
+    fireEvent.click(submitButton());
+    expect(await screen.findByText(/Đang tính số chốt — đợi kết quả rồi bấm lại/)).toBeTruthy();
+    expect(m.settle).not.toHaveBeenCalled();
+    m.hold = false;
+    view.rerender(dialog());
+    await waitFor(() => expect(screen.queryByText(/Đang tính số chốt — đợi kết quả/)).toBeNull());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(m.settle).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'a2', expectedRecognized: 100_000, expectedCash: 60_000 })));
+  });
 });
 
 describe('hộp Chi tạm ứng cho tôi (cổ đông có quyền tạm ứng)', () => {
@@ -443,10 +599,20 @@ describe('hộp Chi tạm ứng cho tôi (cổ đông có quyền tạm ứng)',
     fireEvent.click(submitButton());
     await waitFor(() => expect(m.advance).toHaveBeenCalledWith(expect.objectContaining({ amount: 80_000, note: null })));
   });
-  it('chưa giữ sổ nào ⇒ báo và khoá gửi', async () => {
+  it('máy chủ kèm cảnh báo "vượt ước tính" ⇒ vẫn chỉ MỘT câu cảnh báo dễ hiểu (không còn câu "ước tính các tháng chưa chốt")', async () => {
+    m.exceedsEstimate = true;
+    render(dialog());
+    await fill('80000');
+    const box = screen.getByTestId('profit-advance-preview');
+    expect(text('profit-advance-over')).toBe('Ứng vượt lợi nhuận chưa chi 20.000 đ — vẫn lập được, phiếu chờ chủ duyệt.');
+    expect(box.textContent).not.toMatch(/ước tính|còn treo/);
+    expect(within(box).getAllByText(/vượt/)).toHaveLength(1);
+  });
+  it('có quyền tạm ứng mà chưa giữ sổ nào ⇒ chỉ đường (nhờ người giữ sổ lập Tạm Ứng ở Thu chi) và khoá gửi', async () => {
     m.access = [{ cashbook_id: 'a1', possession_kind: 'KNOWER' }];
     render(dialog());
-    expect(screen.getByText(/chưa giữ sổ quỹ nào ở công ty này/)).toBeTruthy();
+    expect(text('profit-advance-no-cashbook')).toBe('Bạn chưa giữ sổ quỹ nào — nhờ người đang giữ sổ quỹ lập phiếu Tạm Ứng cho bạn ở Thu chi.');
+    expect(screen.queryByText(/chưa tạm ứng được/)).toBeNull();
     await waitFor(() => expect(submitButton().disabled).toBe(true));
   });
   it.each([
@@ -494,6 +660,21 @@ describe('hộp Chi tạm ứng cho tôi (cổ đông có quyền tạm ứng)',
     expect(await screen.findByText(/Đang kiểm tra phiếu tạm ứng này/)).toBeTruthy();
     expect(m.advance).not.toHaveBeenCalled();
   });
+});
+
+// U2 (18/11): hàng nút cuối của hai hộp dài dính đáy hộp (thân cuộn, nút luôn thấy — kiểu thanh nút form Thu chi điện thoại).
+it.each([
+  ['hộp chốt', () => <ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />, 'Lập phiếu chờ duyệt'],
+  ['hộp tự tạm ứng', () => <ProfitSelfAdvanceDialog open onOpenChange={ownerProps.onOpenChange} organizationId="org-a" me={{ shareholderId: 's', name: 'An' }} />, 'Lập phiếu chờ duyệt'],
+])('%s: thân giới hạn theo khung nhìn + cuộn; hàng nút dính đáy, cả hai nút chia đôi trên màn hẹp', (_name, view, submitName) => {
+  m.access = [{ cashbook_id: 'a2', possession_kind: 'CUSTODIAN' }];
+  render(view());
+  const dialog = screen.getByRole('dialog');
+  expect(dialog.className).toMatch(/max-h-\[90dvh\]/);
+  expect(dialog.className).toMatch(/overflow-y-auto/);
+  const footer = screen.getByRole('button', { name: submitName }).parentElement!;
+  expect(footer.className).toMatch(/\bsticky bottom-0\b/);
+  expect(within(footer).getByRole('button', { name: 'Đóng' }).className).toMatch(/flex-1 sm:flex-none/);
 });
 
 it.each(['manager'] as const)('ngày draft sai ở %s không gửi ngày cũ, giữ text/red/focus', async () => {

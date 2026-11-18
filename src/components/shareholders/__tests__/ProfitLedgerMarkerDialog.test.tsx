@@ -137,7 +137,8 @@ describe('hộp mốc đã trả đủ', () => {
     render(<ProfitLedgerMarkerDialog open onOpenChange={vi.fn()} organizationId="org-a" subjectKind="SHAREHOLDER" subject={daChot} />);
     fireEvent.change(monthInput(), { target: { value: '2020-05' } });
     const hint = await screen.findByTestId('marker-before-settlement');
-    expect(hint.textContent).toMatch(/Đã chốt chi lợi nhuận đến hết T06\/2020/);
+    // Tháng của lần chốt viết "MM/YYYY" như câu máy chủ và hộp chốt.
+    expect(hint.textContent).toMatch(/Đã chốt chi lợi nhuận đến hết 06\/2020/);
     expect(hint.textContent).toMatch(/huỷ lần chốt đó trước/);
     // Chỉ là lời nhắc theo số trang đang có: máy chủ mới là chốt cuối ⇒ nút vẫn bấm được.
     expect((screen.getByRole('button', { name: 'Đặt mốc' }) as HTMLButtonElement).disabled).toBe(false);
@@ -176,6 +177,34 @@ describe('hộp mốc đã trả đủ', () => {
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(m.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  // U8 (18/11): trang đã biết tháng chốt ⇒ có lời nhắc vàng; máy chủ từ chối đúng lý do đó ⇒ chỉ còn câu đỏ (không hai câu
+  // gần trùng), cùng cách viết tháng "MM/YYYY".
+  it('đã có lời nhắc vàng mà máy chủ vẫn từ chối cùng lý do ⇒ chỉ còn MỘT câu (đỏ), tháng viết "06/2020"', async () => {
+    m.mutate.mockRejectedValueOnce({
+      code: '55000',
+      message: 'PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT: đã chốt chi lợi nhuận đến hết tháng 06/2020',
+      details: '{"settled_through_month":"2020-05-01","last_settled_through_month":"2020-06-01"}',
+    });
+    render(<ProfitLedgerMarkerDialog open onOpenChange={vi.fn()} organizationId="org-a" subjectKind="SHAREHOLDER" subject={{ ...subject, lastSettledThroughMonth: '2020-06-01' }} />);
+    fireEvent.change(monthInput(), { target: { value: '2020-05' } });
+    expect((await screen.findByTestId('marker-before-settlement')).textContent).toMatch(/đến hết 06\/2020/);
+    fireEvent.change(reasonInput(), { target: { value: LY_DO } });
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt mốc' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/Đã chốt chi lợi nhuận đến hết 06\/2020/);
+    expect(screen.queryByTestId('marker-before-settlement')).toBeNull();
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/T06\/2020/);
+    expect(screen.getByRole('dialog').textContent?.match(/Đã chốt chi lợi nhuận đến hết/g)).toHaveLength(1);
+  });
+
+  it('hộp dài: giới hạn theo khung nhìn + cuộn, hàng nút dính đáy (dùng được ở điện thoại)', () => {
+    render(<ProfitLedgerMarkerDialog open onOpenChange={vi.fn()} organizationId="org-a" subjectKind="SHAREHOLDER" subject={subject} />);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.className).toMatch(/max-h-\[90dvh\]/);
+    expect(dialog.className).toMatch(/overflow-y-auto/);
+    expect(screen.getByRole('button', { name: 'Đặt mốc' }).parentElement!.className).toMatch(/\bsticky bottom-0\b/);
   });
 
   it('sổ tổng chưa mở phần đặt mốc ⇒ khoá nút + câu báo', async () => {

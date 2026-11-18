@@ -3,6 +3,7 @@
 // hoặc gỡ mốc. Xem trước số dư trước/sau; mốc làm mất dấu một khoản tạm ứng ⇒ chữ đỏ + phải tick.
 // Gửi kèm id mốc đang thấy (CAS): người khác vừa đổi mốc ⇒ máy chủ từ chối, hộp tải lại xem trước
 // để người dùng xem lại rồi mới bấm (KHÔNG tự gửi lại).
+// Bố cục: giới hạn theo khung nhìn động + cuộn, hàng nút dính đáy — dùng được cả trên điện thoại (390px).
 
 import { useEffect, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -12,7 +13,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DIALOG_SCROLL_BODY, DIALOG_STICKY_FOOTER, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,7 @@ import {
 import {
   ledgerBalanceText, ledgerMonthLabel, markerText, previousYearMonth,
 } from '@/lib/profitLedger/ownerLedgerView';
+import { settleMonthLabel } from '@/lib/profitLedger/positionView';
 import { profitLedgerRouteState } from '@/lib/profitLedger/route';
 import { activeMarkerMonth, type ProfitLedgerMarker, type ProfitLedgerSubjectKind } from '@/lib/profitLedger/sharedReaders';
 import { formatVND } from '@/lib/utils';
@@ -179,14 +181,17 @@ export function ProfitLedgerMarkerDialog({ open, onOpenChange, organizationId, s
   const removing = action === 'REMOVE';
   // Mốc đang chọn sớm hơn tháng đã chốt chi lợi nhuận (theo số trang đang có): máy chủ sẽ từ chối lúc đặt.
   const settledThrough = subjectKind === 'SHAREHOLDER' ? subject?.lastSettledThroughMonth ?? null : null;
-  const beforeSettlement = !removing && !!settledThrough && selected !== null && selectionValid && selected < settledThrough;
+  // Lời nhắc vàng trước khi gửi; máy chủ đã từ chối đúng lý do đó (câu đỏ ở dưới) thì chỉ còn câu đỏ — không hai câu trùng.
+  const beforeSettlement = !removing && !!settledThrough && selected !== null && selectionValid && selected < settledThrough
+    && failure?.kind !== 'MARKER_BEFORE_SETTLEMENT';
   const title = subjectKind === 'MANAGER' ? 'Mốc đã trả đủ — lương điều hành' : 'Mốc đã trả đủ — lợi nhuận cổ đông';
   const rootPreviewError = form.formState.errors.root?.preview?.message;
   const erasedShown = erased > 0 ? erased : (failure?.kind === 'MARKER_ERASES_ADVANCE' ? Number(failure.detail?.advance_erased) || 0 : 0);
 
   return (
     <Dialog open={open && !!subject} onOpenChange={(next) => { if (!markerMut.isPending) onOpenChange(next); }}>
-      <DialogContent ref={dialogRef} className="sm:max-w-[520px]">
+      {/* Khuôn hộp dài: giới hạn theo khung nhìn động + cuộn dọc, hàng nút dính đáy (điện thoại không mất tiêu đề / nút). */}
+      <DialogContent ref={dialogRef} className={`sm:max-w-[520px] ${DIALOG_SCROLL_BODY}`}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
@@ -244,7 +249,8 @@ export function ProfitLedgerMarkerDialog({ open, onOpenChange, organizationId, s
                 )}
                 {beforeSettlement && settledThrough && (
                   <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" data-testid="marker-before-settlement">
-                    Đã chốt chi lợi nhuận đến hết {ledgerMonthLabel(settledThrough)} — mốc "đã trả đủ" phải từ tháng đó trở đi.
+                    {/* Tháng của lần chốt viết "MM/YYYY" như câu máy chủ và hộp chốt. */}
+                    Đã chốt chi lợi nhuận đến hết {settleMonthLabel(settledThrough)} — mốc "đã trả đủ" phải từ tháng đó trở đi.
                     Muốn đặt mốc sớm hơn thì huỷ lần chốt đó trước.
                   </p>
                 )}
@@ -295,14 +301,14 @@ export function ProfitLedgerMarkerDialog({ open, onOpenChange, organizationId, s
               {rootPreviewError && <p role="alert" className="text-sm text-destructive">{rootPreviewError}</p>}
               {failure && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{failure.message}</p>}
 
-              <DialogFooter className="flex-wrap gap-2">
-                <Button type="button" variant="outline" disabled={markerMut.isPending} onClick={() => onOpenChange(false)}>Đóng</Button>
+              <DialogFooter className={DIALOG_STICKY_FOOTER}>
+                <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={markerMut.isPending} onClick={() => onOpenChange(false)}>Đóng</Button>
                 {saveBlocked ? (
-                  <Button type="button" variant="secondary" disabled={markerMut.isPending} onClick={() => { if (blocked) void send(blocked.input); }}>
+                  <Button type="button" variant="secondary" className="flex-1 sm:flex-none" disabled={markerMut.isPending} onClick={() => { if (blocked) void send(blocked.input); }}>
                     {markerMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Kiểm tra lại kết quả
                   </Button>
                 ) : (
-                  <Button type="submit" variant={removing ? 'destructive' : 'default'} disabled={markerMut.isPending || routeBlocked || !organizationId}>
+                  <Button type="submit" variant={removing ? 'destructive' : 'default'} className="flex-1 sm:flex-none" disabled={markerMut.isPending || routeBlocked || !organizationId}>
                     {markerMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{removing ? 'Gỡ mốc' : 'Đặt mốc'}
                   </Button>
                 )}

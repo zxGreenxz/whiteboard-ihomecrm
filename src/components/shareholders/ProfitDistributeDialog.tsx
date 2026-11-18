@@ -8,7 +8,8 @@
 // Gửi (W2) kèm ĐÚNG hai số đang hiện (phần ghi nhận + thực chi). Số liệu vừa đổi ⇒ máy chủ từ chối (PT409):
 // hộp báo, tải lại xem trước, chủ xem số mới rồi tự bấm lại — KHÔNG tự gửi lại.
 // Tháng mặc định là tháng máy chủ trả (tháng đủ điều kiện mới nhất). Tháng đó có thể không còn gì để chốt:
-// hộp nói rõ và để chủ TỰ chọn tháng sớm hơn, không tự nhảy.
+// hộp nói rõ và để chủ TỰ chọn tháng sớm hơn, không tự nhảy. Ngược lại, tháng chủ TỰ chọn mà xem trước lỗi (tháng
+// không còn chốt được, hay lỗi bất kỳ) ⇒ hộp đưa về tháng mặc định của máy chủ và nói vì sao — không khoá ô tháng.
 // Nhắc (không chặn): còn tạm ứng chờ duyệt (chưa được khấu trừ); cổ đông chưa có mốc "đã trả đủ" và chưa
 // chốt lần nào (lần chốt đầu gom toàn bộ phần được chia từ đầu) ⇒ đặt mốc trước nếu tháng cũ đã trả ngoài app.
 
@@ -25,7 +26,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { DateInput } from '@/components/ui/date-input';
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DIALOG_SCROLL_BODY, DIALOG_STICKY_FOOTER, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -83,6 +84,8 @@ export default function ProfitDistributeDialog({
   const saveBlocked = !!blocked;
   // Tháng chủ TỰ chọn; null = để máy chủ chọn tháng đủ điều kiện mới nhất.
   const [pickedMonth, setPickedMonth] = useState<string | null>(null);
+  // Tháng tự chọn vừa bị đưa về mặc định vì xem trước lỗi: câu báo cạnh ô tháng.
+  const [monthReset, setMonthReset] = useState<string | null>(null);
   // Lần chốt không ra tiền đang chờ chủ xác nhận.
   const [confirmInput, setConfirmInput] = useState<SettleShareholderProfitInput | null>(null);
   const [voidTarget, setVoidTarget] = useState<ProfitSettlementVoidTarget | null>(null);
@@ -97,6 +100,7 @@ export default function ProfitDistributeDialog({
     if (open && !saveBlocked) {
       reset(emptyValues(initialShareholder));
       setPickedMonth(null);
+      setMonthReset(null);
       setFailure(null);
       setConfirmInput(null);
     }
@@ -120,6 +124,17 @@ export default function ProfitDistributeDialog({
     return data;
   }, [previewQuery.data, shareholderId, pickedMonth]);
   const previewCurrent = !!preview && !previewQuery.isFetching && !previewQuery.isError && !previewQuery.isPlaceholderData;
+
+  // Tháng TỰ CHỌN mà xem trước lỗi (22023 PROFIT_LEDGER_SETTLE_MONTH: tháng không còn chốt được — hay lỗi bất kỳ):
+  // không có danh sách tháng thì ô tháng khoá, chủ kẹt ở tháng lỗi ⇒ đưa về tháng mặc định của máy chủ, nói vì sao.
+  // Tháng mặc định cũng lỗi thì giữ khung lỗi có nút "Tính lại" như cũ (không còn tháng nào để lùi về).
+  const pickedFailed = pickedMonth !== null && previewQuery.isError && !saveBlocked;
+  const pickedError = pickedFailed ? previewQuery.error : null;
+  useEffect(() => {
+    if (!pickedFailed || pickedMonth === null) return;
+    setMonthReset(`Đã quay về tháng mặc định vì không xem trước được tháng ${settleMonthLabel(pickedMonth)}. ${profitLedgerErrorMessage(pickedError, 'preview').message}`);
+    setPickedMonth(null);
+  }, [pickedFailed, pickedMonth, pickedError]);
 
   const through = preview?.through_month ?? null;
   const recognized = preview?.recognized_amount ?? null;
@@ -154,16 +169,20 @@ export default function ProfitDistributeDialog({
     mode: 'OWNER', organizationId, accounts: accountsQuery.data ?? [],
   }), [organizationId, accountsQuery.data]);
 
+  // Danh sách tháng lấy từ lần xem trước gần nhất CỦA ĐÚNG cổ đông đang chọn — kể cả số giữ tạm trong lúc tải tháng vừa
+  // chọn (danh sách tháng không đổi theo tháng xem), để ô tháng không khoá chớp. Chỉ dùng để chọn tháng: số để hiện /
+  // gửi vẫn là `preview` (đúng tháng, đã tải xong).
+  const monthSource = previewQuery.data && previewQuery.data.shareholder_id === shareholderId ? previewQuery.data : null;
   const monthOptions = useMemo(() => {
-    if (!preview) return [];
-    return preview.months
-      .filter((m) => m.selectable || m.month === preview.through_month)
+    if (!monthSource) return [];
+    return monthSource.months
+      .filter((m) => m.selectable || m.month === monthSource.through_month)
       .sort((a, b) => (a.month < b.month ? 1 : -1))
       .map((m) => ({
         value: m.month,
         label: m.selectable ? `Hết tháng ${settleMonthLabel(m.month)}` : `Hết tháng ${settleMonthLabel(m.month)} — không còn gì để chốt`,
       }));
-  }, [preview]);
+  }, [monthSource]);
   const otherSelectable = !!preview && preview.months.some((m) => m.selectable && m.month !== preview.through_month);
 
   // Route biết từ lần xem trước (R5) hoặc sổ tổng (E1) hộp tự đọc; chưa biết thì chưa khoá theo route.
@@ -270,8 +289,8 @@ export default function ProfitDistributeDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={(next) => { if (!pending) onOpenChange(next); }}>
-        {/* Khuôn hộp dài của repo: giới hạn theo khung nhìn động + cuộn dọc (điện thoại không mất tiêu đề / nút Đóng). */}
-        <DialogContent ref={dialogRef} className="sm:max-w-[560px] max-h-[90dvh] overflow-y-auto">
+        {/* Khuôn hộp dài: giới hạn theo khung nhìn động + cuộn dọc, hàng nút dính đáy (điện thoại không mất tiêu đề / nút). */}
+        <DialogContent ref={dialogRef} className={`sm:max-w-[560px] ${DIALOG_SCROLL_BODY}`}>
           <DialogHeader>
             <DialogTitle>Chi lợi nhuận cổ đông</DialogTitle>
             <DialogDescription>
@@ -296,7 +315,7 @@ export default function ProfitDistributeDialog({
                           name={field.name}
                           aria-invalid={!!fieldState.error}
                           value={field.value}
-                          onValueChange={(next) => { field.onChange(next); setPickedMonth(null); setFailure(null); }}
+                          onValueChange={(next) => { field.onChange(next); setPickedMonth(null); setMonthReset(null); setFailure(null); }}
                           placeholder="Chọn cổ đông"
                           options={shareholderOptions}
                         />
@@ -314,7 +333,7 @@ export default function ProfitDistributeDialog({
                             name={field.name}
                             aria-invalid={!!fieldState.error}
                             value={field.value}
-                            onValueChange={(next) => { field.onChange(next); setPickedMonth(next || null); setFailure(null); }}
+                            onValueChange={(next) => { field.onChange(next); setPickedMonth(next || null); setMonthReset(null); setFailure(null); }}
                             placeholder={preview && through === null ? 'Chưa có tháng nào chốt được' : 'Đang tìm tháng chốt được…'}
                             options={monthOptions}
                             searchable={false}
@@ -324,6 +343,9 @@ export default function ProfitDistributeDialog({
                         <p className="text-xs text-muted-foreground">
                           Mặc định là tháng đã chốt lợi nhuận mới nhất. Chỉ chọn được tháng còn lợi nhuận chưa chi.
                         </p>
+                        {monthReset && (
+                          <p role="status" className="text-xs text-amber-800 dark:text-amber-300" data-testid="profit-settle-month-reset">{monthReset}</p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -434,15 +456,16 @@ export default function ProfitDistributeDialog({
                   />
                 )}
 
-                <DialogFooter className="flex-wrap gap-2">
-                  <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>Đóng</Button>
+                {/* Hàng nút dính đáy hộp: thân dài (xem trước, nhắc, các lần chốt) cuộn, nút luôn thấy. */}
+                <DialogFooter className={DIALOG_STICKY_FOOTER}>
+                  <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={pending} onClick={() => onOpenChange(false)}>Đóng</Button>
                   {saveBlocked ? (
                     // Đối chiếu: gửi lại ĐÚNG nội dung với khoá cũ — máy chủ trả biên nhận cũ nếu đã chốt.
-                    <Button type="button" variant="secondary" disabled={pending} onClick={() => { if (blocked) void send(blocked.input, null); }}>
+                    <Button type="button" variant="secondary" className="flex-1 sm:flex-none" disabled={pending} onClick={() => { if (blocked) void send(blocked.input, null); }}>
                       {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Kiểm tra lại kết quả
                     </Button>
                   ) : (
-                    <Button type="submit" disabled={locked || pending}>
+                    <Button type="submit" className="flex-1 sm:flex-none" disabled={locked || pending}>
                       {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       {zeroCash ? 'Chốt, không ra tiền' : 'Lập phiếu chờ duyệt'}
                     </Button>
@@ -532,9 +555,11 @@ function SettlePreviewBox({ loading, refreshing, error, onRetry, preview, otherS
           Cổ đông chưa có tháng nào chốt chi được: cần tháng đã chốt lợi nhuận, sau mốc "đã trả đủ" và không trước lần chốt chi gần nhất.
         </p>
       ) : (
-        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5">
+        // Không có khe cột (gap-x-0) — khoảng cách nằm trong ô số (pl-4): đường kẻ trên dòng "Thực chi" (viền của dt + dd)
+        // chạy liền một nét qua hai cột.
+        <dl className="grid grid-cols-[1fr_auto] gap-x-0 gap-y-1.5">
           <dt>Lợi nhuận chưa chi đến hết {settleMonthLabel(through)}</dt>
-          <dd className={`text-right font-mono font-semibold${recognized < 0 ? ' text-destructive' : ''}`} data-testid="profit-settle-recognized">{formatVND(recognized)}</dd>
+          <dd className={`pl-4 text-right font-mono font-semibold whitespace-nowrap${recognized < 0 ? ' text-destructive' : ''}`} data-testid="profit-settle-recognized">{formatVND(recognized)}</dd>
           {offset !== null && cash !== null ? (
             <>
               <dt>
@@ -543,12 +568,12 @@ function SettlePreviewBox({ loading, refreshing, error, onRetry, preview, otherS
                   tạm ứng đang có {formatVND(preview.position.advance_outstanding)}{left !== null ? ` · còn lại sau chốt ${formatVND(left)}` : ''}
                 </span>
               </dt>
-              <dd className="text-right font-mono font-semibold" data-testid="profit-settle-offset">{sameMoney(offset, 0) ? formatVND(0) : `− ${formatVND(offset)}`}</dd>
+              <dd className="pl-4 text-right font-mono font-semibold whitespace-nowrap" data-testid="profit-settle-offset">{sameMoney(offset, 0) ? formatVND(0) : `− ${formatVND(offset)}`}</dd>
               <dt className="border-t pt-1.5 font-medium">
                 Thực chi
                 <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground"><Lock className="h-3 w-3" aria-hidden="true" />máy tính — không nhập tay</span>
               </dt>
-              <dd className="border-t pt-1.5 text-right font-mono text-base font-bold" data-testid="profit-settle-cash">{formatVND(cash)}</dd>
+              <dd className="border-t pl-4 pt-1.5 text-right font-mono text-base font-bold whitespace-nowrap" data-testid="profit-settle-cash">{formatVND(cash)}</dd>
             </>
           ) : (
             <dd className="col-span-2" role="status" data-testid="profit-settle-nothing">

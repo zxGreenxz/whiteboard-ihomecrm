@@ -4,7 +4,8 @@
 // Mọi khoản ứng đều là TẠM ỨNG, cộng dồn: KHÔNG còn ô "xác nhận phần vượt" và KHÔNG bắt lý do (ghi chú tuỳ
 // ý). Hộp hiện "Lợi nhuận chưa chi", "Tạm ứng đang có" và số sau phiếu này; ứng vượt lợi nhuận chưa chi chỉ
 // CẢNH BÁO, không chặn. Phiếu nào cũng CHỜ CHỦ DUYỆT — tiền chưa ra khỏi sổ. Sổ tổng chưa chạy thật / đóng
-// băng / còn phiếu lương cần chủ xem lại / chưa giữ sổ nào ⇒ khoá gửi (máy chủ cũng chặn).
+// băng / còn phiếu lương cần chủ xem lại / chưa giữ sổ nào ⇒ khoá gửi (máy chủ cũng chặn). Chưa giữ sổ nào thì hộp
+// chỉ đường: nhờ người đang giữ sổ quỹ lập phiếu Tạm Ứng hộ ở Thu chi (người nhận vẫn là mình).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -16,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { DateInput } from '@/components/ui/date-input';
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DIALOG_SCROLL_BODY, DIALOG_STICKY_FOOTER, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -145,8 +146,8 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!createMut.isPending) onOpenChange(next); }}>
-      {/* Khuôn hộp dài của repo: giới hạn theo khung nhìn động + cuộn dọc (điện thoại không mất tiêu đề / nút Đóng). */}
-      <DialogContent ref={dialogRef} className="sm:max-w-[520px] max-h-[90dvh] overflow-y-auto">
+      {/* Khuôn hộp dài: giới hạn theo khung nhìn động + cuộn dọc, hàng nút dính đáy (điện thoại không mất tiêu đề / nút). */}
+      <DialogContent ref={dialogRef} className={`sm:max-w-[520px] ${DIALOG_SCROLL_BODY}`}>
         <DialogHeader>
           <DialogTitle>Chi tạm ứng lợi nhuận cho tôi</DialogTitle>
           <DialogDescription>
@@ -200,7 +201,13 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
                         options={payoutAccounts.map((account) => ({ value: account.id, label: account.name, keywords: account.code }))}
                       />
                     </FormControl>
-                    {noHeldCashbook && <p role="alert" className="text-sm text-destructive">Bạn chưa giữ sổ quỹ nào ở công ty này — chưa tạm ứng được.</p>}
+                    {noHeldCashbook && (
+                      // Có quyền tạm ứng mà không giữ sổ nào: chỉ đường thay vì chỉ báo khoá.
+                      <p role="status" className="flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200" data-testid="profit-advance-no-cashbook">
+                        <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                        Bạn chưa giữ sổ quỹ nào — nhờ người đang giữ sổ quỹ lập phiếu Tạm Ứng cho bạn ở Thu chi.
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -229,15 +236,16 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
               {rootPreviewError && <p role="alert" className="text-sm text-destructive">{rootPreviewError}</p>}
               {failure && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive" data-testid="profit-advance-failure">{failure.message}</p>}
 
-              <DialogFooter className="flex-wrap gap-2">
-                <Button type="button" variant="outline" disabled={createMut.isPending} onClick={() => onOpenChange(false)}>Đóng</Button>
+              {/* Hàng nút dính đáy hộp: thân (số, cảnh báo, các ô) cuộn, nút luôn thấy. */}
+              <DialogFooter className={DIALOG_STICKY_FOOTER}>
+                <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={createMut.isPending} onClick={() => onOpenChange(false)}>Đóng</Button>
                 {saveBlocked ? (
                   // Đối chiếu: gửi lại ĐÚNG nội dung với khoá cũ — máy chủ trả biên nhận cũ nếu đã lập.
-                  <Button type="submit" variant="secondary" disabled={createMut.isPending}>
+                  <Button type="submit" variant="secondary" className="flex-1 sm:flex-none" disabled={createMut.isPending}>
                     {createMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Kiểm tra lại kết quả
                   </Button>
                 ) : (
-                  <Button type="submit" disabled={locked || createMut.isPending}>
+                  <Button type="submit" className="flex-1 sm:flex-none" disabled={locked || createMut.isPending}>
                     {createMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Lập phiếu chờ duyệt
                   </Button>
                 )}

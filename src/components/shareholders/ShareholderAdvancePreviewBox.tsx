@@ -4,7 +4,9 @@
 // SỐ CỦA CỔ ĐÔNG chỉ hiện khi máy chủ gửi `position` (chính người nhận đang có quyền tạm ứng, hoặc người có
 // quyền chi lợi nhuận). Người giữ sổ lập HỘ nhận `position = null`: khối này KHÔNG hiện con số nào của cổ
 // đông, chỉ nói phiếu chờ chủ duyệt và lý do chưa lập được (nếu có).
-// Ứng vượt lợi nhuận chưa chi chỉ CẢNH BÁO — không chặn (mọi phiếu chờ chủ duyệt).
+// Ứng vượt lợi nhuận chưa chi chỉ CẢNH BÁO — không chặn (mọi phiếu chờ chủ duyệt). Một câu duy nhất: cảnh báo
+// "vượt ước tính các tháng chưa chốt" (ADVANCE_EXCEEDS_ESTIMATE) của máy chủ chỉ có khi đã vượt lợi nhuận chưa chi,
+// nên gộp vào câu đó (bỏ con số "ước tính" khó hiểu); máy chủ có báo mà số tính ở đây ra 0 thì lấy số của máy chủ.
 
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -37,9 +39,11 @@ export function ShareholderAdvancePreviewBox({ loading, refreshing, error, onRet
   const { position } = preview;
   const blocked = advanceBlockedMessage(preview.blocked_reason, preview.payee_is_maker);
   const after = showAfter ? position?.after_advance ?? null : null;
-  const over = position && after ? advanceOverUnpaid(position, after.advance_pending) : 0;
   const pendingNow = position ? advancePendingText(position) : null;
-  const exceeds = position ? preview.warnings.find((w) => w.code === 'ADVANCE_EXCEEDS_ESTIMATE') : undefined;
+  const exceeds = position && after ? preview.warnings.find((w) => w.code === 'ADVANCE_EXCEEDS_ESTIMATE') : undefined;
+  const serverOver = exceeds && exceeds.code === 'ADVANCE_EXCEEDS_ESTIMATE' ? exceeds.outstanding_advance ?? 0 : 0;
+  const computedOver = position && after ? advanceOverUnpaid(position, after.advance_pending) : 0;
+  const over = computedOver > 0 ? computedOver : serverOver;
   return (
     <div className="space-y-1.5 rounded-md border bg-muted/30 p-3 text-sm" data-testid="profit-advance-preview">
       {refreshing && (
@@ -62,15 +66,7 @@ export function ShareholderAdvancePreviewBox({ loading, refreshing, error, onRet
           {over > 0 && (
             <p className="flex gap-1.5 text-amber-700 dark:text-amber-400" data-testid="profit-advance-over">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              Ứng vượt lợi nhuận chưa chi {formatVND(over)} — vẫn lập được, chủ duyệt quyết định.
-            </p>
-          )}
-          {exceeds && exceeds.code === 'ADVANCE_EXCEEDS_ESTIMATE' && (
-            <p className="flex gap-1.5 text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              {exceeds.outstanding_advance !== null && exceeds.open_estimate !== null
-                ? `Tạm ứng còn treo sau phiếu này ${formatVND(exceeds.outstanding_advance)} vượt lợi nhuận ước tính các tháng chưa chốt ${formatVND(exceeds.open_estimate)}.`
-                : 'Tạm ứng còn treo sau phiếu này vượt lợi nhuận ước tính các tháng chưa chốt.'}
+              <span>Ứng vượt lợi nhuận chưa chi {formatVND(over)} — vẫn lập được, phiếu chờ chủ duyệt.</span>
             </p>
           )}
         </>

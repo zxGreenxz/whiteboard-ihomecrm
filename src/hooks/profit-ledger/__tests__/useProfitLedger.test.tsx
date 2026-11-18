@@ -416,6 +416,65 @@ describe('W2 chốt chi lợi nhuận / W3 huỷ lần chốt', () => {
     expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(m.rpc.mock.calls[0]![1].p_idempotency_key);
     expect(pendingKeys()).toEqual([]);
   });
+  // R5 (review chéo 18/11): lượt "Kiểm tra lại kết quả" của lệnh chốt. Máy chủ xét khoá chống gửi trùng TRƯỚC hai phép
+  // kiểm SETTLE_CHANGED / SETTLE_NOTHING ⇒ hai từ chối đó ở lượt đối chiếu chứng minh lần gửi trước CHƯA ghi.
+  const lostResponse = { data: null, error: { code: '', message: 'FetchError: Failed to fetch' } };
+  it.each([
+    ['PT409 PROFIT_LEDGER_SETTLE_CHANGED', {
+      code: 'PT409', message: 'PROFIT_LEDGER_SETTLE_CHANGED: số liệu vừa đổi so với lúc xem trước — tải lại rồi xem trước lần nữa',
+      details: '{"cash_amount": 40, "expected_cash": 60, "through_month": "2026-10-01", "recognized_amount": 100, "expected_recognized": 100, "advance_offset_amount": 60}',
+    }, 'SETTLE_CHANGED'],
+    ['22023 PROFIT_LEDGER_SETTLE_NOTHING', {
+      code: '22023', message: 'PROFIT_LEDGER_SETTLE_NOTHING: không còn lợi nhuận chưa chi đến tháng này để chốt',
+      details: '{"through_month": "2026-10-01", "unpaid_through": 0}',
+    }, 'SETTLE_NOTHING'],
+  ])('W2 đối chiếu gặp %s ⇒ chưa ghi: xoá dấu chờ, ném lại đúng lỗi (hộp gỡ khoá, tải lại); lần sau là lệnh mới, khoá mới', async (_name, failure, kind) => {
+    m.rpc.mockResolvedValueOnce(lostResponse).mockResolvedValueOnce({ data: null, error: failure }).mockResolvedValueOnce({ data: w2(), error: null });
+    const h = renderHook(() => useSettleShareholderProfit(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(settleInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    expect(pendingKeys()).toHaveLength(1);
+    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
+    let rejection: unknown;
+    await act(async () => { rejection = await h.result.current.mutateAsync(settleInput).catch((e: unknown) => e); });
+    expect(rejection).toBe(failure);
+    expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(firstKey); // đối chiếu bằng ĐÚNG khoá cũ
+    expect(pendingKeys()).toEqual([]);
+    // Hộp đọc đúng loại lỗi (không phải "chưa rõ kết quả") ⇒ gỡ khoá và tải lại xem trước.
+    expect(profitLedgerErrorMessage(rejection, 'settle')).toMatchObject({ kind, reload: true });
+    await act(async () => { await expect(h.result.current.mutateAsync(settleInput)).resolves.toMatchObject({ settlement_id: 'st-1' }); });
+    expect(m.rpc).toHaveBeenCalledTimes(3);
+    expect(m.rpc.mock.calls[2]![1].p_idempotency_key).not.toBe(firstKey);
+    expect(pendingKeys()).toEqual([]);
+  });
+  it.each([
+    ['mất mạng lần nữa', { code: '', message: 'FetchError: Failed to fetch' }],
+    ['55000 sổ tổng đóng băng', { code: '55000', message: 'PROFIT_LEDGER_FROZEN: sổ tổng lợi nhuận đang đóng băng' }],
+    // Mã tháng có một chỗ ném TRƯỚC bước xét khoá ⇒ không phải bằng chứng "chưa ghi".
+    ['22023 PROFIT_LEDGER_SETTLE_MONTH', { code: '22023', message: 'PROFIT_LEDGER_SETTLE_MONTH: tháng chốt phải là tháng đã chốt lợi nhuận của cổ đông' }],
+    ['PT409 mã khác', { code: 'PT409', message: 'PROFIT_LEDGER_CANCEL_STATE_CHANGED: phiếu vừa đổi trạng thái' }],
+  ])('W2 đối chiếu gặp %s ⇒ chưa chứng minh được gì: VẪN giữ dấu chờ, lần sau vẫn đối chiếu bằng khoá cũ', async (_name, failure) => {
+    m.rpc.mockResolvedValueOnce(lostResponse).mockResolvedValue({ data: null, error: failure });
+    const h = renderHook(() => useSettleShareholderProfit(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(settleInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
+    let rejection: unknown;
+    await act(async () => { rejection = await h.result.current.mutateAsync(settleInput).catch((e: unknown) => e); });
+    expect(rejection).toMatchObject({ outcome: 'unknown' });
+    expect(profitLedgerErrorMessage(rejection, 'settle').kind).toBe('UNKNOWN_OUTCOME');
+    expect(pendingKeys()).toHaveLength(1);
+    await act(async () => { await expect(h.result.current.mutateAsync(settleInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    expect(m.rpc.mock.calls.map((c) => c[1].p_idempotency_key)).toEqual([firstKey, firstKey, firstKey]);
+    expect(pendingKeys()).toHaveLength(1);
+  });
+  it('chỉ lệnh chốt nhận bằng chứng đó: lệnh tạm ứng (W1) đối chiếu gặp PT409 SETTLE_CHANGED vẫn giữ khoá', async () => {
+    m.rpc.mockResolvedValueOnce(lostResponse).mockResolvedValueOnce({
+      data: null, error: { code: 'PT409', message: 'PROFIT_LEDGER_SETTLE_CHANGED: số liệu vừa đổi so với lúc xem trước' },
+    });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    expect(pendingKeys()).toHaveLength(1);
+  });
   it('làm mới cả khoá vị thế / xem trước sau khi ghi', async () => {
     const spy = vi.spyOn(client, 'invalidateQueries');
     m.rpc.mockResolvedValue({ data: w1(), error: null });
