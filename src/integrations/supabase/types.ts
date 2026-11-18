@@ -30098,6 +30098,29 @@ export type Database = {
       }
       settle_reservation_deposit_v1: { Args: { p_input: Json }; Returns: Json }
       shared_account_ids: { Args: never; Returns: string[] }
+      shareholder_profit_advance_options_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      shareholder_profit_advance_preview_v1: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_shareholder_id: string
+        }
+        Returns: Json
+      }
+      shareholder_profit_advance_v1: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_idempotency_key: string
+          p_note: string
+          p_shareholder_id: string
+          p_voucher_date: string
+        }
+        Returns: Json
+      }
       shareholder_profit_ledger_entries_v1: {
         Args: { p_organization_id: string; p_shareholder_id: string }
         Returns: Json
@@ -30122,11 +30145,48 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      shareholder_profit_my_position_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       shareholder_profit_payout_preview_v1: {
         Args: {
           p_account_id: string
           p_amount: number
           p_shareholder_id: string
+        }
+        Returns: Json
+      }
+      shareholder_profit_positions_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      shareholder_profit_settle_v1: {
+        Args: {
+          p_account_id: string
+          p_expected_cash: number
+          p_expected_recognized: number
+          p_idempotency_key: string
+          p_note: string
+          p_shareholder_id: string
+          p_through_month: string
+          p_voucher_date: string
+        }
+        Returns: Json
+      }
+      shareholder_profit_settlement_preview_v1: {
+        Args: {
+          p_account_id: string
+          p_shareholder_id: string
+          p_through_month: string
+        }
+        Returns: Json
+      }
+      shareholder_profit_settlement_void_v1: {
+        Args: {
+          p_idempotency_key: string
+          p_reason: string
+          p_settlement_id: string
         }
         Returns: Json
       }
