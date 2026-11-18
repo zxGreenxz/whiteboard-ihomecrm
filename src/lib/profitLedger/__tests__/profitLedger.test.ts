@@ -234,6 +234,9 @@ describe('E6/E8/E9/E11/E16', () => {
     expect(() => readLedgerCancelResult({ voucher_id: 'v1', changed: true, cancellation_kind: 'CANCELLED_AFTER_POSTING', reversal_posting_id: null, balance_after: 10 }, 'v1')).toThrow();
     expect(readLedgerCancelResult({ voucher_id: 'v1', changed: false, cancellation_kind: null, reversal_posting_id: null, balance_after: -5 }, 'v1').changed).toBe(false);
     expect(() => readLedgerCancelResult({ voucher_id: 'v1', changed: true, cancellation_kind: 'CANCELLED_UNPOSTED', reversal_posting_id: null }, 'v1')).toThrow();
+    // Máy chủ CHE số dư với người lập hộ (không có quyền chi, không phải người nhận): null là hợp lệ, khoá vắng vẫn là lỗi.
+    expect(readLedgerCancelResult({ voucher_id: 'v1', changed: true, cancellation_kind: 'CANCELLED_UNPOSTED', reversal_posting_id: null, balance_after: null }, 'v1').balance_after).toBeNull();
+    expect(readLedgerCancelResult({ voucher_id: 'v1', changed: false, cancellation_kind: null, reversal_posting_id: null, balance_after: null }, 'v1').balance_after).toBeNull();
   });
   it('E8 requires_acknowledge phải khớp advance_erased; E9 dội lại tháng', () => {
     const e8 = { route: 'SHADOW', subject_kind: 'SHAREHOLDER', subject_id: SH, settled_through_month: '2026-09-01', current_marker: { id: 'm0', settled_through_month: null, ledger_seq: 7, created_at: '2026-11-15T11:47:17.239913+00:00' }, balance_now: 10, balance_after: 0, excluded: { allocated: 10, payouts: 0, salary: 0 }, advance_erased: 0, requires_acknowledge: false };

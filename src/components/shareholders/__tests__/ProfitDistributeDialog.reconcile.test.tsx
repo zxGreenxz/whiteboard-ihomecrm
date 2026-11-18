@@ -100,6 +100,11 @@ describe('hộp chốt + hook thật: lượt "Kiểm tra lại kết quả"', (
     fireEvent.click(check);
     expect(await screen.findByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeNull());
+    // Gỡ khoá KHÔNG phải lúc mở hộp: sau khi mọi effect đã chạy, câu báo và nội dung đang nhập vẫn còn nguyên.
+    await new Promise((done) => setTimeout(done, 0));
+    expect(screen.getByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
+    expect((document.querySelector('[name="accountId"]') as HTMLInputElement | HTMLSelectElement).value).toBe('a1');
+    expect((document.querySelector('[name="shareholderId"]') as HTMLInputElement | HTMLSelectElement).value).toBe('s');
     expect((screen.getByRole('button', { name: 'Lập phiếu chờ duyệt' }) as HTMLButtonElement).disabled).toBe(false);
     expect((document.querySelector('[name="note"]')!.closest('fieldset') as HTMLFieldSetElement).disabled).toBe(false);
     expect(m.refetch).toHaveBeenCalled();

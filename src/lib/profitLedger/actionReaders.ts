@@ -11,7 +11,7 @@
 
 import { readProfitLedgerRoute, type ProfitLedgerRoute } from './route';
 import {
-  bool, fail, money, month, obj, oneOf, optMonth, optStr, str,
+  bool, fail, money, month, obj, oneOf, optMoney, optMonth, optStr, str,
 } from './readPrimitives';
 import {
   readExcluded, readMarkerWithTime,
@@ -29,8 +29,11 @@ export interface LedgerCancelResult {
   changed: boolean;
   cancellation_kind: CancellationKind | null;
   reversal_posting_id: string | null;
-  /** Số dư sổ tổng của chủ thể sau huỷ (dương = công ty còn nợ, âm = đang tạm ứng). */
-  balance_after: number;
+  /**
+   * Số dư sổ tổng của chủ thể sau huỷ (dương = công ty còn nợ, âm = đang tạm ứng). null = máy chủ CHE: người gọi
+   * không có quyền chi của loại chủ thể và không phải người nhận (vd người giữ sổ huỷ phiếu tạm ứng mình lập hộ).
+   */
+  balance_after: number | null;
 }
 
 export function readLedgerCancelResult(value: unknown, voucherId: string): LedgerCancelResult {
@@ -48,7 +51,7 @@ export function readLedgerCancelResult(value: unknown, voucherId: string): Ledge
     changed,
     cancellation_kind: kind,
     reversal_posting_id: reversal,
-    balance_after: money(root.balance_after, 'E6.balance_after'),
+    balance_after: optMoney(root.balance_after, 'E6.balance_after'),
   };
 }
 

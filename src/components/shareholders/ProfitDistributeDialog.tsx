@@ -95,9 +95,14 @@ export default function ProfitDistributeDialog({
   const form = useForm<SettleFormValues>({ resolver: zodResolver(settleFormSchema), defaultValues: emptyValues(initialShareholder) });
   const { reset } = form;
 
-  // Mở lại hộp: làm mới form — TRỪ khi lần trước chưa rõ kết quả (giữ nguyên để đối chiếu đúng nội dung).
+  // Mở lại hộp: làm mới form — CHỈ ở lúc hộp vừa MỞ (đóng → mở), và TRỪ khi lần trước chưa rõ kết quả (giữ nguyên để
+  // đối chiếu đúng nội dung). Gỡ khoá trong lúc hộp đang mở (lượt "Kiểm tra lại kết quả" chứng minh chưa ghi, hay đối
+  // chiếu xong theo nhánh khác) KHÔNG phải lúc mở: giữ nguyên câu báo, cổ đông, tháng, sổ quỹ, ngày, ghi chú đang nhập.
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open && !saveBlocked) {
+    const justOpened = open && !wasOpen.current;
+    wasOpen.current = open;
+    if (justOpened && !saveBlocked) {
       reset(emptyValues(initialShareholder));
       setPickedMonth(null);
       setMonthReset(null);
@@ -125,10 +130,17 @@ export default function ProfitDistributeDialog({
   }, [previewQuery.data, shareholderId, pickedMonth]);
   const previewCurrent = !!preview && !previewQuery.isFetching && !previewQuery.isError && !previewQuery.isPlaceholderData;
 
-  // Tháng TỰ CHỌN mà xem trước lỗi (22023 PROFIT_LEDGER_SETTLE_MONTH: tháng không còn chốt được — hay lỗi bất kỳ):
-  // không có danh sách tháng thì ô tháng khoá, chủ kẹt ở tháng lỗi ⇒ đưa về tháng mặc định của máy chủ, nói vì sao.
+  // Tháng TỰ CHỌN mà xem trước lỗi: tháng không còn chốt được (22023 PROFIT_LEDGER_SETTLE_MONTH), hoặc lỗi khác mà
+  // CHƯA từng có số của đúng cổ đông + tháng đó (ô tháng khoá, chủ kẹt) ⇒ đưa về tháng mặc định của máy chủ, nói vì sao.
+  // Một lượt TẢI LẠI lỗi khi đã có số của tháng đó (react-query giữ số cũ, realtime làm mới xem trước thường xuyên) KHÔNG
+  // đổi tháng chủ đã chọn: số đang hiện giữ nguyên, nút gửi khoá tới khi "Tính lại" xong (previewCurrent).
   // Tháng mặc định cũng lỗi thì giữ khung lỗi có nút "Tính lại" như cũ (không còn tháng nào để lùi về).
-  const pickedFailed = pickedMonth !== null && previewQuery.isError && !saveBlocked;
+  const pickedHasData = !!previewQuery.data && previewQuery.data.shareholder_id === shareholderId
+    && previewQuery.data.through_month === pickedMonth;
+  const pickedErrorKind = pickedMonth !== null && previewQuery.isError && !saveBlocked
+    ? profitLedgerErrorMessage(previewQuery.error, 'preview').kind
+    : null;
+  const pickedFailed = pickedErrorKind !== null && (pickedErrorKind === 'SETTLE_MONTH' || !pickedHasData);
   const pickedError = pickedFailed ? previewQuery.error : null;
   useEffect(() => {
     if (!pickedFailed || pickedMonth === null) return;

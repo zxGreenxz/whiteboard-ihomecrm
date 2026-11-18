@@ -64,6 +64,26 @@ describe('ProfitPayoutCancelDialog', () => {
     expect(m.toastSuccess.mock.calls[0]![0]).toMatch(/đảo bút toán — tiền về sổ Quỹ tiền mặt.*Sau huỷ, lợi nhuận chưa chi sau khi trừ tạm ứng: 300\.000/);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+  it('máy chủ CHE số dư (người giữ sổ huỷ phiếu tạm ứng mình lập hộ: balance_after null) ⇒ báo đã huỷ, KHÔNG có câu số dư', async () => {
+    m.rpc.mockResolvedValue({ data: { voucher_id: 'v1', changed: true, cancellation_kind: 'CANCELLED_UNPOSTED', reversal_posting_id: null, balance_after: null }, error: null });
+    const onCancelled = vi.fn();
+    renderDialog(target(), { onCancelled });
+    fireEvent.change(reason(), { target: { value: 'Gõ nhầm số tiền, lập lại phiếu khác' } });
+    fireEvent.click(huy());
+    await waitFor(() => expect(onCancelled).toHaveBeenCalled());
+    const message = m.toastSuccess.mock.calls[0]![0] as string;
+    expect(message).toBe('Đã huỷ phiếu PC2611999.');
+    expect(message).not.toMatch(/Sau huỷ|lợi nhuận chưa chi|tạm ứng còn|\d{1,3}(\.\d{3})+/);
+  });
+  it('phiếu đã huỷ từ trước, số dư bị che ⇒ câu "đã được huỷ trước đó" không kèm số', async () => {
+    m.rpc.mockResolvedValue({ data: { voucher_id: 'v1', changed: false, cancellation_kind: null, reversal_posting_id: null, balance_after: null }, error: null });
+    const onCancelled = vi.fn();
+    renderDialog(target(), { onCancelled });
+    fireEvent.change(reason(), { target: { value: 'Gõ nhầm số tiền, lập lại phiếu khác' } });
+    fireEvent.click(huy());
+    await waitFor(() => expect(onCancelled).toHaveBeenCalled());
+    expect(m.toastInfo.mock.calls[0]![0]).toBe('Phiếu PC2611999 đã được huỷ trước đó.');
+  });
   it('phiếu đã khoá (55000) ⇒ câu riêng, không đóng hộp', async () => {
     m.rpc.mockResolvedValue({ data: null, error: { code: '55000', message: 'PROFIT_LEDGER_IN_HANDOVER: phiếu đang nằm trong phiên bàn giao tiền mặt' } });
     const onOpenChange = vi.fn();

@@ -175,7 +175,7 @@ Từ 18/11/2026 (migration [20261118041911](../../supabase/migrations/2026111804
 Chủ đọc qua `shareholder_profit_positions_v1` (mọi cổ đông, kể cả cổ đông đã xoá còn số); cổ đông tự xem qua `shareholder_profit_my_position_v1` (kèm các lần chốt):
 
 - **Lợi nhuận chưa chi** — phần được chia đã chốt (sau mốc "đã trả đủ") mà chủ chưa chốt chi. Có thể **âm** (vd một tháng đã chốt chi được mở chốt lại); lần chốt chi sau tự trừ lại.
-- **Tạm ứng đang có** — phiếu tạm ứng **đã duyệt**, chưa được khấu trừ; luôn ≥ 0. Chỉ giảm khi chủ chốt chi (khấu trừ), khi phiếu bị huỷ, hoặc khi lương giữ lại để trừ. Tạm ứng **chờ duyệt** hiện riêng ("chờ duyệt …"), chưa được khấu trừ khi chốt.
+- **Tạm ứng đang có** — mọi phiếu chi lợi nhuận **đã duyệt** của cổ đông lập sau mốc "đã trả đủ" mà chưa được khấu trừ ở một lần chốt — gồm phiếu Tạm Ứng mới VÀ phiếu chi lập bằng lệnh cũ trước 18/11/2026 (`shareholder_profit_ledger_payout_v1`); phiếu tiền của chính các lần chốt không tính. Luôn ≥ 0. Giảm khi chủ chốt chi (khấu trừ), khi phiếu bị huỷ, khi lương giữ lại để trừ, hoặc khi đặt mốc "đã trả đủ" (phiếu trước mốc không còn tính). Tạm ứng **chờ duyệt** hiện riêng ("chờ duyệt …"), chưa được khấu trừ khi chốt.
 - Bất biến: lợi nhuận chưa chi − tạm ứng đang có − tạm ứng chờ duyệt = số dư ròng của sổ tổng. Lệch ⇒ máy chủ dừng (`PROFIT_LEDGER_POSITION_DRIFT`), giao diện không hiện số.
 - Số đầu trang Tổng quan của chủ cộng đúng các dòng bảng "Sổ tổng theo cổ đông" đang hiện; chưa đọc được số thì hiện "—", không bao giờ hiện 0 thay số chưa biết.
 
@@ -198,7 +198,7 @@ Người được cấp quyền `shareholder_profit.advance_own_cashbook`. Mọi
 
 - **Tự ứng** — nút "Chi tạm ứng cho tôi" ở màn tự xem, tab "Tạm ứng LN", và ở Tổng quan của chủ khi chính chủ là cổ đông của công ty đang xem và có quyền này. Chỉ chi từ sổ quỹ mình đang **giữ**; chưa giữ sổ nào ⇒ nhờ người đang giữ sổ lập phiếu Tạm Ứng hộ ở Thu chi.
 - **Lập ở Thu chi** — phiếu CHI tạo mới, chọn hạng mục **"Tạm Ứng"** (chỉ có khi `shareholder_profit_advance_options_v1` báo lập được: sổ tổng chạy thật, người lập đang giữ sổ, có người nhận). Toà khoá về Kho Văn Phòng Chung; "người nhận" là dropdown những cổ đông có quyền tạm ứng (kể cả chính mình); sổ quỹ chỉ còn các sổ người lập đang giữ (máy chủ đã loại sổ ảo); một số tiền. Lưu bằng `shareholder_profit_advance_v1`, không đi lệnh tạo phiếu thường. Không có ở form lô, tạo nhanh, Báo chi nhanh.
-- Người giữ sổ **lập hộ** không thấy số nào của cổ đông (máy chủ không gửi). Người lập (tự ứng hay lập hộ) tự huỷ được phiếu còn chờ duyệt.
+- Người giữ sổ **lập hộ** không thấy số nào của cổ đông: xem trước, kết quả lập và câu lỗi không mang số; khi người đó tự huỷ phiếu chờ duyệt của mình, kết quả huỷ cũng không có số dư sau huỷ (máy chủ trả `balance_after` null cho người không có quyền chi lợi nhuận và không phải người nhận). Người lập (tự ứng hay lập hộ) tự huỷ được phiếu còn chờ duyệt; phiếu đã duyệt / đã chi thì chỉ người có quyền chi lợi nhuận huỷ.
 
 ### 5.4. Mốc "đã trả đủ"
 

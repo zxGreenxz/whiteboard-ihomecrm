@@ -444,11 +444,41 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' }));
     expect(await screen.findByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeNull();
+    // Gỡ khoá trong lúc hộp đang mở KHÔNG làm mới form: sau khi mọi effect chạy xong, câu báo và nội dung còn nguyên.
+    await new Promise((done) => setTimeout(done, 0));
+    expect(screen.getByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
+    expect(select('accountId')!.value).toBe('a1');
+    expect(select('shareholderId')!.value).toBe('s');
     expect(submitButton().disabled).toBe(false);
     expect(noteInput().closest('fieldset')?.disabled).toBe(false);
     expect(m.refetch).toHaveBeenCalled();
     expect(m.settle).toHaveBeenCalledTimes(2);
     expect(ownerProps.onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+  it('gỡ khoá giữa chừng giữ tháng TỰ CHỌN và ghi chú (không làm mới form như lúc mở hộp)', async () => {
+    m.settle
+      .mockRejectedValueOnce(new FinancialWorkflowError('Chưa xác nhận được kết quả chốt chi lợi nhuận.', 'unknown', []))
+      .mockRejectedValueOnce({ code: 'PT409', message: 'PROFIT_LEDGER_SETTLE_CHANGED: số liệu vừa đổi so với lúc xem trước — tải lại rồi xem trước lần nữa', details: '{"cash_amount": 40000, "expected_cash": 60000}' });
+    render(dialog());
+    fireEvent.change(select('throughMonth')!, { target: { value: '2026-09-01' } });
+    await waitFor(() => expect(text('profit-settle-recognized')).toMatch(/60\.000/));
+    pickAccount('a2');
+    fireEvent.change(noteInput(), { target: { value: 'Chốt tháng 9 trước' } });
+    fireEvent.click(submitButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' }));
+    expect(await screen.findByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
+    await new Promise((done) => setTimeout(done, 0));
+    expect(select('throughMonth')!.value).toBe('2026-09-01');
+    expect(select('accountId')!.value).toBe('a2');
+    expect(noteInput().value).toBe('Chốt tháng 9 trước');
+    expect(screen.getByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
+  });
+  it('đóng rồi mở lại hộp (không bị khoá) ⇒ form làm mới như cũ', async () => {
+    const view = render(dialog());
+    fireEvent.change(noteInput(), { target: { value: 'Ghi chú lần trước' } });
+    view.rerender(<ProfitDistributeDialog {...ownerProps} open={false} defaultShareholderId="s" />);
+    view.rerender(dialog());
+    await waitFor(() => expect(noteInput().value).toBe(''));
   });
   it('"Kiểm tra lại kết quả" gặp lỗi khác (hook vẫn báo chưa rõ kết quả: mất mạng, 55000…) ⇒ VẪN khoá', async () => {
     m.settle
@@ -487,6 +517,23 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     fireEvent.change(select('throughMonth')!, { target: { value: '2026-09-01' } });
     await waitFor(() => expect(text('profit-settle-recognized')).toMatch(/60\.000/));
     expect(screen.queryByTestId('profit-settle-month-reset')).toBeNull();
+  });
+
+  it('tháng tự chọn ĐÃ có số, chỉ một lượt TẢI LẠI lỗi (react-query giữ số cũ) ⇒ KHÔNG đổi tháng, khoá gửi tới khi tính lại', async () => {
+    render(dialog());
+    fireEvent.change(select('throughMonth')!, { target: { value: '2026-09-01' } });
+    await waitFor(() => expect(text('profit-settle-recognized')).toMatch(/60\.000/));
+    pickAccount();
+    // Lượt tải lại (realtime) lỗi: hook trả số cũ của đúng tháng 09 kèm isError.
+    m.previewError = true;
+    fireEvent.change(noteInput(), { target: { value: 'kích hoạt vẽ lại' } });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(select('throughMonth')!.value).toBe('2026-09-01');
+    expect(screen.queryByTestId('profit-settle-month-reset')).toBeNull();
+    expect(m.settleCalls.at(-1)).toMatchObject({ throughMonth: '2026-09-01' });
+    fireEvent.click(submitButton());
+    expect(await screen.findByText(/Chưa tính được số chốt/)).toBeTruthy();
+    expect(m.settle).not.toHaveBeenCalled();
   });
 
   // R8 (review chéo 18/11): đổi cổ đông / đổi tháng — hook giả mô phỏng keepPreviousData (số giữ tạm của lần trước,

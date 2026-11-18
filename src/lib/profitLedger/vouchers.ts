@@ -46,8 +46,10 @@ export function cancelEffectSentence(state: ProfitCancelExpectedState, accountNa
 
 /**
  * Câu số dư sau huỷ (E6.balance_after — số dư RÒNG của cổ đông: lợi nhuận chưa chi − tạm ứng đang có và chờ duyệt).
+ * null ⇒ không có câu: máy chủ che số với người không được xem (người giữ sổ huỷ phiếu tạm ứng mình lập hộ).
  */
-export function cancelBalanceSentence(kind: ProfitLedgerSubjectKind, balanceAfter: number): string {
+export function cancelBalanceSentence(kind: ProfitLedgerSubjectKind, balanceAfter: number | null): string | null {
+  if (balanceAfter === null) return null;
   if (kind === 'MANAGER') return `Lương điều hành còn lại: ${formatVND(balanceAfter)}.`;
   return balanceAfter >= 0
     ? `Sau huỷ, lợi nhuận chưa chi sau khi trừ tạm ứng: ${formatVND(balanceAfter)}.`
