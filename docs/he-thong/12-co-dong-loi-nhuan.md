@@ -1,7 +1,7 @@
 # Cổ đông, Profit Close V2 và ví cá nhân
 
-> **Reviewed:** 2026-10-21
-> Nguồn hiện hành: `src/components/shareholders/**`, `src/hooks/useShareholderProfit.ts`, `src/hooks/income-expenses/specialized.ts` và migrations `20260720210000`–`20260720223000`.
+> **Reviewed:** 2026-10-21 (mục 5–7 viết lại 2026-11-18 theo luồng tạm ứng + chốt chi theo tháng)
+> Nguồn hiện hành: `src/components/shareholders/**`, `src/hooks/useShareholderProfit.ts`, `src/hooks/income-expenses/specialized.ts`, `src/lib/profitLedger/**`, `src/hooks/profit-ledger/**` và migrations `20260720210000`–`20260720223000`, `20261118041911` (tạm ứng cổ đông + chốt chi lợi nhuận).
 
 ## 1. Phạm vi
 
@@ -9,7 +9,7 @@ Domain này trả lời bốn câu hỏi:
 
 1. Lợi nhuận của từng toà trong tháng là bao nhiêu?
 2. Sau lương điều hành và điều chỉnh có lý do, mỗi cổ đông được chia bao nhiêu?
-3. Đã chi cho cổ đông/quản lý bao nhiêu, còn phải trả bao nhiêu?
+3. Đã chi cho cổ đông/quản lý bao nhiêu; mỗi cổ đông còn bao nhiêu lợi nhuận chưa chi và đang có bao nhiêu tạm ứng?
 4. User tự ghi chép ví cá nhân thế nào mà không lẫn với sổ quỹ doanh nghiệp?
 
 Trang chính là `/reports/finance/profit-distribution` (`ProfitHubPage`). Cổ đông/quản lý được gắn tài khoản chỉ xem phần của mình; người có quyền quản trị thấy các tab Tổng quan, Chốt LN tháng và Cổ đông & tỷ lệ.
@@ -166,12 +166,48 @@ Tham số `p_target_building_ids` (thêm 27/08/2026) thu hẹp TÁC ĐỘNG về
 
 Nếu snapshot đổi trước lúc reset, server trả conflict. Reset bỏ snapshot hiện tại nhưng lịch sử revision vẫn giữ để kiểm toán.
 
-## 5. Chi lợi nhuận và lương điều hành
+## 5. Chi lợi nhuận, tạm ứng cổ đông và lương điều hành
 
-- `distribute_shareholder_profit_v1` tạo request chi lợi nhuận canonical với idempotency và đi qua approval engine.
-- `manager_salary_payout_v1` làm tương tự cho lương điều hành, nhưng writer hiện yêu cầu operation `shareholder_profit.pay_manager` trong backend trong khi permission catalog/UI chưa expose action này. Nút hiện có thể hiện ra từ tab Tổng quan nhưng request sẽ bị backend từ chối nếu actor chưa được grant trực tiếp; đây là gap authorization cần xử lý riêng.
-- Sau duyệt/post, phiếu chi nằm trên toà ảo `Chung`, gắn `shareholder_id` hoặc `profit_manager_id`, và `business_result_accounting=false` để không trừ ngược KQKD đã dùng làm nguồn chia.
-- Tổng quan tính `Còn lại = allocation đã chốt − phiếu chi hợp lệ đã post/duyệt`.
+Từ 18/11/2026 (migration [20261118041911](../../supabase/migrations/20261118041911_tam_ung_co_dong_va_chot_chi_loi_nhuan.sql)) đây là HAI nghiệp vụ tách nhau trên sổ tổng lợi nhuận cổ đông: **tạm ứng** là của cổ đông được cấp quyền tạm ứng, cộng dồn; **chi lợi nhuận** là chủ chốt theo tháng. Phiếu cũ không sửa.
+
+### 5.1. Hai con số của mỗi cổ đông
+
+Chủ đọc qua `shareholder_profit_positions_v1` (mọi cổ đông, kể cả cổ đông đã xoá còn số); cổ đông tự xem qua `shareholder_profit_my_position_v1` (kèm các lần chốt):
+
+- **Lợi nhuận chưa chi** — phần được chia đã chốt (sau mốc "đã trả đủ") mà chủ chưa chốt chi. Có thể **âm** (vd một tháng đã chốt chi được mở chốt lại); lần chốt chi sau tự trừ lại.
+- **Tạm ứng đang có** — phiếu tạm ứng **đã duyệt**, chưa được khấu trừ; luôn ≥ 0. Chỉ giảm khi chủ chốt chi (khấu trừ), khi phiếu bị huỷ, hoặc khi lương giữ lại để trừ. Tạm ứng **chờ duyệt** hiện riêng ("chờ duyệt …"), chưa được khấu trừ khi chốt.
+- Bất biến: lợi nhuận chưa chi − tạm ứng đang có − tạm ứng chờ duyệt = số dư ròng của sổ tổng. Lệch ⇒ máy chủ dừng (`PROFIT_LEDGER_POSITION_DRIFT`), giao diện không hiện số.
+- Số đầu trang Tổng quan của chủ cộng đúng các dòng bảng "Sổ tổng theo cổ đông" đang hiện; chưa đọc được số thì hiện "—", không bao giờ hiện 0 thay số chưa biết.
+
+### 5.2. Chi lợi nhuận = chốt đến hết một tháng, không nhập tay số tiền
+
+Quyền `shareholder_profit.distribute`. Hộp "Chi lợi nhuận cổ đông" (nút Chi của từng cổ đông hoặc "Chi lợi nhuận"):
+
+1. Chọn cổ đông và **"Chốt đến hết tháng N"** — mặc định là tháng đủ điều kiện mới nhất do máy chủ trả; chỉ chọn được tháng còn lợi nhuận chưa chi (tháng đã chốt lợi nhuận, sau mốc, không trước lần chốt chi gần nhất).
+2. Máy chủ tính (`shareholder_profit_settlement_preview_v1`): **X** = lợi nhuận chưa chi đến hết N; **khấu trừ tạm ứng** K = min(X, tạm ứng đang có); **thực chi** = X − K. Ba dòng này khoá, không sửa được.
+3. Thực chi > 0 ⇒ chọn sổ quỹ + ngày chi ⇒ một **phiếu chi chờ duyệt** (tiền chưa ra khỏi sổ). Thực chi = 0 ⇒ nút "Chốt, không ra tiền" (có bước xác nhận): không lập phiếu, có hiệu lực ngay.
+4. Lệnh chốt `shareholder_profit_settle_v1` gửi kèm đúng hai số đang hiện (`p_expected_recognized`, `p_expected_cash`). Số vừa đổi ⇒ PT409 `PROFIT_LEDGER_SETTLE_CHANGED`, không ghi gì; hộp tải lại xem trước để chủ xem số mới rồi tự bấm lại (không tự gửi lại).
+
+Hộp nhắc (không chặn) khi còn tạm ứng chờ duyệt (chưa được khấu trừ lần này), và khi cổ đông chưa có mốc "đã trả đủ" lẫn chưa chốt lần nào — lần chốt đầu gom toàn bộ phần được chia từ đầu, nên đặt mốc trước nếu tháng cũ đã trả ngoài app (có nút mở hộp đặt mốc, cả trên điện thoại). Các lần chốt còn hiệu lực liệt kê trong hộp: lần **không có phiếu tiền** huỷ bằng "Huỷ chốt" (`shareholder_profit_settlement_void_v1`, lý do 8–1000 ký tự); lần **có phiếu tiền** thì huỷ / từ chối chính phiếu chi đó — lần chốt tự hết hiệu lực, hai con số tự trở lại.
+
+Web không còn gọi lệnh chi theo số tiền nhập tay (`shareholder_profit_ledger_payout_v1`) và xem trước cũ của nó cho cổ đông.
+
+### 5.3. Tạm ứng của cổ đông
+
+Người được cấp quyền `shareholder_profit.advance_own_cashbook`. Mọi khoản ứng là **tạm ứng**, cộng dồn; ứng vượt lợi nhuận chưa chi chỉ **cảnh báo**, không chặn; mọi phiếu **chờ chủ duyệt** (người duyệt khác người lập và người nhận).
+
+- **Tự ứng** — nút "Chi tạm ứng cho tôi" ở màn tự xem, tab "Tạm ứng LN", và ở Tổng quan của chủ khi chính chủ là cổ đông của công ty đang xem và có quyền này. Chỉ chi từ sổ quỹ mình đang **giữ**; chưa giữ sổ nào ⇒ nhờ người đang giữ sổ lập phiếu Tạm Ứng hộ ở Thu chi.
+- **Lập ở Thu chi** — phiếu CHI tạo mới, chọn hạng mục **"Tạm Ứng"** (chỉ có khi `shareholder_profit_advance_options_v1` báo lập được: sổ tổng chạy thật, người lập đang giữ sổ, có người nhận). Toà khoá về Kho Văn Phòng Chung; "người nhận" là dropdown những cổ đông có quyền tạm ứng (kể cả chính mình); sổ quỹ chỉ còn các sổ người lập đang giữ (máy chủ đã loại sổ ảo); một số tiền. Lưu bằng `shareholder_profit_advance_v1`, không đi lệnh tạo phiếu thường. Không có ở form lô, tạo nhanh, Báo chi nhanh.
+- Người giữ sổ **lập hộ** không thấy số nào của cổ đông (máy chủ không gửi). Người lập (tự ứng hay lập hộ) tự huỷ được phiếu còn chờ duyệt.
+
+### 5.4. Mốc "đã trả đủ"
+
+`profit_ledger_set_marker_v1` đặt / đè / gỡ mốc "đã trả đủ đến hết tháng X": mọi khoản tới hết X không còn tính vào hai con số. Mốc **không lùi trước tháng đã chốt chi**: cổ đông có lần chốt còn hiệu lực đến hết tháng M thì mốc sớm hơn M bị từ chối (`PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT`); muốn đặt mốc sớm hơn thì huỷ lần chốt đó trước. Con số "tạm ứng bị xoá" của mốc cộng cả phần tạm ứng đã được khấu trừ ở các lần chốt.
+
+### 5.5. Lương điều hành và hạch toán
+
+- `manager_salary_payout_v1` lập phiếu lương điều hành (quyền `shareholder_profit.pay_manager`); số còn lại đọc từ sổ lương điều hành `profit_manager_ledger_v1`. Luồng này không đổi theo đợt tạm ứng / chốt chi.
+- Phiếu chi lợi nhuận, tạm ứng và lương điều hành nằm trên toà ảo `Chung`, gắn `shareholder_id` hoặc `profit_manager_id`, và `business_result_accounting=false` để không trừ ngược KQKD đã dùng làm nguồn chia.
 
 Các adapter frontend vẫn có fallback coexistence được phân loại cho tới T7 drain; trạng thái 15/15 writer ON nằm ở [authorization/README.md](../authorization/README.md).
 
@@ -182,8 +218,9 @@ Các adapter frontend vẫn có fallback coexistence được phân loại cho t
 | `shareholder_profit.view` | Xem báo cáo/phần được chia trong phạm vi cho phép; cũng là quyền đọc `profit_total_group_peers_v2` (bản đồ toà nào phải chốt cùng toà nào) |
 | `shareholder_profit.lock` | Preview, close và reclose toàn kỳ |
 | `shareholder_profit.unlock` | Xem state và reset/unlock theo guard |
-| `shareholder_profit.distribute` | Lập request chi lợi nhuận |
-| `shareholder_profit.pay_manager` | Backend operation dự kiến để lập request trả lương điều hành; **chưa có trong permission catalog/UI**, không coi là quyền đã cấp được từ màn Phân quyền |
+| `shareholder_profit.distribute` | Chốt chi lợi nhuận cổ đông theo tháng (hộp chốt, không nhập tay số tiền), huỷ lần chốt không có phiếu tiền, đặt mốc "đã trả đủ"; xem hai con số của mọi cổ đông |
+| `shareholder_profit.advance_own_cashbook` | Được tạm ứng lợi nhuận: tự ứng từ sổ quỹ mình đang giữ, hoặc nhận phiếu Tạm Ứng do người giữ sổ lập hộ ở Thu chi |
+| `shareholder_profit.pay_manager` | Chi lương điều hành (lương quản lý) từ lợi nhuận |
 | `shareholder_profit.manage_shareholders` | Quản lý cổ đông, tỷ lệ và cấu hình liên quan |
 
 RPC/RLS kiểm organization và scope; ẩn/hiện tab ở frontend không phải lớp bảo vệ cuối.
@@ -192,10 +229,11 @@ RPC/RLS kiểm organization và scope; ẩn/hiện tab ở frontend không phả
 
 - `ProfitLockTab.tsx`: chọn organization/tháng, **tick từng toà**, preview, điều chỉnh, close/reclose/unlock/reset theo đúng vùng chọn. Tick một toà thuộc nhóm `TOTAL_GROUP` thì cả nhóm được chọn theo (và bỏ tick cũng bỏ cả nhóm) — logic thuần ở `expandTotalGroupSelection` trong `src/lib/profitClose.ts`.
 - `useProfitCloseOrganizations`, `useProfitCloseState`, `useProfitClosePreview`, `useCloseProfitPeriod`, `useResetProfitPeriod`: client của RPC V2.
-- `ProfitOverviewTab.tsx`: tổng allocation, đã chi và còn lại.
+- `ProfitOverviewTab.tsx` / `ProfitOverviewMobile.tsx`: Tổng quan của chủ — bảng / thẻ "Sổ tổng theo cổ đông" (được chia sau mốc, đã chi kèm chờ duyệt, qua lương, lợi nhuận chưa chi, tạm ứng đang có) với nút Sổ / Mốc / Chi; "Chi tạm ứng cho tôi" khi chủ đồng thời là cổ đông có quyền tạm ứng.
 - `ShareConfigTab.tsx`: cổ đông, tỷ lệ và quản lý điều hành.
-- `ShareholderSelfView.tsx`, `ProfitManagerSelfView.tsx`: self-view.
-- `ProfitDistributeDialog.tsx`, `ManagerSalaryPayoutDialog.tsx`: tạo request chi tiền.
+- `ShareholderSelfView.tsx`, `ShareholderAdvanceTab.tsx`, `ProfitManagerSelfView.tsx`: self-view (hai con số, các lần chốt, phiếu của mình) và tab "Tạm ứng LN".
+- `ProfitDistributeDialog.tsx`: hộp chốt chi lợi nhuận theo tháng; `ProfitSelfAdvanceDialog.tsx`: tự tạm ứng; `ProfitLedgerMarkerDialog.tsx`: mốc "đã trả đủ"; `ShareholderAdvanceVoucherPanel.tsx` (form Thu chi): phiếu Tạm Ứng; `ManagerSalaryPayoutDialog.tsx`: lương điều hành.
+- Số và chữ dùng chung ở `src/lib/profitLedger/positionView.ts` (hai con số, câu nhắc), bộ đọc RPC ở `positionReaders.ts`, hook ở `src/hooks/profit-ledger/`.
 
 ## 8. Kiểm tra khi thay đổi
 
