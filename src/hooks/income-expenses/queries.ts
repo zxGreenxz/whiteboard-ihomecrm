@@ -430,6 +430,7 @@ export const incomeExpensesListQuery = (
           const row: IncomeExpenseWithRelations = {
           id: v.id,
           user_id: v.user_id,
+          maker_user_id: v.maker_user_id ?? null,
           // Finance V2 (§12.1): 4 trục + version — thiếu các field này là toàn bộ
           // UI route-aware (dialog 2 nút, badge composite) âm thầm rơi về LEGACY.
           organization_id: v.organization_id ?? null,
@@ -904,6 +905,7 @@ export const useIncomeExpenseBatches = (
           id: v.id,
           supplements: v.supplements,
           user_id: v.user_id,
+          maker_user_id: v.maker_user_id ?? null,
           organization_id: v.organization_id ?? null,
           posting_mode: v.posting_mode ?? null,
           posting_status: v.posting_status ?? null,

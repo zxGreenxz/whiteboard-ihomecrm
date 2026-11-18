@@ -291,6 +291,15 @@ const IncomeExpenseFormInner = ({
   // dung đang nhập), thay bằng ShareholderAdvanceVoucherPanel và lưu bằng lệnh tạm ứng riêng.
   const advanceCreateMode = !initialVoucher && !initialCopyFrom;
   const [shareholderAdvance, setShareholderAdvance] = useState<AdvanceOptions | null>(null);
+  // Đang gửi lệnh lập phiếu tạm ứng: khoá tab "Phiếu thu" và nút đóng hộp — rời chế độ giữa chừng thì lưu xong
+  // sẽ đóng nhầm form thường.
+  const [advanceSaving, setAdvanceSaving] = useState(false);
+  // Hộp đóng (lưu xong / huỷ bỏ) ⇒ lần mở sau bắt đầu lại ở form phiếu thường, không giữ chế độ Tạm Ứng cũ.
+  useEffect(() => {
+    if (open) return;
+    setShareholderAdvance(null);
+    setAdvanceSaving(false);
+  }, [open]);
 
   // Item rows with type_name for display (not part of Zod schema)
   const [itemRows, setItemRows] = useState<FormItemRow[]>([]);
@@ -950,7 +959,7 @@ const IncomeExpenseFormInner = ({
   }
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={(next) => { if (!next && advanceActive && advanceSaving) return; onOpenChange(next); }}>
         <DialogContent
           className={
             isMobile
@@ -1893,13 +1902,18 @@ const IncomeExpenseFormInner = ({
               <Tabs
                 value="EXPENSE"
                 onValueChange={(value) => {
-                  if (value !== 'INCOME') return;
+                  if (value !== 'INCOME' || advanceSaving) return;
                   setShareholderAdvance(null);
                   form.setValue('type', 'INCOME');
                 }}
               >
                 <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="INCOME" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                  <TabsTrigger
+                    value="INCOME"
+                    disabled={advanceSaving}
+                    title={advanceSaving ? 'Đang lưu phiếu tạm ứng — chờ xong rồi mới đổi loại phiếu.' : undefined}
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  >
                     <ArrowUp className="h-4 w-4 mr-1" />
                     Phiếu thu
                   </TabsTrigger>
@@ -1914,9 +1928,10 @@ const IncomeExpenseFormInner = ({
                 options={shareholderAdvance}
                 buildingName={advanceBuildingName}
                 isMobile={isMobile}
-                onExit={() => setShareholderAdvance(null)}
+                onExit={() => { if (!advanceSaving) setShareholderAdvance(null); }}
                 onClose={() => onOpenChange(false)}
                 onSaved={onSaved}
+                onSavingChange={setAdvanceSaving}
               />
             </div>
           )}

@@ -45,6 +45,11 @@ export interface ShareholderAdvanceVoucherPanelProps {
   onClose: () => void;
   /** Sau khi lập xong (số tiền của phiếu). */
   onSaved?: (amount: number) => void;
+  /**
+   * Đang gửi lệnh lập phiếu (true) / đã xong (false). Form cha khoá tab "Phiếu thu" và nút đóng hộp trong lúc
+   * này: gỡ thân Tạm Ứng giữa chừng thì lưu xong sẽ đóng nhầm form thường.
+   */
+  onSavingChange?: (saving: boolean) => void;
 }
 
 const DEBOUNCE_MS = 400;
@@ -53,7 +58,7 @@ const validAmount = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 
 export function ShareholderAdvanceVoucherPanel({
-  organizationId, options, buildingName, isMobile, onExit, onClose, onSaved,
+  organizationId, options, buildingName, isMobile, onExit, onClose, onSaved, onSavingChange,
 }: ShareholderAdvanceVoucherPanelProps) {
   const createMut = useCreateShareholderAdvance();
   const formRef = useRef<HTMLFormElement>(null);
@@ -90,6 +95,12 @@ export function ShareholderAdvanceVoucherPanel({
   const payee = options.payees.find((row) => row.shareholder_id === shareholderId) ?? null;
   const locked = !organizationId || (!!preview && preview.blocked_reason !== null);
   const pending = createMut.isPending;
+
+  // Báo form cha lúc đang lưu; thân này bị gỡ thì luôn báo "hết lưu" để form cha không kẹt khoá.
+  useEffect(() => {
+    onSavingChange?.(pending);
+  }, [pending, onSavingChange]);
+  useEffect(() => () => { onSavingChange?.(false); }, [onSavingChange]);
 
   const submit = async (data: AdvanceFormValues) => {
     if (pending || !organizationId) return;

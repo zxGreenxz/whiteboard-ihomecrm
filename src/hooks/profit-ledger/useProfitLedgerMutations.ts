@@ -82,6 +82,31 @@ function requireId(value: string | null | undefined, message: string): string {
 const PRIOR_WRITTEN: unique symbol = Symbol('profit-ledger-prior-written');
 
 /**
+ * Kết quả nội bộ của lượt đối chiếu: máy chủ trả một từ chối CHỨNG MINH lần gửi trước CHƯA ghi (và lần này cũng
+ * không ghi). Mang theo lỗi gốc để ném lại cho hộp thoại sau khi dấu chờ đã được xoá.
+ */
+class ProvenNotWritten {
+  constructor(readonly error: unknown) {}
+}
+
+/**
+ * Hai từ chối của lệnh chốt (W2) chứng minh "chưa ghi": PT409 `PROFIT_LEDGER_SETTLE_CHANGED` (số liệu vừa đổi) và
+ * 22023 `PROFIT_LEDGER_SETTLE_NOTHING` (không còn gì để chốt). Máy chủ xét khoá chống gửi trùng TRƯỚC hai phép
+ * kiểm này (migration 20261118041911, bước 4 rồi mới bước 6): lần gửi trước mà đã ghi thì cùng khoá đã trả biên
+ * nhận cũ (cùng nội dung) hoặc 23505 (khác nội dung) trước khi tới đây. Tới được đây rồi bị từ chối ⇒ cả giao
+ * dịch lùi, chưa có gì được ghi — kể cả ở lần gửi trước. Chỉ nhận hai mã có ĐÚNG MỘT chỗ ném sau bước xét khoá
+ * (mã tháng `…_SETTLE_MONTH` còn một chỗ ném TRƯỚC bước đó nên không dùng làm bằng chứng).
+ */
+function settleRejectionProvesNotWritten(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const row = error as { code?: unknown; message?: unknown };
+  if (typeof row.message !== 'string') return false;
+  if (row.code === 'PT409') return /^PROFIT_LEDGER_SETTLE_CHANGED\s*:/.test(row.message);
+  if (row.code === '22023') return /^PROFIT_LEDGER_SETTLE_NOTHING\s*:/.test(row.message);
+  return false;
+}
+
+/**
  * Chạy một lệnh ghi idempotent của sổ tổng trong luồng chống gửi trùng.
  * `call(key)` dựng lời gọi RPC với đúng khoá; `read` đọc biên nhận (lệch hợp đồng ⇒ ném TypeError ⇒
  * "chưa rõ kết quả"); `kind` chọn đúng câu 23505 "khoá đã dùng" của lệnh này.
@@ -96,9 +121,15 @@ async function runLedgerWrite<T>(options: {
   read: (data: unknown) => Promise<T> | T;
   receiptId: (result: T) => string;
   receiptLabel: string;
+  /**
+   * Chỉ cho lượt ĐỐI CHIẾU: từ chối này của máy chủ chứng minh lần gửi trước chưa ghi gì ⇒ xoá dấu chờ, ném lại
+   * đúng lỗi đó (hộp thoại gỡ khoá, tải lại số). Vắng ⇒ mọi lỗi khác 23505-khoá-đã-dùng đều giữ dấu chờ.
+   * Hẹp theo từng lệnh — không đổi hành vi chung của FinancialWorkflowGuard cho các luồng tiền khác.
+   */
+  provesNotWritten?: (error: unknown) => boolean;
 }): Promise<T> {
   const { workflow, call, read } = options;
-  const outcome = await workflow.run<T | typeof PRIOR_WRITTEN>(
+  const outcome = await workflow.run<T | typeof PRIOR_WRITTEN | ProvenNotWritten>(
     options.businessKey,
     options.operation,
     async (progress) => {
@@ -116,6 +147,9 @@ async function runLedgerWrite<T>(options: {
         // trước ĐÃ ghi xong ⇒ đối chiếu xong. Trả kết quả để FinancialWorkflowGuard xoá dấu chờ (lần sau
         // khoá mới); bên ngoài đổi thành lỗi "đã ghi, tải lại để xem" — nội dung mới máy chủ đã lùi.
         if (isLedgerIdempotencyConflict(error, options.kind)) return { result: PRIOR_WRITTEN };
+        // Từ chối chứng minh "chưa ghi" (theo từng lệnh): cũng là đối chiếu xong ⇒ guard xoá dấu chờ; bên ngoài
+        // ném lại đúng lỗi này.
+        if (options.provesNotWritten?.(error)) return { result: new ProvenNotWritten(error) };
         // Lỗi khác ⇒ chưa chứng minh được gì: ném lên guard — ở lượt đối chiếu nó giữ nguyên dấu chờ
         // (kết quả "unknown", không xoá dấu) và giữ được nguyên nhân thật.
         throw error;
@@ -125,6 +159,7 @@ async function runLedgerWrite<T>(options: {
     options.organizationId,
   );
   if (outcome === PRIOR_WRITTEN) throw new ProfitLedgerPriorWrittenError(options.kind);
+  if (outcome instanceof ProvenNotWritten) throw outcome.error;
   return outcome;
 }
 
@@ -246,6 +281,9 @@ export function useSettleShareholderProfit() {
         },
         receiptId: (result) => result.settlement_id,
         receiptLabel: 'Lần chốt chi lợi nhuận đã ghi',
+        // "Kiểm tra lại kết quả" gặp PT409 số liệu vừa đổi (hoặc "không còn gì để chốt") ⇒ lần trước CHƯA ghi:
+        // gỡ dấu chờ, hộp tải lại xem trước.
+        provesNotWritten: settleRejectionProvesNotWritten,
       });
     },
     onSettled: () => invalidateProfitLedgerQueries(queryClient),

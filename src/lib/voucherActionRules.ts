@@ -93,7 +93,7 @@ export interface VoucherActionAvailability {
 
 type ActionVoucher = Pick<
   IncomeExpenseWithRelations,
-  | "type" | "approval_status" | "posting_status" | "system_source" | "building_id" | "user_id"
+  | "type" | "approval_status" | "posting_status" | "system_source" | "building_id" | "user_id" | "maker_user_id"
   | "repeat_cycle" | "repeat_parent_id" | "invoice_id" | "shareholder_id"
 > & { deleted_at?: string | null };
 
@@ -151,9 +151,14 @@ function ledgerVoucherAvailability(
   const isUnapproved = v.approval_status === "UNAPPROVED";
   const posting = v.posting_status ?? null;
   // Chỉ là lớp hiển thị (máy chủ còn đòi khác người lập / người nhận, giữ đúng sổ khi phiếu đã chi…).
-  // Người lập không có quyền này vẫn tự huỷ được phiếu CHỜ của mình ở màn "Tạm ứng LN" — danh sách
-  // Thu chi không có người lập sổ tổng (maker_user_id) ở mọi đường đọc nên không xét vế đó.
   const canLedger = canUse(viewer.perms, "shareholder_profit", profitLedgerPermissionFor(source));
+  // NGƯỜI LẬP phiếu của CỔ ĐÔNG (tự tạm ứng, hoặc người giữ sổ lập hộ ở Thu chi) tự huỷ được phiếu còn CHỜ duyệt
+  // của mình dù không có quyền chi lợi nhuận — đúng luật E6 của máy chủ (kỳ vọng PENDING). Phiếu đã duyệt / đã chi
+  // thì người lập không huỷ được (PROFIT_LEDGER_CANCEL_FORBIDDEN) ⇒ giữ luật cũ: cần quyền chi lợi nhuận.
+  // Người lập = cột maker_user_id (user_id của phiếu sổ tổng là chủ công ty); đường đọc không mang cột đó
+  // (hộp chi tiết mở từ nơi khác) ⇒ coi như không phải người lập, không đoán.
+  const isMaker = !!viewer.currentUserId && !!v.maker_user_id && v.maker_user_id === viewer.currentUserId;
+  const makerCanCancelPending = source === "profit.ledger_payout" && isUnapproved && isMaker;
   return {
     edit: { show: false, title: "" },
     annotate: canShowAnnotateAction({
@@ -169,7 +174,7 @@ function ledgerVoucherAvailability(
     postApproved: state.canonicalRead && v.approval_status === "APPROVED" && (posting === null || posting === "UNPOSTED"),
     reverse: false,
     unapprove: false,
-    cancel: canLedger && expectedCancelState(v.approval_status, posting)
+    cancel: (canLedger || makerCanCancelPending) && expectedCancelState(v.approval_status, posting)
       ? { show: true, disabled: false, reason: null, via: "PROFIT_LEDGER" }
       : HIDDEN,
     restore: false,
