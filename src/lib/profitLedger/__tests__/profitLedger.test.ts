@@ -206,6 +206,13 @@ describe('E7 chi tiết phiếu + E10 lương điều hành', () => {
   it('within + advance ≠ số phiếu ⇒ lỗi', () => {
     expect(() => readLedgerPayoutDetail(e7({ now: { balance_excluding_this: 1, within: 1, advance: 1 } }), 'v3')).toThrow();
   });
+  it('phiếu tạm ứng người giữ sổ lập HỘ (CUSTODIAN_FOR_PAYEE) đọc được — màn Duyệt không vỡ', () => {
+    const forPayee = readLedgerPayoutDetail(e7({
+      at_create: { balance_before: 25, within: 0, advance: 30, warnings: [{ code: 'ADVANCE', advance_amount: 30 }], maker_kind: 'CUSTODIAN_FOR_PAYEE', payee_is_maker: false },
+    }), 'v3');
+    expect(forPayee.at_create).toMatchObject({ maker_kind: 'CUSTODIAN_FOR_PAYEE', payee_is_maker: false, within: 0, advance: 30 });
+    expect(() => readLedgerPayoutDetail(e7({ at_create: { ...e7().at_create, maker_kind: 'CACH_LAP_LA' } }), 'v3')).toThrow();
+  });
   it('phiếu cũ không dòng sổ ⇒ at_create null; dựng mục tiêu huỷ chỉ cho phiếu sổ tổng', () => {
     const old = readLedgerPayoutDetail(e7({ at_create: null, voucher: { ...e7().voucher, system_source: null } }), 'v3');
     expect(old.at_create).toBeNull();

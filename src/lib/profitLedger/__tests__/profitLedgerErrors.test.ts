@@ -102,7 +102,91 @@ describe('profitLedgerErrorMessage', () => {
   });
 });
 
+describe('tạm ứng cổ đông + chốt chi lợi nhuận theo tháng (mã của migration 20261118041911)', () => {
+  it('PT409 SETTLE_CHANGED ⇒ tải lại xem trước, không phải lỗi hệ thống', () => {
+    const info = profitLedgerErrorMessage(err('PT409', 'PROFIT_LEDGER_SETTLE_CHANGED: số liệu vừa đổi so với lúc xem trước — tải lại rồi xem trước lần nữa', '{"cash_amount": 60.00, "expected_cash": 100, "through_month": "2026-10-01", "recognized_amount": 100.00, "expected_recognized": 100, "advance_offset_amount": 40.00}'), 'settle');
+    expect(info).toMatchObject({ kind: 'SETTLE_CHANGED', code: 'PROFIT_LEDGER_SETTLE_CHANGED', sqlstate: 'PT409', reload: true });
+    expect(info.message).toMatch(/Số liệu vừa đổi so với lúc xem trước/);
+    expect(info.detail).toMatchObject({ expected_cash: 100, cash_amount: 60 });
+  });
+  it('22023 tháng không chốt được: nêu khoảng tháng chốt được từ DETAIL', () => {
+    const info = profitLedgerErrorMessage(err('22023', 'PROFIT_LEDGER_SETTLE_MONTH: tháng chốt phải là tháng đã chốt lợi nhuận của cổ đông, sau mốc "đã trả đủ" và không trước lần chốt chi gần nhất', '{"max": "2026-10-01", "min": "2026-09-01", "through_month": "2026-08-01"}'), 'settle');
+    expect(info).toMatchObject({ kind: 'SETTLE_MONTH', reload: true });
+    expect(info.message).toContain('từ 09/2026 đến 10/2026');
+    expect(profitLedgerErrorMessage(err('22023', 'PROFIT_LEDGER_SETTLE_MONTH: tháng chốt phải là ngày đầu tháng'), 'preview').kind).toBe('SETTLE_MONTH');
+  });
+  it('22023 không còn gì để chốt / thiếu sổ quỹ', () => {
+    expect(profitLedgerErrorMessage(err('22023', 'PROFIT_LEDGER_SETTLE_NOTHING: không còn lợi nhuận chưa chi đến hết tháng 10/2026 để chốt', '{"through_month": "2026-10-01", "unpaid_through": 0.00}'), 'settle'))
+      .toMatchObject({ kind: 'SETTLE_NOTHING', reload: true, message: 'Không còn lợi nhuận chưa chi đến hết 10/2026 để chốt.' });
+    expect(profitLedgerErrorMessage(err('22023', 'PROFIT_LEDGER_SETTLE_ACCOUNT: lần chốt này có tiền thực chi — cần sổ quỹ và ngày chi', '{"cash_amount": 60.00}'), 'settle'))
+      .toMatchObject({ kind: 'SETTLE_ACCOUNT', message: expect.stringMatching(/chọn sổ quỹ và ngày chi/) });
+    expect(profitLedgerErrorMessage(err('22023', 'PROFIT_LEDGER_SETTLE_EXPECTED: thiếu hoặc sai phần lợi nhuận ghi nhận đã xem trước'), 'settle')).toMatchObject({ kind: 'VALIDATION', reload: true });
+  });
+  it('55000 tự kiểm sau khi ghi không khớp ⇒ chưa chốt, tải lại', () => {
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_SETTLE_MISMATCH: x'), 'settle')).toMatchObject({ kind: 'STALE', reload: true, message: expect.stringMatching(/chưa chốt gì/) });
+  });
+  it('huỷ lần chốt: có phiếu tiền / đã huỷ từ trước / lý do sai độ dài', () => {
+    expect(profitLedgerErrorMessage(err('22023', 'PROFIT_LEDGER_SETTLE_HAS_VOUCHER: bản ghi chốt này có phiếu tiền — huỷ phiếu tiền bằng lệnh huỷ phiếu chi theo sổ tổng, bản ghi chốt tự hết hiệu lực', '{"cash_voucher_id": "v1"}'), 'settle_void'))
+      .toMatchObject({ kind: 'VALIDATION', message: expect.stringMatching(/huỷ phiếu chi đó/) });
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_SETTLE_NOT_ACTIVE: bản ghi chốt này đã huỷ từ trước', '{"state": "VOID"}'), 'settle_void'))
+      .toMatchObject({ kind: 'STALE', reload: true });
+    expect(profitLedgerErrorMessage(err('22023', 'PROFIT_LEDGER_BAD_REASON: x'), 'settle_void').message).toBe('Lý do phải từ 8 đến 1000 ký tự.');
+  });
+  it('đặt mốc sớm hơn tháng đã chốt chi: nêu tháng đã chốt', () => {
+    const info = profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT: đã chốt chi lợi nhuận đến hết tháng 10/2026 — mốc "đã trả đủ" phải từ tháng đó trở đi, hoặc huỷ lần chốt đó trước', '{"settled_through_month": "2026-09-01", "last_settled_through_month": "2026-10-01"}'), 'marker');
+    expect(info).toMatchObject({ kind: 'MARKER_BEFORE_SETTLEMENT', reload: false });
+    expect(info.message).toContain('đến hết 10/2026');
+    expect(info.message).toMatch(/huỷ lần chốt đó trước/);
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT: x'), 'marker').message).toMatch(/từ tháng đã chốt chi trở đi/);
+  });
+  it('lập tạm ứng: không giữ sổ, người nhận chưa có quyền, trùng tên hạng mục', () => {
+    expect(profitLedgerErrorMessage(err('42501', 'PROFIT_LEDGER_ADVANCE_CASHBOOK: chỉ lập phiếu tạm ứng từ sổ quỹ bạn đang giữ'), 'advance'))
+      .toMatchObject({ kind: 'FORBIDDEN', message: 'Chỉ lập phiếu tạm ứng từ sổ quỹ bạn đang giữ.' });
+    expect(profitLedgerErrorMessage(err('42501', 'PROFIT_LEDGER_ADVANCE_PAYEE_NO_RIGHT: người nhận chưa được cấp quyền tạm ứng'), 'advance'))
+      .toMatchObject({ kind: 'FORBIDDEN', message: expect.stringMatching(/chưa được cấp quyền tạm ứng/) });
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_TYPE_NAME_TAKEN: công ty đã có hạng mục chi tên "Tạm Ứng" dùng cho việc khác — đổi tên hạng mục đó rồi lập lại', '{"income_expense_type_id": "t1"}'), 'advance'))
+      .toMatchObject({ kind: 'CONFIG', message: expect.stringMatching(/đổi tên hạng mục đó ở danh mục Thu chi/) });
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_TYPE_NOT_FORCED: x'), 'advance').message).toContain('"Tạm Ứng"');
+  });
+  it('còn phiếu lương cần xem lại: người lập hộ không nhận DETAIL ⇒ câu không kèm số phiếu, không bịa số', () => {
+    const forPayee = profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_SALARY_REVIEW_PENDING: cổ đông còn phiếu lương cần chủ xem lại — xác nhận số trước khi tạm ứng lợi nhuận'), 'advance');
+    expect(forPayee).toMatchObject({ kind: 'SALARY_REVIEW_PENDING' });
+    expect(forPayee.message).toBe('Cổ đông còn phiếu lương cần chủ xem lại phần lợi nhuận. Chủ công ty xác nhận phần lương trước rồi mới tạm ứng được.');
+    expect(forPayee.detail).toBeUndefined();
+    const self = profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_SALARY_REVIEW_PENDING: cổ đông còn phiếu lương cần chủ xem lại — xác nhận số trước khi tạm ứng lợi nhuận', '{"count": 1, "suggested": 7.00}'), 'advance');
+    expect(self.message).toContain('còn 1 phiếu lương');
+  });
+  it('XX000 lệch vị thế ⇒ lỗi hệ thống, không hiện số', () => {
+    expect(profitLedgerErrorMessage(err('XX000', 'PROFIT_LEDGER_POSITION_DRIFT: lợi nhuận chưa chi và tạm ứng không cộng ra đúng số dư sổ tổng — báo bộ phận kỹ thuật', '{"balance": 1}'), 'read'))
+      .toMatchObject({ kind: 'SYSTEM', message: expect.stringMatching(/không cộng ra đúng số dư sổ tổng/) });
+  });
+  it('42501 không mã (một câu cho "không có cổ đông" và "không thuộc công ty") giữ câu của máy chủ', () => {
+    expect(profitLedgerErrorMessage(err('42501', 'Không có quyền lập phiếu tạm ứng cổ đông, hoặc không tìm thấy cổ đông trong tổ chức hợp lệ'), 'advance'))
+      .toMatchObject({ kind: 'FORBIDDEN', message: 'Không có quyền lập phiếu tạm ứng cổ đông, hoặc không tìm thấy cổ đông trong tổ chức hợp lệ' });
+    expect(profitLedgerErrorMessage(err('42501', 'Không có quyền chi lợi nhuận cổ đông, hoặc không tìm thấy bản ghi chốt'), 'settle_void').kind).toBe('FORBIDDEN');
+  });
+  it.each<[ProfitLedgerOperation, ReturnType<typeof err>]>([
+    ['advance', err('55000', 'PROFIT_LEDGER_ROUTE_OFF: x', '{"route":"SHADOW","allowed":["CANONICAL"]}')],
+    ['settle', err('55000', 'PROFIT_LEDGER_ROUTE_OFF: x')],
+    ['settle', err('PT409', 'PROFIT_LEDGER_SETTLE_CHANGED: x')],
+    ['settle', err('22023', 'PROFIT_LEDGER_SETTLE_MONTH: x')],
+    ['settle_void', err('22023', 'PROFIT_LEDGER_SETTLE_HAS_VOUCHER: x', '{"cash_voucher_id":"v1"}')],
+    ['marker', err('55000', 'PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT: x')],
+    ['advance', err('55000', 'PROFIT_LEDGER_TYPE_NAME_TAKEN: x')],
+    ['read', err('XX000', 'PROFIT_LEDGER_POSITION_DRIFT: x')],
+  ])('câu cho người dùng không lộ tên kỹ thuật (%s)', (op, e) => {
+    const { message } = profitLedgerErrorMessage(e, op);
+    expect(message).not.toMatch(/PROFIT_LEDGER|route|SHADOW|LEGACY|CANONICAL|RPC|_v1|idempotency|rule_key/);
+    expect(message.length).toBeGreaterThan(10);
+  });
+});
+
 describe('isLedgerIdempotencyConflict — đúng câu 23505 "khoá đã dùng" của từng lệnh', () => {
+  it.each(['advance', 'settle', 'settle_void'] as const)('%s (không mã máy) nhận câu của chính nó, không nhận câu của lệnh huỷ', (op) => {
+    expect(isLedgerIdempotencyConflict(err('23505', 'idempotency_key đã dùng với nội dung khác'), op)).toBe(true);
+    expect(isLedgerIdempotencyConflict(err('23505', 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung'), op)).toBe(false);
+    expect(isLedgerIdempotencyConflict(err('23505', 'duplicate key value violates unique constraint "profit_ledger_payout_settlements_seq_uq"'), op)).toBe(false);
+  });
   const E5_E9 = 'idempotency_key đã dùng với nội dung khác';
   const E6 = 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung';
   const E16 = 'SALARY_PROFIT_IDEMPOTENCY_CONFLICT: khoá idempotency đã dùng với nội dung khác';

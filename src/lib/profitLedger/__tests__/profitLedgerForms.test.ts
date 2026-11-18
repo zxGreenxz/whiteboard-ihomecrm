@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PROFIT_FORM_MESSAGES, cancelFormSchema, isPastMarkerMonth, makeResolveFormSchema, markerFormSchema, markerMonthValue,
-  payoutAllowAdvance, payoutFormSchema,
+  PROFIT_FORM_MESSAGES, advanceFormSchema, cancelFormSchema, isPastMarkerMonth, makeResolveFormSchema, markerFormSchema,
+  markerMonthValue, payoutAllowAdvance, payoutFormSchema, settleFormSchema, settlementVoidFormSchema,
 } from '../forms';
 
 const payout = (over: Record<string, unknown> = {}) => ({
@@ -40,6 +40,60 @@ describe('payoutFormSchema', () => {
     expect(issues(payoutFormSchema.safeParse(payout({ shareholderId: '', accountId: '', voucherDate: '' })))).toEqual([
       `shareholderId:${PROFIT_FORM_MESSAGES.shareholder}`, `accountId:${PROFIT_FORM_MESSAGES.account}`, `voucherDate:${PROFIT_FORM_MESSAGES.voucherDate}`,
     ]);
+  });
+});
+
+describe('advanceFormSchema — phiếu tạm ứng: không ô xác nhận, không bắt lý do', () => {
+  const advance = (over: Record<string, unknown> = {}) => ({
+    shareholderId: 's1', amount: 1_000_000, accountId: 'a1', voucherDate: '2026-11-18', note: '', ...over,
+  });
+  it('đủ người nhận, số tiền, sổ, ngày ⇒ đạt dù ghi chú trống', () => {
+    expect(advanceFormSchema.safeParse(advance()).success).toBe(true);
+  });
+  it('ghi chú ngắn vẫn đạt (không còn là "lý do tạm ứng" 8 ký tự); quá 500 ký tự ⇒ từ chối', () => {
+    expect(advanceFormSchema.safeParse(advance({ note: 'ứng' })).success).toBe(true);
+    expect(issues(advanceFormSchema.safeParse(advance({ note: 'x'.repeat(501) })))).toEqual([`note:${PROFIT_FORM_MESSAGES.noteTooLong}`]);
+  });
+  it.each([0, -1, Number.NaN, 0.001, 1e13])('số tiền %s ⇒ từ chối', (amount) => {
+    expect(advanceFormSchema.safeParse(advance({ amount })).success).toBe(false);
+  });
+  it('thiếu người nhận / sổ / ngày ⇒ từ chối đúng ô', () => {
+    expect(issues(advanceFormSchema.safeParse(advance({ shareholderId: '', accountId: '', voucherDate: '31/02/2026' })))).toEqual([
+      `shareholderId:${PROFIT_FORM_MESSAGES.advancePayee}`, `accountId:${PROFIT_FORM_MESSAGES.account}`, `voucherDate:${PROFIT_FORM_MESSAGES.voucherDate}`,
+    ]);
+  });
+});
+
+describe('settleFormSchema — hộp chốt: không có ô số tiền', () => {
+  const settle = (over: Record<string, unknown> = {}) => ({
+    shareholderId: 's1', throughMonth: '2026-10-01', accountId: '', voucherDate: '', note: '', previewCash: 0, ...over,
+  });
+  it('lần chốt không ra tiền: không cần sổ quỹ / ngày chi', () => {
+    expect(settleFormSchema.safeParse(settle()).success).toBe(true);
+  });
+  it('có tiền thực chi ⇒ bắt sổ quỹ và ngày chi', () => {
+    expect(issues(settleFormSchema.safeParse(settle({ previewCash: 60 })))).toEqual([
+      `accountId:${PROFIT_FORM_MESSAGES.account}`, `voucherDate:${PROFIT_FORM_MESSAGES.voucherDate}`,
+    ]);
+    expect(settleFormSchema.safeParse(settle({ previewCash: 60, accountId: 'a1', voucherDate: '2026-11-18' })).success).toBe(true);
+  });
+  it('thiếu cổ đông / tháng không phải ngày 1 ⇒ từ chối', () => {
+    expect(issues(settleFormSchema.safeParse(settle({ shareholderId: '', throughMonth: '2026-10-15' })))).toEqual([
+      `shareholderId:${PROFIT_FORM_MESSAGES.shareholder}`, `throughMonth:${PROFIT_FORM_MESSAGES.settleMonth}`,
+    ]);
+  });
+  it('khuôn không có trường số tiền nhập tay', () => {
+    expect(Object.keys(settleFormSchema.shape)).not.toContain('amount');
+  });
+});
+
+describe('settlementVoidFormSchema', () => {
+  it.each(['', 'ngắn', '       '])('lý do "%s" ⇒ từ chối', (reason) => {
+    expect(issues(settlementVoidFormSchema.safeParse({ reason }))).toEqual([`reason:${PROFIT_FORM_MESSAGES.settleVoidReasonLength}`]);
+  });
+  it('lý do chép câu báo lỗi của hệ thống ⇒ từ chối; lý do thật ⇒ đạt', () => {
+    expect(issues(settlementVoidFormSchema.safeParse({ reason: PROFIT_FORM_MESSAGES.settleVoidReasonLength }))).toEqual([`reason:${PROFIT_FORM_MESSAGES.settleVoidReasonSystem}`]);
+    expect(settlementVoidFormSchema.safeParse({ reason: 'Chốt nhầm tháng, chốt lại sau' }).success).toBe(true);
   });
 });
 

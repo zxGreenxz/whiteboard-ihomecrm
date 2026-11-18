@@ -122,6 +122,9 @@ export function readWarnings(value: unknown, path: string): PayoutWarning[] {
   return list(value, path, readWarning);
 }
 
-export const PAYOUT_MAKER_KINDS = ['OWNER', 'CUSTODIAN_ADVANCE'] as const;
-/** OWNER: chủ (quyền chi lợi nhuận) lập · CUSTODIAN_ADVANCE: người giữ sổ tự tạm ứng cho chính mình. */
+export const PAYOUT_MAKER_KINDS = ['OWNER', 'CUSTODIAN_ADVANCE', 'CUSTODIAN_FOR_PAYEE'] as const;
+/**
+ * OWNER: chủ (quyền chi lợi nhuận) lập · CUSTODIAN_ADVANCE: người giữ sổ tự tạm ứng cho chính mình ·
+ * CUSTODIAN_FOR_PAYEE: người giữ sổ lập phiếu tạm ứng HỘ một cổ đông có quyền tạm ứng (ở Thu chi).
+ */
 export type PayoutMakerKind = (typeof PAYOUT_MAKER_KINDS)[number];

@@ -16,12 +16,13 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 import {
-  useMyProfitLedger, useProfitLedgerMarkerPreview, useProfitLedgerPayoutDetail, useProfitManagerLedger,
-  useProfitPayoutPreview, useProfitUnlockSalaryImpact, useShareholderProfitLedger, useShareholderProfitLedgerEntries,
+  useMyProfitLedger, useMyShareholderPosition, useProfitLedgerMarkerPreview, useProfitLedgerPayoutDetail, useProfitManagerLedger,
+  useProfitPayoutPreview, useProfitSettlementPreview, useProfitUnlockSalaryImpact, useShareholderAdvanceOptions,
+  useShareholderAdvancePreview, useShareholderProfitLedger, useShareholderProfitLedgerEntries, useShareholderProfitPositions,
 } from '../useProfitLedgerQueries';
 import {
-  PROFIT_LEDGER_INVALIDATE_KEYS, useCancelProfitLedgerPayout, useCreateProfitLedgerPayout, useResolveSalaryProfitLine,
-  useSetProfitLedgerMarker,
+  PROFIT_LEDGER_INVALIDATE_KEYS, useCancelProfitLedgerPayout, useCreateProfitLedgerPayout, useCreateShareholderAdvance,
+  useResolveSalaryProfitLine, useSetProfitLedgerMarker, useSettleShareholderProfit, useVoidProfitSettlement,
 } from '../useProfitLedgerMutations';
 import { fetchSalaryProfitInputs, freezeSalaryProfitSettlement, quoteSalaryProfitPayout, salaryQuoteKey } from '@/lib/profitLedger/salaryProfitApi';
 import { profitLedgerErrorMessage, ProfitLedgerPriorWrittenError } from '@/lib/profitLedger/errors';
@@ -265,6 +266,207 @@ describe('E6 / E9 / E16', () => {
     expect(m.rpc).toHaveBeenCalledWith('profit_ledger_salary_resolve_v1', expect.objectContaining({
       p_line_id: 'l1', p_investment_amount: 7, p_advance_offset_amount: 0, p_reason: 'Đúng phần đầu tư tháng 9',
     }));
+  });
+});
+
+/* ───────────── Tạm ứng cổ đông + chốt chi lợi nhuận theo tháng (migration 20261118041911) ───────────── */
+
+const position = (over: Record<string, unknown> = {}) => ({
+  unpaid_profit: 100, advance_outstanding: 40, advance_pending: 5, settlement_cash_pending: 0, balance: 55,
+  settled: { cash: 0, offset: 0, recognized: 0 }, last_settled_through_month: null, marker_month: null,
+  needs_review: { count: 0, suggested: 0 },
+  components: { allocated: 100, payouts_pending: 5, payouts_approved: 40, salary_investment: 0, salary_advance_offset: 0, unpaid_profit_raw: 100, advance_outstanding_raw: 40, advance_overoffset: 0 },
+  ...over,
+});
+const r5 = (over: Record<string, unknown> = {}) => ({
+  route: 'CANONICAL', shareholder_id: SH,
+  months: [{ month: '2026-09-01', allocated: 60, selectable: true, unpaid_through: 60 }, { month: '2026-10-01', allocated: 40, selectable: true, unpaid_through: 100 }],
+  min_through_month: '2026-09-01', through_month: '2026-10-01', recognized_amount: 100, advance_offset_amount: 40, cash_amount: 60,
+  advance_left: 0, advance_pending: 5, can_submit: false, blocked_reason: 'ACCOUNT_REQUIRED', settlements: [], position: position(), ...over,
+});
+const w1 = (over: Record<string, unknown> = {}) => ({
+  state: 'PENDING_APPROVAL', amount: 500000, within_amount: 0, advance_amount: 500000, balance_before: null, maker_kind: 'CUSTODIAN_FOR_PAYEE',
+  payout_kind: 'ADVANCE', warnings: [{ code: 'ADVANCE', advance_amount: 500000 }, { code: 'NEEDS_OWNER_APPROVAL' }],
+  voucher_id: 'v-adv', approval_request_id: 'r-adv', shareholder_id: SH, ...over,
+});
+const w2 = (over: Record<string, unknown> = {}) => ({
+  state: 'PENDING_APPROVAL', settlement_id: 'st-1', through_month: '2026-10-01', recognized_amount: 100, advance_offset_amount: 40,
+  cash_amount: 60, voucher_id: 'v-cash', approval_request_id: 'r-cash', ...over,
+});
+const advanceInput = { organizationId: ORG, shareholderId: SH, amount: 500000, accountId: 'acc-1', voucherDate: '2026-11-18', note: '  ' };
+const settleInput = { organizationId: ORG, shareholderId: SH, throughMonth: '2026-10-01', expectedRecognized: 100, expectedCash: 60, accountId: 'acc-1', voucherDate: '2026-11-18', note: null };
+
+describe('tạm ứng + chốt: hook đọc gọi đúng RPC + tham số', () => {
+  it('R1 / R2 / R3: chỉ gửi p_organization_id, gọi kiểu mặc định (POST) — không có đối số thứ ba', async () => {
+    m.rpc.mockImplementation(async (name: string) => {
+      if (name === 'shareholder_profit_positions_v1') return { data: { organization_id: ORG, route: 'CANONICAL', as_of: '2026-11-18T00:00:00Z', shareholders: [{ shareholder_id: SH, name: 'A', is_active: true, is_deleted: false, has_login: true, has_advance_right: true, ...position() }] }, error: null };
+      if (name === 'shareholder_profit_my_position_v1') return { data: { organization_id: ORG, route: 'CANONICAL', shareholder: { id: SH, name: 'A' }, ...position(), settlements: [] }, error: null };
+      return { data: { route: 'CANONICAL', can_create: true, accounts: [{ account_id: 'acc-1', name: 'Sổ giữ' }], payees: [{ shareholder_id: SH, name: 'A', is_self: false }], advance_type: { id: 't1', name: 'Tạm Ứng' } }, error: null };
+    });
+    const positions = renderHook(() => useShareholderProfitPositions(ORG), { wrapper });
+    const mine = renderHook(() => useMyShareholderPosition(ORG), { wrapper });
+    const options = renderHook(() => useShareholderAdvanceOptions(ORG), { wrapper });
+    await waitFor(() => expect(positions.result.current.data?.shareholders[0]?.unpaid_profit).toBe(100));
+    await waitFor(() => expect(mine.result.current.data?.advance_outstanding).toBe(40));
+    await waitFor(() => expect(options.result.current.data?.can_create).toBe(true));
+    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_positions_v1', { p_organization_id: ORG });
+    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_my_position_v1', { p_organization_id: ORG });
+    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_advance_options_v1', { p_organization_id: ORG });
+    // R1 / R3 là hàm VOLATILE: thêm { get: true } là máy chủ trả 25006.
+    for (const call of m.rpc.mock.calls) expect(call).toHaveLength(2);
+  });
+  it('R2 / R3: 42501 PROFIT_LEDGER_FORBIDDEN ⇒ null (ẩn khối / không có chế độ Tạm Ứng); lỗi khác vẫn ném', async () => {
+    m.rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'PROFIT_LEDGER_FORBIDDEN: bạn không thuộc công ty này' } });
+    const mine = renderHook(() => useMyShareholderPosition(ORG), { wrapper });
+    const options = renderHook(() => useShareholderAdvanceOptions(ORG), { wrapper });
+    await waitFor(() => expect(mine.result.current.isSuccess && options.result.current.isSuccess).toBe(true));
+    expect(mine.result.current.data).toBeNull();
+    expect(options.result.current.data).toBeNull();
+    client.clear();
+    m.rpc.mockResolvedValue({ data: null, error: { code: 'XX000', message: 'PROFIT_LEDGER_POSITION_DRIFT: x' } });
+    const drift = renderHook(() => useMyShareholderPosition('org-b'), { wrapper });
+    const broken = renderHook(() => useShareholderAdvanceOptions('org-b'), { wrapper });
+    await waitFor(() => expect(drift.result.current.isError && broken.result.current.isError).toBe(true));
+  });
+  it('R1 không tự nuốt lỗi quyền; không có công ty / bị tắt ⇒ không gọi', async () => {
+    renderHook(() => useShareholderProfitPositions(null), { wrapper });
+    renderHook(() => useShareholderAdvanceOptions(ORG, { enabled: false }), { wrapper });
+    expect(m.rpc).not.toHaveBeenCalled();
+    m.rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'PROFIT_LEDGER_FORBIDDEN: bạn không có quyền xem sổ tổng lợi nhuận của công ty này' } });
+    const h = renderHook(() => useShareholderProfitPositions(ORG), { wrapper });
+    await waitFor(() => expect(h.result.current.isError).toBe(true));
+  });
+  it('R4 chưa nhập số tiền / chưa chọn sổ: p_amount / p_account_id = null; người lập hộ nhận position = null', async () => {
+    m.rpc.mockResolvedValue({ data: { route: 'CANONICAL', shareholder_id: SH, maker_kind: 'CUSTODIAN_FOR_PAYEE', payee_is_maker: false, can_submit: false, blocked_reason: null, warnings: [], position: null }, error: null });
+    const h = renderHook(() => useShareholderAdvancePreview({ shareholderId: SH, amount: Number.NaN, accountId: null }), { wrapper });
+    await waitFor(() => expect(h.result.current.isSuccess).toBe(true));
+    expect(h.result.current.data).toMatchObject({ position: null, can_submit: false });
+    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_advance_preview_v1', { p_shareholder_id: SH, p_amount: null, p_account_id: null });
+    expect(m.rpc.mock.calls[0]).toHaveLength(2);
+  });
+  it('R5 không truyền tháng: p_through_month = null (máy chủ chọn); chọn tháng + sổ thì gửi đúng', async () => {
+    m.rpc.mockImplementation(async (_name: string, args: Record<string, unknown>) => (args.p_through_month === null
+      ? { data: r5(), error: null }
+      : { data: r5({ through_month: '2026-09-01', recognized_amount: 60, advance_offset_amount: 40, cash_amount: 20, can_submit: true, blocked_reason: null }), error: null }));
+    const auto = renderHook(() => useProfitSettlementPreview({ shareholderId: SH, throughMonth: null, accountId: null }), { wrapper });
+    const picked = renderHook(() => useProfitSettlementPreview({ shareholderId: SH, throughMonth: '2026-09-01', accountId: 'acc-1' }), { wrapper });
+    await waitFor(() => expect(auto.result.current.data?.through_month).toBe('2026-10-01'));
+    await waitFor(() => expect(picked.result.current.data?.cash_amount).toBe(20));
+    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_settlement_preview_v1', { p_shareholder_id: SH, p_through_month: null, p_account_id: null });
+    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_settlement_preview_v1', { p_shareholder_id: SH, p_through_month: '2026-09-01', p_account_id: 'acc-1' });
+  });
+});
+
+describe('W1 lập phiếu tạm ứng', () => {
+  it('đúng tên RPC + sáu tham số (không có cờ xác nhận tạm ứng); mã phiếu đọc lại; khoá gắn công ty của cổ đông', async () => {
+    m.rpc.mockImplementation(async (_name: string, args: Record<string, unknown>) => {
+      const records = pendingKeys().map((k) => JSON.parse(localStorage.getItem(k)!));
+      expect(records).toHaveLength(1);
+      expect(args.p_idempotency_key).toBe(records[0].requestKey);
+      expect(records[0]).toMatchObject({ userId: 'actor-a', organizationId: ORG, businessKey: `shareholder:${SH}` });
+      return { data: w1(), error: null };
+    });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    let result: Awaited<ReturnType<typeof h.result.current.mutateAsync>> | undefined;
+    await act(async () => { result = await h.result.current.mutateAsync(advanceInput); });
+    expect(m.rpc).toHaveBeenCalledTimes(1);
+    expect(m.rpc.mock.calls[0]![0]).toBe('shareholder_profit_advance_v1');
+    expect(Object.keys(m.rpc.mock.calls[0]![1]).sort()).toEqual(['p_account_id', 'p_amount', 'p_idempotency_key', 'p_note', 'p_shareholder_id', 'p_voucher_date']);
+    expect(m.rpc.mock.calls[0]![1]).toMatchObject({ p_shareholder_id: SH, p_amount: 500000, p_account_id: 'acc-1', p_voucher_date: '2026-11-18', p_note: null });
+    expect(result).toMatchObject({ voucher_id: 'v-adv', code: 'PC2611999', advance_amount: 500000, balance_before: null, maker_kind: 'CUSTODIAN_FOR_PAYEE' });
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('từ chối chắc chắn (người nhận chưa có quyền) ⇒ trả nguyên lỗi, không giữ dấu chờ', async () => {
+    const failure = { code: '42501', message: 'PROFIT_LEDGER_ADVANCE_PAYEE_NO_RIGHT: người nhận chưa được cấp quyền tạm ứng' };
+    m.rpc.mockResolvedValue({ data: null, error: failure });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).rejects.toBe(failure); });
+    expect(m.rpc).toHaveBeenCalledTimes(1);
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('biên nhận lệch hợp đồng (có phần "trong số dư") ⇒ chưa rõ kết quả; lần sau đối chiếu bằng ĐÚNG khoá cũ', async () => {
+    m.rpc.mockResolvedValueOnce({ data: w1({ within_amount: 100000, advance_amount: 400000 }), error: null }).mockResolvedValueOnce({ data: w1(), error: null });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    expect(pendingKeys()).toHaveLength(1);
+    await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).resolves.toMatchObject({ voucher_id: 'v-adv' }); });
+    expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(m.rpc.mock.calls[0]![1].p_idempotency_key);
+    expect(pendingKeys()).toEqual([]);
+  });
+});
+
+describe('W2 chốt chi lợi nhuận / W3 huỷ lần chốt', () => {
+  it('W2 gửi CẢ p_expected_recognized và p_expected_cash đúng số đã xem; có tiền thì gửi sổ + ngày', async () => {
+    m.rpc.mockResolvedValue({ data: w2(), error: null });
+    const h = renderHook(() => useSettleShareholderProfit(), { wrapper });
+    let result: Awaited<ReturnType<typeof h.result.current.mutateAsync>> | undefined;
+    await act(async () => { result = await h.result.current.mutateAsync(settleInput); });
+    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_settle_v1', {
+      p_shareholder_id: SH, p_through_month: '2026-10-01', p_account_id: 'acc-1', p_voucher_date: '2026-11-18', p_note: null,
+      p_expected_recognized: 100, p_expected_cash: 60, p_idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    });
+    expect(result).toMatchObject({ settlement_id: 'st-1', state: 'PENDING_APPROVAL', voucher_id: 'v-cash', code: 'PC2611999' });
+  });
+  it('W2 không ra tiền: sổ / ngày gửi null dù form còn giá trị; không đọc mã phiếu', async () => {
+    m.rpc.mockResolvedValue({ data: w2({ state: 'SETTLED', recognized_amount: 80, advance_offset_amount: 80, cash_amount: 0, voucher_id: null, approval_request_id: null }), error: null });
+    const h = renderHook(() => useSettleShareholderProfit(), { wrapper });
+    let result: Awaited<ReturnType<typeof h.result.current.mutateAsync>> | undefined;
+    await act(async () => { result = await h.result.current.mutateAsync({ ...settleInput, expectedRecognized: 80, expectedCash: 0 }); });
+    expect(m.rpc.mock.calls[0]![1]).toMatchObject({ p_account_id: null, p_voucher_date: null, p_expected_recognized: 80, p_expected_cash: 0 });
+    expect(result).toMatchObject({ state: 'SETTLED', voucher_id: null, code: null });
+    expect(m.maybeSingle).not.toHaveBeenCalled();
+  });
+  it('W2 PT409 (số liệu vừa đổi) ⇒ trả nguyên lỗi, KHÔNG tự gửi lại, không giữ dấu chờ', async () => {
+    const failure = { code: 'PT409', message: 'PROFIT_LEDGER_SETTLE_CHANGED: số liệu vừa đổi so với lúc xem trước — tải lại rồi xem trước lần nữa', details: '{"cash_amount": 40, "expected_cash": 60}' };
+    m.rpc.mockResolvedValue({ data: null, error: failure });
+    const h = renderHook(() => useSettleShareholderProfit(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(settleInput)).rejects.toBe(failure); });
+    expect(m.rpc).toHaveBeenCalledTimes(1);
+    expect(pendingKeys()).toEqual([]);
+    expect(profitLedgerErrorMessage(failure, 'settle')).toMatchObject({ kind: 'SETTLE_CHANGED', reload: true });
+  });
+  it.each([
+    ['thiếu phần ghi nhận', { expectedRecognized: Number.NaN }],
+    ['phần ghi nhận ≤ 0', { expectedRecognized: 0 }],
+    ['thực chi âm', { expectedCash: -1 }],
+    ['thiếu tháng', { throughMonth: '' }],
+  ])('W2 %s ⇒ không gọi máy chủ', async (_name, over) => {
+    const h = renderHook(() => useSettleShareholderProfit(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync({ ...settleInput, ...over })).rejects.toBeTruthy(); });
+    expect(m.rpc).not.toHaveBeenCalled();
+  });
+  it('W3 gửi mã lần chốt, lý do (đã cắt) và khoá', async () => {
+    m.rpc.mockResolvedValue({ data: { state: 'VOID', settlement_id: 'st-1' }, error: null });
+    const h = renderHook(() => useVoidProfitSettlement(), { wrapper });
+    await act(async () => { await h.result.current.mutateAsync({ organizationId: ORG, settlementId: 'st-1', reason: '  Chốt nhầm tháng  ' }); });
+    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_settlement_void_v1', {
+      p_settlement_id: 'st-1', p_reason: 'Chốt nhầm tháng', p_idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    });
+  });
+  it.each([
+    { name: 'W1 tạm ứng', run: async () => { const h = renderHook(() => useCreateShareholderAdvance(), { wrapper }); return (note: string) => h.result.current.mutateAsync({ ...advanceInput, note }); } },
+    { name: 'W2 chốt', run: async () => { const h = renderHook(() => useSettleShareholderProfit(), { wrapper }); return (note: string) => h.result.current.mutateAsync({ ...settleInput, note }); } },
+    { name: 'W3 huỷ chốt', run: async () => { const h = renderHook(() => useVoidProfitSettlement(), { wrapper }); return (note: string) => h.result.current.mutateAsync({ organizationId: ORG, settlementId: 'st-1', reason: note }); } },
+  ])('$name: đối chiếu gặp 23505 khoá-đã-dùng của chính lệnh ⇒ đã ghi, xoá dấu', async ({ run }) => {
+    m.rpc
+      .mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } })
+      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'idempotency_key đã dùng với nội dung khác' } });
+    const mutate = await run();
+    await act(async () => { await expect(mutate('Ghi chú lần thứ nhất')).rejects.toMatchObject({ outcome: 'unknown' }); });
+    expect(pendingKeys()).toHaveLength(1);
+    await act(async () => { await expect(mutate('Ghi chú khác sau khi tải lại')).rejects.toBeInstanceOf(ProfitLedgerPriorWrittenError); });
+    expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(m.rpc.mock.calls[0]![1].p_idempotency_key);
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('làm mới cả khoá vị thế / xem trước sau khi ghi', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    m.rpc.mockResolvedValue({ data: w1(), error: null });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await h.result.current.mutateAsync(advanceInput); });
+    const keys = spy.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
+    for (const key of ['profit-positions', 'my-profit-position', 'profit-advance-options', 'profit-advance-preview', 'profit-settlement-preview', 'profit-ledger', 'my-profit-ledger', 'pending-approvals', 'income-expenses']) {
+      expect(keys).toContain(JSON.stringify([key]));
+    }
   });
 });
 

@@ -1,4 +1,5 @@
-// Hook GHI của sổ tổng lợi nhuận cổ đông (Đợt 2): E5 lập phiếu chi · E6 huỷ phiếu · E9 đặt/gỡ mốc ·
+// Hook GHI của sổ tổng lợi nhuận cổ đông: W1 lập phiếu tạm ứng · W2 chốt chi lợi nhuận đến hết tháng N ·
+// W3 huỷ lần chốt không có phiếu tiền · E5 lập phiếu chi (lệnh cũ) · E6 huỷ phiếu · E9 đặt/gỡ mốc ·
 // E16 xác nhận phần lợi nhuận trong phiếu lương.
 //
 // KHOÁ CHỐNG GỬI TRÙNG: mỗi lượt bấm chạy qua persistentFinancialWorkflow(…, {scope:'target'}) gắn
@@ -25,6 +26,10 @@ import {
   type LedgerCancelResult, type LedgerPayoutResult, type MarkerResult, type SalaryResolveResult,
 } from '@/lib/profitLedger/actionReaders';
 import {
+  readAdvanceResult, readSettleResult, readSettlementVoidResult,
+  type AdvanceResult, type SettleResult, type SettlementVoidResult,
+} from '@/lib/profitLedger/positionReaders';
+import {
   isLedgerIdempotencyConflict, ProfitLedgerPriorWrittenError, type ProfitLedgerWriteOperation,
 } from '@/lib/profitLedger/errors';
 import type { ProfitLedgerSubjectKind } from '@/lib/profitLedger/sharedReaders';
@@ -34,8 +39,8 @@ const CANCEL_EXPECTED_STATES: readonly ProfitCancelExpectedState[] = ['PENDING',
 
 /**
  * Mọi khoá màn hình đọc từ sổ tổng hoặc từ phiếu mà sổ tổng chạm. Gọi sau MỌI thao tác ghi của sổ
- * tổng (chi, huỷ, mốc, xác nhận lương) VÀ của các luồng làm số dư đổi: chốt / mở khoá / đặt lại lợi
- * nhuận tháng, chốt / mở chốt / trả lương — bước 2 nối vào các mutation đó.
+ * tổng (tạm ứng, chốt, huỷ, mốc, xác nhận lương) VÀ của các luồng làm số dư đổi: chốt / mở khoá / đặt lại
+ * lợi nhuận tháng, chốt / mở chốt / trả lương — bước 2 nối vào các mutation đó.
  * (Khớp theo phần tử ĐẦU của khoá: liệt kê từng gốc, `['profit-ledger']` không phủ `['profit-ledger-entries']`.)
  */
 export const PROFIT_LEDGER_INVALIDATE_KEYS = [
@@ -44,6 +49,11 @@ export const PROFIT_LEDGER_INVALIDATE_KEYS = [
   ['profit-ledger-payout'],
   ['profit-ledger-marker-preview'],
   ['profit-payout-preview'],
+  ['profit-positions'],
+  ['my-profit-position'],
+  ['profit-advance-options'],
+  ['profit-advance-preview'],
+  ['profit-settlement-preview'],
   ['my-profit-ledger'],
   ['profit-manager-ledger'],
   ['manager-ledger-payouts'],
@@ -170,6 +180,168 @@ export function useCreateProfitLedgerPayout() {
         },
         receiptId: (result) => result.voucher_id,
         receiptLabel: 'Phiếu chi lợi nhuận đã lập',
+      });
+    },
+    onSettled: () => invalidateProfitLedgerQueries(queryClient),
+  });
+}
+
+/* ───────────────────────────── W1 lập phiếu tạm ứng cho cổ đông ───────────────────────────── */
+
+export interface CreateShareholderAdvanceInput {
+  /** Công ty của cổ đông. */
+  organizationId: string;
+  /** Người nhận: chính mình (tự tạm ứng) hoặc một cổ đông có quyền tạm ứng (người giữ sổ lập hộ). */
+  shareholderId: string;
+  amount: number;
+  /** Sổ quỹ TIỀN THẬT người gọi đang GIỮ. */
+  accountId: string;
+  voucherDate: string;
+  /** Ghi chú tuỳ ý (≤ 500 ký tự). */
+  note: string | null;
+}
+
+export interface CreateShareholderAdvanceResult extends AdvanceResult {
+  /** Mã phiếu (đọc lại sau khi lập; đọc hỏng ⇒ null, không phải lỗi ghi). */
+  code: string | null;
+}
+
+export function useCreateShareholderAdvance() {
+  const queryClient = useQueryClient();
+  const workflow = useRef(persistentFinancialWorkflow('profit-ledger-advance', { scope: 'target' }));
+  return useMutation({
+    meta: { handlesFeedback: true },
+    mutationFn: async (input: CreateShareholderAdvanceInput): Promise<CreateShareholderAdvanceResult> => {
+      const organizationId = requireId(input.organizationId, 'Chưa xác định được công ty của cổ đông. Tải lại rồi lập phiếu.');
+      const shareholderId = requireId(input.shareholderId, 'Chọn người nhận tạm ứng.');
+      return runLedgerWrite({
+        workflow: workflow.current,
+        kind: 'advance',
+        businessKey: `shareholder:${shareholderId}`,
+        operation: 'lập phiếu tạm ứng',
+        organizationId,
+        call: (key) => supabase.rpc('shareholder_profit_advance_v1', {
+          p_shareholder_id: shareholderId,
+          p_amount: input.amount,
+          p_account_id: input.accountId,
+          p_voucher_date: input.voucherDate,
+          // Không có DEFAULT nhưng nhận NULL (không ghi chú).
+          p_note: rpcNullable(input.note?.trim() || null),
+          p_idempotency_key: key,
+        }),
+        read: async (data) => {
+          const result = readAdvanceResult(data, { shareholderId, amount: input.amount });
+          const receipt = await readCreatedVoucherReceipt({ voucher_id: result.voucher_id });
+          return { ...result, code: receipt.code || null };
+        },
+        receiptId: (result) => result.voucher_id,
+        receiptLabel: 'Phiếu tạm ứng đã lập',
+      });
+    },
+    onSettled: () => invalidateProfitLedgerQueries(queryClient),
+  });
+}
+
+/* ───────────────────────────── W2 chốt chi lợi nhuận đến hết tháng N ───────────────────────────── */
+
+export interface SettleShareholderProfitInput {
+  /** Công ty của cổ đông. */
+  organizationId: string;
+  shareholderId: string;
+  /** 'YYYY-MM-01' — tháng ĐANG HIỆN ở lần xem trước. */
+  throughMonth: string;
+  /** Hai số ĐANG HIỆN ở lần xem trước (R5). Lệch một trong hai ⇒ máy chủ trả PT409, không ghi gì. */
+  expectedRecognized: number;
+  expectedCash: number;
+  /** Bắt buộc khi có tiền thực chi; lần chốt không ra tiền thì null. */
+  accountId: string | null;
+  voucherDate: string | null;
+  note: string | null;
+}
+
+export interface SettleShareholderProfitResult extends SettleResult {
+  /** Mã phiếu chi tiền (null khi lần chốt không ra tiền hoặc đọc lại mã hỏng). */
+  code: string | null;
+}
+
+export function useSettleShareholderProfit() {
+  const queryClient = useQueryClient();
+  const workflow = useRef(persistentFinancialWorkflow('profit-ledger-settle', { scope: 'target' }));
+  return useMutation({
+    meta: { handlesFeedback: true },
+    mutationFn: async (input: SettleShareholderProfitInput): Promise<SettleShareholderProfitResult> => {
+      const organizationId = requireId(input.organizationId, 'Chưa xác định được công ty của cổ đông. Tải lại rồi chốt.');
+      const shareholderId = requireId(input.shareholderId, 'Chọn cổ đông cần chốt chi lợi nhuận.');
+      const throughMonth = requireId(input.throughMonth, 'Chọn tháng chốt.');
+      // Không bao giờ gửi số kỳ vọng rỗng / lạ: đó là số chủ đã xem, máy chủ so-rồi-ghi trên cả hai.
+      if (!Number.isFinite(input.expectedRecognized) || !(input.expectedRecognized > 0)
+          || !Number.isFinite(input.expectedCash) || input.expectedCash < 0) {
+        throw new FinancialWorkflowError('Chưa có số xem trước của lần chốt. Tải lại xem trước rồi chốt.', 'failure', []);
+      }
+      const hasCash = input.expectedCash > 0;
+      return runLedgerWrite({
+        workflow: workflow.current,
+        kind: 'settle',
+        businessKey: `shareholder:${shareholderId}`,
+        operation: 'chốt chi lợi nhuận',
+        organizationId,
+        call: (key) => supabase.rpc('shareholder_profit_settle_v1', {
+          p_shareholder_id: shareholderId,
+          p_through_month: throughMonth,
+          // Không có DEFAULT nhưng nhận NULL: lần chốt không ra tiền thì không cần sổ quỹ / ngày chi.
+          p_account_id: rpcNullable(hasCash ? input.accountId : null),
+          p_voucher_date: rpcNullable(hasCash ? input.voucherDate : null),
+          p_note: rpcNullable(input.note?.trim() || null),
+          p_expected_recognized: input.expectedRecognized,
+          p_expected_cash: input.expectedCash,
+          p_idempotency_key: key,
+        }),
+        read: async (data) => {
+          const result = readSettleResult(data, { throughMonth });
+          if (!result.voucher_id) return { ...result, code: null };
+          const receipt = await readCreatedVoucherReceipt({ voucher_id: result.voucher_id });
+          return { ...result, code: receipt.code || null };
+        },
+        receiptId: (result) => result.settlement_id,
+        receiptLabel: 'Lần chốt chi lợi nhuận đã ghi',
+      });
+    },
+    onSettled: () => invalidateProfitLedgerQueries(queryClient),
+  });
+}
+
+/* ───────────────────────────── W3 huỷ lần chốt KHÔNG có phiếu tiền ───────────────────────────── */
+
+export interface VoidProfitSettlementInput {
+  /** Công ty của cổ đông. */
+  organizationId: string;
+  settlementId: string;
+  /** 8..1000 ký tự (máy chủ cắt khoảng trắng). */
+  reason: string;
+}
+
+export function useVoidProfitSettlement() {
+  const queryClient = useQueryClient();
+  const workflow = useRef(persistentFinancialWorkflow('profit-ledger-settle-void', { scope: 'target' }));
+  return useMutation({
+    meta: { handlesFeedback: true },
+    mutationFn: async (input: VoidProfitSettlementInput): Promise<SettlementVoidResult> => {
+      const organizationId = requireId(input.organizationId, 'Chưa xác định được công ty của lần chốt. Tải lại rồi huỷ.');
+      const settlementId = requireId(input.settlementId, 'Chưa xác định được lần chốt cần huỷ.');
+      return runLedgerWrite({
+        workflow: workflow.current,
+        kind: 'settle_void',
+        businessKey: `settlement:${settlementId}`,
+        operation: 'huỷ lần chốt chi lợi nhuận',
+        organizationId,
+        call: (key) => supabase.rpc('shareholder_profit_settlement_void_v1', {
+          p_settlement_id: settlementId,
+          p_reason: input.reason.trim(),
+          p_idempotency_key: key,
+        }),
+        read: (data) => readSettlementVoidResult(data, settlementId),
+        receiptId: (result) => result.settlement_id,
+        receiptLabel: 'Lần chốt đã huỷ',
       });
     },
     onSettled: () => invalidateProfitLedgerQueries(queryClient),

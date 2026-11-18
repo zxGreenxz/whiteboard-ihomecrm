@@ -11,11 +11,12 @@ import { currentMonthVN } from '@/lib/collect';
 export const PROFIT_REASON_MIN = 8;
 export const PROFIT_REASON_MAX = 1000;
 export const PROFIT_PAYOUT_NOTE_MAX = 500;
-/** Trần số tiền của E4/E5 (numeric(15,2)). */
+/** Trần số tiền của lệnh tạm ứng (numeric(15,2)). */
 export const PROFIT_AMOUNT_LIMIT = 10_000_000_000_000;
 
 export const PROFIT_FORM_MESSAGES = {
   shareholder: 'Chọn cổ đông nhận khoản chi.',
+  advancePayee: 'Chọn người nhận tạm ứng.',
   amount: 'Nhập số tiền lớn hơn 0.',
   amountDecimals: 'Số tiền tối đa 2 chữ số lẻ.',
   amountTooLarge: 'Số tiền quá lớn.',
@@ -25,6 +26,9 @@ export const PROFIT_FORM_MESSAGES = {
   allowAdvance: 'Số tiền vượt số còn phải trả — tick xác nhận tạm ứng.',
   advanceReasonLength: 'Lý do tạm ứng phải có 8-500 ký tự',
   advanceReasonSystem: 'Lý do tạm ứng đang chép câu báo lỗi của hệ thống — ghi lý do thật',
+  settleMonth: 'Chọn tháng chốt.',
+  settleVoidReasonLength: 'Lý do huỷ chốt phải từ 8 đến 1000 ký tự',
+  settleVoidReasonSystem: 'Lý do huỷ chốt đang chép câu báo lỗi của hệ thống — ghi lý do thật',
   cancelReasonLength: 'Lý do huỷ phải từ 8 đến 1000 ký tự',
   cancelReasonSystem: 'Lý do huỷ đang chép câu báo lỗi của hệ thống — ghi lý do thật',
   markerMonth: 'Chọn tháng đã qua (trước tháng hiện tại).',
@@ -85,6 +89,48 @@ export function payoutAllowAdvance(values: Pick<PayoutFormValues, 'allowAdvance'
   return values.allowAdvance && values.previewAdvance > 0;
 }
 
+const VOUCHER_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/* ───────────────────────────── Phiếu tạm ứng (W1) ───────────────────────────── */
+
+/**
+ * Một phiếu tạm ứng: người nhận, số tiền, sổ quỹ đang giữ, ngày chi, ghi chú tuỳ ý.
+ * KHÔNG có ô xác nhận và KHÔNG bắt lý do: mọi khoản ứng đều là tạm ứng; ứng vượt lợi nhuận chưa chi chỉ
+ * được cảnh báo (máy chủ không chặn), phiếu nào cũng chờ chủ duyệt.
+ */
+export const advanceFormSchema = z.object({
+  shareholderId: z.string().min(1, PROFIT_FORM_MESSAGES.advancePayee),
+  amount: positiveMoney,
+  accountId: z.string().min(1, PROFIT_FORM_MESSAGES.account),
+  voucherDate: z.string().regex(VOUCHER_DAY, PROFIT_FORM_MESSAGES.voucherDate),
+  note: z.string().max(PROFIT_PAYOUT_NOTE_MAX, PROFIT_FORM_MESSAGES.noteTooLong),
+});
+
+export type AdvanceFormValues = z.infer<typeof advanceFormSchema>;
+
+/* ───────────────────────────── Hộp chốt chi lợi nhuận (R5 / W2) ───────────────────────────── */
+
+/**
+ * Chủ chỉ chọn cổ đông + "chốt đến hết tháng"; ba con số do máy chủ tính (KHÔNG có ô nhập số tiền).
+ * Sổ quỹ và ngày chi chỉ bắt buộc khi lần xem trước báo có tiền thực chi (`previewCash > 0`).
+ */
+export const settleFormSchema = z.object({
+  shareholderId: z.string().min(1, PROFIT_FORM_MESSAGES.shareholder),
+  /** 'YYYY-MM-01' của tháng đang xem trước (máy chủ trả mặc định, chủ đổi được sang tháng chọn được khác). */
+  throughMonth: z.string().regex(/^\d{4}-\d{2}-01$/, PROFIT_FORM_MESSAGES.settleMonth),
+  accountId: z.string(),
+  voucherDate: z.string(),
+  note: z.string().max(PROFIT_PAYOUT_NOTE_MAX, PROFIT_FORM_MESSAGES.noteTooLong),
+  /** Thực chi theo lần xem trước (R5) đang hiện — máy chủ tính, không phải ô nhập. */
+  previewCash: z.number(),
+}).superRefine((values, ctx) => {
+  if (!(values.previewCash > 0)) return;
+  if (!values.accountId) ctx.addIssue({ code: 'custom', path: ['accountId'], message: PROFIT_FORM_MESSAGES.account });
+  if (!VOUCHER_DAY.test(values.voucherDate)) ctx.addIssue({ code: 'custom', path: ['voucherDate'], message: PROFIT_FORM_MESSAGES.voucherDate });
+});
+
+export type SettleFormValues = z.infer<typeof settleFormSchema>;
+
 /* ───────────────────────────── Hộp huỷ phiếu (E6) ───────────────────────────── */
 
 function reasonIssue(
@@ -102,6 +148,14 @@ export const cancelFormSchema = z.object({ reason: z.string() }).superRefine((va
 });
 
 export type CancelFormValues = z.infer<typeof cancelFormSchema>;
+
+/* ───────────────────────────── Huỷ lần chốt không có phiếu tiền (W3) ───────────────────────────── */
+
+export const settlementVoidFormSchema = z.object({ reason: z.string() }).superRefine((values, ctx) => {
+  reasonIssue(ctx, values.reason, { length: PROFIT_FORM_MESSAGES.settleVoidReasonLength, system: PROFIT_FORM_MESSAGES.settleVoidReasonSystem });
+});
+
+export type SettlementVoidFormValues = z.infer<typeof settlementVoidFormSchema>;
 
 /* ───────────────────────────── Hộp mốc (E8/E9) ───────────────────────────── */
 
