@@ -116,6 +116,68 @@ describe('hộp mốc đã trả đủ', () => {
     expect(m.mutate).toHaveBeenCalledTimes(1);
   });
 
+  // 18/11/2026 — tạm ứng + chốt chi lợi nhuận: "tạm ứng bị xoá" của mốc cộng cả phiếu tạm ứng đã được khấu trừ.
+  it('mốc xoá dấu tạm ứng: cổ đông có thêm chú thích "gồm cả phần đã khấu trừ ở các lần chốt"; lương điều hành thì không', async () => {
+    m.erased = 5_000;
+    const view = render(<ProfitLedgerMarkerDialog open onOpenChange={vi.fn()} organizationId="org-a" subjectKind="SHAREHOLDER" subject={subject} />);
+    fireEvent.change(monthInput(), { target: { value: '2020-05' } });
+    const note = await screen.findByTestId('marker-advance-erased-note');
+    expect(note.textContent).toMatch(/kể cả phần đã được khấu trừ ở các lần chốt chi\s+lợi nhuận/);
+    expect(note.textContent).toMatch(/có thể lớn hơn "Tạm ứng đang có"/);
+    view.unmount();
+
+    render(<ProfitLedgerMarkerDialog open onOpenChange={vi.fn()} organizationId="org-a" subjectKind="MANAGER" subject={{ id: 'm1', name: 'Quản lý', marker: null }} />);
+    fireEvent.change(monthInput(), { target: { value: '2020-05' } });
+    expect((await screen.findByTestId('marker-advance-erased')).textContent).toMatch(/5\.000 đ/);
+    expect(screen.queryByTestId('marker-advance-erased-note')).toBeNull();
+  });
+
+  it('mốc sớm hơn tháng đã chốt chi lợi nhuận ⇒ nhắc trước (không khoá nút); đúng tháng chốt trở đi thì không nhắc', async () => {
+    const daChot = { ...subject, lastSettledThroughMonth: '2020-06-01' };
+    render(<ProfitLedgerMarkerDialog open onOpenChange={vi.fn()} organizationId="org-a" subjectKind="SHAREHOLDER" subject={daChot} />);
+    fireEvent.change(monthInput(), { target: { value: '2020-05' } });
+    const hint = await screen.findByTestId('marker-before-settlement');
+    expect(hint.textContent).toMatch(/Đã chốt chi lợi nhuận đến hết T06\/2020/);
+    expect(hint.textContent).toMatch(/huỷ lần chốt đó trước/);
+    // Chỉ là lời nhắc theo số trang đang có: máy chủ mới là chốt cuối ⇒ nút vẫn bấm được.
+    expect((screen.getByRole('button', { name: 'Đặt mốc' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.change(monthInput(), { target: { value: '2020-06' } });
+    await waitFor(() => expect(screen.queryByTestId('marker-before-settlement')).toBeNull());
+    fireEvent.change(monthInput(), { target: { value: '2020-07' } });
+    await waitFor(() => expect(m.previewCalls.at(-1)).toMatchObject({ settledThroughMonth: '2020-07-01' }));
+    expect(screen.queryByTestId('marker-before-settlement')).toBeNull();
+  });
+
+  it('lương điều hành không có lần chốt chi ⇒ không bao giờ nhắc, kể cả khi trang truyền nhầm tháng chốt', async () => {
+    render(
+      <ProfitLedgerMarkerDialog open onOpenChange={vi.fn()} organizationId="org-a" subjectKind="MANAGER"
+        subject={{ id: 'm1', name: 'Quản lý', marker: null, lastSettledThroughMonth: '2020-06-01' }} />,
+    );
+    fireEvent.change(monthInput(), { target: { value: '2020-05' } });
+    await waitFor(() => expect(m.previewCalls.at(-1)).toMatchObject({ settledThroughMonth: '2020-05-01', enabled: true }));
+    expect(screen.queryByTestId('marker-before-settlement')).toBeNull();
+  });
+
+  it('máy chủ từ chối mốc sớm hơn tháng đã chốt chi (55000) ⇒ câu riêng có tháng đã chốt, hộp không đóng, không tự gửi lại', async () => {
+    m.mutate.mockRejectedValueOnce({
+      code: '55000',
+      message: 'PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT: đã chốt chi lợi nhuận đến hết tháng 06/2020',
+      details: '{"settled_through_month":"2020-05-01","last_settled_through_month":"2020-06-01"}',
+    });
+    const onOpenChange = vi.fn();
+    render(<ProfitLedgerMarkerDialog open onOpenChange={onOpenChange} organizationId="org-a" subjectKind="SHAREHOLDER" subject={subject} />);
+    fireEvent.change(monthInput(), { target: { value: '2020-05' } });
+    fireEvent.change(reasonInput(), { target: { value: LY_DO } });
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt mốc' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/Đã chốt chi lợi nhuận đến hết 06\/2020 — mốc "đã trả đủ" phải từ tháng đó trở đi/);
+    expect(alert.textContent).toMatch(/huỷ lần chốt đó trước/);
+    expect(alert.textContent).not.toMatch(/PROFIT_LEDGER/);
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(m.mutate).toHaveBeenCalledTimes(1);
+  });
+
   it('sổ tổng chưa mở phần đặt mốc ⇒ khoá nút + câu báo', async () => {
     m.route = 'LEGACY';
     render(<ProfitLedgerMarkerDialog open onOpenChange={vi.fn()} organizationId="org-a" subjectKind="SHAREHOLDER" subject={subject} />);

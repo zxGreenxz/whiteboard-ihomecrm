@@ -18,10 +18,7 @@ import {
   type LedgerPayoutDetail, type ManagerLedger, type MyProfitLedger, type ShareholderLedger,
   type ShareholderLedgerEntries,
 } from '@/lib/profitLedger/ledgerReaders';
-import {
-  readMarkerPreview, readPayoutPreview,
-  type MarkerPreview, type PayoutPreview,
-} from '@/lib/profitLedger/actionReaders';
+import { readMarkerPreview, type MarkerPreview } from '@/lib/profitLedger/actionReaders';
 import {
   readAdvanceOptions, readAdvancePreview, readMyShareholderPosition, readSettlementPreview, readShareholderPositions,
   type AdvanceOptions, type AdvancePreview, type MyShareholderPosition, type SettlementPreview, type ShareholderPositions,
@@ -97,39 +94,9 @@ export function useMyProfitLedger(organizationId: string | null | undefined, opt
   });
 }
 
-/**
- * E4 — xem trước hộp chi. Gọi được khi CHƯA nhập số tiền / chưa chọn sổ (để hiện số dư); số tiền
- * và sổ chỉ là tuỳ chọn. Lớp gọi tự debounce số tiền (~400 ms) rồi mới đổi tham số.
- */
-export function useProfitPayoutPreview(input: {
-  shareholderId: string | null | undefined;
-  amount: number | null;
-  accountId: string | null;
-  enabled?: boolean;
-}) {
-  const amount = input.amount !== null && Number.isFinite(input.amount) && input.amount > 0 ? input.amount : null;
-  return useQuery({
-    queryKey: ['profit-payout-preview', input.shareholderId ?? null, amount, input.accountId ?? null],
-    enabled: !!input.shareholderId && (input.enabled ?? true),
-    staleTime: 0,
-    retry: retryBusyOnce,
-    meta: { label: 'số dư lợi nhuận của cổ đông', errorDisplay: 'inline' },
-    queryFn: async (): Promise<PayoutPreview> => {
-      const shareholderId = input.shareholderId as string;
-      const { data, error } = await supabase.rpc('shareholder_profit_payout_preview_v1', {
-        p_shareholder_id: shareholderId,
-        // Không có DEFAULT nhưng nhận NULL: chưa có số tiền / sổ ⇒ chỉ xem số dư.
-        p_amount: rpcNullable(amount),
-        p_account_id: rpcNullable(input.accountId ?? null),
-      });
-      if (error) throw error;
-      return readPayoutPreview(data, { shareholderId, amount, accountId: input.accountId ?? null });
-    },
-  });
-}
-
 /*
  * ───────────── Tạm ứng cổ đông + chốt chi lợi nhuận theo tháng (migration 20261118041911) ─────────────
+ * (Thay E4 `shareholder_profit_payout_preview_v1` — xem trước theo số tiền nhập tay — web không còn gọi.)
  * R1, R3, R4 là hàm VOLATILE (kiểm quyền của NGƯỜI KHÁC, có khoá dòng): PHẢI gọi bằng POST — mặc định của
  * `supabase.rpc`. KHÔNG thêm `{ get: true }` (giao dịch chỉ đọc ⇒ 25006).
  */

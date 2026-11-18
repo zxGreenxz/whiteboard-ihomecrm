@@ -5,8 +5,7 @@ import {
   readLedgerPayoutDetail, readManagerLedger, readMyProfitLedger, readShareholderLedger, readShareholderLedgerEntries,
 } from '../ledgerReaders';
 import {
-  readLedgerCancelResult, readLedgerPayoutResult, readManagerSalaryPayoutResult, readMarkerPreview, readMarkerResult,
-  readPayoutPreview, readSalaryResolveResult,
+  readLedgerCancelResult, readManagerSalaryPayoutResult, readMarkerPreview, readMarkerResult, readSalaryResolveResult,
 } from '../actionReaders';
 import {
   readSalaryFreezeResult, readSalaryProfitInputs, readSalaryQuoteResult, readUnlockSalaryImpact, unlockImpactNeedsAcknowledge,
@@ -227,31 +226,9 @@ describe('E7 chi tiết phiếu + E10 lương điều hành', () => {
   });
 });
 
-describe('E4/E5/E6/E8/E9/E11/E16', () => {
-  const e4 = (over: Record<string, unknown> = {}) => ({
-    route: 'CANONICAL', shareholder_id: SH, maker_kind: 'OWNER', payee_is_maker: false, balance_before: 100,
-    within_amount: 100, advance_amount: 20, open_estimate: 50, warnings: [{ code: 'ADVANCE', advance_amount: 20 }, { code: 'NEEDS_OWNER_APPROVAL' }],
-    requires_owner_approval: true, can_submit: true, blocked_reason: null, needs_review: { count: 0, suggested: 0 }, ...over,
-  });
-  it('E4 tách đúng số tiền; lệch ⇒ lỗi', () => {
-    expect(readPayoutPreview(e4(), { shareholderId: SH, amount: 120, accountId: 'a1' })).toMatchObject({ within_amount: 100, advance_amount: 20, can_submit: true });
-    expect(() => readPayoutPreview(e4(), { shareholderId: SH, amount: 121, accountId: 'a1' })).toThrow();
-  });
-  it('E4 chưa nhập số tiền ⇒ within/advance phải null, vẫn đọc số dư', () => {
-    const r = readPayoutPreview(e4({ within_amount: null, advance_amount: null, warnings: [], can_submit: false }), { shareholderId: SH, amount: null, accountId: null });
-    expect(r.balance_before).toBe(100);
-    expect(() => readPayoutPreview(e4(), { shareholderId: SH, amount: null, accountId: null })).toThrow();
-  });
-  it('E4 lý do khoá lạ ⇒ OTHER và không cho gửi dù can_submit=true', () => {
-    expect(readPayoutPreview(e4({ blocked_reason: 'NEW_THING' }), { shareholderId: SH, amount: 120, accountId: 'a1' })).toMatchObject({ blocked_reason: 'OTHER', can_submit: false });
-  });
-  it('E5 dội lại sai cổ đông / số tiền ⇒ lỗi (biên nhận lệnh khác)', () => {
-    const e5 = { voucher_id: 'v9', approval_request_id: 'r9', shareholder_id: SH, amount: 120, within_amount: 100, advance_amount: 20, balance_before: 100, warnings: [], maker_kind: 'OWNER', state: 'PENDING_APPROVAL' };
-    expect(readLedgerPayoutResult(e5, { shareholderId: SH, amount: 120 }).voucher_id).toBe('v9');
-    expect(() => readLedgerPayoutResult(e5, { shareholderId: 'khac', amount: 120 })).toThrow();
-    expect(() => readLedgerPayoutResult(e5, { shareholderId: SH, amount: 100 })).toThrow();
-    expect(() => readLedgerPayoutResult({ ...e5, state: 'APPROVED' }, { shareholderId: SH, amount: 120 })).toThrow();
-  });
+// E4/E5 (xem trước + lập phiếu chi theo số tiền nhập tay) đã bỏ khỏi web 18/11/2026 — bộ đọc tạm ứng / chốt chi
+// lợi nhuận kiểm ở positionReaders.test.ts.
+describe('E6/E8/E9/E11/E16', () => {
   it('E6 huỷ phiếu đã chi phải có bút toán đảo', () => {
     expect(readLedgerCancelResult({ voucher_id: 'v1', changed: true, cancellation_kind: 'CANCELLED_AFTER_POSTING', reversal_posting_id: 'p1', balance_after: 10 }, 'v1').balance_after).toBe(10);
     expect(() => readLedgerCancelResult({ voucher_id: 'v1', changed: true, cancellation_kind: 'CANCELLED_AFTER_POSTING', reversal_posting_id: null, balance_after: 10 }, 'v1')).toThrow();

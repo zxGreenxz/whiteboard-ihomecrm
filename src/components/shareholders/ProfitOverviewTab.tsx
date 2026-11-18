@@ -197,6 +197,13 @@ export default function ProfitOverviewTab() {
     [positions, shId]
   );
   const positionsPending = !positions && !positionsQuery.isError;
+  // Hộp mốc: kèm tháng đã chốt chi gần nhất (nếu đã đọc được vị thế) để nhắc trước khi mốc sớm hơn tháng đó.
+  const openMarker = (row: ShareholderLedgerRow) => setMarkerFor({
+    id: row.shareholder_id,
+    name: row.name,
+    marker: row.marker,
+    lastSettledThroughMonth: positions?.find((p) => p.shareholder_id === row.shareholder_id)?.last_settled_through_month ?? null,
+  });
 
   // ---- Rà 21/10 (F21): LN đã chốt đi về đâu — CHỈ HIỆN ----
   // Cơ sở: snapshot profit_monthly LOCKED, luỹ kế, cùng phạm vi với "Tổng LN đã chốt".
@@ -550,7 +557,7 @@ export default function ProfitOverviewTab() {
                 onSelect={(id) => setShId(id ?? ALL)}
                 onOpenEntries={(row) => setEntriesFor({ id: row.shareholder_id, name: row.name })}
                 onPay={(row) => { setDistShareholder(row.shareholder_id); setDistOpen(true); }}
-                onMarker={(row) => setMarkerFor({ id: row.shareholder_id, name: row.name, marker: row.marker })}
+                onMarker={openMarker}
               />
             </>
           )}
@@ -586,7 +593,7 @@ export default function ProfitOverviewTab() {
           const row = ledgerRows.find((r) => r.shareholder_id === shareholderId);
           if (!row) return;
           setDistOpen(false);
-          setMarkerFor({ id: row.shareholder_id, name: row.name, marker: row.marker });
+          openMarker(row);
         } : undefined}
       />
       <ShareholderLedgerSheet

@@ -38,6 +38,11 @@ export interface ProfitLedgerMarkerSubject {
   name: string;
   /** Mốc hiệu lực theo E1/E10 (chỉ để chọn mặc định; số và id CAS lấy từ xem trước E8). */
   marker: ProfitLedgerMarker | null;
+  /**
+   * Cổ đông: tháng của lần chốt chi lợi nhuận gần nhất còn hiệu lực (vị thế R1), nếu trang biết. Mốc sớm hơn tháng
+   * này bị máy chủ từ chối lúc ĐẶT (xem trước mốc không biết) ⇒ hộp nhắc trước. Chỉ là lời nhắc: máy chủ là chốt cuối.
+   */
+  lastSettledThroughMonth?: string | null;
 }
 
 export interface ProfitLedgerMarkerDialogProps {
@@ -172,6 +177,9 @@ export function ProfitLedgerMarkerDialog({ open, onOpenChange, organizationId, s
   };
 
   const removing = action === 'REMOVE';
+  // Mốc đang chọn sớm hơn tháng đã chốt chi lợi nhuận (theo số trang đang có): máy chủ sẽ từ chối lúc đặt.
+  const settledThrough = subjectKind === 'SHAREHOLDER' ? subject?.lastSettledThroughMonth ?? null : null;
+  const beforeSettlement = !removing && !!settledThrough && selected !== null && selectionValid && selected < settledThrough;
   const title = subjectKind === 'MANAGER' ? 'Mốc đã trả đủ — lương điều hành' : 'Mốc đã trả đủ — lợi nhuận cổ đông';
   const rootPreviewError = form.formState.errors.root?.preview?.message;
   const erasedShown = erased > 0 ? erased : (failure?.kind === 'MARKER_ERASES_ADVANCE' ? Number(failure.detail?.advance_erased) || 0 : 0);
@@ -234,6 +242,12 @@ export function ProfitLedgerMarkerDialog({ open, onOpenChange, organizationId, s
                 {routeBlocked && routeState.banner && (
                   <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{routeState.banner}</p>
                 )}
+                {beforeSettlement && settledThrough && (
+                  <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" data-testid="marker-before-settlement">
+                    Đã chốt chi lợi nhuận đến hết {ledgerMonthLabel(settledThrough)} — mốc "đã trả đủ" phải từ tháng đó trở đi.
+                    Muốn đặt mốc sớm hơn thì huỷ lần chốt đó trước.
+                  </p>
+                )}
 
                 {erasedShown > 0 && (
                   <FormField control={form.control} name="acknowledgeAdvanceErase" render={({ field, fieldState }) => (
@@ -242,6 +256,12 @@ export function ProfitLedgerMarkerDialog({ open, onOpenChange, organizationId, s
                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                         Mốc này loại các phiếu có phần tạm ứng tổng {formatVND(erasedShown)} — khoản tạm ứng đó không còn được theo dõi.
                       </p>
+                      {subjectKind === 'SHAREHOLDER' && (
+                        <p className="text-xs text-muted-foreground" data-testid="marker-advance-erased-note">
+                          Con số này cộng cả số tiền của mọi phiếu tạm ứng trước mốc, kể cả phần đã được khấu trừ ở các lần chốt chi
+                          lợi nhuận — nên có thể lớn hơn "Tạm ứng đang có" của cổ đông.
+                        </p>
+                      )}
                       <div className="flex items-start gap-2">
                         <FormControl>
                           <Checkbox

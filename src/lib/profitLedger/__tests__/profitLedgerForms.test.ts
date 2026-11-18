@@ -1,47 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   PROFIT_FORM_MESSAGES, advanceFormSchema, cancelFormSchema, isPastMarkerMonth, makeResolveFormSchema, markerFormSchema,
-  markerMonthValue, payoutAllowAdvance, payoutFormSchema, settleFormSchema, settlementVoidFormSchema,
+  markerMonthValue, settleFormSchema, settlementVoidFormSchema,
 } from '../forms';
 
-const payout = (over: Record<string, unknown> = {}) => ({
-  shareholderId: 's1', amount: 1_000_000, accountId: 'a1', voucherDate: '2026-11-15', note: '', allowAdvance: false, previewAdvance: 0, ...over,
-});
 const issues = (result: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }) =>
   result.success ? [] : result.error!.issues.map((i) => `${i.path.join('.')}:${i.message}`);
 
-describe('payoutFormSchema', () => {
-  it('trong số dư: không cần tick, ghi chú tuỳ chọn', () => {
-    expect(payoutFormSchema.safeParse(payout()).success).toBe(true);
-  });
-  it('có phần tạm ứng mà chưa tick ⇒ từ chối ở ô tick', () => {
-    expect(issues(payoutFormSchema.safeParse(payout({ previewAdvance: 200_000 })))).toEqual([`allowAdvance:${PROFIT_FORM_MESSAGES.allowAdvance}`]);
-  });
-  it('tick tạm ứng mà lý do < 8 ký tự ⇒ từ chối', () => {
-    expect(issues(payoutFormSchema.safeParse(payout({ previewAdvance: 200_000, allowAdvance: true, note: 'ngắn' })))).toEqual([`note:${PROFIT_FORM_MESSAGES.advanceReasonLength}`]);
-  });
-  it('lý do chép câu báo lỗi ⇒ từ chối', () => {
-    expect(issues(payoutFormSchema.safeParse(payout({ previewAdvance: 1, allowAdvance: true, note: PROFIT_FORM_MESSAGES.advanceReasonLength }))))
-      .toEqual([`note:${PROFIT_FORM_MESSAGES.advanceReasonSystem}`]);
-  });
-  it('tick + lý do đủ ⇒ đạt, gửi p_allow_advance = true', () => {
-    const values = payout({ previewAdvance: 200_000, allowAdvance: true, note: 'Ứng trước lợi nhuận tháng 11 theo thoả thuận' });
-    expect(payoutFormSchema.safeParse(values).success).toBe(true);
-    expect(payoutAllowAdvance(values)).toBe(true);
-  });
-  it('không có phần tạm ứng thì không gửi cờ tạm ứng dù đã tick', () => {
-    expect(payoutAllowAdvance({ allowAdvance: true, previewAdvance: 0 })).toBe(false);
-    expect(payoutAllowAdvance({ allowAdvance: false, previewAdvance: 5 })).toBe(false);
-  });
-  it.each([0, -1, Number.NaN, 0.001, 1e13])('số tiền %s ⇒ từ chối', (amount) => {
-    expect(payoutFormSchema.safeParse(payout({ amount })).success).toBe(false);
-  });
-  it('thiếu cổ đông / sổ / ngày ⇒ từ chối đúng ô', () => {
-    expect(issues(payoutFormSchema.safeParse(payout({ shareholderId: '', accountId: '', voucherDate: '' })))).toEqual([
-      `shareholderId:${PROFIT_FORM_MESSAGES.shareholder}`, `accountId:${PROFIT_FORM_MESSAGES.account}`, `voucherDate:${PROFIT_FORM_MESSAGES.voucherDate}`,
-    ]);
-  });
-});
+// (Luật của hộp chi cũ — ô tick "xác nhận tạm ứng" + lý do bắt buộc — đã bỏ cùng hộp nhập số tiền, 18/11/2026.)
 
 describe('advanceFormSchema — phiếu tạm ứng: không ô xác nhận, không bắt lý do', () => {
   const advance = (over: Record<string, unknown> = {}) => ({

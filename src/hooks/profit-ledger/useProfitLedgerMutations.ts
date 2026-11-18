@@ -1,6 +1,7 @@
 // Hook GHI của sổ tổng lợi nhuận cổ đông: W1 lập phiếu tạm ứng · W2 chốt chi lợi nhuận đến hết tháng N ·
-// W3 huỷ lần chốt không có phiếu tiền · E5 lập phiếu chi (lệnh cũ) · E6 huỷ phiếu · E9 đặt/gỡ mốc ·
+// W3 huỷ lần chốt không có phiếu tiền · E6 huỷ phiếu · E9 đặt/gỡ mốc ·
 // E16 xác nhận phần lợi nhuận trong phiếu lương.
+// (E5 `shareholder_profit_ledger_payout_v1` — lập phiếu chi theo số tiền nhập tay — web không còn gọi từ 18/11/2026.)
 //
 // KHOÁ CHỐNG GỬI TRÙNG: mỗi lượt bấm chạy qua persistentFinancialWorkflow(…, {scope:'target'}) gắn
 // công ty CỦA CHỦ THỂ; `progress.requestKey` (UUID) là `p_idempotency_key`.
@@ -22,8 +23,8 @@ import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { rpcNullable } from '@/lib/rpcNullable';
 import { withBusyRetry, type RpcResponse } from '@/lib/profitLedger/busyRetry';
 import {
-  readLedgerCancelResult, readLedgerPayoutResult, readMarkerResult, readSalaryResolveResult,
-  type LedgerCancelResult, type LedgerPayoutResult, type MarkerResult, type SalaryResolveResult,
+  readLedgerCancelResult, readMarkerResult, readSalaryResolveResult,
+  type LedgerCancelResult, type MarkerResult, type SalaryResolveResult,
 } from '@/lib/profitLedger/actionReaders';
 import {
   readAdvanceResult, readSettleResult, readSettlementVoidResult,
@@ -48,7 +49,6 @@ export const PROFIT_LEDGER_INVALIDATE_KEYS = [
   ['profit-ledger-entries'],
   ['profit-ledger-payout'],
   ['profit-ledger-marker-preview'],
-  ['profit-payout-preview'],
   ['profit-positions'],
   ['my-profit-position'],
   ['profit-advance-options'],
@@ -126,64 +126,6 @@ async function runLedgerWrite<T>(options: {
   );
   if (outcome === PRIOR_WRITTEN) throw new ProfitLedgerPriorWrittenError(options.kind);
   return outcome;
-}
-
-/* ───────────────────────────── E5 lập phiếu chi lợi nhuận cổ đông ───────────────────────────── */
-
-export interface CreateProfitLedgerPayoutInput {
-  /** Công ty của cổ đông. */
-  organizationId: string;
-  shareholderId: string;
-  amount: number;
-  /** Sổ quỹ TIỀN THẬT của công ty (SELF_ADVANCE: sổ đang giữ). */
-  accountId: string;
-  voucherDate: string;
-  /** Ghi chú; khi có tạm ứng đây là "lý do tạm ứng" (8..500). */
-  note: string | null;
-  /** Đã tick "tôi xác nhận tạm ứng" (chỉ bật khi có phần tạm ứng). */
-  allowAdvance: boolean;
-}
-
-export interface CreateProfitLedgerPayoutResult extends LedgerPayoutResult {
-  /** Mã phiếu (đọc lại sau khi lập; đọc hỏng ⇒ null, không phải lỗi ghi). */
-  code: string | null;
-}
-
-export function useCreateProfitLedgerPayout() {
-  const queryClient = useQueryClient();
-  const workflow = useRef(persistentFinancialWorkflow('profit-ledger-payout', { scope: 'target' }));
-  return useMutation({
-    meta: { handlesFeedback: true },
-    mutationFn: async (input: CreateProfitLedgerPayoutInput): Promise<CreateProfitLedgerPayoutResult> => {
-      const organizationId = requireId(input.organizationId, 'Chưa xác định được công ty của cổ đông. Tải lại rồi lập phiếu.');
-      const shareholderId = requireId(input.shareholderId, 'Chọn cổ đông nhận khoản chi.');
-      return runLedgerWrite({
-        workflow: workflow.current,
-        kind: 'payout',
-        businessKey: `shareholder:${shareholderId}`,
-        operation: 'lập phiếu chi lợi nhuận',
-        organizationId,
-        call: (key) => supabase.rpc('shareholder_profit_ledger_payout_v1', {
-          p_shareholder_id: shareholderId,
-          p_amount: input.amount,
-          p_account_id: input.accountId,
-          p_voucher_date: input.voucherDate,
-          // Không có DEFAULT nhưng nhận NULL (không ghi chú).
-          p_note: rpcNullable(input.note?.trim() || null),
-          p_allow_advance: input.allowAdvance,
-          p_idempotency_key: key,
-        }),
-        read: async (data) => {
-          const result = readLedgerPayoutResult(data, { shareholderId, amount: input.amount });
-          const receipt = await readCreatedVoucherReceipt({ voucher_id: result.voucher_id });
-          return { ...result, code: receipt.code || null };
-        },
-        receiptId: (result) => result.voucher_id,
-        receiptLabel: 'Phiếu chi lợi nhuận đã lập',
-      });
-    },
-    onSettled: () => invalidateProfitLedgerQueries(queryClient),
-  });
 }
 
 /* ───────────────────────────── W1 lập phiếu tạm ứng cho cổ đông ───────────────────────────── */

@@ -116,9 +116,12 @@ describe.each([false, true])('Chờ duyệt — phiếu chi theo sổ tổng (đ
     expect(screen.getAllByTestId('ledger-approval-note')).toHaveLength(1);
     const note = ledgerNote().textContent ?? '';
     expect(note).toContain('Chi lợi nhuận cổ đông · Cổ đông 1');
-    expect(note).toMatch(/Lúc lập: còn phải trả 250\.000\s?₫|Lúc lập: còn phải trả 250/);
-    expect(note).toMatch(/tạm ứng 50/);
-    expect(note).toMatch(/Bây giờ \(không tính phiếu này\): còn phải trả 1\.000/);
+    // Phiếu cũ lập bằng lệnh nhập tay (có tách "trong số dư / tạm ứng"): giữ cách nói lúc lập; số dư ròng nói
+    // theo hai con số mới (lợi nhuận chưa chi sau khi trừ tạm ứng).
+    expect(note).toMatch(/Lúc lập: lợi nhuận chưa chi sau khi trừ tạm ứng 250/);
+    expect(note).toMatch(/trong số dư 250.* · tạm ứng 50/);
+    expect(note).toMatch(/Bây giờ \(không tính phiếu này\): lợi nhuận chưa chi sau khi trừ tạm ứng 1\.000/);
+    expect(note).not.toMatch(/còn phải trả|đang tạm ứng/);
     expect(note).toContain('Chỉ chi được từ sổ đã chọn lúc lập: Quỹ A.');
     expect(screen.queryByTestId('ledger-approval-block')).toBeNull();
     expect(approveButtons().every((b) => !b.disabled)).toBe(true);
@@ -166,6 +169,18 @@ describe('Chờ duyệt — chặn trước theo E7', () => {
     api.details['phieu-ln'] = { data: e7({ at_create: { balance_before: 0, within: 0, advance: 300, warnings: [], maker_kind: 'CUSTODIAN_ADVANCE', payee_is_maker: true } }) };
     render(<ApprovalsPage />, { wrapper: wrap() });
     expect(ledgerNote().textContent).toMatch(/tự lập phiếu tạm ứng cho chính mình/);
+    expect(ledgerNote().textContent).toContain('Tạm ứng lợi nhuận · Cổ đông 1');
+  });
+
+  it('phiếu Tạm Ứng người giữ sổ lập HỘ (cách lập mới) ⇒ thẻ đọc được, nói rõ ai duyệt; Duyệt không bị khoá', () => {
+    api.details['phieu-ln'] = { data: e7({ at_create: { balance_before: 900, within: 0, advance: 300, warnings: [], maker_kind: 'CUSTODIAN_FOR_PAYEE', payee_is_maker: false } }) };
+    render(<ApprovalsPage />, { wrapper: wrap() });
+    const note = ledgerNote().textContent ?? '';
+    expect(note).toContain('Tạm ứng lợi nhuận · Cổ đông 1');
+    expect(note).toMatch(/Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt là chủ, khác người lập và người nhận/);
+    expect(note).toMatch(/duyệt thì tạm ứng 300/);
+    expect(screen.queryByTestId('ledger-approval-block')).toBeNull();
+    expect(approveButtons()[0]!.disabled).toBe(false);
   });
 });
 

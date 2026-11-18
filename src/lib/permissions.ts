@@ -122,7 +122,7 @@ export type ActionKey =
   | "self_approve_within_limit"   // income_expenses — tự duyệt dưới ngưỡng
   | "pay_manager"                 // shareholder_profit — chi lương quản lý
   // Sổ tổng lợi nhuận cổ đông: ba khoá cấp riêng, không nằm trong preset "chỉ xem" hay "quản lý".
-  | "advance_own_cashbook"        // shareholder_profit — chi tạm ứng lợi nhuận từ sổ quỹ mình giữ
+  | "advance_own_cashbook"        // shareholder_profit — được tạm ứng lợi nhuận (tự ứng từ sổ mình giữ / nhận phiếu Tạm Ứng lập hộ)
   | "view_percent"                // shareholder_profit — xem tỷ lệ % chia lợi nhuận
   | "view_building_totals"        // shareholder_profit — xem doanh thu / lợi nhuận toà
   // Trung tâm mạng: thao tác allowlist, không fallback từ quyền quản lý chung.
@@ -383,7 +383,7 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   reverse:        "Đảo bút toán",
   self_approve_within_limit: "Tự duyệt phiếu dưới ngưỡng",
   pay_manager:    "Chi lương quản lý",
-  advance_own_cashbook: "Chi tạm ứng lợi nhuận từ sổ quỹ mình giữ",
+  advance_own_cashbook: "Được tạm ứng lợi nhuận",
   view_percent:   "Xem tỷ lệ % chia lợi nhuận",
   view_building_totals: "Xem doanh thu / lợi nhuận toà",
   ui_control:     "AI điều khiển trang (experimental)",

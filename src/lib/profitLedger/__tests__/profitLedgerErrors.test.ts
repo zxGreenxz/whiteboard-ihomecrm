@@ -10,12 +10,12 @@ import { ProfitLedgerPayloadError } from '../readPrimitives';
 const err = (code: string, message: string, details: unknown = null) => ({ code, message, details, hint: null });
 
 describe('profitLedgerErrorMessage', () => {
-  it('22023 ADVANCE_CONFIRM đọc số từ DETAIL', () => {
-    const info = profitLedgerErrorMessage(err('22023', 'PROFIT_LEDGER_ADVANCE_CONFIRM: số tiền vượt số còn phải trả — phần vượt là tạm ứng lợi nhuận, cần xác nhận', '{"balance": 12345678, "within": 12345678, "advance": 1000}'), 'payout');
-    expect(info).toMatchObject({ kind: 'ADVANCE_CONFIRM', code: 'PROFIT_LEDGER_ADVANCE_CONFIRM', sqlstate: '22023', reload: false });
+  it('mã của lệnh chi cũ (web không còn gọi) không có câu riêng ⇒ theo SQLSTATE, giữ câu tiếng Việt của máy chủ + DETAIL', () => {
+    // 18/11/2026: hộp tạm ứng không còn ô "xác nhận tạm ứng" — ứng vượt chỉ cảnh báo. Mã này chỉ còn ở lệnh cũ.
+    const info = profitLedgerErrorMessage(err('22023', 'PROFIT_LEDGER_ADVANCE_CONFIRM: số tiền vượt số còn phải trả — phần vượt là tạm ứng lợi nhuận, cần xác nhận', '{"balance": 12345678, "within": 12345678, "advance": 1000}'), 'advance');
+    expect(info).toMatchObject({ kind: 'VALIDATION', code: 'PROFIT_LEDGER_ADVANCE_CONFIRM', sqlstate: '22023', reload: false });
     expect(info.detail).toEqual({ balance: 12345678, within: 12345678, advance: 1000 });
-    expect(info.message).toContain('12.345.678');
-    expect(info.message).toContain('1.000');
+    expect(info.message).toBe('Số tiền vượt số còn phải trả — phần vượt là tạm ứng lợi nhuận, cần xác nhận');
   });
   it('22023 ba loại: tạm ứng, vượt lương điều hành, mốc xoá tạm ứng', () => {
     expect(profitLedgerErrorMessage(err('22023', 'PROFIT_MANAGER_LEDGER_OVERDRAW: số tiền vượt lương điều hành còn lại — không chi quá, không tạm ứng', '{"over":1000,"amount":2001000,"balance":2000000}'), 'manager_payout'))
@@ -26,14 +26,14 @@ describe('profitLedgerErrorMessage', () => {
       .toMatchObject({ kind: 'SALARY_SETTLED_BY_MARKER', message: expect.stringContaining('09/2026') });
   });
   it('55000 bốn loại: phiếu lương chờ xem lại, route tắt, đóng băng, cài đặt', () => {
-    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_SALARY_REVIEW_PENDING: cổ đông còn phiếu lương cần chủ xem lại — xác nhận số trước khi chi lợi nhuận', '{"count": 2, "suggested": 7}'), 'payout'))
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_SALARY_REVIEW_PENDING: cổ đông còn phiếu lương cần chủ xem lại — xác nhận số trước khi chi lợi nhuận', '{"count": 2, "suggested": 7}'), 'settle'))
       .toMatchObject({ kind: 'SALARY_REVIEW_PENDING', message: expect.stringContaining('2 phiếu lương') });
-    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_ROUTE_OFF: sổ tổng lợi nhuận đang tắt ở công ty này — chưa dùng được lệnh này', '{"route": "LEGACY", "allowed": ["CANONICAL"]}'), 'payout'))
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_ROUTE_OFF: sổ tổng lợi nhuận đang tắt ở công ty này — chưa dùng được lệnh này', '{"route": "LEGACY", "allowed": ["CANONICAL"]}'), 'settle'))
       .toMatchObject({ kind: 'ROUTE_OFF', detail: { route: 'LEGACY', allowed: ['CANONICAL'] } });
-    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_FROZEN: sổ tổng lợi nhuận đang đóng băng — tạm dừng lập phiếu chi và đặt mốc (huỷ phiếu vẫn làm được)', '{"route":"FROZEN"}'), 'payout'))
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_FROZEN: sổ tổng lợi nhuận đang đóng băng — tạm dừng lập phiếu chi và đặt mốc (huỷ phiếu vẫn làm được)', '{"route":"FROZEN"}'), 'settle'))
       .toMatchObject({ kind: 'FROZEN' });
-    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_TYPE_NOT_FORCED: hạng mục "Chia lợi nhuận cổ đông" phải bật "Bắt buộc duyệt" mới lập được phiếu'), 'payout').kind).toBe('CONFIG');
-    expect(profitLedgerErrorMessage(err('55000', 'Tổ chức chưa có toà ảo để hạch toán chia lợi nhuận'), 'payout').kind).toBe('CONFIG');
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_TYPE_NOT_FORCED: hạng mục "Chia lợi nhuận cổ đông" phải bật "Bắt buộc duyệt" mới lập được phiếu'), 'settle').kind).toBe('CONFIG');
+    expect(profitLedgerErrorMessage(err('55000', 'Tổ chức chưa có toà ảo để hạch toán chia lợi nhuận'), 'settle').kind).toBe('CONFIG');
   });
   it('55000 phiếu sổ tổng đã khoá (chặn sửa / huỷ duyệt / hoàn tác…)', () => {
     for (const code of ['PROFIT_LEDGER_CANCEL_ONLY', 'PROFIT_LEDGER_LOCKED', 'PROFIT_LEDGER_ACCOUNT_LOCKED', 'PROFIT_LEDGER_V2_ONLY', 'PROFIT_LEDGER_VOUCHER_DEAD']) {
@@ -50,45 +50,45 @@ describe('profitLedgerErrorMessage', () => {
       .toMatchObject({ kind: 'SALARY_QUOTE_CHANGED', reload: true });
   });
   it('40P01 / 40001 ⇒ hệ thống bận', () => {
-    expect(profitLedgerErrorMessage(err('40P01', 'deadlock detected'), 'payout').kind).toBe('BUSY');
+    expect(profitLedgerErrorMessage(err('40P01', 'deadlock detected'), 'settle').kind).toBe('BUSY');
     expect(profitLedgerErrorMessage(err('40001', 'could not serialize access'), 'marker').kind).toBe('BUSY');
   });
   it('42501: mã máy có câu riêng; câu tiếng Việt thô của máy chủ giữ nguyên', () => {
     expect(profitLedgerErrorMessage(err('42501', 'PROFIT_LEDGER_MAKER_SELF_APPROVE: x'), 'approve')).toMatchObject({ kind: 'FORBIDDEN', message: expect.stringMatching(/chủ khác duyệt/) });
-    expect(profitLedgerErrorMessage(err('42501', 'PROFIT_LEDGER_ADVANCE_CASHBOOK: quyền tạm ứng chỉ chi từ sổ quỹ bạn đang giữ'), 'payout').message).toMatch(/sổ quỹ bạn đang giữ/);
-    expect(profitLedgerErrorMessage(err('42501', 'Không có quyền chi lợi nhuận cổ đông'), 'payout')).toMatchObject({ kind: 'FORBIDDEN', message: 'Không có quyền chi lợi nhuận cổ đông' });
+    expect(profitLedgerErrorMessage(err('42501', 'PROFIT_LEDGER_ADVANCE_CASHBOOK: quyền tạm ứng chỉ chi từ sổ quỹ bạn đang giữ'), 'advance').message).toMatch(/sổ quỹ bạn đang giữ/);
+    expect(profitLedgerErrorMessage(err('42501', 'Không có quyền chi lợi nhuận cổ đông'), 'settle')).toMatchObject({ kind: 'FORBIDDEN', message: 'Không có quyền chi lợi nhuận cổ đông' });
     expect(profitLedgerErrorMessage(err('42501', 'permission denied for function shareholder_profit_ledger_v1'), 'read').message).not.toMatch(/function|shareholder_profit/);
   });
   it('23505 ⇒ khoá dùng lại khác nội dung', () => {
-    expect(profitLedgerErrorMessage(err('23505', 'idempotency_key đã dùng với nội dung khác'), 'payout').kind).toBe('KEY_REUSED');
+    expect(profitLedgerErrorMessage(err('23505', 'idempotency_key đã dùng với nội dung khác'), 'settle').kind).toBe('KEY_REUSED');
     expect(profitLedgerErrorMessage(err('23505', 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung'), 'cancel').kind).toBe('KEY_REUSED');
   });
   it('lượt đối chiếu chứng minh lần trước đã ghi ⇒ PRIOR_WRITTEN, không khoá', () => {
-    const info = profitLedgerErrorMessage(new ProfitLedgerPriorWrittenError('payout'), 'payout');
+    const info = profitLedgerErrorMessage(new ProfitLedgerPriorWrittenError('settle'), 'settle');
     expect(info).toMatchObject({ kind: 'PRIOR_WRITTEN', reload: true });
     expect(info.message).toMatch(/^Yêu cầu trước đó đã được ghi; tải lại để xem\./);
   });
   it('mất mạng: ghi ⇒ chưa rõ kết quả; đọc ⇒ báo mất kết nối', () => {
     const net = { code: '', message: 'FetchError: Failed to fetch', details: '', hint: '' };
-    expect(profitLedgerErrorMessage(net, 'payout').kind).toBe('UNKNOWN_OUTCOME');
+    expect(profitLedgerErrorMessage(net, 'settle').kind).toBe('UNKNOWN_OUTCOME');
     expect(profitLedgerErrorMessage(net, 'read').kind).toBe('OTHER');
     expect(profitLedgerErrorMessage(new FinancialWorkflowError('Chưa xác nhận…', 'unknown', []), 'cancel').kind).toBe('UNKNOWN_OUTCOME');
-    expect(profitLedgerErrorMessage(new ProfitLedgerPayloadError('E5.amount'), 'payout').kind).toBe('UNKNOWN_OUTCOME');
+    expect(profitLedgerErrorMessage(new ProfitLedgerPayloadError('E5.amount'), 'settle').kind).toBe('UNKNOWN_OUTCOME');
     expect(profitLedgerErrorMessage(new ProfitLedgerPayloadError('E1.balance'), 'read').kind).toBe('SYSTEM');
   });
   it('lỗi đã chắc chắn bọc trong luồng ⇒ phân loại theo lỗi gốc', () => {
     const wrapped = new FinancialWorkflowError('x', 'failure', [], err('55000', 'PROFIT_LEDGER_FROZEN: y'));
-    expect(profitLedgerErrorMessage(wrapped, 'payout').kind).toBe('FROZEN');
+    expect(profitLedgerErrorMessage(wrapped, 'settle').kind).toBe('FROZEN');
   });
   it('XX000 sổ lệch ⇒ lỗi hệ thống', () => {
     expect(profitLedgerErrorMessage(err('XX000', 'PROFIT_LEDGER_ENTRIES_DRIFT: các dòng sổ chi tiết không cộng ra đúng số dư sổ tổng — báo bộ phận kỹ thuật'), 'read').kind).toBe('SYSTEM');
   });
   it.each<[ProfitLedgerOperation, ReturnType<typeof err>]>([
-    ['payout', err('55000', 'PROFIT_LEDGER_ROUTE_OFF: x', '{"route":"SHADOW"}')],
+    ['settle', err('55000', 'PROFIT_LEDGER_ROUTE_OFF: x', '{"route":"SHADOW"}')],
     ['marker', err('55000', 'PROFIT_LEDGER_ROUTE_OFF: x')],
     ['resolve', err('55000', 'PROFIT_LEDGER_ROUTE_OFF: sổ tổng lợi nhuận chưa bật cho công ty này')],
     ['approve', err('55000', 'PROFIT_LEDGER_ROUTE_OFF: x')],
-    ['payout', err('22023', 'PROFIT_LEDGER_ADVANCE_CONFIRM: x')],
+    ['advance', err('22023', 'PROFIT_LEDGER_ADVANCE_CONFIRM: x')],
     ['cancel', err('42501', 'PROFIT_LEDGER_CANCEL_CUSTODIAN: x', '{"account_id":"a1"}')],
   ])('câu cho người dùng không lộ tên kỹ thuật (%s)', (op, e) => {
     const { message } = profitLedgerErrorMessage(e, op);
@@ -187,24 +187,24 @@ describe('isLedgerIdempotencyConflict — đúng câu 23505 "khoá đã dùng" c
     expect(isLedgerIdempotencyConflict(err('23505', 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung'), op)).toBe(false);
     expect(isLedgerIdempotencyConflict(err('23505', 'duplicate key value violates unique constraint "profit_ledger_payout_settlements_seq_uq"'), op)).toBe(false);
   });
-  const E5_E9 = 'idempotency_key đã dùng với nội dung khác';
+  const W_E9 = 'idempotency_key đã dùng với nội dung khác';
   const E6 = 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung';
   const E16 = 'SALARY_PROFIT_IDEMPOTENCY_CONFLICT: khoá idempotency đã dùng với nội dung khác';
   it.each([
-    ['payout', E5_E9], ['marker', E5_E9], ['cancel', E6], ['resolve', E16],
+    ['advance', W_E9], ['settle', W_E9], ['settle_void', W_E9], ['marker', W_E9], ['cancel', E6], ['resolve', E16],
   ] as const)('%s nhận câu của chính nó', (op, message) => {
     expect(isLedgerIdempotencyConflict(err('23505', message), op)).toBe(true);
   });
   it.each([
-    ['payout', E6], ['payout', E16], ['marker', E6], ['cancel', E5_E9], ['cancel', E16], ['resolve', E5_E9], ['resolve', E6],
+    ['advance', E6], ['advance', E16], ['settle', E16], ['marker', E6], ['cancel', W_E9], ['cancel', E16], ['resolve', W_E9], ['resolve', E6],
   ] as const)('%s không nhận câu của lệnh khác (%s)', (op, message) => {
     expect(isLedgerIdempotencyConflict(err('23505', message), op)).toBe(false);
   });
   it('23505 khác, hay đúng câu mà khác SQLSTATE ⇒ không phải', () => {
-    expect(isLedgerIdempotencyConflict(err('23505', 'duplicate key value violates unique constraint "income_expenses_code_key"'), 'payout')).toBe(false);
-    expect(isLedgerIdempotencyConflict(err('23505', `${E5_E9} (x)`), 'payout')).toBe(false);
-    expect(isLedgerIdempotencyConflict(err('P0001', E5_E9), 'payout')).toBe(false);
-    expect(isLedgerIdempotencyConflict(err('22023', 'idempotency_key phải dài 8-200 ký tự ASCII an toàn'), 'payout')).toBe(false);
-    expect(isLedgerIdempotencyConflict(new Error(E5_E9), 'payout')).toBe(false);
+    expect(isLedgerIdempotencyConflict(err('23505', 'duplicate key value violates unique constraint "income_expenses_code_key"'), 'advance')).toBe(false);
+    expect(isLedgerIdempotencyConflict(err('23505', `${W_E9} (x)`), 'advance')).toBe(false);
+    expect(isLedgerIdempotencyConflict(err('P0001', W_E9), 'settle')).toBe(false);
+    expect(isLedgerIdempotencyConflict(err('22023', 'idempotency_key phải dài 8-200 ký tự ASCII an toàn'), 'settle')).toBe(false);
+    expect(isLedgerIdempotencyConflict(new Error(W_E9), 'advance')).toBe(false);
   });
 });

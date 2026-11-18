@@ -44,12 +44,14 @@ export function cancelEffectSentence(state: ProfitCancelExpectedState, accountNa
   return 'Phiếu đang chờ duyệt: huỷ yêu cầu duyệt, chưa có tiền di chuyển.';
 }
 
-/** Câu số dư sau huỷ (E6.balance_after). */
+/**
+ * Câu số dư sau huỷ (E6.balance_after — số dư RÒNG của cổ đông: lợi nhuận chưa chi − tạm ứng đang có và chờ duyệt).
+ */
 export function cancelBalanceSentence(kind: ProfitLedgerSubjectKind, balanceAfter: number): string {
   if (kind === 'MANAGER') return `Lương điều hành còn lại: ${formatVND(balanceAfter)}.`;
   return balanceAfter >= 0
-    ? `Sổ tổng còn phải trả: ${formatVND(balanceAfter)}.`
-    : `Sổ tổng đang tạm ứng: ${formatVND(-balanceAfter)}.`;
+    ? `Sau huỷ, lợi nhuận chưa chi sau khi trừ tạm ứng: ${formatVND(balanceAfter)}.`
+    : `Sau huỷ, tạm ứng còn vượt lợi nhuận chưa chi: ${formatVND(-balanceAfter)}.`;
 }
 
 /** Đầu vào của `ProfitPayoutCancelDialog`. Dựng bằng các hàm bên dưới, không tự ghép tay. */

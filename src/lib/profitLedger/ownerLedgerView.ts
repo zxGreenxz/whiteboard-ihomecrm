@@ -41,18 +41,16 @@ export function ownerLedgerMode(input: {
 
 /* ───────────────────────────── tổng của E1 ───────────────────────────── */
 
+/**
+ * Tổng các cột E1 của bảng sổ tổng. Hai con số "Lợi nhuận chưa chi" / "Tạm ứng đang có" KHÔNG tính ở đây:
+ * chúng đọc từ vị thế (R1) — xem summarizePositions ở positionView.ts.
+ */
 export interface ShareholderLedgerSummary {
   allocated: number;
   approved: number;
   pending: number;
   /** Σ(Y − D): phần lợi nhuận đã trả qua phiếu lương, trừ phần lương đã bù tạm ứng. */
   viaSalary: number;
-  /** Σ max(số dư, 0): công ty còn phải trả. */
-  owed: number;
-  /** Σ open_advance: đang tạm ứng chưa bù. */
-  advance: number;
-  owedCount: number;
-  advanceCount: number;
 }
 
 /** Thực trả qua lương của một cổ đông: Y − D (có thể âm khi phần bù tạm ứng lớn hơn). */
@@ -60,28 +58,26 @@ export const salaryNet = (row: Pick<ShareholderLedgerRow, 'salary_investment' | 
   row.salary_investment - row.salary_advance_offset;
 
 export function summarizeShareholderLedger(rows: readonly ShareholderLedgerRow[]): ShareholderLedgerSummary {
-  const sum: ShareholderLedgerSummary = {
-    allocated: 0, approved: 0, pending: 0, viaSalary: 0, owed: 0, advance: 0, owedCount: 0, advanceCount: 0,
-  };
+  const sum: ShareholderLedgerSummary = { allocated: 0, approved: 0, pending: 0, viaSalary: 0 };
   for (const row of rows) {
     sum.allocated += row.allocated;
     sum.approved += row.payouts_approved;
     sum.pending += row.payouts_pending;
     sum.viaSalary += salaryNet(row);
-    sum.owed += Math.max(row.balance, 0);
-    sum.advance += row.open_advance;
-    if (row.status === 'OWED') sum.owedCount += 1;
-    if (row.status === 'ADVANCE') sum.advanceCount += 1;
   }
   return sum;
 }
 
 /* ───────────────────────────── nhãn ───────────────────────────── */
 
+/**
+ * Nhãn trạng thái của SỐ DƯ RÒNG trong sổ chi tiết (E2): số dư ròng = lợi nhuận chưa chi − tạm ứng (đang có +
+ * chờ duyệt). Đây KHÔNG phải "Tạm ứng đang có" — con số đó đọc riêng từ vị thế.
+ */
 export const SHAREHOLDER_STATUS_LABEL: Readonly<Record<LedgerBalanceStatus, string>> = {
-  OWED: 'Còn phải trả',
-  SETTLED: 'Đã trả đủ',
-  ADVANCE: 'Đang tạm ứng',
+  OWED: 'Số dư ròng — lợi nhuận chưa chi sau khi trừ tạm ứng',
+  SETTLED: 'Số dư ròng — đã cân',
+  ADVANCE: 'Số dư ròng âm — tạm ứng vượt lợi nhuận chưa chi',
 };
 
 export const MANAGER_STATUS_LABEL: Readonly<Record<LedgerBalanceStatus, string>> = {
@@ -91,9 +87,13 @@ export const MANAGER_STATUS_LABEL: Readonly<Record<LedgerBalanceStatus, string>>
   ADVANCE: 'Đã chi vượt',
 };
 
-/** Số dư có dấu thành chữ: dương/0 = số còn phải trả, âm = "tạm ứng X". */
+/**
+ * Số dư RÒNG có dấu thành chữ (sổ chi tiết, hộp mốc, ảnh hưởng tới lương): dương / 0 = số tiền; âm = "âm X"
+ * (cổ đông: tạm ứng đang vượt lợi nhuận chưa chi; lương điều hành: đã chi quá). Không gọi số âm là "tạm ứng":
+ * "Tạm ứng đang có" là một con số khác, đọc từ vị thế.
+ */
 export function ledgerBalanceText(balance: number): string {
-  return balance < 0 ? `tạm ứng ${formatVND(-balance)}` : formatVND(balance);
+  return balance < 0 ? `âm ${formatVND(-balance)}` : formatVND(balance);
 }
 
 /** 'YYYY-MM-01' → 'T09/2026'; chuỗi lạ ⇒ chính nó (không đoán). */
@@ -145,7 +145,7 @@ export function shareholderPayBlock(row: ShareholderLedgerRow, routeState: Profi
   if (!row.is_active) return 'Cổ đông đang ngưng — không chi được.';
   if (!routeState.canPayShareholder) return routeState.banner ?? 'Sổ tổng chưa mở chi lợi nhuận.';
   if (row.needs_review_count > 0) {
-    return `Còn ${row.needs_review_count} phiếu lương cần xem lại phần lợi nhuận — xác nhận trước khi chi.`;
+    return `Còn ${row.needs_review_count} phiếu lương cần xem lại phần lợi nhuận — xác nhận trước khi chốt chi.`;
   }
   return null;
 }

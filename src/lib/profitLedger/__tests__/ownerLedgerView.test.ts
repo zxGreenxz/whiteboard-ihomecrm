@@ -38,19 +38,14 @@ describe('ownerLedgerMode — số đầu trang theo công tắc sổ tổng', (
 });
 
 describe('summarizeShareholderLedger', () => {
-  it('còn phải trả = Σ max(số dư, 0); tạm ứng = Σ open_advance; qua lương = Σ(Y − D)', () => {
+  it('tổng các cột E1: được chia, đã chi, chờ duyệt, qua lương = Σ(Y − D) — hai con số của vị thế KHÔNG tính ở đây', () => {
     const sum = summarizeShareholderLedger([
       row(),
       row({ shareholder_id: 's2', balance: -300, status: 'ADVANCE', open_advance: 300, salary_investment: 0, salary_advance_offset: 0 }),
       row({ shareholder_id: 's3', balance: 0, status: 'SETTLED', salary_investment: 0, salary_advance_offset: 0 }),
     ]);
-    expect(sum.owed).toBe(450);
-    expect(sum.advance).toBe(300);
-    expect(sum.viaSalary).toBe(150);
-    expect(sum.approved).toBe(900);
-    expect(sum.pending).toBe(300);
-    expect(sum.owedCount).toBe(1);
-    expect(sum.advanceCount).toBe(1);
+    // Lợi nhuận chưa chi / tạm ứng đang có đọc từ vị thế (summarizePositions), không suy từ số dư ròng của E1.
+    expect(sum).toEqual({ allocated: 3000, approved: 900, pending: 300, viaSalary: 150 });
   });
 });
 
@@ -104,7 +99,8 @@ describe('nhãn', () => {
     expect(markerText({ settled_through_month: null })).toBeNull();
     expect(markerText(null)).toBeNull();
     expect(ledgerMonthLabel('2026-01-01')).toBe('T01/2026');
-    expect(ledgerBalanceText(-1500)).toBe('tạm ứng 1.500 đ');
+    // Số dư RÒNG âm nói là "âm" — không gọi là "tạm ứng" ("Tạm ứng đang có" là con số khác, đọc từ vị thế).
+    expect(ledgerBalanceText(-1500)).toBe('âm 1.500 đ');
     expect(ledgerBalanceText(0)).toBe('0 đ');
     expect(voucherStateLabel('UNAPPROVED', null)).toBe('Chờ duyệt');
     expect(voucherStateLabel('APPROVED', 'POSTED')).toBe('Đã chi');

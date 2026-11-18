@@ -23,9 +23,6 @@ export const PROFIT_FORM_MESSAGES = {
   account: 'Chọn sổ quỹ chi.',
   voucherDate: 'Chọn ngày chi.',
   noteTooLong: 'Ghi chú tối đa 500 ký tự.',
-  allowAdvance: 'Số tiền vượt số còn phải trả — tick xác nhận tạm ứng.',
-  advanceReasonLength: 'Lý do tạm ứng phải có 8-500 ký tự',
-  advanceReasonSystem: 'Lý do tạm ứng đang chép câu báo lỗi của hệ thống — ghi lý do thật',
   settleMonth: 'Chọn tháng chốt.',
   settleVoidReasonLength: 'Lý do huỷ chốt phải từ 8 đến 1000 ký tự',
   settleVoidReasonSystem: 'Lý do huỷ chốt đang chép câu báo lỗi của hệ thống — ghi lý do thật',
@@ -54,40 +51,6 @@ const positiveMoney = z.number().superRefine((n, ctx) => {
   else if (!twoDecimals(n)) ctx.addIssue({ code: 'custom', message: PROFIT_FORM_MESSAGES.amountDecimals });
   else if (n >= PROFIT_AMOUNT_LIMIT) ctx.addIssue({ code: 'custom', message: PROFIT_FORM_MESSAGES.amountTooLarge });
 });
-
-/* ───────────────────────────── Hộp Chi lợi nhuận (E5) ───────────────────────────── */
-
-export const payoutFormSchema = z.object({
-  shareholderId: z.string().min(1, PROFIT_FORM_MESSAGES.shareholder),
-  amount: positiveMoney,
-  accountId: z.string().min(1, PROFIT_FORM_MESSAGES.account),
-  voucherDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, PROFIT_FORM_MESSAGES.voucherDate),
-  note: z.string().max(PROFIT_PAYOUT_NOTE_MAX, PROFIT_FORM_MESSAGES.noteTooLong),
-  /** Người dùng tick "tôi xác nhận tạm ứng". MẶC ĐỊNH false — không bao giờ tự bật. */
-  allowAdvance: z.boolean(),
-  /** Phần tạm ứng theo lần xem trước (E4) gần nhất — máy chủ tính, không phải ô nhập. */
-  previewAdvance: z.number(),
-}).superRefine((values, ctx) => {
-  if (!(values.previewAdvance > 0)) return;
-  if (!values.allowAdvance) {
-    ctx.addIssue({ code: 'custom', path: ['allowAdvance'], message: PROFIT_FORM_MESSAGES.allowAdvance });
-    return;
-  }
-  const problem = reasonProblem(values.note, PROFIT_REASON_MIN, PROFIT_PAYOUT_NOTE_MAX);
-  if (problem) {
-    ctx.addIssue({
-      code: 'custom', path: ['note'],
-      message: problem === 'SYSTEM_MESSAGE' ? PROFIT_FORM_MESSAGES.advanceReasonSystem : PROFIT_FORM_MESSAGES.advanceReasonLength,
-    });
-  }
-});
-
-export type PayoutFormValues = z.infer<typeof payoutFormSchema>;
-
-/** `p_allow_advance` chỉ bật khi CÓ phần tạm ứng và người dùng đã tick — lần xem trước cũ hơn thì máy chủ hỏi lại. */
-export function payoutAllowAdvance(values: Pick<PayoutFormValues, 'allowAdvance' | 'previewAdvance'>): boolean {
-  return values.allowAdvance && values.previewAdvance > 0;
-}
 
 const VOUCHER_DAY = /^\d{4}-\d{2}-\d{2}$/;
 

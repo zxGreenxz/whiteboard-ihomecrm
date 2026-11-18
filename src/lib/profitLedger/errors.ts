@@ -17,19 +17,18 @@ import { voucherFailureMessage, voucherOutcomeUnknown } from '@/lib/voucherFeedb
 import { ProfitLedgerPayloadError } from './readPrimitives';
 
 export type ProfitLedgerOperation =
-  | 'read' | 'preview' | 'payout' | 'advance' | 'settle' | 'settle_void' | 'cancel' | 'marker' | 'resolve' | 'manager_payout'
+  | 'read' | 'preview' | 'advance' | 'settle' | 'settle_void' | 'cancel' | 'marker' | 'resolve' | 'manager_payout'
   | 'approve' | 'salary_freeze' | 'salary_quote';
 
 /**
  * Các lệnh ghi đi qua khoá chống gửi trùng + đối chiếu của lớp dữ liệu: W1 tạm ứng · W2 chốt chi lợi nhuận ·
- * W3 huỷ lần chốt · E5 chi (lệnh cũ) · E6 huỷ phiếu · E9 mốc · E16 xác nhận lương.
+ * W3 huỷ lần chốt · E6 huỷ phiếu · E9 mốc · E16 xác nhận lương.
  */
-export type ProfitLedgerWriteOperation = Extract<ProfitLedgerOperation, 'payout' | 'advance' | 'settle' | 'settle_void' | 'cancel' | 'marker' | 'resolve'>;
+export type ProfitLedgerWriteOperation = Extract<ProfitLedgerOperation, 'advance' | 'settle' | 'settle_void' | 'cancel' | 'marker' | 'resolve'>;
 
 const OPERATION_LABEL: Readonly<Record<ProfitLedgerOperation, string>> = {
   read: 'tải sổ lợi nhuận',
   preview: 'tính lợi nhuận chưa chi và tạm ứng',
-  payout: 'lập phiếu chi lợi nhuận',
   advance: 'lập phiếu tạm ứng',
   settle: 'chốt chi lợi nhuận',
   settle_void: 'huỷ lần chốt chi lợi nhuận',
@@ -43,8 +42,6 @@ const OPERATION_LABEL: Readonly<Record<ProfitLedgerOperation, string>> = {
 };
 
 export type ProfitLedgerErrorKind =
-  /** 22023 PROFIT_LEDGER_ADVANCE_CONFIRM — vượt số còn phải trả, cần tick tạm ứng (detail {balance, within, advance}). */
-  | 'ADVANCE_CONFIRM'
   /** PT409 PROFIT_LEDGER_SETTLE_CHANGED — số xem trước của lần chốt vừa đổi: tải lại xem trước, KHÔNG tự gửi lại. */
   | 'SETTLE_CHANGED'
   /** 22023 PROFIT_LEDGER_SETTLE_MONTH — tháng không chốt được (detail {through_month, min, max}). */
@@ -104,7 +101,7 @@ export type ProfitLedgerErrorKind =
 
 export interface ProfitLedgerErrorInfo {
   kind: ProfitLedgerErrorKind;
-  /** Mã máy ở đầu MESSAGE (vd 'PROFIT_LEDGER_ADVANCE_CONFIRM'), null khi không có. */
+  /** Mã máy ở đầu MESSAGE (vd 'PROFIT_LEDGER_SETTLE_CHANGED'), null khi không có. */
   code: string | null;
   /** SQLSTATE hoặc mã PostgREST. */
   sqlstate: string | null;
@@ -174,7 +171,6 @@ function withDetail(info: Omit<ProfitLedgerErrorInfo, 'detail'>, detail: Record<
 
 function routeOffMessage(op: ProfitLedgerOperation): string {
   switch (op) {
-    case 'payout': return 'Sổ tổng đang xem thử — chưa chi lợi nhuận cổ đông được.';
     case 'settle': return 'Sổ tổng đang xem thử — chưa chốt chi lợi nhuận cổ đông được.';
     case 'advance': return 'Sổ tổng lợi nhuận chưa bật ở công ty này — chưa lập phiếu tạm ứng được.';
     case 'marker': return 'Sổ tổng chưa mở phần đặt mốc đã trả đủ.';
@@ -203,7 +199,6 @@ const LOCKED_MESSAGES: Readonly<Record<string, string>> = {
 
 const FORBIDDEN_MESSAGES: Readonly<Record<string, string>> = {
   PROFIT_LEDGER_FORBIDDEN: 'Bạn không có quyền xem sổ lợi nhuận này.',
-  PROFIT_LEDGER_ADVANCE_SELF_ONLY: 'Quyền tạm ứng chỉ chi cho chính mình.',
   PROFIT_LEDGER_ADVANCE_CASHBOOK: 'Chỉ lập phiếu tạm ứng từ sổ quỹ bạn đang giữ.',
   PROFIT_LEDGER_ADVANCE_PAYEE_NO_RIGHT: 'Người nhận chưa được cấp quyền tạm ứng (hoặc chưa có tài khoản đăng nhập) — nhờ chủ công ty cấp quyền rồi lập lại.',
   PROFIT_LEDGER_MAKER_SELF_APPROVE: 'Người lập phiếu không tự duyệt được — cần một chủ khác duyệt.',
@@ -248,14 +243,6 @@ function classifyCoded(
 ): ProfitLedgerErrorInfo | null {
   const base = { code, sqlstate, reload: false } as const;
   switch (code) {
-    case 'PROFIT_LEDGER_ADVANCE_CONFIRM': {
-      const balance = money(detailNumber(detail, 'balance'));
-      const advance = money(detailNumber(detail, 'advance'));
-      const message = balance && advance
-        ? `Số tiền vượt số còn phải trả ${balance}. Phần vượt ${advance} là tạm ứng lợi nhuận — tick xác nhận tạm ứng và ghi lý do rồi gửi lại.`
-        : 'Số tiền vượt số còn phải trả — phần vượt là tạm ứng lợi nhuận. Tick xác nhận tạm ứng và ghi lý do rồi gửi lại.';
-      return withDetail({ ...base, kind: 'ADVANCE_CONFIRM', message }, detail);
-    }
     case 'PROFIT_LEDGER_SETTLE_CHANGED':
       return withDetail({ ...base, kind: 'SETTLE_CHANGED', reload: true, message: 'Số liệu vừa đổi so với lúc xem trước — chưa chốt gì. Đã tải lại; xem số mới rồi bấm chốt lần nữa.' }, detail);
     case 'PROFIT_LEDGER_SETTLE_MONTH': {
@@ -441,12 +428,11 @@ function classifyBySqlstate(
 
 /**
  * Câu 23505 "khoá chống gửi trùng đã dùng với nội dung khác" của ĐÚNG từng lệnh:
- * W1 / W2 / W3 (tạm ứng, chốt, huỷ lần chốt), E5 và E9 (qua `profit_ledger_tao_set_marker_v1`) không có mã máy;
+ * W1 / W2 / W3 (tạm ứng, chốt, huỷ lần chốt) và E9 (qua `profit_ledger_tao_set_marker_v1`) không có mã máy;
  * E6 `PROFIT_LEDGER_IDEMPOTENCY_REUSED`; E16 `SALARY_PROFIT_IDEMPOTENCY_CONFLICT`.
  * 23505 khác (trùng khoá duy nhất của một bảng…) không khớp.
  */
 const IDEMPOTENCY_CONFLICT: Readonly<Record<ProfitLedgerWriteOperation, RegExp>> = {
-  payout: /^idempotency_key đã dùng với nội dung khác$/,
   advance: /^idempotency_key đã dùng với nội dung khác$/,
   settle: /^idempotency_key đã dùng với nội dung khác$/,
   settle_void: /^idempotency_key đã dùng với nội dung khác$/,

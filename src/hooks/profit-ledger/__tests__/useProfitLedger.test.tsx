@@ -17,11 +17,11 @@ vi.mock('@/integrations/supabase/client', () => ({
 
 import {
   useMyProfitLedger, useMyShareholderPosition, useProfitLedgerMarkerPreview, useProfitLedgerPayoutDetail, useProfitManagerLedger,
-  useProfitPayoutPreview, useProfitSettlementPreview, useProfitUnlockSalaryImpact, useShareholderAdvanceOptions,
+  useProfitSettlementPreview, useProfitUnlockSalaryImpact, useShareholderAdvanceOptions,
   useShareholderAdvancePreview, useShareholderProfitLedger, useShareholderProfitLedgerEntries, useShareholderProfitPositions,
 } from '../useProfitLedgerQueries';
 import {
-  PROFIT_LEDGER_INVALIDATE_KEYS, useCancelProfitLedgerPayout, useCreateProfitLedgerPayout, useCreateShareholderAdvance,
+  PROFIT_LEDGER_INVALIDATE_KEYS, useCancelProfitLedgerPayout, useCreateShareholderAdvance,
   useResolveSalaryProfitLine, useSetProfitLedgerMarker, useSettleShareholderProfit, useVoidProfitSettlement,
 } from '../useProfitLedgerMutations';
 import { fetchSalaryProfitInputs, freezeSalaryProfitSettlement, quoteSalaryProfitPayout, salaryQuoteKey } from '@/lib/profitLedger/salaryProfitApi';
@@ -40,12 +40,6 @@ beforeEach(() => {
   m.maybeSingle.mockResolvedValue({ data: { code: 'PC2611999', approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED' }, error: null });
 });
 afterEach(cleanup);
-
-const e5 = (over: Record<string, unknown> = {}) => ({
-  voucher_id: 'v9', approval_request_id: 'r9', shareholder_id: SH, amount: 500000, within_amount: 500000, advance_amount: 0,
-  balance_before: 1000000, warnings: [{ code: 'NEEDS_OWNER_APPROVAL' }], maker_kind: 'OWNER', state: 'PENDING_APPROVAL', ...over,
-});
-const payoutInput = { organizationId: ORG, shareholderId: SH, amount: 500000, accountId: 'acc-1', voucherDate: '2026-11-15', note: '  ', allowAdvance: false };
 
 describe('hook đọc gọi đúng RPC + tham số', () => {
   it('E1 / E2 / E10 / E7', async () => {
@@ -84,12 +78,6 @@ describe('hook đọc gọi đúng RPC + tham số', () => {
     const failed = renderHook(() => useMyProfitLedger('org-b'), { wrapper });
     await waitFor(() => expect(failed.result.current.isError).toBe(true));
   });
-  it('E4 xem số dư khi CHƯA nhập số tiền: p_amount / p_account_id = null', async () => {
-    m.rpc.mockResolvedValue({ data: { route: 'LEGACY', shareholder_id: SH, maker_kind: 'OWNER', payee_is_maker: false, balance_before: 100, within_amount: null, advance_amount: null, open_estimate: 0, warnings: [], requires_owner_approval: true, can_submit: false, blocked_reason: 'ROUTE', needs_review: { count: 0, suggested: 0 } }, error: null });
-    const h = renderHook(() => useProfitPayoutPreview({ shareholderId: SH, amount: Number.NaN, accountId: null }), { wrapper });
-    await waitFor(() => expect(h.result.current.data?.blocked_reason).toBe('ROUTE'));
-    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_payout_preview_v1', { p_shareholder_id: SH, p_amount: null, p_account_id: null });
-  });
   it('E8 gỡ mốc: tháng null; E14 mọi toà: không gửi khoá toà, có toà thì gửi đã sắp', async () => {
     m.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
       if (name === 'profit_ledger_marker_preview_v1') return { data: { route: 'SHADOW', subject_kind: 'MANAGER', subject_id: 'm1', settled_through_month: null, current_marker: null, balance_now: 5, balance_after: 5, excluded: { allocated: 0, payouts: 0, salary: 0 }, advance_erased: 0, requires_acknowledge: false }, error: null };
@@ -102,104 +90,6 @@ describe('hook đọc gọi đúng RPC + tham số', () => {
     expect(m.rpc).toHaveBeenCalledWith('profit_ledger_marker_preview_v1', { p_organization_id: ORG, p_subject_kind: 'MANAGER', p_subject_id: 'm1', p_settled_through_month: null });
     expect(m.rpc).toHaveBeenCalledWith('profit_unlock_salary_impact_v1', { p_organization_id: ORG, p_period_month: '2026-10-01', p_building_ids: undefined });
     expect(m.rpc).toHaveBeenCalledWith('profit_unlock_salary_impact_v1', { p_organization_id: ORG, p_period_month: '2026-10-01', p_building_ids: ['b1', 'b2'] });
-  });
-});
-
-describe('E5 lập phiếu chi lợi nhuận', () => {
-  it('đúng tên RPC + tham số; khoá = khoá đã lưu trước khi gọi; mã phiếu đọc lại', async () => {
-    m.rpc.mockImplementation(async (_name: string, args: Record<string, unknown>) => {
-      const records = pendingKeys().map((k) => JSON.parse(localStorage.getItem(k)!));
-      expect(records).toHaveLength(1);
-      expect(args.p_idempotency_key).toBe(records[0].requestKey);
-      expect(records[0]).toMatchObject({ userId: 'actor-a', organizationId: ORG, businessKey: `shareholder:${SH}` });
-      return { data: e5(), error: null };
-    });
-    const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    let result: Awaited<ReturnType<typeof h.result.current.mutateAsync>> | undefined;
-    await act(async () => { result = await h.result.current.mutateAsync(payoutInput); });
-    expect(m.rpc).toHaveBeenCalledWith('shareholder_profit_ledger_payout_v1', expect.objectContaining({
-      p_shareholder_id: SH, p_amount: 500000, p_account_id: 'acc-1', p_voucher_date: '2026-11-15', p_note: null, p_allow_advance: false,
-    }));
-    expect(result).toMatchObject({ voucher_id: 'v9', code: 'PC2611999', within_amount: 500000, advance_amount: 0 });
-    expect(pendingKeys()).toEqual([]);
-  });
-  it('kẹt khoá chéo 40P01 ⇒ tự gửi lại với CÙNG khoá', async () => {
-    m.rpc.mockResolvedValueOnce({ data: null, error: { code: '40P01', message: 'deadlock detected' } }).mockResolvedValueOnce({ data: e5(), error: null });
-    const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    await act(async () => { await h.result.current.mutateAsync(payoutInput); });
-    expect(m.rpc).toHaveBeenCalledTimes(2);
-    expect(m.rpc.mock.calls[0]![1].p_idempotency_key).toBe(m.rpc.mock.calls[1]![1].p_idempotency_key);
-  });
-  it('ADVANCE_CONFIRM (22023) ⇒ trả nguyên lỗi, KHÔNG tự gọi lần hai', async () => {
-    const failure = { code: '22023', message: 'PROFIT_LEDGER_ADVANCE_CONFIRM: x', details: '{"balance":100,"within":100,"advance":20}' };
-    m.rpc.mockResolvedValue({ data: null, error: failure });
-    const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    await act(async () => { await expect(h.result.current.mutateAsync(payoutInput)).rejects.toBe(failure); });
-    expect(m.rpc).toHaveBeenCalledTimes(1);
-    expect(pendingKeys()).toEqual([]);
-  });
-  it('chưa rõ kết quả ⇒ giữ dấu; lần sau đối chiếu bằng ĐÚNG khoá cũ rồi mới nhả', async () => {
-    m.rpc.mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } }).mockResolvedValueOnce({ data: e5(), error: null });
-    const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    await act(async () => { await expect(h.result.current.mutateAsync(payoutInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
-    expect(pendingKeys()).toHaveLength(1);
-    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
-    h.unmount();
-    const again = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    await act(async () => { await expect(again.result.current.mutateAsync(payoutInput)).resolves.toMatchObject({ voucher_id: 'v9' }); });
-    expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(firstKey);
-    expect(pendingKeys()).toEqual([]);
-  });
-  it('đã ghi nhưng mất phản hồi, tải lại trang rồi gửi KHÁC nội dung ⇒ 23505 ⇒ báo đã ghi, xoá dấu, lần sau khoá mới', async () => {
-    m.rpc
-      .mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } })
-      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'idempotency_key đã dùng với nội dung khác' } })
-      .mockResolvedValueOnce({ data: e5({ amount: 1, within_amount: 1 }), error: null });
-    const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    await act(async () => { await expect(h.result.current.mutateAsync(payoutInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
-    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
-    h.unmount(); // tải lại trang: chỉ còn dấu chờ trong localStorage
-    const again = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    let failure: unknown;
-    await act(async () => { failure = await again.result.current.mutateAsync({ ...payoutInput, amount: 1 }).catch((e: unknown) => e); });
-    expect(failure).toBeInstanceOf(ProfitLedgerPriorWrittenError);
-    expect(profitLedgerErrorMessage(failure, 'payout')).toMatchObject({ kind: 'PRIOR_WRITTEN', reload: true });
-    expect(profitLedgerErrorMessage(failure, 'payout').message).toMatch(/^Yêu cầu trước đó đã được ghi; tải lại để xem/);
-    expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(firstKey); // đối chiếu bằng ĐÚNG khoá cũ
-    expect(pendingKeys()).toEqual([]);
-    await act(async () => { await expect(again.result.current.mutateAsync({ ...payoutInput, amount: 1 })).resolves.toMatchObject({ voucher_id: 'v9' }); });
-    expect(m.rpc).toHaveBeenCalledTimes(3);
-    expect(m.rpc.mock.calls[2]![1].p_idempotency_key).not.toBe(firstKey); // lệnh mới, khoá mới
-    expect(pendingKeys()).toEqual([]);
-  });
-  it('đối chiếu gặp 23505 KHÁC (trùng khoá bảng / mã của lệnh khác) ⇒ vẫn khoá, vẫn khoá cũ', async () => {
-    m.rpc
-      .mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } })
-      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "income_expenses_code_key"' } })
-      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung' } });
-    const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    await act(async () => { await expect(h.result.current.mutateAsync(payoutInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
-    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
-    await act(async () => { await expect(h.result.current.mutateAsync({ ...payoutInput, amount: 1 })).rejects.toMatchObject({ outcome: 'unknown' }); });
-    await act(async () => { await expect(h.result.current.mutateAsync({ ...payoutInput, amount: 1 })).rejects.toMatchObject({ outcome: 'unknown' }); });
-    expect(m.rpc.mock.calls.map((c) => c[1].p_idempotency_key)).toEqual([firstKey, firstKey, firstKey]);
-    expect(pendingKeys()).toHaveLength(1);
-  });
-  it('biên nhận lệch hợp đồng (thiếu số) ⇒ chưa rõ kết quả, không coi là thành công', async () => {
-    m.rpc.mockResolvedValue({ data: e5({ within_amount: null }), error: null });
-    const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    await act(async () => { await expect(h.result.current.mutateAsync(payoutInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
-  });
-  it('làm mới đủ các khoá sau khi ghi (kể cả khi lỗi)', async () => {
-    const spy = vi.spyOn(client, 'invalidateQueries');
-    m.rpc.mockResolvedValue({ data: null, error: { code: '55000', message: 'PROFIT_LEDGER_ROUTE_OFF: x' } });
-    const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    await act(async () => { await expect(h.result.current.mutateAsync(payoutInput)).rejects.toBeTruthy(); });
-    const keys = spy.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
-    for (const key of PROFIT_LEDGER_INVALIDATE_KEYS) expect(keys).toContain(JSON.stringify(key));
-    for (const key of ['profit-ledger', 'profit-ledger-entries', 'my-profit-ledger', 'profit-manager-ledger', 'manager-ledger-payouts', 'income-expenses', 'accounts-with-balance', 'pending-approvals', 'manager-salary', 'cash-flow-by-day']) {
-      expect(keys).toContain(JSON.stringify([key]));
-    }
   });
 });
 
@@ -392,6 +282,74 @@ describe('W1 lập phiếu tạm ứng', () => {
     await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).resolves.toMatchObject({ voucher_id: 'v-adv' }); });
     expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(m.rpc.mock.calls[0]![1].p_idempotency_key);
     expect(pendingKeys()).toEqual([]);
+  });
+  // Luồng chống gửi trùng dùng chung của mọi lệnh ghi sổ tổng (runLedgerWrite) — kiểm qua W1.
+  it('kẹt khoá chéo 40P01 ⇒ tự gửi lại với CÙNG khoá', async () => {
+    m.rpc.mockResolvedValueOnce({ data: null, error: { code: '40P01', message: 'deadlock detected' } }).mockResolvedValueOnce({ data: w1(), error: null });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await h.result.current.mutateAsync(advanceInput); });
+    expect(m.rpc).toHaveBeenCalledTimes(2);
+    expect(m.rpc.mock.calls[0]![1].p_idempotency_key).toBe(m.rpc.mock.calls[1]![1].p_idempotency_key);
+  });
+  it('chưa rõ kết quả (mất mạng) ⇒ giữ dấu; mở lại trang, lần sau đối chiếu bằng ĐÚNG khoá cũ rồi mới nhả', async () => {
+    m.rpc.mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } }).mockResolvedValueOnce({ data: w1(), error: null });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    expect(pendingKeys()).toHaveLength(1);
+    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
+    h.unmount();
+    const again = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await expect(again.result.current.mutateAsync(advanceInput)).resolves.toMatchObject({ voucher_id: 'v-adv' }); });
+    expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(firstKey);
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('đã ghi nhưng mất phản hồi, tải lại trang rồi gửi KHÁC nội dung ⇒ 23505 ⇒ báo đã ghi, xoá dấu, lần sau khoá mới', async () => {
+    m.rpc
+      .mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } })
+      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'idempotency_key đã dùng với nội dung khác' } })
+      .mockResolvedValueOnce({ data: w1({ amount: 1, advance_amount: 1, warnings: [{ code: 'ADVANCE', advance_amount: 1 }, { code: 'NEEDS_OWNER_APPROVAL' }] }), error: null });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
+    h.unmount(); // tải lại trang: chỉ còn dấu chờ trong localStorage
+    const again = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    let failure: unknown;
+    await act(async () => { failure = await again.result.current.mutateAsync({ ...advanceInput, amount: 1 }).catch((e: unknown) => e); });
+    expect(failure).toBeInstanceOf(ProfitLedgerPriorWrittenError);
+    expect(profitLedgerErrorMessage(failure, 'advance')).toMatchObject({ kind: 'PRIOR_WRITTEN', reload: true });
+    expect(profitLedgerErrorMessage(failure, 'advance').message).toMatch(/^Yêu cầu trước đó đã được ghi; tải lại để xem/);
+    expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(firstKey); // đối chiếu bằng ĐÚNG khoá cũ
+    expect(pendingKeys()).toEqual([]);
+    await act(async () => { await expect(again.result.current.mutateAsync({ ...advanceInput, amount: 1 })).resolves.toMatchObject({ voucher_id: 'v-adv' }); });
+    expect(m.rpc).toHaveBeenCalledTimes(3);
+    expect(m.rpc.mock.calls[2]![1].p_idempotency_key).not.toBe(firstKey); // lệnh mới, khoá mới
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('đối chiếu gặp 23505 KHÁC (trùng khoá bảng / mã của lệnh khác) ⇒ vẫn khoá, vẫn khoá cũ', async () => {
+    m.rpc
+      .mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } })
+      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "income_expenses_code_key"' } })
+      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung' } });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
+    await act(async () => { await expect(h.result.current.mutateAsync({ ...advanceInput, amount: 1 })).rejects.toMatchObject({ outcome: 'unknown' }); });
+    await act(async () => { await expect(h.result.current.mutateAsync({ ...advanceInput, amount: 1 })).rejects.toMatchObject({ outcome: 'unknown' }); });
+    expect(m.rpc.mock.calls.map((c) => c[1].p_idempotency_key)).toEqual([firstKey, firstKey, firstKey]);
+    expect(pendingKeys()).toHaveLength(1);
+  });
+  it('làm mới đủ các khoá sau khi ghi (kể cả khi lỗi)', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    m.rpc.mockResolvedValue({ data: null, error: { code: '55000', message: 'PROFIT_LEDGER_ROUTE_OFF: x' } });
+    const h = renderHook(() => useCreateShareholderAdvance(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(advanceInput)).rejects.toBeTruthy(); });
+    const keys = spy.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
+    for (const key of PROFIT_LEDGER_INVALIDATE_KEYS) expect(keys).toContain(JSON.stringify(key));
+    for (const key of ['profit-ledger', 'profit-ledger-entries', 'my-profit-ledger', 'profit-manager-ledger', 'manager-ledger-payouts', 'income-expenses', 'accounts-with-balance', 'pending-approvals', 'manager-salary', 'cash-flow-by-day']) {
+      expect(keys).toContain(JSON.stringify([key]));
+    }
+    // Khoá xem trước của hộp chi cũ đã bỏ cùng hook của nó.
+    expect(keys).not.toContain(JSON.stringify(['profit-payout-preview']));
   });
 });
 

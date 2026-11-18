@@ -61,7 +61,7 @@ describe('ProfitPayoutCancelDialog', () => {
     expect(m.rpc).toHaveBeenCalledWith('profit_ledger_payout_cancel_v1', {
       p_voucher_id: 'v1', p_reason: 'Chi nhầm người nhận, lập lại phiếu khác', p_idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/), p_expected_state: 'POSTED',
     });
-    expect(m.toastSuccess.mock.calls[0]![0]).toMatch(/đảo bút toán — tiền về sổ Quỹ tiền mặt.*còn phải trả: 300\.000/);
+    expect(m.toastSuccess.mock.calls[0]![0]).toMatch(/đảo bút toán — tiền về sổ Quỹ tiền mặt.*Sau huỷ, lợi nhuận chưa chi sau khi trừ tạm ứng: 300\.000/);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
   it('phiếu đã khoá (55000) ⇒ câu riêng, không đóng hộp', async () => {
