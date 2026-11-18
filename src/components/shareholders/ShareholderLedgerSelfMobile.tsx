@@ -3,16 +3,21 @@
 
 import { useMemo, useState } from 'react';
 import { HandCoins } from 'lucide-react';
+import { useMyPositionView } from '@/hooks/profit-ledger/useMyPositionView';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 import {
+  advancePendingText, isUnpaidNegative, POSITION_LABELS, settlementCashPendingText, UNPAID_NEGATIVE_NOTE,
+} from '@/lib/profitLedger/positionView';
+import {
   amountsByBuilding, buildingColumns, buildingMatrix, monthlyAmounts, monthsInScope, newestFirst, payoutStatusLabel,
-  periodLabel, periodMonthNumber, periodYear, salaryNet, selfAdvanceBlockedNote, selfBalanceView,
+  periodLabel, periodMonthNumber, periodYear, salaryNet, selfAdvanceBlockedNote,
 } from '@/lib/profitLedger/selfView';
 import { cancelTargetFromMyPayout, type ProfitPayoutCancelTarget } from '@/lib/profitLedger/vouchers';
 import { formatISODateVN } from '@/lib/vnDate';
-import ProfitDistributeDialog from './ProfitDistributeDialog';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
+import ProfitSelfAdvanceDialog from './ProfitSelfAdvanceDialog';
 import type { ShareholderSelfAccess } from './ShareholderLedgerSelfView';
+import { MyPositionError, MySettlementsMobile } from './ShareholderSelfPosition';
 import { BuildingMatrix, CARD, fmtShort, MonthBars, uniformPercent, YearMonthRow } from './profitMobileShared';
 import { colorAt } from './shareholderUtils';
 
@@ -40,7 +45,12 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
   };
 
   const monthNumber = month === ALL ? null : Number(month);
-  const balance = selfBalanceView(ledger);
+  // Hai con số của vị thế (R2) + các lần chốt. Chưa có số ⇒ "…" / "—", không hiện 0.
+  const positionView = useMyPositionView(ledger.organization_id);
+  const position = positionView.position;
+  const positionMissing = positionView.pending ? '…' : '—';
+  const advancePending = position ? advancePendingText(position, fmtShort) : null;
+  const cashPending = position ? settlementCashPendingText(position, fmtShort) : null;
   const viaSalary = salaryNet(ledger);
   const advanceNote = selfAdvanceBlockedNote(ledger.route);
   const yearMonths = useMemo(() => monthsInScope(ledger.months, year, null), [ledger.months, year]);
@@ -73,15 +83,25 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
         <div className="w-11 h-11 rounded-full bg-white/15 border border-white/30 grid place-items-center font-extrabold text-[17px] shrink-0">{initial}</div>
         <div className="flex flex-col gap-0.5 min-w-0 flex-1">
           <span className="text-[15px] font-extrabold tracking-[-0.2px] truncate">{ledger.shareholder.name}</span>
-          <span className="text-[11.5px] font-semibold text-white/80 truncate" data-testid="self-mobile-hero-sub">
+          {/* Xuống dòng thay vì cắt: khối số bên phải chiếm chỗ, câu ngắn vẫn có thể dài hơn một dòng. */}
+          <span className="text-[11.5px] font-semibold leading-snug text-white/80 [overflow-wrap:anywhere]" data-testid="self-mobile-hero-sub">
             Cổ đông{pct ? ` · tỷ lệ ${pct}` : ''}{buildingsEver ? ` · ${buildingsEver} toà nhà` : ''}
           </span>
         </div>
         <div className="text-right shrink-0" data-testid="self-mobile-balance">
-          <div className="text-[10px] font-bold tracking-wide text-white/75 uppercase">{balance.label}</div>
-          <div className="font-mono text-[18px] font-bold tracking-[-0.4px]">{fmtShort(balance.amount)}</div>
+          <div className="text-[10px] font-bold tracking-wide text-white/75 uppercase">{POSITION_LABELS.unpaid}</div>
+          <div className="font-mono text-[18px] font-bold tracking-[-0.4px]">{position ? fmtShort(position.unpaid_profit) : positionMissing}</div>
+          {cashPending && <div className="text-[10.5px] font-semibold text-white/80">{cashPending}</div>}
+          <div className="mt-0.5 text-[10.5px] font-semibold text-white/85" data-testid="self-mobile-advance">
+            {POSITION_LABELS.advance}: <span className="font-mono font-bold">{position ? fmtShort(position.advance_outstanding) : positionMissing}</span>
+          </div>
+          {advancePending && <div className="text-[10.5px] font-semibold text-white/80">{advancePending}</div>}
         </div>
       </div>
+      <MyPositionError view={positionView} />
+      {position && isUnpaidNegative(position) && (
+        <p role="note" className="m-0 text-[11.5px] font-semibold leading-snug text-[#8d8678]">{UNPAID_NEGATIVE_NOTE}</p>
+      )}
 
       {access.canAdvanceOwn && (
         <div className="flex flex-col gap-1">
@@ -175,16 +195,18 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
           <p className="m-0 px-[15px] pb-4 pt-1 text-[12.5px] font-semibold text-[#8d8678]">Chưa có phần chia trong {scopeLabel}.</p>
         )}
         {marker && matrix.some((r) => r.excluded) && (
-          <p className="m-0 px-[15px] pb-3 text-[11px] font-semibold text-[#8d8678]">* Đã trả đủ theo mốc (đến hết {marker}) — không tính vào số còn được nhận.</p>
+          <p className="m-0 px-[15px] pb-3 text-[11px] font-semibold text-[#8d8678]">* Đã trả đủ theo mốc (đến hết {marker}) — không tính vào lợi nhuận chưa chi.</p>
         )}
       </div>
 
+      <MySettlementsMobile view={positionView} />
+
       <div className={`${CARD} !rounded-2xl overflow-hidden`}>
         <div className="flex items-center gap-2 px-[15px] py-3.5 border-b border-[#efece4]">
-          <span className={TITLE}>Phiếu chi lợi nhuận</span>
+          <span className={TITLE}>Phiếu chi lợi nhuận và tạm ứng</span>
           <span className="ml-auto font-mono text-[12px] font-bold text-[#c97a10]">đã nhận {fmtShort(ledger.paid)}</span>
         </div>
-        {payouts.length === 0 && <p className={EMPTY}>Chưa có phiếu chi lợi nhuận nào.</p>}
+        {payouts.length === 0 && <p className={EMPTY}>Chưa có phiếu chi lợi nhuận hay tạm ứng nào.</p>}
         {payouts.map((p) => {
           const target = cancelTargetFromMyPayout(p, { organizationId: ledger.organization_id, subjectName: ledger.shareholder.name });
           return (
@@ -193,7 +215,8 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
                 <HandCoins className="h-[15px] w-[15px]" />
               </span>
               <div className="flex-1 min-w-0 flex flex-col gap-px">
-                <span className="text-[12.5px] font-bold text-[#1b1813] truncate">
+                {/* Xuống dòng thay vì cắt "· Tạm ứng" (chữ mang nghĩa). */}
+                <span className="text-[12.5px] font-bold leading-snug text-[#1b1813] [overflow-wrap:anywhere]">
                   {p.voucher_code ?? 'Phiếu chi'} · {payoutStatusLabel(p)}{p.is_advance ? ' · Tạm ứng' : ''}
                 </span>
                 <span className="font-mono text-[10.5px] font-bold text-[#8d8678]">{formatISODateVN(p.voucher_date)}{p.excluded_by_marker ? ' · trước mốc' : ''}</span>
@@ -263,11 +286,10 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
       )}
 
       {access.canAdvanceOwn && (
-        <ProfitDistributeDialog
+        <ProfitSelfAdvanceDialog
           open={advanceOpen}
           onOpenChange={setAdvanceOpen}
           organizationId={ledger.organization_id}
-          mode="SELF_ADVANCE"
           me={{ shareholderId: ledger.shareholder.id, name: ledger.shareholder.name }}
         />
       )}

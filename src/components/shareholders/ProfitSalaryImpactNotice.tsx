@@ -120,7 +120,7 @@ function ImpactBody({ mode, impact }: { mode: SalaryImpactMode; impact: UnlockSa
       )}
       {mode === 'RECLOSE' && paid.length > 0 && (
         <p className="text-amber-700">
-          Chốt lại thay phần lợi nhuận của tháng này. Phần đã trả qua lương giữ nguyên; phần mới nhỏ hơn thì người đó thành tạm ứng.
+          Chốt lại thay phần lợi nhuận của tháng này. Phần đã trả qua lương giữ nguyên; phần mới nhỏ hơn thì lợi nhuận chưa chi của người đó giảm, có thể thành âm.
         </p>
       )}
       {effects.length > 0 && (
@@ -133,7 +133,7 @@ function ImpactBody({ mode, impact }: { mode: SalaryImpactMode; impact: UnlockSa
                 <>
                   sổ tổng {ledgerBalanceText(effect.balance_now)} → <strong>{ledgerBalanceText(effect.balance_after)}</strong>
                   {effect.becomes_advance && (
-                    <span className="ml-1 rounded bg-destructive/10 px-1 text-xs font-medium text-destructive">thành tạm ứng</span>
+                    <span className="ml-1 rounded bg-destructive/10 px-1 text-xs font-medium text-destructive">thành âm</span>
                   )}
                 </>
               )}

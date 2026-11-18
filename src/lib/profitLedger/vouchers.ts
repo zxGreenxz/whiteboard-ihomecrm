@@ -4,6 +4,7 @@
 
 import { formatVND } from '@/lib/utils';
 import type { LedgerPayoutDetail, MyLedgerPayout, ShareholderLedgerEntry } from './ledgerReaders';
+import type { ProfitSettlementRow } from './positionReaders';
 import type { ProfitLedgerSubjectKind } from './sharedReaders';
 
 export const PROFIT_LEDGER_SOURCES = ['profit.ledger_payout', 'profit.manager_salary'] as const;
@@ -43,12 +44,16 @@ export function cancelEffectSentence(state: ProfitCancelExpectedState, accountNa
   return 'Phiếu đang chờ duyệt: huỷ yêu cầu duyệt, chưa có tiền di chuyển.';
 }
 
-/** Câu số dư sau huỷ (E6.balance_after). */
-export function cancelBalanceSentence(kind: ProfitLedgerSubjectKind, balanceAfter: number): string {
+/**
+ * Câu số dư sau huỷ (E6.balance_after — số dư RÒNG của cổ đông: lợi nhuận chưa chi − tạm ứng đang có và chờ duyệt).
+ * null ⇒ không có câu: máy chủ che số với người không được xem (người giữ sổ huỷ phiếu tạm ứng mình lập hộ).
+ */
+export function cancelBalanceSentence(kind: ProfitLedgerSubjectKind, balanceAfter: number | null): string | null {
+  if (balanceAfter === null) return null;
   if (kind === 'MANAGER') return `Lương điều hành còn lại: ${formatVND(balanceAfter)}.`;
   return balanceAfter >= 0
-    ? `Sổ tổng còn phải trả: ${formatVND(balanceAfter)}.`
-    : `Sổ tổng đang tạm ứng: ${formatVND(-balanceAfter)}.`;
+    ? `Sau huỷ, lợi nhuận chưa chi sau khi trừ tạm ứng: ${formatVND(balanceAfter)}.`
+    : `Sau huỷ, tạm ứng còn vượt lợi nhuận chưa chi: ${formatVND(-balanceAfter)}.`;
 }
 
 /** Đầu vào của `ProfitPayoutCancelDialog`. Dựng bằng các hàm bên dưới, không tự ghép tay. */
@@ -104,6 +109,29 @@ export function cancelTargetFromMyPayout(
     amount: payout.amount,
     approvalStatus: payout.status,
     postingStatus: payout.posting_status,
+    subjectName: context.subjectName,
+    accountName: null,
+  };
+}
+
+/**
+ * Từ một lần chốt chi lợi nhuận CÓ phiếu tiền (R5 / R2): huỷ phiếu chi đó thì lần chốt tự hết hiệu lực.
+ * Lần chốt không có phiếu (huỷ bằng lệnh huỷ chốt) hoặc phiếu không còn huỷ được ⇒ null.
+ */
+export function cancelTargetFromSettlement(
+  settlement: Pick<ProfitSettlementRow, 'cash_voucher_id' | 'cash_voucher_code' | 'cash_voucher_status' | 'cash_voucher_posting_status' | 'cash_amount'>,
+  context: { organizationId: string; subjectName: string | null },
+): ProfitPayoutCancelTarget | null {
+  if (!settlement.cash_voucher_id || !settlement.cash_voucher_status) return null;
+  if (!expectedCancelState(settlement.cash_voucher_status, settlement.cash_voucher_posting_status)) return null;
+  return {
+    voucherId: settlement.cash_voucher_id,
+    organizationId: context.organizationId,
+    kind: 'SHAREHOLDER',
+    code: settlement.cash_voucher_code,
+    amount: settlement.cash_amount,
+    approvalStatus: settlement.cash_voucher_status,
+    postingStatus: settlement.cash_voucher_posting_status,
     subjectName: context.subjectName,
     accountName: null,
   };

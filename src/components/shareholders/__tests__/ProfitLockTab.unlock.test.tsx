@@ -598,8 +598,9 @@ describe("ProfitLockTab — ảnh hưởng tới lương và sổ tổng (D2.11)
     const muc = within(hop).getByTestId("profit-salary-impact");
     expect(muc.textContent).toMatch(/Cổ đông A đã nhận 2\.000\.000 đ lợi nhuận tháng này qua lương/);
     expect(muc.textContent).toMatch(/PC0001 \(đã chi\)/);
-    expect(muc.textContent).toMatch(/sổ tổng 1\.000\.000 đ → tạm ứng 2\.000\.000 đ/);
-    expect(within(muc).getByText("thành tạm ứng")).toBeTruthy();
+    // Số dư RÒNG của sổ tổng âm thì nói "âm" — "tạm ứng" là con số khác (đọc từ vị thế).
+    expect(muc.textContent).toMatch(/sổ tổng 1\.000\.000 đ → âm 2\.000\.000 đ/);
+    expect(within(muc).getByText("thành âm")).toBeTruthy();
     expect(state.impactArgs.at(-1)).toEqual({ organizationId: ORG, periodMonth: KY, buildingIds: [B1, B2], enabled: true });
 
     fireEvent.change(within(hop).getByLabelText("Lý do mở khoá"), { target: { value: LY_DO } });

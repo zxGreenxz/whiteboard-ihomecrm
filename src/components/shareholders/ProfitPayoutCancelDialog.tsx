@@ -83,11 +83,13 @@ export function ProfitPayoutCancelDialog({ open, onOpenChange, target, onCancell
       });
       setBlocked(null);
       const code = target.code ? `phiếu ${target.code}` : 'phiếu';
+      // Máy chủ che số dư với người không được xem (null) ⇒ không có câu số dư.
       const balance = cancelBalanceSentence(target.kind, result.balance_after);
-      if (!result.changed) toast.info(`${target.code ? `Phiếu ${target.code}` : 'Phiếu'} đã được huỷ trước đó. ${balance}`);
+      const tail = balance ? ` ${balance}` : '';
+      if (!result.changed) toast.info(`${target.code ? `Phiếu ${target.code}` : 'Phiếu'} đã được huỷ trước đó.${tail}`);
       else if (result.cancellation_kind === 'CANCELLED_AFTER_POSTING') {
-        toast.success(`Đã huỷ ${code} và đảo bút toán — tiền về sổ ${target.accountName ?? 'quỹ của phiếu'}. ${balance}`);
-      } else toast.success(`Đã huỷ ${code}. ${balance}`);
+        toast.success(`Đã huỷ ${code} và đảo bút toán — tiền về sổ ${target.accountName ?? 'quỹ của phiếu'}.${tail}`);
+      } else toast.success(`Đã huỷ ${code}.${tail}`);
       onCancelled?.(result);
       onOpenChange(false);
     } catch (error) {

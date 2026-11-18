@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1859,
-  "soFileDocBangFs": 488,
-  "tongLoiGoi": 1318,
-  "khongPhanLoaiDuoc": 592,
+  "tongSoFileTest": 1863,
+  "soFileDocBangFs": 489,
+  "tongLoiGoi": 1326,
+  "khongPhanLoaiDuoc": 594,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 67,
+      "soFile": 68,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -62,6 +62,7 @@
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
     "src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx",
     "src/components/income-expenses/__tests__/IncomeExpenseFormDongThiKhongDoc.test.tsx",
+    "src/components/income-expenses/__tests__/IncomeExpenseFormShareholderAdvance.test.tsx",
     "src/contexts/__tests__/OrganizationContext.test.ts",
     "src/copilot/__tests__/confirmationStore.test.ts",
     "src/copilot/__tests__/pageAgentCompatibility.test.ts",
@@ -246,6 +247,15 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
+      "soGoi": 10,
+      "loai": {
+        "sql": 3,
+        "ma-nguon": 7
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/invoiceAdjustmentV2.test.ts",
       "soGoi": 10,
       "loai": {
@@ -303,6 +313,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/soTongLoiNhuanTamUngChotMigration.test.ts",
+      "soGoi": 9,
+      "loai": {
+        "sql": 7
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-log-keeper/log-keeper.test.mjs",
       "soGoi": 8,
       "loai": {},
@@ -324,14 +342,6 @@
         "sql": 6
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "src/lib/__tests__/soTongLoiNhuanTamUngChotMigration.test.ts",
-      "soGoi": 8,
-      "loai": {
-        "sql": 7
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/wave2-a.test.mjs",
@@ -457,15 +467,6 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
-      "soGoi": 6,
-      "loai": {
-        "sql": 2,
-        "ma-nguon": 4
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/accountingRolloutSafety.test.ts",
@@ -1105,6 +1106,14 @@
         "manifest": 3
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/components/income-expenses/__tests__/IncomeExpenseFormShareholderAdvance.test.tsx",
+      "soGoi": 3,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/copilot/plan/__tests__/actionCatalog.test.ts",

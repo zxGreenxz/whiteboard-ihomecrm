@@ -44,10 +44,17 @@ export function ledgerApprovalGate(detail: LedgerPayoutDetail): LedgerApprovalGa
   return { accountId, blockReason: null };
 }
 
-/** Số dư theo dấu: dương = công ty còn phải trả; âm = người nhận đang tạm ứng. */
+/**
+ * Số dư ròng theo dấu.
+ *   Lương điều hành: dương = còn lại; âm = đã chi quá.
+ *   Cổ đông: số dư ròng = lợi nhuận chưa chi − tạm ứng (đang có + chờ duyệt). Dương = lợi nhuận chưa chi còn
+ *   lại sau khi trừ tạm ứng; âm = tạm ứng đang vượt lợi nhuận chưa chi.
+ */
 export function ledgerBalanceText(balance: number, kind: LedgerPayoutDetail['subject']['kind']): string {
   if (kind === 'MANAGER') return balance >= 0 ? `còn lại ${formatVND(balance)}` : `đã chi quá ${formatVND(-balance)}`;
-  return balance >= 0 ? `còn phải trả ${formatVND(balance)}` : `đang tạm ứng ${formatVND(-balance)}`;
+  return balance >= 0
+    ? `lợi nhuận chưa chi sau khi trừ tạm ứng ${formatVND(balance)}`
+    : `tạm ứng đang vượt lợi nhuận chưa chi ${formatVND(-balance)}`;
 }
 
 export interface LedgerApprovalNoteView {
@@ -56,29 +63,77 @@ export interface LedgerApprovalNoteView {
   atCreate: string | null;
   /** Dòng "Bây giờ …" (không tính chính phiếu này). */
   now: string;
-  /** Lưu ý thêm (người giữ sổ tự tạm ứng, sổ chi cố định…). */
+  /** Lưu ý thêm (người giữ sổ tự tạm ứng / lập hộ, phiếu của lần chốt, sổ chi cố định…). */
   notes: string[];
 }
 
+/** Phần của một khoản `amount` vượt số dư ròng `balance` (số dư âm ⇒ vượt cả khoản). */
+const overBalance = (amount: number, balance: number): number => amount - Math.min(amount, Math.max(balance, 0));
+
+/**
+ * Câu cho người duyệt một phiếu chi theo sổ tổng. Ba loại phiếu của CỔ ĐÔNG (theo dòng sổ lúc lập):
+ *   · phiếu TẠM ỨNG (người giữ sổ tự ứng hoặc lập hộ; cả số tiền là tạm ứng): nói "tạm ứng X", vượt lợi nhuận
+ *     chưa chi bao nhiêu thì nói rõ;
+ *   · phiếu CHI LỢI NHUẬN do chủ lập (phiếu tiền của một lần chốt chi theo tháng): số tiền đã khấu trừ tạm ứng;
+ *   · phiếu cũ lập bằng lệnh chi nhập tay (có tách "trong số dư / tạm ứng"): giữ nguyên cách nói lúc lập.
+ */
 export function ledgerApprovalNoteView(detail: LedgerPayoutDetail): LedgerApprovalNoteView {
   const kind = detail.subject.kind;
-  const manager = kind === 'MANAGER';
   const name = detail.subject.name;
-  const splitLabel = manager ? 'vượt' : 'tạm ứng';
   const at = detail.at_create;
+  const { now } = detail;
   const notes: string[] = [];
-  if (at && at.maker_kind === 'CUSTODIAN_ADVANCE' && at.payee_is_maker) {
+  const accountNote = detail.voucher.account_name ? `Chỉ chi được từ sổ đã chọn lúc lập: ${detail.voucher.account_name}.` : null;
+  const nowHead = `Bây giờ (không tính phiếu này): ${ledgerBalanceText(now.balance_excluding_this, kind)}`;
+
+  if (kind === 'MANAGER') {
+    if (accountNote) notes.push(accountNote);
+    return {
+      title: `Lương điều hành · ${name}`,
+      atCreate: at
+        ? `Lúc lập: ${ledgerBalanceText(at.balance_before, kind)} · trong số dư ${formatVND(at.within)} · vượt ${formatVND(at.advance)}`
+        : null,
+      now: `${nowHead} · duyệt thì trong số dư ${formatVND(now.within)} · vượt ${formatVND(now.advance)}`,
+      notes,
+    };
+  }
+
+  // Phiếu tạm ứng: người giữ sổ lập (cho mình hoặc lập hộ) và cả số tiền là tạm ứng.
+  const isAdvance = !!at && at.maker_kind !== 'OWNER' && at.within === 0;
+  if (at?.maker_kind === 'CUSTODIAN_ADVANCE' && at.payee_is_maker) {
     notes.push('Người giữ sổ tự lập phiếu tạm ứng cho chính mình — người duyệt phải là chủ khác.');
   }
-  if (detail.voucher.account_name) {
-    notes.push(`Chỉ chi được từ sổ đã chọn lúc lập: ${detail.voucher.account_name}.`);
+  if (at?.maker_kind === 'CUSTODIAN_FOR_PAYEE') {
+    notes.push('Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt là chủ, khác người lập và người nhận.');
   }
+
+  if (isAdvance && at) {
+    const overAtCreate = overBalance(at.advance, at.balance_before);
+    notes.push('Tạm ứng cộng dồn; được khấu trừ khi chủ chốt chi lợi nhuận.');
+    if (accountNote) notes.push(accountNote);
+    return {
+      title: `Tạm ứng lợi nhuận · ${name}`,
+      atCreate: `Lúc lập: ${ledgerBalanceText(at.balance_before, kind)} · tạm ứng ${formatVND(at.advance)}`
+        + (overAtCreate > 0 ? ` · vượt lợi nhuận chưa chi ${formatVND(overAtCreate)}` : ''),
+      now: `${nowHead} · duyệt thì tạm ứng ${formatVND(detail.voucher.amount)}`
+        + (now.advance > 0 ? ` · vượt lợi nhuận chưa chi ${formatVND(now.advance)}` : ' · không vượt lợi nhuận chưa chi'),
+      notes,
+    };
+  }
+
+  const legacySplit = !!at && at.advance > 0;
+  if (at?.maker_kind === 'OWNER' && !legacySplit) {
+    notes.push('Phiếu chi lợi nhuận do chủ lập. Phiếu sinh từ hộp chốt chi lợi nhuận thì số tiền này là phần còn lại sau khi đã khấu trừ tạm ứng đã duyệt.');
+  }
+  if (accountNote) notes.push(accountNote);
   return {
-    title: manager ? `Lương điều hành · ${name}` : `Chi lợi nhuận cổ đông · ${name}`,
+    title: `Chi lợi nhuận cổ đông · ${name}`,
     atCreate: at
-      ? `Lúc lập: ${ledgerBalanceText(at.balance_before, kind)} · trong số dư ${formatVND(at.within)} · ${splitLabel} ${formatVND(at.advance)}`
+      ? legacySplit
+        ? `Lúc lập: ${ledgerBalanceText(at.balance_before, kind)} · trong số dư ${formatVND(at.within)} · tạm ứng ${formatVND(at.advance)}`
+        : `Lúc lập: ${ledgerBalanceText(at.balance_before, kind)} · chi lợi nhuận ${formatVND(at.within)}`
       : null,
-    now: `Bây giờ (không tính phiếu này): ${ledgerBalanceText(detail.now.balance_excluding_this, kind)} · duyệt thì trong số dư ${formatVND(detail.now.within)} · ${splitLabel} ${formatVND(detail.now.advance)}`,
+    now: nowHead + (now.advance > 0 ? ` · duyệt thì vượt lợi nhuận chưa chi ${formatVND(now.advance)}` : ' · duyệt thì không vượt lợi nhuận chưa chi'),
     notes,
   };
 }

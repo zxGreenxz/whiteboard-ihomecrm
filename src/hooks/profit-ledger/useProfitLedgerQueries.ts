@@ -6,7 +6,7 @@
 // (profitLedgerRouteState) hoặc `ready` (E3). Lỗi hiện tại chỗ (`errorDisplay: 'inline'`): màn hình
 // bọc QueryRegion hoặc tự đọc `error` qua profitLedgerErrorMessage(error, 'read').
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { classifyDbError, isRetryable } from '@/lib/contracts/errors';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
@@ -18,10 +18,11 @@ import {
   type LedgerPayoutDetail, type ManagerLedger, type MyProfitLedger, type ShareholderLedger,
   type ShareholderLedgerEntries,
 } from '@/lib/profitLedger/ledgerReaders';
+import { readMarkerPreview, type MarkerPreview } from '@/lib/profitLedger/actionReaders';
 import {
-  readMarkerPreview, readPayoutPreview,
-  type MarkerPreview, type PayoutPreview,
-} from '@/lib/profitLedger/actionReaders';
+  readAdvanceOptions, readAdvancePreview, readMyShareholderPosition, readSettlementPreview, readShareholderPositions,
+  type AdvanceOptions, type AdvancePreview, type MyShareholderPosition, type SettlementPreview, type ShareholderPositions,
+} from '@/lib/profitLedger/positionReaders';
 import { readUnlockSalaryImpact, type UnlockSalaryImpact } from '@/lib/profitLedger/salaryReaders';
 import { day, instant, list, money, obj, optStr, str } from '@/lib/profitLedger/readPrimitives';
 import type { ProfitLedgerSubjectKind } from '@/lib/profitLedger/sharedReaders';
@@ -93,11 +94,79 @@ export function useMyProfitLedger(organizationId: string | null | undefined, opt
   });
 }
 
-/**
- * E4 — xem trước hộp chi. Gọi được khi CHƯA nhập số tiền / chưa chọn sổ (để hiện số dư); số tiền
- * và sổ chỉ là tuỳ chọn. Lớp gọi tự debounce số tiền (~400 ms) rồi mới đổi tham số.
+/*
+ * ───────────── Tạm ứng cổ đông + chốt chi lợi nhuận theo tháng (migration 20261118041911) ─────────────
+ * (Thay E4 `shareholder_profit_payout_preview_v1` — xem trước theo số tiền nhập tay — web không còn gọi.)
+ * R1, R3, R4 là hàm VOLATILE (kiểm quyền của NGƯỜI KHÁC, có khoá dòng): PHẢI gọi bằng POST — mặc định của
+ * `supabase.rpc`. KHÔNG thêm `{ get: true }` (giao dịch chỉ đọc ⇒ 25006).
  */
-export function useProfitPayoutPreview(input: {
+
+/* R1 — vị thế mọi cổ đông: "lợi nhuận chưa chi" và "tạm ứng đang có" (chủ: như E1). */
+export function useShareholderProfitPositions(organizationId: string | null | undefined, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['profit-positions', organizationId ?? null],
+    enabled: !!organizationId && (options.enabled ?? true),
+    retry: retryBusyOnce,
+    meta: { label: 'lợi nhuận chưa chi và tạm ứng của cổ đông', errorDisplay: 'inline' },
+    queryFn: async (): Promise<ShareholderPositions> => {
+      const org = organizationId as string;
+      const { data, error } = await supabase.rpc('shareholder_profit_positions_v1', { p_organization_id: org });
+      if (error) throw error;
+      return readShareholderPositions(data, org);
+    },
+  });
+}
+
+/**
+ * R2 — vị thế của chính cổ đông đang đăng nhập + các lần chốt còn hiệu lực (quyền như E3).
+ * `data === null` ⇔ máy chủ trả 42501 PROFIT_LEDGER_FORBIDDEN: màn hình ẨN khối. Lỗi khác vẫn ném.
+ */
+export function useMyShareholderPosition(organizationId: string | null | undefined, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['my-profit-position', organizationId ?? null],
+    enabled: !!organizationId && (options.enabled ?? true),
+    retry: retryBusyOnce,
+    meta: { label: 'lợi nhuận chưa chi và tạm ứng của bạn', errorDisplay: 'inline' },
+    queryFn: async (): Promise<MyShareholderPosition | null> => {
+      const org = organizationId as string;
+      const { data, error } = await supabase.rpc('shareholder_profit_my_position_v1', { p_organization_id: org });
+      if (error) {
+        if (isProfitLedgerForbidden(error)) return null;
+        throw error;
+      }
+      return readMyShareholderPosition(data, org);
+    },
+  });
+}
+
+/**
+ * R3 — lựa chọn cho chế độ "Tạm Ứng" của form Thu chi: sổ đang giữ, người nhận có quyền tạm ứng, hạng mục.
+ * Không có số tiền nào. `data === null` ⇔ người gọi không thuộc công ty (42501 PROFIT_LEDGER_FORBIDDEN):
+ * form coi như không có chế độ Tạm Ứng. Lỗi khác vẫn ném để form báo "chưa kiểm tra được".
+ */
+export function useShareholderAdvanceOptions(organizationId: string | null | undefined, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['profit-advance-options', organizationId ?? null],
+    enabled: !!organizationId && (options.enabled ?? true),
+    retry: retryBusyOnce,
+    meta: { label: 'lựa chọn phiếu Tạm Ứng', errorDisplay: 'inline' },
+    queryFn: async (): Promise<AdvanceOptions | null> => {
+      const { data, error } = await supabase.rpc('shareholder_profit_advance_options_v1', { p_organization_id: organizationId as string });
+      if (error) {
+        if (isProfitLedgerForbidden(error)) return null;
+        throw error;
+      }
+      return readAdvanceOptions(data);
+    },
+  });
+}
+
+/**
+ * R4 — xem trước một phiếu tạm ứng. Gọi được khi CHƯA nhập số tiền / chưa chọn sổ. Máy chủ chỉ trả số
+ * của cổ đông (`position`) cho người có quyền chi lợi nhuận hoặc chính người nhận; người giữ sổ lập hộ
+ * nhận `position = null`. Lớp gọi tự debounce số tiền (~400 ms) rồi mới đổi tham số.
+ */
+export function useShareholderAdvancePreview(input: {
   shareholderId: string | null | undefined;
   amount: number | null;
   accountId: string | null;
@@ -105,21 +174,55 @@ export function useProfitPayoutPreview(input: {
 }) {
   const amount = input.amount !== null && Number.isFinite(input.amount) && input.amount > 0 ? input.amount : null;
   return useQuery({
-    queryKey: ['profit-payout-preview', input.shareholderId ?? null, amount, input.accountId ?? null],
+    queryKey: ['profit-advance-preview', input.shareholderId ?? null, amount, input.accountId ?? null],
     enabled: !!input.shareholderId && (input.enabled ?? true),
     staleTime: 0,
     retry: retryBusyOnce,
-    meta: { label: 'số dư lợi nhuận của cổ đông', errorDisplay: 'inline' },
-    queryFn: async (): Promise<PayoutPreview> => {
+    meta: { label: 'xem trước phiếu tạm ứng', errorDisplay: 'inline' },
+    queryFn: async (): Promise<AdvancePreview> => {
       const shareholderId = input.shareholderId as string;
-      const { data, error } = await supabase.rpc('shareholder_profit_payout_preview_v1', {
+      const { data, error } = await supabase.rpc('shareholder_profit_advance_preview_v1', {
         p_shareholder_id: shareholderId,
-        // Không có DEFAULT nhưng nhận NULL: chưa có số tiền / sổ ⇒ chỉ xem số dư.
+        // Không có DEFAULT nhưng nhận NULL: chưa có số tiền / sổ ⇒ chỉ xem vị thế và lý do khoá.
         p_amount: rpcNullable(amount),
         p_account_id: rpcNullable(input.accountId ?? null),
       });
       if (error) throw error;
-      return readPayoutPreview(data, { shareholderId, amount, accountId: input.accountId ?? null });
+      return readAdvancePreview(data, { shareholderId, amount, accountId: input.accountId ?? null });
+    },
+  });
+}
+
+/**
+ * R5 — xem trước "chốt chi lợi nhuận đến hết tháng N". `throughMonth = null` ⇒ máy chủ chọn tháng đủ điều
+ * kiện MỚI NHẤT (có thể là tháng không còn gì để chốt — `blocked_reason = NOTHING_TO_SETTLE`). `accountId`
+ * chỉ để máy chủ biết đã chọn sổ chưa.
+ */
+export function useProfitSettlementPreview(input: {
+  shareholderId: string | null | undefined;
+  throughMonth: string | null;
+  accountId: string | null;
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: ['profit-settlement-preview', input.shareholderId ?? null, input.throughMonth, input.accountId ?? null],
+    enabled: !!input.shareholderId && (input.enabled ?? true),
+    staleTime: 0,
+    // Giữ lần xem trước cũ trong lúc tải lại (đổi sổ quỹ không làm các ô của hộp chốt biến mất rồi hiện lại).
+    // Lớp gọi PHẢI xét `isPlaceholderData`: số cũ chỉ để hiện, không được gửi và không dùng cho cổ đông / tháng khác.
+    placeholderData: keepPreviousData,
+    retry: retryBusyOnce,
+    meta: { label: 'xem trước chốt chi lợi nhuận', errorDisplay: 'inline' },
+    queryFn: async (): Promise<SettlementPreview> => {
+      const shareholderId = input.shareholderId as string;
+      const { data, error } = await supabase.rpc('shareholder_profit_settlement_preview_v1', {
+        p_shareholder_id: shareholderId,
+        // Không có DEFAULT nhưng nhận NULL: tháng NULL = tháng đủ điều kiện mới nhất; sổ NULL = chưa chọn.
+        p_through_month: rpcNullable(input.throughMonth),
+        p_account_id: rpcNullable(input.accountId ?? null),
+      });
+      if (error) throw error;
+      return readSettlementPreview(data, { shareholderId, throughMonth: input.throughMonth, accountId: input.accountId ?? null });
     },
   });
 }

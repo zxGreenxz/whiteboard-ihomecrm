@@ -177,8 +177,8 @@ export function SalaryProfitResolveDialog({
                   <p className="text-muted-foreground"><Loader2 className="mr-1 inline h-4 w-4 animate-spin" />Đang đọc phần lợi nhuận của tháng trong bảng lương…</p>
                 )}
                 <p className="text-muted-foreground">
-                  Phần đầu tư là lợi nhuận đã trả trong phiếu này (trừ vào số còn phải trả). Phần bù tạm ứng là
-                  tiền lương đã giữ lại để bù tạm ứng lợi nhuận (cộng lại vào số dư). Tự nhập cả hai số.
+                  Phần đầu tư là lợi nhuận đã trả trong phiếu này (trừ vào lợi nhuận chưa chi). Phần bù tạm ứng là
+                  tiền lương đã giữ lại để bù tạm ứng lợi nhuận (trừ vào tạm ứng đang có). Tự nhập cả hai số.
                 </p>
               </div>
               <fieldset disabled={saveBlocked || resolveMut.isPending} className="space-y-4">

@@ -38,9 +38,10 @@ import {
 import { MoneyRangeError } from "@/lib/personalFinance/money";
 import { useMyShareholder } from "@/hooks/useShareholders";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
-import { useMyProfitLedger } from "@/hooks/profit-ledger/useProfitLedgerQueries";
+import { useMyProfitLedger, useMyShareholderPosition } from "@/hooks/profit-ledger/useProfitLedgerQueries";
 import { canUse } from "@/lib/permissionPages";
-import { salaryNet, selfBalanceView, shareholderOrganizationId } from "@/lib/profitLedger/selfView";
+import { advancePendingText, POSITION_LABELS } from "@/lib/profitLedger/positionView";
+import { salaryNet, shareholderOrganizationId } from "@/lib/profitLedger/selfView";
 import { FinanceEditor } from "@/components/personal-finance/FinanceEditor";
 import {
   Budgets,
@@ -92,7 +93,8 @@ function walletAppLaunch() {
 /**
  * Dòng "Từ công ty" — CHỈ cho cổ đông có trang Báo cáo Lợi Nhuận (reports_finance.profit_distribution;
  * người chỉ có quyền tạm ứng xem phần lợi nhuận ở trang lương). Đợt 2 đọc sổ tổng (E3):
- *   sổ tổng đã chạy (`ready`) ⇒ số sổ tổng: được chia · đã nhận (+ chờ duyệt) · qua lương · còn được nhận / đang tạm ứng;
+ *   sổ tổng đã chạy (`ready`) ⇒ số sổ tổng: được chia · đã nhận (+ chờ duyệt) · qua lương · lợi nhuận chưa chi ·
+ *     tạm ứng đang có (hai số sau đọc vị thế R2);
  *   sổ tổng tắt ⇒ một dòng báo tắt, không số nào (dòng cũ đọc bảng phân bổ đã gỡ ở Đợt 3 — D3.14);
  *   máy chủ nói không xem được (42501 ⇒ null) ⇒ ẩn dòng, không báo lỗi trang.
  */
@@ -102,6 +104,7 @@ function ShareholderNotice() {
   const canReport = canUse(permissions.data, "reports_finance", "profit_distribution");
   const organizationId = shareholderOrganizationId(me.data);
   const ledger = useMyProfitLedger(organizationId, { enabled: !!me.data && canReport });
+  const position = useMyShareholderPosition(organizationId, { enabled: !!me.data && canReport && ledger.data?.ready === true });
   if (me.error)
     return (
       <p role="alert">
@@ -138,14 +141,26 @@ function ShareholderNotice() {
       </aside>
     );
   const l = ledger.data;
-  const balance = selfBalanceView(l);
   const viaSalary = salaryNet(l);
+  // Hai con số của vị thế (R2). Chưa đọc được ⇒ nói rõ, không hiện 0; máy chủ nói không xem được ⇒ bỏ phần này.
+  const p = position.data;
+  const pendingAdvance = p ? advancePendingText(p, money) : null;
   return (
     <aside className="pf-card pf-muted" data-testid="shareholder-ledger-notice">
       Từ công ty: Được chia {money(l.allocated)} · Đã nhận {money(l.paid)}
       {l.paid_pending > 0 ? ` (+ chờ duyệt ${money(l.paid_pending)})` : ""}
       {viaSalary !== null ? ` · Qua lương ${money(viaSalary)}` : ""}
-      {` · ${balance.label} ${money(balance.amount)}`}
+      {p
+        ? ` · ${POSITION_LABELS.unpaid} ${money(p.unpaid_profit)} · ${POSITION_LABELS.advance} ${money(p.advance_outstanding)}${pendingAdvance ? ` (${pendingAdvance})` : ""}`
+        : p === undefined && !position.isError
+          ? " · đang tải lợi nhuận chưa chi và tạm ứng…"
+          : ""}
+      {position.isError && (
+        <span role="alert">
+          {" "}· Chưa tải được lợi nhuận chưa chi và tạm ứng.{" "}
+          <button onClick={() => void position.refetch()}>Thử lại</button>
+        </span>
+      )}
     </aside>
   );
 }

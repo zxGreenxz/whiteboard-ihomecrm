@@ -221,6 +221,78 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
     expect(voucherActionAvailability(manager, payManager, state()).approveVia).toBe("INBOX");
   });
 
+  // Phiếu Tạm Ứng người giữ sổ lập HỘ một cổ đông (18/11/2026): cùng nguồn profit.ledger_payout nên cùng nhánh
+  // này. Người giữ sổ lập hộ KHÔNG có quyền chi lợi nhuận (chỉ giữ sổ + quyền lập phiếu chi thường).
+  describe("phiếu Tạm Ứng lập hộ — người giữ sổ không có quyền chi lợi nhuận", () => {
+    const custodian = viewer({ perms: scoped("create", "edit"), currentUserId: "u-giu-so" });
+    // Như máy chủ ghi: user_id của phiếu sổ tổng là CHỦ công ty; người bấm lập nằm ở maker_user_id.
+    const tamUng = (p: Partial<V> = {}) => soTong({ user_id: "u-chu", maker_user_id: "u-giu-so", shareholder_id: "sh-nguoi-nhan", ...p });
+
+    it("còn chờ chủ duyệt: người lập không có Duyệt, không có lối sang Chờ duyệt, chưa có nút Chi", () => {
+      const a = voucherActionAvailability(tamUng(), custodian, state());
+      expect([a.approve, a.approveVia, a.postApproved, a.edit.show, a.reverse, a.unapprove]).toEqual([false, null, false, false, false, false]);
+    });
+
+    it("còn chờ chủ duyệt: NGƯỜI LẬP thấy Huỷ ở Thu chi dù không có quyền chi lợi nhuận — mở hộp huỷ sổ tổng", () => {
+      // Máy chủ (E6) cho người lập tự huỷ phiếu còn chờ của mình, kỳ vọng PENDING (đo trên TEST 18/11/2026).
+      const a = voucherActionAvailability(tamUng(), custodian, state());
+      expect(a.cancel).toEqual({ show: true, disabled: false, reason: null, via: "PROFIT_LEDGER" });
+      expect(profitCancelTargetFromVoucher({
+        id: "v1", organization_id: "org", system_source: "profit.ledger_payout", code: "PC1", name: "Tạm ứng — Cổ đông mẫu",
+        total_amount: 500_000, approval_status: "UNAPPROVED", posting_status: "UNPOSTED", account_name: "Sổ giữ",
+      })).toMatchObject({ kind: "SHAREHOLDER", approvalStatus: "UNAPPROVED", postingStatus: "UNPOSTED" });
+    });
+
+    it("cổ đông tự tạm ứng (người lập = người nhận) cũng thấy Huỷ khi phiếu còn chờ", () => {
+      const self = viewer({ perms: { shareholder_profit: { advance_own_cashbook: { org_wide: true, building_ids: [] } } }, currentUserId: "u-co-dong" });
+      expect(voucherActionAvailability(tamUng({ maker_user_id: "u-co-dong" }), self, state()).cancel.show).toBe(true);
+    });
+
+    it("người KHÁC (không lập, không có quyền chi lợi nhuận) không thấy Huỷ — kể cả người nhận, kể cả có quyền huỷ thu chi", () => {
+      const other = viewer({ perms: scoped("create", "edit", "cancel"), currentUserId: "u-khac" });
+      expect(voucherActionAvailability(tamUng(), other, state({ flexEligibility: flex({ eligible: true }) })).cancel.show).toBe(false);
+      const payee = viewer({ perms: { shareholder_profit: { advance_own_cashbook: { org_wide: true, building_ids: [] } } }, currentUserId: "u-nguoi-nhan" });
+      expect(voucherActionAvailability(tamUng(), payee, state()).cancel.show).toBe(false);
+      // user_id của phiếu sổ tổng là chủ công ty — KHÔNG được coi "user_id = tôi" là người lập.
+      const ownerRow = viewer({ perms: scoped("create"), currentUserId: "u-chu" });
+      expect(voucherActionAvailability(tamUng(), ownerRow, state()).cancel.show).toBe(false);
+    });
+
+    it("đường đọc không mang người lập (maker_user_id vắng / null) ⇒ không đoán, không hiện Huỷ", () => {
+      expect(voucherActionAvailability(tamUng({ maker_user_id: undefined }), custodian, state()).cancel.show).toBe(false);
+      expect(voucherActionAvailability(tamUng({ maker_user_id: null }), custodian, state()).cancel.show).toBe(false);
+      expect(voucherActionAvailability(tamUng({ maker_user_id: null }), viewer({ perms: scoped(), currentUserId: null }), state()).cancel.show).toBe(false);
+    });
+
+    it("chủ duyệt xong, chưa chi: người giữ sổ THẤY nút Chi (hộp Chi khoá đúng sổ lúc lập), KHÔNG còn Huỷ", () => {
+      const a = voucherActionAvailability(tamUng({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), custodian, state());
+      expect(a.postApproved).toBe(true);
+      // Người lập huỷ phiếu đã duyệt: máy chủ từ chối (PROFIT_LEDGER_CANCEL_FORBIDDEN) ⇒ không chào nút.
+      expect([a.approve, a.approveVia, a.edit.show, a.cancel.show]).toEqual([false, null, false, false]);
+    });
+
+    it("đã chi: không còn nút Chi, không Hoàn tác, người lập không Huỷ (chỉ người có quyền chi lợi nhuận huỷ có lý do)", () => {
+      const a = voucherActionAvailability(tamUng({ approval_status: "APPROVED", posting_status: "POSTED" }), custodian, state());
+      expect([a.postApproved, a.reverse, a.cancel.show]).toEqual([false, false, false]);
+    });
+
+    it("lương điều hành: người lập không có quyền chi lương vẫn KHÔNG có Huỷ (luật riêng của cổ đông không lan sang)", () => {
+      const manager = tamUng({ system_source: "profit.manager_salary" });
+      expect(voucherActionAvailability(manager, custodian, state()).cancel.show).toBe(false);
+    });
+
+    it("nút Chi theo TRẠNG THÁI phiếu, không theo người xem: người nhận có thấy nút cũng không tự chi được", () => {
+      // Luật hiển thị không biết ai là người nhận / ai đang giữ sổ. Chặn thật nằm ở hai chỗ khác:
+      //   · hộp Chi chỉ chào ĐÚNG sổ lúc lập trong các sổ người bấm đang GIỮ (rỗng ⇒ không chi được) —
+      //     xem useVoucherActions.test.tsx "Chi phiếu đã duyệt: hộp Thu/Chi chỉ chào ĐÚNG sổ lúc lập";
+      //   · máy chủ từ chối người nhận tự chi phiếu người khác lập (PROFIT_LEDGER_PAYEE_SELF_POST).
+      const payee = viewer({ perms: { shareholder_profit: { advance_own_cashbook: { org_wide: true, building_ids: [] } } }, currentUserId: "u-nguoi-nhan" });
+      const a = voucherActionAvailability(tamUng({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), payee, state());
+      expect(a.postApproved).toBe(true);
+      expect([a.approve, a.approveVia, a.cancel.show, a.edit.show]).toEqual([false, null, false, false]);
+    });
+  });
+
   it("nguồn cũ (profit.distribution / salary.manager) giữ luật thường", () => {
     const a = voucherActionAvailability(soTong({ system_source: "profit.distribution", building_id: "b1" }),
       viewer({ perms: scoped("approve", "cancel") }), state());

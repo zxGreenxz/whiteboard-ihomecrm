@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import type { MyProfitLedger } from '../ledgerReaders';
 import {
-  amountsByBuilding, buildingColumns, buildingMatrix, ledgerYears, monthlyAmounts, monthsInScope, payoutStatusLabel,
-  salaryNet, selfAdvanceBlockedNote, selfBalanceView, shareholderOrganizationId,
+  amountsByBuilding, buildingColumns, buildingMatrix, ledgerYears, monthlyAmounts, monthsInScope, ownerSelfAdvanceSubject,
+  payoutStatusLabel, salaryNet, selfAdvanceBlockedNote, shareholderOrganizationId,
 } from '../selfView';
 
 const ledger = (over: Partial<MyProfitLedger> = {}): MyProfitLedger => ({
@@ -22,12 +22,7 @@ const ledger = (over: Partial<MyProfitLedger> = {}): MyProfitLedger => ({
   ...over,
 });
 
-describe('selfView — số dư nói theo phía cổ đông', () => {
-  it('còn nợ ⇒ "Còn được nhận" = số dư; đang tạm ứng ⇒ số dương của phần âm; bằng 0 ⇒ đã nhận đủ', () => {
-    expect(selfBalanceView(ledger())).toMatchObject({ status: 'OWED', label: 'Còn được nhận', amount: 86.5, note: 'đã trừ phiếu đang chờ duyệt' });
-    expect(selfBalanceView(ledger({ balance: -3, status: 'ADVANCE' }))).toMatchObject({ label: 'Đang tạm ứng', amount: 3 });
-    expect(selfBalanceView(ledger({ balance: 0, status: 'SETTLED' }))).toMatchObject({ label: 'Còn được nhận', amount: 0 });
-  });
+describe('selfView — phần lợi nhuận trả qua lương', () => {
   it('qua lương = Y − D (cùng dấu công thức số dư); không có dòng lương ⇒ null (không hiện 0)', () => {
     const l = ledger();
     expect(salaryNet(l)).toBe(8);
@@ -72,6 +67,16 @@ describe('selfView — phiếu, nút tạm ứng, công ty', () => {
   it('nút "Chi tạm ứng cho tôi" chỉ mở khi sổ tổng chạy thật; route lạ đóng an toàn', () => {
     expect(selfAdvanceBlockedNote('CANONICAL')).toBeNull();
     for (const route of ['LEGACY', 'SHADOW', 'FROZEN', 'CANARY', null]) expect(selfAdvanceBlockedNote(route)).toEqual(expect.any(String));
+  });
+  it('màn của chủ: "Chi tạm ứng cho tôi" chỉ khi người xem là cổ đông của ĐÚNG công ty đang xem VÀ có quyền tạm ứng', () => {
+    const me = { id: 'sh-1', name: 'Cổ đông 1', organization_id: 'org-a' };
+    expect(ownerSelfAdvanceSubject(me, true, 'org-a')).toEqual({ shareholderId: 'sh-1', name: 'Cổ đông 1' });
+    expect(ownerSelfAdvanceSubject(me, false, 'org-a')).toBeNull(); // không có quyền tạm ứng
+    expect(ownerSelfAdvanceSubject(null, true, 'org-a')).toBeNull(); // không phải cổ đông (hoặc hồ sơ chưa tải)
+    expect(ownerSelfAdvanceSubject(undefined, true, 'org-a')).toBeNull();
+    expect(ownerSelfAdvanceSubject(me, true, 'org-b')).toBeNull(); // cổ đông của công ty khác
+    expect(ownerSelfAdvanceSubject({ id: 'sh-1', name: 'Cổ đông 1' }, true, 'org-a')).toBeNull(); // dòng thiếu công ty: không đoán
+    expect(ownerSelfAdvanceSubject(me, true, null)).toBeNull();
   });
   it('công ty lấy từ dòng cổ đông; thiếu / rỗng ⇒ null (không đoán)', () => {
     expect(shareholderOrganizationId({ id: 'sh-1', organization_id: 'org-a' })).toBe('org-a');

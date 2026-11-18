@@ -17,16 +17,21 @@ import { voucherFailureMessage, voucherOutcomeUnknown } from '@/lib/voucherFeedb
 import { ProfitLedgerPayloadError } from './readPrimitives';
 
 export type ProfitLedgerOperation =
-  | 'read' | 'preview' | 'payout' | 'cancel' | 'marker' | 'resolve' | 'manager_payout'
+  | 'read' | 'preview' | 'advance' | 'settle' | 'settle_void' | 'cancel' | 'marker' | 'resolve' | 'manager_payout'
   | 'approve' | 'salary_freeze' | 'salary_quote';
 
-/** Bốn lệnh ghi đi qua khoá chống gửi trùng + đối chiếu của lớp dữ liệu: E5 chi · E6 huỷ · E9 mốc · E16 xác nhận lương. */
-export type ProfitLedgerWriteOperation = Extract<ProfitLedgerOperation, 'payout' | 'cancel' | 'marker' | 'resolve'>;
+/**
+ * Các lệnh ghi đi qua khoá chống gửi trùng + đối chiếu của lớp dữ liệu: W1 tạm ứng · W2 chốt chi lợi nhuận ·
+ * W3 huỷ lần chốt · E6 huỷ phiếu · E9 mốc · E16 xác nhận lương.
+ */
+export type ProfitLedgerWriteOperation = Extract<ProfitLedgerOperation, 'advance' | 'settle' | 'settle_void' | 'cancel' | 'marker' | 'resolve'>;
 
 const OPERATION_LABEL: Readonly<Record<ProfitLedgerOperation, string>> = {
   read: 'tải sổ lợi nhuận',
-  preview: 'tính số dư lợi nhuận',
-  payout: 'lập phiếu chi lợi nhuận',
+  preview: 'tính lợi nhuận chưa chi và tạm ứng',
+  advance: 'lập phiếu tạm ứng',
+  settle: 'chốt chi lợi nhuận',
+  settle_void: 'huỷ lần chốt chi lợi nhuận',
   cancel: 'huỷ phiếu chi',
   marker: 'đặt mốc đã trả đủ',
   resolve: 'xác nhận phần lợi nhuận trong phiếu lương',
@@ -37,8 +42,16 @@ const OPERATION_LABEL: Readonly<Record<ProfitLedgerOperation, string>> = {
 };
 
 export type ProfitLedgerErrorKind =
-  /** 22023 PROFIT_LEDGER_ADVANCE_CONFIRM — vượt số còn phải trả, cần tick tạm ứng (detail {balance, within, advance}). */
-  | 'ADVANCE_CONFIRM'
+  /** PT409 PROFIT_LEDGER_SETTLE_CHANGED — số xem trước của lần chốt vừa đổi: tải lại xem trước, KHÔNG tự gửi lại. */
+  | 'SETTLE_CHANGED'
+  /** 22023 PROFIT_LEDGER_SETTLE_MONTH — tháng không chốt được (detail {through_month, min, max}). */
+  | 'SETTLE_MONTH'
+  /** 22023 PROFIT_LEDGER_SETTLE_NOTHING — không còn lợi nhuận chưa chi đến tháng đó (detail {through_month, unpaid_through}). */
+  | 'SETTLE_NOTHING'
+  /** 22023 PROFIT_LEDGER_SETTLE_ACCOUNT — lần chốt có tiền mà thiếu sổ quỹ / ngày chi. */
+  | 'SETTLE_ACCOUNT'
+  /** 55000 PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT — mốc sớm hơn tháng đã chốt chi (detail {last_settled_through_month}). */
+  | 'MARKER_BEFORE_SETTLEMENT'
   /** 22023 PROFIT_MANAGER_LEDGER_OVERDRAW — lương điều hành vượt số còn lại (detail {balance, amount, over}). */
   | 'MANAGER_OVERDRAW'
   /** 22023 PROFIT_LEDGER_MARKER_ERASES_ADVANCE — mốc xoá dấu tạm ứng, cần tick (detail {advance_erased,…}). */
@@ -88,7 +101,7 @@ export type ProfitLedgerErrorKind =
 
 export interface ProfitLedgerErrorInfo {
   kind: ProfitLedgerErrorKind;
-  /** Mã máy ở đầu MESSAGE (vd 'PROFIT_LEDGER_ADVANCE_CONFIRM'), null khi không có. */
+  /** Mã máy ở đầu MESSAGE (vd 'PROFIT_LEDGER_SETTLE_CHANGED'), null khi không có. */
   code: string | null;
   /** SQLSTATE hoặc mã PostgREST. */
   sqlstate: string | null;
@@ -158,7 +171,8 @@ function withDetail(info: Omit<ProfitLedgerErrorInfo, 'detail'>, detail: Record<
 
 function routeOffMessage(op: ProfitLedgerOperation): string {
   switch (op) {
-    case 'payout': return 'Sổ tổng đang xem thử — chưa chi lợi nhuận cổ đông được.';
+    case 'settle': return 'Sổ tổng đang xem thử — chưa chốt chi lợi nhuận cổ đông được.';
+    case 'advance': return 'Sổ tổng lợi nhuận chưa bật ở công ty này — chưa lập phiếu tạm ứng được.';
     case 'marker': return 'Sổ tổng chưa mở phần đặt mốc đã trả đủ.';
     case 'resolve': return 'Sổ tổng chưa mở phần xác nhận lợi nhuận trong phiếu lương.';
     case 'approve': return 'Sổ tổng chưa bật — chưa duyệt hay chi phiếu này được (vẫn huỷ được).';
@@ -179,14 +193,14 @@ const LOCKED_MESSAGES: Readonly<Record<string, string>> = {
   PROFIT_LEDGER_NO_PENDING_REQUEST: 'Phiếu không còn yêu cầu duyệt đang chờ.',
   PROFIT_LEDGER_IN_HANDOVER: 'Phiếu đang nằm trong phiên bàn giao tiền mặt — huỷ phiên bàn giao trước rồi mới huỷ phiếu.',
   PROFIT_LEDGER_SUBJECT_GONE: 'Người nhận đã bị xoá hoặc ngưng — phiếu chỉ còn Huỷ.',
-  PROFIT_LEDGER_CREATE_ONLY: 'Phiếu chi theo sổ tổng chỉ lập được bằng hộp Chi lợi nhuận, ở trạng thái chờ duyệt.',
+  PROFIT_LEDGER_CREATE_ONLY: 'Phiếu chi theo sổ tổng chỉ lập được bằng hộp Chi lợi nhuận hoặc phiếu Tạm Ứng, ở trạng thái chờ duyệt.',
   PROFIT_LEDGER_SALARY_VOUCHER_DEAD: 'Phiếu lương đã huỷ hoặc bị từ chối — không cần xác nhận nữa.',
 };
 
 const FORBIDDEN_MESSAGES: Readonly<Record<string, string>> = {
   PROFIT_LEDGER_FORBIDDEN: 'Bạn không có quyền xem sổ lợi nhuận này.',
-  PROFIT_LEDGER_ADVANCE_SELF_ONLY: 'Quyền tạm ứng chỉ chi cho chính mình.',
-  PROFIT_LEDGER_ADVANCE_CASHBOOK: 'Quyền tạm ứng chỉ chi từ sổ quỹ bạn đang giữ.',
+  PROFIT_LEDGER_ADVANCE_CASHBOOK: 'Chỉ lập phiếu tạm ứng từ sổ quỹ bạn đang giữ.',
+  PROFIT_LEDGER_ADVANCE_PAYEE_NO_RIGHT: 'Người nhận chưa được cấp quyền tạm ứng (hoặc chưa có tài khoản đăng nhập) — nhờ chủ công ty cấp quyền rồi lập lại.',
   PROFIT_LEDGER_MAKER_SELF_APPROVE: 'Người lập phiếu không tự duyệt được — cần một chủ khác duyệt.',
   PROFIT_LEDGER_PAYEE_SELF_APPROVE: 'Người nhận tiền không tự duyệt được — cần một chủ khác duyệt.',
   PROFIT_LEDGER_APPROVE_FORBIDDEN: 'Bạn không có quyền duyệt khoản này.',
@@ -198,10 +212,11 @@ const FORBIDDEN_MESSAGES: Readonly<Record<string, string>> = {
   PROFIT_LEDGER_ACTOR_REQUIRED: 'Phiên đăng nhập đã hết — đăng nhập lại rồi thử.',
   PROFIT_LEDGER_SALARY_SELF_RESOLVE: 'Không tự xác nhận dòng lương của chính mình — cần một chủ khác.',
   SALARY_PROFIT_DENIED: 'Bạn không có quyền với phần lợi nhuận trong lương của nhân viên này.',
-  PROFIT_PAYOUT_CHAIN_WRITER_REQUIRED: 'Phiếu chi lợi nhuận chỉ lập được qua hộp Chi lợi nhuận.',
+  PROFIT_PAYOUT_CHAIN_WRITER_REQUIRED: 'Phiếu chi lợi nhuận chỉ lập được qua hộp Chi lợi nhuận hoặc phiếu Tạm Ứng.',
 };
 
 const SYSTEM_MESSAGES: Readonly<Record<string, string>> = {
+  PROFIT_LEDGER_POSITION_DRIFT: 'Lợi nhuận chưa chi và tạm ứng đang không cộng ra đúng số dư sổ tổng — chưa hiện số, chưa ghi gì. Báo bộ phận kỹ thuật.',
   PROFIT_LEDGER_ENTRIES_DRIFT: 'Sổ chi tiết chưa cộng ra đúng số dư — chưa hiện sổ. Báo bộ phận kỹ thuật.',
   PROFIT_LEDGER_MARKER_MISMATCH: 'Số dư sau khi đặt mốc khác số xem trước — chưa đặt mốc. Báo bộ phận kỹ thuật.',
   PROFIT_LEDGER_NO_PAYOUT_ROW: 'Phiếu thiếu dòng sổ tổng — báo quản trị.',
@@ -228,14 +243,45 @@ function classifyCoded(
 ): ProfitLedgerErrorInfo | null {
   const base = { code, sqlstate, reload: false } as const;
   switch (code) {
-    case 'PROFIT_LEDGER_ADVANCE_CONFIRM': {
-      const balance = money(detailNumber(detail, 'balance'));
-      const advance = money(detailNumber(detail, 'advance'));
-      const message = balance && advance
-        ? `Số tiền vượt số còn phải trả ${balance}. Phần vượt ${advance} là tạm ứng lợi nhuận — tick xác nhận tạm ứng và ghi lý do rồi gửi lại.`
-        : 'Số tiền vượt số còn phải trả — phần vượt là tạm ứng lợi nhuận. Tick xác nhận tạm ứng và ghi lý do rồi gửi lại.';
-      return withDetail({ ...base, kind: 'ADVANCE_CONFIRM', message }, detail);
+    case 'PROFIT_LEDGER_SETTLE_CHANGED':
+      return withDetail({ ...base, kind: 'SETTLE_CHANGED', reload: true, message: 'Số liệu vừa đổi so với lúc xem trước — chưa chốt gì. Đã tải lại; xem số mới rồi bấm chốt lần nữa.' }, detail);
+    case 'PROFIT_LEDGER_SETTLE_MONTH': {
+      const min = monthLabel(detail?.min);
+      const max = monthLabel(detail?.max);
+      const range = min && max ? (min === max ? ` Hiện chỉ chốt được đến hết ${max}.` : ` Hiện chốt được từ ${min} đến ${max}.`) : '';
+      return withDetail({
+        ...base, kind: 'SETTLE_MONTH', reload: true,
+        message: `Tháng này chưa chốt chi được: phải là tháng đã chốt lợi nhuận của cổ đông, sau mốc "đã trả đủ" và không trước lần chốt chi gần nhất.${range}`,
+      }, detail);
     }
+    case 'PROFIT_LEDGER_SETTLE_NOTHING': {
+      const through = monthLabel(detail?.through_month);
+      const message = through
+        ? `Không còn lợi nhuận chưa chi đến hết ${through} để chốt.`
+        : 'Không còn lợi nhuận chưa chi đến tháng này để chốt.';
+      return withDetail({ ...base, kind: 'SETTLE_NOTHING', reload: true, message }, detail);
+    }
+    case 'PROFIT_LEDGER_SETTLE_ACCOUNT':
+      return withDetail({ ...base, kind: 'SETTLE_ACCOUNT', message: 'Lần chốt này có tiền thực chi — chọn sổ quỹ và ngày chi rồi bấm lại.' }, detail);
+    case 'PROFIT_LEDGER_SETTLE_EXPECTED':
+      return withDetail({ ...base, kind: 'VALIDATION', reload: true, message: 'Thiếu số đã xem trước của lần chốt — tải lại xem trước rồi bấm chốt lần nữa.' }, detail);
+    case 'PROFIT_LEDGER_SETTLE_MISMATCH':
+      return withDetail({ ...base, kind: 'STALE', reload: true, message: 'Số liệu của cổ đông vừa đổi trong lúc chốt — chưa chốt gì. Tải lại xem trước rồi chốt lại.' }, detail);
+    case 'PROFIT_LEDGER_SETTLE_HAS_VOUCHER':
+      return withDetail({ ...base, kind: 'VALIDATION', reload: true, message: 'Lần chốt này có phiếu chi tiền — huỷ phiếu chi đó (có lý do), lần chốt tự hết hiệu lực.' }, detail);
+    case 'PROFIT_LEDGER_SETTLE_NOT_ACTIVE':
+      return withDetail({ ...base, kind: 'STALE', reload: true, message: 'Lần chốt này đã huỷ từ trước — tải lại để xem.' }, detail);
+    case 'PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT': {
+      const last = monthLabel(detail?.last_settled_through_month);
+      const message = last
+        ? `Đã chốt chi lợi nhuận đến hết ${last} — mốc "đã trả đủ" phải từ tháng đó trở đi, hoặc huỷ lần chốt đó trước rồi mới đặt mốc sớm hơn.`
+        : 'Cổ đông đã có lần chốt chi lợi nhuận sau tháng này — mốc "đã trả đủ" phải từ tháng đã chốt chi trở đi, hoặc huỷ lần chốt đó trước.';
+      return withDetail({ ...base, kind: 'MARKER_BEFORE_SETTLEMENT', message }, detail);
+    }
+    case 'PROFIT_LEDGER_TYPE_NAME_TAKEN':
+      return withDetail({ ...base, kind: 'CONFIG', message: 'Công ty đã có một hạng mục chi tên "Tạm Ứng" dùng cho việc khác — đổi tên hạng mục đó ở danh mục Thu chi rồi lập lại.' }, detail);
+    case 'PROFIT_LEDGER_BAD_INPUT':
+      return withDetail({ ...base, kind: 'VALIDATION', message: 'Thiếu thông tin công ty hoặc cổ đông — tải lại trang rồi thử lại.' }, detail);
     case 'PROFIT_MANAGER_LEDGER_OVERDRAW': {
       const balance = money(detailNumber(detail, 'balance'));
       const over = money(detailNumber(detail, 'over'));
@@ -260,9 +306,13 @@ function classifyCoded(
     }
     case 'PROFIT_LEDGER_SALARY_REVIEW_PENDING': {
       const n = detailNumber(detail, 'count');
+      // Người giữ sổ lập phiếu tạm ứng HỘ không nhận DETAIL (số là của cổ đông) ⇒ câu không kèm số phiếu.
+      const tail = op === 'advance'
+        ? 'Chủ công ty xác nhận phần lương trước rồi mới tạm ứng được.'
+        : 'Xác nhận phần lương trước rồi mới chi.';
       const message = n
-        ? `Cổ đông còn ${n} phiếu lương cần chủ xem lại phần lợi nhuận. Xác nhận phần lương trước rồi mới chi.`
-        : 'Cổ đông còn phiếu lương cần chủ xem lại phần lợi nhuận. Xác nhận phần lương trước rồi mới chi.';
+        ? `Cổ đông còn ${n} phiếu lương cần chủ xem lại phần lợi nhuận. ${tail}`
+        : `Cổ đông còn phiếu lương cần chủ xem lại phần lợi nhuận. ${tail}`;
       return withDetail({ ...base, kind: 'SALARY_REVIEW_PENDING', message }, detail);
     }
     case 'PROFIT_LEDGER_ROUTE_OFF':
@@ -270,7 +320,10 @@ function classifyCoded(
     case 'PROFIT_LEDGER_FROZEN':
       return withDetail({ ...base, kind: 'FROZEN', message: 'Sổ tổng đang đóng băng — chỉ huỷ được, chưa chi hay duyệt được.' }, detail);
     case 'PROFIT_LEDGER_TYPE_NOT_FORCED':
-      return withDetail({ ...base, kind: 'CONFIG', message: 'Hạng mục "Chia lợi nhuận cổ đông" phải bật "Bắt buộc duyệt" mới lập được phiếu. Báo chủ công ty kiểm tra.' }, detail);
+      return withDetail({
+        ...base, kind: 'CONFIG',
+        message: `Hạng mục "${op === 'advance' ? 'Tạm Ứng' : 'Chia lợi nhuận cổ đông'}" phải bật "Bắt buộc duyệt" mới lập được phiếu. Báo chủ công ty kiểm tra.`,
+      }, detail);
     case 'PROFIT_LEDGER_REQUEST_NOT_PENDING':
       return withDetail({ ...base, kind: 'CONFIG', message: 'Luật duyệt của công ty không đưa phiếu này vào hàng chờ duyệt — chưa lập phiếu. Báo chủ công ty kiểm tra luật duyệt.' }, detail);
     case 'PROFIT_LEDGER_PROFIT_MONTH_LOCKED':
@@ -374,12 +427,15 @@ function classifyBySqlstate(
 }
 
 /**
- * Câu 23505 "khoá chống gửi trùng đã dùng với nội dung khác" của ĐÚNG từng lệnh (thân hàm Đợt 1):
- * E5 và E9 (qua `profit_ledger_tao_set_marker_v1`) không có mã máy; E6 `PROFIT_LEDGER_IDEMPOTENCY_REUSED`;
- * E16 `SALARY_PROFIT_IDEMPOTENCY_CONFLICT`. 23505 khác (trùng khoá duy nhất của một bảng…) không khớp.
+ * Câu 23505 "khoá chống gửi trùng đã dùng với nội dung khác" của ĐÚNG từng lệnh:
+ * W1 / W2 / W3 (tạm ứng, chốt, huỷ lần chốt) và E9 (qua `profit_ledger_tao_set_marker_v1`) không có mã máy;
+ * E6 `PROFIT_LEDGER_IDEMPOTENCY_REUSED`; E16 `SALARY_PROFIT_IDEMPOTENCY_CONFLICT`.
+ * 23505 khác (trùng khoá duy nhất của một bảng…) không khớp.
  */
 const IDEMPOTENCY_CONFLICT: Readonly<Record<ProfitLedgerWriteOperation, RegExp>> = {
-  payout: /^idempotency_key đã dùng với nội dung khác$/,
+  advance: /^idempotency_key đã dùng với nội dung khác$/,
+  settle: /^idempotency_key đã dùng với nội dung khác$/,
+  settle_void: /^idempotency_key đã dùng với nội dung khác$/,
   marker: /^idempotency_key đã dùng với nội dung khác$/,
   cancel: /^PROFIT_LEDGER_IDEMPOTENCY_REUSED\s*:/,
   resolve: /^SALARY_PROFIT_IDEMPOTENCY_CONFLICT\s*:/,

@@ -45,7 +45,9 @@ vi.mock('@/hooks/useIncomeExpenseTypes', () => ({ useIncomeExpenseTypes: () => (
 vi.mock('@/hooks/useVoucherSlotWarning', () => ({ useVoucherSlotWarning: () => h.slots }));
 // F06: tháng đã chốt LN của toà (RPC profit_post_lock_vouchers_v1) — mặc định chưa chốt tháng nào.
 vi.mock('@/hooks/useProfitPostLock', () => ({ useProfitLockedMonthsForForm: (o: unknown) => { h.postLockArgs = o; return h.postLock; } }));
-vi.mock('../IncomeExpenseItemSelector', () => ({ default: () => null }));
+// Ghi lại prop form truyền cho ô chọn hạng mục (để kiểm mục "Tạm Ứng" chỉ được mở ở chế độ TẠO MỚI).
+const selector = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }));
+vi.mock('../IncomeExpenseItemSelector', () => ({ default: (props: Record<string, unknown>) => { selector.props.push(props); return null; } }));
 vi.mock('../AttachmentUpload', () => ({ default: () => null }));
 
 import IncomeExpenseForm from '../IncomeExpenseForm';
@@ -202,6 +204,28 @@ describe('Lỗi biểu mẫu theo trường', () => {
     await waitFor(() => expect(document.activeElement).toBe(denThang));
     expect(denThang?.getAttribute('aria-invalid')).toBe('true');
     expect(h.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('Mục "Tạm Ứng" (tạm ứng cổ đông) chỉ mở cho phiếu TẠO MỚI', () => {
+  const lastSelector = () => selector.props[selector.props.length - 1]!;
+  beforeEach(() => { selector.props = []; });
+
+  it('tạo mới ⇒ ô chọn hạng mục được phép hiện mục Tạm Ứng (theo công ty đang chọn)', () => {
+    render(<IncomeExpenseForm open onOpenChange={() => {}} defaultType="EXPENSE" />);
+    expect(lastSelector().shareholderAdvance).toMatchObject({ organizationId: 'o1' });
+  });
+  it('sửa phiếu chờ duyệt ⇒ không có mục Tạm Ứng', () => {
+    moForm(phieu());
+    expect(selector.props.length).toBeGreaterThan(0);
+    expect(selector.props.every((props) => props.shareholderAdvance === undefined)).toBe(true);
+  });
+  it('tạo bản sao từ phiếu cũ ⇒ không có mục Tạm Ứng', () => {
+    const source = phieu();
+    h.detail = source;
+    render(<IncomeExpenseForm open onOpenChange={() => {}} copyFrom={source} />);
+    expect(selector.props.length).toBeGreaterThan(0);
+    expect(selector.props.every((props) => props.shareholderAdvance === undefined)).toBe(true);
   });
 });
 

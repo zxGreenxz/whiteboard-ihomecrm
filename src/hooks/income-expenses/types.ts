@@ -122,6 +122,12 @@ export interface IncomeExpenseWithRelations {
   supplements?: import('@/lib/incomeExpenseSupplement').IncomeExpenseSupplement[];
   id: string;
   user_id: string;
+  /**
+   * Người LẬP phiếu theo cột `income_expenses.maker_user_id`. Phiếu chi theo sổ tổng lợi nhuận ghi `user_id` là chủ
+   * công ty (không phải người bấm lập) nên "phiếu của tôi" ở các phiếu đó phải so cột này. Chỉ danh sách Thu chi
+   * (đọc thẳng bảng) mang trường này; đường đọc chi tiết qua RPC không trả ⇒ vắng = không biết, KHÔNG phải "không ai".
+   */
+  maker_user_id?: string | null;
   /** Finance V2 (§12.1): org để resolve route + 4 trục trạng thái + version CAS. */
   organization_id: string | null;
   posting_mode: "CASHBOOK" | "NON_CASH" | null;

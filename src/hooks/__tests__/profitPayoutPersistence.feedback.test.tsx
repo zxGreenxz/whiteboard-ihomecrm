@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-// Dấu chờ đối chiếu của hai lệnh chi tiền theo sổ tổng: lập phiếu chi lợi nhuận (E5, khoá theo công ty
+// Dấu chờ đối chiếu của hai lệnh chi tiền theo sổ tổng: lập phiếu tạm ứng cổ đông (W1, khoá theo công ty
 // CỦA CỔ ĐÔNG) và lập phiếu lương điều hành (manager_salary_payout_v1, khoá theo công ty đang chọn).
+// (Trước 18/11/2026 biến thể thứ nhất là lệnh chi lợi nhuận nhập tay E5 — web không còn gọi.)
 import {act,cleanup,renderHook} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import type {ReactNode} from 'react';
@@ -10,14 +11,14 @@ vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:m.actor})}));
 vi.mock('sonner',()=>({toast:{success:m.success,info:vi.fn(),error:vi.fn(),warning:m.warning}}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:m.rpc,from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:null,error:null})})}}));
 import {useCreateManagerSalaryPayout} from '../income-expenses/specialized';
-import {useCreateProfitLedgerPayout} from '../profit-ledger/useProfitLedgerMutations';
+import {useCreateShareholderAdvance} from '../profit-ledger/useProfitLedgerMutations';
 const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={new QueryClient({defaultOptions:{mutations:{retry:false}}})}>{children}</QueryClientProvider>;
 const pending=()=>Object.keys(localStorage).filter(k=>k.startsWith('ihome:financial-pending:'));
-const ledgerReceipt={voucher_id:'voucher-a',approval_request_id:'req-a',shareholder_id:'person-a',amount:500000,within_amount:500000,advance_amount:0,balance_before:900000,warnings:[],maker_kind:'OWNER',state:'PENDING_APPROVAL'};
+const ledgerReceipt={voucher_id:'voucher-a',approval_request_id:'req-a',shareholder_id:'person-a',amount:500000,within_amount:0,advance_amount:500000,balance_before:null,warnings:[{code:'ADVANCE',advance_amount:500000},{code:'NEEDS_OWNER_APPROVAL'}],maker_kind:'CUSTODIAN_FOR_PAYEE',payout_kind:'ADVANCE',state:'PENDING_APPROVAL'};
 const managerReceipt={voucher_id:'voucher-a',manager_salary_voucher_id:'voucher-a',approval_request_id:'req-a',manager_id:'person-a',state:'PENDING_APPROVAL'};
 type Variant={name:string;receipt:Record<string,unknown>;useHook:()=>{mutateAsync:()=>Promise<unknown>}};
 const variants:Variant[]=[
- {name:'profit-ledger',receipt:ledgerReceipt,useHook:()=>{const h=useCreateProfitLedgerPayout();return {mutateAsync:()=>h.mutateAsync({organizationId:'org-a',shareholderId:'person-a',amount:500000,accountId:'account-a',voucherDate:'2026-09-30',note:null,allowAdvance:false})};}},
+ {name:'profit-ledger',receipt:ledgerReceipt,useHook:()=>{const h=useCreateShareholderAdvance();return {mutateAsync:()=>h.mutateAsync({organizationId:'org-a',shareholderId:'person-a',amount:500000,accountId:'account-a',voucherDate:'2026-09-30',note:null})};}},
  {name:'manager',receipt:managerReceipt,useHook:()=>{const h=useCreateManagerSalaryPayout();return {mutateAsync:()=>h.mutateAsync({amount:500000,account_id:'account-a',voucher_date:'2026-09-30',organizationId:'org-a',manager_id:'person-a'})};}},
 ];
 beforeEach(()=>{vi.clearAllMocks();m.actor='actor-a';localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org-a');m.rpc.mockResolvedValue({data:null,error:null});});afterEach(cleanup);

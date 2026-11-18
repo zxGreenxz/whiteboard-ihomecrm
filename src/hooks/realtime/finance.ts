@@ -84,7 +84,12 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       "profit-ledger-entries",
       "profit-ledger-payout",
       "profit-ledger-marker-preview",
-      "profit-payout-preview",
+      // 18/11/2026 tạm ứng + chốt chi lợi nhuận: hai con số của vị thế và hai bản xem trước cũng đổi khi máy
+      // khác lập / duyệt / huỷ phiếu tạm ứng hay phiếu tiền của một lần chốt.
+      "profit-positions",
+      "my-profit-position",
+      "profit-advance-preview",
+      "profit-settlement-preview",
       "my-profit-ledger",
       "profit-manager-ledger",
       "manager-ledger-payouts",

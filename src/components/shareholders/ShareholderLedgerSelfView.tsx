@@ -1,6 +1,7 @@
 // Cổ đông TỰ XEM theo SỔ TỔNG (E3) — máy tính. Chỉ mount khi máy chủ báo sổ tổng đã chạy (`ready`).
-// Hiện TIỀN CỦA CHÍNH MÌNH: được chia (sau mốc đã trả đủ), đã nhận, đang chờ duyệt, trả qua lương,
-// còn được nhận / đang tạm ứng, lịch sử phiếu. Tỷ lệ % CHỈ hiện khi chủ cấp quyền riêng VÀ máy chủ gửi
+// Hiện TIỀN CỦA CHÍNH MÌNH: được chia (sau mốc đã trả đủ), đã nhận, đang chờ duyệt, trả qua lương, hai con
+// số của vị thế (R2) "Lợi nhuận chưa chi" · "Tạm ứng đang có", các lần chủ chốt chi lợi nhuận, lịch sử
+// phiếu. Tỷ lệ % CHỈ hiện khi chủ cấp quyền riêng VÀ máy chủ gửi
 // kèm mảng tương ứng (thiếu quyền ⇒ máy chủ bỏ hẳn khoá). Thẻ "Doanh thu và lợi nhuận toà đã chốt" đã bỏ
 // khỏi màn máy tính (chủ yêu cầu 16/11/2026); bảng Nhà × Tháng có bộ lọc nhà người xem tự tạo.
 
@@ -8,6 +9,7 @@ import { useMemo, useState } from 'react';
 import { HandCoins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useMyPositionView } from '@/hooks/profit-ledger/useMyPositionView';
 import { useBuildingFilterState } from '@/hooks/useBuildingFilterState';
 import { formatCurrency } from '@/lib/utils';
 import { formatISODateVN } from '@/lib/vnDate';
@@ -15,14 +17,18 @@ import { ProfitHubSlot } from '@/pages/reports/finance/ProfitHubShell';
 import { activeBuildingFilter, applyBuildingFilter } from '@/lib/profitLedger/buildingFilters';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 import {
+  advancePendingText, isUnpaidNegative, POSITION_LABELS, settlementCashPendingText, UNPAID_NEGATIVE_NOTE,
+} from '@/lib/profitLedger/positionView';
+import {
   amountsByBuilding, buildingColumns, buildingMatrix, ledgerYears, monthlyAmounts, monthsInScope, newestFirst,
-  payoutStatusLabel, periodLabel, salaryNet, selfAdvanceBlockedNote, selfBalanceView,
+  payoutStatusLabel, periodLabel, salaryNet, selfAdvanceBlockedNote,
 } from '@/lib/profitLedger/selfView';
 import { cancelTargetFromMyPayout, type ProfitPayoutCancelTarget } from '@/lib/profitLedger/vouchers';
 import { BuildingFilterBar } from './BuildingFilterBar';
 import { DonutBreakdown, MiniBars } from './profitCharts';
-import ProfitDistributeDialog from './ProfitDistributeDialog';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
+import ProfitSelfAdvanceDialog from './ProfitSelfAdvanceDialog';
+import { MyPositionError, MySettlementsCard } from './ShareholderSelfPosition';
 import { currentYear } from './shareholderUtils';
 
 const ALL = 'all';
@@ -45,7 +51,10 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
   const [cancelTarget, setCancelTarget] = useState<ProfitPayoutCancelTarget | null>(null);
 
   const monthNumber = month === ALL ? null : Number(month);
-  const balance = selfBalanceView(ledger);
+  // Hai con số của vị thế (R2) + các lần chốt. Chưa có số ⇒ "—", không hiện 0.
+  const positionView = useMyPositionView(ledger.organization_id);
+  const position = positionView.position;
+  const unpaidNegative = !!position && isUnpaidNegative(position);
   const viaSalary = salaryNet(ledger);
   const advanceNote = selfAdvanceBlockedNote(ledger.route);
   const years = useMemo(() => ledgerYears(ledger, currentYear()), [ledger]);
@@ -116,10 +125,28 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
           </>
         )}
         <div className="ph-kpi__div" />
-        <div className="ph-kpi ph-kpi--flex" data-testid="self-kpi-balance">
-          <div className="ph-kpi__label">{balance.label}</div>
-          <div className={`ph-kpi__value${balance.status === 'ADVANCE' ? ' ph-kpi__value--peach' : ''}`}>{formatCurrency(balance.amount)}</div>
-          <div className="ph-kpi__sub">{balance.note}</div>
+        <div className="ph-kpi ph-kpi--flex" data-testid="self-kpi-unpaid" title={unpaidNegative ? UNPAID_NEGATIVE_NOTE : undefined}>
+          <div className="ph-kpi__label">{POSITION_LABELS.unpaid}</div>
+          <div className={`ph-kpi__value${unpaidNegative ? ' ph-kpi__value--peach' : ''}`}>
+            {position ? formatCurrency(position.unpaid_profit) : positionView.pending ? <span className="ph-kpi__skel" aria-label="Đang tải lợi nhuận chưa chi" /> : '—'}
+          </div>
+          <div className="ph-kpi__sub">
+            {position
+              ? settlementCashPendingText(position, formatCurrency) ?? (unpaidNegative ? 'đã nhận nhiều hơn phần được chia' : 'chờ chủ chốt chi')
+              : positionView.pending ? '' : 'chưa tải được'}
+          </div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi ph-kpi--flex" data-testid="self-kpi-advance">
+          <div className="ph-kpi__label">{POSITION_LABELS.advance}</div>
+          <div className="ph-kpi__value ph-kpi__value--gold">
+            {position ? formatCurrency(position.advance_outstanding) : positionView.pending ? <span className="ph-kpi__skel" aria-label="Đang tải tạm ứng đang có" /> : '—'}
+          </div>
+          <div className="ph-kpi__sub">
+            {position
+              ? advancePendingText(position, formatCurrency) ?? 'khấu trừ khi chủ chốt chi'
+              : positionView.pending ? '' : 'chưa tải được'}
+          </div>
         </div>
       </ProfitHubSlot>
 
@@ -148,6 +175,8 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
           )}
         </div>
         {access.canAdvanceOwn && advanceNote && <div className="ph-hint" role="note">{advanceNote}</div>}
+        <MyPositionError view={positionView} />
+        {unpaidNegative && <div className="ph-hint" role="note">{UNPAID_NEGATIVE_NOTE}</div>}
 
         <div className="ph-grid-2">
           <div className="ph-card ph-card__pad">
@@ -192,7 +221,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
                     <tr key={row.period} className={row.month === (highlightMonth ?? -1) + 1 ? 'is-current' : undefined}>
                       <td className="name">
                         T{row.month}
-                        {row.excluded && <span className="ph-inline ph-inline--soft" title="Nằm trong mốc đã trả đủ — không tính vào số còn được nhận">đã trả đủ</span>}
+                        {row.excluded && <span className="ph-inline ph-inline--soft" title="Nằm trong mốc đã trả đủ — không tính vào lợi nhuận chưa chi">đã trả đủ</span>}
                       </td>
                       {row.cells.map((v, i) => (
                         <td key={shown.columns[i]?.key ?? i} className="num">{v === null ? <span style={MUTED}>—</span> : formatCurrency(v)}</td>
@@ -204,12 +233,14 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
               </table>
             </div>
           )}
-          {marker && <div className="ph-card__note" style={{ padding: '0 18px 12px' }}>Các tháng đến hết {marker} đã trả đủ theo mốc — không tính vào số còn được nhận.</div>}
+          {marker && <div className="ph-card__note" style={{ padding: '0 18px 12px' }}>Các tháng đến hết {marker} đã trả đủ theo mốc — không tính vào lợi nhuận chưa chi.</div>}
         </div>
+
+        <MySettlementsCard view={positionView} />
 
         <div className="ph-card">
           <div className="ph-card__head">
-            <div className="ph-card__title">Phiếu chi lợi nhuận của bạn</div>
+            <div className="ph-card__title">Phiếu chi lợi nhuận và tạm ứng của bạn</div>
           </div>
           <div className="ph-tbl__scroll">
             <table className="ph-tbl">
@@ -224,7 +255,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
               </thead>
               <tbody>
                 {payouts.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', ...MUTED }}>Chưa có phiếu chi lợi nhuận nào</td></tr>
+                  <tr><td colSpan={5} style={{ textAlign: 'center', ...MUTED }}>Chưa có phiếu chi lợi nhuận hay tạm ứng nào</td></tr>
                 )}
                 {payouts.map((p) => {
                   const target = cancelTargetFromMyPayout(p, { organizationId: ledger.organization_id, subjectName: ledger.shareholder.name });
@@ -232,7 +263,8 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
                     <tr key={p.voucher_id} style={p.excluded_by_marker ? { opacity: 0.6 } : undefined}>
                       <td>{formatISODateVN(p.voucher_date)}</td>
                       <td>
-                        {p.voucher_code ?? '—'}
+                        {/* Mã phiếu đứng riêng một phần tử: nhãn "Tạm ứng" là chú thích kèm, không dính vào mã (tìm / chép mã được). */}
+                        <span>{p.voucher_code ?? '—'}</span>
                         {p.is_advance && <span className="ph-inline ph-inline--first">Tạm ứng</span>}
                         {p.excluded_by_marker && <span className="ph-keep" style={{ marginLeft: 4 }}>trước mốc</span>}
                       </td>
@@ -311,11 +343,10 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
       </div>
 
       {access.canAdvanceOwn && (
-        <ProfitDistributeDialog
+        <ProfitSelfAdvanceDialog
           open={advanceOpen}
           onOpenChange={setAdvanceOpen}
           organizationId={ledger.organization_id}
-          mode="SELF_ADVANCE"
           me={{ shareholderId: ledger.shareholder.id, name: ledger.shareholder.name }}
         />
       )}

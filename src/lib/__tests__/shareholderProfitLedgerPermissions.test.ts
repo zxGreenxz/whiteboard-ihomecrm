@@ -17,7 +17,8 @@ const trang = ALL_PAGES.find((p) => p.key === "shareholder_profit")!;
 describe("quyền sổ tổng lợi nhuận cổ đông", () => {
   it("đăng ký ba action trong module shareholder_profit, có nhãn tiếng Việt", () => {
     for (const k of KHOA_MOI) expect(actionsForModule("shareholder_profit")).toContain(k);
-    expect(ACTION_LABELS.advance_own_cashbook).toBe("Chi tạm ứng lợi nhuận từ sổ quỹ mình giữ");
+    // 18/11/2026: quyền ĐƯỢC TẠM ỨNG — tự ứng từ sổ mình giữ hoặc nhận phiếu Tạm Ứng người giữ sổ khác lập.
+    expect(ACTION_LABELS.advance_own_cashbook).toBe("Được tạm ứng lợi nhuận");
     expect(ACTION_LABELS.view_percent).toBe("Xem tỷ lệ % chia lợi nhuận");
     expect(ACTION_LABELS.view_building_totals).toBe("Xem doanh thu / lợi nhuận toà");
   });

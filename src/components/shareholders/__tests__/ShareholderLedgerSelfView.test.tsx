@@ -8,7 +8,22 @@ import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 
-const h = vi.hoisted(() => ({ distribute: vi.fn(), cancel: vi.fn() }));
+const h = vi.hoisted(() => ({
+  distribute: vi.fn(),
+  cancel: vi.fn(),
+  /** Vị thế của chính mình (R2): dữ liệu, 'pending', hoặc lỗi đọc. */
+  position: 'pending' as unknown,
+  positionOrgs: [] as (string | null)[],
+  retry: vi.fn(),
+}));
+vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
+  useMyShareholderPosition: (org: string | null) => {
+    h.positionOrgs.push(org);
+    if (h.position === 'pending') return { data: undefined, isError: false, error: null, refetch: h.retry };
+    if (h.position && typeof h.position === 'object' && 'code' in h.position) return { data: undefined, isError: true, error: h.position, refetch: h.retry };
+    return { data: h.position, isError: false, error: null, refetch: h.retry };
+  },
+}));
 // Bảng public.settings giả (bộ lọc nhà lưu theo tài khoản) + người đang đăng nhập.
 const db = vi.hoisted(() => ({ rows: new Map<string, Record<string, unknown>>(), user: { id: 'user-1' } }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: db.user }) }));
@@ -39,7 +54,7 @@ vi.mock('@/integrations/supabase/client', () => ({
 vi.mock('@/pages/reports/finance/ProfitHubShell', () => ({
   ProfitHubSlot: ({ name, children }: { name: string; children?: ReactNode }) => createElement('div', { 'data-slot': name }, children),
 }));
-vi.mock('@/components/shareholders/ProfitDistributeDialog', () => ({
+vi.mock('@/components/shareholders/ProfitSelfAdvanceDialog', () => ({
   default: (props: Record<string, unknown>) => {
     h.distribute(props);
     return props.open ? createElement('div', { 'data-testid': 'advance-dialog' }) : null;
@@ -71,6 +86,21 @@ const ledger = (over: Partial<MyProfitLedger> = {}): MyProfitLedger => ({
   ...over,
 });
 
+/** Vị thế của chính mình (R2): chưa chi 9.000.000, tạm ứng đã duyệt 350.000, một lần chốt còn chờ chi tiền. */
+const myPosition = (over: Record<string, unknown> = {}) => ({
+  organization_id: 'org-a', route: 'CANONICAL', shareholder: { id: 'sh-1', name: 'Cổ đông 1' },
+  unpaid_profit: 9_000_000, advance_outstanding: 350_000, advance_pending: 0, settlement_cash_pending: 0, balance: 8_650_000,
+  settled: { recognized: 0, offset: 0, cash: 0 }, last_settled_through_month: null, marker_month: null,
+  needs_review: { count: 0, suggested: 0 },
+  components: { allocated: 0, payouts_pending: 0, payouts_approved: 0, salary_investment: 0, salary_advance_offset: 0, unpaid_profit_raw: 9_000_000, advance_outstanding_raw: 350_000, advance_overoffset: 0 },
+  settlements: [], ...over,
+});
+const settlementRow = (over: Record<string, unknown> = {}) => ({
+  id: 'st-1', through_month: '2026-10-01', recognized_amount: 5_000_000, advance_offset_amount: 2_000_000, cash_amount: 3_000_000,
+  cash_voucher_id: 'v-cash', cash_voucher_code: 'PC-CHOT', cash_voucher_status: 'UNAPPROVED', cash_voucher_posting_status: 'UNPOSTED',
+  created_at: '2026-11-18T10:00:00+07:00', excluded_by_marker: false, ...over,
+});
+
 const NO_ACCESS: ShareholderSelfAccess = { canViewPercent: false, canViewBuildingTotals: false, canAdvanceOwn: false };
 const view = (l: MyProfitLedger, access: Partial<ShareholderSelfAccess> = {}) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -92,22 +122,88 @@ beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { value() {}, configurable: true });
   Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', { value() { return false; }, configurable: true });
 });
-beforeEach(() => { vi.clearAllMocks(); window.localStorage.clear(); db.rows.clear(); db.user = { id: 'user-1' }; });
+beforeEach(() => {
+  vi.clearAllMocks(); window.localStorage.clear(); db.rows.clear(); db.user = { id: 'user-1' };
+  h.position = myPosition(); h.positionOrgs = [];
+});
 afterEach(cleanup);
 
 describe('ShareholderLedgerSelfView — tiền của chính mình', () => {
-  it('KPI theo sổ tổng: được chia, đã nhận + chờ duyệt, qua lương (Y − D), còn được nhận', () => {
+  it('KPI: được chia, đã nhận + chờ duyệt, qua lương (Y − D), và HAI số của vị thế — không còn "Còn được nhận"', () => {
     view(ledger());
     expect(within(kpis()).getByTestId('self-kpi-allocated').textContent).toMatch(/15\.450\.000/);
     expect(within(kpis()).getByTestId('self-kpi-paid').textContent).toMatch(/Đã nhận3\.000\.000.*chờ duyệt 3\.000\.000/);
     expect(within(kpis()).getByTestId('self-kpi-salary').textContent).toMatch(/Qua lương800\.000.*trừ tạm ứng 400\.000/);
-    expect(within(kpis()).getByTestId('self-kpi-balance').textContent).toMatch(/Còn được nhận8\.650\.000/);
+    expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toMatch(/Lợi nhuận chưa chi9\.000\.000.*chờ chủ chốt chi/);
+    expect(within(kpis()).getByTestId('self-kpi-advance').textContent).toMatch(/Tạm ứng đang có350\.000.*khấu trừ khi chủ chốt chi/);
+    expect(screen.queryByTestId('self-kpi-balance')).toBeNull();
+    expect(kpis().textContent).not.toMatch(/Còn được nhận|Đang tạm ứng/);
+    expect(h.positionOrgs.every((org) => org === 'org-a')).toBe(true);
   });
 
-  it('đang tạm ứng ⇒ "Đang tạm ứng" số dương; mốc ⇒ "sau mốc đã trả đủ hết MM/YYYY"', () => {
-    view(ledger({ balance: -300_000, status: 'ADVANCE', marker: { settled_through_month: '2026-08-01' } }));
-    expect(within(kpis()).getByTestId('self-kpi-balance').textContent).toMatch(/Đang tạm ứng300\.000/);
+  it('tạm ứng chờ duyệt / tiền chốt chờ chi hiện ở dòng phụ; mốc ⇒ "sau mốc đã trả đủ hết MM/YYYY"', () => {
+    h.position = myPosition({ unpaid_profit: 4_000_000, advance_outstanding: 350_000, advance_pending: 650_000, settlement_cash_pending: 3_000_000, balance: 3_000_000 });
+    view(ledger({ marker: { settled_through_month: '2026-08-01' } }));
+    expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toMatch(/4\.000\.000.*đang chờ chi 3\.000\.000/);
+    expect(within(kpis()).getByTestId('self-kpi-advance').textContent).toMatch(/350\.000.*chờ duyệt 650\.000/);
     expect(within(kpis()).getByTestId('self-kpi-allocated').textContent).toContain('sau mốc đã trả đủ hết 08/2026');
+  });
+
+  it('lợi nhuận chưa chi ÂM vẫn hiện đúng dấu, kèm một dòng giải thích', () => {
+    h.position = myPosition({ unpaid_profit: -300_000, advance_outstanding: 0, balance: -300_000, components: { ...myPosition().components, unpaid_profit_raw: -300_000, advance_outstanding_raw: 0 } });
+    view(ledger());
+    expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toMatch(/-300\.000/);
+    expect(screen.getAllByRole('note').some((n) => /Lợi nhuận chưa chi âm/.test(n.textContent ?? ''))).toBe(true);
+  });
+
+  it('vị thế đang tải ⇒ khung chờ, không hiện 0; lỗi ⇒ "—" + câu báo có nút tải lại, phần còn lại vẫn hiện', () => {
+    h.position = 'pending';
+    const pending = view(ledger());
+    expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toBe('Lợi nhuận chưa chi');
+    expect(within(kpis()).getByLabelText('Đang tải tạm ứng đang có')).toBeTruthy();
+    expect(screen.queryByTestId('self-settlements-card')).toBeNull();
+    pending.unmount();
+    h.position = { code: 'XX000', message: 'PROFIT_LEDGER_POSITION_DRIFT: lệch' };
+    view(ledger());
+    expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toMatch(/—chưa tải được/);
+    expect(within(kpis()).getByTestId('self-kpi-advance').textContent).toMatch(/—chưa tải được/);
+    const error = screen.getByTestId('self-position-error');
+    expect(error.textContent).toMatch(/không cộng ra đúng số dư sổ tổng/);
+    fireEvent.click(within(error).getByRole('button', { name: 'Tải lại' }));
+    expect(h.retry).toHaveBeenCalled();
+    expect(within(kpis()).getByTestId('self-kpi-allocated').textContent).toMatch(/15\.450\.000/);
+  });
+
+  it('các lần chốt chi lợi nhuận: tháng, phần ghi nhận, khấu trừ tạm ứng, thực chi, trạng thái phiếu', () => {
+    h.position = myPosition({ settlements: [
+      settlementRow(),
+      settlementRow({ id: 'st-0', through_month: '2026-09-01', recognized_amount: 800_000, advance_offset_amount: 800_000, cash_amount: 0, cash_voucher_id: null, cash_voucher_code: null, cash_voucher_status: null, cash_voucher_posting_status: null, excluded_by_marker: true }),
+    ] });
+    view(ledger());
+    const card = screen.getByTestId('self-settlements-card');
+    expect(within(card).getByTestId('self-settlement-st-1').textContent).toMatch(/10\/2026.*5\.000\.000.*2\.000\.000.*3\.000\.000.*Phiếu chi chờ duyệt · PC-CHOT/);
+    const noCash = within(card).getByTestId('self-settlement-st-0');
+    expect(noCash.textContent).toMatch(/09\/2026.*trước mốc.*Không ra tiền/);
+    expect(noCash.getAttribute('style')).toMatch(/opacity/);
+    // Cổ đông chỉ XEM: không có nút huỷ chốt ở màn tự xem.
+    expect(within(card).queryByRole('button')).toBeNull();
+  });
+
+  it('bảng phiếu: mã phiếu tạm ứng đứng RIÊNG một phần tử (nhãn "Tạm ứng" không dính vào mã — tìm đúng mã được)', () => {
+    view(ledger());
+    // Như spec e2e (Playwright getByText exact xét TOÀN BỘ chữ của phần tử, kể cả con): phải có một phần tử mà toàn bộ
+    // chữ đúng bằng mã. Trước đây mã là chữ trần cạnh nhãn ⇒ chữ của cả ô là "PC-CHOTạm ứng", không phần tử nào khớp.
+    // (getByText của testing-library chỉ xét chữ TRỰC TIẾP của phần tử nên không bắt được lỗi này.)
+    const exactly = (code: string) => Array.from(document.querySelectorAll('td *, td'))
+      .filter((el) => (el.textContent ?? '').trim() === code);
+    expect(exactly('PC-CHO').length).toBeGreaterThan(0);
+    expect(exactly('PC-DUYET').length).toBeGreaterThan(0);
+    expect(exactly('PC-CHO')[0]!.closest('td')?.textContent).toMatch(/PC-CHO.*Tạm ứng/);
+  });
+
+  it('chưa có lần chốt nào ⇒ thẻ nói rõ, không để trống', () => {
+    view(ledger());
+    expect(screen.getByTestId('self-settlements-card').textContent).toMatch(/chưa chốt chi lợi nhuận lần nào/);
   });
 
   it('không có dòng lương ⇒ không có ô "Qua lương" (không hiện 0)', () => {
@@ -268,7 +364,7 @@ describe('ShareholderLedgerSelfView — phiếu và tạm ứng', () => {
     fireEvent.click(screen.getByRole('button', { name: /Chi tạm ứng cho tôi/ }));
     expect(screen.getByTestId('advance-dialog')).toBeTruthy();
     expect(h.distribute).toHaveBeenLastCalledWith(expect.objectContaining({
-      open: true, mode: 'SELF_ADVANCE', organizationId: 'org-a', me: { shareholderId: 'sh-1', name: 'Cổ đông 1' },
+      open: true, organizationId: 'org-a', me: { shareholderId: 'sh-1', name: 'Cổ đông 1' },
     }));
   });
 

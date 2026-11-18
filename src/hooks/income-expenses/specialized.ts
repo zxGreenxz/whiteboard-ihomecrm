@@ -14,9 +14,10 @@ import { invalidateProfitLedgerQueries } from "@/hooks/profit-ledger/useProfitLe
 import { toast } from "sonner";
 import type { CreateManagerSalaryPayoutInput } from "./types";
 
-// Chi lợi nhuận cổ đông KHÔNG còn ở đây: từ Đợt 2 (sổ tổng) web lập phiếu bằng
-// shareholder_profit_ledger_payout_v1 (hooks/profit-ledger). distribute_shareholder_profit_v1
-// chỉ còn scripts/test-accounting-chain.mjs gọi — thu hồi ở Đợt 3.
+// Chi lợi nhuận cổ đông KHÔNG còn ở đây: web lập phiếu qua hooks/profit-ledger — từ 18/11/2026 là
+// shareholder_profit_advance_v1 (tạm ứng) và shareholder_profit_settle_v1 (chủ chốt chi theo tháng);
+// lệnh nhập tay shareholder_profit_ledger_payout_v1 của Đợt 2 web không còn gọi.
+// distribute_shareholder_profit_v1 chỉ còn scripts/test-accounting-chain.mjs gọi — thu hồi ở Đợt 3.
 
 export interface ManagerSalaryPayoutReceipt extends CreatedVoucherReceipt {
   /** Số lương điều hành còn lại TRƯỚC phiếu này — chỉ có khi sổ tổng chạy thật; route khác ⇒ null. */

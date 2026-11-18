@@ -174,6 +174,25 @@
 /* Tab báo cáo: phép tính Thu − Chi = LN giữ sát trái, cụm cột 6 tháng ép mép phải. */
 .ph-kpi__div--push { margin-left: auto; }
 .ph-kpi__grow { min-width: 220px; }
+/* Dải KPI nhiều ô của tab Tổng quan của chủ (18/11/2026): lưới đều thay cho hàng flex tự xuống dòng (sáu ô từng
+   rơi thành 4 + 2, nhãn lệch vì ô được căn giữa theo ô cao nhất). Khung đủ rộng ⇒ 6 cột, không ⇒ 3 cột × 2 hàng;
+   nhãn mọi ô thẳng hàng ở đầu ô. Vạch ngăn là viền trái của ô (bỏ ở ô đầu mỗi hàng). Đo theo bề rộng khung chứa
+   (container query), không theo bề rộng màn: thanh bên mở hay thu đều đúng. Ngưỡng 6 cột 1680px: mỗi ô còn ≥ 240px
+   cho số hàng tỷ ("1.250.000.000 ₫" cỡ 26px, đo cả với chữ rộng) — hẹp hơn thì 3 × 2. */
+.ph-kpi-grid { flex: 1 1 100%; min-width: 0; container-type: inline-size; }
+.ph-kpi-grid__in { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 16px; align-items: start; }
+.ph-kpi-grid__in > .ph-kpi { padding: 0 20px; border-left: 1px solid rgba(255, 255, 255, 0.14); }
+.ph-kpi-grid__in > .ph-kpi:nth-child(3n + 1) { padding-left: 0; border-left: 0; }
+@container (min-width: 1680px) {
+  .ph-kpi-grid__in { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .ph-kpi-grid__in > .ph-kpi:nth-child(3n + 1) { padding-left: 20px; border-left: 1px solid rgba(255, 255, 255, 0.14); }
+  .ph-kpi-grid__in > .ph-kpi:nth-child(6n + 1) { padding-left: 0; border-left: 0; }
+}
+@container (max-width: 640px) {
+  .ph-kpi-grid__in { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ph-kpi-grid__in > .ph-kpi:nth-child(3n + 1) { padding-left: 20px; border-left: 1px solid rgba(255, 255, 255, 0.14); }
+  .ph-kpi-grid__in > .ph-kpi:nth-child(2n + 1) { padding-left: 0; border-left: 0; }
+}
 
 .ph-op {
   width: 26px; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, 0.1);
@@ -451,6 +470,22 @@ button.ph-chip:hover { filter: brightness(1.12); }
 }
 .ph .ph-mini-btn:hover { background: #f3f6f4; color: var(--ph-ink-2); }
 .ph .ph-mini-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Bảng "Sổ tổng theo cổ đông" (tab Tổng quan của chủ, 18/11/2026). Đệm ô theo nhịp .ph-tblwrap (18px ở mép, 10px
+   giữa) để đủ ba nút Sổ / Mốc / Chi trong khung ở 1366–1536px khi thanh bên mở (mốc "đã trả đủ" là dòng phụ dưới
+   tên, "chờ duyệt" là dòng phụ của "Đã chi"); tiêu đề cột được xuống dòng; tên, nhãn, số và nút không xuống dòng;
+   dòng phụ chữ nhỏ, xuống dòng được giữa chữ và số tiền / tháng. */
+.ph-tbl.ph-tbl--ledger th, .ph-tbl.ph-tbl--ledger td { padding-left: 10px; padding-right: 10px; }
+.ph-tbl.ph-tbl--ledger th:first-child, .ph-tbl.ph-tbl--ledger td:first-child { padding-left: 18px; }
+.ph-tbl.ph-tbl--ledger th:last-child, .ph-tbl.ph-tbl--ledger td:last-child { padding-right: 18px; }
+.ph-tbl.ph-tbl--ledger th { white-space: normal; vertical-align: bottom; }
+.ph-tbl.ph-tbl--ledger td.num { white-space: nowrap; }
+.ph-ledger__name, .ph-ledger__nowrap { white-space: nowrap; }
+.ph-ledger__tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.ph-ledger__tags .ph-state { white-space: nowrap; }
+.ph-ledger__sub { font-size: 11px; font-weight: 600; color: var(--ph-ink-4); white-space: normal; margin-top: 2px; }
+.ph-ledger__sub--warn { color: var(--ph-amber-d); }
+.ph-ledger__actions { display: flex; justify-content: flex-end; gap: 4px; white-space: nowrap; }
 
 /* Bảng shadcn (tab Chốt LN — có ô nhập, giữ nguyên component) kéo về nhịp của
    hệ thiết kế: header viết hoa nhỏ, dòng 10px, viền nhạt. */

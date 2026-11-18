@@ -5,7 +5,6 @@
 import type { MyLedgerMonth, MyLedgerPayout, MyProfitLedger } from './ledgerReaders';
 import { sameMoney } from './readPrimitives';
 import { profitLedgerRouteState } from './route';
-import type { LedgerBalanceStatus } from './sharedReaders';
 
 /** Năm của kỳ 'YYYY-MM-01'. */
 export const periodYear = (period: string): number => Number(period.slice(0, 4));
@@ -35,35 +34,10 @@ export function ledgerYears(ledger: MyProfitLedger, currentYear: number): number
   return [...years].filter(Number.isFinite).sort((a, b) => b - a);
 }
 
-export interface SelfBalanceView {
-  status: LedgerBalanceStatus;
-  /** "Còn được nhận" (≥ 0) hoặc "Đang tạm ứng" (< 0). */
-  label: string;
-  /** Số dương để hiện. */
-  amount: number;
-  /** Dòng phụ ngắn. */
-  note: string;
-}
-
-/** Số dư của chính mình theo sổ tổng, nói theo phía cổ đông. */
-export function selfBalanceView(ledger: MyProfitLedger): SelfBalanceView {
-  if (ledger.status === 'ADVANCE') {
-    return { status: 'ADVANCE', label: 'Đang tạm ứng', amount: -ledger.balance, note: 'trừ dần vào lợi nhuận các tháng sau' };
-  }
-  if (ledger.status === 'SETTLED') {
-    return { status: 'SETTLED', label: 'Còn được nhận', amount: 0, note: 'đã nhận đủ phần được chia' };
-  }
-  return {
-    status: 'OWED',
-    label: 'Còn được nhận',
-    amount: ledger.balance,
-    note: ledger.paid_pending > 0 ? 'đã trừ phiếu đang chờ duyệt' : 'chưa nhận',
-  };
-}
-
 /**
  * Phần lợi nhuận đã đi qua phiếu lương, trừ phần lương giữ lại để bù tạm ứng (Y − D). Cùng dấu với
- * công thức số dư: được chia − đã nhận − chờ duyệt − (Y − D) = còn được nhận. null = không có dòng lương.
+ * công thức số dư ròng: được chia − đã nhận − chờ duyệt − (Y − D). null = không có dòng lương.
+ * (Hai con số cổ đông thấy — "Lợi nhuận chưa chi" và "Tạm ứng đang có" — đọc từ vị thế R2, xem positionView.ts.)
  */
 export function salaryNet(ledger: MyProfitLedger): number | null {
   if (ledger.salary.length === 0 && sameMoney(ledger.paid_via_salary, 0) && sameMoney(ledger.advance_recovered, 0)) return null;
@@ -120,7 +94,7 @@ export function amountsByBuilding(months: readonly MyLedgerMonth[]): { key: stri
 export interface MatrixRow {
   period: string;
   month: number;
-  /** Kỳ nằm trong mốc "đã trả đủ": không tính vào số còn được nhận. */
+  /** Kỳ nằm trong mốc "đã trả đủ": không tính vào lợi nhuận chưa chi. */
   excluded: boolean;
   /** Theo thứ tự `columns`; null = toà không có phần chia tháng đó. */
   cells: (number | null)[];
@@ -160,8 +134,25 @@ export function newestFirst<T>(rows: readonly T[]): T[] {
 }
 
 /**
+ * Người đang xem tự tạm ứng được cho chính mình ở màn của CHỦ (tab Tổng quan quản lý) — cùng điều kiện mà tab tự
+ * xem và tab "Tạm ứng LN" dùng để hiện nút "Chi tạm ứng cho tôi": người xem là cổ đông chưa xoá
+ * (`useMyShareholder`) VÀ có quyền `shareholder_profit.advance_own_cashbook`. Thêm: cổ đông đó thuộc ĐÚNG công ty
+ * đang xem (như tab tự xem chỉ hỏi công ty của dòng cổ đông) — nút ở màn công ty này không lập phiếu ở công ty khác.
+ * null = không hiện nút.
+ */
+export function ownerSelfAdvanceSubject(
+  me: { id: string; name: string } | null | undefined,
+  canAdvanceOwn: boolean,
+  organizationId: string | null | undefined,
+): { shareholderId: string; name: string } | null {
+  if (!me || !canAdvanceOwn || !organizationId) return null;
+  if (shareholderOrganizationId(me) !== organizationId) return null;
+  return { shareholderId: me.id, name: me.name };
+}
+
+/**
  * Nút "Chi tạm ứng cho tôi": chỉ mở khi sổ tổng chạy thật (CANONICAL). Trả câu giải thích khi khoá,
- * null khi mở. Máy chủ (E5) vẫn là chốt cuối.
+ * null khi mở. Máy chủ (lệnh tạm ứng) vẫn là chốt cuối.
  */
 export function selfAdvanceBlockedNote(route: unknown): string | null {
   const state = profitLedgerRouteState(route);
