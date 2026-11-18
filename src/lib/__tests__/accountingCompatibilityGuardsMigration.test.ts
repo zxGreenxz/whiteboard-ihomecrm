@@ -13,6 +13,12 @@ const payoutDialog = readFileSync(
   "src/components/shareholders/ProfitDistributeDialog.tsx",
   "utf8",
 );
+// 18/11/2026: hộp của chủ thành hộp CHỐT chi lợi nhuận (vẫn file trên — phiếu chi tiền của lần chốt chọn sổ ở
+// đó); hộp "Chi tạm ứng cho tôi" của cổ đông tách sang file riêng. Cả hai ô chọn sổ quỹ đều phải qua cùng luật lọc.
+const selfAdvanceDialog = readFileSync(
+  "src/components/shareholders/ProfitSelfAdvanceDialog.tsx",
+  "utf8",
+);
 // Đợt 2 (sổ tổng): luật lọc sổ của hộp Chi lợi nhuận tách thành hàm thuần dùng chung cho hai chế độ
 // (chủ / người giữ sổ tự tạm ứng) — có test hành vi ở src/lib/profitLedger/__tests__/profitLedger.test.ts.
 const payoutAccountRule = readFileSync(
@@ -104,8 +110,15 @@ describe("accounting compatibility migration guards", () => {
     expect(payoutAccountRule).toContain(
       "accounts.filter((account) => !account.is_virtual)",
     );
-    expect(payoutDialog).toContain("profitPayoutAccounts({");
-    expect(payoutDialog).toContain("options={payoutAccounts.map");
+    // Mọi ô "Chi từ sổ quỹ" của phiếu chi lợi nhuận / tạm ứng: danh sách đi qua profitPayoutAccounts (bỏ sổ ảo)
+    // và ô chọn vẽ đúng danh sách đã lọc đó — không file nào tự vẽ thẳng từ danh sách sổ thô.
+    for (const dialog of [payoutDialog, selfAdvanceDialog]) {
+      expect(dialog).toContain("profitPayoutAccounts({");
+      expect(dialog).toContain("options={payoutAccounts.map");
+      expect(dialog).not.toMatch(/options=\{\s*(accountsQuery\.data|accounts)\b/);
+    }
+    expect(payoutDialog).toContain("mode: 'OWNER'");
+    expect(selfAdvanceDialog).toContain("mode: 'SELF_ADVANCE'");
     expect(approvalActions).toContain("!!approveTarget?.shareholder_id");
     expect(approvalActions).toContain(
       "accounts.filter((account) => !account.is_virtual)",

@@ -6,7 +6,7 @@
 // (profitLedgerRouteState) hoặc `ready` (E3). Lỗi hiện tại chỗ (`errorDisplay: 'inline'`): màn hình
 // bọc QueryRegion hoặc tự đọc `error` qua profitLedgerErrorMessage(error, 'read').
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { classifyDbError, isRetryable } from '@/lib/contracts/errors';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
@@ -241,6 +241,9 @@ export function useProfitSettlementPreview(input: {
     queryKey: ['profit-settlement-preview', input.shareholderId ?? null, input.throughMonth, input.accountId ?? null],
     enabled: !!input.shareholderId && (input.enabled ?? true),
     staleTime: 0,
+    // Giữ lần xem trước cũ trong lúc tải lại (đổi sổ quỹ không làm các ô của hộp chốt biến mất rồi hiện lại).
+    // Lớp gọi PHẢI xét `isPlaceholderData`: số cũ chỉ để hiện, không được gửi và không dùng cho cổ đông / tháng khác.
+    placeholderData: keepPreviousData,
     retry: retryBusyOnce,
     meta: { label: 'xem trước chốt chi lợi nhuận', errorDisplay: 'inline' },
     queryFn: async (): Promise<SettlementPreview> => {

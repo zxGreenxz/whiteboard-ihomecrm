@@ -29,12 +29,14 @@ import {
   useShareholderDistributions,
   computeShareholderSummary,
 } from "@/hooks/useShareholderProfit";
-import { useShareholderProfitLedger } from "@/hooks/profit-ledger/useProfitLedgerQueries";
+import { useShareholderProfitLedger, useShareholderProfitPositions } from "@/hooks/profit-ledger/useProfitLedgerQueries";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { isProfitLedgerForbidden } from "@/lib/profitLedger/errors";
 import type { ShareholderLedgerRow } from "@/lib/profitLedger/ledgerReaders";
 import { ownerLedgerMode, summarizeShareholderLedger } from "@/lib/profitLedger/ownerLedgerView";
+import type { ShareholderPositionRow } from "@/lib/profitLedger/positionReaders";
+import { POSITION_EXPLAIN, POSITION_LABELS, summarizePositions, UNPAID_NEGATIVE_NOTE } from "@/lib/profitLedger/positionView";
 import { profitLedgerRouteState } from "@/lib/profitLedger/route";
 import ProfitDistributeDialog from "./ProfitDistributeDialog";
 import { ManagerLedgerSection } from "./ManagerLedgerSection";
@@ -86,6 +88,13 @@ export default function ProfitOverviewTab() {
     loading: ledgerQuery.isLoading,
     forbidden: ledgerForbidden,
   });
+  // Vị thế từng cổ đông (R1): "Lợi nhuận chưa chi" và "Tạm ứng đang có". Lỗi hiện tại chỗ trong khối sổ tổng;
+  // chưa có số thì ô hiện "…" / "—", không bao giờ hiện 0 thay cho số chưa đọc được.
+  const positionsQuery = useShareholderProfitPositions(selectedOrganizationId, { enabled: !!ledger });
+  const positions = useMemo<readonly ShareholderPositionRow[] | null>(
+    () => positionsQuery.data?.shareholders ?? null,
+    [positionsQuery.data]
+  );
 
   const buildingName = (id: string) => buildings.find((b: any) => b.id === id)?.name ?? "—";
   const monthOf = (period?: string) => Number((period ?? "").slice(5, 7));
@@ -182,6 +191,12 @@ export default function ProfitOverviewTab() {
     [ledgerRows, shId]
   );
   const ledgerSum = useMemo(() => summarizeShareholderLedger(ledgerScoped), [ledgerScoped]);
+  // Hai con số đầu trang: tổng vị thế (R1) của đúng các cổ đông đang lọc; null = chưa có số.
+  const positionSum = useMemo(
+    () => (positions ? summarizePositions(shId === ALL ? positions : positions.filter((row) => row.shareholder_id === shId)) : null),
+    [positions, shId]
+  );
+  const positionsPending = !positions && !positionsQuery.isError;
 
   // ---- Rà 21/10 (F21): LN đã chốt đi về đâu — CHỈ HIỆN ----
   // Cơ sở: snapshot profit_monthly LOCKED, luỹ kế, cùng phạm vi với "Tổng LN đã chốt".
@@ -207,15 +222,16 @@ export default function ProfitOverviewTab() {
     // hermes-parity:end shareholder-profit
   }, [profitMonthly, allocActive, distActive, shId]);
 
-  // "Còn lại theo cổ đông": sổ tổng khi đang chạy; còn xem thử thì giữ cách tính cũ (cùng số đầu trang).
+  // Biểu đồ theo cổ đông: sổ tổng chạy ⇒ "Lợi nhuận chưa chi" của vị thế (R1; chưa đọc được thì để trống,
+  // không vẽ 0); còn xem thử thì giữ cách tính cũ (cùng số đầu trang).
   const remainingChart = useMemo(
     () =>
       (kpiMode === "LEDGER"
-        ? ledgerRows.map((row) => ({ name: row.name, value: row.balance }))
+        ? (positions ?? []).map((row) => ({ name: row.name, value: row.unpaid_profit }))
         : shareholders.map((s) => ({ name: s.name, value: summary[s.id]?.remaining ?? 0 })))
         .filter((x) => x.value !== 0)
         .sort((a, b) => b.value - a.value),
-    [kpiMode, ledgerRows, shareholders, summary]
+    [kpiMode, positions, shareholders, summary]
   );
   const remainingHolders = remainingChart.length;
 
@@ -246,8 +262,9 @@ export default function ProfitOverviewTab() {
           )}
         </div>
         <div className="ph-kpi__div" />
-        {/* Ba ô Được chia / Đã chi / Còn phải trả luôn CÙNG MỘT GỐC: sổ tổng chạy ⇒ cả ba đọc E1 (sau
-            mốc, gồm cổ đông đã xoá còn số); còn xem thử ⇒ cả ba theo cách tính cũ (vùng parity). */}
+        {/* Các ô số của cổ đông luôn CÙNG MỘT GỐC: sổ tổng chạy ⇒ Được chia / Đã chi đọc E1 (sau mốc, gồm cổ
+            đông đã xoá còn số), "Lợi nhuận chưa chi" / "Tạm ứng đang có" đọc vị thế (R1); còn xem thử ⇒ ba ô
+            Được chia / Đã ứng / Còn phải trả theo cách tính cũ (vùng parity). */}
         <div className="ph-kpi ph-kpi--flex" data-testid="kpi-allocated">
           {kpiMode === "LEDGER" ? (
             <>
@@ -288,13 +305,41 @@ export default function ProfitOverviewTab() {
               </div>
             </div>
             <div className="ph-kpi__div" />
-            <div className="ph-kpi ph-kpi--flex" data-testid="kpi-remaining">
-              <div className="ph-kpi__label">Còn phải trả</div>
-              <div className="ph-kpi__value">{formatCurrency(ledgerSum.owed)}</div>
-              <div className="ph-kpi__sub ph-kpi__sub--mint">{ledgerSum.owedCount} cổ đông còn phải trả · theo sổ tổng</div>
-              {ledgerSum.advance > 0 && (
-                <div className="ph-kpi__sub ph-kpi__sub--gold">đang tạm ứng {formatCurrency(ledgerSum.advance)}</div>
-              )}
+            {/* Hai con số của vị thế (R1). Chưa đọc được ⇒ "—" / khung chờ, không hiện 0. */}
+            <div className="ph-kpi ph-kpi--flex" data-testid="kpi-remaining" title={positionSum?.hasNegativeUnpaid ? UNPAID_NEGATIVE_NOTE : undefined}>
+              <div className="ph-kpi__label">{POSITION_LABELS.unpaid}</div>
+              <div className={`ph-kpi__value${positionSum && positionSum.unpaid < 0 ? " ph-kpi__value--peach" : ""}`}>
+                {positionSum
+                  ? formatCurrency(positionSum.unpaid)
+                  : positionsPending ? <Skeleton className="h-6 w-24 bg-white/20" aria-label="Đang tải lợi nhuận chưa chi" /> : "—"}
+              </div>
+              {positionSum ? (
+                <>
+                  <div className="ph-kpi__sub ph-kpi__sub--mint">{positionSum.unpaidCount} cổ đông còn lợi nhuận chưa chi</div>
+                  {positionSum.cashPending !== 0 && (
+                    <div className="ph-kpi__sub ph-kpi__sub--gold">đang chờ chi {formatCurrency(positionSum.cashPending)}</div>
+                  )}
+                  {positionSum.hasNegativeUnpaid && (
+                    <div className="ph-kpi__sub ph-kpi__sub--peach">có cổ đông âm — đã chi nhiều hơn phần được chia</div>
+                  )}
+                </>
+              ) : !positionsPending && <div className="ph-kpi__sub">chưa tải được</div>}
+            </div>
+            <div className="ph-kpi__div" />
+            <div className="ph-kpi ph-kpi--flex" data-testid="kpi-advance">
+              <div className="ph-kpi__label">{POSITION_LABELS.advance}</div>
+              <div className="ph-kpi__value ph-kpi__value--gold">
+                {positionSum
+                  ? formatCurrency(positionSum.advance)
+                  : positionsPending ? <Skeleton className="h-6 w-24 bg-white/20" aria-label="Đang tải tạm ứng đang có" /> : "—"}
+              </div>
+              {positionSum ? (
+                <div className={`ph-kpi__sub${positionSum.advancePending !== 0 ? " ph-kpi__sub--gold" : ""}`}>
+                  {positionSum.advancePending !== 0
+                    ? `chờ duyệt ${formatCurrency(positionSum.advancePending)}`
+                    : "đã duyệt, chưa khấu trừ"}
+                </div>
+              ) : !positionsPending && <div className="ph-kpi__sub">chưa tải được</div>}
             </div>
           </>
         ) : kpiMode === "LEGACY" ? (
@@ -323,7 +368,7 @@ export default function ProfitOverviewTab() {
             </div>
             <div className="ph-kpi__div" />
             <div className="ph-kpi ph-kpi--flex" data-testid="kpi-remaining">
-              <div className="ph-kpi__label">Còn phải trả</div>
+              <div className="ph-kpi__label">{POSITION_LABELS.unpaid}</div>
               <div className="ph-kpi__value">
                 {kpiMode === "PENDING" ? <Skeleton className="h-6 w-24 bg-white/20" aria-label="Đang tải sổ tổng" /> : "—"}
               </div>
@@ -461,7 +506,8 @@ export default function ProfitOverviewTab() {
           )}
         </div>
 
-        {/* Sổ tổng theo cổ đông (E1): mốc, được chia sau mốc, đã chi, chờ duyệt, qua lương, còn phải trả. */}
+        {/* Sổ tổng theo cổ đông: mốc, được chia sau mốc, đã chi, chờ duyệt, qua lương (E1) + lợi nhuận chưa chi,
+            tạm ứng đang có (R1). */}
         <div className="ph-card" data-testid="shareholder-ledger-card">
           <div className="ph-card__head">
             <div className="ph-card__title">
@@ -488,25 +534,34 @@ export default function ProfitOverviewTab() {
               <Skeleton className="h-28 w-full" aria-label="Đang tải sổ tổng lợi nhuận" />
             </div>
           ) : (
-            <ShareholderLedgerTable
-              rows={ledgerRows}
-              routeState={routeState}
-              canDistribute={canDistribute}
-              selectedId={shId === ALL ? null : shId}
-              onSelect={(id) => setShId(id ?? ALL)}
-              onOpenEntries={(row) => setEntriesFor({ id: row.shareholder_id, name: row.name })}
-              onPay={(row) => { setDistShareholder(row.shareholder_id); setDistOpen(true); }}
-              onMarker={(row) => setMarkerFor({ id: row.shareholder_id, name: row.name, marker: row.marker })}
-            />
+            <>
+              {positionsQuery.isError && (
+                <div style={{ padding: "0 18px 12px" }} data-testid="ledger-positions-error">
+                  <ProfitLedgerReadError error={positionsQuery.error} onRetry={() => { void positionsQuery.refetch(); }} />
+                </div>
+              )}
+              <ShareholderLedgerTable
+                rows={ledgerRows}
+                positions={positions}
+                positionsPending={positionsPending}
+                routeState={routeState}
+                canDistribute={canDistribute}
+                selectedId={shId === ALL ? null : shId}
+                onSelect={(id) => setShId(id ?? ALL)}
+                onOpenEntries={(row) => setEntriesFor({ id: row.shareholder_id, name: row.name })}
+                onPay={(row) => { setDistShareholder(row.shareholder_id); setDistOpen(true); }}
+                onMarker={(row) => setMarkerFor({ id: row.shareholder_id, name: row.name, marker: row.marker })}
+              />
+            </>
           )}
         </div>
 
         <div className="ph-card ph-card__pad">
-          <div className="ph-card__title">Còn lại theo cổ đông</div>
+          <div className="ph-card__title">{kpiMode === "LEDGER" ? `${POSITION_LABELS.unpaid} theo cổ đông` : "Còn lại theo cổ đông"}</div>
           <HBars data={remainingChart} />
           <div className="ph-hint">
             {kpiMode === "LEDGER"
-              ? "Số dư = được chia sau mốc − đã chi − chờ duyệt − trả qua lương (âm là đang tạm ứng)"
+              ? POSITION_EXPLAIN
               : "Số còn phải trả = được chia luỹ kế − đã ứng/đã chia (cách tính cũ)"}
           </div>
         </div>
@@ -515,11 +570,11 @@ export default function ProfitOverviewTab() {
         <ManagerLedgerSection organizationId={selectedOrganizationId} canPayManager={canPayManager} variant="desktop" />
       </div>
 
+      {/* Hộp CHỐT chi lợi nhuận: chủ chọn "chốt đến hết tháng", máy tính số — không nhập tay số tiền. */}
       <ProfitDistributeDialog
         open={distOpen}
         onOpenChange={setDistOpen}
         organizationId={selectedOrganizationId}
-        mode="OWNER"
         ledgerRows={ledger?.shareholders}
         defaultShareholderId={distShareholder}
         onReviewSalary={(shareholderId) => {
@@ -527,6 +582,12 @@ export default function ProfitOverviewTab() {
           const row = ledgerRows.find((r) => r.shareholder_id === shareholderId);
           setEntriesFor({ id: shareholderId, name: row?.name ?? "" });
         }}
+        onSetMarker={routeState.canSetMarker ? (shareholderId) => {
+          const row = ledgerRows.find((r) => r.shareholder_id === shareholderId);
+          if (!row) return;
+          setDistOpen(false);
+          setMarkerFor({ id: row.shareholder_id, name: row.name, marker: row.marker });
+        } : undefined}
       />
       <ShareholderLedgerSheet
         open={!!entriesFor}

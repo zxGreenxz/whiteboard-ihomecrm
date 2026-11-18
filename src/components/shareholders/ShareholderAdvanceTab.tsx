@@ -1,24 +1,30 @@
 // Tab "Tạm ứng LN" — người được chủ cấp riêng quyền tạm ứng lợi nhuận (shareholder_profit.advance_own_cashbook)
-// mà KHÔNG có tab tự xem (không có trang Báo cáo Lợi Nhuận). Chỉ: giải thích ngắn, nút mở hộp chi tạm ứng
-// cho CHÍNH MÌNH (chỉ sổ đang giữ, mọi khoản chờ chủ duyệt), và các khoản mình đã lập (tự huỷ khi còn chờ).
-// Không đọc sổ tổng của cổ đông khác, không cần quyền chi lợi nhuận. Số dư chỉ hiện khi sổ tổng đã chạy.
+// mà KHÔNG có tab tự xem (không có trang Báo cáo Lợi Nhuận). Chỉ: giải thích ngắn, hai con số của chính mình
+// ("Lợi nhuận chưa chi" · "Tạm ứng đang có" — R2), nút mở hộp tạm ứng cho CHÍNH MÌNH (chỉ sổ đang giữ, mọi
+// khoản chờ chủ duyệt), các lần chủ chốt chi và các khoản mình đã lập (tự huỷ khi còn chờ).
+// Không đọc sổ tổng của cổ đông khác, không cần quyền chi lợi nhuận. Số chỉ hiện khi sổ tổng đã chạy.
 
 import { useMemo, useState } from 'react';
 import { HandCoins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useMyPositionView } from '@/hooks/profit-ledger/useMyPositionView';
 import { useMyProfitLedger } from '@/hooks/profit-ledger/useProfitLedgerQueries';
 import type { Shareholder } from '@/hooks/useShareholders';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 import {
-  newestFirst, payoutStatusLabel, selfAdvanceBlockedNote, selfBalanceView, shareholderOrganizationId,
+  advancePendingText, isUnpaidNegative, POSITION_LABELS, settlementCashPendingText, UNPAID_NEGATIVE_NOTE,
+} from '@/lib/profitLedger/positionView';
+import {
+  newestFirst, payoutStatusLabel, selfAdvanceBlockedNote, shareholderOrganizationId,
 } from '@/lib/profitLedger/selfView';
 import { cancelTargetFromMyPayout, type ProfitPayoutCancelTarget } from '@/lib/profitLedger/vouchers';
 import { formatCurrency } from '@/lib/utils';
 import { formatISODateVN } from '@/lib/vnDate';
 import { ProfitHubSlot } from '@/pages/reports/finance/ProfitHubShell';
 import { MyProfitLedgerGate } from './MyProfitLedgerGate';
-import ProfitDistributeDialog from './ProfitDistributeDialog';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
+import ProfitSelfAdvanceDialog from './ProfitSelfAdvanceDialog';
+import { MyPositionError, MySettlementsCard, MySettlementsMobile } from './ShareholderSelfPosition';
 import { CARD } from './profitMobileShared';
 
 export default function ShareholderAdvanceTab({ me, phone = false }: { me: Shareholder; phone?: boolean }) {
@@ -36,9 +42,9 @@ export default function ShareholderAdvanceTab({ me, phone = false }: { me: Share
 }
 
 const EXPLAIN = [
-  'Chủ công ty cho bạn chi tạm ứng lợi nhuận từ sổ quỹ bạn đang giữ.',
-  'Mỗi lần chi là một phiếu chờ chủ duyệt — tiền chưa ra khỏi sổ cho tới khi chủ duyệt.',
-  'Phần tạm ứng được trừ dần vào lợi nhuận các tháng sau. Phiếu còn chờ duyệt thì bạn tự huỷ được.',
+  'Chủ công ty cho bạn tạm ứng lợi nhuận từ sổ quỹ bạn đang giữ.',
+  'Mỗi lần ứng là một phiếu chờ chủ duyệt — tiền chưa ra khỏi sổ cho tới khi chủ duyệt. Phiếu còn chờ duyệt thì bạn tự huỷ được.',
+  'Tạm ứng cộng dồn. Khi chủ chốt chi lợi nhuận, tạm ứng đã duyệt được khấu trừ vào phần lợi nhuận chưa chi.',
 ];
 
 function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean }) {
@@ -46,8 +52,13 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<ProfitPayoutCancelTarget | null>(null);
   const note = selfAdvanceBlockedNote(ledger.route);
-  // Số dư là số sổ tổng: chỉ hiện khi máy chủ báo sổ đã chạy (`ready`), không thì không hiện như số chính thức.
-  const balance = ledger.ready ? selfBalanceView(ledger) : null;
+  // Hai con số là số sổ tổng: chỉ đọc và hiện khi máy chủ báo sổ đã chạy (`ready`), không thì không hiện như số chính thức.
+  const positionView = useMyPositionView(ledger.organization_id, { enabled: ledger.ready });
+  const position = ledger.ready ? positionView.position : null;
+  const missing = positionView.pending ? '…' : '—';
+  const advancePending = position ? advancePendingText(position, formatCurrency) : null;
+  const cashPending = position ? settlementCashPendingText(position, formatCurrency) : null;
+  const unpaidNegative = !!position && isUnpaidNegative(position);
   const mine = useMemo(() => newestFirst(ledger.payouts.filter((p) => p.is_mine)), [ledger.payouts]);
   const rows = mine.map((p) => ({
     payout: p,
@@ -57,15 +68,29 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
 
   const dialogs = (
     <>
-      <ProfitDistributeDialog
+      <ProfitSelfAdvanceDialog
         open={advanceOpen}
         onOpenChange={setAdvanceOpen}
         organizationId={ledger.organization_id}
-        mode="SELF_ADVANCE"
         me={{ shareholderId: ledger.shareholder.id, name: ledger.shareholder.name }}
       />
       <ProfitPayoutCancelDialog open={cancelOpen} onOpenChange={setCancelOpen} target={cancelTarget} />
     </>
+  );
+
+  // Hai dòng số (chỉ khi sổ tổng đã chạy).
+  const numbers = ledger.ready && (
+    <div className={phone ? 'flex flex-col gap-0.5' : 'mt-3 space-y-0.5 text-sm'} data-testid="advance-balance">
+      <p className={phone ? 'm-0 text-[13px] font-bold text-[#1b1813]' : 'm-0 font-semibold'}>
+        {POSITION_LABELS.unpaid}: <span className={phone ? 'font-mono' : undefined}>{position ? formatCurrency(position.unpaid_profit) : missing}</span>
+        {cashPending ? ` (${cashPending})` : ''}
+      </p>
+      <p className={phone ? 'm-0 text-[13px] font-bold text-[#1b1813]' : 'm-0 font-semibold'}>
+        {POSITION_LABELS.advance}: <span className={phone ? 'font-mono' : undefined}>{position ? formatCurrency(position.advance_outstanding) : missing}</span>
+        {advancePending ? ` (${advancePending})` : ''}
+      </p>
+      {unpaidNegative && <p className={phone ? 'm-0 text-[11.5px] font-semibold text-[#8d8678]' : 'm-0 text-muted-foreground'}>{UNPAID_NEGATIVE_NOTE}</p>}
+    </div>
   );
 
   if (phone) {
@@ -74,11 +99,8 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
         <div className={`${CARD} !rounded-2xl px-[15px] py-3.5 flex flex-col gap-2`}>
           <span className="text-[14px] font-extrabold text-[#1b1813]">Tạm ứng lợi nhuận</span>
           {EXPLAIN.map((line) => <p key={line} className="m-0 text-[12.5px] font-semibold leading-snug text-[#514c42]">{line}</p>)}
-          {balance && (
-            <p className="m-0 text-[13px] font-bold text-[#1b1813]" data-testid="advance-balance">
-              {balance.label}: <span className="font-mono">{formatCurrency(balance.amount)}</span>
-            </p>
-          )}
+          {numbers}
+          {ledger.ready && <MyPositionError view={positionView} />}
           <button
             type="button"
             disabled={note !== null}
@@ -89,6 +111,7 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
           </button>
           {note && <p role="note" className="m-0 text-center text-[11.5px] font-semibold text-[#8d8678]">{note}</p>}
         </div>
+        {ledger.ready && <MySettlementsMobile view={positionView} />}
         <div className={`${CARD} !rounded-2xl overflow-hidden`}>
           <div className="px-[15px] py-3.5 border-b border-[#efece4]">
             <span className="text-[13.5px] font-extrabold text-[#1b1813]">Khoản bạn đã lập</span>
@@ -120,17 +143,23 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
 
   return (
     <>
-      {balance && (
+      {ledger.ready && (
         <ProfitHubSlot name="kpis">
           <div className="ph-kpi ph-kpi--flex">
             <div className="ph-kpi__label">Cổ đông</div>
             <div className="ph-kpi__value">{ledger.shareholder.name}</div>
           </div>
           <div className="ph-kpi__div" />
+          <div className="ph-kpi ph-kpi--flex" title={unpaidNegative ? UNPAID_NEGATIVE_NOTE : undefined}>
+            <div className="ph-kpi__label">{POSITION_LABELS.unpaid}</div>
+            <div className={`ph-kpi__value${unpaidNegative ? ' ph-kpi__value--peach' : ''}`}>{position ? formatCurrency(position.unpaid_profit) : missing}</div>
+            <div className="ph-kpi__sub">{position ? cashPending ?? 'chờ chủ chốt chi' : positionView.pending ? '' : 'chưa tải được'}</div>
+          </div>
+          <div className="ph-kpi__div" />
           <div className="ph-kpi ph-kpi--flex">
-            <div className="ph-kpi__label">{balance.label}</div>
-            <div className={`ph-kpi__value${balance.status === 'ADVANCE' ? ' ph-kpi__value--peach' : ''}`}>{formatCurrency(balance.amount)}</div>
-            <div className="ph-kpi__sub">{balance.note}</div>
+            <div className="ph-kpi__label">{POSITION_LABELS.advance}</div>
+            <div className="ph-kpi__value ph-kpi__value--gold">{position ? formatCurrency(position.advance_outstanding) : missing}</div>
+            <div className="ph-kpi__sub">{position ? advancePending ?? 'khấu trừ khi chủ chốt chi' : positionView.pending ? '' : 'chưa tải được'}</div>
           </div>
         </ProfitHubSlot>
       )}
@@ -140,11 +169,8 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
           <div className="mt-2 space-y-1 text-sm">
             {EXPLAIN.map((line) => <p key={line} className="m-0">{line}</p>)}
           </div>
-          {balance && (
-            <p className="mt-3 text-sm font-semibold" data-testid="advance-balance">
-              {balance.label}: {formatCurrency(balance.amount)}
-            </p>
-          )}
+          {numbers}
+          {ledger.ready && <MyPositionError view={positionView} className="mt-3" />}
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Button className="ph-btn-primary" disabled={note !== null} onClick={() => setAdvanceOpen(true)}>
               <HandCoins className="h-4 w-4" />Chi tạm ứng cho tôi
@@ -152,6 +178,7 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
             {note && <span role="note" className="ph-hint" style={{ marginTop: 0 }}>{note}</span>}
           </div>
         </div>
+        {ledger.ready && <MySettlementsCard view={positionView} />}
         <div className="ph-card">
           <div className="ph-card__head"><div className="ph-card__title">Khoản bạn đã lập</div></div>
           <div className="ph-tbl__scroll">

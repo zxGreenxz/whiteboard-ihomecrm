@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { MyProfitLedger } from '../ledgerReaders';
 import {
   amountsByBuilding, buildingColumns, buildingMatrix, ledgerYears, monthlyAmounts, monthsInScope, payoutStatusLabel,
-  salaryNet, selfAdvanceBlockedNote, selfBalanceView, shareholderOrganizationId,
+  salaryNet, selfAdvanceBlockedNote, shareholderOrganizationId,
 } from '../selfView';
 
 const ledger = (over: Partial<MyProfitLedger> = {}): MyProfitLedger => ({
@@ -22,12 +22,7 @@ const ledger = (over: Partial<MyProfitLedger> = {}): MyProfitLedger => ({
   ...over,
 });
 
-describe('selfView — số dư nói theo phía cổ đông', () => {
-  it('còn nợ ⇒ "Còn được nhận" = số dư; đang tạm ứng ⇒ số dương của phần âm; bằng 0 ⇒ đã nhận đủ', () => {
-    expect(selfBalanceView(ledger())).toMatchObject({ status: 'OWED', label: 'Còn được nhận', amount: 86.5, note: 'đã trừ phiếu đang chờ duyệt' });
-    expect(selfBalanceView(ledger({ balance: -3, status: 'ADVANCE' }))).toMatchObject({ label: 'Đang tạm ứng', amount: 3 });
-    expect(selfBalanceView(ledger({ balance: 0, status: 'SETTLED' }))).toMatchObject({ label: 'Còn được nhận', amount: 0 });
-  });
+describe('selfView — phần lợi nhuận trả qua lương', () => {
   it('qua lương = Y − D (cùng dấu công thức số dư); không có dòng lương ⇒ null (không hiện 0)', () => {
     const l = ledger();
     expect(salaryNet(l)).toBe(8);

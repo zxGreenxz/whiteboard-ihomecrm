@@ -4,6 +4,7 @@
 
 import { formatVND } from '@/lib/utils';
 import type { LedgerPayoutDetail, MyLedgerPayout, ShareholderLedgerEntry } from './ledgerReaders';
+import type { ProfitSettlementRow } from './positionReaders';
 import type { ProfitLedgerSubjectKind } from './sharedReaders';
 
 export const PROFIT_LEDGER_SOURCES = ['profit.ledger_payout', 'profit.manager_salary'] as const;
@@ -104,6 +105,29 @@ export function cancelTargetFromMyPayout(
     amount: payout.amount,
     approvalStatus: payout.status,
     postingStatus: payout.posting_status,
+    subjectName: context.subjectName,
+    accountName: null,
+  };
+}
+
+/**
+ * Từ một lần chốt chi lợi nhuận CÓ phiếu tiền (R5 / R2): huỷ phiếu chi đó thì lần chốt tự hết hiệu lực.
+ * Lần chốt không có phiếu (huỷ bằng lệnh huỷ chốt) hoặc phiếu không còn huỷ được ⇒ null.
+ */
+export function cancelTargetFromSettlement(
+  settlement: Pick<ProfitSettlementRow, 'cash_voucher_id' | 'cash_voucher_code' | 'cash_voucher_status' | 'cash_voucher_posting_status' | 'cash_amount'>,
+  context: { organizationId: string; subjectName: string | null },
+): ProfitPayoutCancelTarget | null {
+  if (!settlement.cash_voucher_id || !settlement.cash_voucher_status) return null;
+  if (!expectedCancelState(settlement.cash_voucher_status, settlement.cash_voucher_posting_status)) return null;
+  return {
+    voucherId: settlement.cash_voucher_id,
+    organizationId: context.organizationId,
+    kind: 'SHAREHOLDER',
+    code: settlement.cash_voucher_code,
+    amount: settlement.cash_amount,
+    approvalStatus: settlement.cash_voucher_status,
+    postingStatus: settlement.cash_voucher_posting_status,
     subjectName: context.subjectName,
     accountName: null,
   };
