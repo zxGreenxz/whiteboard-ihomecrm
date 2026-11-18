@@ -24,6 +24,9 @@ const h = vi.hoisted(() => ({
   refetchOptions: vi.fn(),
   previewCalls: [] as { shareholderId: string | null; amount: number | null; accountId: string | null }[],
   blocked: null as string | null,
+  /** Lần kiểm của người nhận MỚI chưa về: hook còn trả lần kiểm trước (của người nhận cũ), đang tải. */
+  holdPreview: false,
+  lastPreview: null as Record<string, unknown> | null,
 }));
 
 vi.mock('@/hooks/income-expenses/detailRead', () => ({
@@ -84,8 +87,11 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
   useShareholderAdvancePreview: (input: AdvancePreviewInput) => {
     h.previewCalls.push({ shareholderId: input.shareholderId, amount: input.amount, accountId: input.accountId });
     if (!input.shareholderId) return { data: undefined, isFetching: false, isError: false, error: null, refetch: vi.fn() };
+    if (h.holdPreview && h.lastPreview && h.lastPreview.shareholder_id !== input.shareholderId) {
+      return { data: h.lastPreview, isFetching: true, isError: false, error: null, refetch: vi.fn() };
+    }
     const self = input.shareholderId === 'sh-toi';
-    return {
+    const result = {
       data: {
         route: 'CANONICAL', shareholder_id: input.shareholderId, maker_kind: self ? 'CUSTODIAN_ADVANCE' : 'CUSTODIAN_FOR_PAYEE',
         payee_is_maker: self, can_submit: !h.blocked && input.amount !== null && !!input.accountId, blocked_reason: h.blocked,
@@ -100,6 +106,8 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
       },
       isFetching: false, isError: false, error: null, refetch: vi.fn(),
     };
+    h.lastPreview = result.data;
+    return result;
   },
 }));
 vi.mock('@/hooks/profit-ledger/useProfitLedgerMutations', () => ({
@@ -150,6 +158,7 @@ beforeEach(() => {
   h.advance.mockReset().mockResolvedValue({ voucher_id: 'v-tu', code: 'PC2611777', amount: 500_000, within_amount: 0, advance_amount: 500_000, balance_before: null, maker_kind: 'CUSTODIAN_FOR_PAYEE' });
   h.toastSuccess.mockReset(); h.refetchOptions.mockReset();
   h.mobile = false; h.options = OPTIONS; h.optionsOrgs = []; h.previewCalls = []; h.blocked = null;
+  h.holdPreview = false; h.lastPreview = null;
   onOpenChange.mockReset(); onSaved.mockReset();
 });
 afterEach(cleanup);
@@ -256,6 +265,28 @@ describe('chế độ Tạm Ứng của form', () => {
     expect(panel().textContent).not.toMatch(/Lợi nhuận chưa chi|Tạm ứng đang có|7\.777\.000|1\.111\.000|6\.666\.000/);
     fireEvent.change(o('shareholderId')!, { target: { value: 'sh-toi' } });
     expect((await screen.findByTestId('profit-advance-position')).textContent).toMatch(/Lợi nhuận chưa chi: 7\.777\.000.*Tạm ứng đang có: 1\.111\.000/);
+  });
+  // R8 (review chéo 18/11): chiều ngược lại — đang tự ứng (thấy số của mình) rồi đổi sang lập HỘ.
+  it('đổi người nhận từ CHÍNH MÌNH sang người khác ⇒ khối số của mình biến mất ngay, kể cả khi lần kiểm mới chưa về', async () => {
+    moForm();
+    chonTamUng();
+    fireEvent.change(o('shareholderId')!, { target: { value: 'sh-toi' } });
+    fireEvent.change(o('accountId')!, { target: { value: 'a-giu' } });
+    fireEvent.change(o('amount')!, { target: { value: '500000' } });
+    await waitFor(() => expect(screen.getByTestId('profit-advance-after').textContent).toMatch(/500\.000/), { timeout: 2000 });
+    expect(screen.getByTestId('profit-advance-position').textContent).toMatch(/7\.777\.000/);
+    // Lần kiểm của người nhận mới chưa về: hook còn trả số của "Cổ đông Tôi" — không được hiện cho người nhận mới.
+    h.holdPreview = true;
+    fireEvent.change(o('shareholderId')!, { target: { value: 'sh-1' } });
+    expect(h.previewCalls.at(-1)).toMatchObject({ shareholderId: 'sh-1' });
+    expect(screen.queryByTestId('profit-advance-position')).toBeNull();
+    expect(screen.queryByTestId('profit-advance-after')).toBeNull();
+    expect(panel().textContent).not.toMatch(/Lợi nhuận chưa chi|Tạm ứng đang có|7\.777\.000|1\.111\.000|1\.611\.000|6\.666\.000|6\.166\.000/);
+    // Lần kiểm mới về (máy chủ không gửi số cho người lập hộ): vẫn không có số nào.
+    h.holdPreview = false;
+    fireEvent.change(o('note')!, { target: { value: 'Ứng hộ' } });
+    expect((await screen.findByTestId('profit-advance-preview')).textContent).toMatch(/Bạn lập hộ: phiếu chờ chủ duyệt/);
+    expect(panel().textContent).not.toMatch(/Lợi nhuận chưa chi|Tạm ứng đang có|7\.777\.000|1\.111\.000|1\.611\.000|6\.666\.000|6\.166\.000/);
   });
   it('Lưu ⇒ gọi lệnh tạm ứng đúng nội dung, KHÔNG gọi lệnh tạo phiếu thường; xong thì đóng hộp', async () => {
     moForm();

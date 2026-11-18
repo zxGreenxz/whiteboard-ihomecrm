@@ -83,7 +83,8 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
         <div className="w-11 h-11 rounded-full bg-white/15 border border-white/30 grid place-items-center font-extrabold text-[17px] shrink-0">{initial}</div>
         <div className="flex flex-col gap-0.5 min-w-0 flex-1">
           <span className="text-[15px] font-extrabold tracking-[-0.2px] truncate">{ledger.shareholder.name}</span>
-          <span className="text-[11.5px] font-semibold text-white/80 truncate" data-testid="self-mobile-hero-sub">
+          {/* Xuống dòng thay vì cắt: khối số bên phải chiếm chỗ, câu ngắn vẫn có thể dài hơn một dòng. */}
+          <span className="text-[11.5px] font-semibold leading-snug text-white/80 [overflow-wrap:anywhere]" data-testid="self-mobile-hero-sub">
             Cổ đông{pct ? ` · tỷ lệ ${pct}` : ''}{buildingsEver ? ` · ${buildingsEver} toà nhà` : ''}
           </span>
         </div>
@@ -214,7 +215,8 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
                 <HandCoins className="h-[15px] w-[15px]" />
               </span>
               <div className="flex-1 min-w-0 flex flex-col gap-px">
-                <span className="text-[12.5px] font-bold text-[#1b1813] truncate">
+                {/* Xuống dòng thay vì cắt "· Tạm ứng" (chữ mang nghĩa). */}
+                <span className="text-[12.5px] font-bold leading-snug text-[#1b1813] [overflow-wrap:anywhere]">
                   {p.voucher_code ?? 'Phiếu chi'} · {payoutStatusLabel(p)}{p.is_advance ? ' · Tạm ứng' : ''}
                 </span>
                 <span className="font-mono text-[10.5px] font-bold text-[#8d8678]">{formatISODateVN(p.voucher_date)}{p.excluded_by_marker ? ' · trước mốc' : ''}</span>

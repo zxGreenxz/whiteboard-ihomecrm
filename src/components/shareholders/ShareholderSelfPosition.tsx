@@ -88,7 +88,7 @@ export function MySettlementsMobile({ view }: { view: MyPositionView }) {
           className={`flex flex-col gap-0.5 px-[15px] py-[10px] border-b border-[#f4f1ea] last:border-b-0${row.excluded_by_marker ? ' opacity-60' : ''}`}
         >
           <div className="flex items-center gap-2">
-            <span className="flex-1 min-w-0 truncate text-[12.5px] font-bold text-[#1b1813]">
+            <span className="flex-1 min-w-0 text-[12.5px] font-bold leading-snug text-[#1b1813] [overflow-wrap:anywhere]">
               Đến hết {settleMonthLabel(row.through_month)}{row.excluded_by_marker ? ' · trước mốc' : ''}
             </span>
             <span className="font-mono text-[13px] font-bold text-[#c97a10] whitespace-nowrap">{fmtShort(row.cash_amount)}</span>

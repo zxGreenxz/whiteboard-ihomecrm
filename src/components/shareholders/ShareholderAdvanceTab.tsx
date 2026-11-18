@@ -120,7 +120,8 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
           {rows.map(({ payout: p, target }) => (
             <div key={p.voucher_id} className="flex items-center gap-[11px] px-[15px] py-[11px] border-b border-[#f4f1ea] last:border-b-0">
               <div className="flex-1 min-w-0 flex flex-col gap-px">
-                <span className="text-[12.5px] font-bold text-[#1b1813] truncate">
+                {/* Xuống dòng thay vì cắt "· Tạm ứng" (chữ mang nghĩa). */}
+                <span className="text-[12.5px] font-bold leading-snug text-[#1b1813] [overflow-wrap:anywhere]">
                   {p.voucher_code ?? 'Phiếu chi'} · {payoutStatusLabel(p)}{p.is_advance ? ' · Tạm ứng' : ''}
                 </span>
                 <span className="font-mono text-[10.5px] font-bold text-[#8d8678]">{formatISODateVN(p.voucher_date)}</span>

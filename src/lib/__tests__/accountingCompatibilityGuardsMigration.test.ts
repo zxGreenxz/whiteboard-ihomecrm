@@ -25,6 +25,21 @@ const payoutAccountRule = readFileSync(
   "src/lib/profitLedger/payoutAccounts.ts",
   "utf8",
 );
+// 18/11/2026: chế độ "Tạm Ứng" của form Thu chi chọn sổ quỹ từ danh sách MÁY CHỦ trả (R3
+// shareholder_profit_advance_options_v1 → advance_options.accounts) — máy chủ đã loại sổ ảo và chỉ trả sổ người gọi
+// đang giữ; form không thêm sổ nào ngoài danh sách đó.
+const advancePanel = readFileSync(
+  "src/components/income-expenses/ShareholderAdvanceVoucherPanel.tsx",
+  "utf8",
+);
+const advanceOptionsReader = readFileSync(
+  "src/lib/profitLedger/positionReaders.ts",
+  "utf8",
+);
+const tamUngChotSql = readFileSync(
+  "supabase/migrations/20261118041911_tam_ung_co_dong_va_chot_chi_loi_nhuan.sql",
+  "utf8",
+);
 // Hộp Duyệt đã gom về MỘT nguồn cho Thu chi máy tính/điện thoại và Báo cáo LN:
 // luật lọc sổ nằm ở hook, danh sách sổ được vẽ ở bộ hộp xác nhận dùng chung.
 const approvalActions = readFileSync(
@@ -125,5 +140,21 @@ describe("accounting compatibility migration guards", () => {
     );
     expect(approvalActions).toContain("accounts: approvalAccounts");
     expect(approvalDialogs).toContain("approve.accounts.map");
+  });
+
+  it("form Thu chi chế độ Tạm Ứng: ô sổ quỹ chỉ vẽ danh sách máy chủ trả (đã loại sổ ảo), không thêm sổ nào khác", () => {
+    // Máy chủ (R3): chỉ sổ TIỀN THẬT của đúng công ty, chưa xoá, người gọi đang giữ.
+    const r3 = extractFunction(tamUngChotSql, "shareholder_profit_advance_options_v1");
+    expect(r3).toMatch(
+      /FROM public\.accounts a\s+WHERE a\.organization_id = p_organization_id\s+AND a\.deleted_at IS NULL\s+AND NOT a\.is_virtual\s+AND app_private\.profit_ledger_chot_holds_cashbook_v1\(/,
+    );
+    // Bộ đọc lấy đúng mảng `accounts` của máy chủ (không ghép thêm nguồn khác).
+    expect(advanceOptionsReader).toContain("list(root.accounts, 'R3.accounts'");
+    // Form: ô "Sổ quỹ" của chế độ Tạm Ứng vẽ đúng `options.accounts` — không đọc danh sách sổ thô (useAccounts /
+    // quyền giữ sổ phía trình duyệt), không có nguồn sổ thứ hai.
+    expect(advancePanel).toContain("options={options.accounts.map((account) => ({ value: account.account_id, label: account.name }))}");
+    expect((advancePanel.match(/options=\{/g) ?? []).length).toBe(2); // ô sổ quỹ + ô người nhận, không ô nào khác
+    expect(advancePanel).toContain("options={options.payees.map(");
+    expect(advancePanel).not.toMatch(/useAccounts|useMyCashbookAccess|profitPayoutAccounts|accountsQuery|is_virtual/);
   });
 });

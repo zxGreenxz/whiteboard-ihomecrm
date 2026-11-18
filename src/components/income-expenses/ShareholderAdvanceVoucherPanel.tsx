@@ -157,9 +157,17 @@ export function ShareholderAdvanceVoucherPanel({
         <fieldset disabled={saveBlocked || pending} className="space-y-4">
           {/* Row 1: Tòa nhà (khoá) + Sổ quỹ — cùng lưới với form phiếu thường, bỏ ô Phòng. */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2" data-field-name="building">
+            <div className="min-w-0 space-y-2" data-field-name="building">
               <label className="text-sm font-medium leading-none" htmlFor="shareholder-advance-building">Tòa nhà</label>
-              <Input id="shareholder-advance-building" value={buildingName?.trim() || ADVANCE_BUILDING_NAME} readOnly disabled />
+              {/* Ô hẹp (điện thoại): tên toà dài thì có "…", đủ tên ở title. */}
+              <Input
+                id="shareholder-advance-building"
+                value={buildingName?.trim() || ADVANCE_BUILDING_NAME}
+                title={buildingName?.trim() || ADVANCE_BUILDING_NAME}
+                className="truncate"
+                readOnly
+                disabled
+              />
             </div>
 
             <FormField control={form.control} name="accountId" render={({ field, fieldState }) => (
@@ -275,12 +283,17 @@ export function ShareholderAdvanceVoucherPanel({
           />
         </fieldset>
 
+        {/* Điện thoại: chừa khoảng dưới khối số để cuộn hết thân thì khối số nằm hẳn trên thanh nút dính đáy. */}
+        {isMobile && <div aria-hidden="true" className="h-4" />}
+
         {rootPreviewError && <p role="alert" className="text-sm text-destructive">{rootPreviewError}</p>}
         {failure && <p role="alert" className="text-sm text-destructive" data-testid="shareholder-advance-failure">{failure.message}</p>}
 
+        {/* Điện thoại: thanh nút dính đáy như form Thu chi; `-bottom-4` bù đệm p-4 của khung cuộn để lúc đang dính thanh
+            nút sát mép dưới — không lộ một dải khối số chạy bên dưới thanh. */}
         <div
           className={isMobile
-            ? 'sticky bottom-0 -mx-4 -mb-4 px-4 py-3 bg-white border-t border-zinc-200 flex gap-2 items-center'
+            ? 'sticky -bottom-4 -mx-4 -mb-4 px-4 py-3 bg-white border-t border-zinc-200 flex gap-2 items-center'
             : 'flex justify-end gap-3 pt-4'}
           style={isMobile ? { paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' } : undefined}
         >
