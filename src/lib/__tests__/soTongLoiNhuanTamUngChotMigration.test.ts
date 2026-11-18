@@ -579,9 +579,14 @@ const r1 = (org = ORG_A) => `SELECT public.shareholder_profit_positions_v1('${or
 const r2 = (org = ORG_A) => `SELECT public.shareholder_profit_my_position_v1('${org}') AS v`;
 const r5 = (cd: string, thang: string | null = null, so: string | null = SO_QUY) =>
   `SELECT public.shareholder_profit_settlement_preview_v1('${cd}', ${q(thang)}, ${q(so)}) AS v`;
-interface Chot { cd?: string; thang: string | null; so?: string | null; ngay?: string | null; ghiChu?: string | null; tien: number | string | null; khoa?: string }
+/** Lệnh chốt gửi HAI số chủ đã xem: `tien` = tiền thực chi, và phần ghi nhận X. Ca thử khai `k` = phần khấu trừ tạm ứng đã xem
+ *  (mặc định 0) ⇒ X kỳ vọng = tien + k. Truyền `x` khi cần một số ghi nhận kỳ vọng riêng (ca lỗi đầu vào; ca tiền 0 mà không
+ *  khấu trừ gì thì X = 0 không hợp lệ ở đầu vào). */
+interface Chot { cd?: string; thang: string | null; so?: string | null; ngay?: string | null; ghiChu?: string | null;
+  tien: number | string | null; k?: number; x?: number | string | null; khoa?: string }
+const ghiNhanKyVong = (o: Chot) => (o.x !== undefined ? o.x : typeof o.tien === "number" ? o.tien + (o.k ?? 0) : o.tien);
 const w2 = (o: Chot) => `SELECT public.shareholder_profit_settle_v1(${q(o.cd ?? CD1)}, ${q(o.thang)}, ${o.so === null ? "NULL" : q(o.so ?? SO_QUY)},
-  ${o.ngay === null ? "NULL" : q(o.ngay ?? NGAY)}, ${q(o.ghiChu)}, ${o.tien ?? "NULL"}, '${o.khoa ?? khoa("chot")}') AS v`;
+  ${o.ngay === null ? "NULL" : q(o.ngay ?? NGAY)}, ${q(o.ghiChu)}, ${ghiNhanKyVong(o) ?? "NULL"}, ${o.tien ?? "NULL"}, '${o.khoa ?? khoa("chot")}') AS v`;
 const w3 = (banGhi: string, lyDo = "Chốt nhầm tháng cần làm lại", k = khoa("huychot")) =>
   `SELECT public.shareholder_profit_settlement_void_v1('${banGhi}', ${q(lyDo)}, '${k}') AS v`;
 const e5 = (cd: string, tien: number, tamUng: boolean, so = SO_QUY) =>
@@ -703,11 +708,12 @@ const RPC: [string, string][] = [
   ["public.shareholder_profit_advance_preview_v1(uuid,numeric,uuid)", "v"],
   ["public.shareholder_profit_advance_v1(uuid,numeric,uuid,date,text,text)", "v"],
   ["public.shareholder_profit_settlement_preview_v1(uuid,date,uuid)", "s"],
-  ["public.shareholder_profit_settle_v1(uuid,date,uuid,date,text,numeric,text)", "v"],
+  ["public.shareholder_profit_settle_v1(uuid,date,uuid,date,text,numeric,numeric,text)", "v"],
   ["public.shareholder_profit_settlement_void_v1(uuid,text,text)", "v"],
 ];
 const NOI_BO: [string, string][] = [
   ["app_private.guard_profit_ledger_payout_settlement_v1()", "v"],
+  ["app_private.guard_profit_ledger_marker_settlement_v1()", "v"],
   ["app_private.profit_ledger_settlement_live_v1(uuid)", "s"],
   ["app_private.profit_ledger_position_v1(uuid,uuid)", "s"],
   ["app_private.profit_ledger_unpaid_through_v1(uuid,uuid,date)", "s"],
@@ -740,10 +746,14 @@ describe("khung thử: nền Đợt 1 thật và hai lượt migration", () => {
     expect(ten.sort()).toEqual([...RPC, ...NOI_BO].map(([h]) => h.slice(0, h.indexOf("("))).sort());
     const file = FILE.slice(FILE.lastIndexOf("/") + 1);
     for (const t of ten) expect((DINH_NGHIA.get(t) ?? []).map((d) => d.file), t).toEqual([file]);
-    // Không lệnh DDL nào chạm đối tượng cũ ngoài đúng CHECK maker_kind của dòng sổ phiếu chi.
+    // Không lệnh DDL nào chạm đối tượng cũ ngoài hai ngoại lệ đã khai ở đầu file: CHECK maker_kind của dòng sổ phiếu chi, và MỘT
+    // trigger mới trên bảng mốc (DROP … IF EXISTS của chính trigger đó để chạy lại được).
     expect(MIGRATION.match(/^\s*(ALTER TABLE|DROP (?!TRIGGER IF EXISTS a00_profit_ledger_payout_settlements)\w+|ALTER FUNCTION)[^\n]*/gim)?.map((x) => x.trim()))
       .toEqual(["ALTER TABLE app_private.profit_ledger_payouts", "ALTER TABLE app_private.profit_ledger_payouts",
-        "ALTER TABLE app_private.profit_ledger_payout_settlements ENABLE ROW LEVEL SECURITY;"]);
+        "ALTER TABLE app_private.profit_ledger_payout_settlements ENABLE ROW LEVEL SECURITY;",
+        "DROP TRIGGER IF EXISTS a10_profit_ledger_markers_settlement_guard ON app_private.profit_ledger_markers;"]);
+    expect(MIGRATION.match(/^\s*CREATE TRIGGER \w+\s+BEFORE [A-Z ]+ ON (?!app_private\.profit_ledger_payout_settlements)[^\n]*/gim)?.map((x) => x.replace(/\s+/g, " ").trim()))
+      .toEqual(["CREATE TRIGGER a10_profit_ledger_markers_settlement_guard BEFORE INSERT ON app_private.profit_ledger_markers"]);
   });
   it("lượt chạy lại không ghi lại hạng mục, ràng buộc, trigger (xmin / oid giữ nguyên)", () => {
     expect(ghi.luot2).toEqual(ghi.luot1);
@@ -758,7 +768,7 @@ describe("khung thử: nền Đợt 1 thật và hai lượt migration", () => {
       await lan.exec(`BEGIN; ${THAN} ${THAN} ROLLBACK;`);
       const con = async () => (await lan.query<{ v: unknown }>(`SELECT jsonb_build_object(
         'bang', to_regclass('${C7}') IS NOT NULL,
-        'rpc', to_regprocedure('public.shareholder_profit_settle_v1(uuid,date,uuid,date,text,numeric,text)') IS NOT NULL,
+        'rpc', to_regprocedure('public.shareholder_profit_settle_v1(uuid,date,uuid,date,text,numeric,numeric,text)') IS NOT NULL,
         'check', (SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c WHERE c.conname = 'profit_ledger_payouts_maker_kind_check'),
         'loai', (SELECT count(*) FROM public.income_expense_types WHERE rule_key = 'tam_ung_co_dong')) AS v`)).rows[0].v;
       expect(await con()).toEqual({ bang: false, rpc: false, check: ghi.rangBuocTruoc, loai: 0 });
@@ -776,6 +786,11 @@ describe("khung thử: nền Đợt 1 thật và hai lượt migration", () => {
     await giaoDich(async () => {
       await db.exec("DROP TRIGGER a06_profit_ledger_payout_guard ON public.income_expenses");
       expect(await loi(THAN)).toMatchObject({ code: "55000", message: "Thiếu chốt chặn của sổ tổng (Đợt 1): a06_profit_ledger_payout_guard" });
+    });
+    // Chốt sẵn có của bảng mốc (trigger mới của file này chạy sau nó, dựa vào việc nó đã bắt giữ khoá sổ).
+    await giaoDich(async () => {
+      await db.exec("DROP TRIGGER a00_profit_ledger_markers_guard ON app_private.profit_ledger_markers");
+      expect(await loi(THAN)).toMatchObject({ code: "55000", message: "Thiếu chốt chặn của sổ tổng (Đợt 1): a00_profit_ledger_markers_guard" });
     });
     await giaoDich(async () => {
       await db.exec(`DELETE FROM public.member_override_scopes; DELETE FROM public.member_permission_overrides;
@@ -1070,7 +1085,7 @@ describe("ví dụ của chủ: được chia 100, ứng 10 + 20 + 10", () => {
       expect(xem).toMatchObject({ through_month: "2026-10-01", recognized_amount: 100, advance_offset_amount: 40, cash_amount: 60,
         advance_left: 0, advance_pending: 0, can_submit: true, blocked_reason: null });
       const soPhieu = await dem("public.income_expenses");
-      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 60 }));
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 60, k: 40 }));
       expect(chot).toMatchObject({ through_month: "2026-10-01", recognized_amount: 100, advance_offset_amount: 40, cash_amount: 60, state: "PENDING_APPROVAL" });
       expect(chot.voucher_id).toMatch(UUID);
       expect(await dem("public.income_expenses")).toBe(soPhieu + 1);
@@ -1084,13 +1099,13 @@ describe("ví dụ của chủ: được chia 100, ứng 10 + 20 + 10", () => {
       expect(await mot(`SELECT app_private.profit_ledger_settlement_live_v1('${chot.settlement_id}') AS v`)).toBe(false);
       // Và chốt lại được với đúng các số cũ.
       expect(await goi(CHU, r5(CD1))).toMatchObject({ recognized_amount: 100, advance_offset_amount: 40, cash_amount: 60, settlements: [] });
-      expect(await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 60 }))).toMatchObject({ cash_amount: 60, state: "PENDING_APPROVAL" });
+      expect(await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 60, k: 40 }))).toMatchObject({ cash_amount: 60, state: "PENDING_APPROVAL" });
     });
   });
   it("chủ thứ hai DUYỆT phiếu tiền ⇒ A 0 / B 0, hết tiền chờ; chi (ghi sổ) không đổi hai con số; huỷ phiếu đã chi ⇒ trở lại A 100 / B 40", async () => {
     await giaoDich(async () => {
       await dung();
-      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 60 }));
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 60, k: 40 }));
       const p = chot.voucher_id as string;
       expect(await duyet(p, CHU2)).toBeNull();
       expect(await ab(CD1)).toEqual([0, 0, 0, 0, 0]);
@@ -1104,7 +1119,7 @@ describe("ví dụ của chủ: được chia 100, ứng 10 + 20 + 10", () => {
   it("phiếu tiền bị TỪ CHỐI (decide_financial_request_v2 thật) ⇒ bản ghi chốt hết hiệu lực, A 100 / B 40 trở lại — không cần móc vào đường từ chối", async () => {
     await giaoDich(async () => {
       await dung();
-      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 60 }));
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 60, k: 40 }));
       expect(await ab(CD1)).toEqual([0, 0, 0, 60, 0]);
       expect(await tuChoi(chot.approval_request_id as string, CHU2)).toBeNull();
       expect(await ab(CD1)).toEqual([100, 40, 0, 0, 60]);
@@ -1119,7 +1134,7 @@ describe("ví dụ của chủ: được chia 100, ứng 10 + 20 + 10", () => {
       expect(await goi(CHU, r5(CD1, null, null))).toMatchObject({ through_month: "2026-10-01", recognized_amount: 100, advance_offset_amount: 100,
         cash_amount: 0, advance_left: 20, can_submit: true, blocked_reason: null });
       const dem0 = [await dem("public.income_expenses"), await dem("public.approval_requests"), await dem("app_private.profit_ledger_events")];
-      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0 }));
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0, k: 100 }));
       expect(chot).toEqual({ settlement_id: expect.stringMatching(UUID), through_month: "2026-10-01", recognized_amount: 100, advance_offset_amount: 100,
         cash_amount: 0, voucher_id: null, approval_request_id: null, state: "SETTLED" });
       expect([await dem("public.income_expenses"), await dem("public.approval_requests"), await dem("app_private.profit_ledger_events")]).toEqual(dem0);
@@ -1132,12 +1147,15 @@ describe("ví dụ của chủ: được chia 100, ứng 10 + 20 + 10", () => {
     await giaoDich(async () => {
       await dung();
       await ungDaDuyet(80);
-      await goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0 }));
-      const l = laLoi(await loiGoi(CHU, w2({ thang: "2026-10-01", tien: 0 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
+      await goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0, k: 100 }));
+      // Gửi lại đúng hai số đã xem lần trước (100 / 0): không còn gì để chốt.
+      const l = laLoi(await loiGoi(CHU, w2({ thang: "2026-10-01", tien: 0, k: 100 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
       expect(chiTiet(l)).toEqual({ through_month: "2026-10-01", unpaid_through: 0 });
-      expect(await goi(CHU, r5(CD1))).toMatchObject({ through_month: null, recognized_amount: null, cash_amount: null, can_submit: false, blocked_reason: "NOTHING_TO_SETTLE" });
-      expect(await goi(CHU, r5(CD1, "2026-10-01"))).toMatchObject({ through_month: "2026-10-01", recognized_amount: 0, advance_offset_amount: null, cash_amount: null,
-        can_submit: false, blocked_reason: "NOTHING_TO_SETTLE" });
+      // Xem trước không truyền tháng ⇒ tháng đủ điều kiện lớn nhất (tháng 10), dù không còn gì để chốt ở đó.
+      for (const thang of [null, "2026-10-01"]) {
+        expect(await goi(CHU, r5(CD1, thang)), String(thang)).toMatchObject({ through_month: "2026-10-01", min_through_month: null, recognized_amount: 0,
+          advance_offset_amount: null, cash_amount: null, advance_left: null, can_submit: false, blocked_reason: "NOTHING_TO_SETTLE" });
+      }
 
       await chotThang("2026-11-01", TOA_1, { [CD1]: 50 });
       const xem = await goi<{ months: unknown[] }>(CHU, r5(CD1));
@@ -1147,10 +1165,10 @@ describe("ví dụ của chủ: được chia 100, ứng 10 + 20 + 10", () => {
         { month: "2026-10-01", allocated: 40, unpaid_through: 0, selectable: false },
         { month: "2026-11-01", allocated: 50, unpaid_through: 50, selectable: true }]);
       // Tháng trước lần chốt gần nhất không chốt lại được.
-      const lm = laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 0 })), "22023", "PROFIT_LEDGER_SETTLE_MONTH");
+      const lm = laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 0, x: 60 })), "22023", "PROFIT_LEDGER_SETTLE_MONTH");
       expect(chiTiet(lm)).toEqual({ through_month: "2026-09-01", min: "2026-10-01", max: "2026-11-01" });
       laLoi(await loiGoi(CHU, r5(CD1, "2026-09-01")), "22023", "PROFIT_LEDGER_SETTLE_MONTH");
-      const chot2 = await goi<KqChot>(CHU, w2({ thang: "2026-11-01", tien: 30 }));
+      const chot2 = await goi<KqChot>(CHU, w2({ thang: "2026-11-01", tien: 30, k: 20 }));
       expect(chot2).toMatchObject({ recognized_amount: 50, advance_offset_amount: 20, cash_amount: 30, state: "PENDING_APPROVAL" });
       expect(await ab(CD1)).toEqual([0, 0, 0, 30, 0]);
       expect(await duyet(chot2.voucher_id as string, CHU2)).toBeNull();
@@ -1183,9 +1201,9 @@ describe("ví dụ của chủ: được chia 100, ứng 10 + 20 + 10", () => {
       const cho = await goi<KqUng>(GIU_SO, w1({ cd: CD1, tien: 20 }));
       expect(await ab(CD1)).toEqual([100, 30, 20, 0, 50]);
       expect(await goi(CHU, r5(CD1))).toMatchObject({ recognized_amount: 100, advance_offset_amount: 30, cash_amount: 70, advance_left: 0, advance_pending: 20 });
-      // Khai số tiền như thể khấu trừ cả phần chờ duyệt (50) ⇒ lệch ⇒ PT409.
-      laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 50 })), "PT409", "PROFIT_LEDGER_SETTLE_CHANGED");
-      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 70 }));
+      // Khai số như thể khấu trừ cả phần chờ duyệt (ghi nhận 100, khấu trừ 50, tiền 50) ⇒ tiền lệch ⇒ PT409.
+      laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 50, k: 50 })), "PT409", "PROFIT_LEDGER_SETTLE_CHANGED");
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 70, k: 30 }));
       expect(chot).toMatchObject({ recognized_amount: 100, advance_offset_amount: 30, cash_amount: 70 });
       expect(await ab(CD1)).toEqual([0, 0, 20, 70, -20]);
       expect(await duyet(cho.voucher_id, CHU2)).toBeNull();
@@ -1200,14 +1218,46 @@ describe("ví dụ của chủ: được chia 100, ứng 10 + 20 + 10", () => {
       await ungDaDuyet(30);                                          // một phiếu tạm ứng vừa được duyệt sau khi chủ xem
       const dk = "operation = 'shareholder_profit.ledger_settle.v1'";
       const truoc = [await dem(C7), await dem("public.income_expenses"), await dem("app_private.canonical_write_operations", dk)];
+      // Phần ghi nhận không đổi (100), chỉ TIỀN đổi (100 → 70) ⇒ vẫn PT409.
       const l = laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: xem.cash_amount, khoa: "chot-cas-000001" })), "PT409", "PROFIT_LEDGER_SETTLE_CHANGED");
-      expect(chiTiet(l)).toEqual({ expected_cash: 100, cash_amount: 70, recognized_amount: 100, advance_offset_amount: 30, through_month: "2026-09-01" });
+      expect(chiTiet(l)).toEqual({ expected_recognized: 100, expected_cash: 100, cash_amount: 70, recognized_amount: 100, advance_offset_amount: 30,
+        through_month: "2026-09-01" });
       expect([await dem(C7), await dem("public.income_expenses"), await dem("app_private.canonical_write_operations", dk)]).toEqual(truoc);
+      // Hai số kỳ vọng đều bắt buộc: tiền ≥ 0, phần ghi nhận > 0, tối đa hai số lẻ.
       for (const sai of [null, "-1", "70.001", "'NaN'::numeric", "'Infinity'::numeric"]) {
-        laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: sai })), "22023", "PROFIT_LEDGER_SETTLE_EXPECTED");
+        laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", x: 100, tien: sai })), "22023", "PROFIT_LEDGER_SETTLE_EXPECTED: thiếu hoặc sai số tiền thực chi");
+      }
+      for (const sai of [null, "0", "-1", "100.001", "'NaN'::numeric", "'Infinity'::numeric"]) {
+        laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", x: sai, tien: 70 })), "22023", "PROFIT_LEDGER_SETTLE_EXPECTED: thiếu hoặc sai phần lợi nhuận ghi nhận");
       }
       // Cùng khoá gửi lại với số mới: lần PT409 không để lại dòng chống gửi trùng nào.
-      expect(await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 70, khoa: "chot-cas-000001" }))).toMatchObject({ cash_amount: 70, advance_offset_amount: 30 });
+      expect(await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 70, k: 30, khoa: "chot-cas-000001" }))).toMatchObject({ cash_amount: 70, advance_offset_amount: 30 });
+    });
+  });
+  it("phần GHI NHẬN và phần khấu trừ cùng tăng một lượng giữa lúc xem trước và lúc chốt (toà chốt muộn + một phiếu tạm ứng vừa được duyệt): tiền không đổi nhưng vẫn PT409, không ghi gì", async () => {
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
+      await ungDaDuyet(30);
+      const xem = await goi<{ recognized_amount: number; advance_offset_amount: number; cash_amount: number }>(CHU, r5(CD1));
+      expect([xem.recognized_amount, xem.advance_offset_amount, xem.cash_amount]).toEqual([100, 30, 70]);
+      // Sau khi chủ xem: toà 2 chốt muộn tháng 09 (+20) VÀ một phiếu tạm ứng 20 được duyệt ⇒ ghi nhận 120, khấu trừ 50, tiền VẪN 70.
+      await chotThang("2026-09-01", TOA_2, { [CD1]: 20 });
+      await ungDaDuyet(20);
+      expect(await goi(CHU, r5(CD1))).toMatchObject({ recognized_amount: 120, advance_offset_amount: 50, cash_amount: 70 });
+      const dk = "operation = 'shareholder_profit.ledger_settle.v1'";
+      const truoc = [await dem(C7), await dem("public.income_expenses"), await dem("app_private.canonical_write_operations", dk),
+        await dem("app_private.profit_ledger_events"), await ab(CD1)];
+      const l = laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", x: xem.recognized_amount, tien: xem.cash_amount, khoa: "chot-cas-x-00001" })),
+        "PT409", "PROFIT_LEDGER_SETTLE_CHANGED");
+      expect(chiTiet(l)).toEqual({ expected_recognized: 100, expected_cash: 70, cash_amount: 70, recognized_amount: 120, advance_offset_amount: 50,
+        through_month: "2026-09-01" });
+      expect([await dem(C7), await dem("public.income_expenses"), await dem("app_private.canonical_write_operations", dk),
+        await dem("app_private.profit_ledger_events"), await ab(CD1)]).toEqual(truoc);
+      // Xem lại rồi gửi đúng hai số mới (cùng khoá): chốt được, bản ghi lưu đúng số chủ vừa xem.
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-09-01", x: 120, tien: 70, khoa: "chot-cas-x-00001" }));
+      expect(chot).toMatchObject({ recognized_amount: 120, advance_offset_amount: 50, cash_amount: 70, state: "PENDING_APPROVAL" });
+      expect(await banGhiChot(chot.settlement_id)).toMatchObject({ recognized_amount: "120.00", advance_offset_amount: "50.00", cash_amount: "70.00",
+        unpaid_before: "120.00", advance_before: "50.00" });
     });
   });
 });
@@ -1310,10 +1360,15 @@ describe("W1 — lập phiếu tạm ứng ở Thu chi", () => {
   });
   it("cổ đông nghỉ / đã xoá / công ty khác, sổ ảo / sổ công ty khác, người ngoài công ty, super admin không là thành viên, chưa đăng nhập ⇒ 42501; công ty không có toà ảo ⇒ 55000", async () => {
     await giaoDich(async () => {
+      // Cổ đông nghỉ / đã xoá của CHÍNH công ty mình (người gọi là thành viên).
       for (const cd of [CD_NGHI, CD_XOA]) expect(await loiGoi(GIU_SO, w1({ cd, tien: 10 }))).toMatchObject({ code: "42501", message: "Không tìm thấy cổ đông trong tổ chức hợp lệ" });
-      expect(await loiGoi(GIU_SO, w1({ cd: id(999), tien: 10 }))).toMatchObject({ code: "42501", message: "Không tìm thấy cổ đông trong tổ chức hợp lệ" });
-      expect(await loiGoi(GIU_SO, w1({ cd: CD_B, tien: 10 }))).toMatchObject({ code: "42501", message: "Không có quyền lập phiếu tạm ứng cổ đông" });
-      for (const ai of [NGOAI, SUPER]) expect(await loiGoi(ai, w1({ cd: CD1, tien: 10 }))).toMatchObject({ code: "42501", message: "Không có quyền lập phiếu tạm ứng cổ đông" });
+      // "Không có cổ đông đó" và "không thuộc công ty của cổ đông" trả CÙNG một câu, cùng mã, không DETAIL / HINT: người ngoài
+      // (và thành viên công ty khác) không dò được một mã cổ đông có tồn tại hay không.
+      const cung = { code: "42501", message: "Không có quyền lập phiếu tạm ứng cổ đông, hoặc không tìm thấy cổ đông trong tổ chức hợp lệ", detail: null, hint: null };
+      for (const cd of [id(999), CD_B]) expect(await loiGoi(GIU_SO, w1({ cd, tien: 10 })), cd).toEqual(cung);
+      for (const ai of [NGOAI, SUPER]) {
+        for (const cd of [CD1, id(999)]) expect(await loiGoi(ai, w1({ cd, tien: 10 })), `${ai} ${cd}`).toEqual(cung);
+      }
       expect(await loiGoi(null, w1({ cd: CD1, tien: 10 }))).toMatchObject({ code: "42501", message: "Chưa đăng nhập" });
       for (const so of [SO_AO, SO_B, id(998)]) expect(await loiGoi(GIU_SO, w1({ cd: CD1, tien: 10, so }))).toMatchObject({ code: "42501", message: "Sổ quỹ tiền thật không hợp lệ hoặc không thuộc tổ chức" });
       await db.exec(`UPDATE public.buildings SET deleted_at = now() WHERE id = '${TOA_AO}'`);
@@ -1400,7 +1455,7 @@ describe("W1 — lập phiếu tạm ứng ở Thu chi", () => {
       expect(await dem("public.income_expenses", "system_source = 'profit.ledger_payout'")).toBe(0);
     });
   });
-  it("hạng mục 'Tạm Ứng' mất 'bắt buộc duyệt' ⇒ 55000 PROFIT_LEDGER_TYPE_NOT_FORCED; chưa có ⇒ tự tạo đúng cờ; đã có hạng mục trùng tên chuẩn hoá ⇒ dùng lại, không tạo trùng", async () => {
+  it("hạng mục 'Tạm Ứng' mất 'bắt buộc duyệt' ⇒ 55000 PROFIT_LEDGER_TYPE_NOT_FORCED; chưa có ⇒ tự tạo đúng cờ; công ty đã có hạng mục chi trùng tên (không mang rule_key) ⇒ KHÔNG chiếm, dừng 55000 PROFIT_LEDGER_TYPE_NAME_TAKEN", async () => {
     await giaoDich(async () => {
       const dk = `organization_id = '${ORG_A}' AND rule_key = 'tam_ung_co_dong'`;
       await db.exec(`UPDATE public.income_expense_types SET force_approval = false WHERE ${dk}`);
@@ -1416,9 +1471,25 @@ describe("W1 — lập phiếu tạm ứng ở Thu chi", () => {
     await giaoDich(async () => {
       await db.exec(`DELETE FROM public.income_expense_types WHERE organization_id = '${ORG_A}' AND rule_key = 'tam_ung_co_dong';
         INSERT INTO public.income_expense_types(id, name, type, user_id, organization_id, force_approval) VALUES ('${id(97)}','tạm  ỨNG','expense','${CHU}','${ORG_A}', true)`);
-      const r = await goi<KqUng>(GIU_SO, w1({ tien: 10 }));
-      expect(await mot(`SELECT income_expense_type_id AS v FROM public.income_expense_items WHERE income_expense_id = '${r.voucher_id}'`)).toBe(id(97));
+      // Hạng mục người dùng tự đặt (đang dùng cho việc khác): lệnh lập tạm ứng không dùng lại, không tạo thêm, không lập phiếu.
+      const l = laLoi(await loiGoi(GIU_SO, w1({ tien: 10 })), "55000", 'PROFIT_LEDGER_TYPE_NAME_TAKEN: công ty đã có hạng mục chi tên "Tạm Ứng" dùng cho việc khác');
+      expect(chiTiet(l)).toEqual({ income_expense_type_id: id(97) });
       expect(await dem("public.income_expense_types", `organization_id = '${ORG_A}' AND rule_key = 'tam_ung_co_dong'`)).toBe(0);
+      expect(await dem("public.income_expense_items", `income_expense_type_id = '${id(97)}'`)).toBe(0);
+      expect(await dem("public.income_expenses", "system_source = 'profit.ledger_payout'")).toBe(0);
+      // Hạng mục THU trùng tên thì không cản (chỉ mục duy nhất theo chiều thu / chi): lệnh tự tạo hạng mục chi của mình.
+      await db.exec(`UPDATE public.income_expense_types SET type = 'income' WHERE id = '${id(97)}'`);
+      const r = await goi<KqUng>(GIU_SO, w1({ tien: 10 }));
+      expect(await mot(`SELECT t.rule_key AS v FROM public.income_expense_items i JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
+        WHERE i.income_expense_id = '${r.voucher_id}'`)).toBe("tam_ung_co_dong");
+    });
+    // Nhánh chia_loi_nhuan (phiếu tiền của lệnh chốt) GIỮ dự phòng theo tên như lệnh chi cũ: dùng lại hạng mục trùng tên.
+    await giaoDich(async () => {
+      await db.exec(`UPDATE public.income_expense_types SET rule_key = NULL, name = 'chia  LỢI nhuận cổ đông' WHERE id = '${LOAI_CLN_A}'`);
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 100 }));
+      expect(await mot(`SELECT income_expense_type_id AS v FROM public.income_expense_items WHERE income_expense_id = '${chot.voucher_id}'`)).toBe(LOAI_CLN_A);
+      expect(await dem("public.income_expense_types", `organization_id = '${ORG_A}' AND rule_key = 'chia_loi_nhuan'`)).toBe(0);
     });
   });
   it("công ty khác lập tạm ứng cho cổ đông của mình bình thường (toà ảo, hạng mục, số dư của đúng công ty)", async () => {
@@ -1609,7 +1680,7 @@ describe("R5 / W2 — xem trước và chốt chi lợi nhuận đến hết th�
       await chotThang("2026-09-01", TOA_1, { [CD1]: 70 });
       await chotThang("2026-10-01", TOA_1, { [CD1]: 50 });
       await ungDaDuyet(20);
-      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 100, khoa: "chot-hinh-dang-01" }));
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 100, k: 20, khoa: "chot-hinh-dang-01" }));
       expect(chot).toEqual({ settlement_id: expect.stringMatching(UUID), through_month: "2026-10-01", recognized_amount: 120, advance_offset_amount: 20, cash_amount: 100,
         voucher_id: expect.stringMatching(UUID), approval_request_id: expect.stringMatching(UUID), state: "PENDING_APPROVAL" });
       const p = chot.voucher_id as string;
@@ -1644,7 +1715,7 @@ describe("R5 / W2 — xem trước và chốt chi lợi nhuận đến hết th�
       expect((await banGhiChot(co.settlement_id)).note).toBe("Chi nốt tháng 11");
     });
   });
-  it("R5: liệt kê tháng (phân bổ của tháng, X nếu chốt đến tháng đó, chọn được), mặc định tháng lớn nhất chọn được; chọn tháng sớm hơn thì chỉ ghi nhận tới tháng đó", async () => {
+  it("R5: liệt kê tháng (phân bổ của tháng, X nếu chốt đến tháng đó, chọn được), mặc định tháng đủ điều kiện lớn nhất; chọn tháng sớm hơn thì chỉ ghi nhận tới tháng đó", async () => {
     await giaoDich(async () => {
       await chotThang("2026-08-01", TOA_1, { [CD1]: 30, [CD2]: 999 });
       await chotThang("2026-08-01", TOA_2, { [CD1]: 12.5 });
@@ -1665,7 +1736,7 @@ describe("R5 / W2 — xem trước và chốt chi lợi nhuận đến hết th�
           last_settled_through_month: null, settled: { recognized: 0, offset: 0, cash: 0 } } });
       // Chốt đến tháng 08 thôi: X = 42,5; tháng 09 lỗ và tháng 10 để lại.
       expect(await goi(CHU, r5(CD1, "2026-08-01"))).toMatchObject({ through_month: "2026-08-01", recognized_amount: 42.5, advance_offset_amount: 15, cash_amount: 27.5 });
-      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-08-01", tien: 27.5 }));
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-08-01", tien: 27.5, k: 15 }));
       expect(chot).toMatchObject({ recognized_amount: 42.5, advance_offset_amount: 15, cash_amount: 27.5 });
       expect(await ab(CD1)).toEqual([40, 0, 0, 27.5, 40]);
       const sau = await goi<{ months: unknown[]; settlements: Record<string, unknown>[] }>(CHU, r5(CD1));
@@ -1702,15 +1773,42 @@ describe("R5 / W2 — xem trước và chốt chi lợi nhuận đến hết th�
       laLoi(await loiGoi(CHU, "SELECT public.shareholder_profit_settlement_preview_v1(NULL, NULL, NULL) AS v"), "22023", "PROFIT_LEDGER_BAD_INPUT");
     });
   });
+  it("R5 không truyền tháng ⇒ tháng ĐỦ ĐIỀU KIỆN lớn nhất, không phải tháng lớn nhất còn tiền: tháng cuối lỗ làm luỹ kế âm thì báo NOTHING_TO_SETTLE; muốn chốt đến tháng trước đó phải tự chọn", async () => {
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
+      await chotThang("2026-10-01", TOA_1, { [CD1]: -120 });          // tháng cuối lỗ: luỹ kế đến tháng 10 là −20
+      const macDinh = await goi<{ months: unknown[] }>(CHU, r5(CD1));
+      expect(macDinh.months).toEqual([
+        { month: "2026-09-01", allocated: 100, unpaid_through: 100, selectable: true },
+        { month: "2026-10-01", allocated: -120, unpaid_through: -20, selectable: false }]);
+      // Không đề xuất chi 100 của tháng 09 khi cả kỳ đang âm.
+      expect(macDinh).toMatchObject({ through_month: "2026-10-01", min_through_month: "2026-09-01", recognized_amount: -20, advance_offset_amount: null,
+        cash_amount: null, advance_left: null, can_submit: false, blocked_reason: "NOTHING_TO_SETTLE", position: { unpaid_profit: -20, balance: -20 } });
+      // Chủ TỰ CHỌN tháng 09 thì vẫn chốt được (phần lỗ để lại, như ca "chốt đến tháng 09 dù tháng 10 lỗ").
+      expect(await goi(CHU, r5(CD1, "2026-09-01"))).toMatchObject({ through_month: "2026-09-01", recognized_amount: 100, advance_offset_amount: 0, cash_amount: 100,
+        can_submit: true, blocked_reason: null });
+      // Không còn tháng đủ điều kiện nào (mốc phủ hết) ⇒ như trước: không có tháng, NOTHING_TO_SETTLE.
+      await goi(CHU, e9(CD1, "2026-10-01", null));
+      expect(await goi(CHU, r5(CD1))).toMatchObject({ months: [], through_month: null, recognized_amount: null, cash_amount: null, can_submit: false,
+        blocked_reason: "NOTHING_TO_SETTLE" });
+    });
+  });
   it("W2: chỉ người có quyền chi lợi nhuận, là thành viên; cổ đông phải đang hoạt động", async () => {
     await giaoDich(async () => {
       await chotThang("2026-09-01", TOA_1, { [CD1]: 100, [CD_NGHI]: 10, [CD_XOA]: 10 });
-      for (const ai of [GIU_SO, TU_UNG, U_CD1, QUAN_LY, KHONG_GIU, NGOAI, SUPER]) {
+      // Thành viên công ty không có quyền chi lợi nhuận.
+      for (const ai of [GIU_SO, TU_UNG, U_CD1, QUAN_LY, KHONG_GIU]) {
         expect(await loiGoi(ai, w2({ thang: "2026-09-01", tien: 100 })), ai).toMatchObject({ code: "42501", message: "Không có quyền chi lợi nhuận cổ đông" });
       }
       expect(await loiGoi(null, w2({ thang: "2026-09-01", tien: 100 }))).toMatchObject({ code: "42501", message: "Chưa đăng nhập" });
-      for (const cd of [CD_NGHI, CD_XOA, id(999)]) expect(await loiGoi(CHU, w2({ cd, thang: "2026-09-01", tien: 10 })), cd).toMatchObject({ code: "42501", message: "Không tìm thấy cổ đông trong tổ chức hợp lệ" });
-      expect(await loiGoi(CHU, w2({ cd: CD_B, thang: "2026-09-01", tien: 10 }))).toMatchObject({ code: "42501", message: "Không có quyền chi lợi nhuận cổ đông" });
+      // Cổ đông nghỉ / đã xoá của CHÍNH công ty mình (người gọi là thành viên).
+      for (const cd of [CD_NGHI, CD_XOA]) expect(await loiGoi(CHU, w2({ cd, thang: "2026-09-01", tien: 10 })), cd).toMatchObject({ code: "42501", message: "Không tìm thấy cổ đông trong tổ chức hợp lệ" });
+      // "Không có cổ đông đó" và "không thuộc công ty của cổ đông" trả CÙNG một câu, cùng mã: người ngoài không dò được một mã cổ đông có tồn tại hay không.
+      const cung = { code: "42501", message: "Không có quyền chi lợi nhuận cổ đông, hoặc không tìm thấy cổ đông trong tổ chức hợp lệ", detail: null, hint: null };
+      for (const ai of [NGOAI, SUPER]) {
+        for (const cd of [CD1, id(999)]) expect(await loiGoi(ai, w2({ cd, thang: "2026-09-01", tien: 100 })), `${ai} ${cd}`).toEqual(cung);
+      }
+      for (const cd of [CD_B, id(999)]) expect(await loiGoi(CHU, w2({ cd, thang: "2026-09-01", tien: 10 })), cd).toEqual(cung);
       // Quyền chi lợi nhuận đã bị gỡ khỏi vai (đọc lại dưới khoá công ty).
       await db.exec(`DELETE FROM public.role_permissions WHERE permission_key = 'shareholder_profit.distribute' AND organization_id = '${ORG_A}'`);
       expect(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 100 }))).toMatchObject({ code: "42501", message: "Không có quyền chi lợi nhuận cổ đông" });
@@ -1728,7 +1826,7 @@ describe("R5 / W2 — xem trước và chốt chi lợi nhuận đến hết th�
         const l = laLoi(await loiGoi(CHU, w2({ thang, tien: 100 })), "22023", "PROFIT_LEDGER_SETTLE_MONTH: tháng chốt phải là tháng đã chốt lợi nhuận của cổ đông");
         expect(chiTiet(l)).toEqual({ through_month: thang, min: "2026-09-01", max: "2026-10-01" });
       }
-      const ln = laLoi(await loiGoi(CHU, w2({ cd: CD3, thang: "2026-09-01", tien: 0 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING: không còn lợi nhuận chưa chi đến hết tháng 09/2026");
+      const ln = laLoi(await loiGoi(CHU, w2({ cd: CD3, thang: "2026-09-01", tien: 0, x: 5 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING: không còn lợi nhuận chưa chi đến hết tháng 09/2026");
       expect(chiTiet(ln)).toEqual({ through_month: "2026-09-01", unpaid_through: -5 });
       for (const thieu of [{ so: null }, { ngay: null }]) {
         const l = laLoi(await loiGoi(CHU, w2({ thang: "2026-10-01", tien: 70, ...thieu })), "22023", "PROFIT_LEDGER_SETTLE_ACCOUNT");
@@ -1741,7 +1839,7 @@ describe("R5 / W2 — xem trước và chốt chi lợi nhuận đến hết th�
       // Chủ được chốt đến tháng 09 dù tháng 10 lỗ (X = 100 > tổng chưa chi 70): phần lỗ để lại thành số âm chờ bù kỳ sau.
       expect(await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 100 }))).toMatchObject({ recognized_amount: 100, cash_amount: 100 });
       expect(await ab(CD1)).toEqual([-30, 0, 0, 100, -30]);
-      laLoi(await loiGoi(CHU, w2({ thang: "2026-10-01", tien: 0 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
+      laLoi(await loiGoi(CHU, w2({ thang: "2026-10-01", tien: 0, x: 70 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
     });
   });
   it("W2: công tắc chưa CANONICAL / đóng băng ⇒ 55000; còn phiếu lương cần xem lại ⇒ 55000; hai khoá ngày chỉ áp khi có tiền thực chi; luật duyệt DENY ⇒ huỷ cả lệnh (không còn bản ghi chốt)", async () => {
@@ -1766,7 +1864,7 @@ describe("R5 / W2 — xem trước và chốt chi lợi nhuận đến hết th�
       expect([await dem(C7), await dem("public.income_expenses", "system_source = 'profit.ledger_payout'"), await dem("app_private.profit_ledger_payouts")]).toEqual([0, 0, 0]);
       // Lần chốt KHÔNG có tiền: ngày chi trong tháng đã chốt / sổ đã chốt không cản (không có phiếu nào được lập).
       await ungDaDuyet(100, { ngay: "2026-11-12" });
-      expect(await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 0, ngay: "2026-05-20" }))).toMatchObject({ cash_amount: 0, state: "SETTLED", voucher_id: null });
+      expect(await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 0, k: 100, ngay: "2026-05-20" }))).toMatchObject({ cash_amount: 0, state: "SETTLED", voucher_id: null });
     });
   });
   it("W2: cùng khoá ⇒ trả y hệt, không ghi thêm (số kỳ vọng không thuộc nội dung); cùng khoá khác tháng / sổ / ngày / ghi chú ⇒ 23505", async () => {
@@ -1804,7 +1902,7 @@ describe("W3 — huỷ bản ghi chốt không có phiếu tiền", () => {
     await chotThang("2026-09-01", TOA_1, { [CD1]: 60 });
     await chotThang("2026-10-01", TOA_1, { [CD1]: 40 });
     await ungDaDuyet(120);
-    return goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0 }));
+    return goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0, k: 100 }));
   }
   it("huỷ ⇒ VOID có người / giờ / lý do, hai con số trở lại, chốt lại được; cùng khoá ⇒ trả y hệt; huỷ lần nữa bằng khoá khác ⇒ 55000", async () => {
     await giaoDich(async () => {
@@ -1820,7 +1918,7 @@ describe("W3 — huỷ bản ghi chốt không có phiếu tiền", () => {
       const l = laLoi(await loiGoi(CHU, w3(chot.settlement_id, "Huỷ thêm lần nữa xem sao", "huy-chot-000002")), "55000", "PROFIT_LEDGER_SETTLE_NOT_ACTIVE");
       expect(chiTiet(l)).toEqual({ state: "VOID" });
       expect(await goi(CHU, r5(CD1, null, null))).toMatchObject({ recognized_amount: 100, advance_offset_amount: 100, cash_amount: 0, settlements: [] });
-      expect(await goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0 }))).toMatchObject({ state: "SETTLED" });
+      expect(await goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0, k: 100 }))).toMatchObject({ state: "SETTLED" });
     });
   });
   it("bản ghi có phiếu tiền ⇒ 22023 PROFIT_LEDGER_SETTLE_HAS_VOUCHER (huỷ phiếu bằng lệnh huỷ phiếu); lý do / khoá sai ⇒ 22023; không quyền, không có, công ty khác ⇒ cùng một lỗi 42501", async () => {
@@ -1898,7 +1996,7 @@ describe("R1 / R2 — đọc vị thế", () => {
     await giaoDich(async () => {
       await chotThang("2026-09-01", TOA_1, { [CD1]: 100, [CD_XEM]: 55, [CD2]: 30 });
       await ungDaDuyet(40);
-      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 60 }));
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 60, k: 40 }));
       const toi = await goi<Record<string, unknown>>(U_CD1, r2());
       expect(Object.keys(toi).sort()).toEqual(["advance_outstanding", "advance_pending", "balance", "components", "last_settled_through_month", "marker_month", "needs_review",
         "organization_id", "route", "settled", "settlement_cash_pending", "settlements", "shareholder", "unpaid_profit"]);
@@ -1925,30 +2023,143 @@ describe("R1 / R2 — đọc vị thế", () => {
 });
 
 describe("mốc 'đã trả đủ đến hết tháng X' (Đợt 1) và bản ghi chốt", () => {
-  it("mốc hiệu lực loại bản ghi chốt lập TRƯỚC mốc (như phiếu); gỡ mốc thì bản ghi tính lại; chốt sau mốc tính bình thường và chỉ chọn được tháng sau mốc", async () => {
+  const MA_MOC = "PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT";
+  const e9QuanLy = (ql: string, thang: string | null, cu: string | null) =>
+    `SELECT public.profit_ledger_set_marker_v1('${ORG_A}','MANAGER','${ql}', ${q(thang)}, 'Đã trả đủ theo sổ tay', ${q(cu)}, true, '${khoa("moc")}') AS v`;
+  const soMoc = (dk = "true") => dem("app_private.profit_ledger_markers", dk);
+  /** Được chia tháng 09 = 60, tháng 10 = 40; đã ứng 120 (đã duyệt); chốt đến hết tháng 10 không có tiền (X 100, K 100). */
+  async function chotDenThang10(): Promise<KqChot> {
+    await chotThang("2026-09-01", TOA_1, { [CD1]: 60 });
+    await chotThang("2026-10-01", TOA_1, { [CD1]: 40 });
+    await ungDaDuyet(120);
+    const chot = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0, k: 100 }));
+    expect(await ab(CD1)).toEqual([0, 20, 0, 0, -20]);
+    return chot;
+  }
+
+  it("mốc đặt SỚM hơn tháng đã chốt chi bị lệnh đặt mốc của Đợt 1 từ chối (55000 PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT): tháng đã chốt không hiện lại 'chưa chi', không chi lần hai; mốc ĐÚNG tháng chốt thì qua; bản ghi đang bị mốc loại vẫn chặn mốc lùi; gỡ mốc vẫn qua", async () => {
+    await giaoDich(async () => {
+      const cu = await chotDenThang10();
+      const truoc = [await soMoc(), await dem("app_private.profit_ledger_events", "event_kind = 'MARKER_SET'"), await viThe(CD1)];
+      // Đúng kịch bản review: mốc "đã trả đủ đến hết tháng 9" (và sớm hơn) — gọi lệnh đặt mốc THẬT.
+      for (const thang of ["2026-09-01", "2026-08-01"]) {
+        const l = laLoi(await loiGoi(CHU, e9(CD1, thang, null)), "55000", `${MA_MOC}: đã chốt chi lợi nhuận đến hết tháng 10/2026`);
+        expect(chiTiet(l), thang).toEqual({ settled_through_month: thang, last_settled_through_month: "2026-10-01" });
+      }
+      expect([await soMoc(), await dem("app_private.profit_ledger_events", "event_kind = 'MARKER_SET'"), await viThe(CD1)]).toEqual(truoc);
+      expect(await mocHieuLuc(CD1)).toBeNull();
+      // Tháng 10 KHÔNG hiện lại "chưa chi": không còn gì để chốt, gửi lại số cũ cũng không chi thêm.
+      expect(await goi(CHU, r5(CD1))).toMatchObject({ through_month: "2026-10-01", recognized_amount: 0, cash_amount: null, can_submit: false, blocked_reason: "NOTHING_TO_SETTLE" });
+      laLoi(await loiGoi(CHU, w2({ thang: "2026-10-01", tien: 40 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
+
+      // Mốc ĐÚNG tháng chốt (tháng 10): qua như cũ; bản ghi chốt và phiếu tạm ứng nằm trước mốc.
+      const moc = await goi<{ marker_id: string }>(CHU, e9(CD1, "2026-10-01", null));
+      expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 0, advance_outstanding: 0, advance_pending: 0, balance: 0, marker_month: "2026-10-01",
+        last_settled_through_month: null, settled: { recognized: 0, offset: 0, cash: 0 } });
+      const xem = await goi<{ months: unknown[]; settlements: { id: string; excluded_by_marker: boolean }[] }>(CHU, r5(CD1));
+      expect(xem.months).toEqual([]);
+      expect(xem.settlements).toMatchObject([{ id: cu.settlement_id, excluded_by_marker: true }]);
+      // Bản ghi chốt đó vẫn CÒN HIỆU LỰC dù đang bị mốc loại: lùi mốc về tháng 9 (đè mốc tháng 10) vẫn bị chặn.
+      const lui = laLoi(await loiGoi(CHU, e9(CD1, "2026-09-01", moc.marker_id)), "55000", MA_MOC);
+      expect(chiTiet(lui)).toEqual({ settled_through_month: "2026-09-01", last_settled_through_month: "2026-10-01" });
+      expect(await mocHieuLuc(CD1)).toBe(moc.marker_id);
+      // Gỡ mốc (tháng NULL) không bị trigger đụng: bản ghi chốt và các phiếu cũ tính lại như trước khi đặt mốc.
+      await goi(CHU, e9(CD1, null, moc.marker_id));
+      expect(await ab(CD1)).toEqual([0, 20, 0, 0, -20]);
+      expect((await viThe(CD1)).marker_month).toBeNull();
+    });
+  });
+  it("mốc MUỘN hơn tháng đã chốt chi thì qua: bản ghi chốt lập trước mốc bị loại (như phiếu), chốt sau mốc tính bình thường và chỉ chọn được tháng sau mốc; gỡ mốc thì bản ghi cũ tính lại", async () => {
     await giaoDich(async () => {
       await chotThang("2026-09-01", TOA_1, { [CD1]: 60 });
       await chotThang("2026-10-01", TOA_1, { [CD1]: 40 });
       await ungDaDuyet(120);
-      const cu = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0 }));
-      expect(await ab(CD1)).toEqual([0, 20, 0, 0, -20]);
-      // Chủ đặt mốc "đã trả đủ đến hết 09/2026": phân bổ ≤ 09, mọi phiếu đang có và bản ghi chốt cũ đều nằm trước mốc.
-      const moc = await goi<{ marker_id: string }>(CHU, e9(CD1, "2026-09-01", null));
-      expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 40, advance_outstanding: 0, advance_pending: 0, balance: 40, marker_month: "2026-09-01",
-        last_settled_through_month: null, settled: { recognized: 0, offset: 0, cash: 0 } });
+      const cu = await goi<KqChot>(CHU, w2({ thang: "2026-09-01", so: null, ngay: null, tien: 0, k: 60 }));
+      expect(await ab(CD1)).toEqual([40, 60, 0, 0, -20]);
+      // Mốc "đã trả đủ đến hết tháng 10" — muộn hơn tháng đã chốt chi (tháng 9).
+      const moc = await goi<{ marker_id: string }>(CHU, e9(CD1, "2026-10-01", null));
+      expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 0, advance_outstanding: 0, balance: 0, marker_month: "2026-10-01", last_settled_through_month: null,
+        settled: { recognized: 0, offset: 0, cash: 0 } });
+      await chotThang("2026-11-01", TOA_1, { [CD1]: 30 });
       const xem = await goi<{ months: unknown[]; settlements: { id: string; excluded_by_marker: boolean }[] }>(CHU, r5(CD1));
-      expect(xem.months).toEqual([{ month: "2026-10-01", allocated: 40, unpaid_through: 40, selectable: true }]);
+      expect(xem.months).toEqual([{ month: "2026-11-01", allocated: 30, unpaid_through: 30, selectable: true }]);
       expect(xem.settlements).toMatchObject([{ id: cu.settlement_id, excluded_by_marker: true }]);
-      laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 0 })), "22023", "PROFIT_LEDGER_SETTLE_MONTH");
-      laLoi(await loiGoi(CHU, r5(CD1, "2026-09-01")), "22023", "PROFIT_LEDGER_SETTLE_MONTH");
-      // Chốt SAU mốc: tính bình thường.
-      const moi = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 40 }));
-      expect(moi).toMatchObject({ recognized_amount: 40, advance_offset_amount: 0, cash_amount: 40 });
-      expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 0, settlement_cash_pending: 40, last_settled_through_month: "2026-10-01", settled: { recognized: 40, offset: 0, cash: 40 } });
-      // Gỡ mốc: bản ghi chốt cũ (và các phiếu cũ) tính lại, cùng bản ghi mới.
+      for (const thang of ["2026-09-01", "2026-10-01"]) {
+        laLoi(await loiGoi(CHU, w2({ thang, tien: 30 })), "22023", "PROFIT_LEDGER_SETTLE_MONTH");
+        laLoi(await loiGoi(CHU, r5(CD1, thang)), "22023", "PROFIT_LEDGER_SETTLE_MONTH");
+      }
+      // Chốt SAU mốc: tính bình thường (tạm ứng cũ nằm trước mốc nên không còn gì để khấu trừ).
+      const moi = await goi<KqChot>(CHU, w2({ thang: "2026-11-01", tien: 30 }));
+      expect(moi).toMatchObject({ recognized_amount: 30, advance_offset_amount: 0, cash_amount: 30 });
+      expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 0, settlement_cash_pending: 30, last_settled_through_month: "2026-11-01", settled: { recognized: 30, offset: 0, cash: 30 } });
+      // Gỡ mốc: bản ghi chốt cũ (và phiếu tạm ứng cũ) tính lại, cùng bản ghi mới.
       await goi(CHU, e9(CD1, null, moc.marker_id));
-      expect(await viThe(CD1)).toMatchObject({ unpaid_profit: -40, advance_outstanding: 20, settlement_cash_pending: 40, balance: -60, marker_month: null,
-        settled: { recognized: 140, offset: 100, cash: 40 } });
+      expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 40, advance_outstanding: 60, advance_pending: 0, settlement_cash_pending: 30, balance: -20, marker_month: null,
+        last_settled_through_month: "2026-11-01", settled: { recognized: 90, offset: 60, cash: 30 } });
+    });
+  });
+  it("lần chốt hết hiệu lực thì mốc sớm đặt được: huỷ bản ghi chốt không tiền, hoặc huỷ / từ chối phiếu tiền của lần chốt", async () => {
+    // (a) Lần chốt không tiền bị huỷ bằng lệnh huỷ bản ghi chốt.
+    await giaoDich(async () => {
+      const cu = await chotDenThang10();
+      laLoi(await loiGoi(CHU, e9(CD1, "2026-09-01", null)), "55000", MA_MOC);
+      await goi(CHU2, w3(cu.settlement_id));
+      await goi(CHU, e9(CD1, "2026-09-01", null));
+      // Nghĩa sẵn có của mốc (không còn lần chốt nào): tháng 10 chưa chi 40, phiếu tạm ứng cũ nằm trước mốc.
+      expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 40, advance_outstanding: 0, balance: 40, marker_month: "2026-09-01" });
+    });
+    // (b) Lần chốt có tiền: phiếu tiền còn chờ duyệt ⇒ còn hiệu lực ⇒ chặn; chủ huỷ phiếu tiền ⇒ hết hiệu lực ⇒ đặt được.
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 60 });
+      await chotThang("2026-10-01", TOA_1, { [CD1]: 40 });
+      const cu = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 100 }));
+      laLoi(await loiGoi(CHU, e9(CD1, "2026-09-01", null)), "55000", MA_MOC);
+      expect(await huyPhieu(cu.voucher_id as string, CHU, "PENDING")).toBeNull();
+      await goi(CHU, e9(CD1, "2026-09-01", null));
+      expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 40, advance_outstanding: 0, balance: 40, marker_month: "2026-09-01" });
+    });
+    // (c) Phiếu tiền bị chủ thứ hai từ chối ⇒ cũng hết hiệu lực.
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 60 });
+      await chotThang("2026-10-01", TOA_1, { [CD1]: 40 });
+      const cu = await goi<KqChot>(CHU, w2({ thang: "2026-10-01", tien: 100 }));
+      expect(await tuChoi(cu.approval_request_id as string, CHU2)).toBeNull();
+      await goi(CHU, e9(CD1, "2026-09-01", null));
+      expect((await viThe(CD1)).marker_month).toBe("2026-09-01");
+    });
+  });
+  it("chỉ mốc của ĐÚNG cổ đông có lần chốt bị chặn: cổ đông khác cùng công ty và mốc của lương điều hành đặt như cũ", async () => {
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 60, [CD2]: 30 });
+      await chotThang("2026-10-01", TOA_1, { [CD1]: 40, [CD2]: 10 });
+      await ungDaDuyet(120);
+      await goi<KqChot>(CHU, w2({ thang: "2026-10-01", so: null, ngay: null, tien: 0, k: 100 }));
+      laLoi(await loiGoi(CHU, e9(CD1, "2026-09-01", null)), "55000", MA_MOC);
+      // Cổ đông 2 chưa từng chốt chi: đặt mốc sớm tự do.
+      await goi(CHU, e9(CD2, "2026-09-01", null));
+      expect(await viThe(CD2)).toMatchObject({ unpaid_profit: 10, marker_month: "2026-09-01" });
+      // Lương điều hành (chủ thể MANAGER): trigger không đụng.
+      const QL = id(7401);
+      await db.exec(`INSERT INTO public.profit_managers(id, organization_id, auth_user_id, name) VALUES ('${QL}','${ORG_A}', NULL, 'Quản lý điều hành')`);
+      const moc = await goi<{ marker_id: string }>(CHU, e9QuanLy(QL, "2026-09-01", null));
+      expect(moc.marker_id).toMatch(UUID);
+      await goi(CHU, e9QuanLy(QL, "2026-08-01", moc.marker_id));     // lùi mốc của lương điều hành cũng không bị chặn
+      expect([await soMoc("subject_kind = 'MANAGER'"), await soMoc(`subject_kind = 'SHAREHOLDER' AND shareholder_id = '${CD1}'`)]).toEqual([2, 0]);
+    });
+  });
+  it("trigger của bảng mốc là chốt cuối (không chỉ lệnh đặt mốc): chèn thẳng dòng mốc sớm dưới khoá sổ cũng bị chặn; tên xếp sau chốt sẵn có của bảng", async () => {
+    const tg = (await db.query<{ ten: string; def: string; bat: string }>(`SELECT t.tgname AS ten, pg_get_triggerdef(t.oid) AS def, t.tgenabled AS bat FROM pg_trigger t
+      WHERE t.tgrelid = 'app_private.profit_ledger_markers'::regclass AND NOT t.tgisinternal AND t.tgtype & 4 = 4 ORDER BY t.tgname`)).rows;
+    expect(tg.map((x) => x.ten)).toEqual(["a00_profit_ledger_markers_guard", "a10_profit_ledger_markers_settlement_guard"]);
+    expect(tg[1].def).toContain("BEFORE INSERT ON app_private.profit_ledger_markers FOR EACH ROW EXECUTE FUNCTION app_private.guard_profit_ledger_marker_settlement_v1()");
+    expect(tg.map((x) => x.bat)).toEqual(["O", "O"]);
+    await giaoDich(async () => {
+      await chotDenThang10();
+      const chen = (thang: string | null) => `SELECT app_private.profit_ledger_lock_v1('${ORG_A}','SHAREHOLDER','${CD1}');
+        INSERT INTO app_private.profit_ledger_markers(organization_id, subject_kind, shareholder_id, settled_through_month, reason, ledger_seq, created_by)
+        VALUES ('${ORG_A}','SHAREHOLDER','${CD1}', ${q(thang)}, 'Chèn thẳng để đo trigger', nextval('app_private.profit_ledger_seq'), '${CHU}')`;
+      laLoi(await loi(chen("2026-09-01")), "55000", MA_MOC);
+      expect(await loi(chen("2026-10-01"))).toBeNull();
     });
   });
 });
@@ -1997,7 +2208,7 @@ describe("lương của cổ đông kiêm nhân viên (cơ chế sẵn có, khô
       await dongLuong({ cd: CD1, thang: "2026-09-01", y: 30, d: 30, phieu: id(3601) });
       expect(await ab(CD1)).toEqual([0, 0, 0, 0, 0]);
       expect(await tho(CD1)).toEqual([-30, -30, 30]);
-      expect(await goi(CHU, r5(CD1))).toMatchObject({ through_month: null, blocked_reason: "NOTHING_TO_SETTLE",
+      expect(await goi(CHU, r5(CD1))).toMatchObject({ through_month: "2026-09-01", recognized_amount: 0, cash_amount: null, blocked_reason: "NOTHING_TO_SETTLE",
         months: [{ month: "2026-09-01", allocated: 30, unpaid_through: 0, selectable: false }] });
       // Tháng 10 được chia thêm 50 ⇒ lợi nhuận chưa chi đúng 50, tạm ứng 0; chốt chi ĐỦ 50 (không thiếu phần lương đã giữ).
       await chotThang("2026-10-01", TOA_1, { [CD1]: 50 });
@@ -2026,13 +2237,13 @@ describe("lương của cổ đông kiêm nhân viên (cơ chế sẵn có, khô
       await dongLuong({ cd: CD1, thang: "2026-09-01", y: 30, d: 0, phieu: id(3611) });
       expect(await ab(CD1)).toEqual([0, 0, 0, 0, 0]);
       expect(await tho(CD1)).toEqual([0, 0, 0]);
-      laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 0 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
+      laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 30 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
       await chotThang("2026-10-01", TOA_1, { [CD1]: 50 });
       expect(await ab(CD1)).toEqual([50, 0, 0, 0, 50]);
       await dongLuong({ cd: CD1, thang: "2026-10-01", y: 50, d: 0, phieu: id(3612) });
       expect(await ab(CD1)).toEqual([0, 0, 0, 0, 0]);
-      expect(await goi(CHU, r5(CD1))).toMatchObject({ through_month: null, blocked_reason: "NOTHING_TO_SETTLE" });
-      for (const thang of ["2026-09-01", "2026-10-01"]) laLoi(await loiGoi(CHU, w2({ thang, tien: 0 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
+      expect(await goi(CHU, r5(CD1))).toMatchObject({ through_month: "2026-10-01", recognized_amount: 0, cash_amount: null, blocked_reason: "NOTHING_TO_SETTLE" });
+      for (const thang of ["2026-09-01", "2026-10-01"]) laLoi(await loiGoi(CHU, w2({ thang, tien: 50 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
       expect(await daNhan(CD1)).toEqual({ quaPhieu: 0, quaLuong: 80, duocChia: 80 });
     });
     // Xen kẽ: tháng 09 lương trước, tháng 10 chốt trước rồi lương giữ lại — vẫn cùng tổng.
@@ -2051,7 +2262,7 @@ describe("lương của cổ đông kiêm nhân viên (cơ chế sẵn có, khô
     await giaoDich(async () => {
       await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
       const ung = await ungDaDuyet(40);
-      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 60 }));
+      const chot = await goi<KqChot>(CHU, w2({ thang: "2026-09-01", tien: 60, k: 40 }));
       expect(chot).toMatchObject({ recognized_amount: 100, advance_offset_amount: 40, cash_amount: 60 });
       expect(await duyet(chot.voucher_id as string, CHU2)).toBeNull();
       expect(await ab(CD1)).toEqual([0, 0, 0, 0, 0]);
@@ -2067,7 +2278,7 @@ describe("lương của cổ đông kiêm nhân viên (cơ chế sẵn có, khô
       expect(await ab(CD1)).toEqual([0, 0, 0, 40, 0]);
       expect(await duyet(lai.voucher_id as string, CHU2)).toBeNull();
       expect(await ab(CD1)).toEqual([0, 0, 0, 0, 0]);
-      laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 0 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
+      laLoi(await loiGoi(CHU, w2({ thang: "2026-09-01", tien: 40 })), "22023", "PROFIT_LEDGER_SETTLE_NOTHING");
       // Nhận 60 + 40 qua hai phiếu chốt (phiếu tạm ứng đã huỷ không tính) = được chia 100.
       expect(await daNhan(CD1)).toEqual({ quaPhieu: 100, quaLuong: 0, duocChia: 100 });
     });
@@ -2133,7 +2344,7 @@ describe("lệnh cũ E5 (web cũ còn gọi) vẫn chạy, phiếu của nó đ�
       expect(await ab(CD1)).toEqual([100, 0, 100, 0, 0]);
       expect(await duyet(cu.voucher_id, CHU2)).toBeNull();
       expect(await ab(CD1)).toEqual([100, 100, 0, 0, 0]);
-      expect(await goi<KqChot>(CHU, w2({ thang: "2026-09-01", so: null, ngay: null, tien: 0 }))).toMatchObject({ recognized_amount: 100, advance_offset_amount: 100, cash_amount: 0, state: "SETTLED" });
+      expect(await goi<KqChot>(CHU, w2({ thang: "2026-09-01", so: null, ngay: null, tien: 0, k: 100 }))).toMatchObject({ recognized_amount: 100, advance_offset_amount: 100, cash_amount: 0, state: "SETTLED" });
       expect(await ab(CD1)).toEqual([0, 0, 0, 0, 0]);
     });
   });
@@ -2153,7 +2364,8 @@ describe("bất biến trên kịch bản ngẫu nhiên: A − B_đã_duyệt �
   const THANG = ["2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01"];
   const CO_DONG = [CD_R1, CD_R2, CD_R3];
   const thongKe = { kichBan: 0, phepSo: 0, chotCoTien: 0, chotKhongTien: 0, coKhauTru: 0, tuChoi: 0, huy: 0, huyChot: 0, moc: 0, goMoc: 0, chotSauMoc: 0,
-    luong: 0, aAm: 0, gap: 0, gapKhiAAm: 0, chotCoGap: 0, khongChotDuoc: 0, moChot: 0, phieuCu: 0, tienChoDuyet: 0 };
+    luong: 0, aAm: 0, gap: 0, gapKhiAAm: 0, chotCoGap: 0, khongChotDuoc: 0, moChot: 0, phieuCu: 0, tienChoDuyet: 0,
+    mocBiChan: 0, mocSauChot: 0, macDinhKhongChotDuoc: 0 };
 
   // ── Mô hình JS: KHÔNG gọi hàm số dư nào của database. thuTu = thứ tự ghi vào sổ (đúng thứ tự ledger_seq vì chạy tuần tự).
   type TrangThai = "CHO" | "DUYET" | "CHET";
@@ -2197,7 +2409,13 @@ describe("bất biến trên kịch bản ngẫu nhiên: A − B_đã_duyệt �
       return { month: th, allocated: tron(theoThang.get(th) as number), unpaid_through: tron(x), selectable: (lanCuoi === null || th >= lanCuoi) && tron(x) > 0 };
     });
     // Số dư ròng tính từ số THÔ (lõi Đợt 1 không biết luật gấp) — phải bằng a − b − bCho của số đã gấp.
-    return { viThe: [a, b, bCho, tienCho, aTho - bTho - bCho].map(tron), thang, b: tron(b), gap: tron(gap), tho: [aTho, bTho].map(tron) };
+    // Tháng mặc định của xem trước = tháng ĐỦ ĐIỀU KIỆN lớn nhất (các tháng liệt kê đã ở sau mốc; đủ điều kiện = không trước lần chốt gần nhất).
+    const cacThang = [...theoThang.keys()].sort();
+    const cuoi = cacThang.at(-1) ?? null;
+    const macDinh = cuoi !== null && (lanCuoi === null || cuoi >= lanCuoi) ? cuoi : null;
+    // Luật của bảng mốc: xét MỌI bản ghi chốt còn hiệu lực, KỂ CẢ bản đang bị mốc hiện tại loại.
+    const chotMoiSong = so.chot.filter((c) => !c.huy && (c.phieu === null || phieuSong(c.phieu))).map((c) => c.thang).sort().at(-1) ?? null;
+    return { viThe: [a, b, bCho, tienCho, aTho - bTho - bCho].map(tron), thang, b: tron(b), gap: tron(gap), tho: [aTho, bTho].map(tron), macDinh, chotMoiSong };
   }
 
   async function kichBan(k: number) {
@@ -2227,6 +2445,27 @@ describe("bất biến trên kịch bản ngẫu nhiên: A − B_đã_duyệt �
         if (m.gap > 0 && m.tho[0] < 0) thongKe.gapKhiAAm++;
         if (m.viThe[3] > 0) thongKe.tienChoDuyet++;
       }
+    }
+    /** Các tháng sớm hơn tháng của lần chốt CÒN HIỆU LỰC lớn nhất (kể cả lần đang bị mốc loại) — đặt mốc vào đó phải bị từ chối. */
+    const thangSomHonLanChot = (cd: string) => {
+      const lanChot = tinh(ky, cua(cd), cd).chotMoiSong;
+      return lanChot === null ? [] : THANG.filter((t) => t < lanChot);
+    };
+    /** Đặt mốc bằng lệnh THẬT của Đợt 1. Luật của bảng mốc: mốc có tháng sớm hơn một lần chốt còn hiệu lực ⇒ 55000, không gì đổi. */
+    async function datMoc(cd: string, thang: string | null) {
+      const s = cua(cd);
+      const lanChot = tinh(ky, s, cd).chotMoiSong;
+      if (thang !== null && lanChot !== null && lanChot > thang) {
+        const l = laLoi(await loiGoi(CHU, e9(cd, thang, await mocHieuLuc(cd))), "55000", "PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT");
+        expect(chiTiet(l), `kịch bản ${k} · mốc bị chặn`).toEqual({ settled_through_month: thang, last_settled_through_month: lanChot });
+        thongKe.mocBiChan++;
+        return;
+      }
+      await goi(CHU, e9(cd, thang, await mocHieuLuc(cd)));
+      s.moc = { thuTu: ++thuTu, thang };
+      thongKe.moc++;
+      if (thang === null) thongKe.goMoc++;
+      else if (lanChot !== null) thongKe.mocSauChot++;
     }
     /** Số phận của một phiếu vừa lập: để chờ, chủ thứ hai duyệt, bị từ chối, hoặc chủ huỷ. */
     async function soPhan(p: Phieu, yeuCau: string, tyLeDuyet = 0.5) {
@@ -2279,24 +2518,27 @@ describe("bất biến trên kịch bản ngẫu nhiên: A − B_đã_duyệt �
         thongKe.luong++;
         if (xs(0.2)) { await db.exec(`UPDATE public.income_expenses SET deleted_at = now() WHERE id = '${l.phieu}'`); l.song = false; }
       } else if (v === "moc") {
-        const thang = s.moc !== null && s.moc.thang !== null && xs(0.4) ? null : chon(THANG);
-        await goi(CHU, e9(cd, thang, await mocHieuLuc(cd)));
-        s.moc = { thuTu: ++thuTu, thang };
-        thongKe.moc++;
-        if (thang === null) thongKe.goMoc++;
+        // Khi cổ đông đang có lần chốt còn hiệu lực: nhắm cả hai phía — tháng SỚM hơn (bị bảng mốc từ chối) và tháng từ lần chốt trở đi (qua).
+        const som = thangSomHonLanChot(cd);
+        const tuLanChot = THANG.filter((t) => !som.includes(t));
+        await datMoc(cd, s.moc !== null && s.moc.thang !== null && xs(0.4) ? null
+          : som.length > 0 && xs(0.4) ? chon(som) : som.length > 0 && tuLanChot.length > 0 && xs(0.7) ? chon(tuLanChot) : chon(THANG));
       } else if (v === "chot") {
         const m = tinh(ky, s, cd);
         const duoc = m.thang.filter((t) => t.selectable);
         const xem = await goi<{ can_submit: boolean; through_month: string | null; cash_amount: number | null }>(CHU, r5(cd, null, SO_QUY));
+        // Không truyền tháng ⇒ tháng đủ điều kiện lớn nhất (kể cả khi không còn gì để chốt ở tháng đó).
+        expect(xem.through_month, `kịch bản ${k} · tháng mặc định`).toBe(m.macDinh);
+        if (m.macDinh !== null && !m.thang.some((t) => t.month === m.macDinh && t.selectable)) thongKe.macDinhKhongChotDuoc++;
         if (duoc.length === 0) {
-          expect(xem, `kịch bản ${k} · không chốt được`).toMatchObject({ can_submit: false, through_month: null });
+          expect(xem, `kịch bản ${k} · không chốt được`).toMatchObject({ can_submit: false });
           thongKe.khongChotDuoc++;
         } else {
           // Chủ thường chốt đến tháng lớn nhất; đôi khi chọn tháng sớm hơn.
           const t = xs(0.75) ? (duoc.at(-1) as { month: string; unpaid_through: number }) : chon(duoc);
           const kMong = tron(Math.min(t.unpaid_through, Math.max(m.b, 0)));
           const tienMong = tron(t.unpaid_through - kMong);
-          const chot = await goi<KqChot>(CHU, w2({ cd, thang: t.month, tien: tienMong }));
+          const chot = await goi<KqChot>(CHU, w2({ cd, thang: t.month, x: t.unpaid_through, tien: tienMong }));
           expect([chot.recognized_amount, chot.advance_offset_amount, chot.cash_amount], `kịch bản ${k} · chốt ${t.month}`).toEqual([t.unpaid_through, kMong, tienMong]);
           if (s.moc !== null && s.moc.thang !== null) thongKe.chotSauMoc++;
           if (kMong > 0) thongKe.coKhauTru++;
@@ -2310,6 +2552,9 @@ describe("bất biến trên kịch bản ngẫu nhiên: A − B_đã_duyệt �
           s.chot.push({ id: chot.settlement_id, thang: t.month, x: t.unpaid_through, k: kMong, tien: tienMong, phieu: chot.voucher_id, thuTu: ++thuTu, huy: false });
           if (p !== null) await soPhan(p, chot.approval_request_id as string);
           else if (xs(0.3)) { await goi(CHU, w3(chot.settlement_id)); (s.chot.at(-1) as BanGhi).huy = true; thongKe.huyChot++; }
+          // Ngay sau lần chốt, đôi khi chủ thử lùi mốc về trước tháng vừa chốt: lần chốt còn hiệu lực thì bị chặn, đã chết thì qua.
+          const som = thangSomHonLanChot(cd);
+          if (som.length > 0 && xs(0.4)) await datMoc(cd, chon(som));
         }
       } else if (v === "huyChot") {
         const c = s.chot.find((x) => x.phieu === null && !x.huy);
@@ -2345,7 +2590,12 @@ describe("bất biến trên kịch bản ngẫu nhiên: A − B_đã_duyệt �
     expect(thongKe.moChot).toBeGreaterThan(8);
     expect(thongKe.phieuCu).toBeGreaterThan(20);
     expect(thongKe.aAm).toBeGreaterThan(50);
-    // Luật gấp có việc để làm: nhiều trạng thái tạm ứng thô âm (đo 18/11: 109), cả khi lợi nhuận chưa chi thô cũng âm (46), và có lần chốt lúc đang gấp (5).
+    // Luật gấp có việc để làm: nhiều trạng thái tạm ứng thô âm (đo 18/11: 127), cả khi lợi nhuận chưa chi thô cũng âm (44), và có lần chốt lúc đang gấp (5).
+    // Luật của bảng mốc có việc để làm (đo 18/11: 36 lần mốc sớm bị từ chối, 6 lần mốc từ tháng chốt trở đi vẫn đặt được), và
+    // tháng mặc định của xem trước nhiều lần là tháng không còn gì để chốt (36).
+    expect(thongKe.mocBiChan).toBeGreaterThan(15);
+    expect(thongKe.mocSauChot).toBeGreaterThan(3);
+    expect(thongKe.macDinhKhongChotDuoc).toBeGreaterThan(15);
     expect(thongKe.gap).toBeGreaterThan(60);
     expect(thongKe.gapKhiAAm).toBeGreaterThan(20);
     expect(thongKe.chotCoGap).toBeGreaterThan(3);

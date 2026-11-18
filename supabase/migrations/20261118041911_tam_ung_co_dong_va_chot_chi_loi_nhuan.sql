@@ -14,9 +14,12 @@
 -- NGUYÊN TẮC
 --   - Số dư ròng KHÔNG đổi: app_private.profit_ledger_balance_core_v1 / balance_v1 giữ nguyên. A, B là
 --     lớp PHÂN LOẠI trên số dư ròng, bất biến A − B_đã_duyệt − B_chờ_duyệt = balance (tự kiểm, lệch ⇒ XX000).
---   - CHỈ THÊM: không CREATE OR REPLACE hàm nào đã phát hành. Ngoại lệ duy nhất: nới CHECK maker_kind
---     của app_private.profit_ledger_payouts (thêm 'CUSTODIAN_FOR_PAYEE'). Lệnh cũ
---     public.shareholder_profit_ledger_payout_v1 (E5) để nguyên, vẫn chạy.
+--   - CHỈ THÊM: không CREATE OR REPLACE hàm nào đã phát hành. Hai ngoại lệ, đều là THÊM chốt lên bảng cũ:
+--     (1) nới CHECK maker_kind của app_private.profit_ledger_payouts (thêm 'CUSTODIAN_FOR_PAYEE');
+--     (2) thêm MỘT trigger mới lên app_private.profit_ledger_markers (a10_profit_ledger_markers_settlement_guard):
+--         lệnh đặt mốc của Đợt 1 (không biết bản ghi chốt) từ nay từ chối thêm đúng một trường hợp — mốc "đã trả
+--         đủ" của cổ đông đặt SỚM hơn tháng đã chốt chi còn hiệu lực (xem mục 2b).
+--     Lệnh cũ public.shareholder_profit_ledger_payout_v1 (E5) để nguyên, vẫn chạy.
 --   - Mọi phiếu vẫn mang system_source 'profit.ledger_payout' ⇒ các chốt F1 / F1b / F2 / F4 / F5, lệnh
 --     huỷ E6 và báo cáo dòng tiền áp nguyên như cũ. Phân biệt: (a) bản ghi chốt trỏ tới phiếu tiền,
 --     (b) hạng mục của dòng phiếu, (c) dòng sổ: tạm ứng within_amount = 0, advance_amount = amount;
@@ -31,6 +34,11 @@
 --   2. Bảng app_private.profit_ledger_payout_settlements — bản ghi chốt chi lợi nhuận (chỉ ghi thêm;
 --      chỉ ACTIVE → VOID khi không có phiếu tiền). "Còn hiệu lực" = ACTIVE và (không có phiếu tiền
 --      hoặc phiếu tiền còn sống) ⇒ phiếu tiền bị huỷ / từ chối thì bản ghi tự hết hiệu lực.
+--   2b. Trigger a10_profit_ledger_markers_settlement_guard trên app_private.profit_ledger_markers: mốc "đã trả đủ
+--      đến hết tháng X" của một cổ đông không được đặt ở tháng SỚM hơn tháng của một bản ghi chốt còn hiệu lực
+--      (55000 PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT). Không chặn thì bản ghi chốt và phiếu tạm ứng rơi về trước
+--      mốc, các tháng đã chốt chi hiện lại "chưa chi" và bị chi lần hai. Gỡ mốc, mốc từ tháng chốt trở đi và mốc
+--      của lương điều hành: không đổi.
 --   3. Hạng mục chi "Tạm Ứng" (rule_key tam_ung_co_dong) cho mọi công ty đang có hạng mục chia_loi_nhuan.
 --   4. Hàm nội bộ: vị thế A / B (profit_ledger_position_v1), lợi nhuận chưa chi đến hết tháng N
 --      (profit_ledger_unpaid_through_v1), và các trợ giúp profit_ledger_chot_*.
@@ -47,6 +55,9 @@
 -- LÙI (migration forward mới): DROP tám RPC public của file này (web mới phải gỡ trước); các hàm nội bộ
 --   và bảng bản ghi chốt để nguyên là vô hại (không ai gọi). KHÔNG thu hẹp lại CHECK maker_kind khi đã
 --   có dòng 'CUSTODIAN_FOR_PAYEE'. Hạng mục "Tạm Ứng" đã có phiếu thì giữ; chưa có phiếu thì xoá được.
+--   Lệnh đặt mốc cũ muốn về đúng hành vi Đợt 1: DROP TRIGGER a10_profit_ledger_markers_settlement_guard
+--   ON app_private.profit_ledger_markers (chỉ làm khi không còn bản ghi chốt nào còn hiệu lực, hoặc chấp nhận
+--   lại rủi ro chi hai lần nêu ở mục 2b).
 -- =============================================================================
 
 BEGIN;
@@ -100,7 +111,8 @@ BEGIN
       ('app_private.profit_ledger_payouts', ARRAY['voucher_id', 'organization_id', 'subject_kind', 'shareholder_id', 'account_id',
          'amount', 'balance_before', 'within_amount', 'advance_amount', 'open_estimate', 'warnings', 'maker_user_id',
          'maker_membership_id', 'maker_kind', 'payee_is_maker', 'payee_user_id', 'approval_request_id', 'ledger_seq']),
-      ('app_private.profit_ledger_markers', ARRAY['organization_id', 'subject_kind', 'subject_id', 'ledger_seq']),
+      ('app_private.profit_ledger_markers', ARRAY['organization_id', 'subject_kind', 'subject_id', 'shareholder_id',
+         'settled_through_month', 'ledger_seq']),
       ('app_private.profit_ledger_events', ARRAY['organization_id', 'event_kind', 'subject_kind', 'shareholder_id', 'voucher_id',
          'amount', 'balance_before', 'balance_after', 'actor_id', 'payload']),
       ('app_private.profit_ledger_write_contexts', ARRAY['income_expense_id', 'purpose']),
@@ -132,20 +144,24 @@ BEGIN
     RAISE EXCEPTION 'Thiếu bảng/cột nền: %', v_thieu USING ERRCODE = '55000';
   END IF;
 
+  -- Chỉ khẳng định thứ Đợt 1 tự gieo (sequence, công tắc, khoá quyền tạm ứng). Khoá shareholder_profit.distribute gieo
+  -- từ trước mốc baseline: bản dựng lại schema-only của diễn tập khôi phục không mang dòng đó, và thiếu khoá thì
+  -- authorize_tenant_action_v3 tự từ chối (fail-closed) — không khẳng định ở đây.
   IF to_regclass('app_private.profit_ledger_seq') IS NULL
      OR NOT EXISTS (SELECT 1 FROM app_private.server_feature_flags f WHERE f.feature_key = 'shareholder_profit.ledger_payout.v1')
-     OR (SELECT count(*) FROM public.permission_definitions d
-          WHERE d.key IN ('shareholder_profit.advance_own_cashbook', 'shareholder_profit.distribute')) <> 2 THEN
-    RAISE EXCEPTION 'Thiếu nền sổ tổng (sequence profit_ledger_seq, công tắc shareholder_profit.ledger_payout.v1 hoặc khoá quyền advance_own_cashbook / distribute)'
+     OR NOT EXISTS (SELECT 1 FROM public.permission_definitions d WHERE d.key = 'shareholder_profit.advance_own_cashbook') THEN
+    RAISE EXCEPTION 'Thiếu nền sổ tổng (sequence profit_ledger_seq, công tắc shareholder_profit.ledger_payout.v1 hoặc khoá quyền shareholder_profit.advance_own_cashbook)'
       USING ERRCODE = '55000';
   END IF;
 
   -- Phiếu của file này dựa vào các chốt của Đợt 1: thiếu chốt thì không được mở thêm đường lập phiếu.
+  -- (Chốt của bảng mốc: trigger mới của file này chạy SAU nó và dựa vào việc nó đã bắt giữ khoá sổ.)
   SELECT string_agg(x.ten, ', ' ORDER BY x.ten) INTO v_thieu
     FROM (VALUES
       ('a06_profit_ledger_payout_guard', 'public.income_expenses', 'app_private.guard_profit_ledger_payout_v1()'),
       ('a00_00_profit_payout_account_guard', 'public.income_expenses', 'app_private.guard_profit_payout_scope_compat_v1()'),
-      ('a00_profit_ledger_payouts_guard', 'app_private.profit_ledger_payouts', 'app_private.guard_profit_ledger_payout_row_v1()')
+      ('a00_profit_ledger_payouts_guard', 'app_private.profit_ledger_payouts', 'app_private.guard_profit_ledger_payout_row_v1()'),
+      ('a00_profit_ledger_markers_guard', 'app_private.profit_ledger_markers', 'app_private.guard_profit_ledger_marker_v1()')
     ) AS x(ten, bang, ham)
    WHERE NOT EXISTS (
      SELECT 1 FROM pg_catalog.pg_trigger t
@@ -336,6 +352,47 @@ AS $fn$
       FROM app_private.profit_ledger_payout_settlements s
      WHERE s.id = p_settlement_id), false)
 $fn$;
+
+-- ── 2b. Mốc "đã trả đủ" không được đặt SỚM hơn một tháng đã chốt chi ────────────────────────
+-- Lệnh đặt mốc của Đợt 1 (profit_ledger_set_marker_v1) không biết bản ghi chốt. Mốc ở tháng X làm mọi phiếu và bản
+-- ghi chốt lập trước nó bị bỏ qua, còn phân bổ của các tháng > X vẫn tính: đã chốt chi đến hết tháng N > X thì các
+-- tháng trong (X, N] hiện lại "chưa chi" và bị chi lần hai, không tự thu lại. Chặn ngay ở bảng mốc (mọi đường ghi):
+--   dòng mốc của CỔ ĐÔNG có tháng (không phải dòng gỡ mốc) mà cổ đông đang có bản ghi chốt CÒN HIỆU LỰC với
+--   through_month > tháng mốc ⇒ 55000 PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT.
+-- Xét MỌI bản ghi còn hiệu lực, kể cả bản đang bị một mốc cũ loại (mốc mới đè mốc cũ; bản ghi đó vẫn nằm trước mốc
+-- mới). Mốc từ tháng chốt lớn nhất trở đi, dòng gỡ mốc và mốc của lương điều hành: không đụng.
+-- Tên trigger xếp SAU a00_profit_ledger_markers_guard: chốt đó đã bắt phiên giữ khoá sổ của cổ đông, nên tập bản
+-- ghi chốt đọc ở đây không đổi dưới chân (lệnh chốt và lệnh huỷ bản ghi chốt cũng giữ khoá đó).
+CREATE OR REPLACE FUNCTION app_private.guard_profit_ledger_marker_settlement_v1()
+RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'app_private', 'public'
+AS $fn$
+DECLARE
+  v_last date;
+BEGIN
+  IF NEW.subject_kind = 'SHAREHOLDER' AND NEW.settled_through_month IS NOT NULL THEN
+    SELECT max(s.through_month) INTO v_last
+      FROM app_private.profit_ledger_payout_settlements s
+     WHERE s.organization_id = NEW.organization_id
+       AND s.shareholder_id = NEW.shareholder_id
+       AND app_private.profit_ledger_settlement_live_v1(s.id);
+    IF v_last > NEW.settled_through_month THEN
+      RAISE EXCEPTION 'PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT: đã chốt chi lợi nhuận đến hết tháng % — mốc "đã trả đủ" phải từ tháng đó trở đi, hoặc huỷ lần chốt đó trước',
+        to_char(v_last, 'MM/YYYY')
+        USING ERRCODE = '55000',
+              DETAIL = jsonb_build_object('settled_through_month', NEW.settled_through_month,
+                                          'last_settled_through_month', v_last)::text;
+    END IF;
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+
+DROP TRIGGER IF EXISTS a10_profit_ledger_markers_settlement_guard ON app_private.profit_ledger_markers;
+CREATE TRIGGER a10_profit_ledger_markers_settlement_guard
+  BEFORE INSERT ON app_private.profit_ledger_markers
+  FOR EACH ROW EXECUTE FUNCTION app_private.guard_profit_ledger_marker_settlement_v1();
 
 -- ── 3. Hạng mục "Tạm Ứng" ─────────────────────────────────────────────────────────────
 -- Chỉ lệnh lập tạm ứng dùng (system_only ⇒ create_income_expense_v1 và ie_compat_insert_v2 từ chối lập tay);
@@ -676,8 +733,11 @@ BEGIN
 END
 $fn$;
 
--- Hạng mục của phiếu sổ tổng theo rule_key (dự phòng theo tên chuẩn hoá); phải bắt buộc duyệt; thiếu thì tự tạo.
---   tam_ung_co_dong ⇒ "Tạm Ứng" (không ẩn khỏi danh mục); chia_loi_nhuan ⇒ "Chia lợi nhuận cổ đông" (như E5).
+-- Hạng mục của phiếu sổ tổng theo rule_key; phải bắt buộc duyệt; thiếu thì tự tạo.
+--   tam_ung_co_dong ⇒ "Tạm Ứng" (không ẩn khỏi danh mục). KHÔNG dự phòng theo tên: hạng mục chi trùng tên chuẩn hoá mà
+--     không mang rule_key là hạng mục người dùng đang dùng cho việc khác ⇒ dừng 55000 PROFIT_LEDGER_TYPE_NAME_TAKEN
+--     (không chiếm, và cũng không tạo trùng được vì chỉ mục duy nhất theo tên chuẩn hoá);
+--   chia_loi_nhuan  ⇒ "Chia lợi nhuận cổ đông", dự phòng theo tên chuẩn hoá như lệnh chi cũ (E5).
 CREATE OR REPLACE FUNCTION app_private.profit_ledger_chot_hang_muc_v1(p_org uuid, p_owner uuid, p_rule_key text)
 RETURNS uuid
  LANGUAGE plpgsql
@@ -709,6 +769,10 @@ BEGIN
        AND lower(btrim(t.type)) = 'expense'
      ORDER BY t.created_at
      LIMIT 1;
+    IF v_type IS NOT NULL AND p_rule_key = 'tam_ung_co_dong' THEN
+      RAISE EXCEPTION 'PROFIT_LEDGER_TYPE_NAME_TAKEN: công ty đã có hạng mục chi tên "Tạm Ứng" dùng cho việc khác — đổi tên hạng mục đó rồi lập lại'
+        USING ERRCODE = '55000', DETAIL = jsonb_build_object('income_expense_type_id', v_type)::text;
+    END IF;
   END IF;
   IF v_type IS NULL THEN
     INSERT INTO public.income_expense_types (
@@ -1249,15 +1313,15 @@ BEGIN
   END IF;
 
   -- Công ty của cổ đông: đọc thường (chưa khoá). Người không phải thành viên công ty đó dừng ở đây,
-  -- trước khi kịp khoá dòng công ty của người khác.
+  -- trước khi kịp khoá dòng công ty của người khác. "Không có cổ đông đó" và "không thuộc công ty của cổ đông"
+  -- trả CÙNG một câu: người ngoài không dò được một mã cổ đông có tồn tại hay không.
   SELECT s.organization_id INTO v_org FROM public.shareholders s WHERE s.id = p_shareholder_id;
-  IF v_org IS NULL THEN
-    RAISE EXCEPTION 'Không tìm thấy cổ đông trong tổ chức hợp lệ' USING ERRCODE = '42501';
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM public.organization_memberships m
-     WHERE m.user_id = v_actor AND m.organization_id = v_org AND m.status = 'ACTIVE') THEN
-    RAISE EXCEPTION 'Không có quyền lập phiếu tạm ứng cổ đông' USING ERRCODE = '42501';
+  IF v_org IS NULL
+     OR NOT EXISTS (
+       SELECT 1 FROM public.organization_memberships m
+        WHERE m.user_id = v_actor AND m.organization_id = v_org AND m.status = 'ACTIVE') THEN
+    RAISE EXCEPTION 'Không có quyền lập phiếu tạm ứng cổ đông, hoặc không tìm thấy cổ đông trong tổ chức hợp lệ'
+      USING ERRCODE = '42501';
   END IF;
 
   -- 2. Khoá công ty TRƯỚC, rồi mới FOR SHARE (không khoá dòng organizations lần nữa).
@@ -1427,7 +1491,10 @@ $fn$;
 
 -- ── 7. Chốt chi lợi nhuận ──────────────────────────────────────────────────────────────
 
--- R5. Xem trước một lần chốt đến hết tháng N (N NULL ⇒ tháng lớn nhất chốt được). STABLE, không khoá dòng.
+-- R5. Xem trước một lần chốt đến hết tháng N. STABLE, không khoá dòng.
+-- N NULL ⇒ tháng ĐỦ ĐIỀU KIỆN lớn nhất (có phân bổ đã chốt, sau mốc, không trước lần chốt gần nhất) — KHÔNG phải tháng
+-- lớn nhất còn tiền để chốt: tháng cuối lỗ làm luỹ kế ≤ 0 thì mặc định vẫn là tháng cuối và báo NOTHING_TO_SETTLE; chủ
+-- muốn chốt đến một tháng sớm hơn (bỏ tháng lỗ lại) thì phải tự chọn tháng đó.
 CREATE OR REPLACE FUNCTION public.shareholder_profit_settlement_preview_v1(
   p_shareholder_id uuid,
   p_through_month date,
@@ -1487,7 +1554,7 @@ BEGIN
   v_pos := v_months -> 'position';
   v_adv := (v_pos ->> 'advance_outstanding')::numeric;
 
-  v_n := COALESCE(p_through_month, (v_months ->> 'max_selectable')::date);
+  v_n := COALESCE(p_through_month, (v_months ->> 'max_eligible')::date);
   IF v_n IS NOT NULL THEN
     SELECT m.value INTO v_month
       FROM jsonb_array_elements(v_months -> 'months') AS m(value)
@@ -1534,9 +1601,11 @@ END
 $fn$;
 
 -- W2. Chủ chốt chi lợi nhuận đến hết tháng N. Dưới khoá sổ: X = lợi nhuận chưa chi của các tháng ≤ N,
--- K = least(X, greatest(tạm ứng ĐÃ DUYỆT đang có, 0)), tiền = X − K. Tiền khác p_expected_cash (số chủ vừa xem) ⇒
--- PT409, không ghi gì. Tiền > 0 ⇒ một phiếu chi chờ duyệt (hạng mục chia_loi_nhuan) rồi bản ghi chốt trỏ phiếu;
--- tiền = 0 ⇒ chỉ bản ghi chốt, có hiệu lực ngay.
+-- K = least(X, greatest(tạm ứng ĐÃ DUYỆT đang có, 0)), tiền = X − K. Lệnh chốt là điểm CHỐT SỐ LIỆU: số lưu phải đúng
+-- số chủ vừa xem ⇒ so-rồi-ghi trên CẢ phần ghi nhận lẫn tiền: X khác p_expected_recognized HOẶC tiền khác
+-- p_expected_cash ⇒ PT409, không ghi gì (X và K cùng đổi một lượng thì tiền không đổi — chỉ so tiền là chưa đủ).
+-- Tiền > 0 ⇒ một phiếu chi chờ duyệt (hạng mục chia_loi_nhuan) rồi bản ghi chốt trỏ phiếu; tiền = 0 ⇒ chỉ bản ghi
+-- chốt, có hiệu lực ngay.
 -- Thứ tự: đầu vào → thành viên → khoá công ty → FOR SHARE cổ đông / toà ảo / sổ quỹ / thành viên → quyền →
 -- operation → công tắc + nhận lượt → khoá sổ → nextval → vị thế → kiểm → ghi.
 CREATE OR REPLACE FUNCTION public.shareholder_profit_settle_v1(
@@ -1545,6 +1614,7 @@ CREATE OR REPLACE FUNCTION public.shareholder_profit_settle_v1(
   p_account_id uuid,
   p_voucher_date date,
   p_note text,
+  p_expected_recognized numeric,
   p_expected_cash numeric,
   p_idempotency_key text
 ) RETURNS jsonb
@@ -1597,6 +1667,12 @@ BEGIN
   IF p_through_month IS NULL OR NOT isfinite(p_through_month) OR EXTRACT(DAY FROM p_through_month) <> 1 THEN
     RAISE EXCEPTION 'PROFIT_LEDGER_SETTLE_MONTH: tháng chốt phải là ngày đầu tháng' USING ERRCODE = '22023';
   END IF;
+  -- Hai số chủ đã xem trước: phần ghi nhận (> 0 — không có gì để ghi nhận thì không có lần chốt) và tiền thực chi (≥ 0).
+  IF p_expected_recognized IS NULL OR p_expected_recognized::text IN ('NaN', 'Infinity', '-Infinity')
+     OR p_expected_recognized <= 0 OR round(p_expected_recognized, 2) <> p_expected_recognized
+     OR p_expected_recognized >= 10000000000000 THEN
+    RAISE EXCEPTION 'PROFIT_LEDGER_SETTLE_EXPECTED: thiếu hoặc sai phần lợi nhuận ghi nhận đã xem trước' USING ERRCODE = '22023';
+  END IF;
   IF p_expected_cash IS NULL OR p_expected_cash::text IN ('NaN', 'Infinity', '-Infinity')
      OR p_expected_cash < 0 OR round(p_expected_cash, 2) <> p_expected_cash OR p_expected_cash >= 10000000000000 THEN
     RAISE EXCEPTION 'PROFIT_LEDGER_SETTLE_EXPECTED: thiếu hoặc sai số tiền thực chi đã xem trước' USING ERRCODE = '22023';
@@ -1606,14 +1682,15 @@ BEGIN
   END IF;
 
   -- Công ty của cổ đông: đọc thường (chưa khoá). Người ngoài công ty dừng trước khi kịp khoá dòng công ty.
+  -- "Không có cổ đông đó" và "không thuộc công ty của cổ đông" trả CÙNG một câu: người ngoài không dò được một mã
+  -- cổ đông có tồn tại hay không.
   SELECT s.organization_id INTO v_org FROM public.shareholders s WHERE s.id = p_shareholder_id;
-  IF v_org IS NULL THEN
-    RAISE EXCEPTION 'Không tìm thấy cổ đông trong tổ chức hợp lệ' USING ERRCODE = '42501';
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM public.organization_memberships m
-     WHERE m.user_id = v_actor AND m.organization_id = v_org AND m.status = 'ACTIVE') THEN
-    RAISE EXCEPTION 'Không có quyền chi lợi nhuận cổ đông' USING ERRCODE = '42501';
+  IF v_org IS NULL
+     OR NOT EXISTS (
+       SELECT 1 FROM public.organization_memberships m
+        WHERE m.user_id = v_actor AND m.organization_id = v_org AND m.status = 'ACTIVE') THEN
+    RAISE EXCEPTION 'Không có quyền chi lợi nhuận cổ đông, hoặc không tìm thấy cổ đông trong tổ chức hợp lệ'
+      USING ERRCODE = '42501';
   END IF;
 
   -- 2. Khoá công ty TRƯỚC, rồi mới FOR SHARE. Sổ quỹ / toà ảo chỉ bắt buộc khi có tiền thực chi (kiểm ở bước 7).
@@ -1675,7 +1752,8 @@ BEGIN
     RAISE EXCEPTION 'Không có quyền chi lợi nhuận cổ đông' USING ERRCODE = '42501';
   END IF;
 
-  -- 4. Idempotency: nội dung = (cổ đông, tháng, sổ, ngày, ghi chú, công ty). Số tiền kỳ vọng là điều kiện, không phải nội dung.
+  -- 4. Idempotency: nội dung = (cổ đông, tháng, sổ, ngày, ghi chú, công ty). Hai số kỳ vọng (ghi nhận, tiền) là điều kiện,
+  --    không phải nội dung.
   v_scope := 'SHAREHOLDER:' || p_shareholder_id::text;
   v_hash := md5(jsonb_build_object(
     'shareholder_id', p_shareholder_id,
@@ -1742,10 +1820,13 @@ BEGIN
   v_k := LEAST(v_x, GREATEST(v_adv, 0));
   v_cash := v_x - v_k;
   -- So-rồi-ghi. PT409 (HTTP 409), KHÔNG dùng mã lớp 40: PostgREST tự chạy lại giao dịch khi gặp 40001.
-  IF v_cash IS DISTINCT FROM p_expected_cash THEN
+  -- So cả phần GHI NHẬN lẫn tiền: X và K cùng đổi một lượng (toà chốt muộn + một phiếu tạm ứng vừa được duyệt) thì
+  -- tiền không đổi, nhưng bản ghi chốt sẽ lưu số khác số chủ đã xem.
+  IF v_x IS DISTINCT FROM p_expected_recognized
+     OR v_cash IS DISTINCT FROM p_expected_cash THEN
     RAISE EXCEPTION 'PROFIT_LEDGER_SETTLE_CHANGED: số liệu vừa đổi so với lúc xem trước — tải lại rồi xem trước lần nữa'
       USING ERRCODE = 'PT409',
-            DETAIL = jsonb_build_object('expected_cash', p_expected_cash, 'cash_amount', v_cash,
+            DETAIL = jsonb_build_object('expected_recognized', p_expected_recognized, 'expected_cash', p_expected_cash, 'cash_amount', v_cash,
                                         'recognized_amount', v_x, 'advance_offset_amount', v_k,
                                         'through_month', p_through_month)::text;
   END IF;
@@ -1936,6 +2017,7 @@ $fn$;
 -- ── 8. Quyền gọi ──────────────────────────────────────────────────────────────────────
 -- Hàm nội bộ và hàm trigger: không vai nào.
 REVOKE ALL ON FUNCTION app_private.guard_profit_ledger_payout_settlement_v1() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION app_private.guard_profit_ledger_marker_settlement_v1() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.profit_ledger_settlement_live_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.profit_ledger_position_v1(uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.profit_ledger_unpaid_through_v1(uuid, uuid, date) FROM PUBLIC, anon, authenticated, service_role;
@@ -1954,7 +2036,7 @@ REVOKE ALL ON FUNCTION public.shareholder_profit_advance_options_v1(uuid) FROM P
 REVOKE ALL ON FUNCTION public.shareholder_profit_advance_preview_v1(uuid, numeric, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.shareholder_profit_advance_v1(uuid, numeric, uuid, date, text, text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.shareholder_profit_settlement_preview_v1(uuid, date, uuid) FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.shareholder_profit_settle_v1(uuid, date, uuid, date, text, numeric, text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.shareholder_profit_settle_v1(uuid, date, uuid, date, text, numeric, numeric, text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.shareholder_profit_settlement_void_v1(uuid, text, text) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.shareholder_profit_positions_v1(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.shareholder_profit_my_position_v1(uuid) TO authenticated;
@@ -1962,7 +2044,7 @@ GRANT EXECUTE ON FUNCTION public.shareholder_profit_advance_options_v1(uuid) TO 
 GRANT EXECUTE ON FUNCTION public.shareholder_profit_advance_preview_v1(uuid, numeric, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.shareholder_profit_advance_v1(uuid, numeric, uuid, date, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.shareholder_profit_settlement_preview_v1(uuid, date, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.shareholder_profit_settle_v1(uuid, date, uuid, date, text, numeric, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.shareholder_profit_settle_v1(uuid, date, uuid, date, text, numeric, numeric, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.shareholder_profit_settlement_void_v1(uuid, text, text) TO authenticated;
 
 COMMENT ON FUNCTION app_private.profit_ledger_settlement_live_v1(uuid) IS
@@ -1980,7 +2062,7 @@ COMMENT ON FUNCTION app_private.profit_ledger_chot_advance_right_v1(uuid, uuid) 
 COMMENT ON FUNCTION app_private.profit_ledger_chot_holds_cashbook_v1(uuid, uuid, uuid) IS
   'Thành viên có đang giữ (CUSTODIAN) sổ quỹ không, theo assert_cashbook_access_v2. Không khoá dòng.';
 COMMENT ON FUNCTION app_private.profit_ledger_chot_hang_muc_v1(uuid, uuid, text) IS
-  'Hạng mục của phiếu sổ tổng theo rule_key (tam_ung_co_dong | chia_loi_nhuan): tìm, dự phòng theo tên chuẩn hoá, thiếu thì tạo; chưa bắt buộc duyệt ⇒ 55000 PROFIT_LEDGER_TYPE_NOT_FORCED.';
+  'Hạng mục của phiếu sổ tổng theo rule_key (tam_ung_co_dong | chia_loi_nhuan): tìm, thiếu thì tạo; chưa bắt buộc duyệt ⇒ 55000 PROFIT_LEDGER_TYPE_NOT_FORCED. chia_loi_nhuan có dự phòng theo tên chuẩn hoá (như lệnh chi cũ); tam_ung_co_dong thì KHÔNG — hạng mục chi trùng tên "Tạm Ứng" không mang rule_key ⇒ 55000 PROFIT_LEDGER_TYPE_NAME_TAKEN.';
 COMMENT ON FUNCTION app_private.profit_ledger_chot_assert_ngay_v1(uuid, uuid, date) IS
   'Hai khoá ngày của phiếu sổ tổng: tháng của toà ảo đã chốt lợi nhuận (55000 PROFIT_LEDGER_PROFIT_MONTH_LOCKED), sổ quỹ đã chốt tới ngày đó (55000 PROFIT_LEDGER_CASHBOOK_CLOSED).';
 COMMENT ON FUNCTION app_private.profit_ledger_chot_lap_phieu_v1(uuid, uuid, uuid, uuid, uuid, uuid, numeric, date, text, text, uuid, text, text, uuid, uuid, text, uuid, bigint, numeric, numeric, numeric, numeric, jsonb, jsonb) IS
@@ -1996,9 +2078,9 @@ COMMENT ON FUNCTION public.shareholder_profit_advance_preview_v1(uuid, numeric, 
 COMMENT ON FUNCTION public.shareholder_profit_advance_v1(uuid, numeric, uuid, date, text, text) IS
   'Lập phiếu tạm ứng lợi nhuận cho cổ đông (UNAPPROVED, chờ chủ duyệt) từ sổ quỹ người gọi đang giữ; người nhận phải được cấp quyền tạm ứng. Tự ứng ⇒ CUSTODIAN_ADVANCE, lập hộ ⇒ CUSTODIAN_FOR_PAYEE. Toàn bộ số tiền là tạm ứng. Chỉ chạy khi công tắc shareholder_profit.ledger_payout.v1 ở CANONICAL.';
 COMMENT ON FUNCTION public.shareholder_profit_settlement_preview_v1(uuid, date, uuid) IS
-  'Xem trước chốt chi lợi nhuận đến hết tháng N: các tháng chốt được, phần ghi nhận, phần khấu trừ tạm ứng đã duyệt, tiền thực chi. Quyền shareholder_profit.distribute. STABLE, không khoá dòng.';
-COMMENT ON FUNCTION public.shareholder_profit_settle_v1(uuid, date, uuid, date, text, numeric, text) IS
-  'Chủ chốt chi lợi nhuận đến hết tháng N: ghi nhận lợi nhuận chưa chi của các tháng ≤ N, khấu trừ tạm ứng đã duyệt, phần còn lại thành một phiếu chi chờ duyệt (không còn tiền ⇒ chỉ bản ghi chốt). Tiền khác p_expected_cash ⇒ PT409 PROFIT_LEDGER_SETTLE_CHANGED. Chỉ chạy khi công tắc ở CANONICAL.';
+  'Xem trước chốt chi lợi nhuận đến hết tháng N: các tháng chốt được, phần ghi nhận, phần khấu trừ tạm ứng đã duyệt, tiền thực chi. Không truyền tháng ⇒ tháng đủ điều kiện lớn nhất (kể cả khi luỹ kế đến tháng đó ≤ 0 — khi đó báo NOTHING_TO_SETTLE). Quyền shareholder_profit.distribute. STABLE, không khoá dòng.';
+COMMENT ON FUNCTION public.shareholder_profit_settle_v1(uuid, date, uuid, date, text, numeric, numeric, text) IS
+  'Chủ chốt chi lợi nhuận đến hết tháng N: ghi nhận lợi nhuận chưa chi của các tháng ≤ N, khấu trừ tạm ứng đã duyệt, phần còn lại thành một phiếu chi chờ duyệt (không còn tiền ⇒ chỉ bản ghi chốt). So-rồi-ghi trên hai số chủ đã xem: phần ghi nhận khác p_expected_recognized hoặc tiền khác p_expected_cash ⇒ PT409 PROFIT_LEDGER_SETTLE_CHANGED, không ghi gì. Chỉ chạy khi công tắc ở CANONICAL.';
 COMMENT ON FUNCTION public.shareholder_profit_settlement_void_v1(uuid, text, text) IS
   'Huỷ một bản ghi chốt chi lợi nhuận KHÔNG có phiếu tiền (lý do 8..1000). Bản có phiếu tiền thì huỷ phiếu bằng profit_ledger_payout_cancel_v1. Quyền shareholder_profit.distribute.';
 
@@ -2018,7 +2100,7 @@ BEGIN
       ('public.shareholder_profit_advance_preview_v1(uuid,numeric,uuid)', 'v'),
       ('public.shareholder_profit_advance_v1(uuid,numeric,uuid,date,text,text)', 'v'),
       ('public.shareholder_profit_settlement_preview_v1(uuid,date,uuid)', 's'),
-      ('public.shareholder_profit_settle_v1(uuid,date,uuid,date,text,numeric,text)', 'v'),
+      ('public.shareholder_profit_settle_v1(uuid,date,uuid,date,text,numeric,numeric,text)', 'v'),
       ('public.shareholder_profit_settlement_void_v1(uuid,text,text)', 'v')
     ) AS x(ten, vol)
   LOOP
@@ -2044,6 +2126,7 @@ BEGIN
   SELECT string_agg(f.ten, ', ') INTO v_xau
     FROM (VALUES
       ('app_private.guard_profit_ledger_payout_settlement_v1()', 'v'),
+      ('app_private.guard_profit_ledger_marker_settlement_v1()', 'v'),
       ('app_private.profit_ledger_settlement_live_v1(uuid)', 's'),
       ('app_private.profit_ledger_position_v1(uuid,uuid)', 's'),
       ('app_private.profit_ledger_unpaid_through_v1(uuid,uuid,date)', 's'),
@@ -2092,6 +2175,24 @@ BEGIN
         AND t.tgenabled = 'O' AND NOT t.tgisinternal);
   IF v_xau IS NOT NULL THEN
     RAISE EXCEPTION 'Hậu kiểm: bảng bản ghi chốt thiếu trigger: %', v_xau USING ERRCODE = '55000';
+  END IF;
+
+  -- 3b. Bảng mốc: trigger chặn mốc sớm hơn tháng đã chốt chi — có, đúng hàm, đang bật, BEFORE INSERT từng dòng
+  --     (tgtype 7 = ROW + BEFORE + INSERT), và tên xếp SAU chốt sẵn có của bảng (chốt đó phải còn và đang bật).
+  IF NOT EXISTS (
+       SELECT 1 FROM pg_catalog.pg_trigger t
+        WHERE t.tgname = 'a10_profit_ledger_markers_settlement_guard'
+          AND t.tgrelid = 'app_private.profit_ledger_markers'::regclass
+          AND t.tgfoid = to_regprocedure('app_private.guard_profit_ledger_marker_settlement_v1()')
+          AND t.tgenabled = 'O' AND NOT t.tgisinternal AND t.tgtype = 7)
+     OR NOT EXISTS (
+       SELECT 1 FROM pg_catalog.pg_trigger t
+        WHERE t.tgname = 'a00_profit_ledger_markers_guard'
+          AND t.tgrelid = 'app_private.profit_ledger_markers'::regclass
+          AND t.tgenabled = 'O' AND NOT t.tgisinternal
+          AND t.tgname < 'a10_profit_ledger_markers_settlement_guard') THEN
+    RAISE EXCEPTION 'Hậu kiểm: bảng mốc thiếu trigger a10_profit_ledger_markers_settlement_guard (đúng hàm, đang bật, BEFORE INSERT, chạy sau a00_profit_ledger_markers_guard)'
+      USING ERRCODE = '55000';
   END IF;
   SELECT string_agg(x.ten, ', ') INTO v_xau
     FROM unnest(ARRAY[
