@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-16T11:16:17.565Z",
+  "generatedAt": "2026-11-18T06:28:15.310Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 953,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -14360,6 +14360,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-16T11:16:02.115Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261118041911_tam_ung_co_dong_va_chot_chi_loi_nhuan.sql",
+      "version": "20261118041911",
+      "name": "tam_ung_co_dong_va_chot_chi_loi_nhuan",
+      "scheme": "timestamp14",
+      "sha256": "6bd01cd78c14b9dc75de13d14bce98449e204cfc3572669ba2b1607d7b32a80d",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.profit_ledger_payout_settlements",
+        "function:app_private.guard_profit_ledger_payout_settlement_v1",
+        "function:app_private.profit_ledger_settlement_live_v1",
+        "function:app_private.profit_ledger_position_v1",
+        "function:app_private.profit_ledger_unpaid_through_v1"
       ]
     },
     {
