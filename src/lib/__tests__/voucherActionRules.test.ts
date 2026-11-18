@@ -221,6 +221,42 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
     expect(voucherActionAvailability(manager, payManager, state()).approveVia).toBe("INBOX");
   });
 
+  // Phiếu Tạm Ứng người giữ sổ lập HỘ một cổ đông (18/11/2026): cùng nguồn profit.ledger_payout nên cùng nhánh
+  // này. Người giữ sổ lập hộ KHÔNG có quyền chi lợi nhuận (chỉ giữ sổ + quyền lập phiếu chi thường).
+  describe("phiếu Tạm Ứng lập hộ — người giữ sổ không có quyền chi lợi nhuận", () => {
+    const custodian = viewer({ perms: scoped("create", "edit"), currentUserId: "u-giu-so" });
+    const tamUng = (p: Partial<V> = {}) => soTong({ user_id: "u-giu-so", shareholder_id: "sh-nguoi-nhan", ...p });
+
+    it("còn chờ chủ duyệt: người lập không có Duyệt, không có lối sang Chờ duyệt, chưa có nút Chi", () => {
+      const a = voucherActionAvailability(tamUng(), custodian, state());
+      expect([a.approve, a.approveVia, a.postApproved, a.edit.show, a.reverse, a.unapprove]).toEqual([false, null, false, false, false, false]);
+      // Huỷ ở Thu chi cần quyền chi lợi nhuận; người lập tự huỷ phiếu còn chờ ở màn "Tạm ứng LN" / sổ chi tiết.
+      expect(a.cancel.show).toBe(false);
+    });
+
+    it("chủ duyệt xong, chưa chi: người giữ sổ THẤY nút Chi (hộp Chi khoá đúng sổ lúc lập)", () => {
+      const a = voucherActionAvailability(tamUng({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), custodian, state());
+      expect(a.postApproved).toBe(true);
+      expect([a.approve, a.approveVia, a.edit.show, a.cancel.show]).toEqual([false, null, false, false]);
+    });
+
+    it("đã chi: không còn nút Chi, không Hoàn tác (chỉ huỷ có lý do bởi người có quyền chi lợi nhuận)", () => {
+      const a = voucherActionAvailability(tamUng({ approval_status: "APPROVED", posting_status: "POSTED" }), custodian, state());
+      expect([a.postApproved, a.reverse, a.cancel.show]).toEqual([false, false, false]);
+    });
+
+    it("nút Chi theo TRẠNG THÁI phiếu, không theo người xem: người nhận có thấy nút cũng không tự chi được", () => {
+      // Luật hiển thị không biết ai là người nhận / ai đang giữ sổ. Chặn thật nằm ở hai chỗ khác:
+      //   · hộp Chi chỉ chào ĐÚNG sổ lúc lập trong các sổ người bấm đang GIỮ (rỗng ⇒ không chi được) —
+      //     xem useVoucherActions.test.tsx "Chi phiếu đã duyệt: hộp Thu/Chi chỉ chào ĐÚNG sổ lúc lập";
+      //   · máy chủ từ chối người nhận tự chi phiếu người khác lập (PROFIT_LEDGER_PAYEE_SELF_POST).
+      const payee = viewer({ perms: { shareholder_profit: { advance_own_cashbook: { org_wide: true, building_ids: [] } } }, currentUserId: "u-nguoi-nhan" });
+      const a = voucherActionAvailability(tamUng({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), payee, state());
+      expect(a.postApproved).toBe(true);
+      expect([a.approve, a.approveVia, a.cancel.show, a.edit.show]).toEqual([false, null, false, false]);
+    });
+  });
+
   it("nguồn cũ (profit.distribution / salary.manager) giữ luật thường", () => {
     const a = voucherActionAvailability(soTong({ system_source: "profit.distribution", building_id: "b1" }),
       viewer({ perms: scoped("approve", "cancel") }), state());

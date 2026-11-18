@@ -7,7 +7,7 @@
 //                       (khấu trừ), khi phiếu bị huỷ, hoặc khi lương giữ lại để trừ.
 //   Tạm ứng chờ duyệt   chưa tính vào "đang có", chưa được khấu trừ khi chốt.
 
-import type { AdvanceBlockedReason, ProfitSettlementRow, ShareholderPosition } from './positionReaders';
+import type { AdvanceBlockedReason, AdvanceOptions, ProfitSettlementRow, ShareholderPosition } from './positionReaders';
 import { sameMoney } from './readPrimitives';
 import { formatVND } from '@/lib/utils';
 
@@ -94,6 +94,14 @@ export const settlementVoidable = (row: Pick<ProfitSettlementRow, 'cash_voucher_
 export function shouldRemindMarkerFirst(input: { marker_month: string | null; settlements: readonly unknown[] }): boolean {
   return input.marker_month === null && input.settlements.length === 0;
 }
+
+/** Tên hạng mục "Tạm Ứng" để hiện ở form Thu chi; công ty chưa có dòng hạng mục thì dùng tên chuẩn (lệnh lập tự tạo). */
+export function advanceTypeName(options: Pick<AdvanceOptions, 'advance_type'>): string {
+  return options.advance_type?.name ?? 'Tạm Ứng';
+}
+
+/** Toà hạch toán của mọi phiếu tạm ứng / chi lợi nhuận: toà ảo của công ty (máy chủ tự gắn, form chỉ hiện). */
+export const ADVANCE_BUILDING_NAME = 'Kho Văn Phòng Chung';
 
 /**
  * Câu cho lý do máy chủ chưa cho lập phiếu tạm ứng (R4 `blocked_reason`); null = không bị chặn.

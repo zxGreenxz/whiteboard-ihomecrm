@@ -89,6 +89,8 @@ import { useMyCashbookAccessV2 } from '@/hooks/income-expenses/financeV2Mutation
 import { useContractsLegacy } from '@/hooks/useContracts';
 import { useIncomeExpenseTypes, type IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
+import { ShareholderAdvanceVoucherPanel } from './ShareholderAdvanceVoucherPanel';
+import type { AdvanceOptions } from '@/lib/profitLedger/positionReaders';
 import AttachmentUpload from './AttachmentUpload';
 import BankSelect from './BankSelect';
 import { matchRecipientBankCode, RECIPIENT_BANKS } from '@/lib/vietqrDeeplink';
@@ -283,6 +285,13 @@ const IncomeExpenseFormInner = ({
   // Item selector dialog
   const [isItemSelectorOpen, setIsItemSelectorOpen] = useState(false);
 
+  // Chế độ "Tạm Ứng" (tạm ứng lợi nhuận cổ đông, 18/11/2026): CHỈ phiếu CHI TẠO MỚI (không sửa, không tạo bản
+  // sao). Người dùng chọn mục "Tạm Ứng" ở ô chọn hạng mục — mục đó chỉ hiện khi máy chủ nói người này lập được
+  // (đang giữ sổ quỹ + có cổ đông được cấp quyền tạm ứng). Khác null ⇒ thân form thường được ẩn (giữ nguyên nội
+  // dung đang nhập), thay bằng ShareholderAdvanceVoucherPanel và lưu bằng lệnh tạm ứng riêng.
+  const advanceCreateMode = !initialVoucher && !initialCopyFrom;
+  const [shareholderAdvance, setShareholderAdvance] = useState<AdvanceOptions | null>(null);
+
   // Item rows with type_name for display (not part of Zod schema)
   const [itemRows, setItemRows] = useState<FormItemRow[]>([]);
 
@@ -377,6 +386,11 @@ const IncomeExpenseFormInner = ({
   });
 
   const voucherType = form.watch('type');
+  const advanceActive = advanceCreateMode && !!shareholderAdvance && voucherType === 'EXPENSE';
+  // Toà của phiếu tạm ứng là toà ảo của công ty (máy chủ tự gắn). Form chỉ hiện tên khi biết chắc (đúng một toà ảo
+  // trong danh sách người này thấy); không thì thân Tạm Ứng hiện tên chuẩn.
+  const virtualBuildings = buildings.filter((b) => b.is_virtual);
+  const advanceBuildingName = virtualBuildings.length === 1 ? virtualBuildings[0].name : null;
 
   // ── Cảnh báo trùng ô ────────────────────────────────────────────────
   // Ô = (toà, loại phiếu, kỳ chồng lấn). Bấm đôi đã bị chặn từ trước (RPC bắt
@@ -1018,7 +1032,7 @@ const IncomeExpenseFormInner = ({
             <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, (errors) => {
               if (errors.room_id?.type === 'deposit_room') toast.error(DEPOSIT_ROOM_REQUIRED_MESSAGE);
               void focusFirstError(errors, { root: formRef.current });
-            })} className="space-y-4">
+            })} className={advanceActive ? "hidden" : "space-y-4"}>
               <QueryRegion label="danh mục lập phiếu" queries={requiredSources} skeleton="none"><></></QueryRegion>
               {submitError && !staleVersion && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
               {postLockBlock.kind === 'BLOCKED' && (
@@ -1871,6 +1885,41 @@ const IncomeExpenseFormInner = ({
               </div>
             </form>
           </Form>
+
+          {/* Chế độ "Tạm Ứng": thân form thường ở trên đang ẩn; thân riêng này lưu bằng lệnh tạm ứng cổ đông,
+              KHÔNG đi đường tạo phiếu thường. Bấm "Phiếu thu" hoặc bỏ hạng mục Tạm Ứng ⇒ quay về form thường. */}
+          {advanceActive && shareholderAdvance && (
+            <div className="space-y-4" data-testid="ie-form-advance-mode">
+              <Tabs
+                value="EXPENSE"
+                onValueChange={(value) => {
+                  if (value !== 'INCOME') return;
+                  setShareholderAdvance(null);
+                  form.setValue('type', 'INCOME');
+                }}
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="INCOME" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                    <ArrowUp className="h-4 w-4 mr-1" />
+                    Phiếu thu
+                  </TabsTrigger>
+                  <TabsTrigger value="EXPENSE" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                    <ArrowDown className="h-4 w-4 mr-1" />
+                    Phiếu chi
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <ShareholderAdvanceVoucherPanel
+                organizationId={selectedOrganizationId ?? null}
+                options={shareholderAdvance}
+                buildingName={advanceBuildingName}
+                isMobile={isMobile}
+                onExit={() => setShareholderAdvance(null)}
+                onClose={() => onOpenChange(false)}
+                onSaved={onSaved}
+              />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1881,6 +1930,9 @@ const IncomeExpenseFormInner = ({
         voucherType={voucherType}
         onSelect={handleItemsSelected}
         selectedTypeIds={itemRows.map((r) => r.income_expense_type_id)}
+        shareholderAdvance={advanceCreateMode
+          ? { organizationId: selectedOrganizationId ?? null, onPick: setShareholderAdvance }
+          : undefined}
       />
     </>
   );
