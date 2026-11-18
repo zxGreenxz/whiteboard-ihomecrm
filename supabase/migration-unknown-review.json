@@ -986,32 +986,6 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
-    },
-    "supabase/migrations/20261118041911_tam_ung_co_dong_va_chot_chi_loi_nhuan.sql": {
-      "sha256": "917be370da61aec0bef80af6e03b39ca1d4cd75f6e30e3cc6b38426b8deac955",
-      "missingObjects": [
-        "table:app_private.profit_ledger_payout_settlements",
-        "function:app_private.guard_profit_ledger_payout_settlement_v1",
-        "function:app_private.profit_ledger_settlement_live_v1",
-        "function:app_private.guard_profit_ledger_marker_settlement_v1",
-        "function:app_private.profit_ledger_position_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward migration MỚI (tạm ứng cổ đông + chốt chi lợi nhuận theo tháng), chưa áp dụng production: chờ chủ review rồi mới đi forward lane. Object vắng trong catalog production là vì file chưa từng chạy ở đó — có chủ ý, không phải bị migration sau thay thế. Đã đo ngày 18/11/2026: test PGlite trên nền Đợt 1 thật (chạy hai lượt, chạy như lane, thiếu nền thì dừng 55000); dry-run forward lane trên TEST (bọc ROLLBACK) xanh; kịch bản RPC thật trên TEST trong một giao dịch ROLLBACK. Hồ sơ này chỉ giải thích object vắng; không thay review độc lập, forward lane và backup. Sau khi áp production (có biên nhận) thì mục này thành thừa — gỡ đi.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261118041911_tam_ung_co_dong_va_chot_chi_loi_nhuan.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.profit_ledger_payout_settlements ("
-        },
-        {
-          "duong_dan": "supabase/migrations/20261118041911_tam_ung_co_dong_va_chot_chi_loi_nhuan.sql",
-          "trich_doan": "RAISE EXCEPTION 'Thiếu hàm nền của sổ tổng lợi nhuận (Đợt 1 phải áp trước): %', v_thieu USING ERRCODE = '55000';"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/soTongLoiNhuanTamUngChotMigration.test.ts",
-          "trich_doan": "it(\"chạy như lane: dán thân HAI lần trong MỘT giao dịch trên nền chưa áp rồi ROLLBACK ⇒ không để lại gì; COMMIT một lượt ⇒ đủ đối tượng\""
-        }
-      ]
     }
   }
 }
