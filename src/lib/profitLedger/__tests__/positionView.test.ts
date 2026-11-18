@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ShareholderPosition } from '../positionReaders';
 import {
-  advanceOverUnpaid, advancePendingText, isUnpaidNegative, settleMonthLabel, settlementCashLabel, settlementCashPendingText,
-  settlementVoidable, shouldRemindMarkerFirst, summarizePositions,
+  advanceOverUnpaid, advancePendingText, isUnpaidNegative, positionsForLedgerRows, settleMonthLabel, settlementCashLabel,
+  settlementCashPendingText, settlementVoidable, shouldRemindMarkerFirst, summarizeLedgerRowPositions, summarizePositions,
 } from '../positionView';
 import { cancelTargetFromSettlement } from '../vouchers';
 
@@ -31,6 +31,27 @@ describe('positionView — dòng phụ và tổng', () => {
     ]);
     expect(sum).toEqual({ unpaid: 80, advance: 40, advancePending: 5, cashPending: 60, unpaidCount: 1, advanceCount: 1, hasNegativeUnpaid: true });
     expect(summarizePositions([])).toMatchObject({ unpaid: 0, advance: 0, hasNegativeUnpaid: false });
+  });
+  it('tổng của bảng sổ tổng = đúng các dòng đang hiện (E1): R1 có thêm cổ đông đã xoá thì KHÔNG cộng; thiếu một dòng ⇒ null', () => {
+    const rows = [{ shareholder_id: 'a' }, { shareholder_id: 'b' }];
+    const r1 = [
+      { ...position({ unpaid_profit: 30, advance_outstanding: 0, advance_pending: 0, balance: 30 }), shareholder_id: 'b' },
+      // Cổ đông đã xoá còn số ở R1 mà E1 không liệt kê (mỗi bên xét "còn số" theo con số riêng).
+      { ...position({ unpaid_profit: 500, advance_outstanding: 0, advance_pending: 0, balance: 500 }), shareholder_id: 'gone' },
+      { ...position(), shareholder_id: 'a' },
+    ];
+    const matched = positionsForLedgerRows(rows, r1);
+    expect(matched?.complete).toBe(true);
+    expect(matched?.listed.map((p) => p.shareholder_id)).toEqual(['a', 'b']); // theo thứ tự dòng của bảng
+    expect(summarizeLedgerRowPositions(rows, r1)).toMatchObject({ unpaid: 130, advance: 40, advancePending: 5 });
+    // Lọc một cổ đông: chỉ dòng đó.
+    expect(summarizeLedgerRowPositions([{ shareholder_id: 'b' }], r1)).toMatchObject({ unpaid: 30, advance: 0 });
+    // Một dòng của bảng chưa có vị thế ⇒ tổng không đúng ⇒ null (nơi gọi hiện "—", không cộng thiếu).
+    expect(positionsForLedgerRows([...rows, { shareholder_id: 'c' }], r1)).toMatchObject({ complete: false });
+    expect(summarizeLedgerRowPositions([...rows, { shareholder_id: 'c' }], r1)).toBeNull();
+    // Chưa có vị thế (đang tải / lỗi) ⇒ null.
+    expect(positionsForLedgerRows(rows, null)).toBeNull();
+    expect(summarizeLedgerRowPositions(rows, null)).toBeNull();
   });
   it('âm thật mới là âm (sai số đồng lẻ không tính)', () => {
     expect(isUnpaidNegative(position({ unpaid_profit: -0.001 }))).toBe(false);

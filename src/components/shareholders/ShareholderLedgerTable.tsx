@@ -1,7 +1,10 @@
-// Bảng "Sổ tổng theo cổ đông" trên trang lợi nhuận của chủ (máy tính): mốc, được chia sau mốc, đã chi,
-// chờ duyệt, qua lương (E1) và HAI con số của vị thế (R1): "Lợi nhuận chưa chi" · "Tạm ứng đang có".
+// Bảng "Sổ tổng theo cổ đông" trên trang lợi nhuận của chủ (máy tính): mốc, được chia sau mốc, đã chi (kèm
+// dòng phụ "chờ duyệt"), qua lương (E1) và HAI con số của vị thế (R1): "Lợi nhuận chưa chi" · "Tạm ứng đang có".
 // Cổ đông đã xoá còn số vẫn hiện (mờ, không nút Chi). Nút Chi mở hộp CHỐT chi lợi nhuận; khoá theo trạng
 // thái sổ tổng và khi còn phiếu lương cần xem lại.
+// Bố cục (18/11): đủ ba nút Sổ / Mốc / Chi trong khung ở 1366–1536 px khi thanh bên mở, kể cả tên dài + số hàng tỷ —
+// mốc "đã trả đủ" là dòng phụ dưới tên (như thẻ điện thoại), "Chờ duyệt" là dòng phụ của "Đã chi", tiêu đề cột được
+// xuống dòng, nhãn / tên / số không xuống dòng; hẹp hơn thì bảng cuộn ngang trong khung của nó (`ph-tbl__scroll`).
 
 import { Button } from '@/components/ui/button';
 import type { ShareholderLedgerRow } from '@/lib/profitLedger/ledgerReaders';
@@ -10,9 +13,10 @@ import {
 } from '@/lib/profitLedger/ownerLedgerView';
 import type { ShareholderPositionRow } from '@/lib/profitLedger/positionReaders';
 import {
-  advancePendingText, isUnpaidNegative, POSITION_EXPLAIN, POSITION_LABELS, settlementCashPendingText, summarizePositions,
-  UNPAID_NEGATIVE_NOTE,
+  advancePendingText, isUnpaidNegative, POSITION_EXPLAIN, POSITION_LABELS, positionsForLedgerRows,
+  settlementCashPendingText, summarizePositions, UNPAID_NEGATIVE_NOTE,
 } from '@/lib/profitLedger/positionView';
+import { sameMoney } from '@/lib/profitLedger/readPrimitives';
 import type { ProfitLedgerRouteState } from '@/lib/profitLedger/route';
 import { formatCurrency } from '@/lib/utils';
 
@@ -35,36 +39,40 @@ export interface ShareholderLedgerTableProps {
 
 const MUTED = { color: 'var(--ph-ink-4)' } as const;
 
+/** "chờ duyệt X" dưới số đã chi; không có phiếu chờ duyệt thì không hiện. */
+const paidPendingText = (pending: number): string | null =>
+  sameMoney(pending, 0) ? null : `chờ duyệt ${formatCurrency(pending)}`;
+
 export function ShareholderLedgerTable({
   rows, positions, positionsPending, routeState, canDistribute, selectedId, onSelect, onOpenEntries, onPay, onMarker,
 }: ShareholderLedgerTableProps) {
   const sum = summarizeShareholderLedger(rows);
   const positionById = new Map((positions ?? []).map((row) => [row.shareholder_id, row] as const));
-  const listed = rows.flatMap((row) => { const p = positionById.get(row.shareholder_id); return p ? [p] : []; });
-  // Tổng chỉ hiện khi MỌI cổ đông trong bảng đều có vị thế (thiếu một người là tổng sai).
-  const positionSum = positions && listed.length === rows.length ? summarizePositions(listed) : null;
+  // Tổng chỉ hiện khi MỌI cổ đông trong bảng đều có vị thế (thiếu một người là tổng sai). Số đầu trang và biểu đồ
+  // cộng đúng tập này (positionsForLedgerRows).
+  const matched = positionsForLedgerRows(rows, positions);
+  const positionSum = matched?.complete ? summarizePositions(matched.listed) : null;
   const missing = positionsPending ? '…' : '—';
   const markerTitle = routeState.canSetMarker ? undefined : 'Chỉ đặt mốc khi sổ tổng mở phần đặt mốc đã trả đủ.';
+  const sumPaidPending = paidPendingText(sum.pending);
   return (
     <>
       <div className="ph-tbl__scroll">
-        <table className="ph-tbl" data-testid="shareholder-ledger-table">
+        <table className="ph-tbl ph-tbl--ledger" data-testid="shareholder-ledger-table">
           <thead>
             <tr>
-              <th>Cổ đông</th>
-              <th>Mốc đã trả đủ</th>
+              <th title="Dòng dưới tên: mốc đã trả đủ (nếu có)">Cổ đông</th>
               <th className="num">Được chia (sau mốc)</th>
-              <th className="num">Đã chi</th>
-              <th className="num">Chờ duyệt</th>
+              <th className="num" title="Phiếu chi lợi nhuận đã duyệt; dòng dưới: phiếu còn chờ duyệt">Đã chi</th>
               <th className="num">Qua lương</th>
               <th className="num">{POSITION_LABELS.unpaid}</th>
               <th className="num">{POSITION_LABELS.advance}</th>
-              <th />
+              <th aria-label="Thao tác" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={9} style={{ textAlign: 'center', ...MUTED }}>Chưa có cổ đông</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', ...MUTED }}>Chưa có cổ đông</td></tr>
             )}
             {rows.map((row) => {
               const active = selectedId === row.shareholder_id;
@@ -73,6 +81,8 @@ export function ShareholderLedgerTable({
               const position = positionById.get(row.shareholder_id) ?? null;
               const cashPending = position ? settlementCashPendingText(position, formatCurrency) : null;
               const advancePending = position ? advancePendingText(position, formatCurrency) : null;
+              const paidPending = paidPendingText(row.payouts_pending);
+              const marker = markerText(row.marker);
               return (
                 <tr
                   key={row.shareholder_id}
@@ -82,13 +92,18 @@ export function ShareholderLedgerTable({
                 >
                   <td className="name">
                     {row.is_deleted ? (
-                      <span>{row.name}</span>
+                      <span className="ph-ledger__name">{row.name}</span>
                     ) : (
-                      <button type="button" className="ph-row__link" onClick={() => onSelect(active ? null : row.shareholder_id)}>
+                      <button type="button" className="ph-row__link ph-ledger__name" onClick={() => onSelect(active ? null : row.shareholder_id)}>
                         {row.name}
                       </button>
                     )}
-                    <div className="flex flex-wrap gap-1">
+                    {marker && (
+                      <div className="ph-ledger__sub" data-testid={`ledger-marker-${row.shareholder_id}`}>
+                        mốc <span className="ph-ledger__nowrap">{marker}</span>
+                      </div>
+                    )}
+                    <div className="ph-ledger__tags">
                       {row.is_deleted && <span className="ph-state ph-state--muted">đã xoá</span>}
                       {!row.is_deleted && !row.is_active && <span className="ph-state ph-state--muted">đang ngưng</span>}
                       {!row.has_login && <span className="ph-state ph-state--muted">chưa có tài khoản</span>}
@@ -98,10 +113,11 @@ export function ShareholderLedgerTable({
                       )}
                     </div>
                   </td>
-                  <td>{markerText(row.marker) ?? <span style={MUTED}>—</span>}</td>
                   <td className="num pos">{formatCurrency(row.allocated)}</td>
-                  <td className="num neg">{formatCurrency(row.payouts_approved)}</td>
-                  <td className="num">{formatCurrency(row.payouts_pending)}</td>
+                  <td className="num neg" data-testid={`ledger-paid-${row.shareholder_id}`}>
+                    {formatCurrency(row.payouts_approved)}
+                    {paidPending && <div className="ph-ledger__sub">{paidPending}</div>}
+                  </td>
                   <td
                     className="num"
                     title={row.salary_advance_offset !== 0
@@ -116,14 +132,14 @@ export function ShareholderLedgerTable({
                     title={position && isUnpaidNegative(position) ? UNPAID_NEGATIVE_NOTE : undefined}
                   >
                     {position ? formatCurrency(position.unpaid_profit) : <span style={MUTED}>{missing}</span>}
-                    {cashPending && <div><span className="ph-state ph-state--muted">{cashPending}</span></div>}
+                    {cashPending && <div className="ph-ledger__sub">{cashPending}</div>}
                   </td>
                   <td className="num strong" data-testid={`ledger-advance-${row.shareholder_id}`}>
                     {position ? formatCurrency(position.advance_outstanding) : <span style={MUTED}>{missing}</span>}
-                    {advancePending && <div><span className="ph-state ph-state--warn">{advancePending}</span></div>}
+                    {advancePending && <div className="ph-ledger__sub ph-ledger__sub--warn">{advancePending}</div>}
                   </td>
                   <td className="num">
-                    <div className="flex justify-end gap-1">
+                    <div className="ph-ledger__actions">
                       <Button type="button" className="ph-mini-btn" onClick={() => onOpenEntries(row)}>Sổ</Button>
                       {canDistribute && (
                         <Button type="button" className="ph-mini-btn" disabled={!routeState.canSetMarker} title={markerTitle} onClick={() => onMarker(row)}>
@@ -145,10 +161,11 @@ export function ShareholderLedgerTable({
             <tfoot>
               <tr>
                 <td>Tổng</td>
-                <td />
                 <td className="num pos">{formatCurrency(sum.allocated)}</td>
-                <td className="num neg">{formatCurrency(sum.approved)}</td>
-                <td className="num">{formatCurrency(sum.pending)}</td>
+                <td className="num neg" data-testid="ledger-paid-total">
+                  {formatCurrency(sum.approved)}
+                  {sumPaidPending && <div className="ph-ledger__sub">{sumPaidPending}</div>}
+                </td>
                 <td className="num">{formatCurrency(sum.viaSalary)}</td>
                 <td className="num" style={{ fontWeight: 800 }} data-testid="ledger-unpaid-total">
                   {positionSum ? formatCurrency(positionSum.unpaid) : <span style={MUTED}>{missing}</span>}
@@ -156,7 +173,7 @@ export function ShareholderLedgerTable({
                 <td className="num" style={{ fontWeight: 800 }} data-testid="ledger-advance-total">
                   {positionSum ? formatCurrency(positionSum.advance) : <span style={MUTED}>{missing}</span>}
                   {positionSum && positionSum.advancePending !== 0 && (
-                    <div style={{ fontWeight: 600 }}>chờ duyệt {formatCurrency(positionSum.advancePending)}</div>
+                    <div className="ph-ledger__sub ph-ledger__sub--warn">chờ duyệt {formatCurrency(positionSum.advancePending)}</div>
                   )}
                 </td>
                 <td />

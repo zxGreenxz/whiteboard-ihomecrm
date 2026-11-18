@@ -1,9 +1,9 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { HandCoins, Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { colorAt } from "./shareholderUtils";
-import { useShareholders } from "@/hooks/useShareholders";
+import { useMyShareholder, useShareholders } from "@/hooks/useShareholders";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useProfitOverviewCoverage } from "@/hooks/useProfitOverviewCoverage";
 import {
@@ -34,13 +34,17 @@ import {
   isUnpaidNegative,
   POSITION_EXPLAIN,
   POSITION_LABELS,
+  positionsForLedgerRows,
   settlementCashPendingText,
-  summarizePositions,
+  summarizeLedgerRowPositions,
   UNPAID_NEGATIVE_NOTE,
 } from "@/lib/profitLedger/positionView";
 import { profitLedgerRouteState } from "@/lib/profitLedger/route";
+import { ownerSelfAdvanceSubject, selfAdvanceBlockedNote } from "@/lib/profitLedger/selfView";
 import ProfitDistributeDialog from "./ProfitDistributeDialog";
+import ProfitSelfAdvanceDialog from "./ProfitSelfAdvanceDialog";
 import { ManagerLedgerSection } from "./ManagerLedgerSection";
+import { ProfitLedgerMarkerDialog, type ProfitLedgerMarkerSubject } from "./ProfitLedgerMarkerDialog";
 import { ProfitLedgerReadError, ProfitLedgerRouteBanner } from "./ProfitLedgerRouteBanner";
 import { ShareholderLedgerSheet } from "./ShareholderLedgerSheet";
 import { useOrganization } from "@/contexts/OrganizationContext";
@@ -73,12 +77,21 @@ export default function ProfitOverviewMobile({
   const [distOpen, setDistOpen] = useState(false);
   const [distShareholder, setDistShareholder] = useState<string | null>(null);
   const [entriesFor, setEntriesFor] = useState<{ id: string; name: string } | null>(null);
+  const [markerFor, setMarkerFor] = useState<ProfitLedgerMarkerSubject | null>(null);
+  const [selfAdvanceOpen, setSelfAdvanceOpen] = useState(false);
 
   const { data: perms } = useMyPermissions();
   const canDistribute = canUse(perms, "shareholder_profit", "distribute");
   const canPayManager = canUse(perms, "shareholder_profit", "pay_manager");
   // Tỷ lệ % của cổ đông chỉ hiện khi được cấp quyền xem tỷ lệ.
   const canViewPercent = canUse(perms, "shareholder_profit", "view_percent");
+  // Chủ đồng thời là cổ đông của đúng công ty này và có quyền tạm ứng ⇒ "Chi tạm ứng cho tôi" (như bản máy tính).
+  const { data: myShareholder } = useMyShareholder();
+  const canAdvanceOwn = canUse(perms, "shareholder_profit", "advance_own_cashbook");
+  const selfAdvanceMe = useMemo(
+    () => ownerSelfAdvanceSubject(myShareholder, canAdvanceOwn, selectedOrganizationId),
+    [myShareholder, canAdvanceOwn, selectedOrganizationId]
+  );
 
   const shareholdersQuery = useShareholders();
   const { data: shareholders = [] } = shareholdersQuery;
@@ -115,12 +128,22 @@ export default function ProfitOverviewMobile({
     [positionsQuery.data]
   );
   const positionById = useMemo(() => new Map((positions ?? []).map((row) => [row.shareholder_id, row] as const)), [positions]);
+  // Số đầu trang cộng ĐÚNG các thẻ cổ đông đang hiện (dòng E1) — cùng tập với bảng sổ tổng của bản máy tính.
   const positionSum = useMemo(
-    () => (positions ? summarizePositions(shId === ALL ? positions : positions.filter((row) => row.shareholder_id === shId)) : null),
-    [positions, shId]
+    () => summarizeLedgerRowPositions(shId === ALL ? ledgerRows : ledgerRows.filter((row) => row.shareholder_id === shId), positions),
+    [ledgerRows, positions, shId]
   );
+  const ledgerPositions = useMemo(() => positionsForLedgerRows(ledgerRows, positions)?.listed ?? [], [ledgerRows, positions]);
   const positionsPending = !positions && !positionsQuery.isError;
   const positionMissing = positionsPending ? "…" : "—";
+  const positionGapNote = positions && !positionSum ? "Thiếu số của một cổ đông" : "Chưa tải được";
+  const selfAdvanceNote = selfAdvanceBlockedNote(ledger?.route);
+  const openMarker = (row: ShareholderLedgerRow) => setMarkerFor({
+    id: row.shareholder_id,
+    name: row.name,
+    marker: row.marker,
+    lastSettledThroughMonth: positionById.get(row.shareholder_id)?.last_settled_through_month ?? null,
+  });
 
   const buildingName = (id: string) => (buildings as any[]).find((b) => b.id === id)?.name ?? "—";
   const monthOf = (period?: string) => Number((period ?? "").slice(5, 7));
@@ -285,7 +308,7 @@ export default function ProfitOverviewMobile({
               <div className={kpiSub}>
                 {positionSum
                   ? positionSum.cashPending !== 0 ? `đang chờ chi ${fmtShort(positionSum.cashPending)}` : `${positionSum.unpaidCount} cổ đông còn chưa chi`
-                  : positionsPending ? "" : "Chưa tải được"}
+                  : positionsPending ? "" : positionGapNote}
               </div>
             </div>
             <div className={`${CARD} px-3 py-2.5`} data-testid="kpi-advance">
@@ -298,7 +321,7 @@ export default function ProfitOverviewMobile({
               <div className={kpiSub}>
                 {positionSum
                   ? positionSum.advancePending !== 0 ? `chờ duyệt ${fmtShort(positionSum.advancePending)}` : "đã duyệt, chưa khấu trừ"
-                  : positionsPending ? "" : "Chưa tải được"}
+                  : positionsPending ? "" : positionGapNote}
               </div>
             </div>
           </>
@@ -343,6 +366,18 @@ export default function ProfitOverviewMobile({
         </div>
       </div>
       <ProfitLedgerRouteBanner route={ledger?.route} className="-mt-1 text-[11px]" />
+      {/* Chủ đồng thời là cổ đông có quyền tạm ứng: tự ứng cho mình (cùng hộp của màn tự xem). Sổ tổng chưa chạy thật
+          thì nút khoá — dải báo ngay trên đã nói lý do. */}
+      {selfAdvanceMe && (
+        <button
+          type="button"
+          disabled={selfAdvanceNote !== null}
+          onClick={() => setSelfAdvanceOpen(true)}
+          className="flex items-center justify-center gap-2 rounded-[13px] border border-[#d2e8da] bg-[#e8f3ec] px-4 py-2.5 text-[13px] font-bold text-[#1a6645] active:scale-[.99] disabled:opacity-50"
+        >
+          <HandCoins className="h-4 w-4" />Chi tạm ứng cho tôi
+        </button>
+      )}
 
       {/* Năm + chip tháng */}
       <YearMonthRow year={year} month={month} onYearShift={shiftYear} onMonthChange={setMonth} />
@@ -514,23 +549,37 @@ export default function ProfitOverviewMobile({
                   </span>
                   <span className="text-[9.5px] font-semibold text-[#b6b0a3]">tạm ứng</span>
                 </div>
-                {canDistribute && !row.is_deleted && (
-                  <button
-                    type="button"
-                    disabled={payBlock !== null}
-                    title={payBlock ?? undefined}
-                    onClick={() => { setDistShareholder(row.shareholder_id); setDistOpen(true); }}
-                    className="shrink-0 text-[11.5px] font-bold text-[#1a6645] bg-[#e8f3ec] border border-[#d2e8da] rounded-[9px] px-3 py-[7px] active:scale-95 disabled:opacity-50"
-                  >
-                    Chi
-                  </button>
+                {canDistribute && (
+                  <div className="flex shrink-0 flex-col items-stretch gap-1.5">
+                    {!row.is_deleted && (
+                      <button
+                        type="button"
+                        disabled={payBlock !== null}
+                        title={payBlock ?? undefined}
+                        onClick={() => { setDistShareholder(row.shareholder_id); setDistOpen(true); }}
+                        className="text-[11.5px] font-bold text-[#1a6645] bg-[#e8f3ec] border border-[#d2e8da] rounded-[9px] px-3 py-[7px] active:scale-95 disabled:opacity-50"
+                      >
+                        Chi
+                      </button>
+                    )}
+                    {/* Mốc "đã trả đủ" (hộp đặt mốc dùng được ở điện thoại: giới hạn chiều cao + cuộn, nút dính đáy). */}
+                    <button
+                      type="button"
+                      disabled={!routeState.canSetMarker}
+                      title={routeState.canSetMarker ? undefined : "Chỉ đặt mốc khi sổ tổng mở phần đặt mốc đã trả đủ."}
+                      onClick={() => openMarker(row)}
+                      className="text-[11.5px] font-bold text-[#514c42] bg-white border border-[#e7e3da] rounded-[9px] px-3 py-[5px] active:scale-95 disabled:opacity-50"
+                    >
+                      Mốc
+                    </button>
+                  </div>
                 )}
               </div>
             );
           })}
           <p className="m-0 px-3 py-2.5 border-t border-[#f4f1ea] text-[10.5px] font-semibold leading-snug text-[#8d8678]" data-testid="ledger-position-note">
             {POSITION_EXPLAIN}
-            {(positions ?? []).some(isUnpaidNegative) ? ` ${UNPAID_NEGATIVE_NOTE}` : ""}
+            {ledgerPositions.some(isUnpaidNegative) ? ` ${UNPAID_NEGATIVE_NOTE}` : ""}
           </p>
           </>
         )}
@@ -539,7 +588,7 @@ export default function ProfitOverviewMobile({
       {/* Lương điều hành theo sổ (E10) — điện thoại chỉ chi + xem sổ phiếu; đặt mốc trên máy tính. */}
       <ManagerLedgerSection organizationId={selectedOrganizationId} canPayManager={canPayManager} variant="mobile" />
 
-      {/* Hộp CHỐT chi lợi nhuận (không nhập tay số tiền). Đặt mốc làm trên máy tính nên không có lối tắt ở đây. */}
+      {/* Hộp CHỐT chi lợi nhuận (không nhập tay số tiền). Lời nhắc "đặt mốc trước" mở hộp đặt mốc ngay trên điện thoại. */}
       <ProfitDistributeDialog
         open={distOpen}
         onOpenChange={setDistOpen}
@@ -551,7 +600,28 @@ export default function ProfitOverviewMobile({
           const row = ledgerRows.find((r) => r.shareholder_id === shareholderId);
           setEntriesFor({ id: shareholderId, name: row?.name ?? "" });
         }}
+        onSetMarker={routeState.canSetMarker ? (shareholderId) => {
+          const row = ledgerRows.find((r) => r.shareholder_id === shareholderId);
+          if (!row) return;
+          setDistOpen(false);
+          openMarker(row);
+        } : undefined}
       />
+      <ProfitLedgerMarkerDialog
+        open={!!markerFor}
+        onOpenChange={(next) => { if (!next) setMarkerFor(null); }}
+        organizationId={selectedOrganizationId}
+        subjectKind="SHAREHOLDER"
+        subject={markerFor}
+      />
+      {selfAdvanceMe && (
+        <ProfitSelfAdvanceDialog
+          open={selfAdvanceOpen}
+          onOpenChange={setSelfAdvanceOpen}
+          organizationId={selectedOrganizationId}
+          me={selfAdvanceMe}
+        />
+      )}
       <ShareholderLedgerSheet
         open={!!entriesFor}
         onOpenChange={(next) => { if (!next) setEntriesFor(null); }}

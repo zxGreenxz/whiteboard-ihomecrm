@@ -134,6 +134,23 @@ export function newestFirst<T>(rows: readonly T[]): T[] {
 }
 
 /**
+ * Người đang xem tự tạm ứng được cho chính mình ở màn của CHỦ (tab Tổng quan quản lý) — cùng điều kiện mà tab tự
+ * xem và tab "Tạm ứng LN" dùng để hiện nút "Chi tạm ứng cho tôi": người xem là cổ đông chưa xoá
+ * (`useMyShareholder`) VÀ có quyền `shareholder_profit.advance_own_cashbook`. Thêm: cổ đông đó thuộc ĐÚNG công ty
+ * đang xem (như tab tự xem chỉ hỏi công ty của dòng cổ đông) — nút ở màn công ty này không lập phiếu ở công ty khác.
+ * null = không hiện nút.
+ */
+export function ownerSelfAdvanceSubject(
+  me: { id: string; name: string } | null | undefined,
+  canAdvanceOwn: boolean,
+  organizationId: string | null | undefined,
+): { shareholderId: string; name: string } | null {
+  if (!me || !canAdvanceOwn || !organizationId) return null;
+  if (shareholderOrganizationId(me) !== organizationId) return null;
+  return { shareholderId: me.id, name: me.name };
+}
+
+/**
  * Nút "Chi tạm ứng cho tôi": chỉ mở khi sổ tổng chạy thật (CANONICAL). Trả câu giải thích khi khoá,
  * null khi mở. Máy chủ (lệnh tạm ứng) vẫn là chốt cuối.
  */

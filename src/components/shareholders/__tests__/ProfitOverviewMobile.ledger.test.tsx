@@ -2,22 +2,30 @@
 // Tổng quan của chủ trên điện thoại (D2.6): mỗi cổ đông một thẻ đọc sổ tổng E1 (chữ trạng thái, số dư,
 // dòng tóm tắt), nút Chi khoá theo trạng thái sổ tổng, bấm thẻ mở sổ chi tiết từ dưới lên, % chỉ khi
 // được cấp quyền xem tỷ lệ. Dữ liệu GIẢ.
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
   route: 'LEGACY' as string,
   /** Vị thế (R1): 'ok' | 'pending' | lỗi đọc. */
   positions: 'ok' as 'ok' | 'pending' | { code: string; message: string },
+  /** Dòng R1 thêm mà E1 không liệt kê (cổ đông đã xoá còn số theo con số riêng của R1). */
+  extraPositions: [] as Record<string, unknown>[],
   perms: { shareholder_profit: { distribute: true, pay_manager: true } } as Record<string, unknown>,
   sheet: [] as { open: boolean; compact?: boolean; shareholder: { name: string } | null }[],
   managerVariant: [] as string[],
+  distProps: [] as Record<string, unknown>[],
+  me: null as Record<string, unknown> | null,
+  selfAdvanceProps: [] as Record<string, unknown>[],
 }));
 const ok = (data: unknown) => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, error: null, refetch: vi.fn() });
 
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: m.perms }) }));
-vi.mock('@/hooks/useShareholders', () => ({ useShareholders: () => ok([{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }]) }));
+vi.mock('@/hooks/useShareholders', () => ({
+  useShareholders: () => ok([{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }]),
+  useMyShareholder: () => ok(m.me),
+}));
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ok([{ id: 'b1', name: 'Toà A' }]) }));
 vi.mock('@/hooks/useProfitOverviewCoverage', () => ({ useProfitOverviewCoverage: () => ({ coverage: null, today: '2026-11-15' }) }));
 vi.mock('../ProfitCoverageCard', () => ({ ProfitCoverageMobile: () => null }));
@@ -31,11 +39,24 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
   useShareholderProfitPositions: (org: string | null) => {
     if (m.positions === 'pending') return { data: undefined, status: 'pending', fetchStatus: 'fetching', isLoading: true, isError: false, error: null, refetch: vi.fn() };
     if (m.positions !== 'ok') return { data: undefined, status: 'error', fetchStatus: 'idle', isLoading: false, isError: true, error: m.positions, refetch: vi.fn() };
-    return ok({ organization_id: org, route: m.route, as_of: '2026-11-18T00:00:00Z', shareholders: POSITIONS });
+    return ok({ organization_id: org, route: m.route, as_of: '2026-11-18T00:00:00Z', shareholders: [...POSITIONS, ...m.extraPositions] });
   },
 }));
 vi.mock('../ProfitDistributeDialog', () => ({
-  default: (p: { open: boolean; defaultShareholderId?: string | null }) => (p.open ? <div data-testid="dist-dialog">{String(p.defaultShareholderId)}</div> : null),
+  default: (p: { open: boolean; defaultShareholderId?: string | null }) => {
+    m.distProps.push(p);
+    return p.open ? <div data-testid="dist-dialog">{String(p.defaultShareholderId)}</div> : null;
+  },
+}));
+vi.mock('../ProfitLedgerMarkerDialog', () => ({
+  ProfitLedgerMarkerDialog: (p: { open: boolean; subject: { name: string; lastSettledThroughMonth?: string | null } | null }) =>
+    (p.open ? <div data-testid="marker-dialog">{p.subject?.name}</div> : null),
+}));
+vi.mock('../ProfitSelfAdvanceDialog', () => ({
+  default: (p: Record<string, unknown>) => {
+    m.selfAdvanceProps.push(p);
+    return p.open ? <div data-testid="self-advance-dialog">{JSON.stringify(p.me)}</div> : null;
+  },
 }));
 vi.mock('../ShareholderLedgerSheet', () => ({
   ShareholderLedgerSheet: (p: { open: boolean; compact?: boolean; shareholder: { name: string } | null }) => {
@@ -75,9 +96,13 @@ const renderMobile = () => render(<ProfitOverviewMobile year={2026} onYearChange
 beforeEach(() => {
   m.route = 'LEGACY';
   m.positions = 'ok';
+  m.extraPositions = [];
   m.perms = { shareholder_profit: { distribute: true, pay_manager: true } };
   m.sheet = [];
   m.managerVariant = [];
+  m.distProps = [];
+  m.me = null;
+  m.selfAdvanceProps = [];
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -158,5 +183,66 @@ describe('Tổng quan chủ — điện thoại', () => {
     m.perms = { shareholder_profit: { distribute: true, view_percent: true } };
     renderMobile();
     expect(cardOf('s1').textContent).toMatch(/50%/);
+  });
+
+  // R4: số đầu trang cộng đúng các thẻ đang hiện (dòng E1), như dòng Tổng của bảng máy tính.
+  it('số đầu trang không cộng dòng chỉ có ở R1 (cổ đông đã xoá còn số mà sổ tổng không liệt kê)', () => {
+    m.route = 'CANONICAL';
+    m.extraPositions = [position({
+      shareholder_id: 'r1-only', name: 'Chỉ có ở R1', is_deleted: true, unpaid_profit: 1_000_000, advance_outstanding: 70_000,
+      advance_pending: 0, balance: 930_000,
+    })];
+    renderMobile();
+    expect(screen.queryByTestId('ledger-card-r1-only')).toBeNull();
+    expect(screen.getByTestId('kpi-remaining').textContent).toMatch(/Lợi nhuận chưa chi700k/);
+    expect(screen.getByTestId('kpi-advance').textContent).toMatch(/Tạm ứng đang có300k/);
+  });
+
+  // U4: hộp đặt mốc dùng được ở điện thoại ⇒ lối mở từ thẻ cổ đông và từ lời nhắc trong hộp chốt.
+  it('đặt mốc trên điện thoại: nút Mốc ở thẻ cổ đông, và lời nhắc của hộp chốt mở đúng hộp mốc', () => {
+    m.route = 'SHADOW';
+    renderMobile();
+    const marker = within(cardOf('s2')).getByRole('button', { name: 'Mốc' }) as HTMLButtonElement;
+    expect(marker.disabled).toBe(false);
+    fireEvent.click(marker);
+    expect(screen.getByTestId('marker-dialog').textContent).toBe('Bình');
+    cleanup();
+    m.route = 'CANONICAL';
+    m.distProps = [];
+    renderMobile();
+    fireEvent.click(chiOf('s1')!);
+    const last = m.distProps.at(-1)!;
+    expect(typeof last.onSetMarker).toBe('function');
+    act(() => { (last.onSetMarker as (id: string) => void)('s1'); });
+    expect(screen.getByTestId('marker-dialog').textContent).toBe('An');
+    expect(screen.queryByTestId('dist-dialog')).toBeNull();
+  });
+
+  it('sổ tổng chưa mở phần đặt mốc ⇒ nút Mốc khoá, hộp chốt không có lối đặt mốc; không có quyền chi ⇒ không nút Mốc', () => {
+    m.route = 'FROZEN';
+    renderMobile();
+    expect((within(cardOf('s1')).getByRole('button', { name: 'Mốc' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(m.distProps.at(-1)?.onSetMarker).toBeUndefined();
+    cleanup();
+    m.perms = { shareholder_profit: { lock: true } };
+    renderMobile();
+    expect(within(cardOf('s1')).queryByRole('button', { name: 'Mốc' })).toBeNull();
+  });
+
+  // R3: chủ đồng thời là cổ đông có quyền tạm ứng.
+  it('chủ là cổ đông của công ty + có quyền tạm ứng ⇒ nút "Chi tạm ứng cho tôi" mở hộp tự tạm ứng; không thì không có nút', () => {
+    m.route = 'CANONICAL';
+    m.me = { id: 's1', name: 'An', organization_id: 'org-a' };
+    m.perms = { shareholder_profit: { distribute: true, advance_own_cashbook: true } };
+    renderMobile();
+    fireEvent.click(screen.getByRole('button', { name: /Chi tạm ứng cho tôi/ }));
+    expect(screen.getByTestId('self-advance-dialog').textContent).toBe(JSON.stringify({ shareholderId: 's1', name: 'An' }));
+    expect(m.selfAdvanceProps.at(-1)).toMatchObject({ open: true, organizationId: 'org-a' });
+    cleanup();
+    m.selfAdvanceProps = [];
+    m.me = { id: 's9', name: 'Khác', organization_id: 'org-b' };
+    renderMobile();
+    expect(screen.queryByRole('button', { name: /Chi tạm ứng cho tôi/ })).toBeNull();
+    expect(m.selfAdvanceProps).toEqual([]);
   });
 });

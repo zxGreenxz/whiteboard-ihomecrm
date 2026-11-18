@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import type { MyProfitLedger } from '../ledgerReaders';
 import {
-  amountsByBuilding, buildingColumns, buildingMatrix, ledgerYears, monthlyAmounts, monthsInScope, payoutStatusLabel,
-  salaryNet, selfAdvanceBlockedNote, shareholderOrganizationId,
+  amountsByBuilding, buildingColumns, buildingMatrix, ledgerYears, monthlyAmounts, monthsInScope, ownerSelfAdvanceSubject,
+  payoutStatusLabel, salaryNet, selfAdvanceBlockedNote, shareholderOrganizationId,
 } from '../selfView';
 
 const ledger = (over: Partial<MyProfitLedger> = {}): MyProfitLedger => ({
@@ -67,6 +67,16 @@ describe('selfView — phiếu, nút tạm ứng, công ty', () => {
   it('nút "Chi tạm ứng cho tôi" chỉ mở khi sổ tổng chạy thật; route lạ đóng an toàn', () => {
     expect(selfAdvanceBlockedNote('CANONICAL')).toBeNull();
     for (const route of ['LEGACY', 'SHADOW', 'FROZEN', 'CANARY', null]) expect(selfAdvanceBlockedNote(route)).toEqual(expect.any(String));
+  });
+  it('màn của chủ: "Chi tạm ứng cho tôi" chỉ khi người xem là cổ đông của ĐÚNG công ty đang xem VÀ có quyền tạm ứng', () => {
+    const me = { id: 'sh-1', name: 'Cổ đông 1', organization_id: 'org-a' };
+    expect(ownerSelfAdvanceSubject(me, true, 'org-a')).toEqual({ shareholderId: 'sh-1', name: 'Cổ đông 1' });
+    expect(ownerSelfAdvanceSubject(me, false, 'org-a')).toBeNull(); // không có quyền tạm ứng
+    expect(ownerSelfAdvanceSubject(null, true, 'org-a')).toBeNull(); // không phải cổ đông (hoặc hồ sơ chưa tải)
+    expect(ownerSelfAdvanceSubject(undefined, true, 'org-a')).toBeNull();
+    expect(ownerSelfAdvanceSubject(me, true, 'org-b')).toBeNull(); // cổ đông của công ty khác
+    expect(ownerSelfAdvanceSubject({ id: 'sh-1', name: 'Cổ đông 1' }, true, 'org-a')).toBeNull(); // dòng thiếu công ty: không đoán
+    expect(ownerSelfAdvanceSubject(me, true, null)).toBeNull();
   });
   it('công ty lấy từ dòng cổ đông; thiếu / rỗng ⇒ null (không đoán)', () => {
     expect(shareholderOrganizationId({ id: 'sh-1', organization_id: 'org-a' })).toBe('org-a');

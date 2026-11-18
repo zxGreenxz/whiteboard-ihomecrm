@@ -70,6 +70,37 @@ export function summarizePositions(rows: readonly ShareholderPosition[]): Positi
   return sum;
 }
 
+export interface LedgerRowPositions<P> {
+  /** Vị thế của các dòng sổ tổng đang hiện, theo thứ tự dòng (dòng chưa có vị thế thì bỏ). */
+  listed: P[];
+  /** Mọi dòng đang hiện đều có vị thế — chỉ khi đó tổng mới đúng. */
+  complete: boolean;
+}
+
+/**
+ * Vị thế (R1) của ĐÚNG các dòng sổ tổng (E1) đang hiện ở bảng "Sổ tổng theo cổ đông", theo thứ tự dòng. R1 và E1
+ * đều kèm cổ đông đã xoá còn số nhưng mỗi bên xét "còn số" theo con số riêng, nên hai danh sách có thể lệch nhau:
+ * số đầu trang, biểu đồ và dòng Tổng của bảng phải cộng CÙNG tập này. `null` = chưa có vị thế (đang tải / lỗi).
+ */
+export function positionsForLedgerRows<P extends { shareholder_id: string }>(
+  rows: readonly { shareholder_id: string }[],
+  positions: readonly P[] | null,
+): LedgerRowPositions<P> | null {
+  if (!positions) return null;
+  const byId = new Map(positions.map((row) => [row.shareholder_id, row] as const));
+  const listed = rows.flatMap((row) => { const p = byId.get(row.shareholder_id); return p ? [p] : []; });
+  return { listed, complete: listed.length === rows.length };
+}
+
+/** Tổng hai con số của đúng các dòng sổ tổng đang hiện; null khi chưa có vị thế hoặc thiếu vị thế của một dòng. */
+export function summarizeLedgerRowPositions(
+  rows: readonly { shareholder_id: string }[],
+  positions: readonly (ShareholderPosition & { shareholder_id: string })[] | null,
+): PositionSummary | null {
+  const matched = positionsForLedgerRows(rows, positions);
+  return matched?.complete ? summarizePositions(matched.listed) : null;
+}
+
 /** 'YYYY-MM-01' → 'MM/YYYY'; chuỗi lạ ⇒ chính nó (không đoán). */
 export function settleMonthLabel(value: string): string {
   const m = /^(\d{4})-(\d{2})/.exec(value);

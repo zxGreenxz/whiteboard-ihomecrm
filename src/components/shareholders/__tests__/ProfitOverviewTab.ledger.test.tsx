@@ -11,9 +11,16 @@ const m = vi.hoisted(() => ({
   ledgerError: null as unknown,
   /** Vị thế (R1): 'ok' | 'pending' | lỗi đọc. */
   positions: 'ok' as 'ok' | 'pending' | { code: string; message: string },
+  /** Dòng R1 thêm mà E1 không liệt kê (cổ đông đã xoá còn số theo con số riêng của R1). */
+  extraPositions: [] as Record<string, unknown>[],
+  /** Cổ đông của E1 mà R1 không trả vị thế. */
+  dropPositions: [] as string[],
   positionCalls: [] as { org: string | null; enabled: boolean | undefined }[],
   perms: { shareholder_profit: { distribute: true, pay_manager: true } } as Record<string, unknown>,
   distProps: [] as Record<string, unknown>[],
+  /** Dòng cổ đông của chính người đang xem (useMyShareholder); null = không phải cổ đông. */
+  me: null as Record<string, unknown> | null,
+  selfAdvanceProps: [] as Record<string, unknown>[],
 }));
 const ok = (data: unknown) => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, error: null, refetch: vi.fn() });
 
@@ -22,7 +29,10 @@ vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: m.
 vi.mock('@/pages/reports/finance/ProfitHubShell', () => ({
   ProfitHubSlot: ({ children }: { children?: ReactNode }) => <div data-testid="kpis">{children}</div>,
 }));
-vi.mock('@/hooks/useShareholders', () => ({ useShareholders: () => ok([{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }]) }));
+vi.mock('@/hooks/useShareholders', () => ({
+  useShareholders: () => ok([{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }]),
+  useMyShareholder: () => ok(m.me),
+}));
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ok([]) }));
 vi.mock('@/hooks/useProfitOverviewCoverage', () => ({ useProfitOverviewCoverage: () => ({ coverage: null, today: '2026-11-15' }) }));
 vi.mock('../ProfitCoverageCard', () => ({ ProfitCoverageCard: () => null }));
@@ -44,7 +54,17 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
     m.positionCalls.push({ org, enabled: options?.enabled });
     if (options?.enabled === false || m.positions === 'pending') return { data: undefined, status: 'pending', fetchStatus: 'idle', isLoading: true, isError: false, error: null, refetch: vi.fn() };
     if (m.positions !== 'ok') return { data: undefined, status: 'error', fetchStatus: 'idle', isLoading: false, isError: true, error: m.positions, refetch: vi.fn() };
-    return ok({ organization_id: org, route: m.route, as_of: '2026-11-18T00:00:00Z', shareholders: POSITIONS });
+    const shareholders = [
+      ...POSITIONS.filter((p) => !m.dropPositions.includes(String((p as Record<string, unknown>).shareholder_id))),
+      ...m.extraPositions,
+    ];
+    return ok({ organization_id: org, route: m.route, as_of: '2026-11-18T00:00:00Z', shareholders });
+  },
+}));
+vi.mock('../ProfitSelfAdvanceDialog', () => ({
+  default: (props: Record<string, unknown>) => {
+    m.selfAdvanceProps.push(props);
+    return props.open ? <div data-testid="self-advance-dialog">{JSON.stringify(props.me)}</div> : null;
   },
 }));
 vi.mock('../ProfitDistributeDialog', () => ({
@@ -96,9 +116,13 @@ beforeEach(() => {
   m.route = 'LEGACY';
   m.ledgerError = null;
   m.positions = 'ok';
+  m.extraPositions = [];
+  m.dropPositions = [];
   m.positionCalls = [];
   m.perms = { shareholder_profit: { distribute: true, pay_manager: true } };
   m.distProps = [];
+  m.me = null;
+  m.selfAdvanceProps = [];
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -277,5 +301,105 @@ describe('Tổng quan chủ — sổ tổng (E1)', () => {
     expect(screen.getByTestId('kpi-remaining').textContent).toMatch(/—/);
     expect(screen.getByTestId('kpi-allocated').textContent).toMatch(/—/);
     expect(within(screen.getByTestId('shareholder-ledger-card')).getByRole('button', { name: /Tải lại/ })).toBeTruthy();
+  });
+
+  // R4 (review chéo 18/11): R1 và E1 đều kèm cổ đông đã xoá còn số nhưng xét "còn số" theo con số riêng.
+  it('số đầu trang + biểu đồ cộng ĐÚNG các dòng của bảng: dòng chỉ có ở R1 (đã xoá còn số) không được cộng', () => {
+    m.route = 'CANONICAL';
+    m.extraPositions = [position({
+      shareholder_id: 'r1-only', name: 'Chỉ có ở R1', is_deleted: true, has_login: false,
+      unpaid_profit: 1_000_000, advance_outstanding: 70_000, advance_pending: 0, balance: 930_000,
+    })];
+    render(<ProfitOverviewTab />);
+    // Bảng: ba dòng E1 ⇒ chưa chi 900.000 − 200.000 + 50.000 = 750.000; tạm ứng 300.000 (+ chờ duyệt 100.000).
+    expect(screen.queryByTestId('ledger-row-r1-only')).toBeNull();
+    expect(screen.getByTestId('ledger-unpaid-total').textContent).toMatch(/750\.000/);
+    expect(screen.getByTestId('ledger-advance-total').textContent).toMatch(/300\.000/);
+    // Số đầu trang cùng tập với dòng Tổng của bảng — KHÔNG 1.750.000 / 370.000.
+    const unpaid = screen.getByTestId('kpi-remaining').textContent ?? '';
+    const advance = screen.getByTestId('kpi-advance').textContent ?? '';
+    expect(unpaid).toMatch(/750\.000/);
+    expect(unpaid).not.toMatch(/1\.750\.000/);
+    expect(advance).toMatch(/300\.000/);
+    expect(advance).not.toMatch(/370\.000/);
+    // Biểu đồ "Lợi nhuận chưa chi theo cổ đông" cũng không vẽ dòng chỉ có ở R1.
+    expect(screen.queryByText('Chỉ có ở R1')).toBeNull();
+  });
+
+  it('một dòng của bảng thiếu vị thế ⇒ dòng Tổng và số đầu trang cùng "—", nói rõ thiếu số (không cộng thiếu)', () => {
+    m.route = 'CANONICAL';
+    m.dropPositions = ['gone'];
+    render(<ProfitOverviewTab />);
+    expect(screen.getByTestId('ledger-unpaid-gone').textContent).toBe('—');
+    expect(screen.getByTestId('ledger-unpaid-total').textContent).toBe('—');
+    expect(screen.getByTestId('kpi-remaining').textContent).toMatch(/—.*thiếu số của một cổ đông/);
+    expect(screen.getByTestId('kpi-remaining').textContent).not.toMatch(/700\.000/);
+    expect(screen.getByTestId('kpi-advance').textContent).toMatch(/—.*thiếu số của một cổ đông/);
+  });
+
+  it('bố cục: mốc là dòng phụ dưới tên, "Chờ duyệt" là dòng phụ của "Đã chi" (không còn cột riêng); KPI là lưới đều, không còn vạch ngăn rời', () => {
+    m.route = 'CANONICAL';
+    render(<ProfitOverviewTab />);
+    const heads = within(screen.getByTestId('shareholder-ledger-table')).getAllByRole('columnheader').map((th) => th.textContent);
+    expect(heads).toEqual(['Cổ đông', 'Được chia (sau mốc)', 'Đã chi', 'Qua lương', 'Lợi nhuận chưa chi', 'Tạm ứng đang có', '']);
+    expect(screen.getByTestId('ledger-marker-s2').textContent).toBe('mốc hết T09/2026');
+    expect(screen.queryByTestId('ledger-marker-s1')).toBeNull(); // chưa có mốc: không thêm dòng
+    expect(screen.getByTestId('ledger-paid-s1').textContent).toMatch(/300\.000.*chờ duyệt 100\.000/);
+    expect(screen.getByTestId('ledger-paid-s2').textContent).not.toMatch(/chờ duyệt/);
+    expect(screen.getByTestId('ledger-paid-total').textContent).toMatch(/600\.000.*chờ duyệt 100\.000/);
+    const grid = screen.getByTestId('owner-kpi-grid');
+    expect(grid.querySelectorAll(':scope > .ph-kpi-grid__in > .ph-kpi')).toHaveLength(6);
+    expect(screen.getByTestId('kpis').querySelector('.ph-kpi__div')).toBeNull();
+  });
+});
+
+// R3 (review chéo 18/11): chủ đồng thời là cổ đông mất đường tự ứng ở trang Báo cáo Lợi nhuận.
+describe('Tổng quan chủ — "Chi tạm ứng cho tôi" khi chủ đồng thời là cổ đông có quyền tạm ứng', () => {
+  const selfButton = () => screen.queryByRole('button', { name: /Chi tạm ứng cho tôi/ }) as HTMLButtonElement | null;
+  const ME = { id: 's1', name: 'An', organization_id: 'org-a' };
+
+  it('cổ đông của đúng công ty + có quyền tạm ứng ⇒ có nút; mở hộp tự tạm ứng của chính mình ở công ty đang xem', () => {
+    m.route = 'CANONICAL';
+    m.me = ME;
+    m.perms = { shareholder_profit: { distribute: true, advance_own_cashbook: true } };
+    render(<ProfitOverviewTab />);
+    expect(selfButton()!.disabled).toBe(false);
+    expect(screen.queryByTestId('self-advance-dialog')).toBeNull();
+    fireEvent.click(selfButton()!);
+    expect(screen.getByTestId('self-advance-dialog').textContent).toBe(JSON.stringify({ shareholderId: 's1', name: 'An' }));
+    expect(m.selfAdvanceProps.at(-1)).toMatchObject({ open: true, organizationId: 'org-a' });
+    // Nút chốt chi của chủ vẫn còn bên cạnh.
+    expect(screen.getByRole('button', { name: '＋ Chi lợi nhuận' })).toBeTruthy();
+  });
+
+  it('sổ tổng chưa chạy thật ⇒ nút có nhưng khoá, kèm lý do (như màn tự xem)', () => {
+    m.route = 'SHADOW';
+    m.me = ME;
+    m.perms = { shareholder_profit: { distribute: true, advance_own_cashbook: true } };
+    render(<ProfitOverviewTab />);
+    expect(selfButton()!.disabled).toBe(true);
+    expect(selfButton()!.title).toMatch(/chưa mở chi tạm ứng/);
+  });
+
+  it('không có quyền chi lợi nhuận nhưng là cổ đông có quyền tạm ứng ⇒ vẫn tự ứng được, không có "Chi lợi nhuận"', () => {
+    m.route = 'CANONICAL';
+    m.me = ME;
+    m.perms = { shareholder_profit: { lock: true, advance_own_cashbook: true } };
+    render(<ProfitOverviewTab />);
+    expect(selfButton()!.disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: '＋ Chi lợi nhuận' })).toBeNull();
+  });
+
+  it.each([
+    ['không phải cổ đông', null, { distribute: true, advance_own_cashbook: true }],
+    ['cổ đông của công ty khác', { id: 's9', name: 'Khác', organization_id: 'org-b' }, { distribute: true, advance_own_cashbook: true }],
+    ['không có quyền tạm ứng', { id: 's1', name: 'An', organization_id: 'org-a' }, { distribute: true }],
+  ])('%s ⇒ không có nút, không dựng hộp (không hiện rồi mới báo lỗi)', (_name, me, perms) => {
+    m.route = 'CANONICAL';
+    m.me = me;
+    m.perms = { shareholder_profit: perms };
+    render(<ProfitOverviewTab />);
+    expect(selfButton()).toBeNull();
+    expect(m.selfAdvanceProps).toEqual([]);
   });
 });
