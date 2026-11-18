@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
   NOTIFICATION_FALLBACK_URL,
+  notificationRawUrl,
   resolveNotificationUrl,
 } from "@/lib/notificationRoutes";
 
@@ -95,5 +96,28 @@ describe("resolveNotificationUrl — cảnh báo Zalo mất kết nối", () => 
     expect(resolveNotificationUrl("/chat-zalo?x=1", ALL)).toBe("/chat-zalo");
     expect(resolveNotificationUrl("/chat-zalo", NONE)).toBe(NOTIFICATION_FALLBACK_URL);
     expect(resolveNotificationUrl(`/chat-zalo/${REQ}`, ALL)).toBeNull();
+  });
+});
+
+describe("notificationRawUrl — loại nơi phát không gắn metadata.url", () => {
+  it("đơn xin nghỉ (v5 leave_request, không url) mở /my-day — nơi super admin duyệt ngay", () => {
+    const raw = notificationRawUrl({ v5: "leave_request", staff_id: REQ, date: "2026-11-18" });
+    expect(raw).toBe("/my-day");
+    expect(resolveNotificationUrl(raw, NONE)).toBe("/my-day");
+  });
+
+  it("metadata.url do nơi phát gắn luôn thắng nhãn v5, kể cả url bị allow-list loại", () => {
+    expect(notificationRawUrl({ v5: "leave_request", url: "/finance/salary" })).toBe("/finance/salary");
+    const evil = notificationRawUrl({ v5: "leave_request", url: "//evil.tld" });
+    expect(evil).toBe("//evil.tld");
+    expect(resolveNotificationUrl(evil, ALL)).toBeNull();
+  });
+
+  it("loại khác không url vẫn không đi đâu như cũ; metadata rác không vỡ", () => {
+    expect(notificationRawUrl({ v5: "device_issue", session_id: REQ })).toBeUndefined();
+    expect(notificationRawUrl({})).toBeUndefined();
+    expect(notificationRawUrl(null)).toBeUndefined();
+    expect(notificationRawUrl("leave_request")).toBeUndefined();
+    expect(notificationRawUrl({ v5: "leave_request", url: "" })).toBe("/my-day");
   });
 });

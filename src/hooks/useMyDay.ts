@@ -209,6 +209,9 @@ export function useApproveLeave() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["v5-pending-leaves"] });
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
+      // Thẻ duyệt nằm cả trên các màn Hôm nay của chủ: chấm trạng thái ở PersonPicker và thẻ ngày
+      // công của người vừa được duyệt đọc từ ["staff-day", …], không làm mới thì còn «chờ duyệt».
+      qc.invalidateQueries({ queryKey: ["staff-day"] });
     },
   });
 }

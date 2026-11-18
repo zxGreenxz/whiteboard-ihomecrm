@@ -232,4 +232,21 @@ export function resolveNotificationUrl(
   return `${parts.path}${buildQuery(route, parts.query)}`;
 }
 
+/**
+ * Đích THÔ của một dòng thông báo, đưa vào `resolveNotificationUrl` (allow-list vẫn là cổng duy nhất).
+ *
+ * `metadata.url` do nơi phát gắn luôn đứng trước. Riêng loại nơi phát không gắn url thì suy từ nhãn
+ * `metadata.v5`:
+ *   - `leave_request`: `request_paid_leave` báo chủ «Xin phép nghỉ có lương» KHÔNG kèm url ⇒ trước
+ *     19/11/2026 bấm vào chỉ đánh dấu đã đọc. Nay mở `/my-day`, nơi super admin duyệt ngay trên thẻ
+ *     «Đơn xin nghỉ chờ duyệt». Suy ở client nên phủ cả các dòng cũ, không cần migration.
+ */
+export function notificationRawUrl(metadata: unknown): unknown {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const meta = metadata as { url?: unknown; v5?: unknown };
+  if (meta.url !== undefined && meta.url !== null && meta.url !== "") return meta.url;
+  if (meta.v5 === "leave_request") return "/my-day";
+  return meta.url;
+}
+
 export default resolveNotificationUrl;

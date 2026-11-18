@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import RoutePlannerSheet from "@/components/my-day/RoutePlannerSheet";
 import { PersonPicker } from "@/components/staff-day/PersonPicker";
+import { LeaveApprovalCard } from "@/components/staff-day/LeaveApprovalCard";
 import { useGpsMyStatus } from "@/hooks/gps-checkin/useGpsCheckin";
 import { toast } from "sonner";
 import { useJobs } from "@/hooks/useJobs";
@@ -200,6 +201,7 @@ export default function MyDayPage() {
 
         <div className="mb-3 space-y-2">
           <PersonPicker active="me" />
+          <LeaveApprovalCard />
           {gpsActive && (
             <Link to="/my-day/diem-danh" className="flex items-center gap-2.5 rounded-xl border bg-white px-3 py-2.5 text-sm font-medium shadow-sm">
               <Crosshair className="h-4 w-4 text-emerald-600" aria-hidden="true" />

@@ -1,9 +1,11 @@
-// Màn 2 — «Một quản lý · hiện tại». Chỉ xem.
+// Màn 2 — «Một quản lý · hiện tại». Chỉ xem; riêng đơn nghỉ chờ duyệt của người này thì super admin
+// duyệt ngay tại đây (LeaveApprovalCard).
 import { Link, useParams } from "react-router-dom";
 import { Building2, CheckCircle2, CircleDashed, ClipboardList, Clock, Flame, MapPin, Route } from "lucide-react";
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardTitle, PersonAvatar, StaffHeader, StaffShell, StatusPill } from "@/components/staff-day/StaffShell";
 import { PersonPicker } from "@/components/staff-day/PersonPicker";
+import { LeaveApprovalCard } from "@/components/staff-day/LeaveApprovalCard";
 import { SlotLegend, SlotStrip } from "@/components/staff-day/SlotStrip";
 import { StaffThumb } from "@/components/staff-day/StaffThumb";
 import { useStaffDayRoute, useStaffDaySummary } from "@/hooks/staff-day/useStaffDay";
@@ -19,7 +21,8 @@ function DayCard({ summary }: { summary: StaffSummary }) {
   const Icon = ticked ? CheckCircle2 : CircleDashed;
   const title = ticked
     ? `Đã có ngày công${day.ticked_at ? ` lúc ${vnTime(day.ticked_at)}` : ""}`
-    : leave ? "Ngày nghỉ phép" : "Chưa có ngày công hôm nay";
+    : day.status === "pending_leave" ? "Xin nghỉ phép · chờ duyệt"
+      : leave ? "Ngày nghỉ phép" : "Chưa có ngày công hôm nay";
   return (
     <section aria-label="Ngày công hôm nay" className={`flex items-center gap-3 rounded-2xl p-4 ${ticked ? "bg-primary text-primary-foreground" : leave ? "bg-sky-100 text-sky-900" : "bg-amber-100 text-amber-900"}`}>
       <Icon className="h-9 w-9 shrink-0" aria-hidden="true" />
@@ -151,6 +154,7 @@ export default function StaffDayPage() {
         right={name ? <PersonAvatar name={name} /> : undefined}
       />
       <PersonPicker active={userId ?? ""} />
+      <LeaveApprovalCard userId={userId} />
 
       <QueryRegion label="việc của người này" skeleton="list" rows={4} queries={[summaryQuery, routeQuery]}>
         {summary ? (

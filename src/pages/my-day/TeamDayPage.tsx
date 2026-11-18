@@ -4,6 +4,7 @@ import { AlertTriangle, BarChart3, ChevronRight, Clock, MapPin, Settings2 } from
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardTitle, PersonAvatar, StaffHeader, StaffShell, StatTile, StatusPill } from "@/components/staff-day/StaffShell";
 import { PersonPicker } from "@/components/staff-day/PersonPicker";
+import { LeaveApprovalCard } from "@/components/staff-day/LeaveApprovalCard";
 import { useStaffDayTeam } from "@/hooks/staff-day/useStaffDay";
 import {
   addDays, dayBadge, dayTitle, eventRow, gpsCountsText, gpsMockText, minutesBetween, shortDate, vnDateOf, vnTime, type StaffTeamMember,
@@ -112,6 +113,7 @@ export default function TeamDayPage() {
         }
       />
       <PersonPicker active="team" />
+      <LeaveApprovalCard />
 
       <QueryRegion label="việc của cả đội" skeleton="list" rows={4} queries={[query]}>
         {data && data.members.length === 0 ? (

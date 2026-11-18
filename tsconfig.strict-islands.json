@@ -38,6 +38,7 @@
     "src/components/staff-day/SlotStrip.tsx",
     "src/components/staff-day/JourneyTimeline.tsx",
     "src/components/staff-day/JourneyMap.tsx",
+    "src/components/staff-day/LeaveApprovalCard.tsx",
     "src/pages/my-day/TeamDayPage.tsx",
     "src/pages/my-day/StaffDayPage.tsx",
     "src/pages/my-day/StaffJourneyPage.tsx",

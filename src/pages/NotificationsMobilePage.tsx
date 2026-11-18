@@ -33,7 +33,7 @@ import {
 import { format, formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import { usePersistedState } from "@/hooks/usePersistedState";
-import { resolveNotificationUrl } from "@/lib/notificationRoutes";
+import { notificationRawUrl, resolveNotificationUrl } from "@/lib/notificationRoutes";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import type { PermsLike } from "@/lib/permissionPages";
 
@@ -76,7 +76,7 @@ const linkOf = (
   perms: PermsLike,
 ): { Icon: typeof Bell; to: string; label: string } | null => {
   // metadata.url ĐỨNG TRƯỚC mọi nhánh id — nơi phát sự kiện mới biết đích đúng.
-  const url = resolveNotificationUrl(n.metadata?.url, perms);
+  const url = resolveNotificationUrl(notificationRawUrl(n.metadata), perms);
   if (url) {
     if (url.startsWith("/invoices/")) return { Icon: Receipt, to: url, label: "Xem hóa đơn" };
     if (url.startsWith("/contracts/")) return { Icon: FileText, to: url, label: "Xem hợp đồng" };
