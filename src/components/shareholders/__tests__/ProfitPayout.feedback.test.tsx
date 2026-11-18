@@ -44,6 +44,8 @@ const m = vi.hoisted(() => ({
    * xong — hook trả lại số của lần trước (có thể của cổ đông / tháng KHÁC) kèm isPlaceholderData + isFetching.
    */
   hold: false,
+  /** Số giữ tạm kèm isFetching (mặc định) hay không (observer không tải — vd query đang tắt). */
+  holdFetching: true,
   lastSettle: null as { key: string; data: Record<string, unknown> } | null,
   /** Tháng mà xem trước trả lỗi (khi chủ tự chọn) và lỗi trả về. */
   failMonth: null as string | null,
@@ -98,7 +100,7 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
     }
     const key = `${input.shareholderId}|${input.throughMonth}|${input.accountId}`;
     if (m.hold && m.lastSettle && m.lastSettle.key !== key) {
-      return { ...ok(m.lastSettle.data), isFetching: true, isPlaceholderData: true, refetch: m.refetch };
+      return { ...ok(m.lastSettle.data), isFetching: m.holdFetching, isPlaceholderData: true, refetch: m.refetch };
     }
     const months = m.monthsBy[input.shareholderId] ?? m.months;
     const through = input.throughMonth ?? months[months.length - 1]?.month ?? null;
@@ -184,7 +186,7 @@ beforeEach(() => {
   m.route = 'CANONICAL'; m.months = MONTHS.map((x) => ({ ...x })); m.advanceOutstanding = 40_000; m.advancePending = 0; m.overoffset = 0;
   m.markerMonth = '2026-08-01'; m.settlements = []; m.reviewCount = 0; m.settleCalls = []; m.advanceCalls = []; m.access = [];
   m.advanceBlocked = null; m.hidePosition = false; m.fetching = false; m.previewError = false;
-  m.secondShareholder = false; m.monthsBy = {}; m.hold = false; m.lastSettle = null; m.failMonth = null; m.failError = null;
+  m.secondShareholder = false; m.monthsBy = {}; m.hold = false; m.holdFetching = true; m.lastSettle = null; m.failMonth = null; m.failError = null;
   m.exceedsEstimate = false;
   m.settle.mockResolvedValue({ settlement_id: 'st-9', through_month: '2026-10-01', recognized_amount: 100_000, advance_offset_amount: 40_000, cash_amount: 60_000, voucher_id: 'v9', approval_request_id: 'r9', state: 'PENDING_APPROVAL', code: 'PC2611999' });
   m.advance.mockResolvedValue({ voucher_id: 'v8', code: 'PC2611888', amount: 50_000, within_amount: 0, advance_amount: 50_000, balance_before: 60_000, maker_kind: 'CUSTODIAN_ADVANCE' });
@@ -534,10 +536,15 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(1));
     expect(m.settle).toHaveBeenCalledWith(expect.objectContaining({ shareholderId: 's', throughMonth: '2026-09-01', expectedRecognized: 60_000, expectedCash: 20_000 }));
   });
-  it('đổi sổ quỹ: số giữ tạm của ĐÚNG cổ đông + tháng vẫn hiện (không chớp) nhưng chưa gửi được cho tới khi tải xong', async () => {
+  it.each([
+    ['đang tải', true],
+    // Observer không tải (vd query đang tắt) vẫn có thể trả số giữ tạm: chỉ cờ isPlaceholderData chặn được.
+    ['không đang tải', false],
+  ])('đổi sổ quỹ: số giữ tạm (%s) của ĐÚNG cổ đông + tháng vẫn hiện (không chớp) nhưng chưa gửi được cho tới khi tải xong', async (_name, fetching) => {
     const view = render(dialog());
     pickAccount('a1');
     m.hold = true;
+    m.holdFetching = fetching;
     pickAccount('a2');
     expect(text('profit-settle-cash')).toMatch(/60\.000/);
     fireEvent.click(submitButton());
