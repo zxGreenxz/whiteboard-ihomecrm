@@ -324,7 +324,7 @@ describe("trang khách xem lại camera", () => {
     await waitFor(() => expect(bar().max).toBe("7199"));
     expect(bar().parentElement?.textContent).toContain("08:00:00 10/11/202610:00:00 10/11/2026");
     expect(screen.getByText("Bấm để xem từ 08:00:00 10/11/2026")).toBeTruthy();
-    expect(screen.getByText(/Mỗi lúc chỉ một máy xem được; mở ở máy khác thì máy này dừng\.$/u)).toBeTruthy();
+    expect(screen.getByText(/Link này xem được trên 2 máy cùng lúc; mở thêm máy thứ ba thì máy đang xem lâu nhất dừng\.$/u)).toBeTruthy();
     expect(screen.queryByText(/Đầu ghi này cho xem từ/u)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Xem" }));
     await waitFor(() => expect(mocks.connections).toHaveLength(1));

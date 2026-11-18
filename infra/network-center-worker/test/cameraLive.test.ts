@@ -295,7 +295,9 @@ describe("camera guest share boundary", () => {
   // Recordings are only valid after 2000, so these session tests run on their own fixed clock T.
   const T = Date.UTC(2026, 10, 10, 12, 0, 0);
   const from = T - 7200_000; const to = T - 3600_000;
-  const guest = { id: `share:${shareId}`, expiresAt: T + 3600_000, share: { channel: 2, start: from, end: to } };
+  const guest = { id: `share:${shareId}`, expiresAt: T + 3600_000, share: { channel: 2, start: from, end: to, viewer: "a".repeat(32) } };
+  /** The same share opened from another login (another phone or tab). */
+  const device = (letter: string) => ({ ...guest, share: { ...guest.share, viewer: letter.repeat(32) } });
   function guestSetup() {
     let now = T;
     const dependencies: LiveDependencies = { authorize: vi.fn(async () => guest), start: vi.fn(async () => ({ location: "http://127.0.0.1:18889/fixed/whep/session", answer: offer })), stop: vi.fn(async () => {}), fatal: vi.fn(), now: () => now };
@@ -313,6 +315,11 @@ describe("camera guest share boundary", () => {
     const actor = await createLiveDependencies(config, vi.fn(), request).authorize(guestToken, recorder);
     expect(actor).toMatchObject({ id: `share:${shareId}`, share: { channel: 2, start: Date.parse("2026-11-09T01:00:00Z"), end: Date.parse("2026-11-09T02:00:00Z") } });
     expect(request).toHaveBeenCalledOnce();
+    // One login is one viewer: stable for that session string, different for another login of the same share, never the string itself.
+    expect(actor.share?.viewer).toMatch(/^[0-9a-f]{32}$/u); expect(guestToken).not.toContain(actor.share?.viewer);
+    const login = (token: string) => createLiveDependencies(config, vi.fn(), vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(payload()))).authorize(token, recorder);
+    const again = await login(guestToken); const elsewhere = await login(`cs_${"B".repeat(43)}`);
+    expect(again.share?.viewer).toBe(actor.share?.viewer); expect(elsewhere.id).toBe(actor.id); expect(elsewhere.share?.viewer).not.toBe(actor.share?.viewer);
     expect(request.mock.calls[0]?.[0]).toBe("https://tryymsxyyckgbrmmvozx.supabase.co/rest/v1/rpc/camera_share_authorize_v1");
     expect(request.mock.calls[0]?.[1]).toMatchObject({ method: "POST", headers: { apikey: config.publishableKey, Authorization: `Bearer ${config.publishableKey}`, "Content-Profile": "public" }, body: JSON.stringify({ p_token: guestToken }), redirect: "error" });
   });
@@ -327,7 +334,7 @@ describe("camera guest share boundary", () => {
     expect(request).not.toHaveBeenCalled();
     await expect(createLiveDependencies(config, vi.fn(), vi.fn<typeof fetch>().mockResolvedValue(new Response("down", { status: 500 }))).authorize(guestToken, recorder)).rejects.toMatchObject({ status: 503 });
   });
-  it("lets a guest replay only the shared channel inside the window, re-encoded, one viewer at a time", async () => {
+  it("lets a guest replay only the shared channel inside the window, re-encoded, one stream per device", async () => {
     const { sessions, dependencies } = guestSetup();
     await expect(sessions.start(guest, archived, 2, offer)).rejects.toMatchObject({ status: 403, code: "SHARE_SCOPE_DENIED" });
     await expect(sessions.start(guest, archived, 2, offer, undefined, "sd")).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
@@ -344,6 +351,59 @@ describe("camera guest share boundary", () => {
     // Staff playback is untouched by the guest rules: other channel, wider range, native stream.
     await expect(sessions.start({ ...actor, expiresAt: T + 60_000 }, archived, 1, offer, range(from - 3600_000, to + 1800_000))).resolves.toHaveProperty("id");
   });
+  it("lets two devices watch one share and gives a third the place of the one open longest", async () => {
+    const { sessions, dependencies } = guestSetup();
+    const first = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    const second = await sessions.start(device("b"), archived, 2, offer, range(from + 60_000, to, "hd"));
+    expect(sessions.size).toBe(2); expect(dependencies.stop).not.toHaveBeenCalled();
+    // The first device reloads: only its own stream is replaced, the other device keeps watching.
+    const reloaded = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(first.id)).toThrow(); expect(sessions.find(second.id)).toBeTruthy();
+    // A third device: the stream open longest (the second device's) stops, the newest two stay.
+    const third = await sessions.start(device("c"), archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(second.id)).toThrow();
+    expect(sessions.find(reloaded.id)).toBeTruthy(); expect(sessions.find(third.id)).toBeTruthy();
+    expect(dependencies.stop).toHaveBeenCalledTimes(2);
+  });
+  it("holds one share to two devices even where the gateway has room for more guest streams", async () => {
+    const { dependencies } = guestSetup(); const sessions = new LiveSessions(dependencies, 4);
+    const first = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    const second = await sessions.start(device("b"), archived, 2, offer, range(from, to, "sd"));
+    const third = await sessions.start(device("c"), archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(first.id)).toThrow();
+    expect(sessions.find(second.id)).toBeTruthy(); expect(sessions.find(third.id)).toBeTruthy();
+    // The room that is left belongs to other shares.
+    await expect(sessions.start({ ...guest, id: "share:60000000-0000-4000-8000-000000000002" }, archived, 2, offer, range(from, to, "sd"))).resolves.toHaveProperty("id");
+    expect(sessions.size).toBe(3);
+  });
+  it("keeps the first viewer of every share when one share holds both guest streams", async () => {
+    const { sessions } = guestSetup();
+    const other = { ...guest, id: "share:60000000-0000-4000-8000-000000000002" };
+    const first = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    const second = await sessions.start(device("b"), archived, 2, offer, range(from, to, "sd"));
+    // Another share arrives while the gateway-wide guest cap is full: the share with two streams gives up its older one.
+    const theirs = await sessions.start(other, archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(first.id)).toThrow();
+    expect(sessions.find(second.id)).toBeTruthy(); expect(sessions.find(theirs.id)).toBeTruthy();
+    // Now each share has one viewer. A new login of either (the guest reopened the link in another tab, the old stream
+    // still inside its lease) takes the place of its own share's stream and never cuts the other share off.
+    const reopened = await sessions.start({ ...other, share: { ...other.share, viewer: "d".repeat(32) } }, archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(theirs.id)).toThrow();
+    expect(sessions.find(second.id)).toBeTruthy(); expect(sessions.find(reopened.id)).toBeTruthy();
+    // A third share has nothing of its own to give and nobody holds two streams: refused, the two viewers stay.
+    await expect(sessions.start({ ...guest, id: "share:60000000-0000-4000-8000-000000000003" }, archived, 2, offer, range(from, to, "sd"))).rejects.toMatchObject({ status: 429, code: "PLAYBACK_BUSY" });
+    expect(sessions.find(second.id)).toBeTruthy(); expect(sessions.find(reopened.id)).toBeTruthy();
+  });
+  it("leaves a share that gave way one stream short when the newcomer's recorder then fails", async () => {
+    const { sessions, dependencies } = guestSetup();
+    const first = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    const second = await sessions.start(device("b"), archived, 2, offer, range(from, to, "sd"));
+    vi.mocked(dependencies.start).mockRejectedValueOnce(new LiveError(503, "CAMERA_UNAVAILABLE"));
+    await expect(sessions.start({ ...guest, id: "share:60000000-0000-4000-8000-000000000002" }, archived, 2, offer, range(from, to, "sd"))).rejects.toMatchObject({ code: "CAMERA_UNAVAILABLE" });
+    // Known cost of keeping the transcode cap: the stream that gave way is not restored; its device retries into the free slot.
+    expect(sessions.size).toBe(1); expect(() => sessions.find(first.id)).toThrow(); expect(sessions.find(second.id)).toBeTruthy();
+    await expect(sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"))).resolves.toHaveProperty("id");
+  });
   it("caps concurrent guest streams and cuts a guest off when the share stops authorizing", async () => {
     const { sessions, dependencies, advance } = guestSetup();
     const other = (n: number) => ({ ...guest, id: `share:60000000-0000-4000-8000-00000000000${n}` });
@@ -359,7 +419,7 @@ describe("camera guest share boundary", () => {
     advance(75_001); await sessions.expire();
     expect(() => sessions.find(mine.id)).toThrow(); expect(sessions.size).toBe(0); expect(dependencies.stop).toHaveBeenCalledTimes(2);
   });
-  it("lets only one of two racing starts of the same share through", async () => {
+  it("lets only one of two racing starts of the same device through", async () => {
     const { sessions } = guestSetup();
     const results = await Promise.allSettled([sessions.start(guest, archived, 2, offer, range(from, to, "sd")), sessions.start(guest, archived, 2, offer, range(from, to, "hd"))]);
     expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
@@ -378,7 +438,7 @@ describe("camera guest share boundary", () => {
     const guestConfig = { ...config, recorders: [archived] };
     const { dependencies } = setup(); dependencies.playbackQualities = ["sd", "hd", "fullhd", "original"];
     dependencies.preview = vi.fn(async () => "data:image/jpeg;base64,AA");
-    vi.mocked(dependencies.authorize).mockResolvedValue({ ...guest, expiresAt: Date.now() + 60_000, share: { channel: 2, start: Date.now() - 7200_000, end: Date.now() - 3600_000 } });
+    vi.mocked(dependencies.authorize).mockResolvedValue({ ...guest, expiresAt: Date.now() + 60_000, share: { ...guest.share, start: Date.now() - 7200_000, end: Date.now() - 3600_000 } });
     const { server, sessions } = createLiveServer(guestConfig, dependencies);
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
     const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
@@ -461,7 +521,7 @@ describe("camera live recorder vendor", () => {
       expect(encode).not.toHaveBeenCalled();
       // A guest share of a Hikvision channel gets the same narrowed playback capabilities as any other share, plus the
       // start lead its player needs to draw the time bar. Staff are never told a lead: their sessions are not moved.
-      vi.mocked(dependencies.authorize).mockResolvedValue({ id: "share:60000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 60_000, share: { channel: 9, start: Date.now() - 7200_000, end: Date.now() - 3600_000 } });
+      vi.mocked(dependencies.authorize).mockResolvedValue({ id: "share:60000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 60_000, share: { channel: 9, start: Date.now() - 7200_000, end: Date.now() - 3600_000, viewer: "a".repeat(32) } });
       const asGuest = { ...headers, Authorization: `Bearer cs_${"A".repeat(43)}` };
       expect(await (await fetch(`${only}/recorders/${hikvision.id}`, { headers: asGuest })).json()).toEqual({ channels: [9], maxView: 1, leaseSeconds: 75, liveQualities: [], archive: false, playback: true, playbackControl: false, playbackPreview: false, playbackSpeeds: [1, 2, 4], playbackQualities: ["sd", "hd"], playbackStartLeadSeconds: 15 });
       // A Dahua/KBVision guest gets exactly the object it got before the lead existed: no new key at all.

@@ -235,7 +235,7 @@ describe("Hikvision recording playback", () => {
     expect(request.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(6);
   });
   it("lets a guest replay only the shared Hikvision channel inside the window, re-encoded", async () => {
-    const guest = { id: "share:60000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 3600_000, share: { channel: 9, start: Date.parse(range.start), end: Date.parse(range.end) } };
+    const guest = { id: "share:60000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 3600_000, share: { channel: 9, start: Date.parse(range.start), end: Date.parse(range.end), viewer: "a".repeat(32) } };
     const deps = fixture(); vi.mocked(deps.authorize).mockResolvedValue(guest); const sessions = new LiveSessions(deps);
     await sessions.start(guest, hikvision, 9, offer, { ...range, quality: "sd" }); expect(deps.start).toHaveBeenCalledOnce();
     await expect(sessions.start(guest, hikvision, 1, offer, { ...range, quality: "sd" })).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
@@ -248,7 +248,7 @@ describe("Hikvision recording playback", () => {
   // The recorder may begin up to 11 s before the time it is asked for (measured on firmware V3.4). A guest must not see
   // anything before the shared window, so what a guest session asks the recorder for is 15 s later than requested.
   const clock = Date.parse("2026-10-20T03:00:00.000Z");
-  const share = { channel: 9, start: Date.parse(range.start), end: Date.parse(range.end) };
+  const share = { channel: 9, start: Date.parse(range.start), end: Date.parse(range.end), viewer: "a".repeat(32) };
   const guest = { id: "share:60000000-0000-4000-8000-000000000001", expiresAt: clock + 3600_000, share };
   const staff = { ...actor, expiresAt: clock + 3600_000 };
   const uuids = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gu;

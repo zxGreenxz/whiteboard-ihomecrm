@@ -68,6 +68,27 @@ describe("live camera browser lifecycle", () => {
     expect(callbacks.onState).toHaveBeenLastCalledWith("error", expect.stringContaining("mã hoá luồng"));
     expect(Peer.instances[0]!.setRemoteDescription).not.toHaveBeenCalled();
   });
+  it("đường truyền hỏng sau khi đã mở: hỏi cổng trước, cổng nói phiên đã đóng thì báo theo mã đó chứ không đổ cho mạng", async () => {
+    const fail = async (probe: () => Promise<Response>) => {
+      request.mockImplementation(async (_url, init) => init?.method === "POST" && init.body ? Response.json({ id: sessionId, answer: "v=0\r\nanswer", expiresAt: Date.now() + 75000 }) : Response.json({ stopped: true }));
+      const callbacks = { ...options(), onErrorCode: vi.fn() }; const connection = new CameraLiveConnection(callbacks); await connection.start();
+      request.mockClear().mockImplementation(async (url) => String(url).endsWith(`/sessions/${sessionId}/renew`) ? probe() : Response.json({ stopped: true }));
+      const peer = Peer.instances.at(-1)!; peer.connectionState = "failed"; peer.onconnectionstatechange!();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(request.mock.calls.filter(([url]) => String(url).endsWith("/renew"))).toHaveLength(1);
+      return callbacks;
+    };
+    // Máy khác thay chỗ ⇒ cổng đã xoá phiên: người xem phải thấy lý do thật.
+    const displaced = await fail(async () => Response.json({ code: "SESSION_NOT_FOUND" }, { status: 404 }));
+    expect(displaced.onErrorCode).toHaveBeenCalledWith("SESSION_NOT_FOUND");
+    expect(displaced.onState).toHaveBeenLastCalledWith("error", "Phiên xem đã đóng. Bấm xem lại để kết nối.");
+    // Cổng vẫn giữ phiên, cổng bận / chưa xác minh được, hoặc không gọi được cổng ⇒ vẫn là đường truyền của người xem.
+    for (const probe of [async () => Response.json({ expiresAt: Date.now() + 75000 }), async () => Response.json({ code: "CAMERA_BUSY" }, { status: 429 }), async () => Response.json({ code: "AUTH_UNAVAILABLE" }, { status: 503 }), () => Promise.reject(new Error("network"))]) {
+      const network = await fail(probe);
+      expect(network.onErrorCode).not.toHaveBeenCalled();
+      expect(network.onState).toHaveBeenLastCalledWith("error", "Không thiết lập được đường truyền video. Hãy thử lại hoặc đổi mạng.");
+    }
+  });
   it("bounds retries, cancels retry on stop, and never retries permission or uncertain network failures", async () => {
     const playback = { start: "2026-10-20T01:00:00Z", end: "2026-10-20T02:00:00Z", speed: 8 };
     request.mockImplementation(async () => Response.json({ code: "CAMERA_UNAVAILABLE" }, { status: 502 }));
