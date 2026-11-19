@@ -26,7 +26,7 @@ flowchart LR
   TASK["Công việc, ảnh, kiểm tra nhà"] --> SALARY["Bảng lương và dấu chân V5"]
   COLLECT -. "GPS thu tiền" .-> SALARY
   PROFIT -. "phần đầu tư đã chốt" .-> SALARY
-  AI["AI Copilot"] -. "đọc docs/tool theo quyền" .-> CFG
+  AI["Hermes qua Zalo"] -. "kết nối tài khoản CRM" .-> CFG
   ZALO["Zalo worker (chat cũ)"] -. "CSKH" .-> SALE
   NC["Network Center: 4 thao tác lên router, EXECUTE theo từng toà"] -. "hạ tầng của toà" .-> CFG
 ```
@@ -164,9 +164,9 @@ không chứng minh "bây giờ vẫn bật".
 
 - **Coexistence authorization:** 15/15 writer đã ON nhưng T7 drain chưa đồng nghĩa mọi direct-write legacy đã bị revoke.
 - **Sổ quỹ theo tên:** một số resolver vẫn phụ thuộc quy ước tên `…Thu`, `…Thối`, `Chung`; đổi tên phải test các luồng thu/bàn giao.
-- **AI Copilot:** tool ghi phiếu nháp hiện chưa phải một transaction DB duy nhất. Flow được thiết kế yêu cầu preview/xác nhận, nhưng cờ xác nhận do model truyền và chưa có state server độc lập; không giao quyền duyệt cho AI và không coi đây là authorization boundary cứng.
+- **Hermes:** máy chủ kiểm tra quyền CRM và phạm vi kết nối cho từng thao tác. Các bước phê duyệt nghiệp vụ tiếp tục theo quy trình của CRM. Xem [hợp đồng của connector](../../infra/hermes-broker/CONNECTOR.md).
 - **Zalo worker:** service-role, cookie phiên và polling là rủi ro vận hành cần kiểm soát bằng runbook.
-- **Tài liệu runtime:** toàn bộ `docs/he-thong/*.md` được Copilot nạp, nên nội dung historical phải nằm ngoài thư mục này hoặc được ghi nhãn rõ.
+- **Tài liệu dùng cho bộ tra cứu Copilot cũ:** bộ tra cứu lọc theo `copilotIngest` và quyền đã khai trong [manifest](manifest.json). Ghi rõ mốc thời gian khi dẫn hành vi cũ.
 
 ## 6. Gate khi thay đổi luồng xuyên domain
 

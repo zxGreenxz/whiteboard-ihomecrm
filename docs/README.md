@@ -1,7 +1,7 @@
 # Tài liệu iHomeCRM
 
 Chọn nguồn theo câu hỏi. Index này không yêu cầu đọc hết các tài liệu được dẫn.
-Agent mặc định đọc adapter + [Project Contract](engineering/PROJECT_CONTRACT.md); thêm một tài liệu đúng phạm vi khi cần, rồi tra source.
+Agent bắt đầu từ adapter và [Project Contract](engineering/PROJECT_CONTRACT.md). Tra thêm các nguồn dưới đây theo phạm vi của tác vụ.
 
 ## Nguồn hiện hành
 
@@ -25,7 +25,8 @@ Cấu hình, số đo và generated views ở `tooling/`, `contracts/surfaces/`,
 - [Audit](audits/README.md): evidence theo commit/ngày, không mặc định đọc audit mới nhất.
 - [Prompt nghiên cứu](prompts/README.md): mẫu tùy chọn khi task yêu cầu, không áp cho mọi việc.
 - [Kho lưu](archive/2026-10/README.md): bản đã thay thế/lịch sử, giữ để tra cứu; đường cũ có redirect.
-- Zalo/Copilot vẫn deferred; không tự mở lại context hoặc kiểm chuyên biệt.
+- Trợ lý CRM hiện hành là Hermes. Giao diện chat và client gọi model của Copilot đã gỡ. Một số đường dẫn và ID kiểm tra nội bộ vẫn giữ tên `copilot`.
+- Test đơn vị Zalo chạy trong bộ thường. Tra [manifest phần tạm hoãn](../tooling/deferred-modules.json) khi cần xác định phạm vi E2E Zalo và các kiểm tra cũ.
 
 ## Duy trì
 

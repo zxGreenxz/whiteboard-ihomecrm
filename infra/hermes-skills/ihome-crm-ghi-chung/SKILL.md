@@ -25,14 +25,14 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
 
 ## Không kết luận "không làm được" khi chưa hỏi máy chủ
 
-- Tool CRM luôn có sẵn (khi gọi thêm tiền tố `mcp__ihomecrm__` như SOUL). Không dùng `tool_search` để tìm tool ghi CRM: tìm
+- Gọi tool CRM với tiền tố `mcp__ihomecrm__` như SOUL. Connector chỉ cung cấp tool theo quyền của kết nối. Không dùng `tool_search` để tìm tool ghi CRM: tìm
   không thấy KHÔNG có nghĩa là không ghi được.
 - Trước khi trả lời "không có / không hỗ trợ / làm trên web / không có quyền", gọi `crm_action_list` với `page` của việc đang
   làm (task, contract, invoice, expense; một lần mỗi trang mỗi phiên là đủ) — bỏ `page` thì danh sách cả bốn trang rất dài, dễ sót
   thao tác ở cuối. Thao tác nằm trong `items` ⇒ làm; nằm trong `notPermitted` ⇒ "anh/chị chưa có quyền …"; không có ở cả hai ⇒
   mới nói bot chưa làm được việc này.
-- Không bao giờ nói "công cụ CRM không có / không xuất hiện trong phiên" khi chưa gọi `crm_action_list`. Gọi mà lỗi thật ⇒ báo lỗi
-  kết nối kèm mã lỗi, nói rõ chưa ghi gì.
+- Nếu connector ẩn `crm_action_list` hoặc trả `tool_not_available`, báo công cụ ghi chưa khả dụng cho kết nối hiện tại.
+  Nếu lỗi mạng khi gọi, báo lỗi kết nối kèm mã lỗi nhận được. Cả hai trường hợp đều chưa ghi dữ liệu từ lượt tra danh mục này.
 - Ngoại lệ CHẶN TRƯỚC — chỉ khi việc được nhờ chính là LẬP / GHI khoản tiền dưới đây: không gọi tool nào, kể cả
   `crm_action_list`, trả lời một câu chỉ đúng trang web: chi hoa hồng sale / môi giới; thu / hoàn / trả / bổ sung cọc, bỏ cọc không
   kèm trả phòng; lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách; lương, thưởng; lập / sửa / huỷ phiếu THU; phiếu hệ thống,

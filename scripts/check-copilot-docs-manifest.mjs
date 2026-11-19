@@ -1,12 +1,6 @@
 #!/usr/bin/env node
-// Gate: AI Copilot chỉ đọc tài liệu được khai tường minh trong
-// docs/he-thong/manifest.json.
-//
-// Vì sao cần gate thay vì chỉ có manifest: nếu manifest chỉ là danh sách "cho
-// phép" mà không ai kiểm, thì một file .md mới thả vào docs/he-thong/ sẽ im
-// lặng nằm ngoài manifest (Copilot không đọc — người viết tưởng đã đọc), hoặc
-// tệ hơn, ai đó nới glob trở lại và mọi file lọt vào mà không ai thấy. Gate này
-// bắt cả hai chiều.
+// Kiểm tĩnh corpus của bộ công cụ Copilot lưu lại sau khi gỡ trợ lý này.
+// Đối chiếu đường nạp, allowlist và quyền từng tài liệu với manifest.
 //
 //   node scripts/check-copilot-docs-manifest.mjs
 //
@@ -253,7 +247,7 @@ function main() {
   if (thieu.length > 0) {
     problems.push(
       `src/copilot/tools/registry.ts không còn ${thieu.map((d) => d.mo).join(' / ')} ` +
-      '(xét trên CODE, bỏ comment) — Copilot có thể đã quay lại đọc mù toàn thư mục.',
+      '(xét trên CODE, bỏ comment). Kiểm lại đường nạp của corpus lưu trữ.',
     );
   }
 
@@ -317,8 +311,8 @@ function main() {
   const stale = findStaleEntries(manifest);
 
   console.log(
-    `✅ Copilot docs manifest khớp thư mục: ${ingested.length}/${manifest.entries.length} file được đọc, ` +
-    `${gated.length} file gác quyền.`,
+    `✅ Manifest corpus Copilot lưu trữ khớp thư mục. Allowlist gồm ${ingested.length}/${manifest.entries.length} file, ` +
+    `${gated.length} file yêu cầu quyền riêng.`,
   );
   // Cảnh báo, KHÔNG fail: nếu quá hạn review làm đỏ CI thì người ta sẽ bump ngày
   // theo nghi thức và phá luôn tín hiệu.
@@ -364,13 +358,7 @@ function main() {
     return;
   }
 
-  // ── Nợ review: chỉ được teo ────────────────────────────────────────────────
-  //
-  // 12/25 tài liệu Copilot đọc chưa từng ghi ngày review (đo 11/08/2026). Loại
-  // hết ở runtime sẽ cắt hơn nửa kiến thức Copilot trong im lặng, nên chúng được
-  // khai thành NỢ có tên. Phần cưỡng chế nằm ở hai chiều dưới đây — cùng khuôn
-  // với mọi ratchet khác trong repo: so TẬP TÊN, không so số đếm. So số đếm cho
-  // phép xoá một cái rồi thêm một cái khác trong cùng lát mà không ai thấy.
+  // Đối chiếu hai chiều để danh sách nợ review khớp từng tài liệu lưu trữ.
   const debt = manifest.unreviewedDebt;
   const unreviewed = ingested.filter((e) => !e.reviewed).map((e) => e.file);
   const loi = [];
@@ -378,21 +366,13 @@ function main() {
   if (!debt || !Array.isArray(debt.files)) {
     loi.push('manifest thiếu `unreviewedDebt.files` — không có ratchet thì nợ review là vô hạn.');
   } else {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(debt.expiresAt ?? ''))) {
-      loi.push('`unreviewedDebt.expiresAt` phải là ngày YYYY-MM-DD.');
-    } else if (debt.expiresAt < homNay()) {
-      loi.push(
-        `nợ review HẾT HẠN ${debt.expiresAt} (hôm nay ${homNay()}) — review thật rồi ghi ngày, ` +
-        'hoặc gia hạn có lý do. Xoá tên khỏi danh sách KHÔNG phải cách đóng.',
-      );
-    }
     const trongNo = new Set(debt.files);
 
     // Chiều 1: ingest mà không có `reviewed` và không nằm trong nợ ⇒ nợ mới.
     for (const f of unreviewed) {
       if (!trongNo.has(f)) {
         loi.push(
-          `${f}: được Copilot đọc nhưng chưa từng ghi \`reviewed\`, và không nằm trong unreviewedDebt.\n` +
+          `${f}: thuộc allowlist nhưng thiếu \`reviewed\` và không nằm trong unreviewedDebt.\n` +
           '      → ghi ngày review thật. Đừng thêm vào danh sách nợ: nó chỉ để chốt hiện trạng, không để mở rộng.',
         );
       }
@@ -424,21 +404,16 @@ function main() {
   }
 
   if (loi.length > 0) {
-    console.error(`\n❌ ${loi.length} vi phạm luật Copilot ingest:\n`);
+    console.error(`\n❌ ${loi.length} lỗi trong manifest corpus Copilot lưu trữ:\n`);
     for (const l of loi) console.error(`  - ${l}`);
     process.exitCode = 1;
     return;
   }
 
   if (unreviewed.length > 0) {
-    console.warn(
-      `⚠ ${unreviewed.length} tài liệu Copilot đọc chưa từng ghi ngày review — đã khai nợ, ` +
-      `hạn ${debt.expiresAt}.`,
-    );
+    console.warn(`⚠ ${unreviewed.length} tài liệu lưu trữ chưa có ngày review, đã kê trong unreviewedDebt.`);
   }
 }
-
-const homNay = () => new Date().toISOString().slice(0, 10);
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main();

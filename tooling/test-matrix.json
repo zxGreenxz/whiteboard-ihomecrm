@@ -647,7 +647,20 @@
     },
     {
       "id": "hermes-official-skills",
-      "$comment": "Skill CRM chuẩn của Hermes (infra/hermes-skills) phải khớp tool/thao tác hiện hành của connector; script triển khai chạy thử trên cây giả.",
+      "$comment": "Các file Markdown do deploy.sh phát hành phải khớp danh mục công cụ của connector.",
+      "includeDocumentation": true,
+      "sourcePaths": [
+        "infra/hermes-skills/ihome-crm-*/SKILL.md",
+        "infra/hermes-skills/DESCRIPTION.md"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/official-skills.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-official-skills-deploy",
+      "$comment": "Đổi mã triển khai thì kiểm cả nội dung skill và thao tác triển khai trên cây giả.",
       "sourcePaths": [
         "infra/hermes-skills/**"
       ],
@@ -1640,13 +1653,26 @@
       ]
     },
     {
-      "id": "copilot-corpus-inputs",
+      "id": "system-docs-manifest",
       "includeDocumentation": true,
+      "sourcePaths": ["docs/he-thong/**"],
+      "gates": ["check-copilot-docs-manifest"]
+    },
+    {
+      "id": "user-guide-corpus",
+      "includeDocumentation": true,
+      "sourcePaths": ["docs/huong-dan-su-dung/**/index.md"],
+      "gates": ["generate-copilot-guide-corpus"]
+    },
+    {
+      "id": "copilot-tool-inventory-readme",
+      "includeDocumentation": true,
+      "sourcePaths": ["docs/ai-copilot/README.md"],
+      "gates": ["check-copilot-tool-inventory"]
+    },
+    {
+      "id": "capability-corpus-inputs",
       "sourcePaths": [
-        "docs/he-thong/manifest.json",
-        "docs/he-thong/*.md",
-        "docs/ai-copilot/README.md",
-        "docs/huong-dan-su-dung/**/index.md",
         "src/app/capabilities/registry.ts"
       ],
       "suiteId": "node-native",

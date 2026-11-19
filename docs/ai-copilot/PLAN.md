@@ -1,8 +1,8 @@
 # PLAN v2.1: AI Copilot đa-provider cho ptcrm — tận dụng tối đa alibaba/page-agent + tự build phần page-agent chưa tối ưu
 
-> **[CÒN SỐNG — trạng thái 02/09/2026]** Source v2.1 đã triển khai chat/tool/UI-control nhưng CHƯA đạt release gate full-site control. Trạng thái bằng chứng: `README.md` cùng thư mục; plan hiện hành: `../superpowers/plans/2026-08-13-ai-copilot-superadmin-full-site-control.md`.
+> **Kế hoạch lịch sử.** Dự án gỡ giao diện chat Copilot ngày 15/10/2026 và chuyển sang Hermes. Các mục bên dưới ghi thiết kế, kết quả và công việc còn mở tại thời điểm lập kế hoạch. [Quyết định chuyển đổi](../plans/hermes-crm/P11-COPILOT-RETIREMENT.md)
 
-> **Lifecycle:** source v2.1 đã triển khai các phần chat/tool/UI-control, nhưng đối chiếu live evaluation 2026-08-13 cho thấy chưa đạt release gate cho full-site control. Đọc [README current](README.md) và [audit/plan LEAN](../superpowers/plans/2026-08-13-ai-copilot-superadmin-full-site-control.md) để biết trạng thái bằng chứng hiện hành. Các đoạn “sẽ làm” bên dưới là rationale hoặc backlog, không phải claim đã pass.
+> Đến 02/09/2026, v2.1 đã triển khai chat, công cụ và điều khiển giao diện. Lượt đánh giá ngày 13/08 chưa đủ bằng chứng để phát hành chức năng điều khiển toàn site. [Bảng kiểm kê mã](README.md) · [Kế hoạch LEAN và bằng chứng tháng 8](../superpowers/plans/2026-08-13-ai-copilot-superadmin-full-site-control.md)
 
 > Tài liệu này viết chi tiết để một AI agent khác có thể **review/audit độc lập**. Mọi khẳng định về page-agent đều đã kiểm chứng từ source tại `github.com/alibaba/page-agent` (branch main, đọc 07/2026). Mọi khẳng định về codebase ptcrm đều đã kiểm chứng bằng exploration trực tiếp repo này.
 >

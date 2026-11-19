@@ -41,7 +41,7 @@ Trên màn hình rộng, thanh bên mở sẵn. Màn hình hẹp hơn thì thanh
   - **Tài chính**: Ghi chỉ số, Hoá đơn, Thu tiền, Thanh toán, Thu chi, Báo chi nhanh, Chờ duyệt, Sổ quỹ, Phí cố định, Cam kết chi, Bảng lương, Ví cá nhân.
   - Các mục đơn: **Trung tâm mạng**, **Công việc**, **Thông báo**.
 - **BÁO CÁO** — Báo cáo bất động sản; **Báo cáo tài chính**: Trung tâm tài chính, Phân tích tài chính, Tài khoản theo ngày, Dòng tiền, Báo cáo Lợi Nhuận, Lịch thanh toán, Tiền thừa, Danh sách tiền cọc.
-- **CÀI ĐẶT HỆ THỐNG** — **Cài đặt hệ thống**: Cài đặt chung, Danh mục khác, Mẫu biểu, Tổ chức, Thành viên, Mẫu vai trò, Trợ lý AI, Quay số may mắn.
+- **CÀI ĐẶT HỆ THỐNG** — **Cài đặt hệ thống**: Cài đặt chung, Danh mục khác, Mẫu biểu, Tổ chức, Thành viên, Mẫu vai trò, Kết nối Hermes, Quay số may mắn.
 - **TÀI KHOẢN** — Thông tin cá nhân, Gói cước.
 
 **Bước 3**: Bấm tên một mục có mũi tên (vd **Tài chính**) để mở danh sách con. Mục chứa trang đang mở tự bung sẵn.
@@ -59,7 +59,7 @@ Menu được lọc theo capability chính xác, ví dụ `buildings.view`, `roo
 
 **Bước 5**: Trên các trang danh sách, dùng bộ lọc toà/khu/trạng thái theo đúng UI của trang. Không có một quy tắc “mọi trang chỉ chọn một toà”: trang Căn hộ và nhiều danh sách hỗ trợ nhiều toà/khu; một số trang như Sơ đồ chỉ chọn một toà. Bộ lọc được nhớ trong tab đang dùng và bị xoá khi đăng xuất hoặc đổi tài khoản.
 
-Nút **Trợ lý AI** (biểu tượng tròn ở góc dưới màn hình) mở khung chat Copilot; Copilot dùng công ty đang chọn ở trang Tài khoản.
+Để nhắn cho trợ lý của công ty trên Zalo, mở [Kết nối Hermes](/05-cai-dat/tro-ly-ai/) trong **Cài đặt hệ thống** và liên kết nick của bạn.
 
 ## Giao diện điện thoại
 
@@ -87,7 +87,7 @@ Mỗi ô được lọc bằng đúng `module.action`; vì vậy hai người c�
 |---|---|
 | Capability | Trang/nút có được mở hay không. |
 | Phạm vi | Toà, khu, tổ chức hoặc sổ quỹ nào nằm trong quyền hiệu lực. |
-| Công ty đang chọn | Công ty mà Copilot và các công cụ theo công ty làm việc trên đó. |
+| Công ty đang chọn | Công ty mà bạn đang làm việc, cũng là phạm vi của kết nối Hermes. |
 | RLS/hook dữ liệu | Các dòng thực tế được trả về cho user hiện tại. |
 | Possession nghiệp vụ | Ví dụ ai đang giữ sổ mới được ghi/chốt tiền dù đã có capability. |
 

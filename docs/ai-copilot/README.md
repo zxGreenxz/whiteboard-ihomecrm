@@ -1,10 +1,8 @@
-# AI Copilot — nền công cụ dùng chung
+# AI Copilot — kiểm kê mã và công cụ cũ
 
-P0 Hermes mở lại kiểm offline cho registry, quyền, kế hoạch, xác nhận, bộ nhớ và dữ liệu hướng dẫn dùng chung.
-Phạm vi test/gate hoạt động nằm trong `tooling/deferred-modules.json` và `tooling/test-matrix.json`.
+Hermes là trợ lý hiện hành. Người dùng thiết lập tại **Kết nối Hermes** (`/settings/hermes`) và nhắn bot trên Zalo. Giao diện chat Copilot đã được gỡ ngày 15/10/2026. [Hồ sơ chuyển đổi](../plans/hermes-crm/P11-COPILOT-RETIREMENT.md)
 
-Các phần Copilot UI/model, kiểm live và Zalo fleet còn hoãn theo [hồ sơ Zalo/Copilot](../deferred/zalo-copilot.md).
-Khôi phục runner hoặc kiểm kê mã không xác nhận tính năng đang chạy, quyền thật hay kết quả production.
+Mã Copilot còn phục vụ kiểm kê và kiểm tra offline cho registry, quyền, kế hoạch, xác nhận, bộ nhớ và tài liệu. Phạm vi từng bộ kiểm nằm trong [test matrix](../../tooling/test-matrix.json) và [danh sách hoãn](../../tooling/deferred-modules.json). Công cụ Hermes hiện hành được mô tả trong [hợp đồng của connector](../../infra/hermes-broker/CONNECTOR.md).
 
 ## Kiểm kê từ mã nguồn
 

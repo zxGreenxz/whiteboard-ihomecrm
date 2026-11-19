@@ -1,7 +1,6 @@
-# Zalo và AI Copilot — hồ sơ tạm ngưng
+# Zalo và AI Copilot — lịch sử tạm ngưng và chuyển đổi
 
-> Tạm ngưng theo yêu cầu ngày 06/10/2026. Chỉ đọc khi người dùng yêu cầu mở lại
-> Zalo/Copilot; đây không phải context hoặc backlog phải xử lý của các tác vụ khác.
+> Hồ sơ này ghi lại các quyết định từ 06/10/2026. Ngày 15/10, dự án gỡ giao diện chat Copilot và giữ phần mã dùng cho kiểm kê, kiểm tra offline. Hermes là trợ lý hiện hành, được cấu hình tại `/settings/hermes` và sử dụng qua Zalo. [Quyết định chuyển đổi](../plans/hermes-crm/P11-COPILOT-RETIREMENT.md)
 
 ## Zalo mở lại (10/10/2026)
 
@@ -53,11 +52,7 @@ git show c33ec48ccb17b55cd3e63cc2295e3636d558d6ea:tooling/known-gaps.yaml
 Snapshot `risk-map.json` giữ tier Copilot và gate corpus cũ để đối chiếu khi mở lại.
 Không phục hồi toàn bộ manifest đè lên các thay đổi mới hơn.
 
-Các nguồn hiện có vẫn giữ trên đĩa để không đổi hành vi ứng dụng:
-
-- [18 — Zalo](../he-thong/18-zalo-chat.md), [21 — AI Copilot](../he-thong/21-ai-copilot.md)
-  và [manifest corpus](../he-thong/manifest.json): vẫn thuộc dữ liệu runtime theo manifest,
-  dù không còn được dẫn từ mục lục làm việc của agent.
+- [Chương 18](../he-thong/18-zalo-chat.md) mô tả Zalo. [Chương 21](../he-thong/21-ai-copilot.md) hướng dẫn kết nối Hermes và ghi lại việc gỡ chat Copilot. [Manifest lưu trữ](../he-thong/manifest.json) liệt kê tài liệu của bộ tra cứu Copilot cũ.
 - [Runbook worker Zalo](../zalo/ZALO-WORKER-SETUP.md), `worker/`, `src/copilot/`,
   `supabase/functions/llm-proxy/`: đọc theo đúng phần được giao khi mở lại.
 - Plan, audit và evidence cũ giữ làm hồ sơ; không tự thi công lại checklist chưa đóng.
@@ -88,9 +83,7 @@ khi mở lại. Gap `e2e-copilot-khong-co-trace` vẫn hoạt động: rủi ro 
 
 Đây là kết quả đọc source tại mốc trên, chưa phải kiểm runtime:
 
-- `docs/he-thong/99-quy-trinh-tong.md` còn mô tả xác nhận do model tự khai;
-  `src/copilot/tools/writeTools.ts` và tài liệu 21 đã mô tả nonce server.
-  Khi mở lại, hợp nhất mô tả theo source và bằng chứng mới.
+- Ở mốc 06/10, tài liệu luồng tổng và mã Copilot mô tả khác nhau về bước xác nhận ghi. Quyền cho các thao tác của Hermes hiện được mô tả trong [hợp đồng của connector](../../infra/hermes-broker/CONNECTOR.md).
 - Tài liệu Zalo còn xen lẫn “chưa có handler media” với phần đã triển khai.
   `src/components/chat-zalo/Composer.tsx` và `worker/lib/queue.js` có đường gửi media;
   phiên worker đang chạy cần xác minh riêng, không suy từ bản web.

@@ -1,7 +1,6 @@
 # Codex
 
-Đọc [Project Contract](docs/engineering/PROJECT_CONTRACT.md) một lần; thêm tối đa một tài liệu domain/runbook nếu nhiệm vụ cần, rồi tra source.
-Không tự đọc audit/plan lịch sử hoặc mọi liên kết trong index.
+Đọc [Project Contract](docs/engineering/PROJECT_CONTRACT.md) một lần, rồi tra source và các runbook cần cho phần việc. Chỉ mở audit/plan lịch sử khi nhiệm vụ cần.
 
 - Trả lời tiếng Việt, nêu kết quả và phần chưa xác minh.
 - Worktree dưới `../codex-worktrees/<hang-muc>`; nháy kép đường dẫn có dấu cách, giữ WIP.

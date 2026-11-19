@@ -27,6 +27,7 @@
 | 17 | [Bảng lương & thưởng](17-luong-thuong.md) | Ledger, snapshot, V5, hardening thời gian/ảnh |
 | 19 | [SOP tiền & sổ quỹ](19-sop-tien-va-so-quy.md) | Quy tắc vận hành tiền xuyên domain |
 | 20 | [Phê duyệt tài chính](20-phe-duyet-tai-chinh.md) | Rule, request, inbox, quyết định và posting |
+| 21 | [Trợ lý Hermes](21-ai-copilot.md) | Kết nối tài khoản CRM với bot Zalo và lịch sử Copilot |
 | 22 | [Trung tâm mạng](22-network-center.md) | Fleet MikroTik, 4 thao tác đóng, rollout theo toà |
 | 99 | [Quy trình tổng end-to-end](99-quy-trinh-tong.md) | Luồng xuyên domain và nguồn sự thật |
 

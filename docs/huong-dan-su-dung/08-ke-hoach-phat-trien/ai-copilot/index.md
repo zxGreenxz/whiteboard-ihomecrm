@@ -1,6 +1,6 @@
 ---
-title: "Kế hoạch phát triển AI Copilot"
-description: "Bản trình bày kế hoạch đưa AI Copilot từ thử nghiệm hỏi đáp thành trợ lý nghiệp vụ an toàn, có lộ trình và tiêu chí nghiệm thu rõ ràng."
+title: "Kế hoạch phát triển AI Copilot (lưu trữ)"
+description: "Đề xuất tháng 7/2026 và ghi nhận tháng 10/2026 về Copilot trước khi gỡ giao diện chat trên web."
 kind: presentation-plan
 lifecycle: proposal
 source_document: "docs/AI-SYSTEM-AUDIT-OPTIMIZATION-ROADMAP-2026-07-20.md"
@@ -17,12 +17,12 @@ audience: [chu-doanh-nghiep, quan-ly, ke-toan, product-owner, ky-thuat]
 status: published
 ---
 
-::: danger PROPOSAL — KHÔNG PHẢI RUNTIME
-Trang này là kế hoạch tương lai, không phải hướng dẫn tính năng production. Runtime hiện hành chỉ gồm các bề mặt được source code và policy hiện tại bật; xem [Trợ lý AI](/05-cai-dat/tro-ly-ai/) để phân biệt launcher, trang quản trị và feature đang tắt.
+::: info Kế hoạch lưu trữ
+Tài liệu ghi lại đề xuất tháng 7/2026 và phần đối chiếu ngày 07/10/2026. Sau đó dự án đã gỡ giao diện chat Copilot trên web. Để dùng trợ lý hiện nay qua Zalo, xem [Kết nối Hermes](/05-cai-dat/tro-ly-ai/).
 :::
 
 <div class="plan-hero">
-  <div class="plan-eyebrow">KẾ HOẠCH PHÁT TRIỂN SẢN PHẨM</div>
+  <div class="plan-eyebrow">KẾ HOẠCH LƯU TRỮ · 07/2026</div>
   <h1>AI Copilot bám sát nghiệp vụ ptcrm</h1>
   <p class="plan-lead">Biến AI từ một ô chat thử nghiệm thành trợ lý giúp tìm thông tin, chuẩn bị hồ sơ và tạo bản nháp có kiểm soát — trong khi quyền quyết định về tiền, hợp đồng, phòng và phê duyệt vẫn thuộc về con người.</p>
   <div class="plan-actions">
@@ -30,21 +30,21 @@ Trang này là kế hoạch tương lai, không phải hướng dẫn tính năn
     <a class="plan-action" href="#phan-2-phu-luc-ky-thuat">Mở phần kỹ thuật</a>
   </div>
   <div class="plan-meta">
-    <span><strong>Trạng thái:</strong> đề xuất sau audit codebase</span>
+    <span><strong>Trạng thái:</strong> đề xuất tháng 7/2026</span>
     <span><strong>Đối tượng:</strong> lãnh đạo, vận hành, kế toán, kỹ thuật</span>
     <span><strong>Nguyên tắc:</strong> đọc trước, tạo bản nháp sau, người thật quyết định</span>
   </div>
 </div>
 
-::: danger Kết luận cần chốt trước
-AI hiện tại phù hợp với giai đoạn thử nghiệm hỏi đáp có giới hạn, nhưng **chưa nên mở rộng quyền tự thao tác hoặc tự ghi dữ liệu**. Kế hoạch này bắt đầu bằng việc khóa các rủi ro nền tảng, sau đó mới mở rộng từng nhóm nghiệp vụ.
+::: info Nhận định của nhóm tại thời điểm đề xuất
+Theo đánh giá tháng 7/2026, AI phù hợp với giai đoạn thử nghiệm hỏi đáp có giới hạn, nhưng **chưa nên mở rộng quyền tự thao tác hoặc tự ghi dữ liệu**. Kế hoạch này bắt đầu bằng việc khóa các rủi ro nền tảng, sau đó mới mở rộng từng nhóm nghiệp vụ.
 :::
 
 ### Trạng thái triển khai — đối chiếu mã nguồn ngày 07/10/2026
 
-Kế hoạch này viết sau audit 20/07/2026. Từ đó mã Copilot đã thay đổi nhiều (hơn 160 commit). Bảng dưới chỉ ghi những điểm đối chiếu được trong mã nguồn bản đang chạy; việc **bật cho từng tổ chức/trang** do máy chủ quyết định (entitlement, kill switch, khoá rollout mặc định tắt) và không được kiểm lại trên production lần này.
+Kế hoạch này viết sau audit 20/07/2026. Từ đó mã Copilot đã thay đổi nhiều (hơn 160 commit). Bảng dưới chỉ ghi những điểm đối chiếu được trong mã nguồn ngày 07/10/2026; việc **bật cho từng tổ chức/trang** do máy chủ quyết định (entitlement, kill switch, khoá rollout mặc định tắt) và không được kiểm lại trên production lần này.
 
-| Điểm trong kế hoạch | Bản đang chạy |
+| Điểm trong kế hoạch | Ghi nhận ngày 07/10/2026 |
 |---|---|
 | 11.1 UI-control phải deny-by-default | **Đã làm theo hướng đề xuất:** các tool điều khiển theo chỉ số phần tử của PageAgent đã tắt; AI chỉ chạm được control khai sẵn trong danh sách an toàn của từng trang (`safeControlIds`), cần cả entitlement lẫn quyền `ai_copilot.ui_control`. |
 | 11.2 Proxy khoá model | **Một phần:** proxy từ chối model sai định dạng `provider:model-id` và model không có giá trong cấu hình (`bad_pricing`). |
@@ -54,7 +54,14 @@ Kế hoạch này viết sau audit 20/07/2026. Từ đó mã Copilot đã thay �
 | Danh mục công cụ | Từ 6 công cụ đọc/hướng dẫn nay đã có **hàng chục** công cụ đọc theo miền (toà, phòng trống, hoá đơn, hợp đồng sắp hết hạn, doanh thu…), công cụ hướng dẫn tra site tài liệu này, công cụ ghi nhớ. |
 | 11.5 Nguồn sự thật database | Không đối chiếu trong lần cập nhật tài liệu này. |
 
-Hướng dẫn sử dụng hiện hành: [Trợ lý AI](/05-cai-dat/tro-ly-ai/). Các mục 10–21 bên dưới giữ nguyên nội dung kế hoạch gốc (hiện trạng kỹ thuật tháng 07/2026).
+<details>
+<summary>Ảnh lưu trữ từ ngày 07/10/2026</summary>
+
+![Thống kê sử dụng trên trang Copilot cũ](../../05-cai-dat/tro-ly-ai/images/buoc-01-thong-ke-su-dung.webp)
+
+</details>
+
+Các mục 10–21 bên dưới giữ nguyên nội dung kế hoạch gốc tháng 7/2026.
 
 ## Tóm tắt trong một phút
 
@@ -601,7 +608,7 @@ flowchart LR
 
 ### 21. Tài liệu liên quan trên site
 
-- [Hướng dẫn sử dụng Trợ lý AI](/05-cai-dat/tro-ly-ai/)
+- [Hướng dẫn Kết nối Hermes hiện nay](/05-cai-dat/tro-ly-ai/)
 - [Quy trình Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/)
 - [Quy trình Thu chi](/03-quan-ly-van-hanh/thu-chi/)
 - [Quy trình Thu tiền tại hóa đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/)

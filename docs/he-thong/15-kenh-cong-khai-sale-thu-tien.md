@@ -282,7 +282,7 @@ Quan hệ "ảo" quan trọng (không FK): RPC `get_public_available_rooms` **đ
 
 Phòng đang ở có hồ sơ nhờ sale/nhượng riêng phải đọc điều kiện hồ sơ đó; không coi là phòng đã trống. Người phụ trách dọn/sửa có thể bổ sung sau, nhưng trạng thái sẵn sàng phải được xác nhận trước khi khách mới nhận phòng.
 
-Trang công khai, danh sách trong ứng dụng và Copilot dùng cùng thông tin sale. Mã nguồn worker Zalo đã cập nhật; chưa xác minh worker đang chạy đã được triển khai phiên bản này, xem [18 Zalo](18-zalo-chat.md).
+Trang công khai, danh sách trong ứng dụng và chức năng đọc phòng của Hermes dùng chung quy tắc xác định tình trạng phòng để sale. Mã nguồn worker Zalo đã cập nhật; chưa xác minh worker đang chạy đã được triển khai phiên bản này, xem [18 Zalo](18-zalo-chat.md).
 
 ### 4.3. Sơ đồ tầng: layout thủ công + fallback tự sinh
 

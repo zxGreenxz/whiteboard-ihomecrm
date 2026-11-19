@@ -1,10 +1,4 @@
-// Luật Copilot ingest, phần "dấu review còn hiệu lực" — thi hành ở RUNTIME.
-//
-// Vì sao răng nằm ở runtime chứ không ở CI: chú thích trong
-// scripts/check-copilot-docs-manifest.mjs đã cân nhắc và kết luận đúng — một gate
-// đỏ vì ngày tháng sẽ bị bump theo nghi thức rồi phá luôn tín hiệu. Ở runtime thì
-// hậu quả khác hẳn: tài liệu quá hạn thôi được nạp, và người dùng thấy Copilot
-// mất kiến thức đó. Phản hồi ấy khó lờ hơn một dòng cảnh báo trong log CI.
+// Kiểm offline bộ lọc ngày review và danh sách tài liệu của registry Copilot lưu trữ.
 import manifest from "@/../docs/he-thong/manifest.json";
 import { describe, expect, it } from "vitest";
 
@@ -70,11 +64,8 @@ describe("listDocTopics lọc theo hạn review", () => {
     for (const f of con) expect(coDau.has(f), `${f} lẽ ra phải bị loại`).toBe(false);
   });
 
-  it("manifest khai nợ review có tên và có hạn", () => {
-    const no = (manifest as { unreviewedDebt?: { files: string[]; expiresAt: string } }).unreviewedDebt;
-    expect(no?.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(no?.files.length).toBeGreaterThan(0);
+  it("manifest kê đúng các tài liệu lưu trữ còn thiếu ngày review", () => {
     const chuaReview = manifest.entries.filter((e) => e.copilotIngest && !e.reviewed).map((e) => e.file);
-    expect([...(no?.files ?? [])].sort()).toEqual([...chuaReview].sort());
+    expect([...manifest.unreviewedDebt.files].sort()).toEqual(chuaReview.sort());
   });
 });

@@ -36,7 +36,7 @@ Domain này gom 7 bảng phục vụ 4 nhóm chức năng, tất cả đều **p
 | Tuỳ chọn UI nhỏ per-USER (không phải per-owner) | Cột jsonb **`profiles.ui_preferences`** | §2.8 |
 | Bộ lọc đang chọn của từng trang | **sessionStorage** key `flt:*` qua [usePersistedState](src/hooks/usePersistedState.ts) (per-tab, mất khi đóng tab — chủ ý, KHÔNG lưu server) | commit 7fd2d3f |
 
-> **Ghi chú về subsystem AI:** backend RAG legacy gồm `ai_conversations`, `ai_messages`, `ai_memory_embeddings`, `ai_usage_stats` cùng `search_similar_memories()`/`get_conversation_context` và các trigger liên quan đã bị drop ở migration `20260710190000_drop_legacy_ai_assistant.sql`. Copilot hiện dùng schema riêng (`ai_chat_threads`, `ai_chat_messages`, `ai_providers`, `ai_usage_logs`, entitlement/settings); extension `vector` còn tồn tại không có nghĩa RAG cũ vẫn chạy. Xem [21-ai-copilot.md](21-ai-copilot.md).
+> Migration `20260710190000_drop_legacy_ai_assistant.sql` đã gỡ các bảng RAG đời đầu (`ai_conversations`, `ai_messages`, `ai_memory_embeddings`, `ai_usage_stats`), các hàm `search_similar_memories()`, `get_conversation_context` và trigger liên quan. Extension `vector` vẫn còn. Copilot sau đó dùng các bảng riêng (`ai_chat_threads`, `ai_chat_messages`, `ai_providers`, `ai_usage_logs`) cùng cấu hình và entitlement. Giao diện chat Copilot đã được gỡ ngày 15/10/2026. [Hồ sơ chuyển đổi](../plans/hermes-crm/P11-COPILOT-RETIREMENT.md)
 
 ---
 
@@ -460,4 +460,4 @@ flowchart TD
 - **`CategoriesPage` → Tài chính / Tài sản / Chỉ số / Vận hành**: hub link sang `/finance/cashbooks`, loại thu chi, định mức dịch vụ, đồng hồ công tơ, nhà cung cấp, kho/loại tài sản, tầng, loại công việc — domain Cài đặt đóng vai "cổng vào" các danh mục con thuộc domain khác. Lưu ý: bảng `income_expense_types` (trang chính `/settings/income-expense-types`, doc 04) đi theo trục quyền RBAC `can_access_org_entity('categories', ...)` từ [batch A](supabase/migrations/20260528000001_rbac_batch_a_config_tables.sql) — key `categories` chính là module trong group `settings` của permissions.ts (§4.9).
 - **`FloorsPage` (`/settings/categories/floors`)**: CRUD bảng `floors` hoàn toàn **phẳng theo user** — form không có field `building_id`, list không lọc theo toà (dữ liệu tầng dùng chung mọi toà); RBAC ghi map `floors` → permission `building_layout` trong staff_write_rls. Cũng dùng `CategoryCrudPage` nên dính cùng vấn đề validate/đóng-dialog-sớm như §5.5.
 - **`user_subscriptions.user_id` / mọi bảng `user_id` → Auth (auth.users)**: gắn cấu hình vào chủ tài khoản; `ON DELETE CASCADE` khi user bị xoá.
-- **AI Copilot**: RAG `ai_*` legacy đã bị xoá; subsystem hiện tại độc lập với bảng `settings` của domain này và dùng schema Copilot mới — xem [21-ai-copilot.md](21-ai-copilot.md).
+- **Kết nối Hermes**: người dùng chọn công ty, tạo kết nối với tài khoản CRM tại `/settings/hermes`, rồi liên kết tài khoản Zalo để nhắn bot.

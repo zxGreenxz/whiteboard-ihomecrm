@@ -1,11 +1,10 @@
 # AI Copilot Superadmin Control — Plan LEAN (đã đối chiếu thực tế 2026-08-14)
 
-> **[CÒN SỐNG — trạng thái 02/09/2026]** bị thay thế về định hướng bởi plan `2026-09-02-ai-copilot-va-nen-den-toan-quyen-muc-3.md` (Mức 2 batch consent → Mức 3); các task Phase A–C vẫn là nguồn bằng chứng lịch sử.
+> **Kế hoạch lịch sử.** Ngày 02/09/2026, [kế hoạch Mức 3](2026-09-02-ai-copilot-va-nen-den-toan-quyen-muc-3.md) đã thay định hướng Mức 2 batch consent. Dự án sau đó gỡ giao diện chat Copilot ngày 15/10. [Quyết định chuyển đổi](../../plans/hermes-crm/P11-COPILOT-RETIREMENT.md)
 
-> **[CÒN SỐNG — trạng thái 02/09/2026]** Plan LEAN Op1 (chốt 14/08, commit `f54b9025`). Trạng thái phase: A ⚠ từng phần · **B ❌ chưa đủ bằng chứng** · D ⬜ chưa bắt đầu. Chuỗi migration copilot 28–31/08 (`copilot_org_scope`, `draft_writer`, `restricted_category_guard`…) đã ship phần scope/draft — đối chiếu bảng trạng thái trong file trước khi làm tiếp.
+> **Bằng chứng tại mốc 02/09/2026.** Plan LEAN Op1 chốt ngày 14/08 ở commit `f54b9025`. Khi đó phase A đạt từng phần, B chưa đủ bằng chứng và D chưa bắt đầu. Chuỗi migration Copilot 28–31/08 (`copilot_org_scope`, `draft_writer`, `restricted_category_guard`…) đã phát hành phần scope/draft.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: dùng superpowers:subagent-driven-development (khuyến nghị)
-> hoặc superpowers:executing-plans để thực hiện từng task. Các bước dùng checkbox (`- [ ]`) để theo dõi.
+> Các checkbox ghi tiến độ của đợt LEAN tháng 8.
 
 **Bản này thay thế bản 18-task ngày 2026-08-13** (giữ nguyên trong git history tại commit
 `47b93154`). Lý do thay: (1) đối chiếu code + database ngày 2026-08-14 tìm ra 13 điểm lệch thực tế

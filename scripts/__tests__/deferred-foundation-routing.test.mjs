@@ -568,21 +568,17 @@ describe('P0 shared CRM foundation routing', () => {
   });
 
   it.each([
-    'docs/he-thong/manifest.json',
-    'docs/he-thong/25-bien-dong-so-du.md',
-    'docs/ai-copilot/README.md',
-    'docs/huong-dan-su-dung/01-tong-quan/index.md',
-  ])('routes corpus documentation %s without starting app or live lanes', (source) => {
+    ['docs/he-thong/manifest.json', 'check-copilot-docs-manifest'],
+    ['docs/he-thong/25-bien-dong-so-du.md', 'check-copilot-docs-manifest'],
+    ['docs/ai-copilot/README.md', 'check-copilot-tool-inventory'],
+    ['docs/huong-dan-su-dung/01-tong-quan/index.md', 'generate-copilot-guide-corpus'],
+  ])('routes corpus documentation %s to its verifier once', (source, expectedGate) => {
     const plan = planFor(source);
     expect(plan.fullFallback).toBe(false);
     expect(plan.profiles).toEqual(['docs-only']);
-    expect(plan.gateIds).toEqual(expect.arrayContaining([
-      'check-copilot-docs-manifest', 'generate-copilot-guide-corpus', 'check-copilot-tool-inventory',
-    ]));
-    expect(plan.suiteSelections.find(s => s.id === 'node-native').files).toEqual(expect.arrayContaining([
-      'scripts/__tests__/check-copilot-docs-manifest.test.mjs',
-      'scripts/__tests__/check-copilot-tool-inventory.test.mjs',
-    ]));
+    expect(plan.gateIds.filter(id => staticGates.includes(id))).toEqual([expectedGate]);
+    expect(plan.suiteSelections).toEqual([]);
+    if (source.startsWith('docs/huong-dan-su-dung/')) expect(plan.gateIds).toContain('docs-build');
     expect(plan.gateIds).not.toContain('app-build');
     expect(plan.gateIds).not.toContain('check-copilot-negative-proofs');
     expect(plan.gateIds).not.toContain('check-copilot-golden-eval');

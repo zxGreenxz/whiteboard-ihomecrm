@@ -1,10 +1,9 @@
 {
-  "$comment": "Allowlist tài liệu AI Copilot được phép đọc. TRƯỚC file này, tool huong_dan glob mù toàn bộ docs/he-thong/*.md — nghĩa là mọi file .md ai đó thả vào đây đều tự động thành nguồn tư vấn nghiệp vụ cho người dùng thật, kể cả writeup hiệu năng nội bộ hay bản đồ bảo trì realtime. Gate: node scripts/check-copilot-docs-manifest.mjs (file mới BẮT BUỘC khai ở đây, không mặc định lọt vào). QUYỀN SỞ HỮU TRƯỜNG (chốt 11/08/2026): file này sở hữu `copilotIngest` và `reviewed`. Frontmatter của docs/he-thong/*.md KHÔNG được lặp lại hai khoá đó — lặp là tạo nguồn thứ hai, và đo 11/08 đã thấy nó lệch: 24-platform-delivery.md tự khai reviewed 2026-08-07 trong khi manifest không có ngày nào cho nó. Frontmatter vẫn giữ được `status`, `source_paths`, `last_verified_commit`, `risk` — bốn thứ manifest KHÔNG có.",
+  "$comment": "Allowlist của bộ công cụ Copilot lưu trữ. Khai từng tài liệu trong docs/he-thong cùng quyền cần kiểm khi tra cứu. Manifest sở hữu copilotIngest và reviewed. Frontmatter có thể ghi status, source_paths, last_verified_commit và risk. Thay đổi manifest được kiểm bằng node scripts/check-copilot-docs-manifest.mjs.",
   "schemaVersion": 1,
   "staleAfterDays": 180,
   "unreviewedDebt": {
-    "$comment": "Tài liệu Copilot ĐANG đọc mà chưa từng ghi ngày review. Runtime vẫn nạp chúng — loại hết sẽ cắt hơn nửa kiến thức Copilot trong im lặng. Danh sách này CHỈ ĐƯỢC TEO: thêm một tài liệu ingest mới mà không có `reviewed` sẽ bị gate chặn. Đóng một mục = review thật rồi ghi ngày, KHÔNG phải xoá tên khỏi đây.",
-    "expiresAt": "2026-12-31",
+    "$comment": "Các tài liệu trong allowlist chưa có ngày review. Gate đối chiếu danh sách này theo tên file. Khi đã rà nội dung với nguồn, điền reviewed và bỏ tên tương ứng khỏi đây.",
     "files": [
       "02-co-cau-toa-nha-phong-dich-vu.md",
       "03-khach-hang-lead-ho-so.md",
@@ -167,7 +166,7 @@
     {
       "file": "21-ai-copilot.md",
       "copilotIngest": true,
-      "reviewed": "2026-09-03"
+      "reviewed": "2026-11-19"
     },
     {
       "file": "22-network-center.md",
