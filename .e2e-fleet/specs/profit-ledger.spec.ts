@@ -401,6 +401,8 @@ async function cancelApprovedVoucher(page: Page, code: string, reason: string) {
 const created: string[] = [];
 let routeTouched = false;
 let ownerJwtForCleanup: string | null = null;
+/** Chủ thứ hai — người GIỮ sổ quỹ của phiếu tiền đã chi: phiếu đã ghi sổ chỉ người giữ đúng sổ quỹ đó huỷ được (E6). */
+let makerJwtForCleanup: string | null = null;
 
 test.afterAll(async () => {
   test.setTimeout(300_000);
@@ -414,7 +416,8 @@ test.afterAll(async () => {
       if (detail.status !== 200 || !status) { problems.push(`không đọc được phiếu thử ${voucherId}`); continue; }
       if (status === 'CANCELLED') continue;
       const expectedState = status === 'UNAPPROVED' ? 'PENDING' : detail.data.voucher?.posting_status === 'POSTED' ? 'POSTED' : 'APPROVED_UNPOSTED';
-      const cancel = await rpc(ownerJwtForCleanup, 'profit_ledger_payout_cancel_v1', {
+      const cancelJwt = expectedState === 'POSTED' && makerJwtForCleanup ? makerJwtForCleanup : ownerJwtForCleanup;
+      const cancel = await rpc(cancelJwt, 'profit_ledger_payout_cancel_v1', {
         p_voucher_id: voucherId, p_reason: `E2E profit-ledger ${RUN_TAG}: dọn phiếu thử`, p_idempotency_key: randomUUID(), p_expected_state: expectedState,
       });
       if (cancel.status !== 200) problems.push(`không huỷ được phiếu thử ${voucherId} (HTTP ${cancel.status})`);
@@ -550,6 +553,7 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
     const offset = preview1.offset ?? 0;
     const cash = preview1.cash ?? 0;
     const makerJwt = await passwordGrant(USERS.testhethong, makerPassword);
+    makerJwtForCleanup = makerJwt;
     maker = await openSession(browser, USERS.testhethong, makerPassword);
     let settlementId = '';
     let cashVoucherId = '';
@@ -650,9 +654,10 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
       if (!('building_totals' in payload)) await expect(page.getByTestId('self-building-totals-card')).toHaveCount(0);
     });
 
-    // 6. Chủ công ty huỷ có lý do: phiếu tiền ĐÃ CHI của lần chốt trước, phiếu tạm ứng sau ⇒ hai con số về như cũ.
-    await test.step('chủ công ty huỷ phiếu tiền ĐÃ CHI của lần chốt (đảo bút toán) ⇒ lần chốt hết hiệu lực', async () => {
-      const page = owner!.page;
+    // 6. Huỷ có lý do: phiếu tiền ĐÃ CHI của lần chốt trước (người huỷ phải GIỮ đúng sổ quỹ của phiếu đã ghi sổ ⇒ chủ thứ
+    //    hai, người vừa chi), phiếu tạm ứng sau (chủ công ty) ⇒ hai con số về như cũ.
+    await test.step('chủ thứ hai (giữ sổ quỹ) huỷ phiếu tiền ĐÃ CHI của lần chốt (đảo bút toán) ⇒ lần chốt hết hiệu lực', async () => {
+      const page = maker!.page;
       await openOwnerOverview(page);
       await page.getByTestId(`ledger-row-${shareholderId}`).getByRole('button', { name: 'Chi', exact: true }).click();
       const dialog = page.getByRole('dialog', { name: 'Chi lợi nhuận cổ đông' });
@@ -669,6 +674,7 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
     });
     await test.step('chủ công ty huỷ phiếu tạm ứng từ sổ chi tiết ⇒ hai con số về như trước', async () => {
       const page = owner!.page;
+      await openOwnerOverview(page);
       await page.getByTestId(`ledger-row-${shareholderId}`).getByRole('button', { name: 'Sổ', exact: true }).click();
       const entry = page.getByTestId(`ledger-entry-PAYOUT:${advanceVoucherId}`);
       await expect(entry).toBeVisible({ timeout: 90_000 });
