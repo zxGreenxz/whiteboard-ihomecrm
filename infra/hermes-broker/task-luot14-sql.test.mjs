@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { testTaskSqlMutations } from './task-sql-mutation-cases.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { setupNghiemThu, ORG, OTHER_BUILDING, ROOM, ROOM_A201, MANAGER } from './task-nghiem-thu-fixture.mjs';
@@ -80,12 +81,5 @@ test('mutation (lượt 14): the perRoom branch, the 20-room ceiling, the delete
     ['room count carried by the reason', mutate(BATCH, "\n      'rooms',CASE WHEN", "\n      'roomsX',CASE WHEN"),
       async f => { await crowd(f); return (await f.run('task.create_batch', 'auto', 1, { ...perRoom, buildingName: 'Toà B' }).catch(() => ({}))).rooms === 26; }],
   ];
-  for (const [label, mutant, probe] of CASES) {
-    await t.test(label, async () => {
-      assert.equal(await probe(await setup(t)), true, 'bản sửa chặn');
-      const f = await setup(t);
-      await f.db.exec(mutant);
-      assert.equal(await probe(f), false, 'đột biến lọt ⇒ test không rỗng');
-    });
-  }
+  await testTaskSqlMutations(t, await setup(t), CASES);
 });

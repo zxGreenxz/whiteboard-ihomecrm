@@ -27,6 +27,8 @@ jobs:
       pull-requests: read
     outputs:
       required_jobs: ${{ steps.plan.outputs.required_jobs }}
+      node_shards: ${{ steps.plan.outputs.node_shards }}
+      vitest_shards: ${{ steps.plan.outputs.vitest_shards }}
       needs_demo_browser: ${{ steps.plan.outputs.needs_demo_browser }}
       needs_docs_build: ${{ steps.plan.outputs.needs_docs_build }}
       needs_deno: ${{ steps.plan.outputs.needs_deno }}
@@ -102,6 +104,11 @@ jobs:
           retention-days: 2
 
   node-native-tests:
+    name: ${{ matrix.shard == 1 && 'node-native-tests' || 'node-native-tests (2)' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.preflight.outputs.node_shards || '[1]') }}
     runs-on: ubuntu-24.04
     needs: preflight
     if: >-
@@ -125,17 +132,24 @@ jobs:
       - run: npm ci
 
       - name: Execute selected gates and write receipts
+        env:
+          CI_TEST_SHARD: ${{ matrix.shard }}
         run: node scripts/ci-run-gates.mjs --job node-native-tests
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: gate-receipts-node-native-tests-attempt-${{ github.run_attempt }}
+          name: gate-receipts-node-native-tests-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: .gate-evidence/node-native-tests/receipts.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 2
 
   vitest-tests:
+    name: ${{ matrix.shard == 1 && 'vitest-tests' || 'vitest-tests (2)' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.preflight.outputs.vitest_shards || '[1]') }}
     runs-on: ubuntu-24.04
     needs: preflight
     if: >-
@@ -159,11 +173,13 @@ jobs:
       - run: npm ci
 
       - name: Execute selected gates and write receipts
+        env:
+          CI_TEST_SHARD: ${{ matrix.shard }}
         run: node scripts/ci-run-gates.mjs --job vitest-tests
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: gate-receipts-vitest-tests-attempt-${{ github.run_attempt }}
+          name: gate-receipts-vitest-tests-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: .gate-evidence/vitest-tests/receipts.json
           include-hidden-files: true
           if-no-files-found: error

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { testTaskSqlMutations } from './task-sql-mutation-cases.mjs';
 import assert from 'node:assert/strict';
 import { setupNghiemThu, ORG, USER, BUILDING, ROOM, MANAGER, STAFF, CO_OWNER, ANH_TU, MINH } from './task-nghiem-thu-fixture.mjs';
 import { migration } from './task-action-fixture.mjs';
@@ -133,13 +134,6 @@ test('mutation (lượt 13): the self-assignment preview, every bare-honorific b
     ['batch never writes without the apply phase', mutate(BATCH, "  IF p_phase<>'apply' THEN\n    IF (SELECT count(DISTINCT", "  IF p_phase='preview' THEN\n    IF (SELECT count(DISTINCT"),
       async f => (await f.run('task.create_batch', 'auto', 1, { buildingName: 'Toà A', items: [{ roomName: 'P101', content: 'sửa vòi', assigneeName: 'tôi' }] })).kind === 'preview'],
   ];
-  for (const [label, mutant, probe] of CASES) {
-    await t.test(label, async () => {
-      assert.equal(await probe(await setup(t)), true, 'bản sửa chặn');
-      const f = await setup(t);
-      await f.db.exec(mutant);
-      assert.equal(await probe(f), false, 'đột biến lọt ⇒ test không rỗng');
-    });
-  }
+  await testTaskSqlMutations(t, await setup(t), CASES);
   void ORG; void MANAGER;
 });

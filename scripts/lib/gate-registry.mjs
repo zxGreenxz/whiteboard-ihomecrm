@@ -1,5 +1,6 @@
 import { isDeferredGate, isDeferredTest } from './deferred-modules.mjs';
 import { DANH_SACH_VIEW } from '../generate-docs-views.mjs';
+import { filesForTestShard, MIN_FILES_TO_SHARD } from './gate-test-shards.mjs';
 import { selectionDigest } from './selected-vitest.mjs';
 
 // Commands have one owner. Selection belongs to gate-plan, execution to the runners.
@@ -86,6 +87,11 @@ for (const [id, job, command, args] of [
 
 gates['suite:meter-capture-python'].inputs = [...broadInputs, 'infra/meter-capture-worker/**', '.github/workflows/ci-gates.yml'];
 
+for (const suiteId of Object.keys(MIN_FILES_TO_SHARD)) {
+  const id = `suite:${suiteId}-shard-2`;
+  gates[id] = { ...gates[`suite:${suiteId}`], id, suiteId, shard: 2, local: false };
+}
+
 export const GATE_REGISTRY = Object.freeze(gates);
 // Exact suite/file pairs only. Real TEST/preview specs remain outside default CI.
 export function isOfflineBrowserSelection(suiteId, files) {
@@ -122,22 +128,26 @@ export function getGate(id, plan) {
     gate.args.push('--tu-moc', plan.snapshot.base);
   }
   if (id.startsWith('suite:')) {
-    const suiteId = id.slice(6);
+    const suiteId = gate.suiteId ?? id.slice(6);
     const selection = plan?.suiteSelections?.find((s) => s.id === suiteId);
     if (!selection || !selection.files?.length) throw new Error(`Missing selected tests: ${suiteId}`);
     if (selection.files.some(isDeferredTest)) throw new Error(`DEFERRED test selected: ${suiteId}`);
     if (suiteId.startsWith('e2e-') && !isOfflineBrowserSelection(suiteId, selection.files)) {
       throw new Error('Only explicitly approved offline browser suites may run through the default browser gate');
     }
+    const shard = gate.shard ?? 1;
+    const files = filesForTestShard(selection, shard);
     if (suiteId === 'app-unit') {
-      gate.args = ['scripts/run-selected-vitest.mjs', '--plan', plan.environment === 'ci' ? '.gate-evidence/plan.json' : '.cache/gate-receipts/plan.json', '--selection-digest', selectionDigest(selection.files)];
+      gate.args = ['scripts/run-selected-vitest.mjs', '--plan', plan.environment === 'ci' ? '.gate-evidence/plan.json' : '.cache/gate-receipts/plan.json'];
+      if (selection.shards) gate.args.push('--shard', String(shard));
+      gate.args.push('--selection-digest', selectionDigest(files));
     } else {
       // The local gate already runs several checks together. Native SQL tests
       // also start private PostgreSQL clusters; CPU-count fanout can exhaust
       // disk/startup capacity (initdb timed out at 30s; isolated run took 9s).
       // Bound this nested fanout without dropping files or changing CI policy.
       if (suiteId === 'node-native' && plan.environment === 'local') gate.args.push('--test-concurrency=2');
-      gate.args.push(...selection.files);
+      gate.args.push(...files);
     }
     if (gate.command === 'deno') gate.args.push('--allow-env');
     if (suiteId.startsWith('e2e-')) gate.args.push('--workers=1', '--reporter=list');

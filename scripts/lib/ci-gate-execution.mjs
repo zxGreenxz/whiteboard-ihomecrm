@@ -58,7 +58,7 @@ export function trustedReuseRun(run, { repository, sha, now = Date.now() }) {
     run.pull_requests?.some((pr) => pr.base?.ref === 'main' && pr.base?.repo?.full_name === repository) === true;
 }
 
-export function executeGateJob({ plan, jobId, getGate, runId, env = process.env, root = process.cwd(),
+export function executeGateJob({ plan, jobId, shard = 1, getGate, runId, env = process.env, root = process.cwd(),
   reusableReceipts = [], trustedRunIds = [], now = Date.now, runtime = { node: process.version },
   execute = (gate) => spawnSync(gate.command, gate.args, { cwd: root, env, stdio: 'inherit', timeout: 25 * 60 * 1000 }),
 }) {
@@ -66,7 +66,7 @@ export function executeGateJob({ plan, jobId, getGate, runId, env = process.env,
     const gate = getGate(id, plan);
     if (!gate) throw new Error(`Unknown gate ${id}`);
     return gate;
-  }).filter((gate) => gate.job === jobId);
+  }).filter((gate) => gate.job === jobId && (gate.shard ?? 1) === shard);
   if (!selected.length) throw new Error(`No selected gates for ${jobId}`);
   const receipts = [];
   for (const gate of selected) {

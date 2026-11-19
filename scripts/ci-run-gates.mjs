@@ -27,7 +27,7 @@ if (plan.gateIds.some((id) => { const gate = getGate(id, plan); return gate.job 
 }
 const runId = `${process.env.GITHUB_RUN_ID}:${process.env.GITHUB_RUN_ATTEMPT}`;
 if (plan.runId !== runId) throw new Error('Plan belongs to a different workflow run/attempt');
-const result = executeGateJob({ plan, jobId, getGate, runId, root, reusableReceipts: plan.reusableReceipts, trustedRunIds: plan.trustedRunIds });
+const result = executeGateJob({ plan, jobId, shard: Number(process.env.CI_TEST_SHARD ?? 1), getGate, runId, root, reusableReceipts: plan.reusableReceipts, trustedRunIds: plan.trustedRunIds });
 const directory = join('.gate-evidence', jobId);
 mkdirSync(directory, { recursive: true });
 writeFileSync(join(directory, 'receipts.json'), JSON.stringify(result.receipts, null, 2) + '\n');
