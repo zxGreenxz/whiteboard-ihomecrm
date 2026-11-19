@@ -12,6 +12,34 @@ const plan = (changes, extra = {}) => createGatePlan({ changes, snapshot, ...ext
 const button = 'export const Button = () => <button onClick={openDialog} className="p-2">Mở</button>;';
 
 describe("scope is a conservative proof, never a filename shortcut", () => {
+  it("keeps direct, sibling and source-mapped files locally and leaves profile-wide or fallback files to CI", () => {
+    const matrix = JSON.parse(readFileSync(new URL("../../tooling/test-matrix.json", import.meta.url), "utf8"));
+    const source = "src/lib/calendar-fixture.ts";
+    const mapped = "src/lib/__tests__/mapped.test.ts";
+    const direct = "src/lib/__tests__/direct.test.ts";
+    const other = "src/lib/__tests__/other.test.ts";
+    const sibling = "scripts/__tests__/gate-evidence.test.mjs";
+    const nativeOther = "scripts/__tests__/ci-gate-execution.test.mjs";
+    matrix.sourceSelectionRules.push({ id: "calendar-fixture", suiteId: "app-unit", sourcePaths: [source], testPatterns: [mapped] });
+    const inputs = { testMatrix: matrix, testFiles: [mapped, direct, other, sibling, nativeOther], localFeedback: true };
+    const files = (p, suite) => p.suiteSelections.find(s => s.id === suite)?.files ?? [];
+    for (const trigger of ["supabase/migrations/20261120000001_example.sql", "unknown/fixture"]) {
+      const changes = [trigger, source, direct, "scripts/gate-evidence.mjs"].map(path => changed(path, "before", "after"));
+      const local = plan(changes, inputs);
+      expect(files(local, "app-unit")).toEqual([direct, mapped]);
+      expect(files(local, "node-native")).toEqual([sibling]);
+      expect(local.ciSuiteRemainders).toEqual({ "app-unit": 1, "node-native": 1 });
+      for (const opts of [{ environment: "ci" }, { full: true }]) {
+        const broad = plan(changes, { ...inputs, ...opts });
+        expect(files(broad, "app-unit")).toEqual([direct, mapped, other]);
+        expect(files(broad, "node-native")).toEqual([nativeOther, sibling]);
+      }
+    }
+    const receiptOnly = plan([changed("supabase/migration-provenance.json", "{}", "{}")], inputs);
+    expect(files(receiptOnly, "app-unit")).toEqual([]);
+    expect(files(receiptOnly, "node-native")).toEqual([]);
+    expect(receiptOnly.ciSuiteRemainders).toEqual({ "app-unit": 3, "node-native": 2 });
+  });
   it("partitions a full CI selection between the timezone job and ordinary Vitest without losing a file", () => {
     const date = "src/hooks/reports/__tests__/useOccupancyDashboard.timezone.test.ts";
     const ordinary = "src/lib/__tests__/clipboardFeedback.test.tsx";

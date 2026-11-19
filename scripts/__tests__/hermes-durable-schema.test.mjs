@@ -548,7 +548,7 @@ function expandReviewedFunctionAcl(sql) {
       `REVOKE ALL ON FUNCTION ${target} FROM ${block.revokedRoles ?? 'PUBLIC,anon,authenticated,service_role,hermes_store_executor'}`,
       ...(role ? [`GRANT EXECUTE ON FUNCTION ${target} TO ${role}`] : []),
     ]);
-  }).join(';\n');
+  });
 }
 
 // These private helpers use the narrower pg_catalog-only search path. Pin the
@@ -775,8 +775,12 @@ END $fn$`)],
 ]);
 
 function securityContract(sql = all, registry = functions) {
-  sql = expandReviewedFunctionAcl(sql);
-  const normalizedAclSql = sql.replace(/,\s+/g, ',');
+  const expandedStatements = expandReviewedFunctionAcl(sql);
+  sql = expandedStatements.join(';\n');
+  // Both patterns below stop at semicolons. Search those same clauses, including
+  // multi-function REVOKEs, without rescanning every function body for each name.
+  const ownerClauses = (sql.match(/ALTER FUNCTION [^;]*/gi) ?? []).join(';');
+  const revokeClauses = (sql.match(/REVOKE ALL ON FUNCTION [^;]*/gi) ?? []).join(';').replace(/,\s+/g, ',');
   assert.match(sql, /CREATE ROLE hermes_store_executor NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT/i);
   assert.match(sql, /pg_auth_members WHERE member='hermes_store_executor'::regrole/i);
   for (const role of ['anon', 'authenticated', 'service_role']) assert(sql.includes(`pg_has_role('${role}','hermes_store_executor','MEMBER')`));
@@ -817,9 +821,9 @@ function securityContract(sql = all, registry = functions) {
       if (/\bAS\s+\$/i.test(definition)) assert.doesNotMatch(definition.split(/\bAS\s+\$/i).slice(1).join(''), /\bapp_private\./i, `${name}: plpgsql invoker names app_private`);
     }
     else assert.match(header, /SECURITY DEFINER SET search_path=pg_catalog,(?:public,)?app_private/i, name);
-    assert.match(sql, new RegExp(`ALTER FUNCTION ${name.replace('.', '\\.')}\\([^;]*?\\) OWNER TO postgres`, 'i'), name);
+    assert.match(ownerClauses, new RegExp(`ALTER FUNCTION ${name.replace('.', '\\.')}\\([^;]*?\\) OWNER TO postgres`, 'i'), name);
     const revokedRoles = FORWARD_REVOKE_ROLES.get(name) ?? 'PUBLIC,anon,authenticated,service_role,hermes_store_executor';
-    assert.match(normalizedAclSql, new RegExp(`REVOKE ALL ON FUNCTION [^;]*?${name.replace('.', '\\.')}\\([^;]*?FROM ${revokedRoles}(?:;|$)`, 'i'), `${name}: revoke default/API execute explicitly`);
+    assert.match(revokeClauses, new RegExp(`REVOKE ALL ON FUNCTION [^;]*?${name.replace('.', '\\.')}\\([^;]*?FROM ${revokedRoles}(?:;|$)`, 'i'), `${name}: revoke default/API execute explicitly`);
     assert.doesNotMatch(definition, /\bEXECUTE\s+(?!ON\b)|\bSET\s+ROLE\b/i, name);
     // This reviewed audit bridge temporarily attributes its owner-bound audit
     // event and restores both prior claims. Its entire body is pinned above;
@@ -849,7 +853,7 @@ function securityContract(sql = all, registry = functions) {
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
     ['hermes_learning_ingest', new Set(LEARNING_INGEST)],
   ]);
-  for (const statement of splitSqlStatements(sql).map(clean)) {
+  for (const statement of expandedStatements) {
     const definition = /^CREATE (?:OR REPLACE )?FUNCTION ((?:app_private|public)\.\w+)\(([^)]*)\)/i.exec(statement);
     if (definition) {
       const key = signature(definition[1], definition[2], true);
@@ -1112,9 +1116,9 @@ test('every forward definition rejects body, privilege mode and search-path muta
 });
 
 test('forward ACL adapters retain the real recipients, catalog signatures and omitted executor revoke', () => {
+  const expanded = expandReviewedFunctionAcl(all).join(';\n');
   for (const block of FORWARD_ACL_BLOCKS) {
     assert(all.includes(block.sql));
-    const expanded = expandReviewedFunctionAcl(all);
     for (const [target] of block.targets) assert(expanded.includes(`REVOKE ALL ON FUNCTION ${target} FROM ${block.revokedRoles}`));
     for (const [before, after] of [['FROM PUBLIC,anon', 'FROM anon'], ['OWNER TO postgres', 'OWNER TO authenticated'],
       ["n.nspname='app_private'", "n.nspname IN ('app_private','public')"]]) {
@@ -1127,7 +1131,6 @@ test('forward ACL adapters retain the real recipients, catalog signatures and om
   }
   const core = FORWARD_ACL_BLOCKS.find(block => block.name === 'shared-read');
   assert.equal(core.revokedRoles, 'PUBLIC,anon,authenticated,service_role');
-  const expanded = expandReviewedFunctionAcl(all);
   for (const [target] of core.targets)
     assert(!expanded.includes(`REVOKE ALL ON FUNCTION ${target} FROM ${core.revokedRoles},hermes_store_executor`), 'adapter must never invent an executor revoke');
   assert.throws(() => expandReviewedFunctionAcl(all.replace(core.sql, () => core.sql.replace('TO authenticated', 'TO service_role'))), /unreviewed function ACL DO block/);

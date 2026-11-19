@@ -219,6 +219,7 @@ export function summarizeGatePlan(plan) {
     changedPaths: plan.changedPaths, reasons: plan.reasons, gateIds: plan.gateIds,
     gates: plan.gateIds.map((id) => { const gate = getGate(id, plan); return { id, command: gate.command, args: gate.args, local: gate.local, job: gate.job, evidenceClass: gate.evidenceClass, requires: gate.requires }; }),
     suites: plan.suiteSelections.map(({ id, runner, mode, files, viewports }) => ({ id, runner, mode, testFileCount: files.length, viewports })),
+    ciSuiteRemainders: plan.ciSuiteRemainders,
     generatorIds: plan.generatorIds, requiredJobs: plan.requiredJobs,
     requiredExternalWorkflows: plan.requiredExternalWorkflows, browserRequirements: plan.browserRequirements,
     unavailable: plan.unavailable, localEvidence: plan.localEvidence ?? [], executionMismatches: plan.executionMismatches,
@@ -244,7 +245,8 @@ async function main() {
   const dry = process.argv.includes('--plan');
   const live = process.argv.includes('--live');
   const riskMap = JSON.parse(readFileSync(join(repoRoot, 'tooling/risk-map.json'), 'utf8'));
-  let plan = planFromGit({ root: repoRoot, mode: 'staged', environment: 'local', full });
+  const stagedPlan = () => planFromGit({ root: repoRoot, mode: 'staged', environment: 'local', full, localFeedback: true });
+  let plan = stagedPlan();
   if (dry) { console.log(JSON.stringify(process.argv.includes('--json') ? plan : { ...summarizeGatePlan(plan), goiYLive: goiYLive(plan, riskMap) }, null, 2)); return; }
   if (plan.unavailable?.length) { console.error('CHƯA KIỂM: ' + JSON.stringify(plan.unavailable)); process.exitCode = 3; return; }
   const lock = chiemLock();
@@ -281,7 +283,7 @@ async function main() {
       if (added.status !== 0) throw new Error(added.stderr || 'Cannot stage owned artifacts');
     }
     // Generated inputs belong to this snapshot, not the plan from before preparation.
-    plan = planFromGit({ root: repoRoot, mode: 'staged', environment: 'local', full });
+    plan = stagedPlan();
     if (plan.unavailable?.length) { console.error('CHƯA KIỂM: ' + JSON.stringify(plan.unavailable)); process.exitCode = 3; return; }
     selected = selectLocalGates(plan, { full, live });
     const finalInputs = [...new Set([...selected.flatMap((gate) => gate.inputs), ...(plan.inputPaths ?? []), ...(plan.inputPatterns ?? [])])];
@@ -318,7 +320,9 @@ async function main() {
     // Gate live gọi Management API: từng gate một để không chạm giới hạn tốc độ.
     results.push(...await chayGioiHan(selected.filter(laLive).map((gate) => chayGate(gate, envLive)), 1));
     // Chạy sau, một mình: test DOM hết giờ khi chạy chen với các gate song song.
-    results.push({ id: 'vitest-related', ...await execute({ command: process.execPath, args: ['scripts/run-related-vitest.mjs', '--plan', join(cache, 'plan.json')] }) });
+    const relatedArgs = ['scripts/run-related-vitest.mjs', '--plan', join(cache, 'plan.json')];
+    if (results.some(result => result.id === 'suite:app-unit' && result.status === 'passed')) relatedArgs.push('--app-unit-passed');
+    results.push({ id: 'vitest-related', ...await execute({ command: process.execPath, args: relatedArgs }) });
     const finalTree = spawnSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).stdout?.trim();
     const finalConflicts = indexInputConflicts(repoRoot, finalInputs);
     if (finalTree !== plan.snapshot.tree || finalConflicts.length) {
@@ -334,6 +338,7 @@ async function main() {
     const requiredOnCi = plan.gateIds.filter((id) => !selected.some((gate) => gate.id === id));
     if (plan.browserRequirements?.length) console.log('KIỂM UI CẦN BẰNG CHỨNG RIÊNG (gate kỹ thuật không xác nhận giao diện): ' + JSON.stringify(plan.browserRequirements));
     if (requiredOnCi.length) console.log('CHƯA KIỂM ở local — CI chịu trách nhiệm: ' + requiredOnCi.join(', '));
+    for (const [suite, count] of Object.entries(plan.ciSuiteRemainders ?? {})) console.log(`CI kiểm toàn bộ ${suite}, gồm ${count} file ngoài phần kiểm trực tiếp ở local.`);
     const goiY = live ? null : goiYLive(plan, riskMap);
     if (goiY) {
       console.log('GỢI Ý: diff đụng ' + (goiY.paths.length ? goiY.paths.join(', ') : 'phạm vi cần gate live') + '.');

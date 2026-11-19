@@ -64,7 +64,7 @@ nodeGate('secret-scan', 'secret-scan', { args: ['scripts/ci-secret-scan.mjs'], l
 
 for (const [id, job, command, args] of [
   ['app-unit', 'vitest-tests', 'node', ['node_modules/vitest/vitest.mjs', 'run']],
-  ['node-native', 'quality-gates', 'node', ['--test']],
+  ['node-native', 'node-native-tests', 'node', ['--test']],
   ['organization-backup-envelope', 'quality-gates', 'node', ['--test']],
   ['bank-event-gateway', 'quality-gates', 'node', ['--test']],
   ['edge-deno-bank-events', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/bank-event-ingest/deno.json']],
