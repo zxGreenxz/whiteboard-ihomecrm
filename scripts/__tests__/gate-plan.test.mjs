@@ -12,6 +12,89 @@ const plan = (changes, extra = {}) => createGatePlan({ changes, snapshot, ...ext
 const button = 'export const Button = () => <button onClick={openDialog} className="p-2">Mở</button>;';
 
 describe("scope is a conservative proof, never a filename shortcut", () => {
+  it("keeps direct, sibling and source-mapped files locally and leaves profile-wide or fallback files to CI", () => {
+    const matrix = JSON.parse(readFileSync(new URL("../../tooling/test-matrix.json", import.meta.url), "utf8"));
+    const source = "src/lib/calendar-fixture.ts";
+    const mapped = "src/lib/__tests__/mapped.test.ts";
+    const direct = "src/lib/__tests__/direct.test.ts";
+    const other = "src/lib/__tests__/other.test.ts";
+    const sibling = "scripts/__tests__/gate-evidence.test.mjs";
+    const nativeOther = "scripts/__tests__/ci-gate-execution.test.mjs";
+    matrix.sourceSelectionRules.push({ id: "calendar-fixture", suiteId: "app-unit", sourcePaths: [source], testPatterns: [mapped] });
+    const inputs = { testMatrix: matrix, testFiles: [mapped, direct, other, sibling, nativeOther], localFeedback: true };
+    const files = (p, suite) => p.suiteSelections.find(s => s.id === suite)?.files ?? [];
+    for (const trigger of ["supabase/migrations/20261120000001_example.sql", "unknown/fixture"]) {
+      const changes = [trigger, source, direct, "scripts/gate-evidence.mjs"].map(path => changed(path, "before", "after"));
+      const local = plan(changes, inputs);
+      expect(files(local, "app-unit")).toEqual([direct, mapped]);
+      expect(files(local, "node-native")).toEqual([sibling]);
+      expect(local.ciSuiteRemainders).toEqual({ "app-unit": 1, "node-native": 1 });
+      for (const opts of [{ environment: "ci" }, { full: true }]) {
+        const broad = plan(changes, { ...inputs, ...opts });
+        expect(files(broad, "app-unit")).toEqual([direct, mapped, other]);
+        expect(files(broad, "node-native")).toEqual([nativeOther, sibling]);
+      }
+    }
+    const receiptOnly = plan([changed("supabase/migration-provenance.json", "{}", "{}")], inputs);
+    expect(files(receiptOnly, "app-unit")).toEqual([]);
+    expect(files(receiptOnly, "node-native")).toEqual([]);
+    expect(receiptOnly.ciSuiteRemainders).toEqual({ "app-unit": 3, "node-native": 2 });
+  });
+  it("partitions a full CI selection between the timezone job and ordinary Vitest without losing a file", () => {
+    const date = "src/hooks/reports/__tests__/useOccupancyDashboard.timezone.test.ts";
+    const ordinary = "src/lib/__tests__/clipboardFeedback.test.tsx";
+    const testFiles = [date, ordinary];
+    const p = plan([], { full: true, environment: "ci", testFiles });
+    expect(p.timezoneFiles).toEqual([date]);
+    expect(getGate("check-timezone", p).args).toEqual(["scripts/check-timezone-stability.mjs", "--files", date]);
+    expect(p.suiteSelections.find(s => s.id === "app-unit").files).toEqual([ordinary]);
+    expect(p.requiredJobs).toEqual(expect.arrayContaining(["timezone-gate", "vitest-tests"]));
+
+    const local = plan([], { full: true, testFiles });
+    expect(local.suiteSelections.find(s => s.id === "app-unit").files).toEqual(testFiles);
+    expect(getGate("check-timezone", local).local).toBe(false);
+  });
+
+  it("selects exactly one CI job for a date-only or ordinary-only app test edit", () => {
+    const date = "src/hooks/reports/__tests__/useOccupancyDashboard.timezone.test.ts";
+    const ordinary = "src/lib/__tests__/clipboardFeedback.test.tsx";
+    const select = path => plan([changed(path, "before", "after")], { environment: "ci", testFiles: [date, ordinary] });
+    const datePlan = select(date);
+    expect(datePlan.timezoneFiles).toEqual([date]);
+    expect(datePlan.gateIds).toContain("check-timezone");
+    expect(datePlan.gateIds).not.toContain("suite:app-unit");
+    expect(datePlan.unavailable).toEqual([]);
+    const ordinaryPlan = select(ordinary);
+    expect(ordinaryPlan.timezoneFiles).toEqual([]);
+    expect(ordinaryPlan.unavailable).not.toContainEqual(expect.objectContaining({ gateId: "check-timezone" }));
+    expect(ordinaryPlan.gateIds).not.toContain("check-timezone");
+    expect(ordinaryPlan.suiteSelections.find(s => s.id === "app-unit").files).toEqual([ordinary]);
+  });
+
+  it("reports an unavailable obligation when a required timezone run has no eligible tests", () => {
+    const testFiles = ["scripts/__tests__/check-timezone-stability.test.mjs"];
+    const ci = { environment: "ci", testFiles };
+    const full = plan([], { ...ci, full: true });
+    const verifier = plan([changed("scripts/check-timezone-stability.mjs", "before", "after")], ci);
+    for (const p of [full, verifier]) {
+      expect(p.unavailable).toContainEqual(expect.objectContaining({ gateId: "check-timezone" }));
+      expect(p.gateIds).not.toContain("check-timezone");
+      expect(p.requiredJobs).not.toContain("timezone-gate");
+    }
+  });
+
+  it("exercises the month regression under four timezones when editing the verifier itself", () => {
+    const date = "src/hooks/reports/__tests__/useOccupancyDashboard.timezone.test.ts";
+    const future = "src/hooks/__tests__/newDateBoundary.timezone.test.ts";
+    const verifier = "scripts/__tests__/check-timezone-stability.test.mjs";
+    const p = plan([changed("scripts/check-timezone-stability.mjs", "before", "after")], {
+      environment: "ci", testFiles: [date, verifier, future, "src/lib/__tests__/clipboardFeedback.test.tsx"],
+    });
+    expect(p.fullFallback).toBe(false);
+    expect(p.timezoneFiles).toEqual([future, date]);
+    expect(p.suiteSelections.find(s => s.id === "app-unit").files).toEqual([verifier]);
+    expect(() => getGate("check-timezone", { ...p, timezoneFiles: [] })).toThrow("Missing selected timezone tests");
+  });
   it('recomputes routing after source/test patterns and ownership change in the same manifest object', () => {
     const matrix = JSON.parse(readFileSync(new URL('../../tooling/test-matrix.json', import.meta.url), 'utf8'));
     const path = 'src/lib/pattern-cache-fixture.ts';

@@ -15,28 +15,18 @@
 // ngày đều rơi vào "ngày khác nhau" ở hai đầu — nếu có chỗ nào đọc giờ máy để suy ra
 // ngày thì nó sẽ lộ ra ở đây.
 //
-// KHÔNG chạy cả `src`: phần component không có logic ngày, thêm vào chỉ tốn thời gian.
-// Dùng GLOB thư mục chứ không phải danh sách file, để test viết sau tự động được phủ —
-// một danh sách cứng sẽ lỗi thời im lặng và gate thành trang trí.
-//
-//   node scripts/check-timezone-stability.mjs
-//   node scripts/check-timezone-stability.mjs --quick   # chỉ UTC vs Asia/Ho_Chi_Minh
-//
-// Không cần credential, không đọc database.
+// CI đưa vào đúng các file ngày/tháng do planner chọn. Chạy độc lập thì lấy
+// toàn bộ bộ test múi giờ đang hoạt động, gồm cả file mới theo quy ước tên.
+//   npm run gate:timezone
+//   npm run gate:timezone -- --quick   # UTC và giờ Việt Nam
 
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TIMEZONE_TEST_FILES, isTimezoneTest } from './lib/timezone-suite.mjs';
+import { isDeferredTest } from './lib/deferred-modules.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-// `src/copilot` vào danh sách từ 14/08/2026: Copilot chuẩn hoá kỳ tương đối
-// ("tháng này"/"tháng trước") bằng mã trong `temporalContext.ts`, tức nó có
-// logic ngày tháng thật và thừa hưởng nguyên lớp lỗi mà gate này canh — mô hình
-// hỏi "doanh thu tháng trước" lúc 1h sáng mùng 1 giờ VN mà máy chạy UTC sẽ ra
-// lệch hẳn một kỳ. Chú thích cũ "phần component không có logic ngày" vẫn đúng
-// cho phần còn lại của `src`, nhưng không còn đúng với thư mục này.
-const TARGETS = ['src/lib', 'src/hooks', 'src/copilot'];
 
 // UTC = môi trường CI. Asia/Ho_Chi_Minh = môi trường thật của dữ liệu.
 // Hai đầu mút là để bắt lỗi mà hai cái trên bỏ lọt: chênh nhau 25 giờ.
@@ -81,15 +71,17 @@ export function parseVitestSummary(output) {
   };
 }
 
-function runUnder(tz) {
-  // Gọi thẳng entry JS của vitest bằng process.execPath, KHÔNG qua npx: Node trên
-  // Windows từ chối spawn file .cmd khi shell:false (EINVAL, bản vá bảo mật), còn bật
-  // shell:true thì đường dẫn có dấu cách lại thành nguồn lỗi mới. Cách này không
-  // đụng shell nên chạy giống nhau ở mọi nền tảng.
+function standaloneFiles() {
+  const paths = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--',
+    '*.timezone.test.ts', '*.timezone.test.tsx'], { cwd: repoRoot, encoding: 'utf8' });
+  return [...new Set([...TIMEZONE_TEST_FILES, ...paths.split('\0').filter(Boolean)])].filter((file) => !isDeferredTest(file)).sort();
+}
+
+function runUnder(tz, files) {
   const r = spawnSync(
     process.execPath,
-    [join(repoRoot, "node_modules/vitest/vitest.mjs"), "run", ...TARGETS],
-    { cwd: repoRoot, encoding: "utf8", env: { ...process.env, TZ: tz } },
+    [join(repoRoot, 'scripts/run-selected-vitest.mjs'), '--files', ...files],
+    { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, TZ: tz } },
   );
   const output = `${r.stdout ?? ''}${r.stderr ?? ''}`;
   return { tz, code: r.status, summary: parseVitestSummary(output), failures: extractVitestFailures(output) };
@@ -97,14 +89,20 @@ function runUnder(tz) {
 
 function main(argv) {
   const zones = argv.includes('--quick') ? ZONES.slice(0, 2) : ZONES;
+  const fileFlag = argv.indexOf('--files');
+  const files = fileFlag === -1 ? standaloneFiles() : argv.slice(fileFlag + 1);
+  if (!files.length || files.some((file) => !isTimezoneTest(file) || isDeferredTest(file))) {
+    throw new Error('Cần chọn ít nhất một file test múi giờ đang hoạt động.');
+  }
   const results = [];
 
   for (const tz of zones) {
     process.stdout.write(`  chạy dưới TZ=${tz} … `);
-    const r = runUnder(tz);
+    const r = runUnder(tz, files);
     if (!r.summary) {
       console.log('KHÔNG ĐỌC ĐƯỢC KẾT QUẢ');
       console.error(`\n❌ Không parse được output vitest dưới TZ=${tz}. Gate này vô nghĩa nếu không đọc được kết quả, nên coi là đỏ.`);
+      for (const line of r.failures) console.error(`    ${line}`);
       process.exitCode = 1;
       return;
     }
@@ -112,7 +110,7 @@ function main(argv) {
     results.push(r);
   }
 
-  const failing = results.filter((r) => r.code !== 0 || r.summary.testsFailed > 0);
+  const failing = results.filter((r) => r.code !== 0 || r.summary.testsFailed > 0 || r.summary.filesPassed !== files.length || r.summary.testsPassed === 0);
   if (failing.length > 0) {
     console.error(`\n❌ Test ĐỎ dưới ${failing.length}/${results.length} múi giờ: ${failing.map((r) => r.tz).join(', ')}`);
     for (const r of failing) {
@@ -121,7 +119,7 @@ function main(argv) {
       for (const line of r.failures) console.error(`     ${line}`);
     }
     console.error('  → chạy lại tay để xem chi tiết:');
-    console.error(`     TZ=${failing[0].tz} npx vitest run ${TARGETS.join(' ')}`);
+    console.error(`     TZ=${failing[0].tz} node scripts/run-selected-vitest.mjs --files ${files.join(' ')}`);
     process.exitCode = 1;
     return;
   }
@@ -141,7 +139,6 @@ function main(argv) {
   console.log(
     `\n✅ ${summary.testsPassed} test (${summary.filesPassed} file) cho kết quả GIỐNG HỆT dưới ${results.length} múi giờ: ${zones.join(', ')}.`,
   );
-  console.log('   Khoảng cách UTC+14 ↔ UTC-11 là 25 giờ, nên mọi thời điểm trong ngày đều đã được thử ở hai "ngày" khác nhau.');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

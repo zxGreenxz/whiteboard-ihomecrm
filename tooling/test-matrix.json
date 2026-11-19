@@ -4,6 +4,13 @@
   "deferredModules": "tooling/deferred-modules.json",
   "sourceSelectionRules": [
     {
+      "id": "timezone-verifier",
+      "sourcePaths": ["scripts/check-timezone-stability.mjs"],
+      "suiteId": "app-unit",
+      "testPatterns": ["scripts/__tests__/check-timezone-stability.test.mjs"],
+      "gates": ["check-timezone"]
+    },
+    {
       "id": "invoice-component-revision",
       "sourcePaths": [
         "supabase/migrations/*_invoice_component_revision_consistency.sql",
@@ -1813,8 +1820,7 @@
       "sourcePaths": [
         "infra/meter-capture-worker/**",
         ".github/workflows/meter-capture-runtime.yml",
-        "tooling/runtime-matrix.json",
-        "tooling/test-matrix.json"
+        "tooling/runtime-matrix.json"
       ],
       "suiteId": "meter-capture-runtime",
       "testPatterns": [
@@ -2316,7 +2322,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "node --test",
-      "ciJob": "quality-gates (ci-gates) / validate (network-center-validation)",
+      "ciJob": "node-native-tests (ci-gates) / validate (network-center-validation)",
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
@@ -2413,7 +2419,7 @@
         },
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "node-native-tests"
         }
       ],
       "environment": "ci",

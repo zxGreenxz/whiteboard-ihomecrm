@@ -28,8 +28,11 @@ describe("run-related-vitest", () => {
   it("không chạy lại test mà bộ app-unit hẹp vừa chạy trong cùng lượt", () => {
     const tracked = ["src/a.ts", "src/a.test.ts", "src/b.test.ts"];
     const plan = { changedPaths: ["src/a.ts"], suiteSelections: [{ id: "app-unit", mode: "targeted", files: ["src/a.test.ts"] }] };
-    expect(chonRelated(plan, { tracked, matrix })).toEqual({ related: ["src/a.ts"], include: ["src/b.test.ts"] });
-    // Bộ app-unit "all" giao cho CI (không chạy ở máy) nên không loại gì.
-    expect(chonRelated({ ...plan, suiteSelections: [{ id: "app-unit", mode: "all", files: ["src/a.test.ts"] }] }, { tracked, matrix }).include).toHaveLength(2);
+    // A planned, skipped or failed command gives no record of complete coverage.
+    expect(chonRelated(plan, { tracked, matrix }).include).toEqual(["src/a.test.ts", "src/b.test.ts"]);
+    expect(chonRelated(plan, { tracked, matrix, appUnitPassed: true })).toEqual({ related: ["src/a.ts"], include: ["src/b.test.ts"] });
+    const full = { ...plan, suiteSelections: [{ id: "app-unit", mode: "all", files: ["src/a.test.ts", "src/b.test.ts"] }] };
+    expect(chonRelated(full, { tracked, matrix }).include).toHaveLength(2);
+    expect(chonRelated(full, { tracked, matrix, appUnitPassed: true }).include).toEqual([]);
   });
 });

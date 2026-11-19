@@ -6,6 +6,7 @@ import yaml from "js-yaml";
 import { globSangRegex, khopGlob, phanLoai } from "../check-risk-classifier.mjs";
 import { isDeferredGate, isDeferredTest, DEFERRED_TEST_PATTERNS } from "./deferred-modules.mjs";
 import { GATE_REGISTRY, GENERATOR_REGISTRY, isOfflineBrowserSelection } from "./gate-registry.mjs";
+import { isTimezoneTest } from "./timezone-suite.mjs";
 import { indexInputConflicts } from "./local-gate-snapshot.mjs";
 import { LIVE_BROWSER_OBLIGATION, LOCAL_E2E_EVIDENCE_DIR, applyLocalE2eEvidence, gitFleetResolver } from "./gate-e2e-local-evidence.mjs";
 
@@ -107,7 +108,7 @@ function sensitiveBehavior(change, demo) {
   return { money: money && (!demo || remote), auth: auth && !demo };
 }
 /** Pure selection; snapshots and manifests in, serializable obligations out. */
-export function createGatePlan({ changes = [], snapshot, full = false, environment = "local", riskMap = riskDefault, testMatrix = testsDefault, registry = GATE_REGISTRY, testFiles = [], trackedPaths = [], digests = {} } = {}) {
+export function createGatePlan({ changes = [], snapshot, full = false, environment = "local", localFeedback = false, riskMap = riskDefault, testMatrix = testsDefault, registry = GATE_REGISTRY, testFiles = [], trackedPaths = [], digests = {} } = {}) {
   if (!snapshot?.head || !snapshot?.tree) throw new Error("A verified snapshot head and tree are required");
   if (!riskMap.scope || !riskMap.gateProfiles || !Array.isArray(testMatrix.sourceSelectionRules)) throw new Error("Scope policy is missing or invalid");
   // A policy pattern is tested against many files/rules. Compile it once per
@@ -183,11 +184,14 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
   }
   if (offlinePaths.size) reasons.push({ path: null, profile: "ui-behavior", reason: "Offline demo source/spec scope contributes selected browser interaction; other changed files retain their own gates" });
   if (fullFallback) for (const [id, gate] of Object.entries(registry)) if (!id.startsWith("suite:") && gate.evidenceClass !== "live" && !isDeferredGate(id)) gates.add(id);
+  const sourceRules = new Set(matchedRules);
   for (const rule of testMatrix.sourceSelectionRules) if ((rule.profiles ?? []).some((p) => profiles.has(p))) matchedRules.add(rule);
   // Domain-specific static contracts travel with their source-to-test mapping.
   // Unknown ids still fail validation below; deferred gates remain excluded.
   for (const rule of matchedRules) for (const id of rule.gates ?? []) gates.add(id);
   const suiteSelections = []; const browserRequirements = []; const unavailable = []; const external = new Map();
+  let timezoneFiles = [];
+  const ciSuiteRemainders = {};
   const requireExternal = (workflow, suite, jobs) => {
     if (!external.has(workflow)) external.set(workflow, { workflow, jobs: [], suiteIds: [] });
     const item = external.get(workflow);
@@ -201,10 +205,28 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
     }
     for (const rule of rules.filter((r) => r.workflowOwner && r.workflowOwner !== ".github/workflows/ci-gates.yml")) requireExternal(rule.workflowOwner, suite, rule.jobs ?? []);
     rules = rules.filter((r) => !r.workflowOwner || r.workflowOwner === ".github/workflows/ci-gates.yml");
-    const all = fullFallback && suite.runner !== "playwright" && suite.workflowOwner === ".github/workflows/ci-gates.yml";
+    let all = fullFallback && suite.runner !== "playwright" && suite.workflowOwner === ".github/workflows/ci-gates.yml";
     let files = unique(testFiles.filter((f) => owned(f, suite) && (all || directTests.has(f) || rules.some((r) => matches(f, r.testPatterns)))));
     if (suite.id === "node-native") files = files.filter((f) => !f.includes("/network-center-"));
     if (!files.length) { if (rules.length) unavailable.push({ suiteId: suite.id, reason: "Selected mapping has no owned active tests" }); continue; }
+    if (environment === "local" && localFeedback && !full && ["app-unit", "node-native"].includes(suite.id)) {
+      // CI covers full fallback and cross-domain profile rules. Local feedback
+      // retains changed tests, sibling tests and each explicit source mapping.
+      rules = rules.filter(rule => sourceRules.has(rule));
+      const focused = files.filter(file => directTests.has(file) || rules.some(rule => matches(file, rule.testPatterns)));
+      if (focused.length < files.length) ciSuiteRemainders[suite.id] = files.length - focused.length;
+      files = focused;
+      all = false;
+      if (!files.length) continue;
+    }
+    if (environment === "ci" && suite.id === "app-unit") {
+      // The timezone job owns all four runs, including UTC. Every other
+      // selected app test stays in the ordinary single-run Vitest job.
+      const candidates = gates.has("check-timezone") && !all ? testFiles.filter(file => owned(file, suite)) : files;
+      timezoneFiles = unique(candidates.filter(isTimezoneTest));
+      files = files.filter((file) => !isTimezoneTest(file));
+      if (!files.length) continue;
+    }
     const selection = { id: suite.id, runner: suite.runner, files, mode: all ? "all" : "targeted", reason: all ? "Full active fallback" : rules.map((r) => r.id).join(", ") || "Changed owned test", viewports: unique(rules.flatMap((r) => r.viewports ?? [])) };
     suiteSelections.push(selection);
     if (suite.runner === "playwright") {
@@ -221,12 +243,19 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
     const responsive = changes.some((c) => manualUiPaths.includes(c.path) && (c.path.startsWith('src/components/ui/') || /(?:sm|md|lg|xl|2xl):|@media/.test((c.before ?? '') + (c.after ?? ''))));
     browserRequirements.push({ status: "required", suiteId: null, files: [], paths: manualUiPaths, viewports: responsive ? ["desktop", "mobile"] : ["affected"], reason: "Verify the affected UI viewport and console; no automatic browser spec mapped for these paths" });
   }
+  if (environment === "ci") {
+    if (timezoneFiles.length) gates.add("check-timezone");
+    else if (gates.delete("check-timezone")) {
+      unavailable.push({ gateId: "check-timezone", suiteId: "app-unit", reason: "Required timezone gate has no owned active date tests" });
+    }
+  }
   const gateIds = unique([...gates].filter((id) => !isDeferredGate(id)));
   for (const id of gateIds) if (!registry[id]) throw new Error(`Gate policy refers to unknown command: ${id}`);
   const inputPatterns = unique(gateIds.flatMap((id) => registry[id].inputs ?? []));
   return { schemaVersion: 1, snapshot, environment, profiles: [...profiles].sort(), reasons, changedPaths: paths,
-    gateIds, suiteSelections, generatorIds: Object.keys(GENERATOR_REGISTRY).filter((id) => generators.has(id)), requiredJobs: unique(gateIds.map((id) => registry[id].job).filter(Boolean)),
-    deferred: [...DEFERRED_TEST_PATTERNS], inputPatterns, inputPaths: unique([...paths, ...trackedPaths.filter((p) => matches(p, inputPatterns)), ...suiteSelections.flatMap((s) => s.files)]), fullFallback,
+    gateIds, suiteSelections, timezoneFiles, ...(Object.keys(ciSuiteRemainders).length ? { ciSuiteRemainders } : {}),
+    generatorIds: Object.keys(GENERATOR_REGISTRY).filter((id) => generators.has(id)), requiredJobs: unique(gateIds.map((id) => registry[id].job).filter(Boolean)),
+    deferred: [...DEFERRED_TEST_PATTERNS], inputPatterns, inputPaths: unique([...paths, ...trackedPaths.filter((p) => matches(p, inputPatterns)), ...suiteSelections.flatMap((s) => s.files), ...timezoneFiles]), fullFallback,
     crossReview: tierReview || profiles.has("schema") || profiles.has("money-auth") || profiles.has("shared-tooling"), browserRequirements, unavailable, requiredExternalWorkflows: [...external.values()], executionMismatches: [],
     policyDigest: digests.policyDigest ?? digest({ riskMap, testMatrix }), runtimeDigest: digests.runtimeDigest ?? digest({ fixture: true }), inputDigest: digests.inputDigest ?? digest({ snapshot, changes }) };
 }
@@ -241,7 +270,7 @@ function parseChanges(raw) {
   return changes;
 }
 /** Index only locally; explicit event before/after for commit scope. */
-export function planFromGit({ root, mode = "staged", base, head = "HEAD", full = false, environment = "local", localEvidence = true } = {}) {
+export function planFromGit({ root, mode = "staged", base, head = "HEAD", full = false, environment = "local", localEvidence = true, localFeedback = false } = {}) {
   if (!root || !["staged", "commit"].includes(mode)) throw new Error("root and a valid snapshot mode are required");
   const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
   const resolve = (ref) => git("rev-parse", "--verify", `${ref}^{commit}`).trim();
@@ -258,9 +287,9 @@ export function planFromGit({ root, mode = "staged", base, head = "HEAD", full =
   const riskText = optionalRead(tree, "tooling/risk-map.json"); const matrixText = optionalRead(tree, "tooling/test-matrix.json");
   if (!riskText || !matrixText) throw new Error("Scope policy missing from the selected Git snapshot");
   const riskMap = JSON.parse(riskText); const testMatrix = JSON.parse(matrixText);
-  const policyFiles = entries.filter((e) => matches(e.path, ["tooling/risk-map.json", "tooling/test-matrix.json", "tooling/deferred-modules.json", "scripts/lib/gate-*.mjs", "scripts/lib/deferred-modules.mjs", "scripts/check-risk-classifier.mjs", ".github/workflows/**", "package.json"]));
+  const policyFiles = entries.filter((e) => matches(e.path, ["tooling/risk-map.json", "tooling/test-matrix.json", "tooling/deferred-modules.json", "scripts/lib/gate-*.mjs", "scripts/lib/timezone-suite.mjs", "scripts/lib/deferred-modules.mjs", "scripts/check-risk-classifier.mjs", ".github/workflows/**", "package.json"]));
   const runtimeFiles = entries.filter((e) => matches(e.path, ["tooling/runtime-matrix.json", "**/package-lock.json", "**/deno.lock", "package.json", "**/package.json"]));
-  let p = createGatePlan({ changes, snapshot, full, environment, riskMap, testMatrix, trackedPaths: entries.map((e) => e.path), testFiles: entries.map((e) => e.path).filter((f) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(f)), digests: { policyDigest: digest(policyFiles), runtimeDigest: digest(runtimeFiles), inputDigest: digest(entries) } });
+  let p = createGatePlan({ changes, snapshot, full, environment, localFeedback, riskMap, testMatrix, trackedPaths: entries.map((e) => e.path), testFiles: entries.map((e) => e.path).filter((f) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(f)), digests: { policyDigest: digest(policyFiles), runtimeDigest: digest(runtimeFiles), inputDigest: digest(entries) } });
   // Local fleet E2E receipts come from the planned snapshot itself and are checked
   // against this repository's history; no receipt field is trusted on its own.
   if (localEvidence && p.unavailable.some((u) => u?.kind === LIVE_BROWSER_OBLIGATION)) {

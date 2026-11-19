@@ -33,9 +33,9 @@ export function testThuocAppUnit(files, matrix) {
 }
 
 /** Tập test Vitest được phép xét và tập file nguồn để dò liên quan. */
-export function chonRelated(plan, { tracked, matrix }) {
-  const narrow = plan.suiteSelections?.find((s) => s.id === 'app-unit' && s.mode === 'targeted');
-  const daChay = new Set(narrow?.files ?? []);
+export function chonRelated(plan, { tracked, matrix, appUnitPassed = false }) {
+  const completed = appUnitPassed && plan.suiteSelections?.find((s) => s.id === 'app-unit');
+  const daChay = new Set(completed?.files ?? []);
   const indexed = new Set(tracked);
   return {
     related: nguonLienQuan(plan.changedPaths, (p) => indexed.has(p)),
@@ -49,7 +49,7 @@ async function main(argv) {
   const plan = JSON.parse(readFileSync(planPath, 'utf8'));
   const matrix = JSON.parse(readFileSync('tooling/test-matrix.json', 'utf8'));
   const tracked = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
-  const { related, include } = chonRelated(plan, { tracked, matrix });
+  const { related, include } = chonRelated(plan, { tracked, matrix, appUnitPassed: argv.includes('--app-unit-passed') });
   if (!related.length || !include.length) { console.log('Vitest liên quan: không có file nguồn JS/TS cần dò'); return; }
   console.log(`Vitest liên quan: dò ${related.length} file nguồn trong ${include.length} test app-unit`);
   const { startVitest } = await import('vitest/node');

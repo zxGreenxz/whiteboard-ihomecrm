@@ -9,15 +9,20 @@ export function selectedVitestFiles(plan, expectedDigest) {
   const selections = plan?.suiteSelections?.filter((selection) => selection.id === 'app-unit');
   if (selections?.length !== 1 || !Array.isArray(selections[0].files) || selections[0].files.length === 0) throw new Error('Missing or empty app-unit selection');
   const files = selections[0].files;
-  if (new Set(files).size !== files.length) throw new Error('Duplicate file in app-unit selection');
+  validateExactVitestFiles(files);
+  if (selectionDigest(files) !== expectedDigest) throw new Error('Selected Vitest file digest differs from the gate command');
+  return [...files].sort();
+}
+
+export function validateExactVitestFiles(files) {
+  if (!files.length) throw new Error('Empty Vitest file selection');
+  if (new Set(files).size !== files.length) throw new Error('Duplicate file in Vitest selection');
   for (const file of files) {
     if (typeof file !== 'string' || /[\\:*?{}[\]!]/.test(file) || file.startsWith('/') ||
       file.split('/').some((part) => !part || part === '.' || part === '..') || !/\.(test|spec)\.[cm]?[jt]sx?$/.test(file)) {
       throw new Error(`Selection requires an exact repository-relative test path: ${file}`);
     }
   }
-  if (selectionDigest(files) !== expectedDigest) throw new Error('Selected Vitest file digest differs from the gate command');
-  return [...files].sort();
 }
 
 export function assertCollectedSelection(selected, collected, root) {
