@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { testTaskSqlMutations } from './task-sql-mutation-cases.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { setupNghiemThu, BUILDING, OTHER_BUILDING, ROOM, ROOM_A201, OTHER_ROOM } from './task-nghiem-thu-fixture.mjs';
@@ -85,12 +86,5 @@ test('mutation (lượt 16): the job-picks-building branch, the room-key filter 
     ['building question when nothing matches', mutate(CORE, 'IF v_roomamb IS NOT NULL THEN RETURN v_roomamb; END IF;', ''),
       async f => (await cancel(f, 1, { roomName: '201' })).field === 'room'],
   ];
-  for (const [label, mutant, probe] of CASES) {
-    await t.test(label, async () => {
-      assert.equal(await probe(await setup(t)), true, 'bản sửa chặn');
-      const f = await setup(t);
-      await f.db.exec(mutant);
-      assert.equal(await probe(f), false, 'đột biến lọt ⇒ test không rỗng');
-    });
-  }
+  await testTaskSqlMutations(t, await setup(t), CASES);
 });

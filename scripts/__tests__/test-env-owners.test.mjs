@@ -1,5 +1,6 @@
 import { PGlite } from '@electric-sql/pglite';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { snapshotPGliteFixture } from '../lib/pglite-test-fixture.mjs';
 import { haDangNhapVaiDichVu, kiemOwnersSnapshot, ownersDigest, ownersDigestTest, sqlKhoiPhucOwners, sqlKhoiPhucVai, sqlOwners } from '../test-env/owners.mjs';
 
 const roles = [{ name: 'ie_detail_reader', inherit: true, login: false, superuser: false,
@@ -15,15 +16,18 @@ const routine = { identity: 'public.read_details(uuid)', owner: 'ie_detail_reade
 const metadata = () => ({ roles: structuredClone(roles), memberships: structuredClone(memberships),
   routines: [structuredClone(routine)], schemaAcl: [{ schema: 'auth', grantee: 'ie_detail_reader', privilege: 'USAGE', grantable: false }] });
 
+let template;
+beforeAll(async () => {
+  template = await snapshotPGliteFixture(db => db.exec(`
+    CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+    CREATE SCHEMA auth; CREATE SCHEMA app_private;
+    CREATE FUNCTION public.read_details(uuid) RETURNS text LANGUAGE sql SECURITY DEFINER
+      SET search_path = pg_catalog AS 'SELECT current_user::text';`));
+});
+
 async function fixture(run) {
-  const db = new PGlite();
-  try {
-    await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
-      CREATE SCHEMA auth; CREATE SCHEMA app_private;
-      CREATE FUNCTION public.read_details(uuid) RETURNS text LANGUAGE sql SECURITY DEFINER
-        SET search_path = pg_catalog AS 'SELECT current_user::text';`);
-    await run(db);
-  } finally { await db.close(); }
+  const db = new PGlite({ loadDataDir: template });
+  try { await run(db); } finally { await db.close(); }
 }
 
 describe('TEST restore preserves restricted routine execution identity', () => {

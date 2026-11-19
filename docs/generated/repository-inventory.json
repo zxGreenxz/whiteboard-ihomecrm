@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1883,
   "soFileDocBangFs": 492,
-  "tongLoiGoi": 1348,
+  "tongLoiGoi": 1349,
   "khongPhanLoaiDuoc": 598,
   "theoLoai": {
     "ma-nguon": {
@@ -816,6 +816,14 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "scripts/__tests__/gate-plan.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 3
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/pwa-manifest.test.ts",
       "soGoi": 4,
       "loai": {
@@ -1090,14 +1098,6 @@
         "manifest": 3
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/gate-plan.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "manifest": 2
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/gen-supabase-types.test.ts",

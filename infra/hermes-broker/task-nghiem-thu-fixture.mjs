@@ -41,5 +41,10 @@ export async function setupNghiemThu(t, { resolve = RESOLVE_SQL, nghiemThu = NGH
     INSERT INTO public.profiles VALUES('${id}','${name.replaceAll("'", "''")}') ON CONFLICT (id) DO UPDATE SET full_name=excluded.full_name;`);
   const run = (action, phase, n, params, extra) => f.run(action, phase, rid(n), params, extra);
   const offers = async () => (await db.query('SELECT count(*)::int n FROM app_private.hermes_task_assignee_offers')).rows[0].n;
-  return { ...f, job, person, run, offers };
+  // The SQL rollback restores jobs; restore their fixture-generated codes as well.
+  const rollbackCase = async work => {
+    const previous = n;
+    try { await f.rollbackCase(work); } finally { n = previous; }
+  };
+  return { ...f, job, person, run, offers, rollbackCase };
 }

@@ -14,7 +14,7 @@ function filesFromArgs(argv) {
   const path = argument('--plan');
   const digest = argument('--selection-digest');
   if (!path || !digest) throw new Error('Required --plan <json> --selection-digest <sha256>');
-  return selectedVitestFiles(JSON.parse(readFileSync(path, 'utf8')), digest);
+  return selectedVitestFiles(JSON.parse(readFileSync(path, 'utf8')), digest, Number(argument('--shard') ?? 1));
 }
 
 export async function runSelectedVitest(argv) {

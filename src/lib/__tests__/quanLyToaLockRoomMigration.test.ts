@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { snapshotPGliteFixture } from '../../../scripts/lib/pglite-test-fixture.mjs';
 
 // 31/10/2026: chủ yêu cầu cấp sale_phong.lock_room (Lock tạm phòng) cho vai "Quản Lý Tòa" của công ty iHome bằng dữ liệu.
 // Migration cấp đúng khoá đó cho đúng vai đó (org iHome, system_key NULL, ACTIVE). Mọi dòng / vai / org khác giữ nguyên,
@@ -16,11 +17,10 @@ const open: PGlite[] = [];
 afterEach(async () => { await Promise.all(open.splice(0).map(db => db.close())); });
 
 type Fixture = { withLockKey?: boolean; orgs?: boolean; manager?: { name?: string; status?: string; systemKey?: string | null } };
-async function database({ withLockKey = true, orgs = true, manager = {} }: Fixture = {}) {
-  const db = new PGlite();
-  open.push(db);
+let template: Blob;
+beforeAll(async () => {
   // Cột, khoá chính, khoá ngoại, CHECK, hai unique index và trigger a10_bump_authz_version theo supabase/baseline/schema.sql.
-  await db.exec(`
+  template = await snapshotPGliteFixture(db => db.exec(`
     CREATE TABLE organizations(id uuid PRIMARY KEY, authorization_version bigint NOT NULL DEFAULT 1);
     CREATE TABLE permission_definitions(key text PRIMARY KEY, permission_domain text NOT NULL, is_active boolean NOT NULL);
     CREATE TABLE organization_roles(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL REFERENCES organizations(id),
@@ -42,7 +42,12 @@ async function database({ withLockKey = true, orgs = true, manager = {} }: Fixtu
     END $$;
     CREATE TRIGGER a10_bump_authz_version AFTER INSERT OR DELETE OR UPDATE ON role_permissions FOR EACH ROW EXECUTE FUNCTION bump_org_authorization_version();
     INSERT INTO permission_definitions VALUES ('deposits.create','TENANT',true),('rooms.edit','TENANT',true);
-  `);
+  `));
+}, PGLITE_TIMEOUT_MS);
+
+async function database({ withLockKey = true, orgs = true, manager = {} }: Fixture = {}) {
+  const db = new PGlite({ loadDataDir: template });
+  open.push(db);
   if (withLockKey) await db.exec(`INSERT INTO permission_definitions VALUES ('sale_phong.lock_room','TENANT',true);`);
   if (!orgs) return db;
   const systemKey = manager.systemKey ?? null;

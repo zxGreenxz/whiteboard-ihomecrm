@@ -543,6 +543,7 @@ async function dungNen(d: PGlite) {
 }
 
 const db = new PGlite();
+let nenTruocMigration: Blob;
 const ghi: Record<string, unknown> = {};
 let soKhoa = 0;
 const khoa = (tien = "k") => `${tien}-${String(++soKhoa).padStart(6, "0")}`;
@@ -740,6 +741,8 @@ async function dongLuong(o: { cd: string; thang: string; y: number; d?: number; 
 
 beforeAll(async () => {
   await dungNen(db);
+  // Ba ca kiểm COMMIT và ROLLBACK cần database riêng từ đúng trạng thái trước migration.
+  nenTruocMigration = await db.dumpDataDir("none");
   ghi.rangBuocTruoc = await mot<string>(`SELECT pg_get_constraintdef(c.oid) AS v FROM pg_constraint c
     WHERE c.conrelid = 'app_private.profit_ledger_payouts'::regclass AND c.conname = 'profit_ledger_payouts_maker_kind_check'`);
   ghi.md5E5Truoc = await mot<string>(`SELECT md5(replace(p.prosrc, chr(13), '')) AS v FROM pg_proc p
@@ -831,9 +834,8 @@ describe("khung thử: nền Đợt 1 thật và hai lượt migration", () => {
     expect((ghi.luot1 as { loai: unknown[] }).loai).toHaveLength(2);
   });
   it("chạy như lane: dán thân HAI lần trong MỘT giao dịch trên nền chưa áp rồi ROLLBACK ⇒ không để lại gì; COMMIT một lượt ⇒ đủ đối tượng", async () => {
-    const lan = new PGlite();
+    const lan = new PGlite({ loadDataDir: nenTruocMigration });
     try {
-      await dungNen(lan);
       expect(THAN).not.toMatch(/^(BEGIN|COMMIT);/m);
       await lan.exec(`BEGIN; ${THAN} ${THAN} ROLLBACK;`);
       const con = async () => (await lan.query<{ v: unknown }>(`SELECT jsonb_build_object(
@@ -1822,9 +1824,8 @@ describe("20261118143113 — migration: chỉ đổi thân + COMMENT của E6, t
     });
   });
   it("chạy như lane: trên nền vừa áp migration tạm ứng, dán thân HAI lần trong MỘT giao dịch rồi ROLLBACK ⇒ mọi hàm như trước (E6 = thân production); COMMIT một lượt rồi chạy lại cả file ⇒ thân che, ACL như trước", async () => {
-    const lan = new PGlite();
+    const lan = new PGlite({ loadDataDir: nenTruocMigration });
     try {
-      await dungNen(lan);
       await lan.exec(MIGRATION);
       const truoc = await chupHam(lan);
       expect(await md5E6(lan)).toBe(md5(E6_CHAN.body));
@@ -2138,9 +2139,8 @@ describe("20261118171708 — migration: chỉ ACL E4 / E5 và thân + COMMENT E6
     });
   });
   it("chạy như lane: trên nền vừa áp 20261118143113, dán thân HAI lần trong MỘT giao dịch rồi ROLLBACK ⇒ mọi hàm như trước; COMMIT một lượt rồi chạy lại cả file ⇒ E4 / E5 hết quyền của authenticated, E6 / R4 thân mới, ACL E6 / R4 như trước", async () => {
-    const lan = new PGlite();
+    const lan = new PGlite({ loadDataDir: nenTruocMigration });
     try {
-      await dungNen(lan);
       await lan.exec(MIGRATION);
       await lan.exec(HUY_CHE);
       const truoc = await chupHam(lan);

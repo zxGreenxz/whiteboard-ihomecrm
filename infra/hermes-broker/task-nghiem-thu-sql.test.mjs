@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { testTaskSqlMutations } from './task-sql-mutation-cases.mjs';
 import assert from 'node:assert/strict';
 import { setupNghiemThu as setup, RESOLVE_SQL, NGHIEM_THU_SQL, ORG, USER, BUILDING, OTHER_BUILDING, ROOM, MANAGER, STAFF, MINH, CO_OWNER, ROOM_A201,
   OTHER_ROOM, ANH_TU, TU_LE, TYPE_NVK, u } from './task-nghiem-thu-fixture.mjs';
@@ -196,12 +197,5 @@ test('mutation (11b): every Q31 offer barrier, the building-name filter, the use
         const r = await f.run('task.update', 'preview', 1, { job: 'việc sửa vòi nước phòng 201', note: 'x' });
         return r.kind === 'preview' && r.resolved.jobId === id; }],
   ];
-  for (const [label, mutant, probe] of [...PREPARE, ...OTHERS]) {
-    await t.test(label, async () => {
-      assert.equal(await probe(await setup(t)), true, 'bản sửa chặn');
-      const f = await setup(t);
-      await f.db.exec(mutant);
-      assert.equal(await probe(f), false, 'đột biến lọt ⇒ test không rỗng');
-    });
-  }
+  await testTaskSqlMutations(t, await setup(t), [...PREPARE, ...OTHERS]);
 });

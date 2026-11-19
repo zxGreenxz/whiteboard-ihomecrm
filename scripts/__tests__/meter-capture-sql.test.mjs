@@ -19,9 +19,8 @@ const [org, actor, building, room, meter, contract, service, foreignOrg, foreign
 const sha = 'a'.repeat(64);
 const profilePath = `${org}/profiles/${meter}/${actor}/${id(50)}`;
 
-async function fixture(source = sql) {
- const db = new PGlite();
- await db.exec(`CREATE ROLE authenticated;CREATE ROLE anon;CREATE ROLE service_role;
+const sessionSettings = `SELECT set_config('test.actor','${actor}',false),set_config('test.access','yes',false)`;
+const baseSchema = `CREATE ROLE authenticated;CREATE ROLE anon;CREATE ROLE service_role;
  CREATE SCHEMA auth;CREATE SCHEMA app_private;CREATE SCHEMA storage;
  CREATE TYPE invoice_item_type AS ENUM ('RENT','SERVICE','OTHER');
  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.actor',true),'')::uuid $$;
@@ -68,14 +67,46 @@ async function fixture(source = sql) {
  IF x ? 'meter_source' OR x ? 'meter_id' THEN RAISE EXCEPTION 'Source metadata/duplicate meter must be stripped'; END IF; END LOOP;
  INSERT INTO contract_exit_cases(organization_id,contract_id,actual_move_out_on,state) VALUES(p_organization_id,p_contract_id,p_actual_move_out_on,'FINALIZED') RETURNING id INTO v_id;
  RETURN jsonb_build_object('id',v_id,'state','FINALIZED'); END $$;
- ${terminationHelper}
- SELECT set_config('test.actor','${actor}',false),set_config('test.access','yes',false);`);
- try { await db.exec(source); await db.exec(source); } catch(error) {
+ ${terminationHelper}`;
+
+// Every probe gets a private database, including a fresh PostgreSQL session.
+// Mutation probes start before the migrations so original definitions cannot mask a mutation.
+let snapshots;
+async function createSnapshots() {
+ const db = new PGlite();
+ try {
+  await db.exec(baseSchema);
+  const base = await db.dumpDataDir('none');
+  await db.exec(sessionSettings);
+  await applyMigrations(db, sql);
+  return { base, migrated: await db.dumpDataDir('none') };
+ } finally {
   await db.close();
-  const position=Number(error.position??0); error.message+=` (migration line ${source.slice(0,position).split('\n').length}, context ${error.where??error.internalQuery??''})`;
+ }
+}
+
+async function applyMigrations(db, source) {
+ try {
+  await db.exec(source);
+  await db.exec(source); // Check that the same migration chain can be replayed.
+ } catch (error) {
+  const position = Number(error.position ?? 0);
+  error.message += ` (migration line ${source.slice(0, position).split('\n').length}, context ${error.where ?? error.internalQuery ?? ''})`;
   throw error;
  }
- return db;
+}
+
+async function fixture(source = sql) {
+ const { base, migrated } = await (snapshots ??= createSnapshots());
+ const db = new PGlite({ loadDataDir: source === sql ? migrated : base });
+ try {
+  await db.exec(sessionSettings);
+  if (source !== sql) await applyMigrations(db, source);
+  return db;
+ } catch (error) {
+  await db.close();
+  throw error;
+ }
 }
 async function rpc(db, action, payload = {}, organization = org) {
  return (await db.query('SELECT public.meter_capture_v1($1,$2,$3) AS result', [organization, action, JSON.stringify(payload)])).rows[0].result;

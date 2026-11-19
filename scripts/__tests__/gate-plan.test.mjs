@@ -6,12 +6,47 @@ import { execFileSync } from "node:child_process";
 import { createGatePlan, planFromGit, isCosmeticChange } from "../lib/gate-plan.mjs";
 import { GATE_REGISTRY, getGate, isOfflineBrowserSelection } from "../lib/gate-registry.mjs";
 
+import { executeGateJob } from '../lib/ci-gate-execution.mjs';
+import { selectedVitestFiles } from '../lib/selected-vitest.mjs';
+
 const snapshot = { base: "base", head: "head", tree: "tree", source: "fixture" };
 const changed = (path, before, after, extra = {}) => ({ path, before, after, status: "M", ...extra });
 const plan = (changes, extra = {}) => createGatePlan({ changes, snapshot, ...extra });
 const button = 'export const Button = () => <button onClick={openDialog} className="p-2">Mở</button>;';
 
 describe("scope is a conservative proof, never a filename shortcut", () => {
+  it('shards only broad CI selections, covers every file once and binds each runner to its own receipt', () => {
+    const matrix = JSON.parse(readFileSync(new URL('../../tooling/test-matrix.json', import.meta.url), 'utf8'));
+    matrix.suites.find(s => s.id === 'node-native').includes.push('infra/shard-fixture/*.test.mjs');
+    const app = Array.from({ length: 257 }, (_, i) => `src/lib/sample-${i}.test.ts`);
+    const native = Array.from({ length: 65 }, (_, i) => `infra/shard-fixture/example-${i}.test.mjs`);
+    const build = (testFiles, environment) => plan([], { full: true, environment, testFiles, testMatrix: matrix });
+    const broad = build([...app, ...native], 'ci');
+    for (const [suiteId, expected] of [['app-unit', app], ['node-native', native]]) {
+      const base = `suite:${suiteId}`;
+      const second = `${base}-shard-2`;
+      expect(broad.gateIds).toContain(second);
+      const results = [1, 2].map(shard => {
+        const calls = [];
+        const result = executeGateJob({ plan: broad, jobId: getGate(base, broad).job, shard, getGate, runId: 'run:1',
+          execute: gate => { calls.push(gate); return { status: 0 }; } });
+        const id = shard === 1 ? base : second;
+        expect(calls.map(g => g.id)).toEqual([id]);
+        expect(result.receipts.map(r => r.gateId)).toEqual([id]);
+        const args = calls[0].args;
+        if (suiteId === 'node-native') return args.slice(1);
+        expect(args[args.indexOf('--shard') + 1]).toBe(String(shard));
+        return selectedVitestFiles(broad, args.at(-1), shard);
+      });
+      expect(results[0].length).toBe(results[1].length + 1);
+      expect(results.flat().sort()).toEqual([...expected].sort());
+    }
+    const small = build([...app.slice(0, 255), ...native.slice(0, 63)], 'ci');
+    const local = build([...app, ...native], 'local');
+    for (const p of [small, local]) expect(p.gateIds.some(id => id.endsWith('-shard-2'))).toBe(false);
+  });
+
+
   it("keeps direct, sibling and source-mapped files locally and leaves profile-wide or fallback files to CI", () => {
     const matrix = JSON.parse(readFileSync(new URL("../../tooling/test-matrix.json", import.meta.url), "utf8"));
     const source = "src/lib/calendar-fixture.ts";

@@ -1,15 +1,16 @@
 import { createHash } from 'node:crypto';
 import { relative } from 'node:path';
+import { filesForTestShard } from './gate-test-shards.mjs';
 
 export function selectionDigest(files) {
   return createHash('sha256').update(JSON.stringify([...files].sort())).digest('hex');
 }
 
-export function selectedVitestFiles(plan, expectedDigest) {
+export function selectedVitestFiles(plan, expectedDigest, shard = 1) {
   const selections = plan?.suiteSelections?.filter((selection) => selection.id === 'app-unit');
   if (selections?.length !== 1 || !Array.isArray(selections[0].files) || selections[0].files.length === 0) throw new Error('Missing or empty app-unit selection');
-  const files = selections[0].files;
-  validateExactVitestFiles(files);
+  validateExactVitestFiles(selections[0].files);
+  const files = filesForTestShard(selections[0], shard);
   if (selectionDigest(files) !== expectedDigest) throw new Error('Selected Vitest file digest differs from the gate command');
   return [...files].sort();
 }
