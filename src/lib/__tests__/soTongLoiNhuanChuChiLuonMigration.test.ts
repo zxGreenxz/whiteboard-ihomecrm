@@ -1247,6 +1247,31 @@ describe("người không có quyền chi vẫn bị chặn", () => {
       expect(await trangThai(p2)).toEqual({ approval_status: "APPROVED", posting_status: "POSTED" });
     });
   });
+  it("quyền xét theo ĐÚNG loại chủ thể: nick chủ bị thu RIÊNG quyền chi lương điều hành (DENY pay_manager, vẫn còn distribute) ⇒ không tự duyệt phiếu lương điều hành mình lập (MAKER_SELF_APPROVE), người nhận không tự Chi phiếu lương điều hành (PAYEE_SELF_POST); chủ khác vẫn làm được", async () => {
+    await giaoDich(async () => {
+      await nenLuongDieuHanh(50);
+      const tuLap = await goi<KqLuong>(CHU, e11(QL_CHU, 10));     // CHU lập lương điều hành cho chính mình
+      const choChu = await goi<KqLuong>(CHU3, e11(QL_CHU, 20));   // nick không giữ sổ lập cho CHU (người nhận)
+      expect(await duyet(choChu.voucher_id, CHU3)).toBeNull();   // CHU3 còn pay_manager ⇒ người lập tự duyệt được
+      await camQuyen(CHU, "shareholder_profit.pay_manager", 331);
+      // Tiền đề của ca: CHU vẫn có quyền chi lợi nhuận cổ đông theo cả công ty, chỉ mất quyền chi lương điều hành — phép
+      // kiểm dùng nhầm khoá distribute cho phiếu lương điều hành sẽ cho qua.
+      await dangNhap(CHU);
+      const quyen = (k: string) => mot<boolean>(`SELECT COALESCE(bool_or(s.org_wide), false) AS v
+        FROM app_private.authorized_scope_v3('${k}', '${ORG_A}') s`);
+      expect(await quyen("shareholder_profit.distribute")).toBe(true);
+      expect(await quyen("shareholder_profit.pay_manager")).toBe(false);
+      laLoi(await duyet(tuLap.voucher_id, CHU), "42501", "PROFIT_LEDGER_MAKER_SELF_APPROVE");
+      laLoi(await duyetChi(tuLap.voucher_id, CHU, SO_QUY), "42501", "PROFIT_LEDGER_MAKER_SELF_APPROVE");
+      expect(await trangThai(tuLap.voucher_id)).toEqual({ approval_status: "UNAPPROVED", posting_status: "UNPOSTED" });
+      laLoi(await ghiSo(choChu.voucher_id, CHU, SO_QUY), "42501", "PROFIT_LEDGER_PAYEE_SELF_POST");
+      expect(await trangThai(choChu.voucher_id)).toEqual({ approval_status: "APPROVED", posting_status: "UNPOSTED" });
+      expect(await duyet(tuLap.voucher_id, CHU2)).toBeNull();
+      expect(await ghiSo(choChu.voucher_id, CHU2, SO_QUY)).toBeNull();
+      expect(await trangThai(choChu.voucher_id)).toEqual({ approval_status: "APPROVED", posting_status: "POSTED" });
+      expect(await dauChuTu(choChu.voucher_id)).toEqual({ PAYOUT_APPROVED: { maker: true, payee: false }, PAYOUT_CREATED: null, PAYOUT_POSTED: null });
+    });
+  });
   it("người nhận là cổ đông giữ sổ nhưng không có quyền chi lợi nhuận: chủ lập tự duyệt được, người nhận KHÔNG tự Chi (PAYEE_SELF_POST)", async () => {
     await giaoDich(async () => {
       await chotThang("2026-09-01", TOA_1, { [CD_TU]: 100 });
