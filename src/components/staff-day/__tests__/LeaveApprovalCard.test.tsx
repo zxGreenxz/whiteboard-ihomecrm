@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 // Thẻ «Đơn xin nghỉ chờ duyệt» trên các màn Hôm nay: chỉ super admin thấy nút (khớp cổng
-// `approve_leave` = is_super_admin), bấm gửi đúng người/ngày/quyết định, lỗi đọc không giả là «không có đơn».
+// `approve_leave_batch` = is_super_admin), các ngày cùng đơn gom một dòng và bấm một lần gửi đúng người / mọi ngày /
+// quyết định, lỗi đọc không giả là «không có đơn». Gom nhóm và nhãn ngày dùng module thật (@/lib/leaveDates).
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-type Row = { user_id: string; work_date: string; reason: string | null; requested_at: string | null; staff_name: string };
+type Row = { user_id: string; work_date: string; reason: string | null; requested_at: string | null; staff_name: string; batch: string | null };
 
 const m = vi.hoisted(() => ({
   superAdmin: { data: true as boolean | undefined },
@@ -19,7 +20,7 @@ const m = vi.hoisted(() => ({
 vi.mock("@/hooks/useIsAdmin", () => ({ useIsSuperAdmin: () => m.superAdmin }));
 vi.mock("@/hooks/useMyDay", () => ({
   usePendingLeaveRequests: (enabled: boolean) => { m.enabledArgs.push(enabled); return m.leaves; },
-  useApproveLeave: () => ({ mutate: m.mutate, ...m.approve }),
+  useApproveLeaveBatch: () => ({ mutate: m.mutate, ...m.approve }),
   leaveActionErrorMessage: (_error: unknown, args: { date: string; approve: boolean; employeeName?: string }) =>
     `lỗi ${args.approve ? "duyệt" : "từ chối"} ${args.employeeName} ${args.date}`,
 }));
@@ -27,8 +28,10 @@ vi.mock("sonner", () => ({ toast: { success: m.success, error: m.error } }));
 
 import { LeaveApprovalCard } from "../LeaveApprovalCard";
 
-const JOEY: Row = { user_id: "u-joey", work_date: "2026-11-18", reason: null, requested_at: "2026-11-18T15:54:48Z", staff_name: "JOEY" };
-const NATHAN: Row = { user_id: "u-nathan", work_date: "2026-11-20", reason: "Về quê", requested_at: null, staff_name: "NATHAN" };
+const JOEY: Row = { user_id: "u-joey", work_date: "2026-11-18", reason: null, requested_at: "2026-11-18T15:54:48Z", staff_name: "JOEY", batch: null };
+const NATHAN: Row = { user_id: "u-nathan", work_date: "2026-11-20", reason: "Về quê", requested_at: null, staff_name: "NATHAN", batch: null };
+/** Đơn ba ngày 20/11 → 23/11 (Chủ nhật 22/11 không có dòng) của JOEY — các dòng đọc về theo work_date, xen dòng khác. */
+const joeyDon = (work_date: string): Row => ({ user_id: "u-joey", work_date, reason: "Đám cưới", requested_at: "2026-11-19T02:00:00Z", staff_name: "JOEY", batch: "don-joey" });
 
 const loaded = (rows: Row[]) => ({
   data: rows, status: "success", fetchStatus: "idle", isLoading: false, isError: false, error: null, refetch: vi.fn(),
@@ -70,7 +73,7 @@ describe("LeaveApprovalCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Duyệt đơn nghỉ ngày 18/11/2026 của JOEY" }));
     expect(m.mutate).toHaveBeenCalledTimes(1);
-    expect(m.mutate.mock.calls[0][0]).toEqual({ user: "u-joey", date: "2026-11-18", approve: true });
+    expect(m.mutate.mock.calls[0][0]).toEqual({ user: "u-joey", dates: ["2026-11-18"], approve: true });
     m.mutate.mock.calls[0][1].onSuccess();
     expect(m.success).toHaveBeenCalledWith("Đã duyệt đơn nghỉ ngày 18/11/2026 của JOEY.");
   });
@@ -78,10 +81,36 @@ describe("LeaveApprovalCard", () => {
   it("Từ chối gửi approve=false; lỗi báo theo đúng đơn bị bấm", () => {
     render(<LeaveApprovalCard />);
     fireEvent.click(screen.getByRole("button", { name: "Từ chối đơn nghỉ ngày 20/11/2026 của NATHAN" }));
-    expect(m.mutate.mock.calls[0][0]).toEqual({ user: "u-nathan", date: "2026-11-20", approve: false });
+    expect(m.mutate.mock.calls[0][0]).toEqual({ user: "u-nathan", dates: ["2026-11-20"], approve: false });
     m.mutate.mock.calls[0][1].onError(new Error("Ngày này không ở trạng thái chờ duyệt phép"));
-    expect(m.error).toHaveBeenCalledWith("lỗi từ chối NATHAN 2026-11-20");
+    expect(m.error).toHaveBeenCalledWith("lỗi từ chối NATHAN 20/11/2026");
     expect(m.success).not.toHaveBeenCalled();
+  });
+
+  it("đơn nhiều ngày gom MỘT dòng; Duyệt cả đơn gửi mọi ngày trong một lần", () => {
+    m.leaves = loaded([joeyDon("2026-11-20"), NATHAN, joeyDon("2026-11-23"), joeyDon("2026-11-21")]);
+    render(<LeaveApprovalCard />);
+    expect(screen.getByText("2 đơn")).toBeTruthy();
+    expect(screen.getByText("Nghỉ 3 ngày: 20/11 → 23/11")).toBeTruthy();
+    expect(screen.getByText("Đám cưới")).toBeTruthy();
+    const nut = screen.getByRole("button", { name: "Duyệt đơn nghỉ 3 ngày: 20/11 → 23/11 của JOEY" });
+    expect(nut.textContent).toBe("Duyệt cả 3 ngày");
+    fireEvent.click(nut);
+    expect(m.mutate).toHaveBeenCalledTimes(1);
+    expect(m.mutate.mock.calls[0][0]).toEqual({ user: "u-joey", dates: ["2026-11-20", "2026-11-21", "2026-11-23"], approve: true });
+    m.mutate.mock.calls[0][1].onSuccess();
+    expect(m.success).toHaveBeenCalledWith("Đã duyệt đơn nghỉ 3 ngày: 20/11 → 23/11 của JOEY.");
+    m.mutate.mock.calls[0][1].onError(new Error("x"));
+    expect(m.error).toHaveBeenCalledWith("lỗi duyệt JOEY 20/11 → 23/11");
+  });
+
+  it("hai đơn khác nhau của cùng một người và ngày gửi lẻ không bị gộp", () => {
+    m.leaves = loaded([joeyDon("2026-11-20"), { ...joeyDon("2026-11-25"), batch: "don-khac" }, JOEY]);
+    render(<LeaveApprovalCard />);
+    expect(screen.getByText("3 đơn")).toBeTruthy();
+    expect(screen.getByText("Nghỉ ngày 20/11/2026")).toBeTruthy();
+    expect(screen.getByText("Nghỉ ngày 25/11/2026")).toBeTruthy();
+    expect(screen.getByText("Nghỉ ngày 18/11/2026")).toBeTruthy();
   });
 
   it("trang một người chỉ hiện đơn của người đó", () => {
@@ -116,7 +145,7 @@ describe("LeaveApprovalCard", () => {
   });
 
   it("đang gửi một quyết định: khoá mọi nút, nhãn chỉ đổi ở đơn đang gửi", () => {
-    m.approve = { isPending: true, variables: { user: "u-joey", date: "2026-11-18", approve: true } };
+    m.approve = { isPending: true, variables: { user: "u-joey", dates: ["2026-11-18"], approve: true } };
     render(<LeaveApprovalCard />);
     const joey = screen.getByRole("button", { name: "Duyệt đơn nghỉ ngày 18/11/2026 của JOEY" }) as HTMLButtonElement;
     const nathan = screen.getByRole("button", { name: "Duyệt đơn nghỉ ngày 20/11/2026 của NATHAN" }) as HTMLButtonElement;

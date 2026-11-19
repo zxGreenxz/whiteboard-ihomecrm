@@ -39,6 +39,8 @@
     "src/components/staff-day/JourneyTimeline.tsx",
     "src/components/staff-day/JourneyMap.tsx",
     "src/components/staff-day/LeaveApprovalCard.tsx",
+    "src/components/staff-day/LeaveRequestForm.tsx",
+    "src/lib/leaveDates.ts",
     "src/pages/my-day/TeamDayPage.tsx",
     "src/pages/my-day/StaffDayPage.tsx",
     "src/pages/my-day/StaffJourneyPage.tsx",
