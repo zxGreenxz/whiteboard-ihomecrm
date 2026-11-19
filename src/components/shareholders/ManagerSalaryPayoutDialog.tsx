@@ -17,6 +17,8 @@ import { Info, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
+  DIALOG_SCROLL_BODY,
+  DIALOG_STICKY_FOOTER,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -276,7 +278,7 @@ export default function ManagerSalaryPayoutDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!closeBlocked) onOpenChange(next); }}>
       {/* Cùng khuôn hộp dài với ProfitDistributeDialog: ở CANONICAL câu luật duyệt làm hộp cao hơn khung điện
           thoại (đo 16/11/2026: 882px trong 844px) ⇒ giới hạn theo khung nhìn động + cuộn dọc. */}
-      <DialogContent ref={dialogRef} className="sm:max-w-[460px] max-h-[90dvh] overflow-y-auto">
+      <DialogContent ref={dialogRef} className={`sm:max-w-[460px] ${DIALOG_SCROLL_BODY}`}>
         <DialogHeader>
           <DialogTitle>Chi lương điều hành</DialogTitle>
           <DialogDescription>Không chi quá số còn lại; không có tạm ứng lương điều hành.</DialogDescription>
@@ -366,7 +368,7 @@ export default function ManagerSalaryPayoutDialog({
         )}
         {Object.entries(errors).map(([key, message]) => <p id={`error-${key}`} key={key} className="text-sm text-destructive">{message}</p>)}
         {serverError && <p role="alert" className="rounded border border-destructive p-3 text-sm text-destructive">{serverError}</p>}
-        <DialogFooter>
+        <DialogFooter className={DIALOG_STICKY_FOOTER}>
           <Button variant="outline" disabled={closeBlocked} onClick={() => onOpenChange(false)}>Huỷ</Button>
           {created ? (
             // Phiếu đã lập, bước sau dở: làm tiếp cho ĐÚNG phiếu đó (không lập phiếu mới).
