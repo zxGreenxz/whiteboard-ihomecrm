@@ -48,6 +48,15 @@ describe('hướng dẫn dùng được và giữ ngắn', () => {
     assert.ok(check('x\n'.repeat(61), 'docs/README.md').some(p => p.id === 'guide-too-long'));
   });
 
+  it('tính cùng giới hạn byte UTF-8 cho Markdown dùng LF và CRLF', () => {
+    const tooLong = text => check(text, 'docs/engineering/PROJECT_CONTRACT.md').some(p => p.id === 'guide-too-long');
+    for (const newline of ['\n', '\r\n']) {
+      const atLimit = 'é'.repeat(4095) + newline + 'x';
+      assert.equal(tooLong(atLimit), false);
+      assert.equal(tooLong(atLimit + 'x'), true);
+    }
+  });
+
   it('con trỏ trong HTML comment không thay hướng dẫn người đọc', () => {
     assert.ok(check('<!-- PROJECT_CONTRACT.md -->').some(p => p.id === 'missing-contract-pointer'));
   });

@@ -70,11 +70,12 @@ const GUIDE_LIMITS = { 'CLAUDE.md': [25, 3000], 'AGENTS.md': [25, 3000],
 const visibleMarkdown = (text) => text.replace(/<!--[\s\S]*?-->/g, '');
 
 export function checkGuide(raw, file, scripts, exists) {
-  const text = visibleMarkdown(raw);
+  const markdown = raw.replaceAll('\r\n', '\n');
+  const text = visibleMarkdown(markdown);
   const problems = findForbidden(text, file);
   const add = (id, why) => problems.push({ file, id, why });
   const limit = GUIDE_LIMITS[file];
-  if (limit && (raw.trimEnd().split(/\r?\n/).length > limit[0] || Buffer.byteLength(raw) > limit[1])) {
+  if (limit && (markdown.trimEnd().split('\n').length > limit[0] || Buffer.byteLength(markdown) > limit[1])) {
     add('guide-too-long', 'Hướng dẫn vượt giới hạn; rút trùng lặp, liên kết nguồn chuyên đề thay vì chép lại.');
   }
   if (AGENT_FILES.includes(file) && !text.includes('PROJECT_CONTRACT.md')) {
