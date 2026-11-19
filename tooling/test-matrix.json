@@ -4,6 +4,17 @@
   "deferredModules": "tooling/deferred-modules.json",
   "sourceSelectionRules": [
     {
+      "id": "ts-baseline-checker",
+      "sourcePaths": [
+        "scripts/check-ts-baseline.mjs",
+        "scripts/__tests__/check-ts-baseline.test.mjs",
+        "tooling/ts-coverage-baseline.json"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": ["scripts/__tests__/check-ts-baseline.test.mjs"],
+      "gates": ["check-ts-baseline"]
+    },
+    {
       "id": "timezone-verifier",
       "sourcePaths": ["scripts/check-timezone-stability.mjs"],
       "suiteId": "app-unit",
@@ -571,6 +582,19 @@
         "src/lib/roomSaleFacts.ts"
       ],
       "suiteId": "node-native",
+      "localFeedback": {
+        "$comment": "Ba helper này được các test task-*.test.mjs dùng, kể cả test race trên PostgreSQL. Luôn chạy thêm test phân quyền broker ở local.",
+        "sourcePaths": [
+          "infra/hermes-broker/task-*.test.mjs",
+          "infra/hermes-broker/task-nghiem-thu-fixture.mjs",
+          "infra/hermes-broker/task-reminder-fixture.mjs",
+          "infra/hermes-broker/task-sql-mutation-cases.mjs"
+        ],
+        "testPatterns": [
+          "infra/hermes-broker/task-*.test.mjs",
+          "scripts/__tests__/test-hermes-broker-authz.test.mjs"
+        ]
+      },
       "testPatterns": [
         "infra/hermes-broker/**/*.test.mjs",
         "scripts/__tests__/test-hermes-broker-authz.test.mjs"
