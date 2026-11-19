@@ -986,29 +986,6 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
-    },
-    "supabase/migrations/20261119020927_xin_nghi_phep_nhieu_ngay.sql": {
-      "sha256": "7eefe823868a970d8afb742fda263478e289bb46e64f9f405d87193f011740df",
-      "missingObjects": [
-        "function:public.request_paid_leave_range",
-        "function:public.approve_leave_batch"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward migration MỚI (xin nghỉ phép nhiều ngày một đơn + chủ duyệt cả đơn), chưa áp dụng production: chờ review chéo rồi mới đi forward lane. Hai hàm vắng trong catalog production vì file chưa từng chạy ở đó — có chủ ý, không phải bị migration sau thay thế. Đã đo ngày 19/11/2026: test PGlite chạy migration hai lượt (34 ca) + 17 đột biến đều bị bắt; chạy hai lượt trên TEST trong ROLLBACK (test-env:thu-sql) xanh rồi ghi TEST; bấm thật trên TEST bằng dev server + Playwright (xin 3 ngày bỏ Chủ nhật, thiếu số dư bị từ chối cả đơn, bỏ ngày lễ của công ty, duyệt cả đơn, từ chối) và đã dọn dữ liệu thử. Hồ sơ này chỉ giải thích object vắng; không thay review độc lập, forward lane và backup. Sau khi áp production (có biên nhận) thì mục này thành thừa — gỡ đi.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261119020927_xin_nghi_phep_nhieu_ngay.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.request_paid_leave_range(p_from date, p_to date, p_reason text DEFAULT NULL)"
-        },
-        {
-          "duong_dan": "supabase/migrations/20261119020927_xin_nghi_phep_nhieu_ngay.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.approve_leave_batch(p_user uuid, p_dates date[], p_approve boolean)"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/xinNghiPhepNhieuNgayMigration.test.ts",
-          "trich_doan": "const FILE = \"supabase/migrations/20261119020927_xin_nghi_phep_nhieu_ngay.sql\";"
-        }
-      ]
     }
   }
 }

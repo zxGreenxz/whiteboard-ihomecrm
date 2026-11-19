@@ -447,8 +447,11 @@ describe("approve_leave_batch — chủ duyệt / từ chối cả đơn", () =>
 
   it("không chọn ngày / thiếu người / thiếu quyết định ⇒ 22023", async () => {
     await trongGiaoDich(async () => {
-      for (const [staff, dates, approve] of [[JOEY, [], true], [JOEY, null, true], [null, ["2026-11-20"], true], [JOEY, ["2026-11-20"], null]] as const) {
-        expect(await loi(() => duyet(CHU, staff, dates as string[] | null, approve))).toMatchObject({ code: "22023" });
+      const ca: Array<[string | null, string[] | null, boolean | null]> = [
+        [JOEY, [], true], [JOEY, null, true], [null, ["2026-11-20"], true], [JOEY, ["2026-11-20"], null],
+      ];
+      for (const [staff, dates, approve] of ca) {
+        expect(await loi(() => duyet(CHU, staff, dates, approve))).toMatchObject({ code: "22023" });
       }
     });
   });

@@ -50,9 +50,10 @@ describe('day and inspection feedback source',()=>{
   m.rpc.mockResolvedValue({data:{approved:true,user:'u',dates:['2026-11-20','2026-11-21']},error:null});
   await expect(mutate(useApproveLeaveBatch(),{user:'u',dates:['2026-11-21','2026-11-20','2026-11-21'],approve:true})).resolves.toMatchObject({approved:true});
   expect(m.rpc).toHaveBeenCalledWith('approve_leave_batch',{p_user:'u',p_dates:['2026-11-21','2026-11-20','2026-11-21'],p_approve:true});
+  const batch=useApproveLeaveBatch();
   for(const data of [{approved:false,user:'u',dates:['2026-11-20','2026-11-21']},{approved:true,user:'v',dates:['2026-11-20','2026-11-21']},{approved:true,user:'u',dates:['2026-11-20']}]){
    m.rpc.mockResolvedValue({data,error:null});
-   await expect(mutate(useApproveLeaveBatch(),{user:'u',dates:['2026-11-20','2026-11-21'],approve:true})).rejects.toThrow();
+   await expect(mutate(batch,{user:'u',dates:['2026-11-20','2026-11-21'],approve:true})).rejects.toThrow();
   }
  });
  it('shows the server sentence for leave_* business errors and a safe fallback otherwise',()=>{
