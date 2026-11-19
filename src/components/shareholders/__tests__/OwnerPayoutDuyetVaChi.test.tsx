@@ -239,6 +239,40 @@ describe('hộp chốt chi lợi nhuận: một nút lập phiếu rồi Duyệt
     expect(m.calls).toEqual(['settle', 'loadDetails', 'commit', 'approveAndPost', 'loadDetails', 'approveAndPost']);
   });
 
+  // Review chéo 19/11: từ chối vì quyền (42501) khác PAYEE_SELF_POST thì gửi lại vẫn y lỗi ⇒ khoá "Làm tiếp".
+  it('máy chủ từ chối vì quyền (42501 PROFIT_LEDGER_MAKER_SELF_APPROVE) ⇒ khoá "Làm tiếp", chỉ đường Chờ duyệt / Thu chi', async () => {
+    m.approveAndPost.mockRejectedValueOnce({ code: '42501', message: 'PROFIT_LEDGER_MAKER_SELF_APPROVE: người lập phiếu không tự duyệt phiếu chi lợi nhuận của mình' });
+    settleDialog();
+    fireEvent.change(field('accountId'), { target: { value: 'a1' } });
+    await addImage();
+    fireEvent.click(button('Duyệt và Chi'));
+    const failure = await screen.findByTestId('owner-payout-step-failure');
+    expect(failure.textContent).toMatch(/Người lập phiếu không tự duyệt được/);
+    expect(failure.textContent).toMatch(/vẫn sẽ bị từ chối.*Phiếu vẫn nằm ở Chờ duyệt.*Chờ duyệt \/ Thu chi/);
+    expect(button('Làm tiếp').disabled).toBe(true);
+    fireEvent.click(button('Làm tiếp'));
+    await new Promise((done) => setTimeout(done, 0));
+    expect(m.settle).toHaveBeenCalledTimes(1);
+    expect(m.approveAndPost).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('làm tiếp đọc lại thấy phiếu đã bị huỷ ⇒ dừng, khoá "Làm tiếp" (không gửi duyệt cho phiếu đã huỷ)', async () => {
+    m.approveAndPost.mockRejectedValueOnce({ code: '55000', message: 'approval_version mismatch (expected 3, found 4)' });
+    settleDialog();
+    fireEvent.change(field('accountId'), { target: { value: 'a1' } });
+    await addImage();
+    fireEvent.click(button('Duyệt và Chi'));
+    await screen.findByTestId('owner-payout-step-failure');
+    m.loadDetails.mockImplementationOnce(async (org: string, ids: string[]) => [{
+      id: ids[0], organization_id: org, approval_status: 'CANCELLED', posting_status: 'UNPOSTED', approval_version: 4, posting_version: 5, account_id: 'a1',
+    }]);
+    fireEvent.click(button('Làm tiếp'));
+    await waitFor(() => expect(screen.getByTestId('owner-payout-step-failure').textContent).toMatch(/đã bị huỷ/));
+    expect(button('Làm tiếp').disabled).toBe(true);
+    expect(m.approveAndPost).toHaveBeenCalledTimes(1);
+  });
+
   it('chưa rõ kết quả bước sau ⇒ không cho làm tiếp ở hộp, chỉ đường đối chiếu ở Thu chi', async () => {
     m.approveAndPost.mockRejectedValueOnce(new FinancialWorkflowError('Chưa xác nhận được kết quả duyệt và ghi nhận thu/chi.', 'unknown', []));
     settleDialog();
@@ -349,6 +383,18 @@ describe('hộp chi lương điều hành (sổ tổng chạy thật): cùng kh�
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(m.calls).toEqual(['managerCreate', 'loadDetails', 'approve']);
     expect(m.approve).toHaveBeenCalledWith({ voucherId: 'vm1', expectedApprovalVersion: 3, organizationId: 'org-a' });
+  });
+
+  it('không giữ sổ, máy chủ từ chối duyệt vì quyền (42501 thiếu quyền duyệt ở toà của phiếu) ⇒ khoá "Làm tiếp"', async () => {
+    m.books = [];
+    m.approve.mockRejectedValueOnce({ code: '42501', message: 'permission denied for income_expenses.approve' });
+    managerDialog();
+    fill();
+    await screen.findByTestId('owner-payout-approve-only');
+    fireEvent.click(button('Lập phiếu và duyệt'));
+    expect((await screen.findByTestId('owner-payout-step-failure')).textContent).toMatch(/Phiếu vẫn nằm ở Chờ duyệt/);
+    expect(button('Làm tiếp').disabled).toBe(true);
+    expect(m.calls).toEqual(['managerCreate', 'loadDetails', 'approve']);
   });
 
   it('bước sau lỗi ⇒ "Làm tiếp" không lập phiếu lương thứ hai', async () => {

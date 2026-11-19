@@ -157,6 +157,32 @@ const isLedgerMaker = (v: Pick<ActionVoucher, "maker_user_id">, viewer: VoucherA
   !!viewer.currentUserId && !!v.maker_user_id && v.maker_user_id === viewer.currentUserId;
 
 /**
+ * Chi khi có thể chính mình là người nhận: máy chủ (F1 nới 19/11/2026) chỉ miễn "người nhận không tự Chi" khi người Chi
+ * có quyền chi của loại chủ thể ở cấp CẢ CÔNG TY (không ngoại lệ super admin). Hộp chốt chi và nút "Duyệt và Chi…" ở Thu
+ * chi đều không biết người bấm có phải người nhận ⇒ chỉ chào khi quyền phủ cả công ty. Chủ công ty nhận cờ `__superadmin`
+ * của get_my_permissions_v2 (cùng cờ với super admin, giao diện không tách được) ⇒ coi là phủ cả công ty; máy chủ vẫn từ
+ * chối (PROFIT_LEDGER_PAYEE_SELF_POST) thì hộp chốt tự hạ về chỉ Duyệt.
+ */
+export function payoutPostAllowedAsPayee(perms: PermsLike, right: "distribute" | "pay_manager"): boolean {
+  if (!perms || typeof perms !== "object") return false;
+  if ((perms as { __superadmin?: unknown }).__superadmin === true) return true;
+  const raw = (perms as Record<string, Record<string, unknown> | undefined>).shareholder_profit?.[right];
+  return !!raw && typeof raw === "object" && (raw as { org_wide?: unknown }).org_wide === true;
+}
+
+/**
+ * "Duyệt và Chi…" ở hộp Duyệt của Thu chi: phiếu chi sổ tổng (chủ tự duyệt phiếu mình lập — có thể chính mình là người
+ * nhận) chỉ chào khi được Chi kể cả khi là người nhận (payoutPostAllowedAsPayee, cùng luật hộp chốt); phiếu khác như cũ.
+ */
+export function ledgerApproveAndPostAllowed(
+  v: Pick<ActionVoucher, "system_source">,
+  perms: PermsLike,
+): boolean {
+  if (!isProfitLedgerVoucher(v.system_source)) return true;
+  return payoutPostAllowedAsPayee(perms, profitLedgerPermissionFor(v.system_source));
+}
+
+/**
  * Dòng phải đọc loại người lập (E7) mới quyết được nút Duyệt: phiếu chi lợi nhuận cổ đông theo sổ tổng còn chờ duyệt,
  * do CHÍNH người xem lập, người xem có quyền chi lợi nhuận — có thể là phiếu chủ lập (tự duyệt được) hoặc phiếu tạm ứng
  * người xem tự lập khi đang giữ sổ (không tự duyệt được). Phiếu lương điều hành luôn do chủ lập: không cần đọc.

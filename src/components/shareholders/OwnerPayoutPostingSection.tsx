@@ -6,7 +6,7 @@
 import { AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PostingEvidenceUpload } from '@/components/income-expenses/IncomeExpensePostingDialog';
-import type { OwnerPayoutPosting, OwnerPayoutStep } from '@/hooks/profit-ledger/useOwnerPayoutPosting';
+import type { OwnerPayoutPosting, OwnerPayoutStep, OwnerPayoutStepFailure } from '@/hooks/profit-ledger/useOwnerPayoutPosting';
 import { warmUploadConnection } from '@/lib/storage/resilientUpload';
 
 /** Chữ nút gửi theo bước sau (ô ảnh nhắc đúng chữ này). */
@@ -17,12 +17,6 @@ export const OWNER_PAYOUT_RESUME_LABEL = 'Làm tiếp';
 export interface OwnerPayoutCreated {
   code: string | null;
   step: OwnerPayoutStep;
-}
-
-export interface OwnerPayoutStepFailure {
-  message: string;
-  /** Chưa rõ kết quả bước sau ⇒ không làm tiếp ở hộp, đối chiếu phiếu ở Thu chi. */
-  reconcile: boolean;
 }
 
 export interface OwnerPayoutPostingSectionProps {
@@ -118,9 +112,11 @@ export function OwnerPayoutPostingSection({
               {stepFailure.message}
             </p>
             <p>
-              {stepFailure.reconcile
+              {stepFailure.kind === 'RECONCILE'
                 ? 'Chưa rõ kết quả bước này — đóng hộp, mở phiếu ở Thu chi kiểm tra trạng thái trước khi làm tiếp.'
-                : `Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để thử lại cho đúng phiếu này (không lập phiếu mới). Phiếu cũng xử lý được ở Chờ duyệt / Thu chi.`}
+                : stepFailure.kind === 'BLOCKED'
+                  ? 'Làm tiếp ở hộp này vẫn sẽ bị từ chối. Phiếu vẫn nằm ở Chờ duyệt — người có quyền duyệt (và giữ sổ của phiếu) xử lý ở Chờ duyệt / Thu chi.'
+                  : `Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để thử lại cho đúng phiếu này (không lập phiếu mới). Phiếu cũng xử lý được ở Chờ duyệt / Thu chi.`}
             </p>
           </div>
         </div>

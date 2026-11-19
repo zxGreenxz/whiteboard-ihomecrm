@@ -33,21 +33,18 @@ import { DateInput } from "@/components/ui/date-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCreateManagerSalaryPayout } from "@/hooks/useIncomeExpenses";
-import { DeferredEvidenceError } from "@/hooks/income-expenses/deferredPostingEvidence";
 import {
-  OwnerPayoutStateError, useOwnerPayoutPosting, type OwnerPayoutStep, type OwnerPayoutTarget,
+  describeOwnerPayoutFailure, ownerPayoutCanResume, useOwnerPayoutPosting,
+  type OwnerPayoutStep, type OwnerPayoutStepFailure, type OwnerPayoutTarget,
 } from "@/hooks/profit-ledger/useOwnerPayoutPosting";
 import { profitLedgerErrorMessage } from "@/lib/profitLedger/errors";
 import type { ManagerLedger } from "@/lib/profitLedger/ledgerReaders";
 import { profitPayoutAccounts } from "@/lib/profitLedger/payoutAccounts";
 import { profitLedgerRouteState } from "@/lib/profitLedger/route";
-import { ledgerAwareVoucherFailure, profitLedgerMachineCode } from "@/lib/profitLedger/voucherFailure";
 import { formatVND } from "@/lib/utils";
-import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { format } from "date-fns";
 import {
   OWNER_PAYOUT_APPROVE_LABEL, OWNER_PAYOUT_POST_LABEL, OWNER_PAYOUT_RESUME_LABEL, OwnerPayoutPostingSection,
-  type OwnerPayoutStepFailure,
 } from "./OwnerPayoutPostingSection";
 
 interface Props {
@@ -180,15 +177,14 @@ export default function ManagerSalaryPayoutDialog({
       }
       onOpenChange(false);
     } catch (error) {
-      const message = error instanceof OwnerPayoutStateError || error instanceof DeferredEvidenceError
-        ? error.message
-        : ledgerAwareVoucherFailure(error, posted ? 'duyệt và chi phiếu' : 'duyệt phiếu');
-      if (posted && profitLedgerMachineCode(error) === 'PROFIT_LEDGER_PAYEE_SELF_POST') {
+      const failure = describeOwnerPayoutFailure(error, next.target.step);
+      if (failure.kind === 'APPROVE_ONLY') {
         // Máy chủ không cho chính người nhận chi (quyền chi không phủ cả công ty): làm tiếp chỉ Duyệt.
         setCreated({ ...next, target: { ...next.target, step: 'APPROVE' } });
-        setStepFailure({ message: `${message} Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để chỉ duyệt.`, reconcile: false });
+        setStepFailure({ ...failure, message: `${failure.message} Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để chỉ duyệt.` });
       } else {
-        setStepFailure({ message, reconcile: voucherOutcomeUnknown(error) });
+        // Từ chối vì quyền / chưa rõ kết quả ⇒ khoá "Làm tiếp" (gửi lại vẫn y lỗi), chỉ đường sang Chờ duyệt / Thu chi.
+        setStepFailure(failure);
       }
       toast.warning(`Đã lập ${voucher} lương điều hành cho ${next.managerName}, đang chờ duyệt — chưa ${posted ? 'duyệt và chi' : 'duyệt'} được.`);
     } finally {
@@ -198,7 +194,7 @@ export default function ManagerSalaryPayoutDialog({
 
   /** "Làm tiếp": bước sau cho ĐÚNG phiếu đã lập — không lập phiếu thứ hai. */
   const resume = async () => {
-    if (!created || busy || stepFailure?.reconcile) return;
+    if (!created || busy || !ownerPayoutCanResume(stepFailure)) return;
     if (created.target.step === 'APPROVE_AND_POST' && !(await evidenceReady(OWNER_PAYOUT_RESUME_LABEL))) return;
     await finish(created);
   };
@@ -361,7 +357,7 @@ export default function ManagerSalaryPayoutDialog({
             accountId={created ? created.target.accountId : accountId}
             accountName={created ? created.accountName : accountName(accountId)}
             evidenceError={evidenceError}
-            disabled={busy || saveBlocked || !!stepFailure?.reconcile}
+            disabled={busy || saveBlocked || (!!stepFailure && !ownerPayoutCanResume(stepFailure))}
             created={created ? { code: created.code, step: created.target.step } : null}
             stepFailure={stepFailure}
           />
@@ -372,7 +368,7 @@ export default function ManagerSalaryPayoutDialog({
           <Button variant="outline" disabled={closeBlocked} onClick={() => onOpenChange(false)}>Huỷ</Button>
           {created ? (
             // Phiếu đã lập, bước sau dở: làm tiếp cho ĐÚNG phiếu đó (không lập phiếu mới).
-            <Button type="button" disabled={busy || !stepFailure || stepFailure.reconcile} onClick={() => { void resume(); }}>
+            <Button type="button" disabled={busy || !ownerPayoutCanResume(stepFailure)} onClick={() => { void resume(); }}>
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{OWNER_PAYOUT_RESUME_LABEL}
             </Button>
           ) : (

@@ -36,19 +36,17 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Textarea } from '@/components/ui/textarea';
 import { useAccounts } from '@/hooks/useAccounts';
-import { DeferredEvidenceError } from '@/hooks/income-expenses/deferredPostingEvidence';
 import { useProfitSettlementPreview, useShareholderProfitLedger } from '@/hooks/profit-ledger/useProfitLedgerQueries';
 import {
   useSettleShareholderProfit, type SettleShareholderProfitInput, type SettleShareholderProfitResult,
 } from '@/hooks/profit-ledger/useProfitLedgerMutations';
 import {
-  OwnerPayoutStateError, useOwnerPayoutPosting, type OwnerPayoutStep, type OwnerPayoutTarget,
+  describeOwnerPayoutFailure, ownerPayoutCanResume, useOwnerPayoutPosting,
+  type OwnerPayoutStep, type OwnerPayoutStepFailure, type OwnerPayoutTarget,
 } from '@/hooks/profit-ledger/useOwnerPayoutPosting';
 import { todayISO } from '@/lib/collect';
 import { focusFirstError } from '@/lib/formErrors';
 import { profitLedgerErrorMessage, type ProfitLedgerErrorInfo } from '@/lib/profitLedger/errors';
-import { ledgerAwareVoucherFailure, profitLedgerMachineCode } from '@/lib/profitLedger/voucherFailure';
-import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 import { settleFormSchema, type SettleFormValues } from '@/lib/profitLedger/forms';
 import type { ShareholderLedgerRow } from '@/lib/profitLedger/ledgerReaders';
 import { profitPayoutAccounts } from '@/lib/profitLedger/payoutAccounts';
@@ -62,7 +60,6 @@ import { cancelTargetFromSettlement, type ProfitPayoutCancelTarget } from '@/lib
 import { formatVND } from '@/lib/utils';
 import {
   OWNER_PAYOUT_APPROVE_LABEL, OWNER_PAYOUT_POST_LABEL, OWNER_PAYOUT_RESUME_LABEL, OwnerPayoutPostingSection,
-  type OwnerPayoutStepFailure,
 } from './OwnerPayoutPostingSection';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
 import { ProfitSettlementVoidDialog, type ProfitSettlementVoidTarget } from './ProfitSettlementVoidDialog';
@@ -274,16 +271,15 @@ export default function ProfitDistributeDialog({
       else toast.success(`${next.head} ${voucher} đã duyệt — người giữ ${book} bấm Chi (kèm ảnh chứng từ) ở Thu chi.`);
       onOpenChange(false);
     } catch (error) {
-      const message = error instanceof OwnerPayoutStateError || error instanceof DeferredEvidenceError
-        ? error.message
-        : ledgerAwareVoucherFailure(error, posted ? 'duyệt và chi phiếu' : 'duyệt phiếu');
-      if (posted && profitLedgerMachineCode(error) === 'PROFIT_LEDGER_PAYEE_SELF_POST') {
+      const failure = describeOwnerPayoutFailure(error, next.target.step);
+      if (failure.kind === 'APPROVE_ONLY') {
         // Máy chủ không cho chính người nhận chi (quyền chi không phủ cả công ty): giao dịch lùi cả bước duyệt ⇒ làm tiếp
         // chỉ Duyệt, người giữ sổ khác bấm Chi.
         setCreated({ ...next, target: { ...next.target, step: 'APPROVE' } });
-        setStepFailure({ message: `${message} Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để chỉ duyệt.`, reconcile: false });
+        setStepFailure({ ...failure, message: `${failure.message} Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để chỉ duyệt.` });
       } else {
-        setStepFailure({ message, reconcile: voucherOutcomeUnknown(error) });
+        // Từ chối vì quyền / chưa rõ kết quả ⇒ khoá "Làm tiếp" (gửi lại vẫn y lỗi), chỉ đường sang Chờ duyệt / Thu chi.
+        setStepFailure(failure);
       }
       toast.warning(`${next.head} ${voucher} đã lập, đang chờ duyệt — chưa ${posted ? 'duyệt và chi' : 'duyệt'} được.`);
     } finally {
@@ -363,7 +359,7 @@ export default function ProfitDistributeDialog({
 
   /** "Làm tiếp": bước sau cho ĐÚNG phiếu đã lập — không chốt lại, không lập phiếu thứ hai. */
   const resume = async () => {
-    if (!created || busy || stepFailure?.reconcile) return;
+    if (!created || busy || !ownerPayoutCanResume(stepFailure)) return;
     if (created.target.step === 'APPROVE_AND_POST' && !(await evidenceReady(OWNER_PAYOUT_RESUME_LABEL))) return;
     await finish(created);
   };
@@ -603,7 +599,7 @@ export default function ProfitDistributeDialog({
                     accountId={created ? created.target.accountId : accountId}
                     accountName={created ? created.accountName : payoutAccountName(accountId)}
                     evidenceError={evidenceError}
-                    disabled={pending || saveBlocked || !!stepFailure?.reconcile}
+                    disabled={pending || saveBlocked || (!!stepFailure && !ownerPayoutCanResume(stepFailure))}
                     created={created ? { code: created.code, step: created.target.step } : null}
                     stepFailure={stepFailure}
                   />
@@ -638,7 +634,7 @@ export default function ProfitDistributeDialog({
                     </Button>
                   ) : created ? (
                     // Phiếu đã lập, bước sau dở: làm tiếp cho ĐÚNG phiếu đó (không chốt lại, không lập phiếu mới).
-                    <Button type="button" className="flex-1 sm:flex-none" disabled={pending || !stepFailure || stepFailure.reconcile} onClick={() => { void resume(); }}>
+                    <Button type="button" className="flex-1 sm:flex-none" disabled={pending || !ownerPayoutCanResume(stepFailure)} onClick={() => { void resume(); }}>
                       {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{OWNER_PAYOUT_RESUME_LABEL}
                     </Button>
                   ) : (

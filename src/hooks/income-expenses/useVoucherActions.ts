@@ -49,7 +49,8 @@ import {
 // Đợt 2 sổ tổng: phiếu chi lợi nhuận / lương điều hành lập theo sổ tổng chỉ huỷ bằng hộp riêng có lý
 // do (E6) và chỉ chi từ đúng sổ quỹ lúc lập.
 import { isProfitLedgerVoucher, type ProfitPayoutCancelTarget } from "@/lib/profitLedger/vouchers";
-import { profitCancelTargetFromVoucher } from "@/lib/voucherActionRules";
+import { ledgerApproveAndPostAllowed, profitCancelTargetFromVoucher } from "@/lib/voucherActionRules";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
 
 export interface VoucherActionsOptions {
   /**
@@ -169,7 +170,11 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     (approveTarget as { organization_id?: string } | null)?.organization_id ?? null,
   );
   const v2ApproveOnly = canWriteWorkflow(approveOrgRoutes);
-  const v2ApproveAndPost = v2ApproveOnly && canWritePosting(approveOrgRoutes);
+  // Phiếu chi sổ tổng (chủ tự duyệt phiếu mình lập, có thể chính mình là người nhận): "Duyệt và Chi…" chỉ khi được Chi kể
+  // cả khi là người nhận — cùng luật hộp chốt (quyền chi phủ cả công ty), không hứa nút máy chủ sẽ từ chối.
+  const { data: myPerms } = useMyPermissions();
+  const v2ApproveAndPost = v2ApproveOnly && canWritePosting(approveOrgRoutes)
+    && (!approveTarget || ledgerApproveAndPostAllowed(approveTarget, myPerms));
   const approveV2Mutation = useApproveIncomeExpenseV2();
   const approveAndPostV2Mutation = useApproveAndPostIncomeExpenseV2();
   const postApprovedV2Mutation = usePostApprovedIncomeExpenseV2();

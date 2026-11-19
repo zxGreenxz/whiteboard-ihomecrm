@@ -13,35 +13,25 @@
 
 import { useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useDeferredPostingEvidence, type DeferredPostingEvidence } from '@/hooks/income-expenses/deferredPostingEvidence';
+import { DeferredEvidenceError, useDeferredPostingEvidence, type DeferredPostingEvidence } from '@/hooks/income-expenses/deferredPostingEvidence';
 import { withDetailReadDeadline } from '@/hooks/income-expenses/detailRead';
 import {
   useApproveAndPostIncomeExpenseV2, useApproveIncomeExpenseV2, useCustodianCashbooksV2, useInvalidateMoney,
 } from '@/hooks/income-expenses/financeV2Mutations';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { invalidateProfitLedgerQueries } from '@/hooks/profit-ledger/useProfitLedgerMutations';
+import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
 import { loadIncomeExpenseDetails } from '@/lib/incomeExpenseDetailRpc';
-import { canUse, type PermsLike } from '@/lib/permissionCheck';
+import { canUse } from '@/lib/permissionCheck';
+import { ledgerAwareVoucherFailure, profitLedgerMachineCode } from '@/lib/profitLedger/voucherFailure';
+import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
+import { payoutPostAllowedAsPayee } from '@/lib/voucherActionRules';
 
 /** Bước sau của phiếu vừa lập — quyết lúc bấm theo sổ người bấm đang GIỮ và quyền của người bấm. */
 export type OwnerPayoutStep = 'APPROVE_AND_POST' | 'APPROVE';
 
 /** Khoá quyền chi của loại chủ thể: cổ đông ⇒ distribute, lương điều hành ⇒ pay_manager. */
 export type OwnerPayoutRight = 'distribute' | 'pay_manager';
-
-/**
- * Chi khi có thể chính mình là người nhận: máy chủ (F1 nới 19/11/2026) chỉ miễn "người nhận không tự Chi" khi người Chi
- * có quyền chi của loại chủ thể ở cấp CẢ CÔNG TY (không ngoại lệ super admin). Hộp chưa biết người bấm có phải người
- * nhận không ⇒ chỉ chào Duyệt và Chi khi quyền phủ cả công ty. Chủ công ty nhận cờ `__superadmin` của
- * get_my_permissions_v2 (cùng cờ với super admin, giao diện không tách được) ⇒ coi là phủ cả công ty; máy chủ vẫn từ
- * chối thì hộp tự hạ về chỉ Duyệt (PROFIT_LEDGER_PAYEE_SELF_POST).
- */
-function payoutPostAllowedAsPayee(perms: PermsLike, right: OwnerPayoutRight): boolean {
-  if (!perms || typeof perms !== 'object') return false;
-  if ((perms as { __superadmin?: unknown }).__superadmin === true) return true;
-  const raw = (perms as Record<string, Record<string, unknown> | undefined>).shareholder_profit?.[right];
-  return !!raw && typeof raw === 'object' && (raw as { org_wide?: unknown }).org_wide === true;
-}
 
 /**
  * Bước sau theo sổ đã chọn: undefined = chưa biết (đang tải / đọc lỗi danh sách sổ mình giữ); null = không duyệt được
@@ -72,9 +62,54 @@ export interface OwnerPayoutTarget {
 /** POSTED: đã duyệt và chi · APPROVED: đã duyệt, chờ người giữ sổ bấm Chi. */
 export type OwnerPayoutOutcome = 'POSTED' | 'APPROVED';
 
-/** Lỗi dừng có câu cho người dùng (đọc lại phiếu không khớp…); lỗi máy chủ đi nguyên văn để hộp dịch. */
+/**
+ * Lỗi dừng có câu cho người dùng (đọc lại phiếu không khớp…); lỗi máy chủ đi nguyên văn để hộp dịch.
+ * `retryable` false: làm tiếp ở hộp vẫn ra đúng lỗi này (phiếu đã huỷ, sổ trên phiếu khác sổ đã chọn).
+ */
 export class OwnerPayoutStateError extends Error {
   override readonly name = 'OwnerPayoutStateError';
+  constructor(message: string, readonly retryable = true) { super(message); }
+}
+
+/**
+ * Lỗi của bước sau và "Làm tiếp" còn ý nghĩa không:
+ *   RETRY — làm lại được (phiên bản phiếu vừa đổi, máy chủ bận, thêm ảnh rồi làm tiếp…);
+ *   APPROVE_ONLY — máy chủ chặn chính người nhận tự Chi (PROFIT_LEDGER_PAYEE_SELF_POST): làm tiếp chỉ Duyệt;
+ *   BLOCKED — từ chối vì quyền (SQLSTATE 42501: không giữ sổ theo máy chủ, thiếu quyền duyệt thu chi ở toà của phiếu,
+ *     PROFIT_LEDGER_MAKER_SELF_APPROVE khi máy chủ không thấy quyền chi…) hoặc phiếu không còn xử lý được ở hộp: gửi lại
+ *     vẫn bị từ chối ⇒ khoá "Làm tiếp", chỉ đường sang Chờ duyệt / Thu chi (phiếu vẫn nằm ở Chờ duyệt);
+ *   RECONCILE — chưa rõ kết quả: không làm tiếp ở hộp, đối chiếu phiếu ở Thu chi.
+ */
+export type OwnerPayoutFailureKind = 'RETRY' | 'APPROVE_ONLY' | 'BLOCKED' | 'RECONCILE';
+
+export interface OwnerPayoutStepFailure {
+  message: string;
+  kind: OwnerPayoutFailureKind;
+}
+
+const codeOf = (error: unknown): string =>
+  error && typeof error === 'object' ? String((error as { code?: unknown }).code ?? '') : '';
+
+/** Từ chối chắc chắn vì quyền (42501), kể cả khi nằm trong `cause` của một lần từ chối chắc chắn. */
+function isPermissionRejection(error: unknown): boolean {
+  if (codeOf(error) === '42501') return true;
+  return error instanceof FinancialWorkflowError && error.outcome === 'failure' && codeOf(error.cause) === '42501';
+}
+
+/** "Làm tiếp" còn ý nghĩa không: từ chối vì quyền / chưa rõ kết quả ⇒ khoá. */
+export function ownerPayoutCanResume(failure: OwnerPayoutStepFailure | null): boolean {
+  return !!failure && failure.kind !== 'BLOCKED' && failure.kind !== 'RECONCILE';
+}
+
+export function describeOwnerPayoutFailure(error: unknown, step: OwnerPayoutStep): OwnerPayoutStepFailure {
+  if (error instanceof OwnerPayoutStateError) return { message: error.message, kind: error.retryable ? 'RETRY' : 'BLOCKED' };
+  if (error instanceof DeferredEvidenceError) return { message: error.message, kind: 'RETRY' };
+  const posted = step === 'APPROVE_AND_POST';
+  const message = ledgerAwareVoucherFailure(error, posted ? 'duyệt và chi phiếu' : 'duyệt phiếu');
+  if (voucherOutcomeUnknown(error)) return { message, kind: 'RECONCILE' };
+  if (posted && profitLedgerMachineCode(error) === 'PROFIT_LEDGER_PAYEE_SELF_POST') return { message, kind: 'APPROVE_ONLY' };
+  if (isPermissionRejection(error)) return { message, kind: 'BLOCKED' };
+  return { message, kind: 'RETRY' };
 }
 
 export interface OwnerPayoutPosting {
@@ -126,12 +161,12 @@ export function useOwnerPayoutPosting(open: boolean, right: OwnerPayoutRight): O
         throw new OwnerPayoutStateError('Chưa đọc lại được phiếu vừa lập — tải lại rồi duyệt ở Chờ duyệt hoặc Thu chi.');
       }
       if (detail.approval_status === 'CANCELLED') {
-        throw new OwnerPayoutStateError('Phiếu vừa lập đã bị huỷ — không duyệt / chi được nữa.');
+        throw new OwnerPayoutStateError('Phiếu vừa lập đã bị huỷ — không duyệt / chi được nữa.', false);
       }
       // Đã có người duyệt (hoặc lượt trước đã xong mà chưa nhận được kết quả): nói đúng trạng thái, không gửi lại.
       if (detail.approval_status === 'APPROVED') return detail.posting_status === 'POSTED' ? 'POSTED' : 'APPROVED';
       if (detail.account_id !== target.accountId) {
-        throw new OwnerPayoutStateError('Sổ quỹ trên phiếu khác sổ đã chọn lúc lập — tải lại rồi xử lý phiếu ở Chờ duyệt.');
+        throw new OwnerPayoutStateError('Sổ quỹ trên phiếu khác sổ đã chọn lúc lập — tải lại rồi xử lý phiếu ở Chờ duyệt.', false);
       }
       if (target.step === 'APPROVE_AND_POST') {
         const evidenceIds = await commitTo(target.voucherId, target.organizationId);

@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   isReservationLeg,
+  ledgerApproveAndPostAllowed,
   needsLedgerMakerKind,
+  payoutPostAllowedAsPayee,
   profitCancelTargetFromVoucher,
   voucherActionAvailability,
   type VoucherActionState,
   type VoucherActionViewer,
 } from "@/lib/voucherActionRules";
 import type { FlexCancelEligibility } from "@/hooks/income-expenses/flexMutations";
+import type { PermsLike } from "@/lib/permissionCheck";
 import type { IncomeCancelEligibility } from "@/hooks/income-expenses/incomeVoucherCancel";
 
 // Quyền theo phạm vi (get_my_permissions_v2): chỉ có ở toà b1.
@@ -355,6 +358,30 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
     it("tổ chức chưa đọc ghi sổ kiểu mới ⇒ không mở Duyệt ở Thu chi (lối Chờ duyệt như cũ)", () => {
       const a = voucherActionAvailability(chuLap(), chu, state({ ledgerMakerKind: "OWNER", canonicalRead: false }));
       expect([a.approve, a.approveVia]).toEqual([false, "INBOX"]);
+    });
+
+    // Máy chủ chỉ miễn "người nhận không tự Chi" khi quyền chi phủ CẢ CÔNG TY (không ngoại lệ super admin) — "Duyệt và
+    // Chi…" ở Thu chi dùng chung luật với hộp chốt (review chéo 19/11).
+    /** Cờ get_my_permissions_v2 trả cho chủ công ty / super admin. */
+    const coChu = { __superadmin: true } as unknown as PermsLike;
+
+    it("payoutPostAllowedAsPayee: cờ chủ công ty / quyền chi phủ cả công ty ⇒ được; theo toà, dạng v1, không quyền ⇒ không", () => {
+      expect(payoutPostAllowedAsPayee(coChu, "distribute")).toBe(true);
+      expect(payoutPostAllowedAsPayee({ shareholder_profit: { distribute: { org_wide: true, building_ids: [] } } }, "distribute")).toBe(true);
+      expect(payoutPostAllowedAsPayee({ shareholder_profit: { distribute: { org_wide: false, building_ids: ["toa-ao"] } } }, "distribute")).toBe(false);
+      expect(payoutPostAllowedAsPayee({ shareholder_profit: { distribute: true } }, "distribute")).toBe(false);
+      expect(payoutPostAllowedAsPayee({ shareholder_profit: { distribute: { org_wide: true, building_ids: [] } } }, "pay_manager")).toBe(false);
+      expect(payoutPostAllowedAsPayee(null, "distribute")).toBe(false);
+    });
+
+    it("ledgerApproveAndPostAllowed: phiếu sổ tổng chỉ chào \"Duyệt và Chi…\" khi quyền chi đúng loại phủ cả công ty; phiếu thường như cũ", () => {
+      const theoToa = { shareholder_profit: { distribute: { org_wide: false, building_ids: ["toa-ao"] }, pay_manager: { org_wide: true, building_ids: [] } } };
+      expect(ledgerApproveAndPostAllowed(chuLap(), theoToa)).toBe(false);
+      expect(ledgerApproveAndPostAllowed(chuLap({ system_source: "profit.manager_salary" }), theoToa)).toBe(true);
+      expect(ledgerApproveAndPostAllowed(chuLap(), owner)).toBe(true); // quyền chi lợi nhuận phủ cả công ty
+      expect(ledgerApproveAndPostAllowed(chuLap(), coChu)).toBe(true);
+      expect(ledgerApproveAndPostAllowed(phieu(), theoToa)).toBe(true);
+      expect(ledgerApproveAndPostAllowed(chuLap({ system_source: "profit.distribution" }), null)).toBe(true);
     });
 
     it("needsLedgerMakerKind: chỉ phiếu chi lợi nhuận cổ đông CHỜ duyệt, do chính người xem lập, người xem có quyền chi", () => {
