@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-19T04:38:15.480Z",
+  "generatedAt": "2026-11-19T05:17:26.083Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 957,
+    "ledger-applied": 959,
     "unknown": 80,
-    "catalog-proven": 208,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -14390,10 +14390,9 @@
       "name": "so_tong_loi_nhuan_don_dep_sau_tam_ung",
       "scheme": "timestamp14",
       "sha256": "37fb924343aa30917177b32cf2c33141f80dc716872807ebcf8a402a84fc144a",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.profit_ledger_payout_cancel_v1",
-        "catalog:function:public.shareholder_profit_advance_preview_v1"
+        "receipt:2026-11-19T05:14:57.077Z|bien-nhan-backup"
       ]
     },
     {
@@ -14413,9 +14412,9 @@
       "name": "so_tong_loi_nhuan_chu_tu_duyet_chi",
       "scheme": "timestamp14",
       "sha256": "e315bc3b87915a3a6a0b83f52e40e6905ca4117ca26ef4a87bf4602d0f71a3d3",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.guard_profit_ledger_payout_v1"
+        "receipt:2026-11-19T05:17:05.043Z|bien-nhan-backup"
       ]
     },
     {
