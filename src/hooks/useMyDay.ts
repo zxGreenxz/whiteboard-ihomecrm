@@ -253,7 +253,9 @@ export function leaveActionErrorMessage(error: unknown, args: {date: string; app
   const raw = error && typeof error === 'object' && 'message' in error ? String(error.message) : '';
   const context = `${args.approve ? 'duyệt' : 'từ chối'} phép ${args.employeeName ? `của ${args.employeeName} ` : ''}ngày ${args.date}`;
   if (raw === 'Chỉ chủ được duyệt phép') return `Bạn không có quyền ${context}. Liên hệ chủ công ty để xử lý đơn này.`;
-  if (raw === 'Ngày này không ở trạng thái chờ duyệt phép') return `Đơn nghỉ ngày ${args.date}${args.employeeName ? ` của ${args.employeeName}` : ''} không còn chờ duyệt. Tải lại danh sách để xem trạng thái mới.`;
+  if (raw === 'Ngày này không ở trạng thái chờ duyệt phép') return `Đơn nghỉ ngày ${args.date}${args.employeeName ? ` của ${args.employeeName}` : ''} không còn chờ duyệt. Danh sách đã được tải lại để xem trạng thái mới.`;
+  // 20261119035131: phép trên Chủ nhật / ngày lễ chỉ được từ chối — câu máy chủ nêu đúng ngày.
+  if (error && typeof error === 'object' && 'hint' in error && error.hint === 'leave_not_workday' && raw) return `${raw}.`;
   return actionErrorMessage(error, `Chưa ${context}. Kiểm tra trạng thái đơn trước khi thực hiện tiếp.`);
 }
 
@@ -273,7 +275,8 @@ export function useApproveLeave() {
     },
     // Thẻ duyệt nằm cả trên các màn Hôm nay của chủ: chấm trạng thái ở PersonPicker và thẻ ngày
     // công của người vừa được duyệt đọc từ ["staff-day", …], không làm mới thì còn «chờ duyệt».
-    onSuccess: () => invalidateLeaveViews(qc),
+    // Làm mới cả khi lỗi: đơn vừa được xử lý ở chỗ khác / vừa chấm công thì danh sách cũ phải tự cập nhật.
+    onSettled: () => invalidateLeaveViews(qc),
   });
 }
 
@@ -300,7 +303,8 @@ export function useApproveLeaveBatch() {
       }
       return result;
     },
-    onSuccess: () => invalidateLeaveViews(qc),
+    // Làm mới cả khi lỗi (vd. một ngày vừa duyệt lẻ ở Bảng lương / vừa chấm công): thẻ không giữ nhóm cũ.
+    onSettled: () => invalidateLeaveViews(qc),
   });
 }
 

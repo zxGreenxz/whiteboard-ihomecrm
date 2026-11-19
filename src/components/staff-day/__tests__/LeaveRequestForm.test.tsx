@@ -55,7 +55,7 @@ describe("LeaveRequestForm", () => {
     pick("Đến ngày", "2026-11-23");
     expect(screen.getByText("3 ngày: 20/11 → 23/11")).toBeTruthy();
     expect(screen.getByText(/Chủ nhật không tính/)).toBeTruthy();
-    expect(screen.getByText(/Số dư phép hiện còn 5 ngày/)).toBeTruthy();
+    expect(screen.getByText(/Số dư tính đến tháng này còn 5 ngày/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Gửi đơn 3 ngày" })).toBeTruthy();
   });
 
