@@ -99,10 +99,10 @@ export function LeaveRequestForm({ today, left, disabled = false, onDone }: {
         </div>
         <p className="text-xs text-slate-600" aria-live="polite">
           {!inRange || notSunday.length === 0
-            ? <>Nghỉ một ngày thì chọn cùng một ngày ở hai ô. Số dư phép hiện còn {left} ngày.</>
+            ? <>Nghỉ một ngày thì chọn cùng một ngày ở hai ô. Số dư tính đến tháng này còn {left} ngày (mỗi tháng tích thêm, đầu năm tính lại).</>
             : days.length === 0
               ? <>Các ngày đã chọn đều là Chủ nhật hoặc ngày lễ của công ty — không cần xin phép.</>
-              : <>Đơn gồm <span className="font-medium text-slate-800">{leaveDaysLabel(days)}</span>{skipped ? ` (${skipped} không tính)` : ""}. Số dư phép hiện còn {left} ngày.</>}
+              : <>Đơn gồm <span className="font-medium text-slate-800">{leaveDaysLabel(days)}</span>{skipped ? ` (${skipped} không tính)` : ""}. Số dư tính đến tháng này còn {left} ngày (mỗi tháng tích thêm, đầu năm tính lại).</>}
           {inRange && calendar.isError ? " Chưa đọc được lịch nghỉ lễ của công ty — ngày lễ (nếu có) vẫn không tính khi gửi." : ""}
         </p>
         {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
