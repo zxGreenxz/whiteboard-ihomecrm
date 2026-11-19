@@ -1,12 +1,9 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
-import { focusFirstError } from '@/lib/formErrors';
-import { actionErrorMessage } from '@/lib/actionFeedback';
-import { notifyActionError } from '@/lib/actionFeedback';
 // "NGÀY HÔM NAY CỦA TÔI" (/my-day) — màn trung tâm vòng lặp v5 phía nhân viên (Ch.7 spec).
 // Mobile-first 1 cột (desktop bó 480px giữa). GAIN-FRAMING tuyệt đối:
 // không màu đỏ phía nhân viên, không chữ "−/mất/trừ"; mọi số tiền realtime = "TẠM TÍNH".
 // Khối: A trạng thái ngày → D nhắc treo check-sau-thu → B tuyến gợi ý → C việc đến hạn
-//        → F tiến trình tiền/chuỗi → phép 1-chạm.
+//        → F tiến trình tiền/chuỗi → xin nghỉ phép (một hoặc nhiều ngày một đơn — LeaveRequestForm).
 import { lazy, Suspense, useMemo, useState } from "react";
 import { dayAttendanceView } from '@/lib/taskFeedback';
 import { Link } from "react-router-dom";
@@ -17,8 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import RoutePlannerSheet from "@/components/my-day/RoutePlannerSheet";
 import { PersonPicker } from "@/components/staff-day/PersonPicker";
+import { LeaveApprovalCard } from "@/components/staff-day/LeaveApprovalCard";
 import { useGpsMyStatus } from "@/hooks/gps-checkin/useGpsCheckin";
-import { toast } from "sonner";
 import { useJobs } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
@@ -27,8 +24,9 @@ import { v5Copy } from "@/lib/v5Copy";
 import { applySavedRouteOrder, isActiveRouteCandidate, normalizePriorityBucket } from "@/lib/v5Routing";
 import { useSetUiPreference, useUiPrefBool, useUiPreferences } from "@/hooks/useUiPreferences";
 import {
-  useMyDaySummary, useMyMissions, useMyOpenInspections, useRequestLeave, type Mission,
+  useMyDaySummary, useMyMissions, useMyOpenInspections, type Mission,
 } from "@/hooks/useMyDay";
+import { LeaveRequestForm } from "@/components/staff-day/LeaveRequestForm";
 
 const InspectionRunner = lazy(() => import("@/components/inspections/InspectionRunner"));
 
@@ -62,7 +60,6 @@ export default function MyDayPage() {
   const { data: authUser } = useAuth();
   const summaryQ = useMyDaySummary();
   const missionsQ = useMyMissions();
-  const requestLeave = useRequestLeave();
   const preferencesQuery = useUiPreferences();
   const { data: uiPreferences } = preferencesQuery;
   const gpsStatus = useGpsMyStatus(false).data;
@@ -72,9 +69,6 @@ export default function MyDayPage() {
     buildingId: string; buildingName: string; type: "FULL" | "QUICK";
   } | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
-  const [leaveDate, setLeaveDate] = useState("");
-  const [leaveDateError,setLeaveDateError] = useState("");
-  const [leaveServerError,setLeaveServerError] = useState("");
   const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
   // Chủ nhật: mở lại tuyến gợi ý nếu muốn làm tự nguyện
   const [showRouteOnRest, setShowRouteOnRest] = useState(false);
@@ -167,20 +161,6 @@ export default function MyDayPage() {
   const openRunner = (m: { building_id: string; building_name: string | null }, type: "FULL" | "QUICK") =>
     setRunner({ buildingId: m.building_id, buildingName: m.building_name ?? "toà", type });
 
-  const submitLeave = async () => {
-    if (!leaveDate) { setLeaveDateError("Chọn ngày xin nghỉ phép."); void focusFirstError({leaveDate:"Chọn ngày xin nghỉ phép."}); return; }
-    if (s?.today.date && leaveDate < s.today.date) { setLeaveDateError("Chọn ngày hôm nay hoặc ngày sau đó."); void focusFirstError({leaveDate:"Ngày nghỉ không hợp lệ."}); return; }
-    setLeaveDateError(""); setLeaveServerError("");
-    try {
-      const result = await requestLeave.mutateAsync({ date: leaveDate });
-      if(result.status==='leave_approved')toast.info(`Đơn nghỉ ngày ${leaveDate} đã được duyệt trước đó.`);
-      else toast.success(`Đơn nghỉ ngày ${leaveDate} đang chờ duyệt. Ngày công chưa được xác nhận.`);
-      setLeaveOpen(false);
-    } catch (e: any) {
-      setLeaveServerError(actionErrorMessage(e, "Chưa xác nhận được kết quả gửi đơn nghỉ phép"));
-    }
-  };
-
   return (
     <div className="min-h-dvh bg-slate-50">
       <div className="mx-auto max-w-[480px] px-4 pb-24 pt-4">
@@ -200,6 +180,7 @@ export default function MyDayPage() {
 
         <div className="mb-3 space-y-2">
           <PersonPicker active="me" />
+          <LeaveApprovalCard />
           {gpsActive && (
             <Link to="/my-day/diem-danh" className="flex items-center gap-2.5 rounded-xl border bg-white px-3 py-2.5 text-sm font-medium shadow-sm">
               <Crosshair className="h-4 w-4 text-emerald-600" aria-hidden="true" />
@@ -227,28 +208,9 @@ export default function MyDayPage() {
           </div>
         )}
 
-        {/* Xin phép 1-chạm */}
-        {leaveOpen && (
-          <div className="mb-3 rounded-xl border bg-white p-3 shadow-sm">
-            <div className="mb-2 text-sm font-medium">Xin phép có lương (1 chạm)</div>
-            <div className="flex gap-2">
-              <input
-                type="date" name="leaveDate" aria-label="Ngày xin nghỉ phép" aria-invalid={!!leaveDateError} aria-describedby={leaveDateError ? "leave-date-error" : undefined}
-                className="flex-1 rounded-md border px-2 py-1.5 text-sm aria-[invalid=true]:border-destructive"
-                value={leaveDate}
-                min={s?.today.date}
-                onChange={(e) => setLeaveDate(e.target.value)}
-              />
-              <Button size="sm" onClick={submitLeave} disabled={requestLeave.isPending || summaryQ.isError}>
-                Gửi
-              </Button>
-            </div>
-            {leaveDateError && <p id="leave-date-error" role="alert" className="text-sm text-destructive">{leaveDateError}</p>}
-            {leaveServerError && <p role="alert" className="text-sm text-destructive">{leaveServerError}</p>}
-            <p className="mt-1.5 text-[11px] text-slate-500">
-              Ngày phép là ngày trung tính: chuỗi được bắc cầu, đơn giá ngày tự điều chỉnh — bạn không thiệt.
-            </p>
-          </div>
+        {/* Xin nghỉ phép: một hoặc nhiều ngày trong một đơn */}
+        {leaveOpen && s && (
+          <LeaveRequestForm today={s.today.date} left={s.leave.left} disabled={summaryQ.isError} onDone={() => setLeaveOpen(false)} />
         )}
 
         {/* KHỐI A0 — phiên kiểm tra ĐANG DỞ (resume): tắt app vẫn còn tới 23:59 */}

@@ -21896,6 +21896,10 @@ export type Database = {
         Args: { p_approve: boolean; p_date: string; p_user: string }
         Returns: Json
       }
+      approve_leave_batch: {
+        Args: { p_approve: boolean; p_dates: string[]; p_user: string }
+        Returns: Json
+      }
       approve_meter_reading: {
         Args: { p_reading_id: string }
         Returns: undefined
@@ -29259,6 +29263,10 @@ export type Database = {
       }
       request_paid_leave: {
         Args: { p_date: string; p_reason?: string }
+        Returns: Json
+      }
+      request_paid_leave_range: {
+        Args: { p_from: string; p_reason?: string; p_to: string }
         Returns: Json
       }
       request_rent_support_source_lifecycle_v1: {

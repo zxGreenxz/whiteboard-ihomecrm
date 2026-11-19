@@ -27,7 +27,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { resolveNotificationUrl } from '@/lib/notificationRoutes';
+import { notificationRawUrl, resolveNotificationUrl } from '@/lib/notificationRoutes';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 
 const NotificationBell = () => {
@@ -57,7 +57,7 @@ const NotificationBell = () => {
 
     // ĐI THEO metadata.url TRƯỚC MỌI NHÁNH id — nơi phát sự kiện mới biết đích đúng
     // (danh sách đã lọc sẵn, phiếu cụ thể, tab bàn giao…), không suy ra được từ id.
-    const url = resolveNotificationUrl(notification.metadata?.url, perms);
+    const url = resolveNotificationUrl(notificationRawUrl(notification.metadata), perms);
     if (url) {
       navigate(url);
       setOpen(false);

@@ -6,6 +6,7 @@ import { actionErrorMessage } from "@/lib/actionFeedback";
 import { batBuoc } from "@/lib/queryGuard";
 import { z } from 'zod';
 import { financialReadRows } from '@/lib/financialReadValidation';
+import { leaveMonths, leaveWorkDays } from '@/lib/leaveDates';
 
 const dayCount = z.number().int().nonnegative();
 const dayAmount = z.number().finite();
@@ -120,22 +121,83 @@ export function useMyMissions() {
   });
 }
 
-export function useRequestLeave() {
+// Màn Hôm nay của nhân viên, thẻ duyệt của chủ, chấm trạng thái từng người (PersonPicker / thẻ ngày công) và Bảng lương
+// cùng đọc trạng thái phép: gửi hay duyệt đơn đều làm mới đủ các nguồn này.
+function invalidateLeaveViews(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["v5-my-day-summary"] });
+  qc.invalidateQueries({ queryKey: ["v5-pending-leaves"] });
+  qc.invalidateQueries({ queryKey: ["manager-salary"] });
+  qc.invalidateQueries({ queryKey: ["staff-day"] });
+}
+
+const leaveRangeReceipt = z.object({
+  from: dayDate, to: dayDate, requested: z.array(dayDate), existing: z.array(dayDate), holidays: z.array(dayDate),
+  batch: z.string().min(1).nullable(),
+});
+export type LeaveRangeResult = z.infer<typeof leaveRangeReceipt>;
+
+/**
+ * Ngày làm (T2–T7 trừ ngày lễ của công ty người gọi — vn_workdays) của các tháng mà khoảng [from, to] chạm tới. Biểu mẫu
+ * xin nghỉ dùng để xem trước đúng số ngày máy chủ sẽ ghi (máy chủ đọc cùng RPC). Khoảng sai / quá dài ⇒ không đọc.
+ */
+export function useLeaveWorkdays(from: string, to: string) {
+  const months = leaveMonths(from, to);
+  return useQuery({
+    queryKey: ["v5-workdays", ...months],
+    enabled: months.length > 0,
+    staleTime: 10 * 60_000,
+    queryFn: async (): Promise<string[]> => {
+      const days: string[] = [];
+      for (const month of months) {
+        const { data, error } = await rpc("vn_workdays", { p_month: month });
+        if (error) throw error;
+        days.push(...z.array(dayDate).parse(data));
+      }
+      return days;
+    },
+  });
+}
+
+/**
+ * Xin nghỉ phép có lương từ ngày đến ngày trong MỘT đơn (request_paid_leave_range, 20261119020927): Chủ nhật và ngày lễ
+ * của công ty không tính, số dư phải đủ cho mọi ngày mới, ngày đã có đơn giữ nguyên. Một ngày = from bằng to.
+ */
+export function useRequestLeaveRange() {
   const qc = useQueryClient();
   return useMutation({
     meta: {handlesFeedback:true},
-    mutationFn: async (args: { date: string; reason?: string }) => {
-      const { data, error } = await rpc("request_paid_leave", {
-        p_date: args.date,
-        p_reason: args.reason ?? null,
+    mutationFn: async (args: { from: string; to: string; reason?: string }) => {
+      const { data, error } = await rpc("request_paid_leave_range", {
+        p_from: args.from,
+        p_to: args.to,
+        p_reason: args.reason?.trim() || null,
       });
       if (error) throw error;
-      const result = z.object({status:z.enum(['pending_leave','leave_approved']),date:dayDate,quota_left:dayCount.optional()}).parse(data);
-      if(result.date!==args.date)throw new TypeError('Chưa xác nhận được đơn nghỉ của đúng ngày đã chọn.');
+      const result = leaveRangeReceipt.parse(data);
+      // Biên nhận phải phủ ĐÚNG các ngày không phải Chủ nhật của khoảng đã chọn (ngày ghi đơn + ngày đã có đơn + ngày lễ)
+      // — thiếu hay thừa ngày là chưa xác nhận được đơn.
+      const covered = [...result.requested, ...result.existing, ...result.holidays].sort().join(",");
+      if (result.from !== args.from || result.to !== args.to || covered !== leaveWorkDays(args.from, args.to).join(",")) {
+        throw new TypeError("Chưa xác nhận được đơn nghỉ của đúng khoảng ngày đã chọn.");
+      }
       return result;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["v5-my-day-summary"] }),
+    onSuccess: () => invalidateLeaveViews(qc),
   });
+}
+
+/** Lỗi nghiệp vụ của request_paid_leave_range mang HINT leave_*: câu lỗi máy chủ là câu hiển thị cho nhân viên. */
+const LEAVE_REQUEST_HINTS = new Set([
+  "leave_not_signed_in", "leave_range_invalid", "leave_past_date", "leave_range_too_long", "leave_reason_too_long",
+  "leave_no_workday", "leave_day_ticked", "leave_quota_exceeded", "leave_day_changed",
+]);
+export function leaveRequestErrorMessage(error: unknown): string {
+  const record = error && typeof error === "object" ? error as { message?: unknown; hint?: unknown } : {};
+  const message = typeof record.message === "string" ? record.message.trim() : "";
+  if (typeof record.hint === "string" && LEAVE_REQUEST_HINTS.has(record.hint) && message) {
+    return /[.!?]$/.test(message) ? message : `${message}.`;
+  }
+  return actionErrorMessage(error, "Chưa xác nhận được kết quả gửi đơn nghỉ phép");
 }
 
 // ───────────────── Phép — chủ duyệt (admin) ─────────────────
@@ -145,6 +207,8 @@ export interface PendingLeaveRequest {
   reason: string | null;
   requested_at: string | null;
   staff_name: string;
+  /** Mã đơn nhiều ngày (evidence.batch) — gom các ngày cùng đơn; null với đơn một ngày. */
+  batch: string | null;
 }
 
 /** Danh sách đơn xin phép đang chờ duyệt (status='pending_leave') — RLS chỉ trả đủ cho admin. */
@@ -177,6 +241,7 @@ export function usePendingLeaveRequests(enabled: boolean = true) {
           reason: last?.reason ?? null,
           requested_at: last?.at ?? null,
           staff_name: nameById.get(r.user_id) ?? "Nhân viên",
+          batch: typeof last?.batch === "string" && last.batch ? last.batch : null,
         };
       });
     },
@@ -206,10 +271,36 @@ export function useApproveLeave() {
       if (!data || typeof data !== 'object' || !('approved' in data) || data.approved !== args.approve || !('date' in data) || data.date !== args.date) throw new TypeError('Unconfirmed leave approval result');
       return data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["v5-pending-leaves"] });
-      qc.invalidateQueries({ queryKey: ["manager-salary"] });
+    // Thẻ duyệt nằm cả trên các màn Hôm nay của chủ: chấm trạng thái ở PersonPicker và thẻ ngày
+    // công của người vừa được duyệt đọc từ ["staff-day", …], không làm mới thì còn «chờ duyệt».
+    onSuccess: () => invalidateLeaveViews(qc),
+  });
+}
+
+const leaveBatchReceipt = z.object({ approved: z.boolean(), user: z.string().min(1), dates: z.array(dayDate).min(1) });
+
+/**
+ * Chủ duyệt / từ chối CẢ đơn nhiều ngày của một người trong một lần (approve_leave_batch, 20261119020927). Máy chủ đổi
+ * mọi ngày hoặc không ngày nào, gửi một thông báo kết quả; câu lỗi giống approve_leave nên dùng leaveActionErrorMessage.
+ */
+export function useApproveLeaveBatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: {handlesFeedback:true},
+    mutationFn: async (args: { user: string; dates: readonly string[]; approve: boolean }) => {
+      const { data, error } = await rpc("approve_leave_batch", {
+        p_user: args.user,
+        p_dates: [...args.dates],
+        p_approve: args.approve,
+      });
+      if (error) throw error;
+      const result = leaveBatchReceipt.parse(data);
+      if (result.approved !== args.approve || result.user !== args.user || result.dates.join(",") !== [...new Set(args.dates)].sort().join(",")) {
+        throw new TypeError("Unconfirmed leave batch approval result");
+      }
+      return result;
     },
+    onSuccess: () => invalidateLeaveViews(qc),
   });
 }
 

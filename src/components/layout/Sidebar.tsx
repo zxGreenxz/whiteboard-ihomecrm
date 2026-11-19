@@ -78,6 +78,7 @@ import {
   BadgeCheck,
   Handshake,
   Fingerprint,
+  Sun,
 } from 'lucide-react';
 
 interface NavItem {
@@ -133,6 +134,10 @@ export const navigationGroups: NavGroup[] = [
     items: [
       // Bảng tin = trang chủ kiêm fallback của RequirePermission → luôn hiện.
       { title: 'Bảng tin', href: '/', icon: LayoutDashboard },
+      // Hôm nay: ô đầu tiên của launcher điện thoại nhưng trước 19/11/2026 không có mục nào trên
+      // máy tính. Route /my-day không bọc RequirePermission (ai đăng nhập cũng có ngày công của
+      // mình) ⇒ không khai `module`, luôn hiện như ô launcher.
+      { title: 'Hôm nay', href: '/my-day', icon: Sun },
       ...navFieldsFor('map').map((x) => ({ ...x, icon: Map }) satisfies NavItem),
     ],
   },

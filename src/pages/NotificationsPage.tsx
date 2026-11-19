@@ -22,7 +22,7 @@ import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { resolveNotificationUrl } from '@/lib/notificationRoutes';
+import { notificationRawUrl, resolveNotificationUrl } from '@/lib/notificationRoutes';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 
 // Bản tin mobile: web-app full-screen riêng (scope CSS .cm-app) — lazy.
@@ -152,7 +152,7 @@ const NotificationsDesktopPage = () => {
 
     // ĐI THEO metadata.url TRƯỚC MỌI NHÁNH id — đó là đích do chính nơi phát sự kiện
     // chỉ định (đã có 223 dòng cũ mang metadata.url = '/my-day').
-    const url = resolveNotificationUrl(notification.metadata?.url, perms);
+    const url = resolveNotificationUrl(notificationRawUrl(notification.metadata), perms);
     if (url) {
       navigate(url);
       return;

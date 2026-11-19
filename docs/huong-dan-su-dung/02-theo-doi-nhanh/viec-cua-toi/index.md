@@ -57,7 +57,7 @@ Nếu điện thoại không bắt được vị trí dù đã ra chỗ thoáng,
 
 | Nút / Khối | Công dụng |
 |---|---|
-| **Xin phép (còn n)** | Mở ô **Xin phép có lương (1 chạm)**: chọn ngày rồi ấn **Gửi**. Ngày phép được duyệt là ngày trung tính — chuỗi được bắc cầu. |
+| **Xin phép (còn n)** | Mở ô **Xin nghỉ phép có lương**: chọn **Từ ngày** và **Đến ngày** (nghỉ một ngày thì chọn cùng một ngày), ghi **Lý do** nếu muốn rồi ấn **Gửi đơn**. Một đơn nghỉ được nhiều ngày (tối đa 31 ngày lịch); Chủ nhật và ngày lễ của công ty không tính. Số dư phép phải đủ cho mọi ngày trong đơn, không đủ thì cả đơn không gửi và màn hình báo còn đủ bao nhiêu ngày. Ngày phép được duyệt là ngày trung tính — chuỗi được bắc cầu. |
 | **Kiểm tra <toà>** | Lối tắt mở phiên kiểm tra nhà cho toà được gợi ý đầu tiên. |
 | **check nhanh 3–5 phút** | Phiên **check nhanh** sau khi vừa thu tiền tại toà — nhẹ hơn kiểm tra đầy đủ. |
 | **Xếp tuyến** | Sắp thứ tự ghé các toà, tối ưu theo vị trí và mở Google Maps theo chặng. |
