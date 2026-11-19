@@ -245,6 +245,8 @@ Khoản trả cho người quản lý điều hành được trừ khỏi LN t�
 
 **Phép 1-chạm** ([20260703000004](supabase/migrations/20260703000004_v5_myday.sql)): `request_paid_leave` (V5.1: ngày xin ≥ 01/09/2026 dùng **số dư năm** `LEAST(12, tháng × rate) − đã dùng trong năm`; trước đó quota theo tháng; chỉ hôm nay/ngày tới, chặn CN, idempotent, báo chủ) → `approve_leave` (chủ duyệt → `leave_approved` = **ngày trung tính**: `v5_n_chuan(tháng, user) = COUNT(T2–T7 − lễ) − số-phép-duyệt` → đơn giá ngày `budget/N_chuẩn` **tự tăng**, nhân viên không thiệt).
 
+**Đơn nhiều ngày** ([20261119020927](supabase/migrations/20261119020927_xin_nghi_phep_nhieu_ngay.sql)): màn Hôm nay gọi `request_paid_leave_range(p_from, p_to, p_reason)` — chỉ ghi **ngày làm** của công ty người xin (`vn_workdays`: bỏ CN **và ngày lễ**, ngày lễ trả ở `holidays`; không bỏ thì phép rơi vào ngày lễ bị trừ hai lần khỏi N_chuẩn vì `v5_n_chuan_for_org_v1` trừ mọi ngày `leave_approved` trong tháng), tối đa 31 ngày lịch, từng ngày theo luật `request_paid_leave` (số dư phải đủ cho MỌI ngày mới, ngày đã có đơn giữ nguyên, có ngày công ⇒ từ chối cả đơn), ghi cả đơn trong một giao dịch, các ngày chung `evidence.batch`, một thông báo cho chủ. Chủ duyệt/từ chối cả đơn bằng `approve_leave_batch(p_user, p_dates, p_approve)` (cổng `is_admin()` như `approve_leave`; mọi ngày phải đang `pending_leave`, tính lại chuỗi mỗi tháng bị chạm, một thông báo). `request_paid_leave` / `approve_leave` giữ nguyên — tab Đơn xin nghỉ ở Bảng lương vẫn duyệt lẻ từng ngày.
+
 ### 4.9. V5 — tiền, LOCK, nghi án/kết án ([20260703000005](supabase/migrations/20260703000005_v5_money_lock.sql))
 
 - **`v5_month_money(user, month)`** (đọc-only): `attend = round(budget/N_chuẩn) × min(ticked, N_chuẩn)`, áp **sàn mềm** (≥13 ngày → tối thiểu 3tr, config) và **trần budget 6tr**; `streak = Σ delta các mốc banked`, trần 3tr. `get_salary_progress_v5` = money + lưới ngày cho self-view.
@@ -315,7 +317,7 @@ Màn trung tâm vòng lặp V5 phía nhân viên, mobile-first (desktop bó 480p
 3. **Khối B** — "Hôm nay nên ghé": tối đa 3 toà red/yellow kèm lý-do-bằng-chữ.
 4. **Khối C** — việc đang mở của tôi (link `/tasks`).
 5. **Khối F** — 2 thanh tiến trình: chuyên cần `ticked/N_chuẩn` + tiền tạm tính/budget; chuỗi hiện mốc kế, khiên `free+reserve`, chip mốc 🔒 banked.
-6. **Xin phép 1-chạm** (hiện quota còn lại) + **onboarding "Tôi đã hiểu"** bắt buộc từ chặng `shadow_money` (lưu `ui_preferences.v5_onboarding_ack`).
+6. **Xin nghỉ phép** từ ngày → đến ngày trong một đơn ([LeaveRequestForm](src/components/staff-day/LeaveRequestForm.tsx), hiện số dư còn lại; xem trước đọc `vn_workdays`) + **onboarding "Tôi đã hiểu"** bắt buộc từ chặng `shadow_money` (lưu `ui_preferences.v5_onboarding_ack`).
 Phiên kiểm tra chạy trong dialog [InspectionRunner](src/components/inspections/InspectionRunner.tsx) (mục 4.8). Copy động viên tập trung ở [v5Copy.ts](src/lib/v5Copy.ts).
 
 Chủ công ty và super admin còn thấy bộ chọn người ở đầu màn này để xem từng quản lý: xem [27-viec-cua-quan-ly-va-diem-danh-gps](27-viec-cua-quan-ly-va-diem-danh-gps.md).

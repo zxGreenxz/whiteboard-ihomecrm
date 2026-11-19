@@ -239,7 +239,8 @@ export function resolveNotificationUrl(
  * `metadata.v5`:
  *   - `leave_request`: `request_paid_leave` báo chủ «Xin phép nghỉ có lương» KHÔNG kèm url ⇒ trước
  *     19/11/2026 bấm vào chỉ đánh dấu đã đọc. Nay mở `/my-day`, nơi super admin duyệt ngay trên thẻ
- *     «Đơn xin nghỉ chờ duyệt». Suy ở client nên phủ cả các dòng cũ, không cần migration.
+ *     «Đơn xin nghỉ chờ duyệt». Suy ở client nên phủ cả các dòng cũ, không cần migration. Đơn gửi qua
+ *     `request_paid_leave_range` (từ 20261119020927) tự gắn `metadata.url = '/my-day'`.
  */
 export function notificationRawUrl(metadata: unknown): unknown {
   if (!metadata || typeof metadata !== "object") return undefined;

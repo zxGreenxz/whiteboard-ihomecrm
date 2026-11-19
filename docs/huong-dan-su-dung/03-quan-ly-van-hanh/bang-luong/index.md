@@ -64,7 +64,7 @@ Mỗi khoản có nhãn trạng thái (**Tạm tính**, **Nhập tay**, **Địn
 
 ![Bước 4 - Tab Bảng kê công việc tháng 10/2026 của DEMO với bộ lọc và bảng trống](./images/buoc-04-bang-ke.webp)
 
-**Bước 5**: Duyệt đơn nghỉ ở tab **Đơn xin nghỉ** (**Đơn xin nghỉ có lương**): duyệt hoặc từ chối, nhân viên nhận thông báo kết quả. Tài khoản quản trị hệ thống duyệt được cả ngay trên màn **Hôm nay** (mục **Hôm nay** ở menu trái hoặc ô **Hôm nay** trên điện thoại): thẻ **Đơn xin nghỉ chờ duyệt** hiện ở mục Tôi, Cả đội và trang của từng người, bấm thông báo **Xin phép nghỉ có lương** cũng mở thẳng tới đó.
+**Bước 5**: Duyệt đơn nghỉ ở tab **Đơn xin nghỉ** (**Đơn xin nghỉ có lương**): duyệt hoặc từ chối, nhân viên nhận thông báo kết quả. Tài khoản quản trị hệ thống duyệt được cả ngay trên màn **Hôm nay** (mục **Hôm nay** ở menu trái hoặc ô **Hôm nay** trên điện thoại): thẻ **Đơn xin nghỉ chờ duyệt** hiện ở mục Tôi, Cả đội và trang của từng người, bấm thông báo **Xin phép nghỉ có lương** cũng mở thẳng tới đó. Đơn nhiều ngày hiện thành một dòng trên thẻ (ví dụ **Nghỉ 3 ngày: 27/11 → 30/11**): **Duyệt cả 3 ngày** hoặc **Từ chối** áp cho cả đơn, nhân viên nhận một thông báo. Ở tab **Đơn xin nghỉ** mỗi ngày vẫn là một dòng, nên muốn duyệt lẻ từng ngày thì làm ở đó.
 
 **Bước 6**: Chốt kỳ (cần `lock`). Bấm **Chốt kỳ ThN** → hộp **Chốt tháng?** → **Chốt tháng**. Hệ thống tính lần cuối, tự duyệt các phiếu hoa hồng còn chờ duyệt đang tính vào lương, rồi đóng băng toàn bộ bảng lương và bảng kê. Sau khi chốt, sửa hay đóng việc cũ không còn ảnh hưởng kỳ này; thanh toán trả đúng số đã chốt, không chọn từng khoản.
 
