@@ -8,15 +8,9 @@
 // upstream giả, không cần JWT, và đỏ ở đúng dòng sai.
 //
 //   deno test --config supabase/functions/llm-proxy/deno.json \
-//     supabase/functions/llm-proxy/index.test.ts --allow-env
+//     --import-map scripts/fixtures/llm-proxy-imports.json --lock deno.lock --frozen \
+//     supabase/functions/llm-proxy/index.test.ts supabase/functions/llm-proxy/stream-terminal.test.ts --allow-env
 //
-// Khuôn theo supabase/functions/network-center-worker/index.test.ts: tự viết
-// assert thay vì kéo std, và nạp module bằng dynamic import để lỗi nạp hiện ra
-// thành một thông báo đọc được chứ không phải stack trace của runtime.
-
-// CI invokes this entry point; include the real handler's terminal-stream cases.
-import "./stream-terminal.test.ts";
-
 function assert(condition: unknown, message = "Assertion failed"): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -91,11 +85,10 @@ interface PhuThuocGia {
 // không chỗ nào khác trong proxy đọc biến này.
 Deno.env.set("NINEROUTER_BASE_URL", "https://9router-gia.test/v1");
 
-const proxyModule = import("./index.ts").catch(() => null);
+const proxyModule = import("./index.ts");
 
 async function nap(): Promise<ProxyModule> {
   const loaded = await proxyModule;
-  assert(loaded !== null, "llm-proxy/index.ts phải nạp được (kiểm mạng tới esm.sh nếu đỏ ở đây)");
   const m = loaded as unknown as ProxyModule;
   for (
     const ten of [
