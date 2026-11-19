@@ -3,7 +3,11 @@
 //
 // Chủ chỉ chọn cổ đông và "Chốt đến hết tháng"; máy chủ tính (R5), KHÔNG có ô nhập số tiền:
 //   Lợi nhuận chưa chi đến tháng đó − Khấu trừ tạm ứng (đã duyệt) = Thực chi.
-//   Thực chi > 0 ⇒ chọn sổ quỹ + ngày chi, lập một phiếu chi CHỜ DUYỆT (tiền chưa ra khỏi sổ).
+//   Thực chi > 0 ⇒ chọn sổ quỹ + ngày chi; khối "Duyệt và Chi" bên dưới (19/11/2026, chủ chốt "gộp vào 1 màn hình
+//     luôn Duyệt và Chi có ảnh phía dưới như bình thường"): MỘT nút lập phiếu chi (W2 lưu phiếu ở Chờ duyệt) rồi cùng
+//     nick làm tiếp cho đúng phiếu đó — giữ sổ đã chọn ⇒ Duyệt và Chi kèm ảnh chứng từ (bắt buộc); không giữ sổ ⇒ chỉ
+//     duyệt, người giữ sổ bấm Chi ở Thu chi (useOwnerPayoutPosting). Bước sau hỏng ⇒ phiếu ở Chờ duyệt, hộp nói đúng
+//     trạng thái, "Làm tiếp" không lập phiếu thứ hai.
 //   Thực chi = 0 ⇒ "Chốt, không ra tiền": không phiếu, có hiệu lực ngay ⇒ phải qua bước xác nhận.
 // Gửi (W2) kèm ĐÚNG hai số đang hiện (phần ghi nhận + thực chi). Số liệu vừa đổi ⇒ máy chủ từ chối (PT409):
 // hộp báo, tải lại xem trước, chủ xem số mới rồi tự bấm lại — KHÔNG tự gửi lại.
@@ -33,7 +37,13 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Textarea } from '@/components/ui/textarea';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useProfitSettlementPreview, useShareholderProfitLedger } from '@/hooks/profit-ledger/useProfitLedgerQueries';
-import { useSettleShareholderProfit, type SettleShareholderProfitInput } from '@/hooks/profit-ledger/useProfitLedgerMutations';
+import {
+  useSettleShareholderProfit, type SettleShareholderProfitInput, type SettleShareholderProfitResult,
+} from '@/hooks/profit-ledger/useProfitLedgerMutations';
+import {
+  describeOwnerPayoutFailure, ownerPayoutCanResume, useOwnerPayoutPosting,
+  type OwnerPayoutStep, type OwnerPayoutStepFailure, type OwnerPayoutTarget,
+} from '@/hooks/profit-ledger/useOwnerPayoutPosting';
 import { todayISO } from '@/lib/collect';
 import { focusFirstError } from '@/lib/formErrors';
 import { profitLedgerErrorMessage, type ProfitLedgerErrorInfo } from '@/lib/profitLedger/errors';
@@ -48,6 +58,9 @@ import { sameMoney } from '@/lib/profitLedger/readPrimitives';
 import { profitLedgerRouteState } from '@/lib/profitLedger/route';
 import { cancelTargetFromSettlement, type ProfitPayoutCancelTarget } from '@/lib/profitLedger/vouchers';
 import { formatVND } from '@/lib/utils';
+import {
+  OWNER_PAYOUT_APPROVE_LABEL, OWNER_PAYOUT_POST_LABEL, OWNER_PAYOUT_RESUME_LABEL, OwnerPayoutPostingSection,
+} from './OwnerPayoutPostingSection';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
 import { ProfitSettlementVoidDialog, type ProfitSettlementVoidTarget } from './ProfitSettlementVoidDialog';
 
@@ -71,17 +84,42 @@ const emptyValues = (shareholderId: string): SettleFormValues => ({
 
 const WARN_BOX = 'flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200';
 
+/** Phiếu tiền của lần chốt đã lập (W2 xong) — bước Duyệt và Chi / Duyệt làm tiếp cho ĐÚNG phiếu này. */
+interface CreatedPayout {
+  target: OwnerPayoutTarget;
+  code: string | null;
+  /** Câu đầu của thông báo (số đã chốt). */
+  head: string;
+  accountName: string | null;
+}
+
+/** Câu đầu thông báo của một lần chốt đã ghi. */
+function settledHead(result: SettleShareholderProfitResult, shareholderName: string | null): string {
+  const who = shareholderName ? ` cho ${shareholderName}` : '';
+  return `Đã chốt chi lợi nhuận đến hết ${settleMonthLabel(result.through_month)}${who}: ghi nhận ${formatVND(result.recognized_amount)} · khấu trừ tạm ứng ${formatVND(result.advance_offset_amount)} · thực chi ${formatVND(result.cash_amount)}.`;
+}
+
 export default function ProfitDistributeDialog({
   open, onOpenChange, organizationId, ledgerRows, defaultShareholderId, onReviewSalary, onSetMarker,
 }: ProfitDistributeDialogProps) {
   const accountsQuery = useAccounts({ enabled: open });
   const ledgerQuery = useShareholderProfitLedger(open && !ledgerRows ? organizationId : null);
   const settleMut = useSettleShareholderProfit();
+  // Khối "Duyệt và Chi": ảnh chứng từ, sổ người bấm giữ, bước sau cho phiếu vừa lập.
+  const posting = useOwnerPayoutPosting(open, 'distribute');
   const dialogRef = useRef<HTMLDivElement>(null);
   const [failure, setFailure] = useState<ProfitLedgerErrorInfo | null>(null);
-  // Lần chốt chưa rõ kết quả: giữ ĐÚNG nội dung đã gửi để "Kiểm tra lại" gửi lại y nguyên (cùng khoá).
-  const [blocked, setBlocked] = useState<{ input: SettleShareholderProfitInput; failure: ProfitLedgerErrorInfo } | null>(null);
+  // Lần chốt chưa rõ kết quả: giữ ĐÚNG nội dung đã gửi (và bước sau đã chọn) để "Kiểm tra lại" gửi lại y nguyên (cùng khoá).
+  const [blocked, setBlocked] = useState<{ input: SettleShareholderProfitInput; step: OwnerPayoutStep | null; failure: ProfitLedgerErrorInfo } | null>(null);
   const saveBlocked = !!blocked;
+  // W2 đã lập phiếu, bước sau chưa xong: khoá form (không chốt lại), chỉ còn "Làm tiếp" cho đúng phiếu này.
+  const [created, setCreated] = useState<CreatedPayout | null>(null);
+  const [stepFailure, setStepFailure] = useState<OwnerPayoutStepFailure | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  // Đang chờ ảnh tải / đang làm bước sau.
+  const [finishing, setFinishing] = useState(false);
+  const formLocked = saveBlocked || !!created;
+  const busy = settleMut.isPending || finishing || posting.pending;
   // Tháng chủ TỰ chọn; null = để máy chủ chọn tháng đủ điều kiện mới nhất.
   const [pickedMonth, setPickedMonth] = useState<string | null>(null);
   // Tháng tự chọn vừa bị đưa về mặc định vì xem trước lỗi: câu báo cạnh ô tháng.
@@ -108,17 +146,21 @@ export default function ProfitDistributeDialog({
       setMonthReset(null);
       setFailure(null);
       setConfirmInput(null);
+      setCreated(null);
+      setStepFailure(null);
+      setEvidenceError(null);
     }
   }, [open, saveBlocked, initialShareholder, reset]);
 
   const values = useWatch({ control: form.control });
   const shareholderId = values.shareholderId ?? '';
   const accountId = values.accountId ?? '';
+  // Phiếu đã lập (bước sau đang dở): giữ nguyên số đang hiện, không tính lại theo số mới của máy chủ.
   const previewQuery = useProfitSettlementPreview({
     shareholderId: shareholderId || null,
     throughMonth: pickedMonth,
     accountId: accountId || null,
-    enabled: open && !saveBlocked,
+    enabled: open && !formLocked,
   });
   // Số để HIỆN: lần xem trước của đúng cổ đông và đúng tháng đang chọn (lúc đang tải lại vì đổi sổ quỹ vẫn giữ
   // số cũ để các ô không chớp tắt). Số để GỬI: còn phải tải xong, không lỗi, không phải số giữ tạm.
@@ -137,7 +179,7 @@ export default function ProfitDistributeDialog({
   // Tháng mặc định cũng lỗi thì giữ khung lỗi có nút "Tính lại" như cũ (không còn tháng nào để lùi về).
   const pickedHasData = !!previewQuery.data && previewQuery.data.shareholder_id === shareholderId
     && previewQuery.data.through_month === pickedMonth;
-  const pickedErrorKind = pickedMonth !== null && previewQuery.isError && !saveBlocked
+  const pickedErrorKind = pickedMonth !== null && previewQuery.isError && !formLocked
     ? profitLedgerErrorMessage(previewQuery.error, 'preview').kind
     : null;
   const pickedFailed = pickedErrorKind !== null && (pickedErrorKind === 'SETTLE_MONTH' || !pickedHasData);
@@ -157,12 +199,12 @@ export default function ProfitDistributeDialog({
 
   // Tháng và số thực chi của form đi theo lần xem trước đang hiện (máy chủ tính, không phải ô nhập).
   useEffect(() => {
-    if (saveBlocked || !preview) return;
+    if (formLocked || !preview) return;
     const nextMonth = through ?? '';
     if (form.getValues('throughMonth') !== nextMonth) form.setValue('throughMonth', nextMonth, { shouldValidate: form.formState.isSubmitted });
     const nextCash = hasCash && cash !== null ? cash : 0;
     if (form.getValues('previewCash') !== nextCash) form.setValue('previewCash', nextCash, { shouldValidate: form.formState.isSubmitted });
-  }, [preview, through, cash, hasCash, saveBlocked, form]);
+  }, [preview, through, cash, hasCash, formLocked, form]);
 
   // Số mới đã tính xong: bỏ câu "đang tính" của lần bấm trước.
   useEffect(() => {
@@ -209,28 +251,54 @@ export default function ProfitDistributeDialog({
 
   const sources: readonly RegionQuery[] = [accountsQuery, ...(!ledgerRows ? [ledgerQuery] : [])];
 
-  const send = async (input: SettleShareholderProfitInput, shownOffset: number | null) => {
+  const payoutAccountName = (id: string | null) => payoutAccounts.find((account) => account.id === id)?.name ?? null;
+
+  /**
+   * Bước sau cho phiếu vừa lập (W2 đã lưu phiếu ở Chờ duyệt): Duyệt và Chi (giữ sổ, kèm ảnh) hoặc chỉ Duyệt. Xong thì
+   * nói đúng trạng thái thật rồi đóng; hỏng thì phiếu nằm ở bước đã tới, hộp giữ phiếu đó để "Làm tiếp".
+   */
+  const finish = async (next: CreatedPayout) => {
+    setStepFailure(null);
+    setFinishing(true);
+    const posted = next.target.step === 'APPROVE_AND_POST';
+    const voucher = next.code ? `Phiếu ${next.code}` : 'Phiếu chi';
+    const book = next.accountName ? `sổ ${next.accountName}` : 'sổ quỹ đã chọn';
+    try {
+      const outcome = await posting.complete(next.target);
+      setCreated(null);
+      if (outcome === 'POSTED') toast.success(`${next.head} ${voucher} đã duyệt và chi từ ${book}.`);
+      else if (posted) toast.success(`${next.head} ${voucher} đã được duyệt — bấm Chi (kèm ảnh chứng từ) ở Thu chi để chi tiền.`);
+      else toast.success(`${next.head} ${voucher} đã duyệt — người giữ ${book} bấm Chi (kèm ảnh chứng từ) ở Thu chi.`);
+      onOpenChange(false);
+    } catch (error) {
+      const failure = describeOwnerPayoutFailure(error, next.target.step);
+      if (failure.kind === 'APPROVE_ONLY') {
+        // Máy chủ không cho chính người nhận chi (quyền chi không phủ cả công ty): giao dịch lùi cả bước duyệt ⇒ làm tiếp
+        // chỉ Duyệt, người giữ sổ khác bấm Chi.
+        setCreated({ ...next, target: { ...next.target, step: 'APPROVE' } });
+        setStepFailure({ ...failure, message: `${failure.message} Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để chỉ duyệt.` });
+      } else {
+        // Từ chối vì quyền / chưa rõ kết quả ⇒ khoá "Làm tiếp" (gửi lại vẫn y lỗi), chỉ đường sang Chờ duyệt / Thu chi.
+        setStepFailure(failure);
+      }
+      toast.warning(`${next.head} ${voucher} đã lập, đang chờ duyệt — chưa ${posted ? 'duyệt và chi' : 'duyệt'} được.`);
+    } finally {
+      setFinishing(false);
+    }
+  };
+
+  /** `step`: bước sau đã chọn lúc bấm (null = lần chốt không ra tiền). */
+  const send = async (input: SettleShareholderProfitInput, shownOffset: number | null, step: OwnerPayoutStep | null) => {
     if (settleMut.isPending) return;
     setFailure(null);
+    let result: SettleShareholderProfitResult;
     try {
-      const result = await settleMut.mutateAsync(input);
-      setBlocked(null);
-      const who = shareholderName ? ` cho ${shareholderName}` : '';
-      const head = `Đã chốt chi lợi nhuận đến hết ${settleMonthLabel(result.through_month)}${who}: ghi nhận ${formatVND(result.recognized_amount)} · khấu trừ tạm ứng ${formatVND(result.advance_offset_amount)} · thực chi ${formatVND(result.cash_amount)}.`;
-      toast.success(result.voucher_id
-        ? `${head} ${result.code ? `Phiếu ${result.code}` : 'Phiếu chi'} chờ duyệt, chưa chi tiền.`
-        : `${head} Không ra tiền — có hiệu lực ngay.`);
-      // Máy chủ so-rồi-ghi trên hai số đã gửi nên không lệch; nếu biên nhận vẫn khác số đã hiện thì nói ra, không im lặng.
-      if (!sameMoney(result.recognized_amount, input.expectedRecognized) || !sameMoney(result.cash_amount, input.expectedCash)
-          || (shownOffset !== null && !sameMoney(result.advance_offset_amount, shownOffset))) {
-        toast.warning('Số máy chủ vừa ghi khác số đang hiện lúc bấm — mở lại hộp chốt để xem số đã ghi.');
-      }
-      onOpenChange(false);
+      result = await settleMut.mutateAsync(input);
     } catch (error) {
       const info = profitLedgerErrorMessage(error, 'settle');
       setFailure(info);
       if (info.kind === 'UNKNOWN_OUTCOME') {
-        setBlocked({ input, failure: info });
+        setBlocked({ input, step, failure: info });
         return;
       }
       setBlocked(null);
@@ -238,11 +306,66 @@ export default function ProfitDistributeDialog({
       if (info.kind === 'SETTLE_MONTH') setPickedMonth(null);
       // Số liệu vừa đổi (PT409…): tải lại xem trước — chủ xem số mới rồi tự bấm lại, KHÔNG tự gửi lại.
       if (info.reload) void previewQuery.refetch();
+      return;
     }
+    setBlocked(null);
+    const head = settledHead(result, shareholderName);
+    // Máy chủ so-rồi-ghi trên hai số đã gửi nên không lệch; nếu biên nhận vẫn khác số đã hiện thì nói ra, không im lặng.
+    if (!sameMoney(result.recognized_amount, input.expectedRecognized) || !sameMoney(result.cash_amount, input.expectedCash)
+        || (shownOffset !== null && !sameMoney(result.advance_offset_amount, shownOffset))) {
+      toast.warning('Số máy chủ vừa ghi khác số đang hiện lúc bấm — mở lại hộp chốt để xem số đã ghi.');
+    }
+    if (!result.voucher_id) {
+      toast.success(`${head} Không ra tiền — có hiệu lực ngay.`);
+      onOpenChange(false);
+      return;
+    }
+    if (!step || !input.accountId || !input.voucherDate) {
+      // Người bấm không duyệt được (thiếu quyền duyệt thu chi): chỉ lập phiếu, nói đúng trạng thái phiếu.
+      toast.success(`${head} ${result.code ? `Phiếu ${result.code}` : 'Phiếu chi'} chờ duyệt, chưa chi tiền.`);
+      onOpenChange(false);
+      return;
+    }
+    const next: CreatedPayout = {
+      target: { voucherId: result.voucher_id, organizationId: input.organizationId, accountId: input.accountId, postedOn: input.voucherDate, step },
+      code: result.code,
+      head,
+      accountName: payoutAccountName(input.accountId),
+    };
+    setCreated(next);
+    await finish(next);
+  };
+
+  /**
+   * Giữ sổ (Duyệt và Chi): phải có ảnh chứng từ, ảnh đang tải thì chờ xong — như hộp Duyệt và Chi của Thu chi.
+   * true = đi tiếp được.
+   */
+  const evidenceReady = async (label: string): Promise<boolean> => {
+    setEvidenceError(null);
+    setFinishing(true);
+    let stop: string | null;
+    try {
+      stop = await posting.evidence.ensureReady(label);
+    } finally {
+      setFinishing(false);
+    }
+    if (stop === null) return true;
+    if (stop) {
+      setEvidenceError(stop);
+      void focusFirstError({ evidenceIds: stop }, { root: dialogRef.current });
+    }
+    return false;
+  };
+
+  /** "Làm tiếp": bước sau cho ĐÚNG phiếu đã lập — không chốt lại, không lập phiếu thứ hai. */
+  const resume = async () => {
+    if (!created || busy || !ownerPayoutCanResume(stepFailure)) return;
+    if (created.target.step === 'APPROVE_AND_POST' && !(await evidenceReady(OWNER_PAYOUT_RESUME_LABEL))) return;
+    await finish(created);
   };
 
   const submit = async (data: SettleFormValues) => {
-    if (settleMut.isPending || !organizationId) return;
+    if (busy || formLocked || !organizationId) return;
     setFailure(null);
     form.clearErrors('root');
     // Chỉ gửi theo số đã tính XONG cho đúng cổ đông + tháng + sổ đang chọn (không gửi theo số cũ / đang tải lại).
@@ -274,12 +397,31 @@ export default function ProfitDistributeDialog({
       setConfirmInput(input);
       return;
     }
-    await send(input, preview.advance_offset_amount);
+    // Có tiền: bước sau theo sổ người bấm đang GIỮ (như hộp Chi) và quyền — giữ ⇒ Duyệt và Chi kèm ảnh; không ⇒ chỉ duyệt.
+    const step = posting.stepFor(data.accountId);
+    if (step === undefined) {
+      form.setError('root.preview', {
+        type: 'cashbook',
+        message: posting.cashbooksError
+          ? 'Chưa tải được danh sách sổ quỹ bạn đang giữ — bấm "Tải lại sổ quỹ" rồi gửi.'
+          : 'Đang kiểm sổ quỹ bạn đang giữ — đợi một chút rồi bấm lại.',
+      });
+      return;
+    }
+    if (step === 'APPROVE_AND_POST' && !(await evidenceReady(OWNER_PAYOUT_POST_LABEL))) return;
+    await send(input, preview.advance_offset_amount, step);
   };
 
   const onInvalid = (errors: unknown) => { void focusFirstError(errors, { root: dialogRef.current }); };
   const rootPreviewError = form.formState.errors.root?.preview?.message;
-  const pending = settleMut.isPending;
+  const pending = busy;
+  // Chỉ đang chờ ảnh tải thì vẫn đóng được (như hộp Thu/Chi): lượt bấm tự dừng, chưa gửi gì.
+  const closeBlocked = busy && !posting.evidence.waiting;
+  const selectedStep = posting.stepFor(accountId);
+  const submitLabel = zeroCash ? 'Chốt, không ra tiền'
+    : selectedStep === 'APPROVE' ? OWNER_PAYOUT_APPROVE_LABEL
+    : selectedStep === null ? 'Lập phiếu chờ duyệt'
+    : OWNER_PAYOUT_POST_LABEL;
   const settlements = preview?.settlements ?? [];
   const remindMarker = settleable && !!preview && shouldRemindMarkerFirst({ marker_month: preview.position.marker_month, settlements: preview.settlements });
   const pendingAdvance = settleable && !!preview && !sameMoney(preview.advance_pending, 0) ? preview.advance_pending : 0;
@@ -300,13 +442,14 @@ export default function ProfitDistributeDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(next) => { if (!pending) onOpenChange(next); }}>
+      <Dialog open={open} onOpenChange={(next) => { if (!closeBlocked) onOpenChange(next); }}>
         {/* Khuôn hộp dài: giới hạn theo khung nhìn động + cuộn dọc, hàng nút dính đáy (điện thoại không mất tiêu đề / nút). */}
         <DialogContent ref={dialogRef} className={`sm:max-w-[560px] ${DIALOG_SCROLL_BODY}`}>
           <DialogHeader>
             <DialogTitle>Chi lợi nhuận cổ đông</DialogTitle>
             <DialogDescription>
-              Chốt đến hết một tháng: máy tính số, khấu trừ tạm ứng đã duyệt, phần còn lại thành phiếu chi chờ duyệt.
+              Chốt đến hết một tháng: máy tính số, khấu trừ tạm ứng đã duyệt; phần còn lại lập phiếu chi rồi Duyệt và Chi ngay
+              trong hộp này.
             </DialogDescription>
           </DialogHeader>
 
@@ -318,7 +461,7 @@ export default function ProfitDistributeDialog({
             )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(submit, onInvalid)} className="space-y-4" noValidate>
-                <fieldset disabled={saveBlocked || pending} className="space-y-4">
+                <fieldset disabled={formLocked || pending} className="space-y-4">
                   <FormField control={form.control} name="shareholderId" render={({ field, fieldState }) => (
                     <FormItem>
                       <FormLabel>Cổ đông <span className="text-destructive">*</span></FormLabel>
@@ -449,6 +592,19 @@ export default function ProfitDistributeDialog({
                   )} />
                 </fieldset>
 
+                {/* Khối "Duyệt và Chi" bên dưới phần số liệu: cùng ô ảnh chứng từ với hộp Duyệt và Chi của Thu chi. */}
+                {(hasCash || !!created) && (
+                  <OwnerPayoutPostingSection
+                    posting={posting}
+                    accountId={created ? created.target.accountId : accountId}
+                    accountName={created ? created.accountName : payoutAccountName(accountId)}
+                    evidenceError={evidenceError}
+                    disabled={pending || saveBlocked || (!!stepFailure && !ownerPayoutCanResume(stepFailure))}
+                    created={created ? { code: created.code, step: created.target.step } : null}
+                    stepFailure={stepFailure}
+                  />
+                )}
+
                 {rootPreviewError && <p role="alert" className="text-sm text-destructive">{rootPreviewError}</p>}
                 {failure && (
                   <div role="alert" className="space-y-2 rounded-md border border-destructive p-3 text-sm text-destructive" data-testid="profit-settle-failure">
@@ -462,7 +618,7 @@ export default function ProfitDistributeDialog({
                 {settlements.length > 0 && (
                   <SettlementList
                     rows={settlements}
-                    disabled={pending || saveBlocked || !organizationId}
+                    disabled={pending || formLocked || !organizationId}
                     onAction={openSettlementAction}
                     canCancelVoucher={(row) => !!organizationId && cancelTargetFromSettlement(row, { organizationId, subjectName: shareholderName }) !== null}
                   />
@@ -470,16 +626,21 @@ export default function ProfitDistributeDialog({
 
                 {/* Hàng nút dính đáy hộp: thân dài (xem trước, nhắc, các lần chốt) cuộn, nút luôn thấy. */}
                 <DialogFooter className={DIALOG_STICKY_FOOTER}>
-                  <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={pending} onClick={() => onOpenChange(false)}>Đóng</Button>
+                  <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={closeBlocked} onClick={() => onOpenChange(false)}>Đóng</Button>
                   {saveBlocked ? (
                     // Đối chiếu: gửi lại ĐÚNG nội dung với khoá cũ — máy chủ trả biên nhận cũ nếu đã chốt.
-                    <Button type="button" variant="secondary" className="flex-1 sm:flex-none" disabled={pending} onClick={() => { if (blocked) void send(blocked.input, null); }}>
+                    <Button type="button" variant="secondary" className="flex-1 sm:flex-none" disabled={pending} onClick={() => { if (blocked) void send(blocked.input, null, blocked.step); }}>
                       {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Kiểm tra lại kết quả
+                    </Button>
+                  ) : created ? (
+                    // Phiếu đã lập, bước sau dở: làm tiếp cho ĐÚNG phiếu đó (không chốt lại, không lập phiếu mới).
+                    <Button type="button" className="flex-1 sm:flex-none" disabled={pending || !ownerPayoutCanResume(stepFailure)} onClick={() => { void resume(); }}>
+                      {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{OWNER_PAYOUT_RESUME_LABEL}
                     </Button>
                   ) : (
                     <Button type="submit" className="flex-1 sm:flex-none" disabled={locked || pending}>
                       {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {zeroCash ? 'Chốt, không ra tiền' : 'Lập phiếu chờ duyệt'}
+                      {posting.evidence.waiting ? 'Đang chờ ảnh tải xong…' : submitLabel}
                     </Button>
                   )}
                 </DialogFooter>
@@ -509,7 +670,7 @@ export default function ProfitDistributeDialog({
               onClick={() => {
                 const input = confirmInput;
                 setConfirmInput(null);
-                if (input) void send(input, input.expectedRecognized);
+                if (input) void send(input, input.expectedRecognized, null);
               }}
             >
               Xác nhận chốt

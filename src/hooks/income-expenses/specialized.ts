@@ -24,8 +24,13 @@ export interface ManagerSalaryPayoutReceipt extends CreatedVoucherReceipt {
   balance_before: number | null;
 }
 
-export const useCreateManagerSalaryPayout = () => {
+/**
+ * `deferFeedback`: hộp tự báo theo trạng thái thật của CẢ lượt (lập phiếu rồi Duyệt và Chi ngay — 19/11/2026),
+ * không toast "đã tạo phiếu, chờ duyệt" / lỗi riêng của bước lập.
+ */
+export const useCreateManagerSalaryPayout = (options: { deferFeedback?: boolean } = {}) => {
   const queryClient = useQueryClient();
+  const { deferFeedback = false } = options;
 
   return useMutation({
     mutationFn: async (input: CreateManagerSalaryPayoutInput): Promise<ManagerSalaryPayoutReceipt> => {
@@ -63,12 +68,14 @@ export const useCreateManagerSalaryPayout = () => {
     onSuccess: (receipt, input) => {
       queryClient.invalidateQueries({ queryKey: ["manager-salary-payouts"] });
       invalidateProfitLedgerQueries(queryClient);
+      if (deferFeedback) return;
       const feedback=createdVoucherFeedback(receipt);
       const remaining = receipt.balance_before === null ? '' : ` Lương điều hành còn lại sau phiếu này: ${formatVND(receipt.balance_before - input.amount)}.`;
       toast[feedback.kind](feedback.message + remaining);
     },
     onError: (error) => {
       invalidateProfitLedgerQueries(queryClient);
+      if (deferFeedback) return;
       // Vượt số còn lại / sổ tổng đóng băng / tháng đã chốt… có câu riêng; mã lạ rơi về câu chung.
       toast.error(profitLedgerErrorMessage(error,"manager_payout").message);
     },

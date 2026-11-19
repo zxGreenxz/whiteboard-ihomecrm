@@ -3,13 +3,22 @@
 // tạm ứng. Sổ tổng còn xem thử (LEGACY — chưa có mốc, số còn lại tính trên toàn lịch sử): chỉ CẢNH BÁO
 // khi vượt, vẫn lập được như trước Đợt 2. Đóng băng ⇒ tạm khoá chi. Sổ quỹ: chỉ sổ tiền thật của đúng
 // công ty (máy chủ cũng từ chối sổ ảo / sổ công ty khác).
+//
+// Sổ tổng chạy thật (CANONICAL — phiếu lương điều hành là phiếu sổ tổng do chủ lập) — từ 19/11/2026 cùng một màn với
+// khối "Duyệt và Chi" bên dưới (như hộp chốt chi lợi nhuận cổ đông): MỘT nút lập phiếu (manager_salary_payout_v1 lưu
+// phiếu ở Chờ duyệt) rồi cùng nick làm tiếp cho đúng phiếu đó — giữ sổ đã chọn ⇒ Duyệt và Chi kèm ảnh chứng từ; không
+// giữ sổ ⇒ chỉ duyệt (useOwnerPayoutPosting). Bước sau hỏng ⇒ phiếu ở Chờ duyệt, "Làm tiếp" không lập phiếu thứ hai.
+// Route khác: chỉ lập phiếu chờ duyệt như trước.
 import { validateInputDrafts } from "@/lib/inputDraftValidation";
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { focusFirstError } from "@/lib/formErrors";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Info } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog,
+  DIALOG_SCROLL_BODY,
+  DIALOG_STICKY_FOOTER,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -24,12 +33,19 @@ import { DateInput } from "@/components/ui/date-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCreateManagerSalaryPayout } from "@/hooks/useIncomeExpenses";
+import {
+  describeOwnerPayoutFailure, ownerPayoutCanResume, useOwnerPayoutPosting,
+  type OwnerPayoutStep, type OwnerPayoutStepFailure, type OwnerPayoutTarget,
+} from "@/hooks/profit-ledger/useOwnerPayoutPosting";
 import { profitLedgerErrorMessage } from "@/lib/profitLedger/errors";
 import type { ManagerLedger } from "@/lib/profitLedger/ledgerReaders";
 import { profitPayoutAccounts } from "@/lib/profitLedger/payoutAccounts";
 import { profitLedgerRouteState } from "@/lib/profitLedger/route";
 import { formatVND } from "@/lib/utils";
 import { format } from "date-fns";
+import {
+  OWNER_PAYOUT_APPROVE_LABEL, OWNER_PAYOUT_POST_LABEL, OWNER_PAYOUT_RESUME_LABEL, OwnerPayoutPostingSection,
+} from "./OwnerPayoutPostingSection";
 
 interface Props {
   open: boolean;
@@ -41,9 +57,20 @@ interface Props {
   defaultManagerId?: string | null;
 }
 
-/** Luật duyệt của phiếu lương điều hành theo sổ tổng (chốt chặn F1) — báo trước khi lập. */
+/** Luật duyệt của phiếu lương điều hành theo sổ tổng (chốt F1, nới 19/11/2026) — báo trước khi lập. */
 export const MANAGER_PAYOUT_APPROVAL_NOTE =
-  "Người duyệt phải khác người lập phiếu và khác người nhận. Người nhận là một tài khoản chủ thì chính người đó phải lập phiếu để chủ còn lại duyệt.";
+  "Phiếu lương điều hành do chủ lập: người có quyền chi lương điều hành tự duyệt được phiếu mình lập, duyệt được cả khi chính mình là người nhận; tự chi khi là người nhận thì quyền chi phải phủ cả công ty.";
+
+/** Phiếu đã lập (E11 xong) — bước Duyệt và Chi / Duyệt làm tiếp cho ĐÚNG phiếu này. */
+interface CreatedManagerPayout {
+  target: OwnerPayoutTarget;
+  code: string | null;
+  managerName: string;
+  amount: number;
+  accountName: string | null;
+  /** Lương điều hành còn lại sau phiếu này (chỉ khi máy chủ trả số dư trước phiếu). */
+  remainingAfter: number | null;
+}
 
 export default function ManagerSalaryPayoutDialog({
   open,
@@ -54,7 +81,11 @@ export default function ManagerSalaryPayoutDialog({
 }: Props) {
   const accountsQuery = useAccounts();
   const { data: accounts = [] } = accountsQuery;
-  const createMut = useCreateManagerSalaryPayout();
+  const routeState = profitLedgerRouteState(ledger?.route);
+  // Sổ tổng chạy thật: phiếu lương điều hành là phiếu sổ tổng do chủ lập ⇒ Duyệt và Chi ngay trong hộp.
+  const postInDialog = !!ledger && routeState.canApprove;
+  const createMut = useCreateManagerSalaryPayout({ deferFeedback: postInDialog });
+  const posting = useOwnerPayoutPosting(open && postInDialog, 'pay_manager');
 
   const [managerId, setManagerId] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -65,6 +96,11 @@ export default function ManagerSalaryPayoutDialog({
   const [accountId, setAccountId] = useState("");
   const [voucherDate, setVoucherDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [note, setNote] = useState("");
+  // E11 đã lập phiếu, bước sau chưa xong: khoá form, chỉ còn "Làm tiếp" cho đúng phiếu này.
+  const [created, setCreated] = useState<CreatedManagerPayout | null>(null);
+  const [stepFailure, setStepFailure] = useState<OwnerPayoutStepFailure | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
 
   useEffect(() => {
     if (open && !saveBlocked) {
@@ -74,10 +110,12 @@ export default function ManagerSalaryPayoutDialog({
       setAccountId("");
       setVoucherDate(format(new Date(), "yyyy-MM-dd"));
       setNote("");
+      setCreated(null);
+      setStepFailure(null);
+      setEvidenceError(null);
     }
   }, [open, defaultManagerId, saveBlocked]);
 
-  const routeState = profitLedgerRouteState(ledger?.route);
   // Chỉ người nhận còn hiệu lực mới chi được (đã xoá / ngưng ⇒ chỉ hiện số trên bảng).
   const payable = useMemo(
     () => (ledger?.managers ?? []).filter((row) => !row.is_deleted && row.is_active),
@@ -94,9 +132,75 @@ export default function ManagerSalaryPayoutDialog({
   // Trần "còn lại" chỉ là chốt cứng khi sổ tổng chạy; LEGACY chỉ cảnh báo (số còn lại đang xem thử).
   const capEnforced = !!ledger && routeState.ledgerReady;
   const overRemaining = remaining !== null && Number.isFinite(amount) && amount > remaining + 0.005;
+  const busy = createMut.isPending || finishing || posting.pending;
+  // Chỉ đang chờ ảnh tải thì vẫn đóng được (như hộp Thu/Chi): lượt bấm tự dừng, chưa gửi gì.
+  const closeBlocked = busy && !posting.evidence.waiting;
+  const formLocked = saveBlocked || !!created;
+  const selectedStep = postInDialog ? posting.stepFor(accountId) : null;
+  const accountName = (id: string) => payoutAccounts.find((a) => a.id === id)?.name ?? null;
+
+  /** Giữ sổ (Duyệt và Chi): phải có ảnh chứng từ, ảnh đang tải thì chờ xong. true = đi tiếp được. */
+  const evidenceReady = async (label: string): Promise<boolean> => {
+    setEvidenceError(null);
+    setFinishing(true);
+    let stop: string | null;
+    try {
+      stop = await posting.evidence.ensureReady(label);
+    } finally {
+      setFinishing(false);
+    }
+    if (stop === null) return true;
+    if (stop) {
+      setEvidenceError(stop);
+      void focusFirstError({ evidenceIds: stop }, { root: dialogRef.current });
+    }
+    return false;
+  };
+
+  /** Bước sau cho phiếu vừa lập: nói đúng trạng thái thật rồi đóng; hỏng thì giữ phiếu đó để "Làm tiếp". */
+  const finish = async (next: CreatedManagerPayout) => {
+    setStepFailure(null);
+    setFinishing(true);
+    const posted = next.target.step === 'APPROVE_AND_POST';
+    const voucher = next.code ? `phiếu ${next.code}` : 'phiếu chi';
+    const book = next.accountName ? `sổ ${next.accountName}` : 'sổ quỹ đã chọn';
+    const tail = next.remainingAfter === null ? '' : ` Lương điều hành còn lại: ${formatVND(next.remainingAfter)}.`;
+    try {
+      const outcome = await posting.complete(next.target);
+      setCreated(null);
+      if (outcome === 'POSTED') {
+        toast.success(`Đã chi lương điều hành ${formatVND(next.amount)} cho ${next.managerName}: ${voucher} đã duyệt và chi từ ${book}.${tail}`);
+      } else if (posted) {
+        toast.success(`Lương điều hành ${formatVND(next.amount)} cho ${next.managerName}: ${voucher} đã được duyệt — bấm Chi (kèm ảnh chứng từ) ở Thu chi để chi tiền.${tail}`);
+      } else {
+        toast.success(`Đã lập và duyệt ${voucher} lương điều hành ${formatVND(next.amount)} cho ${next.managerName} — người giữ ${book} bấm Chi (kèm ảnh chứng từ) ở Thu chi.${tail}`);
+      }
+      onOpenChange(false);
+    } catch (error) {
+      const failure = describeOwnerPayoutFailure(error, next.target.step);
+      if (failure.kind === 'APPROVE_ONLY') {
+        // Máy chủ không cho chính người nhận chi (quyền chi không phủ cả công ty): làm tiếp chỉ Duyệt.
+        setCreated({ ...next, target: { ...next.target, step: 'APPROVE' } });
+        setStepFailure({ ...failure, message: `${failure.message} Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để chỉ duyệt.` });
+      } else {
+        // Từ chối vì quyền / chưa rõ kết quả ⇒ khoá "Làm tiếp" (gửi lại vẫn y lỗi), chỉ đường sang Chờ duyệt / Thu chi.
+        setStepFailure(failure);
+      }
+      toast.warning(`Đã lập ${voucher} lương điều hành cho ${next.managerName}, đang chờ duyệt — chưa ${posted ? 'duyệt và chi' : 'duyệt'} được.`);
+    } finally {
+      setFinishing(false);
+    }
+  };
+
+  /** "Làm tiếp": bước sau cho ĐÚNG phiếu đã lập — không lập phiếu thứ hai. */
+  const resume = async () => {
+    if (!created || busy || !ownerPayoutCanResume(stepFailure)) return;
+    if (created.target.step === 'APPROVE_AND_POST' && !(await evidenceReady(OWNER_PAYOUT_RESUME_LABEL))) return;
+    await finish(created);
+  };
 
   const handleSubmit = async () => {
-    if (createMut.isPending || saveBlocked || locked) return;
+    if (busy || formLocked || locked) return;
     const next: Record<string, string> = {};
     if (!managerId || !row) next.managerId = 'Chọn quản lý nhận khoản chi.';
     if (!Number.isFinite(amount) || amount <= 0) next.amount = 'Nhập số tiền lớn hơn 0.';
@@ -110,8 +214,23 @@ export default function ManagerSalaryPayoutDialog({
     if (!validateInputDrafts(dialogRef.current)) return;
     const account = payoutAccounts.find(a => a.id === accountId);
     if (!row || !account?.organization_id) return;
+    // Sổ tổng chạy thật: bước sau theo sổ người bấm đang GIỮ (như hộp Chi) và quyền — giữ ⇒ Duyệt và Chi kèm ảnh; không
+    // ⇒ duyệt; không duyệt được ⇒ chỉ lập phiếu chờ duyệt như route khác.
+    let step: OwnerPayoutStep | null = null;
+    if (postInDialog) {
+      const next = posting.stepFor(accountId);
+      if (next === undefined) {
+        setServerError(posting.cashbooksError
+          ? 'Chưa tải được danh sách sổ quỹ bạn đang giữ — bấm "Tải lại sổ quỹ" rồi gửi.'
+          : 'Đang kiểm sổ quỹ bạn đang giữ — đợi một chút rồi bấm lại.');
+        return;
+      }
+      if (next === 'APPROVE_AND_POST' && !(await evidenceReady(OWNER_PAYOUT_POST_LABEL))) return;
+      step = next;
+    }
+    let receipt: Awaited<ReturnType<typeof createMut.mutateAsync>>;
     try {
-      await createMut.mutateAsync({
+      receipt = await createMut.mutateAsync({
         manager_id: managerId,
         manager_name: row.name,
         amount,
@@ -120,27 +239,49 @@ export default function ManagerSalaryPayoutDialog({
         voucher_date: voucherDate,
         note: note.trim() || null,
       });
-      onOpenChange(false);
     } catch (error) {
       // Vượt số còn lại (máy chủ, kèm số), sổ tổng đóng băng, tháng đã chốt… — câu theo mã.
       const info = profitLedgerErrorMessage(error, 'manager_payout');
       setServerError(info.message);
       if (info.kind === 'UNKNOWN_OUTCOME') setSaveBlocked(true);
+      return;
     }
+    if (!step) {
+      // Route khác: hook đã báo "đã tạo phiếu". Sổ tổng chạy mà người bấm không duyệt được: hộp tự báo đúng trạng thái.
+      if (postInDialog) {
+        toast.success(`Đã lập ${receipt.code ? `phiếu ${receipt.code}` : 'phiếu'} lương điều hành ${formatVND(amount)} cho ${row.name} — chờ duyệt, chưa chi tiền.`);
+      }
+      onOpenChange(false);
+      return;
+    }
+    const createdPayout: CreatedManagerPayout = {
+      target: { voucherId: receipt.voucher_id, organizationId: account.organization_id, accountId, postedOn: voucherDate, step },
+      code: receipt.code || null,
+      managerName: row.name,
+      amount,
+      accountName: account.name,
+      remainingAfter: receipt.balance_before === null ? null : receipt.balance_before - amount,
+    };
+    setCreated(createdPayout);
+    await finish(createdPayout);
   };
 
+  const submitLabel = !postInDialog || selectedStep === null
+    ? "Ghi phiếu chi"
+    : selectedStep === 'APPROVE' ? OWNER_PAYOUT_APPROVE_LABEL : OWNER_PAYOUT_POST_LABEL;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!closeBlocked) onOpenChange(next); }}>
       {/* Cùng khuôn hộp dài với ProfitDistributeDialog: ở CANONICAL câu luật duyệt làm hộp cao hơn khung điện
           thoại (đo 16/11/2026: 882px trong 844px) ⇒ giới hạn theo khung nhìn động + cuộn dọc. */}
-      <DialogContent ref={dialogRef} className="sm:max-w-[460px] max-h-[90dvh] overflow-y-auto">
+      <DialogContent ref={dialogRef} className={`sm:max-w-[460px] ${DIALOG_SCROLL_BODY}`}>
         <DialogHeader>
           <DialogTitle>Chi lương điều hành</DialogTitle>
           <DialogDescription>Không chi quá số còn lại; không có tạm ứng lương điều hành.</DialogDescription>
         </DialogHeader>
 
         <QueryRegion label="sổ quỹ chi" queries={[accountsQuery]} skeleton="detail" rows={5}>
-        <div className="space-y-4 py-2">
+        <fieldset disabled={formLocked || busy} className="m-0 min-w-0 space-y-4 border-0 px-0 py-2">
           {frozen && (
             <p role="status" className="flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
               <Info className="mt-0.5 h-4 w-4 shrink-0" />Sổ tổng đang đóng băng — tạm khoá chi lương điều hành.
@@ -208,14 +349,33 @@ export default function ManagerSalaryPayoutDialog({
               {MANAGER_PAYOUT_APPROVAL_NOTE}
             </p>
           )}
-        </div>
+        </fieldset>
+        {/* Khối "Duyệt và Chi" bên dưới phần số liệu: cùng ô ảnh chứng từ với hộp Duyệt và Chi của Thu chi. */}
+        {postInDialog && (
+          <OwnerPayoutPostingSection
+            posting={posting}
+            accountId={created ? created.target.accountId : accountId}
+            accountName={created ? created.accountName : accountName(accountId)}
+            evidenceError={evidenceError}
+            disabled={busy || saveBlocked || (!!stepFailure && !ownerPayoutCanResume(stepFailure))}
+            created={created ? { code: created.code, step: created.target.step } : null}
+            stepFailure={stepFailure}
+          />
+        )}
         {Object.entries(errors).map(([key, message]) => <p id={`error-${key}`} key={key} className="text-sm text-destructive">{message}</p>)}
         {serverError && <p role="alert" className="rounded border border-destructive p-3 text-sm text-destructive">{serverError}</p>}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Huỷ</Button>
-          <Button onClick={handleSubmit} disabled={createMut.isPending || saveBlocked || locked}>
-            {createMut.isPending ? "Đang ghi..." : "Ghi phiếu chi"}
-          </Button>
+        <DialogFooter className={DIALOG_STICKY_FOOTER}>
+          <Button variant="outline" disabled={closeBlocked} onClick={() => onOpenChange(false)}>Huỷ</Button>
+          {created ? (
+            // Phiếu đã lập, bước sau dở: làm tiếp cho ĐÚNG phiếu đó (không lập phiếu mới).
+            <Button type="button" disabled={busy || !ownerPayoutCanResume(stepFailure)} onClick={() => { void resume(); }}>
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{OWNER_PAYOUT_RESUME_LABEL}
+            </Button>
+          ) : (
+            <Button onClick={() => { void handleSubmit(); }} disabled={busy || saveBlocked || locked}>
+              {createMut.isPending ? "Đang ghi..." : posting.evidence.waiting ? "Đang chờ ảnh tải xong…" : submitLabel}
+            </Button>
+          )}
         </DialogFooter>
         </QueryRegion>
       </DialogContent>

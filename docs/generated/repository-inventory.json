@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1868,
-  "soFileDocBangFs": 491,
-  "tongLoiGoi": 1335,
-  "khongPhanLoaiDuoc": 596,
+  "tongSoFileTest": 1870,
+  "soFileDocBangFs": 492,
+  "tongLoiGoi": 1347,
+  "khongPhanLoaiDuoc": 598,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 68,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 207,
+      "soFile": 208,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -230,6 +230,14 @@
       "khongPhanLoaiDuoc": 11
     },
     {
+      "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
+      "soGoi": 11,
+      "loai": {
+        "sql": 9
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-broker/wave2-b.test.mjs",
       "soGoi": 10,
       "loai": {
@@ -265,6 +273,14 @@
     },
     {
       "file": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "soGoi": 10,
+      "loai": {
+        "sql": 8
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/lib/__tests__/soTongLoiNhuanTamUngChotMigration.test.ts",
       "soGoi": 10,
       "loai": {
         "sql": 8
@@ -311,14 +327,6 @@
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/soTongLoiNhuanTamUngChotMigration.test.ts",
-      "soGoi": 9,
-      "loai": {
-        "sql": 7
-      },
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-log-keeper/log-keeper.test.mjs",

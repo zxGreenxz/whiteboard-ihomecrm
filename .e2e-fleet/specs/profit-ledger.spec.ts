@@ -17,22 +17,27 @@ import { USERS, trackConsoleErrors } from './auth';
  *      không ô tick xác nhận, ghi chú không bắt buộc ⇒ phiếu chờ duyệt, "tạm ứng chờ duyệt" tăng đúng số đó.
  *   3. Chủ công ty duyệt phiếu tạm ứng ở Hộp duyệt ⇒ "Tạm ứng đang có" tăng, "Lợi nhuận chưa chi" không đổi.
  *   4. Chủ thứ hai (tài khoản hệ thống TEST) mở hộp chốt "Chi lợi nhuận cổ đông": KHÔNG có ô nhập số tiền; ba
- *      dòng máy tính khớp xem trước của máy chủ, phần khấu trừ đã gồm khoản tạm ứng vừa duyệt ⇒ lập phiếu chi
- *      chờ duyệt cho phần còn lại.
- *   5. Chủ công ty duyệt phiếu tiền của lần chốt.
- *   6. Cổ đông đăng nhập: thấy HAI con số và lần chốt của CHÍNH MÌNH, không thấy tên cổ đông khác.
- *   7. Chủ công ty huỷ có lý do phiếu tiền của lần chốt (lần chốt tự hết hiệu lực) rồi huỷ phiếu tạm ứng ⇒
- *      hai con số về như trước.
+ *      dòng máy tính khớp xem trước của máy chủ, phần khấu trừ đã gồm khoản tạm ứng vừa duyệt. Chọn một sổ quỹ
+ *      mà CHÍNH chủ thứ hai đang giữ (đọc lúc chạy bằng list_cashbooks_for_expense_v2 — không ghi tên sổ vào
+ *      repo), đính một ảnh PNG 1×1 (dữ liệu giả) vào khối "Duyệt và Chi" rồi bấm MỘT nút: lệnh chốt lập phiếu
+ *      (lưu ở Chờ duyệt) rồi cùng nick Duyệt và Chi phiếu đó ngay (chốt F1 nới 19/11/2026 cho chủ tự duyệt phiếu
+ *      chủ lập) ⇒ phiếu ĐÃ CHI từ đúng sổ đã chọn, số dư sổ tổng đúng.
+ *   5. Cổ đông đăng nhập: thấy HAI con số và lần chốt của CHÍNH MÌNH, không thấy tên cổ đông khác.
+ *   6. Chủ công ty huỷ có lý do phiếu tiền ĐÃ CHI của lần chốt bằng hộp huỷ phiếu đã chi (đảo bút toán, lần chốt
+ *      tự hết hiệu lực) rồi huỷ phiếu tạm ứng ⇒ hai con số về như trước.
  *   afterAll: huỷ bằng API mọi phiếu thử còn sống (phiếu tiền của lần chốt TRƯỚC, phiếu tạm ứng SAU) và trả
  *   công tắc về OFF (kiểm lại LEGACY) — phiếu đã huỷ ở lại TEST làm vết như quy ước TEST.
  *
- * Người duyệt là chủ công ty (chỉ thuộc công ty thật): khác người lập và khác người nhận ở cả hai phiếu.
+ * Phiếu tạm ứng: người duyệt là chủ công ty (chỉ thuộc công ty thật), khác người lập và khác người nhận (luật cũ của
+ * phiếu người giữ sổ lập). Phiếu tiền của lần chốt: chủ thứ hai lập và tự Duyệt và Chi (phiếu chủ lập).
  *
  * Điều kiện dữ liệu trên TEST (spec KIỂM và báo rõ, không tự bỏ qua bước nào):
  *   - cổ đông thử có trang Báo cáo Lợi Nhuận, có quyền "Được tạm ứng lợi nhuận" và đang GIỮ ít nhất một sổ quỹ
  *     tiền thật (máy chủ trả `can_create` + chính mình trong danh sách người nhận);
  *   - cổ đông thử còn lợi nhuận chưa chi: thực chi của lần chốt mặc định phải lớn hơn số tạm ứng thử, và
- *     không có phiếu lương đang chờ chủ xem lại.
+ *     không có phiếu lương đang chờ chủ xem lại;
+ *   - chủ thứ hai đang GIỮ (CUSTODIAN) ít nhất một sổ quỹ tiền thật của công ty thử (đo 19/11/2026 trên TEST:
+ *     có nhiều sổ như vậy) — hộp chốt chỉ Duyệt và Chi khi người bấm giữ sổ đã chọn.
  *
  * Chạy (một lượt, cùng dev server loopback như các spec TEST khác):
  *   FLEET_BASE_URL=http://127.0.0.1:5197 FLEET_TARGET_ENV=TEST FLEET_WORKERS=1 \
@@ -55,6 +60,11 @@ const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
 const RUN_TAG = randomUUID().slice(0, 8);
 const ADVANCE_NOTE = `[E2E sổ tổng ${RUN_TAG}] tạm ứng thử trên TEST — sẽ huỷ`;
 const SETTLE_NOTE = `[E2E sổ tổng ${RUN_TAG}] chốt chi thử trên TEST — sẽ huỷ`;
+/** Ảnh chứng từ GIẢ: PNG 1×1 (cùng fixture với chung-tu-la-anh-dinh-kem.spec.ts) — không dữ liệu thật. */
+const EVIDENCE_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 test.use({ viewport: { width: 1440, height: 950 }, serviceWorkers: 'block', trace: 'off', screenshot: 'off', video: 'off' });
 test.describe.configure({ mode: 'serial' });
@@ -311,6 +321,52 @@ async function pickFirstCashbook(page: Page, dialog: Locator) {
   await page.getByRole('option').first().click();
 }
 
+/**
+ * Chọn ở ô "Chi từ sổ quỹ" một sổ mà người bấm đang GIỮ (CUSTODIAN) — đọc lúc chạy bằng đúng RPC hộp chốt dùng để
+ * biết "giữ sổ" (list_cashbooks_for_expense_v2), giao với các sổ hộp chào (sổ tiền thật của công ty). Không ghi tên sổ
+ * vào repo (repo public).
+ */
+async function pickCustodianCashbook(page: Page, dialog: Locator, jwt: string): Promise<{ id: string; name: string }> {
+  const held = await readRpc<Array<{ id?: unknown; name?: unknown }>>(jwt, 'list_cashbooks_for_expense_v2', {});
+  expect(held.status, 'danh sách sổ quỹ người bấm đang giữ').toBe(200);
+  await dialog.getByRole('combobox').filter({ hasText: 'Chọn sổ quỹ' }).click();
+  const offered = (await page.getByRole('option').allInnerTexts()).map((text) => text.trim());
+  const book = (Array.isArray(held.data) ? held.data : [])
+    .map((row) => ({ id: String(row.id ?? ''), name: String(row.name ?? '').trim() }))
+    .find((row) => row.id && offered.filter((text) => text === row.name).length === 1);
+  expect(book, 'chủ thứ hai phải đang GIỮ ít nhất một sổ quỹ tiền thật của công ty thử trên TEST').toBeTruthy();
+  await page.getByRole('option', { name: book!.name, exact: true }).click();
+  return book!;
+}
+
+/** Đính một ảnh chứng từ GIẢ vào khối "Duyệt và Chi" và chờ ảnh nằm trong kho (chưa gắn phiếu nào). */
+async function addEvidence(page: Page, dialog: Locator) {
+  const block = dialog.getByTestId('owner-payout-evidence');
+  await expect(block).toBeVisible({ timeout: 60_000 });
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    block.getByRole('button', { name: 'Thêm chứng từ' }).click(),
+  ]);
+  await chooser.setFiles({ name: `e2e-so-tong-${RUN_TAG}.png`, mimeType: 'image/png', buffer: EVIDENCE_PNG });
+  await expect(block.locator('[data-evidence-url]')).toHaveCount(1, { timeout: 90_000 });
+  await expect(block.locator('[data-evidence-pending]')).toHaveCount(0, { timeout: 90_000 });
+}
+
+/** Hộp huỷ dùng chung: phiếu ĐÃ CHI ⇒ huỷ có lý do, máy chủ đảo bút toán (tiền về đúng sổ của phiếu). */
+async function cancelPostedVoucher(page: Page, code: string, reason: string) {
+  const dialog = page.getByRole('dialog', { name: 'Huỷ phiếu chi lợi nhuận' });
+  await expect(dialog.getByTestId('profit-cancel-effect')).toContainText('Phiếu đã chi tiền', { timeout: 30_000 });
+  await dialog.locator('textarea').fill(reason);
+  const response = page.waitForResponse((r) => isRpc(r, 'profit_ledger_payout_cancel_v1'), { timeout: 90_000 });
+  await dialog.getByRole('button', { name: 'Huỷ phiếu' }).click();
+  const answer = await response;
+  expect(requestBody(answer).p_expected_state, 'hộp gửi đúng trạng thái đang thấy: đã chi').toBe('POSTED');
+  const body = await answer.json() as { changed?: boolean; cancellation_kind?: string };
+  expect(body.changed).toBe(true);
+  expect(body.cancellation_kind).toBe('CANCELLED_AFTER_POSTING');
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: `Đã huỷ phiếu ${code} và đảo bút toán` }).first()).toBeVisible({ timeout: 30_000 });
+}
+
 /** Chủ công ty duyệt một phiếu ở Hộp duyệt sau khi đọc ghi chú sổ tổng của phiếu đó. */
 async function approveAtInbox(page: Page, code: string, noteTexts: readonly string[]) {
   await page.goto('/approvals');
@@ -345,6 +401,8 @@ async function cancelApprovedVoucher(page: Page, code: string, reason: string) {
 const created: string[] = [];
 let routeTouched = false;
 let ownerJwtForCleanup: string | null = null;
+/** Chủ thứ hai — người GIỮ sổ quỹ của phiếu tiền đã chi: phiếu đã ghi sổ chỉ người giữ đúng sổ quỹ đó huỷ được (E6). */
+let makerJwtForCleanup: string | null = null;
 
 test.afterAll(async () => {
   test.setTimeout(300_000);
@@ -358,7 +416,8 @@ test.afterAll(async () => {
       if (detail.status !== 200 || !status) { problems.push(`không đọc được phiếu thử ${voucherId}`); continue; }
       if (status === 'CANCELLED') continue;
       const expectedState = status === 'UNAPPROVED' ? 'PENDING' : detail.data.voucher?.posting_status === 'POSTED' ? 'POSTED' : 'APPROVED_UNPOSTED';
-      const cancel = await rpc(ownerJwtForCleanup, 'profit_ledger_payout_cancel_v1', {
+      const cancelJwt = expectedState === 'POSTED' && makerJwtForCleanup ? makerJwtForCleanup : ownerJwtForCleanup;
+      const cancel = await rpc(cancelJwt, 'profit_ledger_payout_cancel_v1', {
         p_voucher_id: voucherId, p_reason: `E2E profit-ledger ${RUN_TAG}: dọn phiếu thử`, p_idempotency_key: randomUUID(), p_expected_state: expectedState,
       });
       if (cancel.status !== 200) problems.push(`không huỷ được phiếu thử ${voucherId} (HTTP ${cancel.status})`);
@@ -374,7 +433,7 @@ test.afterAll(async () => {
   expect(problems, 'dọn TEST sau spec sổ tổng').toEqual([]);
 });
 
-test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → chủ chốt chi theo tháng (khấu trừ tạm ứng) → duyệt → cổ đông tự xem → huỷ có lý do', async ({ browser }) => {
+test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → chủ chốt chi theo tháng (khấu trừ tạm ứng) rồi Duyệt và Chi ngay → cổ đông tự xem → huỷ có lý do', async ({ browser }) => {
   test.setTimeout(1_200_000);
   expect(requiredEnvironment('FLEET_BASE_URL'), 'chỉ chạy tại dev server loopback trỏ TEST').toBe(APP_ORIGIN);
   const ownerPassword = requiredEnvironment('FLEET_PASS_TEST_CHU');
@@ -483,7 +542,7 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
       sameMoney(after.unpaid, position0.unpaid, 'duyệt tạm ứng không đụng lợi nhuận chưa chi');
     });
 
-    // 4. Chủ thứ hai chốt chi lợi nhuận: máy tính số, khấu trừ khoản tạm ứng vừa duyệt.
+    // 4. Chủ thứ hai chốt chi lợi nhuận: máy tính số, khấu trừ khoản tạm ứng vừa duyệt; Duyệt và Chi ngay trong hộp.
     const position1 = await positionOf(ownerJwt, shareholderId);
     const preview1 = await settlePreviewOf(ownerJwt, shareholderId);
     expect(preview1.through).toBe(preview0.through);
@@ -493,11 +552,13 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
     const recognized = preview1.recognized ?? 0;
     const offset = preview1.offset ?? 0;
     const cash = preview1.cash ?? 0;
+    const makerJwt = await passwordGrant(USERS.testhethong, makerPassword);
+    makerJwtForCleanup = makerJwt;
     maker = await openSession(browser, USERS.testhethong, makerPassword);
     let settlementId = '';
     let cashVoucherId = '';
     let cashCode = '';
-    await test.step('chủ thứ hai chốt chi lợi nhuận: không nhập số tiền, ba dòng máy tính khớp máy chủ', async () => {
+    await test.step('chủ thứ hai chốt chi lợi nhuận và Duyệt và Chi ngay (sổ mình giữ + ảnh chứng từ) ⇒ phiếu đã chi', async () => {
       const page = maker!.page;
       await openOwnerOverview(page);
       await expect(page.getByTestId('profit-ledger-route-banner')).toHaveCount(0);
@@ -515,48 +576,56 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
       await expect(dialog.getByTestId('profit-settle-marker-reminder')).toHaveCount(preview1.markerMonth === null && preview1.settlements.length === 0 ? 1 : 0);
       await expect(dialog.getByTestId('profit-settle-pending-advance')).toHaveCount(preview1.advancePending > 0 ? 1 : 0);
       const recalculated = page.waitForResponse((r) => isRpc(r, 'shareholder_profit_settlement_preview_v1') && typeof requestBody(r).p_account_id === 'string', { timeout: 90_000 });
-      await pickFirstCashbook(page, dialog);
+      const book = await pickCustodianCashbook(page, dialog, makerJwt);
       expect((await recalculated).status(), 'R5 tính lại theo sổ quỹ đã chọn').toBe(200);
       await expect(dialog.getByText('Đang tính lại…')).toHaveCount(0);
       await expect(dialog.getByTestId('profit-settle-cash')).toContainText(amountText(cash));
       await dialog.locator('textarea[name=note]').fill(SETTLE_NOTE);
+      // Khối "Duyệt và Chi" bên dưới: giữ sổ ⇒ có ô ảnh chứng từ (bắt buộc), nút "Duyệt và Chi".
+      await expect(dialog.getByTestId('owner-payout-approve-only')).toHaveCount(0);
+      await addEvidence(page, dialog);
       const response = page.waitForResponse((r) => isRpc(r, 'shareholder_profit_settle_v1'), { timeout: 90_000 });
-      await dialog.getByRole('button', { name: 'Lập phiếu chờ duyệt' }).click();
+      const posted = page.waitForResponse((r) => isRpc(r, 'approve_and_post_income_expense_v2'), { timeout: 120_000 });
+      await dialog.getByRole('button', { name: 'Duyệt và Chi', exact: true }).click();
       const settled = await response;
       const sent = requestBody(settled);
       sameMoney(money(sent.p_expected_recognized, 'p_expected_recognized'), recognized, 'gửi đúng phần ghi nhận đang hiện');
       sameMoney(money(sent.p_expected_cash, 'p_expected_cash'), cash, 'gửi đúng thực chi đang hiện');
       expect(sent.p_through_month).toBe(preview1.through);
+      expect(sent.p_account_id, 'phiếu lập từ đúng sổ chủ thứ hai đang giữ').toBe(book.id);
       const body = await settled.json() as { state?: string; settlement_id?: string; voucher_id?: string | null; recognized_amount?: number; advance_offset_amount?: number; cash_amount?: number };
-      expect(body.state).toBe('PENDING_APPROVAL');
+      expect(body.state, 'lệnh chốt lưu phiếu ở Chờ duyệt trước').toBe('PENDING_APPROVAL');
       sameMoney(money(body.recognized_amount, 'recognized_amount'), recognized, 'máy chủ ghi đúng phần ghi nhận đã xem');
       sameMoney(money(body.advance_offset_amount, 'advance_offset_amount'), offset, 'máy chủ ghi đúng phần khấu trừ đã xem');
       sameMoney(money(body.cash_amount, 'cash_amount'), cash, 'máy chủ ghi đúng thực chi đã xem');
       settlementId = String(body.settlement_id);
       cashVoucherId = String(body.voucher_id);
       created.push(cashVoucherId);
+      // Cùng nick, giao dịch SAU: Duyệt và Chi đúng phiếu vừa lập, từ đúng sổ, kèm chứng từ.
+      const postAnswer = await posted;
+      expect(postAnswer.status(), 'Duyệt và Chi phiếu chủ vừa lập (F1 cho chủ tự duyệt)').toBe(200);
+      const postInput = (requestBody(postAnswer).input ?? {}) as { subjectId?: unknown; cashbookId?: unknown; evidenceIds?: unknown };
+      expect(postInput.subjectId).toBe(cashVoucherId);
+      expect(postInput.cashbookId).toBe(book.id);
+      expect(Array.isArray(postInput.evidenceIds) && postInput.evidenceIds.length > 0, 'gửi kèm chứng từ').toBe(true);
       const toast = page.locator('[data-sonner-toast]').filter({ hasText: 'Đã chốt chi lợi nhuận' }).first();
-      await expect(toast).toContainText('chờ duyệt, chưa chi tiền', { timeout: 30_000 });
+      await expect(toast).toContainText('đã duyệt và chi', { timeout: 60_000 });
       cashCode = ((await toast.innerText()).match(/PC\d+/) ?? [''])[0];
       expect(cashCode, 'mã phiếu tiền của lần chốt trong thông báo').toMatch(/^PC\d+$/);
+      await expect(dialog).toHaveCount(0, { timeout: 30_000 });
+      const detail = await readRpc<{ voucher?: { approval_status?: string; posting_status?: string | null; account_id?: string | null } }>(ownerJwt, 'profit_ledger_payout_detail_v1', { p_voucher_id: cashVoucherId });
+      expect(detail.status).toBe(200);
+      expect(detail.data.voucher?.approval_status, 'phiếu tiền của lần chốt đã duyệt').toBe('APPROVED');
+      expect(detail.data.voucher?.posting_status, 'phiếu tiền của lần chốt đã chi (ghi sổ)').toBe('POSTED');
+      expect(detail.data.voucher?.account_id, 'chi từ đúng sổ đã chọn').toBe(book.id);
       const after = await positionOf(ownerJwt, shareholderId);
       sameMoney(after.unpaid, position1.unpaid - recognized, 'lợi nhuận chưa chi giảm đúng phần ghi nhận');
-      sameMoney(after.advance, position1.advance - offset, 'tạm ứng đang có giảm đúng phần khấu trừ');
+      sameMoney(after.advance, position1.advance - offset, 'tạm ứng đang có giảm đúng phần khấu trừ (phiếu tiền đã chi không thành tạm ứng)');
       sameMoney(after.advancePending, position1.advancePending, 'phiếu tiền của lần chốt KHÔNG tính là tạm ứng chờ duyệt');
-      sameMoney(after.cashPending, position1.cashPending + cash, 'tiền của lần chốt đang chờ duyệt');
+      sameMoney(after.cashPending, position1.cashPending, 'tiền của lần chốt đã chi — không còn chờ duyệt');
     });
 
-    // 5. Chủ công ty duyệt phiếu tiền của lần chốt.
-    await test.step('chủ công ty duyệt phiếu tiền của lần chốt', async () => {
-      await approveAtInbox(owner!.page, cashCode, ['Chi lợi nhuận cổ đông', 'Lúc lập', 'Phiếu chi lợi nhuận do chủ lập', 'Chỉ chi được từ sổ đã chọn lúc lập']);
-      const after = await positionOf(ownerJwt, shareholderId);
-      sameMoney(after.cashPending, position1.cashPending, 'không còn tiền của lần chốt chờ duyệt');
-      sameMoney(after.unpaid, position1.unpaid - recognized, 'lợi nhuận chưa chi giữ nguyên sau khi duyệt phiếu tiền');
-      sameMoney(after.advance, position1.advance - offset, 'phiếu tiền đã duyệt của lần chốt không thành tạm ứng');
-      sameMoney(after.advancePending, position1.advancePending, 'tạm ứng chờ duyệt không đổi');
-    });
-
-    // 6. Cổ đông chỉ thấy tiền của mình: hai con số + lần chốt.
+    // 5. Cổ đông chỉ thấy tiền của mình: hai con số + lần chốt.
     await test.step('cổ đông thấy hai con số và lần chốt của mình, không thấy cổ đông khác', async () => {
       const page = holder!.page;
       const afterSettle = await positionOf(ownerJwt, shareholderId);
@@ -585,16 +654,17 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
       if (!('building_totals' in payload)) await expect(page.getByTestId('self-building-totals-card')).toHaveCount(0);
     });
 
-    // 7. Chủ công ty huỷ có lý do: phiếu tiền của lần chốt trước, phiếu tạm ứng sau ⇒ hai con số về như cũ.
-    await test.step('chủ công ty huỷ phiếu tiền của lần chốt ⇒ lần chốt hết hiệu lực', async () => {
-      const page = owner!.page;
+    // 6. Huỷ có lý do: phiếu tiền ĐÃ CHI của lần chốt trước (người huỷ phải GIỮ đúng sổ quỹ của phiếu đã ghi sổ ⇒ chủ thứ
+    //    hai, người vừa chi), phiếu tạm ứng sau (chủ công ty) ⇒ hai con số về như cũ.
+    await test.step('chủ thứ hai (giữ sổ quỹ) huỷ phiếu tiền ĐÃ CHI của lần chốt (đảo bút toán) ⇒ lần chốt hết hiệu lực', async () => {
+      const page = maker!.page;
       await openOwnerOverview(page);
       await page.getByTestId(`ledger-row-${shareholderId}`).getByRole('button', { name: 'Chi', exact: true }).click();
       const dialog = page.getByRole('dialog', { name: 'Chi lợi nhuận cổ đông' });
       const settlement = dialog.getByTestId(`profit-settle-row-${settlementId}`);
       await expect(settlement).toContainText(cashCode, { timeout: 90_000 });
       await settlement.getByRole('button', { name: 'Huỷ phiếu chi' }).click();
-      await cancelApprovedVoucher(page, cashCode, `E2E sổ tổng ${RUN_TAG}: huỷ phiếu tiền của lần chốt thử`);
+      await cancelPostedVoucher(page, cashCode, `E2E sổ tổng ${RUN_TAG}: huỷ phiếu tiền đã chi của lần chốt thử`);
       await expect(dialog.getByTestId(`profit-settle-row-${settlementId}`)).toHaveCount(0, { timeout: 60_000 });
       expect((await settlePreviewOf(ownerJwt, shareholderId)).settlements.some((s) => s.id === settlementId), 'lần chốt không còn hiệu lực').toBe(false);
       const after = await positionOf(ownerJwt, shareholderId);
@@ -604,6 +674,7 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
     });
     await test.step('chủ công ty huỷ phiếu tạm ứng từ sổ chi tiết ⇒ hai con số về như trước', async () => {
       const page = owner!.page;
+      await openOwnerOverview(page);
       await page.getByTestId(`ledger-row-${shareholderId}`).getByRole('button', { name: 'Sổ', exact: true }).click();
       const entry = page.getByTestId(`ledger-entry-PAYOUT:${advanceVoucherId}`);
       await expect(entry).toBeVisible({ timeout: 90_000 });

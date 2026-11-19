@@ -49,7 +49,8 @@ import {
 // Đợt 2 sổ tổng: phiếu chi lợi nhuận / lương điều hành lập theo sổ tổng chỉ huỷ bằng hộp riêng có lý
 // do (E6) và chỉ chi từ đúng sổ quỹ lúc lập.
 import { isProfitLedgerVoucher, type ProfitPayoutCancelTarget } from "@/lib/profitLedger/vouchers";
-import { profitCancelTargetFromVoucher } from "@/lib/voucherActionRules";
+import { ledgerApproveAndPostAllowed, profitCancelTargetFromVoucher } from "@/lib/voucherActionRules";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
 
 export interface VoucherActionsOptions {
   /**
@@ -169,7 +170,11 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     (approveTarget as { organization_id?: string } | null)?.organization_id ?? null,
   );
   const v2ApproveOnly = canWriteWorkflow(approveOrgRoutes);
-  const v2ApproveAndPost = v2ApproveOnly && canWritePosting(approveOrgRoutes);
+  // Phiếu chi sổ tổng (chủ tự duyệt phiếu mình lập, có thể chính mình là người nhận): "Duyệt và Chi…" chỉ khi được Chi kể
+  // cả khi là người nhận — cùng luật hộp chốt (quyền chi phủ cả công ty), không hứa nút máy chủ sẽ từ chối.
+  const { data: myPerms } = useMyPermissions();
+  const v2ApproveAndPost = v2ApproveOnly && canWritePosting(approveOrgRoutes)
+    && (!approveTarget || ledgerApproveAndPostAllowed(approveTarget, myPerms));
   const approveV2Mutation = useApproveIncomeExpenseV2();
   const approveAndPostV2Mutation = useApproveAndPostIncomeExpenseV2();
   const postApprovedV2Mutation = usePostApprovedIncomeExpenseV2();
@@ -183,6 +188,13 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   const postApprovedBooks = useMemo(
     () => (postApprovedLedger ? custodianBooks.filter((book) => book.id === postApprovedTarget?.account_id) : custodianBooks),
     [postApprovedLedger, custodianBooks, postApprovedTarget?.account_id],
+  );
+  // Chủ tự duyệt phiếu sổ tổng mình lập ngay ở Thu chi (F1 nới 19/11/2026): "Duyệt và Chi…" cũng chỉ chi từ ĐÚNG sổ lúc
+  // lập, như nút Chi.
+  const approveLedger = !!approveTarget && isProfitLedgerVoucher(approveTarget.system_source);
+  const approveAndPostBooks = useMemo(
+    () => (approveLedger ? custodianBooks.filter((book) => book.id === approveTarget?.account_id) : custodianBooks),
+    [approveLedger, custodianBooks, approveTarget?.account_id],
   );
 
   const { cancelEligibility, incomeCancelEligibility } = useVoucherCancelEligibility(vouchers);
@@ -495,6 +507,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       },
       approveAndPost: {
         open: approveAndPostOpen, setOpen: setApproveAndPostOpen,
+        /** Sổ chào trong hộp Duyệt và Thu/Chi; phiếu sổ tổng: chỉ sổ lúc lập (rỗng nếu không giữ sổ đó). */
+        cashbookOptions: approveAndPostBooks, cashbookLocked: approveLedger,
         submit: async (input: Parameters<typeof approveAndPostV2Mutation.mutateAsync>[0]) => {
           await approveAndPostV2Mutation.mutateAsync(input);
           setApproveAndPostOpen(false);

@@ -111,3 +111,11 @@ export function buildPostingEvidenceItems(
 export function countUsableEvidence(items: PostingEvidenceItem[]): number {
   return items.filter((i) => i.usable).length;
 }
+
+/**
+ * Khoá ảnh xem trước (URL tạm `blob:`) của một ảnh CHƯA vào kho, theo mã lượt tải. Ô ảnh chứng từ
+ * (`PostingEvidenceUpload`) đọc đúng khoá này — hộp Thu/Chi và hộp chốt chi của chủ dùng chung.
+ */
+export function pendingPreviewKey(uploadId: string): string {
+  return `pending:${uploadId}`;
+}

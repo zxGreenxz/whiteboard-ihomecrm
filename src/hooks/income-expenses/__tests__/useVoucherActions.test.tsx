@@ -17,6 +17,8 @@ const m = vi.hoisted(() => ({
   incomeRows: {} as Record<string, unknown>,
   accounts: [] as Array<{ id: string; name: string; is_virtual: boolean }> | undefined,
   books: [] as Array<{ id: string; name: string }>,
+  /** get_my_permissions_v2: chủ công ty nhận cờ __superadmin. */
+  perms: { __superadmin: true } as Record<string, unknown>,
 }));
 const mutation = (fn: ReturnType<typeof vi.fn>) => ({ mutateAsync: fn, mutate: fn, isPending: false });
 
@@ -38,6 +40,7 @@ vi.mock('@/hooks/income-expenses/selfApproveGate', () => ({
 }));
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: m.accounts }) }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'u-1' } }) }));
+vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: m.perms }) }));
 vi.mock('@/lib/financeV2Route', async (orig) => ({
   ...(await orig<typeof import('@/lib/financeV2Route')>()),
   useFinanceV2Routes: () => ({ getOrg: () => m.routes, isLoading: false }),
@@ -92,6 +95,7 @@ beforeEach(() => {
   m.incomeRows = {};
   m.accounts = [];
   m.books = [];
+  m.perms = { __superadmin: true };
 });
 
 const LY_DO = 'ghi nhầm số tiền';
@@ -370,5 +374,44 @@ describe('Phiếu chi theo sổ tổng', () => {
     act(() => result.current.postApproved(phieu({ approval_status: 'APPROVED' })));
     expect(result.current.dialogs.postApproved.cashbookLocked).toBe(false);
     expect(result.current.dialogs.postApproved.cashbookOptions.map((b) => b.id)).toEqual(['acc-1', 'acc-2']);
+  });
+
+  // 19/11/2026: chủ tự duyệt phiếu sổ tổng mình lập ngay ở Thu chi ⇒ "Duyệt và Chi…" cũng khoá đúng sổ lúc lập.
+  it('Duyệt và Chi phiếu sổ tổng: hộp ghi sổ chỉ chào ĐÚNG sổ lúc lập; không giữ sổ đó ⇒ rỗng; phiếu thường chào mọi sổ đang giữ', () => {
+    m.books = [{ id: 'acc-1', name: 'Quỹ tiền mặt' }, { id: 'acc-2', name: 'Ngân hàng' }];
+    const choDuyet = soTong();
+    const { result } = setup([choDuyet]);
+    act(() => result.current.approve(choDuyet));
+    expect(result.current.dialogs.approveAndPost.cashbookLocked).toBe(true);
+    expect(result.current.dialogs.approveAndPost.cashbookOptions.map((b) => b.id)).toEqual(['acc-1']);
+    act(() => result.current.dialogs.approve.close());
+    act(() => result.current.approve({ ...choDuyet, account_id: 'acc-khac' }));
+    expect(result.current.dialogs.approveAndPost.cashbookOptions).toEqual([]);
+    act(() => result.current.dialogs.approve.close());
+    act(() => result.current.approve(phieu()));
+    expect(result.current.dialogs.approveAndPost.cashbookLocked).toBe(false);
+    expect(result.current.dialogs.approveAndPost.cashbookOptions.map((b) => b.id)).toEqual(['acc-1', 'acc-2']);
+  });
+
+  // Review chéo 19/11: người lập có thể chính là người nhận — máy chủ chỉ cho tự Chi khi quyền chi phủ CẢ CÔNG TY.
+  it('"Duyệt và Chi…" phiếu sổ tổng chỉ chào khi quyền chi đúng loại phủ cả công ty (cùng luật hộp chốt); phiếu thường như cũ', () => {
+    const choDuyet = soTong();
+    m.perms = { shareholder_profit: { distribute: { org_wide: false, building_ids: ['toa-ao'] } } };
+    const { result, rerender } = setup([choDuyet]);
+    act(() => result.current.approve(choDuyet));
+    expect(result.current.dialogs.approve.v2ApproveOnly).toBe(true);
+    expect(result.current.dialogs.approve.v2ApproveAndPost).toBe(false);
+    act(() => result.current.dialogs.approve.close());
+    act(() => result.current.approve(phieu()));
+    expect(result.current.dialogs.approve.v2ApproveAndPost).toBe(true);
+    act(() => result.current.dialogs.approve.close());
+    m.perms = { shareholder_profit: { distribute: { org_wide: true, building_ids: [] } } };
+    rerender();
+    act(() => result.current.approve(choDuyet));
+    expect(result.current.dialogs.approve.v2ApproveAndPost).toBe(true);
+    act(() => result.current.dialogs.approve.close());
+    // Lương điều hành xét quyền chi lương điều hành, không phải quyền chi lợi nhuận.
+    act(() => result.current.approve(soTong({ system_source: 'profit.manager_salary' })));
+    expect(result.current.dialogs.approve.v2ApproveAndPost).toBe(false);
   });
 });

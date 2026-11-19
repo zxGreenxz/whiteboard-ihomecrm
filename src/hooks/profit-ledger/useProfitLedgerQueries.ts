@@ -6,7 +6,7 @@
 // (profitLedgerRouteState) hoặc `ready` (E3). Lỗi hiện tại chỗ (`errorDisplay: 'inline'`): màn hình
 // bọc QueryRegion hoặc tự đọc `error` qua profitLedgerErrorMessage(error, 'read').
 
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { classifyDbError, isRetryable } from '@/lib/contracts/errors';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
@@ -25,7 +25,7 @@ import {
 } from '@/lib/profitLedger/positionReaders';
 import { readUnlockSalaryImpact, type UnlockSalaryImpact } from '@/lib/profitLedger/salaryReaders';
 import { day, instant, list, money, obj, optStr, str } from '@/lib/profitLedger/readPrimitives';
-import type { ProfitLedgerSubjectKind } from '@/lib/profitLedger/sharedReaders';
+import type { PayoutMakerKind, ProfitLedgerSubjectKind } from '@/lib/profitLedger/sharedReaders';
 import { isProfitLedgerVoucher } from '@/lib/profitLedger/vouchers';
 
 /** Lỗi đọc chỉ thử lại khi máy chủ bận ở tầng khoá; quyền / đầu vào sai thử lại cũng sai y vậy. */
@@ -228,19 +228,43 @@ export function useProfitSettlementPreview(input: {
 }
 
 /* E7 — chi tiết một phiếu chi lợi nhuận / lương điều hành để duyệt hoặc huỷ: lúc lập và bây giờ. */
+async function fetchProfitLedgerPayoutDetail(voucherId: string): Promise<LedgerPayoutDetail> {
+  const { data, error } = await supabase.rpc('profit_ledger_payout_detail_v1', { p_voucher_id: voucherId });
+  if (error) throw error;
+  return readLedgerPayoutDetail(data, voucherId);
+}
+
 export function useProfitLedgerPayoutDetail(voucherId: string | null | undefined, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['profit-ledger-payout', voucherId ?? null],
     enabled: !!voucherId && (options.enabled ?? true),
     retry: retryBusyOnce,
     meta: { label: 'phiếu chi lợi nhuận', errorDisplay: 'inline' },
-    queryFn: async (): Promise<LedgerPayoutDetail> => {
-      const id = voucherId as string;
-      const { data, error } = await supabase.rpc('profit_ledger_payout_detail_v1', { p_voucher_id: id });
-      if (error) throw error;
-      return readLedgerPayoutDetail(data, id);
-    },
+    queryFn: () => fetchProfitLedgerPayoutDetail(voucherId as string),
   });
+}
+
+/**
+ * Loại người lập (E7 `at_create.maker_kind`) của vài phiếu chi sổ tổng — cùng khoá, cùng bộ đọc với
+ * useProfitLedgerPayoutDetail (dùng chung cache với Chờ duyệt). Thu chi chỉ hỏi cho dòng cần quyết nút Duyệt
+ * (needsLedgerMakerKind). Chưa đọc xong / đọc lỗi / phiếu cũ không có dòng sổ ⇒ vắng (không đoán).
+ */
+export function useProfitLedgerMakerKinds(voucherIds: readonly string[]): Readonly<Record<string, PayoutMakerKind>> {
+  const results = useQueries({
+    queries: voucherIds.map((id) => ({
+      queryKey: ['profit-ledger-payout', id] as const,
+      retry: retryBusyOnce,
+      meta: { label: 'phiếu chi lợi nhuận', errorDisplay: 'inline' },
+      queryFn: () => fetchProfitLedgerPayoutDetail(id),
+    })),
+  });
+  const kinds: Record<string, PayoutMakerKind> = {};
+  results.forEach((result, index) => {
+    const kind = result.data?.at_create?.maker_kind;
+    const id = voucherIds[index];
+    if (kind && id) kinds[id] = kind;
+  });
+  return kinds;
 }
 
 /**

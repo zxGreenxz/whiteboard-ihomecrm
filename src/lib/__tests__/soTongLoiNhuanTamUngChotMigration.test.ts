@@ -24,6 +24,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  *
  * Migration sau 20261118143113 (E6 không trả số dư của chủ thể cho người lập hộ) nạp ngay sau migration tạm ứng, HAI
  * lượt, trước mọi ca: mọi ca của file chạy trên E6 đã che. Ca riêng của nó ở hai describe "20261118143113 — …".
+ *
+ * Migration dọn dẹp 20261118171708 nạp tiếp theo, HAI lượt, trước mọi ca: thu EXECUTE của authenticated trên E4 / E5
+ * (lệnh cũ chi theo số nhập tay), E6 bỏ vế "đăng nhập lúc lập" khi trả số dư, R4 bỏ DETAIL của lỗi DRIFT với người không
+ * được thấy số. Từ đó ca nào cần phiếu E5 "cũ" (lập trước khi thu quyền) gọi E5 bằng vai chủ hàm (e5Cu) — thân E5 không
+ * đổi. Ca riêng của nó ở các describe "20261118171708 — …".
  */
 const DIR = "supabase/migrations";
 const FILE = "supabase/migrations/20261118041911_tam_ung_co_dong_va_chot_chi_loi_nhuan.sql";
@@ -172,6 +177,22 @@ const MD5_E6_PROD = "6aa543506cb425c33c9963789aa0365a";
 const MD5_E6_CHE = "7b3e96d1d8cfec6d91d1c65ca7c810b1";
 const E6_CHAN = dinhNghiaTrong(E6, FILE_CHAN.slice(DIR.length + 1));
 const E6_HUY_CHE = dinhNghiaTrong(E6, TEN_HUY_CHE);
+/** Migration dọn dẹp 20261118171708: thu quyền E4 / E5 của authenticated, E6 bỏ vế "đăng nhập lúc lập", R4 che DETAIL của DRIFT. */
+const FILE_DON_DEP = "supabase/migrations/20261118171708_so_tong_loi_nhuan_don_dep_sau_tam_ung.sql";
+const TEN_DON_DEP = FILE_DON_DEP.slice(DIR.length + 1);
+const DON_DEP = readFileSync(FILE_DON_DEP, "utf8");
+const THAN_DON_DEP = DON_DEP.replace(/^BEGIN;\s*$/m, "").replace(/^COMMIT;\s*$/m, "").replace(/^NOTIFY pgrst, 'reload schema';\s*$/m, "");
+const R4 = "public.shareholder_profit_advance_preview_v1";
+const R4_SIG = "public.shareholder_profit_advance_preview_v1(p_shareholder_id uuid, p_amount numeric, p_account_id uuid)";
+const E4_REGPROC = "public.shareholder_profit_payout_preview_v1(uuid,numeric,uuid)";
+const E5_REGPROC = "public.shareholder_profit_ledger_payout_v1(uuid,numeric,uuid,date,text,boolean,text)";
+/** md5 thân R4 (bỏ CR) của 20261118041911 = production (đo 18/11/2026). */
+const MD5_R4_PROD = "d1c1212f15b45b896187b601a28155b3";
+const R4_TAM_UNG = dinhNghiaTrong(R4, FILE.slice(DIR.length + 1));
+const E6_DON_DEP = dinhNghiaTrong(E6, TEN_DON_DEP);
+const R4_DON_DEP = dinhNghiaTrong(R4, TEN_DON_DEP);
+/** Câu của lỗi lệch bất biến mà app_private.profit_ledger_position_v1 ném (XX000). */
+const CAU_DRIFT = "PROFIT_LEDGER_POSITION_DRIFT: lợi nhuận chưa chi và tạm ứng không cộng ra đúng số dư sổ tổng — báo bộ phận kỹ thuật";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const mem = (user: string) => user.replace("4000-8000-0000000000", "4000-8000-1000000000");
@@ -617,6 +638,15 @@ const w3 = (banGhi: string, lyDo = "Chốt nhầm tháng cần làm lại", k = 
   `SELECT public.shareholder_profit_settlement_void_v1('${banGhi}', ${q(lyDo)}, '${k}') AS v`;
 const e5 = (cd: string, tien: number, tamUng: boolean, so = SO_QUY) =>
   `SELECT public.shareholder_profit_ledger_payout_v1('${cd}', ${tien}, '${so}', '${NGAY}', NULL, ${tamUng}, '${khoa("e5")}') AS v`;
+const e4 = (cd: string, tien: number | null, so: string | null) =>
+  `SELECT public.shareholder_profit_payout_preview_v1('${cd}', ${tien ?? "NULL"}, ${q(so)}) AS v`;
+/** E5 đã thu quyền của authenticated (20261118171708): phiếu E5 "cũ" (lập trước khi thu quyền) dựng bằng vai chủ hàm, với
+ *  auth.uid() = người lập. Thân E5 là SECURITY DEFINER nên chạy y hệt lời gọi dưới vai authenticated trước đây — chỉ khác
+ *  cửa ACL ở đầu lời gọi. */
+async function e5Cu<T = KqUng>(user: string, sql: string): Promise<T> {
+  await dangNhap(user);
+  return (await db.query<{ v: T }>(sql)).rows[0].v;
+}
 const e9 = (cd: string, thang: string | null, cu: string | null) =>
   `SELECT public.profit_ledger_set_marker_v1('${ORG_A}','SHAREHOLDER','${cd}', ${q(thang)}, 'Đã trả đủ theo sổ tay', ${q(cu)}, true, '${khoa("moc")}') AS v`;
 
@@ -729,6 +759,13 @@ beforeAll(async () => {
   ghi.hamHuyChe1 = await chupHam();
   await db.exec(HUY_CHE);
   ghi.hamHuyChe2 = await chupHam();
+  // Migration dọn dẹp (20261118171708) — hai lượt, chụp mọi hàm trước / sau từng lượt. Mọi ca bên dưới chạy trên trạng thái
+  // SAU file này.
+  ghi.hamTruocDonDep = await chupHam();
+  await db.exec(DON_DEP);
+  ghi.hamDonDep1 = await chupHam();
+  await db.exec(DON_DEP);
+  ghi.hamDonDep2 = await chupHam();
   await datRoute("CANONICAL");
 }, 300000);
 afterAll(() => db.close());
@@ -777,7 +814,8 @@ describe("khung thử: nền Đợt 1 thật và hai lượt migration", () => {
     const ten = [...new Set([...MIGRATION.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-z_]+\.[a-z0-9_]+)\s*\(/gi)].map((m) => m[1].toLowerCase()))];
     expect(ten.sort()).toEqual([...RPC, ...NOI_BO].map(([h]) => h.slice(0, h.indexOf("("))).sort());
     const file = FILE.slice(FILE.lastIndexOf("/") + 1);
-    for (const t of ten) expect((DINH_NGHIA.get(t) ?? []).map((d) => d.file), t).toEqual([file]);
+    // Sau file này chỉ migration dọn dẹp 20261118171708 định nghĩa lại một hàm của nó: R4 (bọc lời gọi vị thế).
+    for (const t of ten) expect((DINH_NGHIA.get(t) ?? []).map((d) => d.file), t).toEqual(t === R4 ? [file, TEN_DON_DEP] : [file]);
     // Không lệnh DDL nào chạm đối tượng cũ ngoài hai ngoại lệ đã khai ở đầu file: CHECK maker_kind của dòng sổ phiếu chi, và MỘT
     // trigger mới trên bảng mốc (DROP … IF EXISTS của chính trigger đó để chạy lại được).
     expect(MIGRATION.match(/^\s*(ALTER TABLE|DROP (?!TRIGGER IF EXISTS a00_profit_ledger_payout_settlements)\w+|ALTER FUNCTION)[^\n]*/gim)?.map((x) => x.trim()))
@@ -1015,8 +1053,8 @@ describe("dữ liệu: dòng sổ phiếu chi, bản ghi chốt, hạng mục", 
     await giaoDich(async () => {
       await chotThang("2026-09-01", TOA_1, { [CD1]: 100, [CD_CHU]: 100 });
       const ung = await goi<KqUng>(GIU_SO, w1({ cd: CD1, tien: 30 }));           // phiếu tạm ứng (advance_amount = 30)
-      const chi = await goi<KqUng>(CHU, e5(CD1, 20, false));                      // phiếu chi lợi nhuận cũ (advance_amount = 0)
-      const cuaNguoiKhac = await goi<KqUng>(CHU, e5(CD_CHU, 20, false));
+      const chi = await e5Cu(CHU, e5(CD1, 20, false));                            // phiếu chi lợi nhuận cũ (advance_amount = 0)
+      const cuaNguoiKhac = await e5Cu(CHU, e5(CD_CHU, 20, false));
       await db.exec(khoaSo());
       const thu = async (o: Parameters<typeof chenC7>[0]) => { await db.exec(soMoi); return loi(chenC7(o)); };
       laLoi(await thu({ x: 30, k: 0, tien: 30, phieu: ung.voucher_id }), "55000", "PROFIT_LEDGER_SETTLEMENT_VOUCHER");
@@ -1026,7 +1064,7 @@ describe("dữ liệu: dòng sổ phiếu chi, bản ghi chốt, hạng mục", 
       expect(await thu({ x: 20, k: 0, tien: 20, phieu: chi.voucher_id })).toBeNull();
       expect((await thu({ x: 20, k: 0, tien: 20, phieu: chi.voucher_id }))?.message).toContain("profit_ledger_payout_settlements_cash_voucher_uq");
       // Phiếu đã chết (bị huỷ) không gắn được.
-      const chet = await goi<KqUng>(CHU, e5(CD1, 5, false));
+      const chet = await e5Cu(CHU, e5(CD1, 5, false));
       expect(await huyPhieu(chet.voucher_id, CHU, "PENDING")).toBeNull();
       await db.exec(khoaSo());
       laLoi(await thu({ x: 5, k: 0, tien: 5, phieu: chet.voucher_id }), "55000", "PROFIT_LEDGER_SETTLEMENT_VOUCHER");
@@ -1035,7 +1073,7 @@ describe("dữ liệu: dòng sổ phiếu chi, bản ghi chốt, hạng mục", 
   it("bản ghi chốt chỉ ghi thêm: chỉ ACTIVE → VOID (không phiếu tiền, đang giữ khoá sổ, chỉ đổi bốn cột huỷ); DELETE / TRUNCATE ⇒ 55000", async () => {
     await giaoDich(async () => {
       await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
-      const chi = await goi<KqUng>(CHU, e5(CD1, 20, false));
+      const chi = await e5Cu(CHU, e5(CD1, 20, false));
       await db.exec(`${khoaSo()}; ${soMoi}`);
       const khongTien = (await db.query<{ id: string }>(chenC7({ x: 50, k: 50, tien: 0 }))).rows[0].id;
       await db.exec(soMoi);
@@ -1374,7 +1412,8 @@ describe("W1 — lập phiếu tạm ứng ở Thu chi", () => {
       expect(await ghiSo(kq.voucher_id, CHU, SO_QUY)).toBeNull();
       expect(await phieu(kq.voucher_id)).toMatchObject({ approval_status: "APPROVED", posting_status: "POSTED" });
       // Đối chứng lỗi cũ: cùng người, cùng sổ, lập bằng E5 ⇒ OWNER ⇒ sau khi duyệt, chính người nhận không tự ghi sổ được.
-      const cu = await goi<KqUng>(CHU, e5(CD_CHU, 10, true));
+      // (Phiếu E5 cũ — lập trước khi thu quyền ở 20261118171708 — nên gọi E5 bằng vai chủ hàm.)
+      const cu = await e5Cu(CHU, e5(CD_CHU, 10, true));
       expect(cu.maker_kind).toBe("OWNER");
       expect(await duyet(cu.voucher_id, CHU2)).toBeNull();
       laLoi(await ghiSo(cu.voucher_id, CHU, SO_QUY), "42501", "PROFIT_LEDGER_PAYEE_SELF_POST");
@@ -1444,8 +1483,9 @@ describe("W1 — lập phiếu tạm ứng ở Thu chi", () => {
       for (const doi of [{ tien: 13 }, { ghiChu: "Ứng đợt 2" }, { ngay: "2026-11-11" }]) {
         expect(await loiGoi(CHU, w1({ ...goc, ...doi }))).toMatchObject({ code: "23505", message: "idempotency_key đã dùng với nội dung khác" });
       }
-      // Cùng người, cùng cổ đông, cùng khoá nhưng là lệnh KHÁC (E5): operation riêng nên vẫn lập được phiếu của nó.
-      expect(await loiGoi(CHU, `SELECT public.shareholder_profit_ledger_payout_v1('${CD1}', 12.5, '${SO_QUY}', '${NGAY}', 'Ứng đợt 1', true, 'ung-trung-khoa-01')`)).toBeNull();
+      // Cùng người, cùng cổ đông, cùng khoá nhưng là lệnh KHÁC (E5): operation riêng nên vẫn lập được phiếu của nó. E5 đã thu
+      // quyền của authenticated (20261118171708) ⇒ dựng phiếu E5 bằng vai chủ hàm, auth.uid() vẫn là CHU.
+      expect(await loiGoi(CHU, `SELECT public.shareholder_profit_ledger_payout_v1('${CD1}', 12.5, '${SO_QUY}', '${NGAY}', 'Ứng đợt 1', true, 'ung-trung-khoa-01')`, "postgres")).toBeNull();
       expect(await dem("public.income_expenses")).toBe(2);
       expect(await mot(`SELECT jsonb_agg(operation ORDER BY operation) AS v FROM app_private.canonical_write_operations WHERE idempotency_key = 'ung-trung-khoa-01'`))
         .toEqual(["shareholder_profit.ledger_advance.v1", "shareholder_profit.ledger_payout.v1"]);
@@ -1662,13 +1702,16 @@ describe("20261118143113 — E6: balance_after chỉ cho người có quyền ch
         .toMatchObject({ changed: true, cancellation_kind: "CANCELLED_UNPOSTED", balance_after: 100 });
     });
   });
-  it("hai vế 'chính người nhận' tách riêng: người lập là người nhận LÚC LẬP (đăng nhập của cổ đông gỡ sau đó) ⇒ có số; người lập là đăng nhập HIỆN TẠI của cổ đông (người nhận lúc lập là người khác) ⇒ có số", async () => {
+  it("hai vế 'chính người nhận' tách riêng — từ 20261118171708 chỉ đăng nhập HIỆN TẠI tính: người lập là người nhận LÚC LẬP (đăng nhập của cổ đông gỡ sau đó) ⇒ null; người lập là đăng nhập HIỆN TẠI của cổ đông (người nhận lúc lập là người khác) ⇒ có số", async () => {
     await giaoDich(async () => {
       await chotThang("2026-09-01", TOA_1, { [CD_TU]: 40, [CD1]: 100 });
-      // Vế 'lúc lập': cổ đông giữ sổ tự ứng, rồi đăng nhập của cổ đông bị gỡ — dòng sổ vẫn ghi người nhận lúc lập.
+      // Vế 'lúc lập': cổ đông giữ sổ tự ứng, rồi đăng nhập của cổ đông bị gỡ — dòng sổ vẫn ghi người nhận lúc lập, nhưng
+      // đăng nhập lúc lập không còn được thấy số dư (20261118143113 trả 40 ở đây). Người lập vẫn tự huỷ được phiếu chờ.
       const tu = await goi<KqUng>(TU_UNG, w1({ cd: CD_TU, tien: 15, so: SO_TU }));
       await db.exec(`UPDATE public.shareholders SET auth_user_id = NULL WHERE id = '${CD_TU}'`);
-      expect(await goi<KqHuy>(TU_UNG, sqlE6(tu.voucher_id, khoa("huynhan"), "PENDING"))).toMatchObject({ changed: true, balance_after: 40 });
+      expect(await dongSo(tu.voucher_id)).toMatchObject({ maker_kind: "CUSTODIAN_ADVANCE", payee_user_id: TU_UNG });
+      expect(await goi<KqHuy>(TU_UNG, sqlE6(tu.voucher_id, khoa("huynhan"), "PENDING"))).toMatchObject({ changed: true, balance_after: null });
+      expect(await nhatKyHuy(tu.voucher_id)).toEqual([{ balance_before: "25.00", balance_after: "40.00", actor_id: TU_UNG }]);
       // Vế 'hiện tại': người giữ sổ lập hộ CD1 (người nhận lúc lập là U_CD1), rồi đăng nhập của CD1 chuyển sang chính người giữ sổ.
       const ho = await goi<KqUng>(GIU_SO, w1({ cd: CD1, tien: 30 }));
       expect(await dongSo(ho.voucher_id)).toMatchObject({ maker_kind: "CUSTODIAN_FOR_PAYEE", payee_user_id: U_CD1 });
@@ -1792,6 +1835,325 @@ describe("20261118143113 — migration: chỉ đổi thân + COMMENT của E6, t
       await lan.exec(HUY_CHE);
       expect(await md5E6(lan)).toBe(md5(E6_HUY_CHE.body));
       expect((await chupHam(lan))[E6_SIG].acl).toBe(truoc[E6_SIG].acl);
+    } finally { await lan.close(); }
+  }, 300000);
+});
+
+// ── 20261118171708: dọn dẹp sau tạm ứng — thu quyền E4 / E5, E6 bỏ vế "đăng nhập lúc lập", R4 che DETAIL của DRIFT ──
+const quyenGoi = (ham: string, vai = "authenticated", d: PGlite = db) =>
+  d.query<{ v: boolean }>(`SELECT has_function_privilege('${vai}', '${ham}'::regprocedure, 'EXECUTE') AS v`).then((r) => r.rows[0].v);
+const md5Ham = (ham: string, d: PGlite = db) =>
+  d.query<{ v: string }>(`SELECT md5(replace(p.prosrc, chr(13), '')) AS v FROM pg_proc p WHERE p.oid = '${ham}'::regprocedure`).then((r) => r.rows[0].v);
+
+describe("20261118171708 — E4 / E5: authenticated không còn gọi được lệnh cũ chi lợi nhuận theo số nhập tay", () => {
+  it("authenticated gọi E4 / E5 ⇒ 42501 permission denied (chủ có quyền chi lợi nhuận, cổ đông giữ sổ có quyền tạm ứng), anon / service_role cũng vậy; không ghi gì", async () => {
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 100, [CD_CHU]: 50, [CD_TU]: 40 });
+      const bang = ["public.income_expenses", "public.income_expense_items", "public.approval_requests", "app_private.profit_ledger_payouts",
+        "app_private.profit_ledger_events", "app_private.canonical_write_operations", "app_private.server_feature_flag_operations"];
+      const demHet = async () => { const out: number[] = []; for (const b of bang) out.push(await dem(b)); return out; };
+      const truoc = await demHet();
+      const thu: [string, string, string][] = [
+        [CHU, e5(CD1, 20, false), "shareholder_profit_ledger_payout_v1"],
+        [CHU, e5(CD_CHU, 10, true), "shareholder_profit_ledger_payout_v1"],
+        [TU_UNG, e5(CD_TU, 5, true, SO_TU), "shareholder_profit_ledger_payout_v1"],
+        [CHU, e4(CD1, 20, SO_QUY), "shareholder_profit_payout_preview_v1"],
+        [TU_UNG, e4(CD_TU, null, null), "shareholder_profit_payout_preview_v1"],
+      ];
+      for (const vai of ["authenticated", "anon", "service_role"]) {
+        for (const [ai, sql, ham] of thu) {
+          expect(await loiGoi(ai, sql, vai), `${vai} ${ai} ${sql.slice(14, 70)}`)
+            .toMatchObject({ code: "42501", message: `permission denied for function ${ham}`, detail: null });
+        }
+      }
+      expect(await demHet()).toEqual(truoc);
+      for (const ham of [E4_REGPROC, E5_REGPROC]) {
+        for (const vai of ["authenticated", "anon", "service_role"]) expect(await quyenGoi(ham, vai), `${vai} ${ham}`).toBe(false);
+      }
+      // Lệnh mới thay thế vẫn mở cho authenticated (đối chứng: thu đúng hai lệnh cũ).
+      expect(await goi<KqUng>(TU_UNG, w1({ cd: CD_TU, tien: 5, so: SO_TU }))).toMatchObject({ maker_kind: "CUSTODIAN_ADVANCE", state: "PENDING_APPROVAL" });
+    });
+  });
+  it("chủ hàm và một hàm DEFINER khác vẫn gọi được như trước khi thu quyền: E4 xem trước, E5 lập phiếu (OWNER, chờ duyệt) — thân E5 không đổi", async () => {
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
+      // Vai chủ hàm, auth.uid() = chủ có quyền chi lợi nhuận.
+      await dangNhap(CHU);
+      expect(await mot<Record<string, unknown>>(e4(CD1, 20, SO_QUY))).toMatchObject({ shareholder_id: CD1, maker_kind: "OWNER", balance_before: 100,
+        within_amount: 20, advance_amount: 0, can_submit: true });
+      const kq = await e5Cu(CHU, e5(CD1, 20, false));
+      expect(kq).toMatchObject({ maker_kind: "OWNER", within_amount: 20, advance_amount: 0 });
+      expect(await phieu(kq.voucher_id)).toMatchObject({ approval_status: "UNAPPROVED", system_source: "profit.ledger_payout" });
+      // Một hàm DEFINER khác (cùng chủ với E5) mở cho authenticated và gọi E5 bên trong: revoke không chặn đường đó.
+      await db.exec(`CREATE FUNCTION public.test_e5_qua_definer(p_cd uuid, p_tien numeric, p_khoa text) RETURNS jsonb
+          LANGUAGE sql SECURITY DEFINER SET search_path TO 'pg_catalog', 'public'
+          AS $x$ SELECT public.shareholder_profit_ledger_payout_v1(p_cd, p_tien, '${SO_QUY}'::uuid, '${NGAY}'::date, NULL, false, p_khoa) $x$;
+        REVOKE ALL ON FUNCTION public.test_e5_qua_definer(uuid, numeric, text) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION public.test_e5_qua_definer(uuid, numeric, text) TO authenticated;`);
+      expect(await goi<KqUng>(CHU, `SELECT public.test_e5_qua_definer('${CD1}', 15, '${khoa("e5def")}') AS v`))
+        .toMatchObject({ maker_kind: "OWNER", within_amount: 15, advance_amount: 0 });
+      expect(await soDuRong(CD1)).toBe(65);
+      expect(await md5Ham(E5_REGPROC)).toBe(MD5_E5_GOC);
+    });
+  });
+});
+
+describe("20261118171708 — E6: số dư chỉ cho người có quyền chi hoặc đăng nhập HIỆN TẠI của người nhận (đăng nhập lúc lập không còn tính)", () => {
+  it("tài khoản CŨ của cổ đông (cổ đông đã gắn sang tài khoản khác, tài khoản cũ vẫn là thành viên) gọi lại E6 trên phiếu đã huỷ bằng khoá mới ⇒ balance_after null; khoá cũ ⇒ đúng kết quả đã lưu; người có quyền chi ⇒ số dư hiện tại", async () => {
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD_TU]: 40 });
+      // Cổ đông giữ sổ tự ứng rồi tự huỷ phiếu chờ khi CÒN là đăng nhập của cổ đông ⇒ thấy số (bản lưu để phát lại cũng có số).
+      const tu = await goi<KqUng>(TU_UNG, w1({ cd: CD_TU, tien: 15, so: SO_TU }));
+      expect(await dongSo(tu.voucher_id)).toMatchObject({ maker_kind: "CUSTODIAN_ADVANCE", payee_user_id: TU_UNG });
+      const k1 = khoa("huycu");
+      const lan1 = await goi<KqHuy>(TU_UNG, sqlE6(tu.voucher_id, k1, "PENDING"));
+      expect(lan1).toEqual({ voucher_id: tu.voucher_id, changed: true, cancellation_kind: "CANCELLED_UNPOSTED", reversal_posting_id: null, balance_after: 40 });
+      // Cổ đông gắn sang tài khoản khác; tài khoản cũ vẫn là thành viên ACTIVE. Số dư hiện tại đổi (thêm phân bổ tháng 10).
+      await db.exec(`UPDATE public.shareholders SET auth_user_id = '${KHONG_GIU}' WHERE id = '${CD_TU}'`);
+      expect(await dem("public.organization_memberships", `user_id = '${TU_UNG}' AND organization_id = '${ORG_A}' AND status = 'ACTIVE'`)).toBe(1);
+      await chotThang("2026-10-01", TOA_1, { [CD_TU]: 5 });
+      expect(await soDuRong(CD_TU)).toBe(45);
+      // Tài khoản cũ, khoá MỚI ⇒ nhánh "đã huỷ từ trước": null, cả bản lưu (20261118143113 trả 45 ở đây — vế "lúc lập").
+      const moi = khoa("huycu");
+      expect(await goi<KqHuy>(TU_UNG, sqlE6(tu.voucher_id, moi, null))).toEqual({ ...lan1, changed: false, balance_after: null });
+      expect(await daLuuE6(moi)).toEqual({ ...lan1, changed: false, balance_after: null });
+      // Khoá CŨ ⇒ phát lại đúng kết quả đã lưu lúc còn là người nhận (không đọc lại số dư hiện tại).
+      expect(await goi<KqHuy>(TU_UNG, sqlE6(tu.voucher_id, k1, "PENDING"))).toEqual(lan1);
+      // Người có quyền chi lợi nhuận ⇒ số dư HIỆN TẠI.
+      expect(await goi<KqHuy>(CHU, sqlE6(tu.voucher_id, khoa("huycu"), null))).toEqual({ ...lan1, changed: false, balance_after: 45 });
+    });
+  });
+  it("đăng nhập HIỆN TẠI của cổ đông là người lập ⇒ có số; người nhận LÚC LẬP không lập phiếu, không có quyền chi ⇒ không gọi được (42501 như cũ); người giữ sổ lập hộ ⇒ null như cũ", async () => {
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 100, [CD_R1]: 60 });
+      // Người giữ sổ lập hộ CD1 (người nhận lúc lập là U_CD1) rồi tự huỷ phiếu chờ ⇒ null, cả nhánh đã huỷ.
+      const ho = await goi<KqUng>(GIU_SO, w1({ cd: CD1, tien: 30 }));
+      expect(await dongSo(ho.voucher_id)).toMatchObject({ maker_kind: "CUSTODIAN_FOR_PAYEE", payee_user_id: U_CD1 });
+      const lan1 = await goi<KqHuy>(GIU_SO, sqlE6(ho.voucher_id, khoa("huyhien"), "PENDING"));
+      expect(lan1).toMatchObject({ changed: true, balance_after: null });
+      expect(await goi<KqHuy>(GIU_SO, sqlE6(ho.voucher_id, khoa("huyhien"), null))).toEqual({ ...lan1, changed: false });
+      // Người nhận lúc lập (U_CD1: không lập phiếu, không có quyền chi) ⇒ 42501, DETAIL chỉ có tên quyền.
+      const l = laLoi(await loiGoi(U_CD1, sqlE6(ho.voucher_id, khoa("huyhien"), null)), "42501", "PROFIT_LEDGER_CANCEL_FORBIDDEN");
+      expect(chiTiet(l)).toEqual({ permission: "shareholder_profit.distribute" });
+      // Đăng nhập của CD1 chuyển sang chính người giữ sổ ⇒ người lập giờ là đăng nhập HIỆN TẠI của cổ đông ⇒ có số.
+      await db.exec(`UPDATE public.shareholders SET auth_user_id = '${GIU_SO}' WHERE id = '${CD1}'`);
+      expect(await goi<KqHuy>(GIU_SO, sqlE6(ho.voucher_id, khoa("huyhien"), null))).toEqual({ ...lan1, changed: false, balance_after: 100 });
+      // Lập hộ cho cổ đông KHÁC (CD_R1) vẫn null.
+      const khac = await goi<KqUng>(GIU_SO, w1({ cd: CD_R1, tien: 10 }));
+      expect(await goi<KqHuy>(GIU_SO, sqlE6(khac.voucher_id, khoa("huyhien"), "PENDING"))).toMatchObject({ changed: true, balance_after: null });
+    });
+  });
+  it("phiếu đã duyệt: người nhận không tự huỷ — vẫn chặn CẢ đăng nhập lúc lập lẫn đăng nhập hiện tại (42501 PROFIT_LEDGER_CANCEL_PAYEE) dù cả hai có quyền chi; chủ khác huỷ ⇒ có số", async () => {
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD_CHU]: 50 });
+      const kq = await goi<KqUng>(CHU, w1({ cd: CD_CHU, tien: 20, so: SO_QUY }));
+      expect(await dongSo(kq.voucher_id)).toMatchObject({ maker_kind: "CUSTODIAN_ADVANCE", payee_user_id: CHU });
+      expect(await duyet(kq.voucher_id, CHU2)).toBeNull();
+      laLoi(await loiGoi(CHU, sqlE6(kq.voucher_id, khoa("huyduyet"), "APPROVED_UNPOSTED")), "42501", "PROFIT_LEDGER_CANCEL_PAYEE");
+      // Cổ đông gắn sang đăng nhập khác (CHU3 — cũng có quyền chi lợi nhuận).
+      await db.exec(`UPDATE public.shareholders SET auth_user_id = '${CHU3}' WHERE id = '${CD_CHU}'`);
+      for (const ai of [CHU, CHU3]) {
+        laLoi(await loiGoi(ai, sqlE6(kq.voucher_id, khoa("huyduyet"), "APPROVED_UNPOSTED")), "42501", "PROFIT_LEDGER_CANCEL_PAYEE");
+      }
+      expect(await phieu(kq.voucher_id)).toMatchObject({ approval_status: "APPROVED" });
+      expect(await goi<KqHuy>(CHU2, sqlE6(kq.voucher_id, khoa("huyduyet"), "APPROVED_UNPOSTED")))
+        .toMatchObject({ changed: true, cancellation_kind: "CANCELLED_UNPOSTED", balance_after: 50 });
+    });
+  });
+});
+
+describe("20261118171708 — R4: lỗi lệch bất biến không mang số của cổ đông cho người không được thấy số", () => {
+  /** Ép lệch bất biến: chủ chốt chi hết tháng 9 của CD1 (phiếu tiền 100 chờ duyệt), rồi sửa thẳng bản ghi chốt (tắt chốt
+   *  của bảng trong giao dịch thử) ⇒ tiền chốt chờ duyệt 107 > phiếu chi chờ duyệt 100 ⇒ profit_ledger_position_v1 ném DRIFT. */
+  async function epLech() {
+    await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
+    const chot = await goi<KqChot>(CHU, w2({ cd: CD1, thang: "2026-09-01", tien: 100 }));
+    expect(chot).toMatchObject({ recognized_amount: 100, cash_amount: 100, state: "PENDING_APPROVAL" });
+    expect(await loiGoi(GIU_SO, r4(CD1, 10, SO_GIU))).toBeNull();
+    await db.exec(`ALTER TABLE ${C7} DISABLE TRIGGER a00_profit_ledger_payout_settlements_guard;
+      UPDATE ${C7} SET cash_amount = cash_amount + 7, recognized_amount = recognized_amount + 7 WHERE id = '${chot.settlement_id}';
+      ALTER TABLE ${C7} ENABLE TRIGGER a00_profit_ledger_payout_settlements_guard;`);
+    // Đối chứng: đọc thẳng vị thế (vai chủ bảng) ⇒ DRIFT kèm DETAIL đủ số.
+    const goc = laLoi(await loi(`SELECT app_private.profit_ledger_position_v1('${ORG_A}','${CD1}')`), "XX000", "PROFIT_LEDGER_POSITION_DRIFT");
+    expect(goc.message).toBe(CAU_DRIFT);
+    expect(chiTiet(goc)).toMatchObject({ balance: 0, payouts_pending: 100, cash_pending: 107, recognized: 107, offset: 0 });
+    return goc;
+  }
+  it("ép lệch bất biến: người giữ sổ lập hộ, thành viên không giữ sổ, người chỉ quản lý cổ đông, cổ đông khác ⇒ XX000 PROFIT_LEDGER_POSITION_DRIFT cùng câu, KHÔNG DETAIL; người có quyền chi lợi nhuận và chính người nhận có quyền tạm ứng ⇒ nguyên lỗi, có DETAIL", async () => {
+    await giaoDich(async () => {
+      const goc = await epLech();
+      const khongThay: [string, string | null][] = [[GIU_SO, SO_GIU], [GIU_SO, null], [TU_UNG, SO_TU], [KHONG_GIU, null], [QUAN_LY, null],
+        [U_CD2, null], [U_XEM, null]];
+      for (const [ai, so] of khongThay) {
+        expect(await loiGoi(ai, r4(CD1, 10, so)), `${ai} ${so}`).toEqual({ code: "XX000", message: CAU_DRIFT, detail: null, hint: null });
+        expect(await loiGoi(ai, r4(CD1, null, null)), `${ai} không số tiền`).toEqual({ code: "XX000", message: CAU_DRIFT, detail: null, hint: null });
+      }
+      for (const [ai, so] of [[CHU, SO_QUY], [CHU, null], [CHU2, null], [U_CD1, null]] as [string, string | null][]) {
+        expect(await loiGoi(ai, r4(CD1, 10, so)), `${ai} ${so}`).toEqual(goc);
+      }
+      // Cổ đông khác của cùng công ty (không lệch) vẫn xem trước bình thường.
+      expect(await goi(GIU_SO, r4(CD2, 10, SO_GIU))).toMatchObject({ shareholder_id: CD2, position: null });
+    });
+  });
+  it("lỗi khác lúc đọc vị thế ném nguyên (cả DETAIL / HINT) cho mọi người gọi: XX000 câu khác, mã khác cùng câu DRIFT; chỉ đúng XX000 + câu mở đầu 'PROFIT_LEDGER_POSITION_DRIFT:' mới bị bỏ DETAIL với người không được thấy số", async () => {
+    await giaoDich(async () => {
+      await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
+      // Thay tạm hàm vị thế (giao dịch thử) bằng bản chỉ ném một lỗi cho trước.
+      const thay = (ma: string, cau: string) => db.exec(`CREATE OR REPLACE FUNCTION app_private.profit_ledger_position_v1(p_org uuid, p_shareholder uuid)
+        RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'pg_catalog', 'app_private', 'public'
+        AS $x$ BEGIN RAISE EXCEPTION '${cau}' USING ERRCODE = '${ma}', DETAIL = '{"so_cua_co_dong": 123}', HINT = 'báo kỹ thuật'; END $x$`);
+      const nguyen = (ma: string, cau: string) => ({ code: ma, message: cau, detail: '{"so_cua_co_dong": 123}', hint: "báo kỹ thuật" });
+      for (const [ma, cau] of [["XX000", "LOI_KHAC: thử lỗi nội bộ khác"], ["P0001", "PROFIT_LEDGER_POSITION_DRIFT: cùng câu nhưng mã khác"],
+        ["XX000", "PROFIT_LEDGER_POSITION_DRIFTX: gần giống"], ["XX000", "Lỗi: PROFIT_LEDGER_POSITION_DRIFT: không ở đầu câu"]]) {
+        await thay(ma, cau);
+        for (const ai of [GIU_SO, KHONG_GIU, CHU]) expect(await loiGoi(ai, r4(CD1, 10, null)), `${ai} ${ma} ${cau}`).toEqual(nguyen(ma, cau));
+      }
+      await thay("XX000", "PROFIT_LEDGER_POSITION_DRIFT: thử");
+      for (const ai of [GIU_SO, KHONG_GIU]) {
+        expect(await loiGoi(ai, r4(CD1, 10, null)), ai).toEqual({ code: "XX000", message: "PROFIT_LEDGER_POSITION_DRIFT: thử", detail: null, hint: null });
+      }
+      expect(await loiGoi(CHU, r4(CD1, 10, null))).toEqual(nguyen("XX000", "PROFIT_LEDGER_POSITION_DRIFT: thử"));
+    });
+  });
+});
+
+describe("20261118171708 — migration: chỉ ACL E4 / E5 và thân + COMMENT E6 / R4 đổi, tiền kiểm md5, chạy lại", () => {
+  const dauCau = (s: string) => s.slice(0, s.indexOf("AS $fn$"));
+  const boChuThich = (s: string) => s.replace(/^\s*--[^\n]*\n/gm, "");
+  it("[ghim] E6 = nguyên văn 20261118143113 trừ đúng phép gán v_see_numbers (+ chú thích ngay trên); R4 = nguyên văn 20261118041911 trừ đúng phần bọc lời gọi vị thế; ngoài thân và hai khối kiểm chỉ có hai REVOKE … FROM authenticated, hai CREATE OR REPLACE, hai COMMENT; md5 ghim khớp thân; không mã lỗi lớp 40", () => {
+    expect(md5(E6_HUY_CHE.body)).toBe(MD5_E6_CHE);
+    expect(md5(R4_TAM_UNG.body)).toBe(MD5_R4_PROD);
+    // E6: khối từ chú thích "Số dư của chủ thể" tới hết phép gán.
+    const khoiE6 = (s: string) => { const a = s.indexOf("  -- Số dư của chủ thể (balance_after)"); return s.slice(a, s.indexOf(";\n", a) + 2); };
+    const cuE6 = khoiE6(E6_HUY_CHE.body);
+    const moiE6 = khoiE6(E6_DON_DEP.body);
+    expect(E6_DON_DEP.body.replace(moiE6, cuE6)).toBe(E6_HUY_CHE.body);
+    expect(boChuThich(moiE6)).toBe(boChuThich(cuE6).replace(", false)\n    OR COALESCE(v_has_p AND v_actor = v_p.payee_user_id, false);\n", ", false);\n"));
+    expect(boChuThich(cuE6)).toContain("v_p.payee_user_id");
+    expect(dauCau(E6_DON_DEP.stmt)).toBe(dauCau(E6_HUY_CHE.stmt));
+    // Nhánh phiếu đã duyệt vẫn chặn theo CẢ hai đăng nhập.
+    expect(E6_DON_DEP.body).toContain("IF v_actor = v_payee_now OR (v_has_p AND v_actor = v_p.payee_user_id) THEN");
+    // R4: phần bọc thay đúng một dòng gọi vị thế.
+    const a = R4_DON_DEP.body.indexOf("  -- Bất biến số dư lệch");
+    const boc = R4_DON_DEP.body.slice(a, R4_DON_DEP.body.indexOf("  END;\n", a) + "  END;\n".length);
+    expect(R4_DON_DEP.body.replace(boc, "  v_pos := app_private.profit_ledger_position_v1(v_sh.organization_id, p_shareholder_id);\n")).toBe(R4_TAM_UNG.body);
+    expect(boChuThich(boc)).toBe(`  BEGIN
+    v_pos := app_private.profit_ledger_position_v1(v_sh.organization_id, p_shareholder_id);
+  EXCEPTION WHEN internal_error THEN
+    IF v_see_numbers OR NOT starts_with(SQLERRM, 'PROFIT_LEDGER_POSITION_DRIFT:') THEN
+      RAISE;
+    END IF;
+    RAISE EXCEPTION USING ERRCODE = 'XX000', MESSAGE = SQLERRM;
+  END;
+`);
+    expect(dauCau(R4_DON_DEP.stmt)).toBe(dauCau(R4_TAM_UNG.stmt));
+    // Ngoài thân hàm và hai khối kiểm.
+    const ngoai = DON_DEP.replace(/\$(fn|truoc|sau)\$[\s\S]*?\$\1\$/g, "").replace(/--[^\n]*/g, "");
+    expect(ngoai.match(/\b(GRANT|ALTER|DROP|INSERT|UPDATE|DELETE|TRUNCATE)\b/gi)).toBeNull();
+    expect(ngoai.match(/\bREVOKE\b[^;]*;/gi)?.map((x) => x.replace(/\s+/g, " "))).toEqual([
+      "REVOKE EXECUTE ON FUNCTION public.shareholder_profit_payout_preview_v1(uuid, numeric, uuid) FROM authenticated;",
+      "REVOKE EXECUTE ON FUNCTION public.shareholder_profit_ledger_payout_v1(uuid, numeric, uuid, date, text, boolean, text) FROM authenticated;"]);
+    expect(ngoai.match(/\bCREATE\b[^(\n]*/gi)).toEqual([`CREATE OR REPLACE FUNCTION ${E6}`, `CREATE OR REPLACE FUNCTION ${R4}`]);
+    expect(ngoai.match(/\bCOMMENT ON\b[^(\n]*/gi)).toEqual([`COMMENT ON FUNCTION ${E6}`, `COMMENT ON FUNCTION ${R4}`]);
+    expect(ngoai.match(/\bNOTIFY\b[^\n]*/gi)).toEqual(["NOTIFY pgrst, 'reload schema';"]);
+    // COMMENT: E6 đổi đúng câu về balance_after; R4 thêm đúng một câu.
+    const cm = (s: string, ham: string) => s.slice(s.indexOf(`COMMENT ON FUNCTION ${ham}`)).split("';\n")[0].split(" IS\n  '")[1];
+    expect(cm(DON_DEP, `${E6}(uuid, text, text, text)`)).toBe(cm(HUY_CHE, `${E6}(uuid, text, text, text)`).replace(
+      "hoặc chính người nhận; người lập hộ nhận null.", "hoặc chính người nhận theo đăng nhập hiện tại (đăng nhập lúc lập không tính); người lập hộ nhận null."));
+    expect(cm(DON_DEP, `${R4}(uuid, numeric, uuid)`)).toBe(`${cm(MIGRATION, `${R4}(uuid, numeric, uuid)`)} Bất biến số dư lệch (XX000 PROFIT_LEDGER_POSITION_DRIFT): người không được thấy số chỉ nhận mã + câu, không DETAIL.`);
+    // md5 ghim trong file: tiền kiểm nhận (production, bản của file), hậu kiểm đòi bản của file.
+    expect(DON_DEP).toContain(`NOT IN ('${MD5_E6_CHE}', '${md5(E6_DON_DEP.body)}')`);
+    expect(DON_DEP).toContain(`NOT IN ('${MD5_R4_PROD}', '${md5(R4_DON_DEP.body)}')`);
+    expect(DON_DEP).toContain(`IS DISTINCT FROM '${md5(E6_DON_DEP.body)}' THEN`);
+    expect(DON_DEP).toContain(`IS DISTINCT FROM '${md5(R4_DON_DEP.body)}' THEN`);
+    const MA_LOP_40 = /'40001'|'40P01'|'40\d{3}'|\bserialization_failure\b|\bdeadlock_detected\b|\bSQLSTATE\s+'40/i;
+    expect(DON_DEP.replace(/--[^\n]*/g, " ")).not.toMatch(MA_LOP_40);
+    expect(DON_DEP.replace(/--[^\n]*/g, " ").split("ERRCODE = '").slice(1).map((x) => x.slice(0, 5)).filter((x) => x.startsWith("40"))).toEqual([]);
+  });
+  it("chỉ bốn hàm đổi: E4 / E5 mất ĐÚNG mục ACL của authenticated (thân, chủ, cấu hình, COMMENT, mục ACL khác giữ nguyên); E6 / R4 đổi thân + COMMENT (ACL / chủ / cấu hình như trước); mọi hàm khác giữ nguyên; lượt hai không đổi gì", () => {
+    const truoc = ghi.hamTruocDonDep as Record<string, AnhHam>;
+    const sau1 = ghi.hamDonDep1 as Record<string, AnhHam>;
+    expect(Object.keys(truoc).length).toBeGreaterThan(100);
+    const kE4 = Object.keys(truoc).find((k) => k.startsWith("public.shareholder_profit_payout_preview_v1(")) as string;
+    const kE5 = Object.keys(truoc).find((k) => k.startsWith("public.shareholder_profit_ledger_payout_v1(")) as string;
+    expect(kE4 && kE5).toBeTruthy();
+    const doi = [...new Set([...Object.keys(truoc), ...Object.keys(sau1)])].filter((k) => JSON.stringify(truoc[k]) !== JSON.stringify(sau1[k]));
+    expect(doi.sort()).toEqual([E6_SIG, R4_SIG, kE4, kE5].sort());
+    for (const k of [kE4, kE5]) {
+      expect(truoc[k].acl, k).toMatch(/,authenticated=X\/postgres\b/);
+      expect(sau1[k].acl, k).toBe((truoc[k].acl as string).replace(",authenticated=X/postgres", ""));
+      expect(sau1[k].acl, k).not.toMatch(/authenticated/);
+      expect({ ...sau1[k], acl: "" }).toEqual({ ...truoc[k], acl: "" });
+    }
+    expect(truoc[kE5].md5).toBe(MD5_E5_GOC);
+    for (const k of [E6_SIG, R4_SIG]) {
+      expect({ ...sau1[k], md5: "", mo_ta: "" }, k).toEqual({ ...truoc[k], md5: "", mo_ta: "" });
+      expect(sau1[k].mo_ta, k).not.toBe(truoc[k].mo_ta);
+      expect(sau1[k].acl, k).toMatch(/authenticated=X/);
+      expect(sau1[k]).toMatchObject({ vol: "v", definer: true, cfg: ["search_path=pg_catalog, app_private, public"] });
+    }
+    expect([truoc[E6_SIG].md5, sau1[E6_SIG].md5]).toEqual([MD5_E6_CHE, md5(E6_DON_DEP.body)]);
+    expect([truoc[R4_SIG].md5, sau1[R4_SIG].md5]).toEqual([MD5_R4_PROD, md5(R4_DON_DEP.body)]);
+    expect(ghi.hamDonDep2).toEqual(sau1);
+  });
+  it("tiền kiểm: E6 / R4 đang chạy khác thân đã rà ⇒ 55000 nêu md5, không ghi gì; thiếu hàm ⇒ 55000; hậu kiểm: authenticated còn gọi được E5 qua PUBLIC ⇒ 55000, không giữ gì; trên đúng thân production thì qua, chạy lại cũng qua", async () => {
+    await giaoDich(async () => {
+      // Về trạng thái TRƯỚC file này (như production 18/11/2026): E4 / E5 mở cho authenticated, E6 / R4 thân production.
+      await db.exec(`${E6_HUY_CHE.stmt}
+        ${R4_TAM_UNG.stmt}
+        GRANT EXECUTE ON FUNCTION public.shareholder_profit_payout_preview_v1(uuid, numeric, uuid) TO authenticated;
+        GRANT EXECUTE ON FUNCTION public.shareholder_profit_ledger_payout_v1(uuid, numeric, uuid, date, text, boolean, text) TO authenticated;`);
+      const goc = await chupHam();
+      expect(goc[R4_SIG].md5).toBe(MD5_R4_PROD);
+      const ngoaiLuong = (stmt: string) => stmt.replace("BEGIN\n  IF v_actor IS NULL THEN", "BEGIN\n  -- sửa tay ngoài luồng\n  IF v_actor IS NULL THEN");
+      for (const [ham, cau, tra] of [[E6, E6_HUY_CHE.stmt, E6_HUY_CHE.stmt], [R4, R4_TAM_UNG.stmt, R4_TAM_UNG.stmt]]) {
+        expect(ngoaiLuong(cau)).not.toBe(cau);
+        await db.exec(ngoaiLuong(cau));
+        const truoc = await chupHam();
+        const m = (truoc[ham === E6 ? E6_SIG : R4_SIG]).md5;
+        expect(await loi(THAN_DON_DEP), ham).toMatchObject({ code: "55000",
+          message: `${ham} KHÁC thân đã rà (md5 ${m}) — DỪNG, đối chiếu thân đang chạy rồi rà lại` });
+        expect(await chupHam()).toEqual(truoc);
+        await db.exec(tra);
+      }
+      expect(await chupHam()).toEqual(goc);
+      // Hậu kiểm: E5 mở cho PUBLIC ⇒ sau REVOKE … FROM authenticated vẫn gọi được ⇒ 55000, không giữ gì.
+      await db.exec(`GRANT EXECUTE ON FUNCTION ${E5_REGPROC.replace(/,/g, ", ")} TO PUBLIC`);
+      const coPublic = await chupHam();
+      expect(await loi(THAN_DON_DEP)).toMatchObject({ code: "55000", message: expect.stringContaining("Hậu kiểm: authenticated (hoặc anon) vẫn gọi được") });
+      expect(await chupHam()).toEqual(coPublic);
+      await db.exec(`REVOKE EXECUTE ON FUNCTION ${E5_REGPROC.replace(/,/g, ", ")} FROM PUBLIC`);
+      expect(await chupHam()).toEqual(goc);
+      // Đúng thân production ⇒ qua; chạy lại ⇒ qua, không đổi gì thêm.
+      expect(await loi(THAN_DON_DEP)).toBeNull();
+      const sau = await chupHam();
+      expect(await loi(THAN_DON_DEP)).toBeNull();
+      expect(await chupHam()).toEqual(sau);
+      expect(sau[E6_SIG].md5).toBe(md5(E6_DON_DEP.body));
+      expect(sau[R4_SIG].md5).toBe(md5(R4_DON_DEP.body));
+      expect([await quyenGoi(E4_REGPROC), await quyenGoi(E5_REGPROC)]).toEqual([false, false]);
+      // Thiếu hàm ⇒ 55000 nêu hàm thiếu.
+      await db.exec(`DROP FUNCTION ${E4_REGPROC.replace(/,/g, ", ")}`);
+      expect(await loi(THAN_DON_DEP)).toMatchObject({ code: "55000", message: expect.stringContaining("Thiếu public.shareholder_profit_payout_preview_v1(uuid, numeric, uuid)") });
+    });
+  });
+  it("chạy như lane: trên nền vừa áp 20261118143113, dán thân HAI lần trong MỘT giao dịch rồi ROLLBACK ⇒ mọi hàm như trước; COMMIT một lượt rồi chạy lại cả file ⇒ E4 / E5 hết quyền của authenticated, E6 / R4 thân mới, ACL E6 / R4 như trước", async () => {
+    const lan = new PGlite();
+    try {
+      await dungNen(lan);
+      await lan.exec(MIGRATION);
+      await lan.exec(HUY_CHE);
+      const truoc = await chupHam(lan);
+      expect([await quyenGoi(E4_REGPROC, "authenticated", lan), await quyenGoi(E5_REGPROC, "authenticated", lan)]).toEqual([true, true]);
+      expect(THAN_DON_DEP).not.toMatch(/^(BEGIN|COMMIT);|^NOTIFY\b/m);
+      await lan.exec(`BEGIN; ${THAN_DON_DEP} ${THAN_DON_DEP} ROLLBACK;`);
+      expect(await chupHam(lan)).toEqual(truoc);
+      await lan.exec(DON_DEP);
+      await lan.exec(DON_DEP);
+      const sau = await chupHam(lan);
+      expect([sau[E6_SIG].md5, sau[R4_SIG].md5]).toEqual([md5(E6_DON_DEP.body), md5(R4_DON_DEP.body)]);
+      expect([sau[E6_SIG].acl, sau[R4_SIG].acl]).toEqual([truoc[E6_SIG].acl, truoc[R4_SIG].acl]);
+      expect([await quyenGoi(E4_REGPROC, "authenticated", lan), await quyenGoi(E5_REGPROC, "authenticated", lan)]).toEqual([false, false]);
     } finally { await lan.close(); }
   }, 300000);
 });
@@ -2573,11 +2935,11 @@ describe("lương của cổ đông kiêm nhân viên (cơ chế sẵn có, khô
   });
 });
 
-describe("lệnh cũ E5 (web cũ còn gọi) vẫn chạy, phiếu của nó được xếp vào tạm ứng cho tới khi chủ chốt", () => {
+describe("phiếu lập bằng lệnh cũ E5 (trước khi thu quyền ở 20261118171708) được xếp vào tạm ứng cho tới khi chủ chốt", () => {
   it("E5 của chủ: phiếu chờ duyệt ⇒ tạm ứng chờ duyệt; duyệt ⇒ tạm ứng đang có; chốt ⇒ khấu trừ hết, không chi thêm", async () => {
     await giaoDich(async () => {
       await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
-      const cu = await goi<KqUng>(CHU, e5(CD1, 100, false));
+      const cu = await e5Cu(CHU, e5(CD1, 100, false));
       expect(cu).toMatchObject({ maker_kind: "OWNER", within_amount: 100, advance_amount: 0 });
       expect(await ab(CD1)).toEqual([100, 0, 100, 0, 0]);
       expect(await duyet(cu.voucher_id, CHU2)).toBeNull();
@@ -2744,7 +3106,7 @@ describe("bất biến trên kịch bản ngẫu nhiên: A − B_đã_duyệt �
         s.phieu.push(p);
         await soPhan(p, kq.approval_request_id, 0.65);
       } else if (v === "chiCu") {
-        const kq = await goi<KqUng>(CHU, e5(cd, nguyen(1, 60), true));
+        const kq = await e5Cu(CHU, e5(cd, nguyen(1, 60), true));
         const p: Phieu = { id: kq.voucher_id, tien: kq.amount, tt: "CHO", thuTu: ++thuTu };
         s.phieu.push(p);
         thongKe.phieuCu++;

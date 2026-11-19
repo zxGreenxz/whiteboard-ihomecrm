@@ -5,7 +5,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const m = vi.hoisted(() => ({ create: vi.fn() }));
+// Khối "Duyệt và Chi" (sổ tổng chạy thật) giả ở đây — luồng thật: ProfitDistributeDialog.duyetVaChi.test.tsx.
+const m = vi.hoisted(() => ({ create: vi.fn(), complete: vi.fn(), custodian: true as boolean | null }));
 const ok = (data: unknown) => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, isSuccess: true, isFetching: false, error: null, refetch: vi.fn() });
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 vi.mock('@/hooks/useAccounts', () => ({
@@ -16,6 +17,18 @@ vi.mock('@/hooks/useAccounts', () => ({
   ]),
 }));
 vi.mock('@/hooks/useIncomeExpenses', () => ({ useCreateManagerSalaryPayout: () => ({ mutateAsync: m.create, isPending: false }) }));
+vi.mock('@/hooks/profit-ledger/useOwnerPayoutPosting', () => ({
+  useOwnerPayoutPosting: () => ({
+    evidence: {
+      items: [], pendingUploads: [], localPreviews: {}, uploadStats: {}, fallbackCount: 0, readyCount: 1, failedCount: 0,
+      waiting: false, committing: false, addFiles: vi.fn(), remove: vi.fn(), retry: vi.fn(), removePending: vi.fn(),
+      dropPreview: vi.fn(), waitForUploads: vi.fn(), ensureReady: async () => null, commitTo: vi.fn(),
+    },
+    stepFor: (id: string | null | undefined) => (id ? (m.custodian ? 'APPROVE_AND_POST' : 'APPROVE') : undefined),
+    cashbooksError: false, retryCashbooks: vi.fn(), complete: m.complete, pending: false,
+  }),
+  OwnerPayoutStateError: class OwnerPayoutStateError extends Error {},
+}));
 vi.mock('@/components/ui/searchable-select', () => ({
   SearchableSelect: ({ options, onValueChange, value, name }: { options: { value: string; label: string }[]; onValueChange: (s: string) => void; name: string; value: string }) => (
     <select name={name} value={value} onChange={(e) => onValueChange(e.target.value)}>
@@ -36,13 +49,19 @@ const ledgerOf = (route: string, managers = [row(), row({ manager_id: 'm-gone', 
 });
 const field = (name: string) => document.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLSelectElement;
 const options = (name: string) => Array.from((field(name) as HTMLSelectElement).options).map((o) => o.value).filter(Boolean);
-const submit = () => screen.getByRole('button', { name: 'Ghi phiếu chi' }) as HTMLButtonElement;
+/** Sổ tổng chạy thật (CANONICAL) + giữ sổ đã chọn ⇒ "Duyệt và Chi"; route khác ⇒ "Ghi phiếu chi" như cũ. */
+const submit = (name = 'Ghi phiếu chi') => screen.getByRole('button', { name }) as HTMLButtonElement;
+const submitFor = (route: string) => submit(route === 'CANONICAL' ? 'Duyệt và Chi' : 'Ghi phiếu chi');
 const fill = (amount: string) => {
   fireEvent.change(field('amount'), { target: { value: amount } });
   fireEvent.change(field('accountId'), { target: { value: 'a1' } });
 };
 
-beforeEach(() => { m.create.mockResolvedValue({ id: 'v1', code: 'PC1', balance_before: null }); });
+beforeEach(() => {
+  m.create.mockResolvedValue({ id: 'v1', voucher_id: 'v1', code: 'PC1', approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED', balance_before: null });
+  m.complete.mockResolvedValue('POSTED');
+  m.custodian = true;
+});
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('chi lương điều hành theo sổ', () => {
@@ -57,7 +76,7 @@ describe('chi lương điều hành theo sổ', () => {
   it.each(['SHADOW', 'CANONICAL'])('sổ tổng chạy (%s): vượt số còn lại ⇒ KHÔNG gọi ghi, báo số còn lại', async (route) => {
     render(<ManagerSalaryPayoutDialog open onOpenChange={vi.fn()} organizationId="org-a" ledger={ledgerOf(route)} defaultManagerId="m1" />);
     fill('1500');
-    fireEvent.click(submit());
+    fireEvent.click(submitFor(route));
     expect(await screen.findByText('Vượt lương điều hành còn lại 1.000 đ. Không chi quá số còn lại.')).toBeTruthy();
     expect(m.create).not.toHaveBeenCalled();
   });
@@ -83,14 +102,28 @@ describe('chi lương điều hành theo sổ', () => {
     expect(screen.getByTestId('manager-payout-balance').textContent).toMatch(/không chi thêm được/);
   });
 
-  it('trong số còn lại ⇒ gửi đúng người nhận, số tiền, sổ quỹ, công ty', async () => {
+  it('trong số còn lại ⇒ gửi đúng người nhận, số tiền, sổ quỹ, công ty; rồi Duyệt và Chi đúng phiếu vừa lập', async () => {
     const onOpenChange = vi.fn();
     render(<ManagerSalaryPayoutDialog open onOpenChange={onOpenChange} organizationId="org-a" ledger={ledgerOf('CANONICAL')} defaultManagerId="m1" />);
     fill('800');
-    fireEvent.click(submit());
+    fireEvent.click(submitFor('CANONICAL'));
     await waitFor(() => expect(m.create).toHaveBeenCalledTimes(1));
     expect(m.create).toHaveBeenCalledWith(expect.objectContaining({ manager_id: 'm1', manager_name: 'Quản lý 1', amount: 800, account_id: 'a1', organizationId: 'org-a' }));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(m.complete).toHaveBeenCalledWith({
+      voucherId: 'v1', organizationId: 'org-a', accountId: 'a1', postedOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), step: 'APPROVE_AND_POST',
+    });
+  });
+
+  it('SHADOW (sổ tổng chưa duyệt / chi được): chỉ lập phiếu chờ duyệt như cũ, không có khối Duyệt và Chi', async () => {
+    const onOpenChange = vi.fn();
+    render(<ManagerSalaryPayoutDialog open onOpenChange={onOpenChange} organizationId="org-a" ledger={ledgerOf('SHADOW')} defaultManagerId="m1" />);
+    expect(screen.queryByTestId('owner-payout-posting')).toBeNull();
+    fill('800');
+    fireEvent.click(submit());
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(m.create).toHaveBeenCalledTimes(1);
+    expect(m.complete).not.toHaveBeenCalled();
   });
 
   it('máy chủ báo vượt (OVERDRAW) ⇒ câu có số từ DETAIL, hộp còn mở', async () => {
@@ -98,7 +131,7 @@ describe('chi lương điều hành theo sổ', () => {
     const onOpenChange = vi.fn();
     render(<ManagerSalaryPayoutDialog open onOpenChange={onOpenChange} organizationId="org-a" ledger={ledgerOf('CANONICAL')} defaultManagerId="m1" />);
     fill('800');
-    fireEvent.click(submit());
+    fireEvent.click(submitFor('CANONICAL'));
     expect((await screen.findByRole('alert')).textContent).toMatch(/Vượt lương điều hành còn lại 700 đ \(dư 100 đ\)/);
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
@@ -115,11 +148,25 @@ describe('chi lương điều hành theo sổ', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/Chưa tải được lương điều hành còn lại/);
   });
 
-  it('báo trước luật duyệt khi sổ tổng chạy thật (người duyệt ≠ người lập ≠ người nhận); LEGACY không báo', () => {
+  it('báo trước luật duyệt khi sổ tổng chạy thật (F1 nới 19/11: chủ tự duyệt / chi được, kể cả khi là người nhận); LEGACY không báo', () => {
     const view = render(<ManagerSalaryPayoutDialog open onOpenChange={vi.fn()} organizationId="org-a" ledger={ledgerOf('CANONICAL')} defaultManagerId="m1" />);
-    expect(screen.getByTestId('manager-payout-approval-note').textContent).toMatch(/Người duyệt phải khác người lập phiếu và khác người nhận/);
-    expect(screen.getByTestId('manager-payout-approval-note').textContent).toMatch(/chính người đó phải lập phiếu/);
+    expect(screen.getByTestId('manager-payout-approval-note').textContent).toMatch(/tự duyệt được phiếu mình lập/);
+    expect(screen.getByTestId('manager-payout-approval-note').textContent).toMatch(/cả khi chính mình là người nhận/);
+    expect(screen.getByTestId('owner-payout-posting')).toBeTruthy();
     view.rerender(<ManagerSalaryPayoutDialog open onOpenChange={vi.fn()} organizationId="org-a" ledger={ledgerOf('LEGACY')} defaultManagerId="m1" />);
     expect(screen.queryByTestId('manager-payout-approval-note')).toBeNull();
+    expect(screen.queryByTestId('owner-payout-posting')).toBeNull();
+  });
+
+  it('CANONICAL, không giữ sổ đã chọn ⇒ nút "Lập phiếu và duyệt", bước sau chỉ Duyệt', async () => {
+    m.custodian = false;
+    m.complete.mockResolvedValue('APPROVED');
+    const onOpenChange = vi.fn();
+    render(<ManagerSalaryPayoutDialog open onOpenChange={onOpenChange} organizationId="org-a" ledger={ledgerOf('CANONICAL')} defaultManagerId="m1" />);
+    fill('800');
+    expect(screen.getByTestId('owner-payout-approve-only').textContent).toMatch(/không giữ sổ Quỹ chủ/);
+    fireEvent.click(submit('Lập phiếu và duyệt'));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(m.complete).toHaveBeenCalledWith(expect.objectContaining({ voucherId: 'v1', step: 'APPROVE' }));
   });
 });
