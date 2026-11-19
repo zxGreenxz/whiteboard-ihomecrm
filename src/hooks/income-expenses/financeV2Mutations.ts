@@ -78,8 +78,11 @@ export function isOwnedBySystemFlow(message: string | null | undefined): boolean
   return /owned by system flow/i.test(message ?? "");
 }
 
-/** Duyệt-only V2: balance KHÔNG đổi (khác legacy). */
-export function useApproveIncomeExpenseV2(options:{scope?:'target'}={}) {
+/**
+ * Duyệt-only V2: balance KHÔNG đổi (khác legacy).
+ * `deferFeedback`: người gọi tự báo + tự làm mới (hộp chốt chi của chủ nói theo trạng thái thật của cả lượt).
+ */
+export function useApproveIncomeExpenseV2(options:{scope?:'target'; deferFeedback?:boolean}={}) {
   const invalidate = useInvalidateMoney();
   const {selectedOrganizationId}=useOrganization();
   const workflow=useRef(persistentFinancialWorkflow('voucher-v2-approve',options));
@@ -114,11 +117,13 @@ export function useApproveIncomeExpenseV2(options:{scope?:'target'}={}) {
       },undefined,args.organizationId??selectedOrganizationId??undefined);
     },
     onSuccess: (data) => {
+      if (options.deferFeedback) return;
       invalidate();
       const feedback = voucherLifecycleFeedback(data, "approve");
       toast[feedback.kind](feedback.message);
     },
     onError: (e: Error) => {
+      if (options.deferFeedback) return;
       // Phiếu vừa bị sửa khi đang mở hộp Duyệt (đợt 1 sửa phiếu): nói bằng lời
       // người đọc được và kéo bản mới về, thay cho "approval_version mismatch".
       if (isStaleVersionError(e) || voucherOutcomeUnknown(e)) invalidate();

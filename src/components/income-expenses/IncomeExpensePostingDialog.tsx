@@ -37,6 +37,7 @@ import {
   buildPostingEvidenceItems,
   countUsableEvidence,
   isPdfAttachment,
+  pendingPreviewKey,
   type PostingEvidenceItem,
 } from '@/lib/postingEvidenceItems';
 import {
@@ -231,7 +232,7 @@ export interface EvidenceUploadStat {
   elapsedMs: number;
 }
 
-const PENDING_PREVIEW = (id: string) => `pending:${id}`;
+const PENDING_PREVIEW = pendingPreviewKey;
 
 /** Ngắn để vừa MỘT dòng trong ô 80 px kể cả phông Safari (rộng hơn Chrome). */
 function formatUploadStat(stat: EvidenceUploadStat): string {
@@ -301,8 +302,11 @@ function releaseSlot(slots: UploadSlots): void {
  *
  * Từ 25/09/2026 (E2) ảnh vừa thêm / ảnh cũ vừa gỡ CHƯA ghi lên phiếu: chúng chỉ
  * được ghi khi bấm nút xác nhận, nên ô này nói rõ điều đó thay vì "đã đính".
+ *
+ * Từ 19/11/2026 hộp chốt chi lợi nhuận / lương điều hành của chủ dùng lại đúng ô này cho khối
+ * "Duyệt và Chi" (ảnh chọn trước khi phiếu được lập — useDeferredPostingEvidence).
  */
-function PostingEvidenceUpload({
+export function PostingEvidenceUpload({
   items,
   onFiles,
   onRemove,

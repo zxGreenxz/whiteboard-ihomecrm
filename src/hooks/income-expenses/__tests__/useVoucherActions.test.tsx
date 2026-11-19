@@ -371,4 +371,21 @@ describe('Phiếu chi theo sổ tổng', () => {
     expect(result.current.dialogs.postApproved.cashbookLocked).toBe(false);
     expect(result.current.dialogs.postApproved.cashbookOptions.map((b) => b.id)).toEqual(['acc-1', 'acc-2']);
   });
+
+  // 19/11/2026: chủ tự duyệt phiếu sổ tổng mình lập ngay ở Thu chi ⇒ "Duyệt và Chi…" cũng khoá đúng sổ lúc lập.
+  it('Duyệt và Chi phiếu sổ tổng: hộp ghi sổ chỉ chào ĐÚNG sổ lúc lập; không giữ sổ đó ⇒ rỗng; phiếu thường chào mọi sổ đang giữ', () => {
+    m.books = [{ id: 'acc-1', name: 'Quỹ tiền mặt' }, { id: 'acc-2', name: 'Ngân hàng' }];
+    const choDuyet = soTong();
+    const { result } = setup([choDuyet]);
+    act(() => result.current.approve(choDuyet));
+    expect(result.current.dialogs.approveAndPost.cashbookLocked).toBe(true);
+    expect(result.current.dialogs.approveAndPost.cashbookOptions.map((b) => b.id)).toEqual(['acc-1']);
+    act(() => result.current.dialogs.approve.close());
+    act(() => result.current.approve({ ...choDuyet, account_id: 'acc-khac' }));
+    expect(result.current.dialogs.approveAndPost.cashbookOptions).toEqual([]);
+    act(() => result.current.dialogs.approve.close());
+    act(() => result.current.approve(phieu()));
+    expect(result.current.dialogs.approveAndPost.cashbookLocked).toBe(false);
+    expect(result.current.dialogs.approveAndPost.cashbookOptions.map((b) => b.id)).toEqual(['acc-1', 'acc-2']);
+  });
 });

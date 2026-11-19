@@ -184,6 +184,13 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     () => (postApprovedLedger ? custodianBooks.filter((book) => book.id === postApprovedTarget?.account_id) : custodianBooks),
     [postApprovedLedger, custodianBooks, postApprovedTarget?.account_id],
   );
+  // Chủ tự duyệt phiếu sổ tổng mình lập ngay ở Thu chi (F1 nới 19/11/2026): "Duyệt và Chi…" cũng chỉ chi từ ĐÚNG sổ lúc
+  // lập, như nút Chi.
+  const approveLedger = !!approveTarget && isProfitLedgerVoucher(approveTarget.system_source);
+  const approveAndPostBooks = useMemo(
+    () => (approveLedger ? custodianBooks.filter((book) => book.id === approveTarget?.account_id) : custodianBooks),
+    [approveLedger, custodianBooks, approveTarget?.account_id],
+  );
 
   const { cancelEligibility, incomeCancelEligibility } = useVoucherCancelEligibility(vouchers);
 
@@ -495,6 +502,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       },
       approveAndPost: {
         open: approveAndPostOpen, setOpen: setApproveAndPostOpen,
+        /** Sổ chào trong hộp Duyệt và Thu/Chi; phiếu sổ tổng: chỉ sổ lúc lập (rỗng nếu không giữ sổ đó). */
+        cashbookOptions: approveAndPostBooks, cashbookLocked: approveLedger,
         submit: async (input: Parameters<typeof approveAndPostV2Mutation.mutateAsync>[0]) => {
           await approveAndPostV2Mutation.mutateAsync(input);
           setApproveAndPostOpen(false);

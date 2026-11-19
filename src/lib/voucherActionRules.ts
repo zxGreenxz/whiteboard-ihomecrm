@@ -28,12 +28,18 @@
 // ảnh, đánh dấu đã kiểm, chi phiếu đã duyệt từ ĐÚNG sổ lúc lập. Duyệt đi màn Chờ duyệt (thấy số dư sổ
 // tổng); bỏ phiếu chỉ bằng hộp huỷ có lý do (profit_ledger_payout_cancel_v1). Phiếu nguồn cũ
 // (profit.distribution / salary.manager) giữ luật thường.
+// Phiếu CHỦ lập (maker_kind OWNER: chốt chi lợi nhuận, lương điều hành) — chốt F1 nới 19/11/2026: người có quyền
+// chi của loại chủ thể tự duyệt được phiếu mình lập, duyệt / chi được dù mình là người nhận. Máy chủ loại người lập
+// khỏi danh sách người duyệt của Chờ duyệt (materialize_step_candidates_v1) ⇒ người lập có nút Duyệt (kèm "Duyệt và
+// Chi…") ngay ở Thu chi; người nhận / chủ khác vẫn duyệt ở Chờ duyệt (thấy số dư); Chi theo trạng thái như cũ.
+// Phiếu tạm ứng (người giữ sổ lập, maker_kind CUSTODIAN_*) giữ luật cũ.
 import type { IncomeExpenseWithRelations } from "@/hooks/income-expenses/types";
 import { flexCancelGate, type FlexCancelBlockCode, type FlexCancelEligibility } from "@/hooks/income-expenses/flexMutations";
 import { voucherCancelDecision, type IncomeCancelEligibility } from "@/hooks/income-expenses/incomeVoucherCancel";
 import { canUse, type PermsLike } from "@/lib/permissionCheck";
 import { voucherEditAction } from "@/lib/incomeExpenseRevision";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
+import type { PayoutMakerKind } from "@/lib/profitLedger/sharedReaders";
 import {
   expectedCancelState, isProfitLedgerVoucher,
   type ProfitLedgerSource, type ProfitPayoutCancelTarget,
@@ -62,6 +68,12 @@ export interface VoucherActionState {
   flexEligibility?: FlexCancelEligibility;
   /** Dòng can_cancel_income_voucher_v1 của phiếu (phiếu thu). */
   incomeEligibility?: IncomeCancelEligibility;
+  /**
+   * Phiếu chi lợi nhuận cổ đông theo sổ tổng (`profit.ledger_payout`): loại người lập theo dòng sổ lúc lập
+   * (E7 `at_create.maker_kind`) — chỉ hỏi cho dòng `needsLedgerMakerKind`. Vắng = chưa biết ⇒ không mở Duyệt ngay
+   * ở Thu chi (giữ lối sang Chờ duyệt). Phiếu lương điều hành sổ tổng luôn do chủ lập, không cần trường này.
+   */
+  ledgerMakerKind?: PayoutMakerKind | null;
 }
 
 export interface CancelAvailability {
@@ -141,6 +153,22 @@ export function profitLedgerPermissionFor(source: ProfitLedgerSource): "distribu
   return source === "profit.manager_salary" ? "pay_manager" : "distribute";
 }
 
+const isLedgerMaker = (v: Pick<ActionVoucher, "maker_user_id">, viewer: VoucherActionViewer): boolean =>
+  !!viewer.currentUserId && !!v.maker_user_id && v.maker_user_id === viewer.currentUserId;
+
+/**
+ * Dòng phải đọc loại người lập (E7) mới quyết được nút Duyệt: phiếu chi lợi nhuận cổ đông theo sổ tổng còn chờ duyệt,
+ * do CHÍNH người xem lập, người xem có quyền chi lợi nhuận — có thể là phiếu chủ lập (tự duyệt được) hoặc phiếu tạm ứng
+ * người xem tự lập khi đang giữ sổ (không tự duyệt được). Phiếu lương điều hành luôn do chủ lập: không cần đọc.
+ */
+export function needsLedgerMakerKind(
+  v: Pick<ActionVoucher, "system_source" | "approval_status" | "maker_user_id">,
+  viewer: VoucherActionViewer,
+): boolean {
+  return v.system_source === "profit.ledger_payout" && v.approval_status === "UNAPPROVED" && isLedgerMaker(v, viewer)
+    && canUse(viewer.perms, "shareholder_profit", "distribute");
+}
+
 function ledgerVoucherAvailability(
   v: ActionVoucher,
   source: ProfitLedgerSource,
@@ -157,8 +185,15 @@ function ledgerVoucherAvailability(
   // thì người lập không huỷ được (PROFIT_LEDGER_CANCEL_FORBIDDEN) ⇒ giữ luật cũ: cần quyền chi lợi nhuận.
   // Người lập = cột maker_user_id (user_id của phiếu sổ tổng là chủ công ty); đường đọc không mang cột đó
   // (hộp chi tiết mở từ nơi khác) ⇒ coi như không phải người lập, không đoán.
-  const isMaker = !!viewer.currentUserId && !!v.maker_user_id && v.maker_user_id === viewer.currentUserId;
+  const isMaker = isLedgerMaker(v, viewer);
   const makerCanCancelPending = source === "profit.ledger_payout" && isUnapproved && isMaker;
+  // Phiếu CHỦ lập (F1 nới 19/11/2026): người lập có quyền chi tự duyệt được ⇒ nút Duyệt ngay ở Thu chi (Chờ duyệt không
+  // liệt kê phiếu cho chính người lập). Lương điều hành sổ tổng luôn do chủ lập; phiếu cổ đông phải biết chắc OWNER
+  // (E7) — phiếu tạm ứng người xem tự lập khi giữ sổ vẫn cần chủ khác duyệt (luật cũ).
+  // Duyệt V2 còn đòi quyền duyệt thu chi ở ĐÚNG toà của phiếu (approve_income_expense_v2) — không hứa nút máy chủ từ chối.
+  const ownerMade = source === "profit.manager_salary" || state.ledgerMakerKind === "OWNER";
+  const selfApprove = isUnapproved && canLedger && ownerMade && isMaker && state.canonicalRead && state.monetaryActionsAllowed
+    && canUse(viewer.perms, "income_expenses", "approve", v.building_id ?? NO_BUILDING);
   return {
     edit: { show: false, title: "" },
     annotate: canShowAnnotateAction({
@@ -168,8 +203,8 @@ function ledgerVoucherAvailability(
       isCreator: !!viewer.currentUserId && v.user_id === viewer.currentUserId,
       canEdit: canUse(viewer.perms, "income_expenses", "edit", v.building_id ?? NO_BUILDING),
     }),
-    approve: false,
-    approveVia: isUnapproved && canLedger ? "INBOX" : null,
+    approve: selfApprove,
+    approveVia: isUnapproved && canLedger && !selfApprove ? "INBOX" : null,
     // Hộp Thu/Chi khoá đúng sổ quỹ lúc lập (ACCOUNT_LOCKED); phiếu từng bị đảo không chi lại (REPOST).
     postApproved: state.canonicalRead && v.approval_status === "APPROVED" && (posting === null || posting === "UNPOSTED"),
     reverse: false,

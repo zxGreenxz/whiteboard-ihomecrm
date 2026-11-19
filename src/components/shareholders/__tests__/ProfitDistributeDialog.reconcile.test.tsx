@@ -39,6 +39,19 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
       })
     : { ...ok(undefined), status: 'pending', isSuccess: false }),
 }));
+// Khối "Duyệt và Chi" giả (người bấm giữ sổ, đã có ảnh): ở đây chỉ kiểm lệnh chốt W2 + lượt đối chiếu.
+vi.mock('@/hooks/profit-ledger/useOwnerPayoutPosting', () => ({
+  useOwnerPayoutPosting: () => ({
+    evidence: {
+      items: [], pendingUploads: [], localPreviews: {}, uploadStats: {}, fallbackCount: 0, readyCount: 1, failedCount: 0,
+      waiting: false, committing: false, addFiles: vi.fn(), remove: vi.fn(), retry: vi.fn(), removePending: vi.fn(),
+      dropPreview: vi.fn(), waitForUploads: vi.fn(), ensureReady: async () => null, commitTo: vi.fn(),
+    },
+    stepFor: (id: string | null | undefined) => (id ? 'APPROVE_AND_POST' : undefined),
+    cashbooksError: false, retryCashbooks: vi.fn(), complete: vi.fn(async () => 'POSTED'), pending: false,
+  }),
+  OwnerPayoutStateError: class OwnerPayoutStateError extends Error {},
+}));
 vi.mock('@/components/ui/searchable-select', () => ({
   SearchableSelect: ({ options, onValueChange, value, name, disabled }: { options: { value: string; label: string }[]; onValueChange: (s: string) => void; name: string; value: string; disabled?: boolean }) => (
     <select name={name} disabled={disabled} value={value} onChange={(e) => onValueChange(e.target.value)}>
@@ -71,7 +84,7 @@ function renderDialog() {
 
 async function sendAndLoseResponse() {
   fireEvent.change(document.querySelector('[name="accountId"]')!, { target: { value: 'a1' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Lập phiếu chờ duyệt' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi' }));
   const check = await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' });
   expect(pendingKeys()).toHaveLength(1);
   expect(m.rpc.mock.calls[0]![0]).toBe('shareholder_profit_settle_v1');
@@ -105,7 +118,7 @@ describe('hộp chốt + hook thật: lượt "Kiểm tra lại kết quả"', (
     expect(screen.getByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
     expect((document.querySelector('[name="accountId"]') as HTMLInputElement | HTMLSelectElement).value).toBe('a1');
     expect((document.querySelector('[name="shareholderId"]') as HTMLInputElement | HTMLSelectElement).value).toBe('s');
-    expect((screen.getByRole('button', { name: 'Lập phiếu chờ duyệt' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Duyệt và Chi' }) as HTMLButtonElement).disabled).toBe(false);
     expect((document.querySelector('[name="note"]')!.closest('fieldset') as HTMLFieldSetElement).disabled).toBe(false);
     expect(m.refetch).toHaveBeenCalled();
     expect(pendingKeys()).toEqual([]);
@@ -124,7 +137,7 @@ describe('hộp chốt + hook thật: lượt "Kiểm tra lại kết quả"', (
     fireEvent.click(check);
     await waitFor(() => expect(m.rpc).toHaveBeenCalledTimes(2));
     expect(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Lập phiếu chờ duyệt' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Duyệt và Chi' })).toBeNull();
     expect(pendingKeys()).toHaveLength(1);
     expect(keysSent()[1]).toBe(keysSent()[0]);
     expect(m.refetch).not.toHaveBeenCalled();

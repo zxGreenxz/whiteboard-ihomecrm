@@ -335,11 +335,12 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
             approvedTotal: approveTarget.total_amount ?? 0,
             name: approveTarget.name ?? undefined,
             defaultCashbookId: approveTarget.account_id ?? null,
+            cashbookLocked: approveAndPost.cashbookLocked,
             attachments: approveTarget.attachments ?? null,
             isCommission: isCommissionVoucher(approveTarget),
           }}
-          capability={{ isCustodian: posting.custodianBooks.length > 0, canApprove: true }}
-          cashbookOptions={posting.custodianBooks}
+          capability={{ isCustodian: approveAndPost.cashbookOptions.length > 0, canApprove: true }}
+          cashbookOptions={approveAndPost.cashbookOptions}
           cashbookError={posting.cashbookError}
           onRetryCashbooks={posting.retryCashbooks}
           expectedExecutionRevision={0}

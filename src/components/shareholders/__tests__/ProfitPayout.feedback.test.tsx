@@ -52,6 +52,10 @@ const m = vi.hoisted(() => ({
   failError: null as unknown,
   /** Xem trước tạm ứng kèm cảnh báo "vượt ước tính các tháng chưa chốt" của máy chủ. */
   exceedsEstimate: false,
+  /** Khối "Duyệt và Chi" (giả ở đây — luồng thật: ProfitDistributeDialog.duyetVaChi.test.tsx). */
+  custodian: true as boolean | null,
+  complete: vi.fn(),
+  ensureReady: vi.fn(),
 }));
 const ok = (data: unknown) => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, isSuccess: true, isFetching: false, isPlaceholderData: false, error: null, refetch: vi.fn() });
 // Ô tick / hộp xác nhận của Radix đo kích thước bằng ResizeObserver — jsdom không có.
@@ -72,6 +76,18 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerMutations', () => ({
   useCreateShareholderAdvance: () => ({ mutateAsync: m.advance, isPending: false }),
   useVoidProfitSettlement: () => ({ mutateAsync: m.voidSettle, isPending: false }),
   useCancelProfitLedgerPayout: () => ({ mutateAsync: m.cancel, isPending: false }),
+}));
+vi.mock('@/hooks/profit-ledger/useOwnerPayoutPosting', () => ({
+  useOwnerPayoutPosting: () => ({
+    evidence: {
+      items: [], pendingUploads: [], localPreviews: {}, uploadStats: {}, fallbackCount: 0, readyCount: 1, failedCount: 0,
+      waiting: false, committing: false, addFiles: vi.fn(), remove: vi.fn(), retry: vi.fn(), removePending: vi.fn(),
+      dropPreview: vi.fn(), waitForUploads: vi.fn(), ensureReady: m.ensureReady, commitTo: vi.fn(),
+    },
+    stepFor: (id: string | null | undefined) => (id ? (m.custodian ? 'APPROVE_AND_POST' : 'APPROVE') : undefined),
+    cashbooksError: false, retryCashbooks: vi.fn(), complete: m.complete, pending: false,
+  }),
+  OwnerPayoutStateError: class OwnerPayoutStateError extends Error {},
 }));
 const positionOf = (unpaid: number) => ({
   unpaid_profit: unpaid, advance_outstanding: m.advanceOutstanding, advance_pending: m.advancePending, settlement_cash_pending: 0,
@@ -178,6 +194,8 @@ const ownerProps = { onOpenChange: vi.fn(), organizationId: 'org-a' };
 const select = (name: string) => document.querySelector(`[name="${name}"]`) as HTMLSelectElement | null;
 const optionsOf = (name: string) => Array.from(select(name)!.options).map((o) => o.value).filter(Boolean);
 const submitButton = (name = 'Lập phiếu chờ duyệt') => screen.getByRole('button', { name }) as HTMLButtonElement;
+/** Hộp chốt: người bấm giữ sổ đã chọn ⇒ nút "Duyệt và Chi" (19/11/2026). */
+const settleButton = (name = 'Duyệt và Chi') => submitButton(name);
 const text = (testId: string) => screen.getByTestId(testId).textContent ?? '';
 const pickAccount = (id = 'a1') => fireEvent.change(select('accountId')!, { target: { value: id } });
 const noteInput = () => document.querySelector('[name="note"]') as HTMLTextAreaElement;
@@ -188,6 +206,9 @@ beforeEach(() => {
   m.advanceBlocked = null; m.hidePosition = false; m.fetching = false; m.previewError = false;
   m.secondShareholder = false; m.monthsBy = {}; m.hold = false; m.holdFetching = true; m.lastSettle = null; m.failMonth = null; m.failError = null;
   m.exceedsEstimate = false;
+  m.custodian = true;
+  m.complete.mockResolvedValue('POSTED');
+  m.ensureReady.mockResolvedValue(null);
   m.settle.mockResolvedValue({ settlement_id: 'st-9', through_month: '2026-10-01', recognized_amount: 100_000, advance_offset_amount: 40_000, cash_amount: 60_000, voucher_id: 'v9', approval_request_id: 'r9', state: 'PENDING_APPROVAL', code: 'PC2611999' });
   m.advance.mockResolvedValue({ voucher_id: 'v8', code: 'PC2611888', amount: 50_000, within_amount: 0, advance_amount: 50_000, balance_before: 60_000, maker_kind: 'CUSTODIAN_ADVANCE' });
   m.voidSettle.mockResolvedValue({ settlement_id: 'st-0', state: 'VOID' });
@@ -199,7 +220,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
 
   it('trống thì focus cổ đông, không gọi lệnh chốt', async () => {
     render(<ProfitDistributeDialog open {...ownerProps} />);
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(document.activeElement?.getAttribute('name')).toBe('shareholderId'));
     expect(document.activeElement?.getAttribute('aria-invalid')).toBe('true');
     expect(m.settle).not.toHaveBeenCalled();
@@ -224,18 +245,22 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
   });
   it('có tiền thực chi mà chưa chọn sổ ⇒ không gửi; chọn sổ ⇒ gửi CẢ hai số đang hiện', async () => {
     render(dialog());
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(select('accountId')!.getAttribute('aria-invalid')).toBe('true'));
     expect(m.settle).not.toHaveBeenCalled();
     pickAccount();
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(1));
     expect(m.settle).toHaveBeenCalledWith({
       organizationId: 'org-a', shareholderId: 's', throughMonth: '2026-10-01', expectedRecognized: 100_000, expectedCash: 60_000,
       accountId: 'a1', voucherDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), note: null,
     });
     await waitFor(() => expect(ownerProps.onOpenChange).toHaveBeenCalledWith(false));
-    expect(vi.mocked(toast.success).mock.calls[0]![0]).toMatch(/Đã chốt chi lợi nhuận đến hết 10\/2026 cho An.*khấu trừ tạm ứng 40\.000.*thực chi 60\.000.*PC2611999 chờ duyệt/);
+    // Giữ sổ đã chọn ⇒ làm tiếp Duyệt và Chi cho đúng phiếu vừa lập; thông báo theo trạng thái thật.
+    expect(m.complete).toHaveBeenCalledWith({
+      voucherId: 'v9', organizationId: 'org-a', accountId: 'a1', postedOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), step: 'APPROVE_AND_POST',
+    });
+    expect(vi.mocked(toast.success).mock.calls[0]![0]).toMatch(/Đã chốt chi lợi nhuận đến hết 10\/2026 cho An.*khấu trừ tạm ứng 40\.000.*thực chi 60\.000.*Phiếu PC2611999 đã duyệt và chi từ sổ Quỹ chủ/);
   });
   it('chủ đổi sang tháng chọn được khác ⇒ xem trước đúng tháng đó, gửi đúng số của tháng đó', async () => {
     render(dialog());
@@ -245,7 +270,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     expect(text('profit-settle-cash')).toMatch(/20\.000/);
     pickAccount('a2');
     m.settle.mockResolvedValueOnce({ settlement_id: 'st-9', through_month: '2026-09-01', recognized_amount: 60_000, advance_offset_amount: 40_000, cash_amount: 20_000, voucher_id: 'v9', approval_request_id: 'r9', state: 'PENDING_APPROVAL', code: null });
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(m.settle).toHaveBeenCalledWith(expect.objectContaining({ throughMonth: '2026-09-01', expectedRecognized: 60_000, expectedCash: 20_000, accountId: 'a2' })));
   });
   it('thực chi = 0: không có ô sổ quỹ / ngày; "Chốt, không ra tiền" phải qua bước xác nhận', async () => {
@@ -256,7 +281,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     expect(select('accountId')).toBeNull();
     expect(document.querySelector('[name="voucherDate"]')).toBeNull();
     expect(screen.getByTestId('profit-settle-zero-cash')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Lập phiếu chờ duyệt' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Duyệt và Chi' })).toBeNull();
     fireEvent.click(submitButton('Chốt, không ra tiền'));
     const confirm = await screen.findByRole('alertdialog');
     expect(confirm.textContent).toMatch(/đến hết 10\/2026 cho An/);
@@ -275,7 +300,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     m.settle.mockRejectedValueOnce({ code: 'PT409', message: 'PROFIT_LEDGER_SETTLE_CHANGED: số liệu vừa đổi so với lúc xem trước — tải lại rồi xem trước lần nữa', details: '{"cash_amount": 40000, "expected_cash": 60000}' });
     render(dialog());
     pickAccount();
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     expect(await screen.findByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
     expect(m.refetch).toHaveBeenCalled();
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -283,7 +308,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     expect(ownerProps.onOpenChange).not.toHaveBeenCalledWith(false);
     expect(screen.queryByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeNull();
     // Chủ xem số mới rồi tự bấm lại: là một lần gửi mới.
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(2));
   });
   it('tháng mặc định không còn gì để chốt ⇒ nói rõ, khoá gửi, KHÔNG tự nhảy sang tháng sớm hơn', async () => {
@@ -297,7 +322,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     expect(select('throughMonth')!.value).toBe('2026-10-01');
     expect(optionsOf('throughMonth')).toEqual(['2026-10-01', '2026-09-01']);
     expect(screen.queryByTestId('profit-settle-cash')).toBeNull();
-    await waitFor(() => expect(submitButton().disabled).toBe(true));
+    await waitFor(() => expect(settleButton().disabled).toBe(true));
     expect(m.settleCalls.every((c) => c.throughMonth === null)).toBe(true);
   });
   it('cổ đông không còn tháng nào đủ điều kiện ⇒ nói rõ, khoá gửi', async () => {
@@ -305,14 +330,14 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     render(dialog());
     expect(text('profit-settle-nothing')).toMatch(/chưa có tháng nào chốt chi được/);
     expect(select('throughMonth')!.disabled).toBe(true);
-    await waitFor(() => expect(submitButton().disabled).toBe(true));
+    await waitFor(() => expect(settleButton().disabled).toBe(true));
   });
   it('chưa có mốc và chưa chốt lần nào ⇒ nhắc đặt mốc trước (không chặn); có mốc hoặc đã chốt thì không nhắc', () => {
     m.markerMonth = null;
     const onSetMarker = vi.fn();
     const view = render(dialog({ onSetMarker }));
     expect(text('profit-settle-marker-reminder')).toMatch(/TOÀN BỘ phần được chia từ đầu/);
-    expect(submitButton().disabled).toBe(false);
+    expect(settleButton().disabled).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Đặt mốc trước' }));
     expect(onSetMarker).toHaveBeenCalledWith('s');
     view.unmount();
@@ -328,7 +353,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     m.advancePending = 15_000;
     render(dialog());
     expect(text('profit-settle-pending-advance')).toMatch(/Còn 15\.000.*tạm ứng chờ duyệt — chưa được khấu trừ/);
-    expect(submitButton().disabled).toBe(false);
+    expect(settleButton().disabled).toBe(false);
   });
   it('lần chốt không phiếu tiền: "Huỷ chốt" đòi lý do 8 ký tự; lần có phiếu: mở hộp huỷ phiếu chi', async () => {
     m.settlements = [
@@ -361,9 +386,9 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     const view = render(dialog());
     pickAccount();
     fireEvent.change(noteInput(), { target: { value: 'Chốt đợt tháng 10' } });
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     expect(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Lập phiếu chờ duyệt' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Duyệt và Chi' })).toBeNull();
     expect(noteInput().closest('fieldset')?.disabled).toBe(true);
     view.rerender(<ProfitDistributeDialog open={false} {...ownerProps} defaultShareholderId="s" />);
     view.rerender(dialog());
@@ -376,7 +401,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     m.settle.mockRejectedValueOnce(new ProfitLedgerPriorWrittenError('settle'));
     render(dialog());
     pickAccount();
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     expect(await screen.findByText(/Yêu cầu trước đó đã được ghi; tải lại để xem/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeNull();
     expect(m.refetch).toHaveBeenCalled();
@@ -384,14 +409,14 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
   it.each(['LEGACY', 'SHADOW', 'FROZEN'])('route %s ⇒ khoá nút gửi + câu báo', async (route) => {
     m.route = route;
     render(dialog());
-    await waitFor(() => expect(submitButton().disabled).toBe(true));
+    await waitFor(() => expect(settleButton().disabled).toBe(true));
     expect(screen.getAllByRole('status').some((n) => /Sổ tổng|mốc/.test(n.textContent ?? ''))).toBe(true);
   });
   it('còn phiếu lương cần xem lại ⇒ khoá gửi, có lối "Xem lại phần lương"', async () => {
     m.reviewCount = 2;
     const onReviewSalary = vi.fn();
     render(dialog({ onReviewSalary }));
-    await waitFor(() => expect(submitButton().disabled).toBe(true));
+    await waitFor(() => expect(settleButton().disabled).toBe(true));
     fireEvent.click(screen.getByRole('button', { name: 'Xem lại phần lương' }));
     expect(onReviewSalary).toHaveBeenCalledWith('s');
   });
@@ -401,13 +426,13 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     m.fetching = true;
     view.rerender(dialog());
     expect(screen.getByText(/Đang tính lại/)).toBeTruthy();
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     expect(await screen.findByText(/Đang tính số chốt — đợi kết quả rồi bấm lại/)).toBeTruthy();
     expect(m.settle).not.toHaveBeenCalled();
     m.fetching = false;
     view.rerender(dialog());
     await waitFor(() => expect(screen.queryByText(/Đang tính số chốt — đợi kết quả/)).toBeNull());
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(1));
   });
   it('tải lại lỗi ⇒ không gửi theo số cũ; có nút "Tính lại"', async () => {
@@ -415,7 +440,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     pickAccount();
     m.previewError = true;
     view.rerender(dialog());
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     expect(await screen.findByText(/Chưa tính được số chốt/)).toBeTruthy();
     expect(m.settle).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Tính lại' }));
@@ -426,7 +451,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     pickAccount();
     const date = document.querySelector('[name="voucherDate"]') as HTMLInputElement;
     fireEvent.change(date, { target: { value: '31/02/2026' } });
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(document.activeElement).toBe(date));
     expect(date.value).toBe('31/02/2026');
     expect(m.settle).not.toHaveBeenCalled();
@@ -440,7 +465,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
       .mockRejectedValueOnce({ code: 'PT409', message: 'PROFIT_LEDGER_SETTLE_CHANGED: số liệu vừa đổi so với lúc xem trước — tải lại rồi xem trước lần nữa', details: '{"cash_amount": 40000, "expected_cash": 60000}' });
     render(dialog());
     pickAccount();
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     fireEvent.click(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' }));
     expect(await screen.findByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeNull();
@@ -449,7 +474,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     expect(screen.getByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
     expect(select('accountId')!.value).toBe('a1');
     expect(select('shareholderId')!.value).toBe('s');
-    expect(submitButton().disabled).toBe(false);
+    expect(settleButton().disabled).toBe(false);
     expect(noteInput().closest('fieldset')?.disabled).toBe(false);
     expect(m.refetch).toHaveBeenCalled();
     expect(m.settle).toHaveBeenCalledTimes(2);
@@ -464,7 +489,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     await waitFor(() => expect(text('profit-settle-recognized')).toMatch(/60\.000/));
     pickAccount('a2');
     fireEvent.change(noteInput(), { target: { value: 'Chốt tháng 9 trước' } });
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     fireEvent.click(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' }));
     expect(await screen.findByText(/Số liệu vừa đổi so với lúc xem trước — chưa chốt gì/)).toBeTruthy();
     await new Promise((done) => setTimeout(done, 0));
@@ -486,11 +511,11 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
       .mockRejectedValueOnce(new FinancialWorkflowError('Chưa đối chiếu xong yêu cầu chốt chi lợi nhuận trước đó.', 'unknown', [], { code: '55000', message: 'PROFIT_LEDGER_FROZEN: x' }));
     render(dialog());
     pickAccount();
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     fireEvent.click(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' }));
     await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(2));
     expect(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Lập phiếu chờ duyệt' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Duyệt và Chi' })).toBeNull();
     expect(noteInput().closest('fieldset')?.disabled).toBe(true);
   });
 
@@ -531,7 +556,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     expect(select('throughMonth')!.value).toBe('2026-09-01');
     expect(screen.queryByTestId('profit-settle-month-reset')).toBeNull();
     expect(m.settleCalls.at(-1)).toMatchObject({ throughMonth: '2026-09-01' });
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     expect(await screen.findByText(/Chưa tính được số chốt/)).toBeTruthy();
     expect(m.settle).not.toHaveBeenCalled();
   });
@@ -551,7 +576,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     expect(screen.queryByTestId('profit-settle-recognized')).toBeNull();
     expect(screen.queryByTestId('profit-settle-cash')).toBeNull();
     expect(screen.getByRole('dialog').textContent).not.toMatch(/100\.000|60\.000/);
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     expect(await screen.findByText(/Đang tính số chốt — đợi kết quả rồi bấm lại/)).toBeTruthy();
     expect(m.settle).not.toHaveBeenCalled();
     m.hold = false;
@@ -559,7 +584,7 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     await waitFor(() => expect(text('profit-settle-recognized')).toMatch(/70\.000/));
     expect(text('profit-settle-cash')).toMatch(/30\.000/);
     m.settle.mockResolvedValueOnce({ settlement_id: 'st-8', through_month: '2026-10-01', recognized_amount: 70_000, advance_offset_amount: 40_000, cash_amount: 30_000, voucher_id: 'v8', approval_request_id: 'r8', state: 'PENDING_APPROVAL', code: null });
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(1));
     expect(m.settle).toHaveBeenCalledWith(expect.objectContaining({ shareholderId: 's2', throughMonth: '2026-10-01', expectedRecognized: 70_000, expectedCash: 30_000 }));
   });
@@ -572,14 +597,14 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     expect(screen.queryByTestId('profit-settle-recognized')).toBeNull();
     expect(select('throughMonth')!.disabled).toBe(false);
     expect(select('throughMonth')!.value).toBe('2026-09-01');
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     expect(await screen.findByText(/Đang tính số chốt — đợi kết quả rồi bấm lại/)).toBeTruthy();
     expect(m.settle).not.toHaveBeenCalled();
     m.hold = false;
     view.rerender(dialog());
     await waitFor(() => expect(text('profit-settle-recognized')).toMatch(/60\.000/));
     m.settle.mockResolvedValueOnce({ settlement_id: 'st-7', through_month: '2026-09-01', recognized_amount: 60_000, advance_offset_amount: 40_000, cash_amount: 20_000, voucher_id: 'v7', approval_request_id: 'r7', state: 'PENDING_APPROVAL', code: null });
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(m.settle).toHaveBeenCalledTimes(1));
     expect(m.settle).toHaveBeenCalledWith(expect.objectContaining({ shareholderId: 's', throughMonth: '2026-09-01', expectedRecognized: 60_000, expectedCash: 20_000 }));
   });
@@ -594,13 +619,13 @@ describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
     m.holdFetching = fetching;
     pickAccount('a2');
     expect(text('profit-settle-cash')).toMatch(/60\.000/);
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     expect(await screen.findByText(/Đang tính số chốt — đợi kết quả rồi bấm lại/)).toBeTruthy();
     expect(m.settle).not.toHaveBeenCalled();
     m.hold = false;
     view.rerender(dialog());
     await waitFor(() => expect(screen.queryByText(/Đang tính số chốt — đợi kết quả/)).toBeNull());
-    fireEvent.click(submitButton());
+    fireEvent.click(settleButton());
     await waitFor(() => expect(m.settle).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'a2', expectedRecognized: 100_000, expectedCash: 60_000 })));
   });
 });
@@ -718,7 +743,7 @@ describe('hộp Chi tạm ứng cho tôi (cổ đông có quyền tạm ứng)',
 
 // U2 (18/11): hàng nút cuối của hai hộp dài dính đáy hộp (thân cuộn, nút luôn thấy — kiểu thanh nút form Thu chi điện thoại).
 it.each([
-  ['hộp chốt', () => <ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />, 'Lập phiếu chờ duyệt'],
+  ['hộp chốt', () => <ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />, 'Duyệt và Chi'],
   ['hộp tự tạm ứng', () => <ProfitSelfAdvanceDialog open onOpenChange={ownerProps.onOpenChange} organizationId="org-a" me={{ shareholderId: 's', name: 'An' }} />, 'Lập phiếu chờ duyệt'],
 ])('%s: thân giới hạn theo khung nhìn + cuộn; hàng nút dính đáy, cả hai nút chia đôi trên màn hẹp', (_name, view, submitName) => {
   m.access = [{ cashbook_id: 'a2', possession_kind: 'CUSTODIAN' }];
