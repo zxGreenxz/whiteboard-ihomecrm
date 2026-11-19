@@ -64,7 +64,7 @@ nodeGate('secret-scan', 'secret-scan', { args: ['scripts/ci-secret-scan.mjs'], l
 
 for (const [id, job, command, args] of [
   ['app-unit', 'vitest-tests', 'node', ['node_modules/vitest/vitest.mjs', 'run']],
-  ['node-native', 'quality-gates', 'node', ['--test']],
+  ['node-native', 'node-native-tests', 'node', ['--test']],
   ['organization-backup-envelope', 'quality-gates', 'node', ['--test']],
   ['bank-event-gateway', 'quality-gates', 'node', ['--test']],
   ['edge-deno-bank-events', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/bank-event-ingest/deno.json']],
@@ -112,6 +112,10 @@ export function getGate(id, plan) {
   const original = GATE_REGISTRY[id];
   if (!original) throw new Error(`Unknown gate: ${id}`);
   const gate = { ...original, args: [...original.args] };
+  if (id === 'check-timezone' && plan?.environment === 'ci') {
+    if (!Array.isArray(plan.timezoneFiles) || !plan.timezoneFiles.length) throw new Error('Missing selected timezone tests');
+    gate.args.push('--files', ...plan.timezoneFiles);
+  }
   if (id === 'check-forward-migration-idempotent') {
     if (!plan?.snapshot?.base) throw new Error('Migration check requires a verified diff base');
     gate.args.push('--tu-moc', plan.snapshot.base);

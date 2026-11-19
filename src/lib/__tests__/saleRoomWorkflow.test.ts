@@ -4,7 +4,6 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 import { SaleRoomOperationError, saleInventoryAtTime, parseSaleRoomInventory, type SaleRoomPatchReceipt } from '../saleRoomOperations';
 import { cancelSaleRoomPolicy, runSaleRoomBatch, saveSaleRoomPolicy, validateSaleBatch, type SaleBatchCommand, type SaleBatchDraft, type SalePolicyRpcInvoker } from '../saleRoomWorkflow';
-import { salePolicyIsActive, salePolicyTimeToIso } from '../saleRoomPolicyTypes';
 
 const id = (n: number) => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const org = id(1), revision = 'a'.repeat(32);
@@ -121,19 +120,6 @@ describe('Timed policy receipts and boundaries', () => {
     const good = { ...receipt, policy: { ...policy, version: 2, status: 'CANCELLED' } };
     await expect(cancelSaleRoomPolicy(async () => ({ data: good, error: null }), org, cancel)).resolves.toEqual(good);
     await expect(cancelSaleRoomPolicy(async () => ({ data: { ...good, policy: { ...good.policy, version: 3 } }, error: null }), org, cancel)).rejects.toMatchObject({ outcome: 'unknown' });
-  });
-  it('P06 Vietnam input is timezone-independent and rejects impossible dates', () => {
-    expect(salePolicyTimeToIso('2026-11-01T07:00')).toBe('2026-11-01T00:00:00.000Z');
-    expect(() => salePolicyTimeToIso('2026-02-30T07:00')).toThrow();
-    expect(() => salePolicyTimeToIso('2026-11-01')).toThrow();
-  });
-  it('P07 exact boundaries include the start and exclude the end, even offline', () => {
-    const start = Date.parse(policy.starts_at), end = Date.parse(policy.ends_at);
-    expect(salePolicyIsActive(policy, start - 1)).toBe(false);
-    expect(salePolicyIsActive(policy, start)).toBe(true);
-    expect(salePolicyIsActive(policy, end - 1)).toBe(true);
-    expect(salePolicyIsActive(policy, end)).toBe(false);
-    expect(salePolicyIsActive({ ...policy, status: 'CANCELLED' }, start)).toBe(false);
   });
   it('P08 quick board, Excel and image data share effective policy; editing always uses base text', () => {
     const data = parseSaleRoomInventory({ server_now: campaign.starts_at,

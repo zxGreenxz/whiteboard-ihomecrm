@@ -7,14 +7,12 @@ on:
       - '.github/workflows/meter-capture-runtime.yml'
       - 'infra/meter-capture-worker/**'
       - 'tooling/runtime-matrix.json'
-      - 'tooling/test-matrix.json'
   push:
     branches: [main]
     paths:
       - '.github/workflows/meter-capture-runtime.yml'
       - 'infra/meter-capture-worker/**'
       - 'tooling/runtime-matrix.json'
-      - 'tooling/test-matrix.json'
   workflow_dispatch:
 
 permissions:

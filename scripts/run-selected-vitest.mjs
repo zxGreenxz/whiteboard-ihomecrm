@@ -2,14 +2,23 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { availableParallelism } from 'node:os';
-import { selectedVitestFiles, assertCollectedSelection } from './lib/selected-vitest.mjs';
+import { selectedVitestFiles, validateExactVitestFiles, assertCollectedSelection } from './lib/selected-vitest.mjs';
 
-export async function runSelectedVitest(argv) {
+function filesFromArgs(argv) {
+  if (argv[0] === '--files') {
+    const files = argv.slice(1);
+    validateExactVitestFiles(files);
+    return files;
+  }
   const argument = (name) => argv.includes(name) ? argv[argv.indexOf(name) + 1] : null;
   const path = argument('--plan');
   const digest = argument('--selection-digest');
   if (!path || !digest) throw new Error('Required --plan <json> --selection-digest <sha256>');
-  const files = selectedVitestFiles(JSON.parse(readFileSync(path, 'utf8')), digest);
+  return selectedVitestFiles(JSON.parse(readFileSync(path, 'utf8')), digest);
+}
+
+export async function runSelectedVitest(argv) {
+  const files = filesFromArgs(argv);
   const { startVitest } = await import('vitest/node');
   let context;
   try {

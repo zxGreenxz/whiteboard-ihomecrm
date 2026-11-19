@@ -1,10 +1,10 @@
 name: Android Gateway
 on:
   pull_request:
-    paths: ['extensions/sms-webhook/android/**', '.github/workflows/android-gateway.yml', 'tooling/test-matrix.json', 'tooling/runtime-matrix.json']
+    paths: ['extensions/sms-webhook/android/**', '.github/workflows/android-gateway.yml']
   push:
     branches: [main, 'release/*']
-    paths: ['extensions/sms-webhook/android/**', '.github/workflows/android-gateway.yml', 'tooling/test-matrix.json', 'tooling/runtime-matrix.json']
+    paths: ['extensions/sms-webhook/android/**', '.github/workflows/android-gateway.yml']
   workflow_dispatch:
 permissions:
   contents: read

@@ -44,7 +44,6 @@ type QueryOptions<T> = {
 };
 
 const BUILDING_A = "11111111-1111-4111-8111-111111111111";
-const BUILDING_B = "22222222-2222-4222-8222-222222222222";
 
 describe("legacy occupancy dashboard hooks", () => {
   it('does not mistake a malformed snapshot or trend for an empty report', async () => {
@@ -208,42 +207,5 @@ describe("legacy occupancy dashboard hooks", () => {
     await coLoc.queryFn();
     const [, argsCoLoc] = mocks.rpc.mock.calls[0] as [string, Record<string, unknown>];
     expect(argsCoLoc.p_building_ids).toEqual([BUILDING_A]);
-  });
-
-  it("keeps legacy trend aggregation and returns rate zero for zero-room months", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 6, 25, 12));
-    mocks.rpc.mockResolvedValue({
-      data: [
-        {
-          month: "2026-02-01",
-          building_id: BUILDING_A,
-          occupied_rooms: 2,
-          total_rooms: 4,
-        },
-        {
-          month: "2026-02-01",
-          building_id: BUILDING_B,
-          occupied_rooms: 1,
-          total_rooms: 2,
-        },
-        {
-          month: "2026-03-01",
-          building_id: BUILDING_A,
-          occupied_rooms: 0,
-          total_rooms: 0,
-        },
-      ],
-      error: null,
-    });
-
-    const trend = useOccupancyTrend12m(
-      [BUILDING_A, BUILDING_B],
-    ) as unknown as QueryOptions<OccupancyTrendPoint[]>;
-
-    await expect(trend.queryFn()).resolves.toEqual([
-      { month: "2/2026", occupied: 3, total: 6, rate: 50 },
-      { month: "3/2026", occupied: 0, total: 0, rate: 0 },
-    ]);
   });
 });

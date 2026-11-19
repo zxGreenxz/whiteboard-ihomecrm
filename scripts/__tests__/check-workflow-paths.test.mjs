@@ -11,6 +11,7 @@ import yaml from "js-yaml";
 
 import { duocPhu, globSangRegex, layOn, scriptDuocGoi } from "../check-workflow-paths.mjs";
 import { MAIN_ONLY_CREDENTIALS } from "../lib/ci-gate-execution.mjs";
+import { DEFAULT_FILES as accountingFiles } from "../validate-accounting-migrations.mjs";
 
 describe("globSangRegex", () => {
   it("`**` vượt qua dấu gạch chéo", () => {
@@ -88,18 +89,20 @@ describe("trạng thái thật của repo", () => {
       const runs = job.steps.map((step) => String(step.run ?? '').trim());
       const download = runs.indexOf('node scripts/ci-download-plan.mjs');
       expect(download, id).toBeGreaterThan(-1);
-      if (id !== 'gate-aggregate') expect(download, id).toBeLessThan(runs.indexOf('npm ci'));
+      if (runs.includes('npm ci')) expect(download, id).toBeLessThan(runs.indexOf('npm ci'));
       expect(runs.join('\n'), id).not.toContain('--name "gate-plan-attempt-');
     }
   });
 
-  it('gate-aggregate skips npm ci because every module it loads is a Node builtin', () => {
-    const steps = wf('.github/workflows/ci-gates.yml').jobs['gate-aggregate'].steps;
+  it.each(['gate-aggregate', 'secret-scan'])('%s can run with only the Node runtime and its pinned tools', (id) => {
+    const steps = wf('.github/workflows/ci-gates.yml').jobs[id].steps;
     const runs = steps.map((step) => String(step.run ?? '').trim());
     expect(runs).not.toContain('npm ci');
     expect(steps.find((step) => step.uses?.startsWith('actions/setup-node@')).with.cache).toBeUndefined();
     const entries = runs.flatMap((run) => [...run.matchAll(/\bnode (scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]));
-    expect(entries).toEqual(expect.arrayContaining(['scripts/ci-download-plan.mjs', 'scripts/ci-aggregate-gates.mjs']));
+    expect(entries).toContain('scripts/ci-download-plan.mjs');
+    expect(entries).toContain(id === 'gate-aggregate' ? 'scripts/ci-aggregate-gates.mjs' : 'scripts/ci-run-gates.mjs');
+    if (id === 'secret-scan') entries.push('scripts/ci-secret-scan.mjs');
     const seen = new Set();
     const external = [];
     const visit = (url) => {
@@ -144,7 +147,7 @@ describe("trạng thái thật của repo", () => {
     }
   });
 
-  it.each(['quality-gates', 'vitest-tests', 'secret-scan', 'strict-islands-gate', 'timezone-gate', 'realtime-gates', 'security-gates', 'generated-types-drift', 'reconcile-money', 'cross-tenant-isolation'])('%s executes only from a successful explicit plan', (id) => {
+  it.each(['quality-gates', 'node-native-tests', 'vitest-tests', 'secret-scan', 'strict-islands-gate', 'timezone-gate', 'realtime-gates', 'security-gates', 'generated-types-drift', 'reconcile-money', 'cross-tenant-isolation'])('%s executes only from a successful explicit plan', (id) => {
     const job = wf('.github/workflows/ci-gates.yml').jobs[id];
     const needs = (result, ids) => ({ preflight: { result, outputs: { required_jobs: JSON.stringify(ids) } } });
     expect(active(job, needs('success', [id]))).toBe(true);
@@ -178,6 +181,8 @@ describe("trạng thái thật của repo", () => {
     // Sàn chống-xanh-rỗng: nếu job không còn gọi script nào thì ca này vô nghĩa.
     expect(scripts.length).toBeGreaterThanOrEqual(3);
     for (const s of scripts) expect(duocPhu(s, paths), `${s} không được phủ`).toBe(true);
+    for (const file of accountingFiles) expect(duocPhu(file, paths), file).toBe(true);
+    expect(duocPhu('supabase/migrations/20261119000000_other_domain.sql', paths)).toBe(false);
   });
 
   it("network-center: phủ ở CẢ HAI trigger, không dựa vào cái kia bù", () => {

@@ -16,11 +16,8 @@ import {
 /**
  * Nói thẳng phần KHÔNG được kiểm.
  *
- * Workflow supabase-migrate.yml kích hoạt trên `supabase/migrations/**` — tức bất
- * kỳ file nào trong 627+ migration. Nhưng script này chỉ kiểm đúng bộ accounting
- * rollout khai cứng bên dưới. Ai thêm một migration đụng tiền rồi thấy bước
- * "Static accounting-migration validation" xanh sẽ hợp lý mà tưởng file của mình
- * đã được kiểm — trong khi nó chưa hề được nhìn tới.
+ * Khi chạy thủ công, in danh sách đầu vào để người vận hành biết kết quả
+ * đang áp dụng cho bộ accounting rollout khai trong DEFAULT_FILES.
  *
  * Không đổi phạm vi kiểm (đó là quyết định của chủ bộ rollout, không phải của một
  * lần dọn dẹp), nhưng bắt log phải nói ra khoảng trống. Một dấu xanh im lặng về

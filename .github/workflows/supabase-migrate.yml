@@ -9,8 +9,8 @@ on:
     branches: [main]
     # Liệt kê mọi script workflow chạy để sửa checker cũng kích hoạt validation.
     paths:
-      - 'supabase/migrations/**'
-      - 'supabase/migration-provenance.json'
+      # CI Gates owns general migration provenance. This validator reads the July 21 accounting rollout.
+      - 'supabase/migrations/20260721*.sql'
       - 'scripts/apply-accounting-rollout.mjs'
       - 'scripts/validate-accounting-migrations.mjs'
       - 'scripts/audit-accounting-rollout.mjs'
