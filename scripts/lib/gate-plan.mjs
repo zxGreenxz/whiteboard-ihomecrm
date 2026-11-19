@@ -122,7 +122,7 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
   const owned = (file, suite) => !isDeferredTest(file) && matches(file, suite.includes) && !matches(file, suite.excludes);
   const profiles = new Set(); const reasons = [];
   const paths = unique(changes.flatMap((c) => [c.path, c.oldPath].filter(Boolean)).map((p) => p.replace(/\\/g, "/")));
-  const gates = new Set(["secret-scan"]); const generators = new Set(); const matchedRules = new Set(); const directTests = new Set(); const offlinePaths = new Set();
+  const gates = new Set(["secret-scan"]); const generators = new Set(); const changesByRule = new Map(); const directTests = new Set(); const offlinePaths = new Set();
   let fullFallback = full || snapshot.source === "unknown-base"; let money = false; let auth = false; let tierReview = false;
   const add = (profile, path, reason) => { profiles.add(profile); reasons.push({ path, profile, reason }); };
   if (fullFallback) add("shared-tooling", null, full ? "explicit --full" : "No verified diff base; full active fallback");
@@ -150,7 +150,10 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
     // explicit domain rules opt them in; ordinary docs still select no suites.
     const rules = testMatrix.sourceSelectionRules.filter((r) =>
       (!documentation || r.includeDocumentation === true) && both.some((p) => matches(p, r.sourcePaths)));
-    for (const rule of rules) matchedRules.add(rule);
+    for (const rule of rules) {
+      if (!changesByRule.has(rule)) changesByRule.set(rule, []);
+      changesByRule.get(rule).push(c);
+    }
     if (!schema && !shared && !isMoney && !isAuth && both.every((path) => rules.some((rule) => rule.ciSafe === true && matches(path, rule.sourcePaths) && testMatrix.suites.some((suite) => suite.id === rule.suiteId && suite.runner === "playwright")))) offlinePaths.add(c.path);
     const ownSuite = testMatrix.suites.find((s) => s.status !== "deferred" && owned(c.path, s));
     if (ownSuite) directTests.add(c.path);
@@ -185,7 +188,7 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
   }
   if (offlinePaths.size) reasons.push({ path: null, profile: "ui-behavior", reason: "Offline demo source/spec scope contributes selected browser interaction; other changed files retain their own gates" });
   if (fullFallback) for (const [id, gate] of Object.entries(registry)) if (!id.startsWith("suite:") && gate.evidenceClass !== "live" && !isDeferredGate(id)) gates.add(id);
-  const sourceRules = new Set(matchedRules);
+  const matchedRules = new Set(changesByRule.keys());
   for (const rule of testMatrix.sourceSelectionRules) if ((rule.profiles ?? []).some((p) => profiles.has(p))) matchedRules.add(rule);
   // Domain-specific static contracts travel with their source-to-test mapping.
   // Unknown ids still fail validation below; deferred gates remain excluded.
@@ -213,8 +216,16 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
     if (environment === "local" && localFeedback && !full && ["app-unit", "node-native"].includes(suite.id)) {
       // CI covers full fallback and cross-domain profile rules. Local feedback
       // retains changed tests, sibling tests and each explicit source mapping.
-      rules = rules.filter(rule => sourceRules.has(rule));
-      const focused = files.filter(file => directTests.has(file) || rules.some(rule => matches(file, rule.testPatterns)));
+      rules = rules.filter(rule => changesByRule.has(rule));
+      const localTestPatterns = rules.flatMap(rule => {
+        const broad = rule.testPatterns ?? [];
+        const override = rule.localFeedback;
+        if (!override?.testPatterns?.length) return broad;
+        const covered = changesByRule.get(rule).every(({ path, oldPath, status }) =>
+          !oldPath && (status === "A" || status === "M") && matches(path, override.sourcePaths));
+        return covered ? override.testPatterns : broad;
+      });
+      const focused = files.filter(file => directTests.has(file) || matches(file, localTestPatterns));
       if (focused.length < files.length) ciSuiteRemainders[suite.id] = files.length - focused.length;
       files = focused;
       all = false;

@@ -15,6 +15,18 @@ const plan = (changes, extra = {}) => createGatePlan({ changes, snapshot, ...ext
 const button = 'export const Button = () => <button onClick={openDialog} className="p-2">Mở</button>;';
 
 describe("scope is a conservative proof, never a filename shortcut", () => {
+  it("checks the full TypeScript project once and runs its checker smoke for a checker-only edit", () => {
+    const smoke = "scripts/__tests__/check-ts-baseline.test.mjs";
+    const testFiles = [smoke, "scripts/__tests__/ci-gate-execution.test.mjs"];
+    const changes = [changed("scripts/check-ts-baseline.mjs", "before", "after")];
+    for (const environment of ["ci", "local"]) {
+      const p = plan(changes, { testFiles, environment, localFeedback: environment === "local" });
+      expect(p.gateIds.filter(id => id === "check-ts-baseline")).toEqual(["check-ts-baseline"]);
+      expect(p.requiredJobs).toContain("quality-gates");
+      expect(p.suiteSelections.find(s => s.id === "node-native")?.files).toEqual([smoke]);
+    }
+  });
+
   it('shards only broad CI selections, covers every file once and binds each runner to its own receipt', () => {
     const matrix = JSON.parse(readFileSync(new URL('../../tooling/test-matrix.json', import.meta.url), 'utf8'));
     matrix.suites.find(s => s.id === 'node-native').includes.push('infra/shard-fixture/*.test.mjs');
@@ -75,6 +87,40 @@ describe("scope is a conservative proof, never a filename shortcut", () => {
     expect(files(receiptOnly, "node-native")).toEqual([]);
     expect(receiptOnly.ciSuiteRemainders).toEqual({ "app-unit": 3, "node-native": 2 });
   });
+  it("narrows local broker mapping only when every broker input is an added or modified task test or audited fixture", () => {
+    const broker = "infra/hermes-broker/";
+    const task = broker + "task-reminder-sql.test.mjs";
+    const newTask = broker + "task-example.test.mjs";
+    const race = broker + "task-nghiem-thu-race-pg.test.mjs";
+    const reminderRace = broker + "task-reminder-race-pg.test.mjs";
+    const helper = broker + "task-sql-mutation-cases.mjs";
+    const workMemory = broker + "work-memory-sql.test.mjs";
+    const authz = "scripts/__tests__/test-hermes-broker-authz.test.mjs";
+    const direct = "scripts/__tests__/ci-gate-execution.test.mjs";
+    const unrelated = broker + "official-skills.test.mjs";
+    const targeted = [task, newTask, race, reminderRace, authz, direct, workMemory].sort();
+    const testFiles = [...targeted, unrelated].sort();
+    const select = (changes, options = {}) => plan(changes, { testFiles, localFeedback: true, ...options });
+    const native = p => p.suiteSelections.find(s => s.id === "node-native").files;
+    const edit = (path, status = "M", oldPath) => changed(path, "before", "after", { status, oldPath });
+    const safe = [edit(task), edit(newTask, "A"), edit(helper, "A"), edit(broker + "task-nghiem-thu-fixture.mjs"),
+      edit(broker + "task-reminder-fixture.mjs"), edit(direct), edit(broker + "README.md")];
+    const local = select(safe);
+    expect(native(local)).toEqual(targeted);
+    expect(local.ciSuiteRemainders["node-native"]).toBe(1);
+    for (const options of [{ environment: "ci" }, { full: true }, { localFeedback: false }]) {
+      expect(native(select(safe, options))).toEqual(testFiles);
+    }
+    for (const wider of [
+      edit(broker + "connection-http.mjs"), edit(broker + "task-action-contract.mjs"),
+      edit(broker + "task-unknown-fixture.mjs", "A"), edit("src/lib/roomSaleFacts.ts"),
+      edit("scripts/test-hermes-broker-authz.mjs"), edit(helper, "D"),
+      edit(newTask, "R100", task), edit(direct, "R100", helper), edit(helper, "C100", task),
+    ]) {
+      expect(native(select([...safe, wider]))).toEqual(testFiles);
+    }
+  });
+
   it("partitions a full CI selection between the timezone job and ordinary Vitest without losing a file", () => {
     const date = "src/hooks/reports/__tests__/useOccupancyDashboard.timezone.test.ts";
     const ordinary = "src/lib/__tests__/clipboardFeedback.test.tsx";
