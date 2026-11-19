@@ -110,6 +110,7 @@
     {
       "id": "llm-proxy",
       "sourcePaths": [
+        "scripts/fixtures/llm-proxy-imports.json",
         "supabase/functions/llm-proxy/**"
       ],
       "suiteId": "edge-deno-llm-proxy",
@@ -647,7 +648,20 @@
     },
     {
       "id": "hermes-official-skills",
-      "$comment": "Skill CRM chuẩn của Hermes (infra/hermes-skills) phải khớp tool/thao tác hiện hành của connector; script triển khai chạy thử trên cây giả.",
+      "$comment": "Các file Markdown do deploy.sh phát hành phải khớp danh mục công cụ của connector.",
+      "includeDocumentation": true,
+      "sourcePaths": [
+        "infra/hermes-skills/ihome-crm-*/SKILL.md",
+        "infra/hermes-skills/DESCRIPTION.md"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/official-skills.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-official-skills-deploy",
+      "$comment": "Đổi mã triển khai thì kiểm cả nội dung skill và thao tác triển khai trên cây giả.",
       "sourcePaths": [
         "infra/hermes-skills/**"
       ],
@@ -1640,13 +1654,26 @@
       ]
     },
     {
-      "id": "copilot-corpus-inputs",
+      "id": "system-docs-manifest",
       "includeDocumentation": true,
+      "sourcePaths": ["docs/he-thong/**"],
+      "gates": ["check-copilot-docs-manifest"]
+    },
+    {
+      "id": "user-guide-corpus",
+      "includeDocumentation": true,
+      "sourcePaths": ["docs/huong-dan-su-dung/**/index.md"],
+      "gates": ["generate-copilot-guide-corpus"]
+    },
+    {
+      "id": "copilot-tool-inventory-readme",
+      "includeDocumentation": true,
+      "sourcePaths": ["docs/ai-copilot/README.md"],
+      "gates": ["check-copilot-tool-inventory"]
+    },
+    {
+      "id": "capability-corpus-inputs",
       "sourcePaths": [
-        "docs/he-thong/manifest.json",
-        "docs/he-thong/*.md",
-        "docs/ai-copilot/README.md",
-        "docs/huong-dan-su-dung/**/index.md",
         "src/app/capabilities/registry.ts"
       ],
       "suiteId": "node-native",
@@ -2077,14 +2104,14 @@
       "ciExecutor": "gate-registry",
       "runner": "deno",
       "ciJob": "ci-gates / quality-gates",
-      "command": "deno test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env  (CI dùng denoland/setup-deno 2.9.4; máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
+      "command": "deno test --config supabase/functions/llm-proxy/deno.json --import-map scripts/fixtures/llm-proxy-imports.json --lock deno.lock --frozen supabase/functions/llm-proxy/index.test.ts supabase/functions/llm-proxy/stream-terminal.test.ts --allow-env",
       "runtime": "deno 2.9.4",
       "risk": "normal",
       "includes": [
         "supabase/functions/llm-proxy/index.test.ts",
         "supabase/functions/llm-proxy/stream-terminal.test.ts"
       ],
-      "note": "Test hàm thuần và handler llm-proxy (allowlist body, trần kích thước, clamp mock cost, đồng hồ và terminal stream). Entrypoint index.test.ts import stream-terminal.test.ts nên lệnh CI trên chạy cả hai file. Tách khỏi suite edge-deno vì suite đó chạy trong workflow network-center-validation, mà workflow ấy lọc theo đường dẫn Network Center — llm-proxy đổi không kích hoạt nó. Nối vào ci-gates.yml ngày 02/09/2026 (hai bước: cài Deno + chạy test).",
+      "note": "Chạy riêng hai file để mỗi ca handler và stream chỉ chạy một lần. Import map của test lấy cùng phiên bản Supabase SDK từ npm, kiểm toàn vẹn bằng deno.lock ở gốc repo. Máy dev thiếu Deno dùng npx --yes deno@2.9.4 thay cho deno.",
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",

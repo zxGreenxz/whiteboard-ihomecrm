@@ -1,8 +1,8 @@
 # AI Copilot — Vá nền → toàn diện → Mức 3 (plan nhập kho 02/09/2026)
 
-Nguồn: plan phiên Claude Code 02/09/2026, đã duyệt.
+**Kế hoạch lịch sử.** Đây là bản được duyệt trong phiên Claude Code ngày 02/09/2026. Ngày 15/10, dự án gỡ giao diện chat Copilot và chuyển sang Hermes. [Quyết định chuyển đổi](../../plans/hermes-crm/P11-COPILOT-RETIREMENT.md)
 
-> **[CÒN SỐNG — trạng thái 02/09/2026]** G0 đang thi công — code trên nhánh `copilot/g0-va-nen`, chưa merge/apply: llm-proxy đã vá (mock gating, body allowlist, caps, stream clocks, `x-organization-id`), 2 migration còn chờ apply (`copilot_mock_off_finalize_clamp_v1`, `copilot_reserve_ai_usage_organization_v1`), frontend đã sửa (mojibake, stale-availability gate, entitlement `.eq('user_id')`, thông báo lỗi), CI đã có 9/9 gate copilot + bước Deno + `copilot-e2e.yml` + policy `tooling/copilot-action-policy.json`. Đừng đọc phần nào dưới đây như đã lên production. Xem ADR consent tại `docs/superpowers/specs/2026-09-02-ai-copilot-batch-consent-adr.md`.
+> **Ảnh chụp ngày 02/09/2026.** Khi đó G0 đang thi công — code trên nhánh `copilot/g0-va-nen`, chưa merge/apply: llm-proxy đã vá (mock gating, body allowlist, caps, stream clocks, `x-organization-id`), 2 migration còn chờ apply (`copilot_mock_off_finalize_clamp_v1`, `copilot_reserve_ai_usage_organization_v1`), frontend đã sửa (mojibake, stale-availability gate, entitlement `.eq('user_id')`, thông báo lỗi), CI đã có 9/9 gate copilot + bước Deno + `copilot-e2e.yml` + policy `tooling/copilot-action-policy.json`. Đừng đọc phần nào dưới đây như đã lên production. Xem ADR consent tại `docs/superpowers/specs/2026-09-02-ai-copilot-batch-consent-adr.md`.
 
 # AI Copilot — Audit vòng 2 + Plan "vá nền → toàn diện → Mức 2 (AI tự thực thi ghi thường)"
 

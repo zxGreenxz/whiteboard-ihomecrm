@@ -296,7 +296,7 @@ Toggle "đã kiểm": nếu chưa kiểm → set `verified_*` với người + n
 
 Thao tác dùng được khi phiếu đã duyệt, đã thu/chi, đã huỷ hoặc thuộc kỳ đã chốt, bao gồm phiếu bỏ/hoàn cọc. Người dùng vẫn cần quyền xem và bổ sung vào đúng phiếu; ảnh của phiếu hạn chế được bảo vệ theo quyền xem phiếu. Không thay đổi số tiền, sổ quỹ, ngày phiếu hoặc trạng thái.
 
-Phần bổ sung lưu riêng qua `append_income_expense_supplement_v1` trong `income_expense_supplements`, không cập nhật phiếu gốc. Ghi chú gốc còn được một số nghiệp vụ dùng để nhận diện giao dịch, nên được giữ nguyên từng nội dung. Các màn xem, bản in và ảnh hoàn cọc ghép thêm phần bổ sung khi hiển thị. RPC `annotate_income_expense_v1` cũ vẫn phục vụ các luồng ghi sổ/Copilot hiện hữu; màn bổ sung này không dùng nó và không còn ô đổi sổ quỹ.
+Phần bổ sung lưu riêng qua `append_income_expense_supplement_v1` trong `income_expense_supplements`, không cập nhật phiếu gốc. Ghi chú gốc còn được một số nghiệp vụ dùng để nhận diện giao dịch, nên được giữ nguyên từng nội dung. Các màn xem, bản in và ảnh hoàn cọc ghép thêm phần bổ sung khi hiển thị. Luồng ghi sổ vẫn dùng RPC `annotate_income_expense_v1` để thêm hoặc gỡ ảnh trước khi ghi sổ. Màn bổ sung không có ô đổi sổ quỹ.
 
 ### 4.9 RLS & hàm phân quyền sổ (migration `20260516000005`, `20260601000001`)
 

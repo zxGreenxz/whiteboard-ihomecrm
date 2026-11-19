@@ -170,7 +170,7 @@ export const sidebar: DefaultTheme.Sidebar = [
       { text: 'Nhân viên & Đội ngũ', link: '/05-cai-dat/nhan-vien-doi-ngu/' },
       { text: 'Phân quyền theo trang', link: '/05-cai-dat/phan-quyen/' },
       { text: 'Quản trị người dùng', link: '/05-cai-dat/admin-users/' },
-      { text: 'Trợ lý AI', link: '/05-cai-dat/tro-ly-ai/' },
+      { text: 'Kết nối Hermes', link: '/05-cai-dat/tro-ly-ai/' },
     ],
   },
   {
@@ -198,7 +198,7 @@ export const sidebar: DefaultTheme.Sidebar = [
     items: [
       { text: 'Phòng trình bày kế hoạch', link: '/08-ke-hoach-phat-trien/' },
       { text: 'Thu chi: duyệt, chi & quyền sổ', link: '/08-ke-hoach-phat-trien/quy-trinh-chi-phi/' },
-      { text: 'Kế hoạch AI Copilot', link: '/08-ke-hoach-phat-trien/ai-copilot/' },
+      { text: 'Kế hoạch Copilot (lưu trữ)', link: '/08-ke-hoach-phat-trien/ai-copilot/' },
       { text: 'Mẫu kế hoạch dự án mới', link: '/08-ke-hoach-phat-trien/mau-plan/' },
     ],
   },

@@ -1,38 +1,36 @@
 # Project Contract — hướng dẫn chung cho agent
 
-Đọc adapter và file này một lần; chỉ mở thêm một tài liệu domain/runbook khi cần rồi tra source, không tự đọc audit, plan cũ hay lần theo mọi liên kết.
-Luật chung ở đây; chi tiết chỉ ở nguồn được dẫn.
-Copilot mở lại core cho Hermes (12/10/2026); UI/model/live còn hoãn. Zalo unit mở lại (10/10/2026), fleet còn hoãn. [Hồ sơ](../deferred/zalo-copilot.md).
+Bắt đầu từ adapter và Contract, rồi tra source. Thường chỉ cần một runbook. Khi tác vụ giao nhiều phạm vi, đọc các mục tương ứng (ví dụ §2 và §4 khi backfill liên quan quyền).
 
 ## 1. Dự án và nguồn tra cứu
 
 React/Vite, Supabase, Cloudflare R2 và Network Center. Chọn scope từ diff và source.
 [risk-map](../../tooling/risk-map.json) sở hữu tier/review, [test-matrix](../../tooling/test-matrix.json) runner, [runtime-matrix](../../tooling/runtime-matrix.json) runtime, [package.json](../../package.json) lệnh.
-Chỉ đọc [một domain](../he-thong/README.md) nếu chưa rõ nghiệp vụ; manifest và evidence thay số đếm chép tay.
+Tra [domain](../he-thong/README.md) khi chưa rõ nghiệp vụ. Hermes là trợ lý CRM hiện hành. Một số thành phần nội bộ giữ tên `copilot`. Tra [manifest](../../tooling/deferred-modules.json) cho các test và gate tạm hoãn.
 
 ## 2. Phạm vi dữ liệu
 
 Org THẬT chỉ đọc; fixture chỉ ghi DEMO hoặc project TEST riêng và phải dọn. Credential không cấp quyền ghi schema.
-Trước thao tác dữ liệu/quyền, đọc [DATA_ENVIRONMENTS](DATA_ENVIRONMENTS.md): ID đích, JWT/RLS và scope toà; không dựng lại clone-org trong production.
+Trước thao tác dữ liệu/quyền, tra [môi trường, JWT/RLS và phạm vi toà](DATA_ENVIRONMENTS.md). Không dựng lại clone-org trong production.
 
 ## 3. Git, review và phát hành
 
 - Kiểm status, giữ WIP; việc độc lập dùng git worktree. Chỉ stage file cụ thể; cấm `git add -A` / `git add .`.
 - Fetch/rebase `origin/main` trước tích hợp; conflict source sửa tay, file máy sinh lấy bản của main rồi chạy lại generator.
-- Commit nêu lý do/kiểm chứng; trailer theo adapter. Push `git push origin HEAD:main` sau kiểm ancestor; không force-push né conflict.
-- Tiền, quyền, lịch sử migration và bộ kiểm (workflow, gate, promote, risk-map) cần draft PR. Theo `crossReview`: review một lần trên diff cuối và receipts, ghi base/head/kết luận vào PR, không chạy lại gate; sửa xong chỉ re-review phần sửa.
-- `main` là Preview; app phát hành từ `production` qua `npm run promote:production -- --sha <sha>`, chỉ thêm `--apply` khi đủ bằng chứng (tự chờ Vercel; kiểm bằng `npm run release:verify`). Không push trực tiếp bỏ lane.
+- Commit ghi lý do, kiểm chứng và trailer theo adapter. Xem `crossReview` trong plan (§10) trước khi push.
+- Nếu `crossReview` bật hoặc thay đổi tiền, quyền, lịch sử migration hay bộ kiểm (workflow, gate, promote, risk-map), push nhánh làm việc và mở draft PR. Review độc lập một lần trên diff cuối và receipts, ghi base/head/kết luận vào PR. Sau sửa chỉ review phần đổi.
+- Các thay đổi được phép lên thẳng `main` dùng `git push origin HEAD:main` sau khi kiểm `origin/main` là ancestor của `HEAD`. Không force-push né conflict.
+- `main` là Preview. Phát hành qua `npm run promote:production -- --sha <sha>`. Khi đủ bằng chứng, `--apply` cập nhật `production` và chờ Vercel. Kiểm bằng `npm run release:verify`. Không push trực tiếp vào `production`.
 - Đổi phát hành phải kiểm `npm run check:external-controls`. Gate đỏ/skip/thiếu bằng chứng không phải đạt; rollback app bằng deployment đã xác minh, không tự rollback schema phá huỷ. Biên nhận E2E chỉ do `npm run e2e:fleet:bien-nhan` sinh, cấm viết tay; promote in biên nhận đã nhận.
 
 ## 4. Ghi schema production và backup
 
-Trước schema/backfill đọc [migration runbook](MIGRATION_STRATEGY.md). Chỉ dùng forward lane có backup/biên nhận; kiểm đích, SHA review, digest và catalog trước/sau. Thiếu bằng chứng thì dừng apply.
+Trước thay đổi SQL/RPC/quyền/tiền, đọc [migration runbook](MIGRATION_STRATEGY.md). Ghi schema/backfill đi qua forward lane có backup/biên nhận, kiểm đích, SHA review, digest và catalog trước/sau.
 Không dùng PAT ghi thẳng Management API để bỏ lane. Hạ tầng ghim exact runtime/image/action, không bind rộng hoặc retry ngầm thao tác không idempotent; kiểm rollback bằng artifact thật.
 
 ## 5. Migration và database
 
 Migration đã merge/deploy là immutable; legacy không replay được. Dựng database bằng baseline + forward lane trên database dùng một lần.
-Runbook sở hữu tên migration, provenance, idempotency, PostgREST/JWT/RLS, kiểm tiền v1/v2 và volatility; mở trước khi sửa SQL/RPC/quyền/tiền.
 
 ## 6. Generated types
 
@@ -46,27 +44,26 @@ Module mới strict-clean; không tăng baseline né lỗi. Chi tiết auth/dead
 
 ## 8. Kiểm thử đúng phạm vi
 
-- Test hành vi bị đổi bằng runner trong manifest. Sửa UI kiểm luồng/vai trò và viewport bị ảnh hưởng, ảnh chụp cùng console; không mặc định quét desktop lẫn mobile hay E2E toàn app.
-- Build/bundle ở CI một lần cho đúng candidate; local chỉ khi chẩn đoán/thiếu bằng chứng. Không dựng lại bản không đổi chỉ để báo xong.
+- Test hành vi đổi bằng runner trong manifest. Với UI, kiểm luồng, vai trò và viewport bị ảnh hưởng, lưu ảnh và console.
+- CI build/bundle một lần cho đúng candidate. Chỉ build local để chẩn đoán hoặc bổ sung bằng chứng còn thiếu.
 - Tiền, quyền, cách ly org, migration và verifier có thể xanh rỗng cần kiểm đột biến; [hướng dẫn kiểm](../CODEBASE_STRUCTURE.md#kiểm-thử) giữ quy trình hash/khôi phục và E2E headless.
-- Test skip/DEFERRED hoặc thiếu runner là chưa kiểm; không hạ kiểm soát để CI xanh.
+- Báo chưa kiểm nếu test bị skip, DEFERRED hoặc thiếu runner.
 
 ## 9. Credential
 
-Vault duy nhất `CLAUDE.local.md` ở checkout chính, bị ignore. Chỉ nạp khóa cần dùng vào process env (`npm run with-cred -- <lệnh>`; đọc DB bằng `npm run db:query`), không sao chép/in/commit secret; VITE công khai không chứa secret. Repo public: không đưa số tiền production hay tài khoản thật vào code, docs, test, log.
-Tên khóa ở [local-credential-contract](../../tooling/local-credential-contract.json); preflight local chỉ khi thao tác cần, không chạy vault preflight trên CI. Thiếu/hết hạn thì báo đúng khả năng bị chặn; nghi lộ phải rotate.
+Chỉ dùng `npm run with-cred -- <lệnh>` hoặc `npm run db:query` khi cần credential. Wrapper tìm vault qua `IHOMECRM_VAULT` hoặc `CLAUDE.local.md` tại checkout hiện tại/chính. Không in, sao chép, commit secret hoặc đưa vào biến VITE công khai. Repo public và log không được chứa số tiền production hay tài khoản thật.
+Tra tên khóa ở [local-credential-contract](../../tooling/local-credential-contract.json). Chỉ preflight vault ở local khi cần. Báo thao tác bị chặn nếu thiếu khóa, rotate nếu nghi lộ.
 
 ## 10. Hoàn tất thay đổi
 
-1. Stage đúng file sau focused tests; xem `npm run gate:truoc-push -- --plan` để biết scope, lệnh và lý do chọn. Mặc định đọc staged diff; fallback bảo thủ khi không phân loại được.
-2. Chạy `npm run gate:truoc-push` cho kế hoạch đó; `--full` chỉ khi cần toàn bộ active gates. Không chạy riêng typecheck/strict/lint rồi lặp lại cùng phép kiểm trong gate. Chờ CI bằng `npm run ci:wait -- --sha <sha>`, không vòng sleep/dispatch.
-3. Cửa đỏ: sửa và chạy đúng kiểm bị ảnh hưởng. Giữ receipt xanh của đầu vào không đổi; chỉ kiểm lại khi source/dependency thay, có lỗi mới hoặc nghi vấn cụ thể. Không mặc định full rerun.
-4. Báo kết quả, phạm vi, phần chưa kiểm; review/phát hành theo §3. Gate lock thuộc worktree: không xoá lock của tiến trình sống; xử lý untracked của mình trước stage.
+1. Sau test tập trung, stage đúng file và xem `npm run gate:truoc-push -- --plan` để biết phạm vi, lý do và `crossReview`. Diff chưa phân loại được sẽ chọn phạm vi rộng.
+2. Chạy `npm run gate:truoc-push` cho staged diff. Gate dùng lại receipt còn đúng đầu vào. Tránh gọi trùng typecheck, lint và Vitest đã có trong plan. Chỉ dùng `--full` khi cần toàn bộ gate. Khi sửa lỗi local, chạy lại gate cho diff đã sửa.
+3. Trên PR, lấy head SHA hiện tại bằng `gh pr view <PR> --json headRefOid --jq .headRefOid`. Chọn run `CI Gates` của PR đó qua `gh run list --workflow ci-gates.yml --event pull_request --commit <head-sha>`. Chờ `gh run watch <run-id> --exit-status`, xác nhận `gate-aggregate` đạt trên đúng head cuối. Nếu cần chạy lại CI Gates trên cùng SHA, chọn **Re-run all jobs** để preflight và receipts cùng attempt.
+4. Sau khi lên `main`, chờ `npm run ci:wait -- --sha <sha-tren-main>`. Báo kết quả và phần chưa kiểm, phát hành theo §3. Giữ lock của tiến trình sống và xử lý file untracked của mình trước stage.
 
 ## 11. Điều kiện dừng
 
-Dừng thao tác phụ thuộc khi sai đích, thiếu credential, lệch digest/provenance hoặc gate bắt buộc chưa đạt; giữ bằng chứng lỗi, tiếp tục phần độc lập.
-Không nuốt lỗi, tăng baseline hoặc gọi phần chưa đo là pass. Quyền thử dữ liệu không thay quyền đổi schema.
+Khi sai đích, thiếu credential, lệch digest/provenance hoặc gate bắt buộc chưa đạt, giữ bằng chứng lỗi và dừng thao tác phụ thuộc. Tiếp tục phần độc lập. Không nuốt lỗi hoặc nâng baseline để qua gate. Chỉ báo đạt cho phần đã kiểm.
 
 ## 12. Tra cứu mã nguồn và GitNexus
 
@@ -75,8 +72,7 @@ GitNexus tùy chọn qua `scripts/run-pinned-gitnexus.mjs`, pin ở `tooling/age
 
 ## 13. Hướng dẫn chuyên đề và khoảng trống
 
-Chỉ mở runbook theo thao tác: [migration](MIGRATION_STRATEGY.md), [dữ liệu/org](DATA_ENVIRONMENTS.md), [Network Center](../../infra/network-center-worker/README.md).
-[known-gaps](../../tooling/known-gaps.yaml) là khoảng trống hoạt động; đóng bằng evidence, không chép sự cố cũ thành luật.
+Tra [Network Center](../../infra/network-center-worker/README.md) khi làm với worker. Đóng mục trong [known-gaps](../../tooling/known-gaps.yaml) bằng bằng chứng, không chép sự cố cũ thành luật.
 
 ## 14. Quy ước code
 

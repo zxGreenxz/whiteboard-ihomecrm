@@ -52,14 +52,13 @@ Kiểm theo đúng thứ tự: membership active → vai trò → binding → sc
 
 ## Catalog quyền theo trang
 
-Các bảng dưới dùng đúng key `module.action`. Route là route canonical mà catalog và Copilot dùng để nhận diện trang.
+Các bảng dưới dùng đúng key `module.action`. Route là đường dẫn của trang trong CRM.
 
 ### Tổng quan
 
 | Trang · route | Quyền hiện hành |
 |---|---|
 | **Bảng tin** · `/` | `dashboard.view` — xem bảng tin; `dashboard.view_finance` — xem doanh thu/công nợ trên dashboard. |
-| **AI Copilot** · `/` | `ai_copilot.view` — dùng chat; `ai_copilot.ui_control` — cho AI điều hướng/lọc/điền form ở chế độ experimental. Quyền chưa đủ: còn entitlement và kill switch server. |
 | **Thông báo** · `/notifications` | `notifications.view`, `notifications.create`, `notifications.edit`, `notifications.delete`. |
 | **Sơ đồ toà nhà** · `/building-map` | `buildings.view`. |
 
@@ -151,7 +150,7 @@ Các bảng dưới dùng đúng key `module.action`. Route là route canonical 
 
 ## Trang không có khoá riêng hoặc dùng chung khoá
 
-Một số màn không có dòng riêng trong bộ chọn quyền; route của chúng chỉ đòi đăng nhập hoặc dùng lại khoá của trang khác (đối chiếu `src/app/routes/*` ngày 07/10/2026):
+Một số màn không có dòng riêng trong bộ chọn quyền; route của chúng chỉ đòi đăng nhập hoặc dùng lại khoá của trang khác (xem `src/app/routes/*`):
 
 | Trang · route | Cổng vào route | Ghi chú |
 |---|---|---|
@@ -163,7 +162,7 @@ Một số màn không có dòng riêng trong bộ chọn quyền; route của c
 | **Cam kết chi** · `/settings/finance/cam-ket-chi` | `thu_tien.collect` | Chỉ chủ công ty sửa được (máy chủ chặn người khác). |
 | **Hôm nay** · `/my-day` và **Việc của tôi** · `/viec-cua-toi` | Chỉ đăng nhập | Dữ liệu của chính bạn; Việc của tôi lưu trên thiết bị. |
 | **Bảng lương** · `/finance/salary`, **Lương của tôi** · `/finance/my-salary` | Chỉ đăng nhập | Trang tự rẽ theo năng lực `salary.*`; RLS giới hạn dữ liệu. |
-| **Trợ lý AI** · `/settings/ai-copilot` | Chỉ đăng nhập | Mục menu gác `ai_copilot.view`; quyền quản trị thật kiểm ở máy chủ. |
+| **[Kết nối Hermes](/05-cai-dat/tro-ly-ai/)** · `/settings/hermes` | Chỉ đăng nhập để mở trang | Chọn công ty trước khi tạo hoặc quản lý kết nối. Hermes chỉ dùng quyền CRM của người kết nối trong phạm vi được cấp. |
 
 ## Các tình huống thường gặp
 

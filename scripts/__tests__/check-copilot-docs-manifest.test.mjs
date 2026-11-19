@@ -163,11 +163,15 @@ test('boComment go ca hai kieu chu thich', () => {
   assert.equal(boComment('a /* b */ c'), 'a  c');
 });
 
-test('cli: gate hien tai xanh', () => {
+test('CLI chấp nhận corpus lưu trữ qua mốc review cũ 31/12/2026', () => {
+  const clock = "import { mock } from 'node:test'; mock.timers.enable({ apis: ['Date'], now: Date.UTC(2027, 0, 1) });";
   const ra = execFileSync(
     process.execPath,
-    [fileURLToPath(new URL('../check-copilot-docs-manifest.mjs', import.meta.url))],
-    { encoding: 'utf8' },
+    [
+      '--import', `data:text/javascript,${encodeURIComponent(clock)}`,
+      fileURLToPath(new URL('../check-copilot-docs-manifest.mjs', import.meta.url)),
+    ],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   );
-  assert.match(ra, /Copilot docs manifest khớp thư mục/);
+  assert.match(ra, /Manifest corpus Copilot lưu trữ khớp thư mục/);
 });

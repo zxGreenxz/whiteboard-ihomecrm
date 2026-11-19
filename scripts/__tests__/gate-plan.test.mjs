@@ -15,6 +15,24 @@ const plan = (changes, extra = {}) => createGatePlan({ changes, snapshot, ...ext
 const button = 'export const Button = () => <button onClick={openDialog} className="p-2">Mở</button>;';
 
 describe("scope is a conservative proof, never a filename shortcut", () => {
+  it.each(["local", "ci"])("selects the content test for published Hermes Markdown in %s", environment => {
+    const root = "infra/hermes-skills/";
+    const content = "infra/hermes-broker/official-skills.test.mjs";
+    const deploy = "infra/hermes-broker/official-skills-deploy.test.mjs";
+    const unrelated = "infra/hermes-broker/action-runtime.test.mjs";
+    const testFiles = [content, deploy, unrelated];
+    const select = (...paths) => {
+      const changes = paths.map(path => changed(root + path, "before", "after"));
+      return plan(changes, { environment, localFeedback: environment === "local", testFiles })
+        .suiteSelections.find(s => s.id === "node-native")?.files ?? [];
+    };
+    expect(select("ihome-crm-cong-viec/SKILL.md")).toEqual([content]);
+    expect(select("DESCRIPTION.md")).toEqual([content]);
+    expect(select("README.md")).toEqual([]);
+    expect(select("deploy.sh")).toEqual([deploy, content]);
+    expect(select("DESCRIPTION.md", "deploy.sh")).toEqual([deploy, content]);
+  });
+
   it("checks the full TypeScript project once and runs its checker smoke for a checker-only edit", () => {
     const smoke = "scripts/__tests__/check-ts-baseline.test.mjs";
     const testFiles = [smoke, "scripts/__tests__/ci-gate-execution.test.mjs"];

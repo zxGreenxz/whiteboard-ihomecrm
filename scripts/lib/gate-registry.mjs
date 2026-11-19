@@ -71,7 +71,8 @@ for (const [id, job, command, args] of [
   ['edge-deno-bank-events', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/bank-event-ingest/deno.json']],
   ['edge-deno-gps-checkin', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/gps-checkin-ingest/deno.json']],
   ['edge-deno-admin-reset-password', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/admin-reset-user-password/deno.json']],
-  ['edge-deno-llm-proxy', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/llm-proxy/deno.json']],
+  ['edge-deno-llm-proxy', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/llm-proxy/deno.json',
+    '--import-map', 'scripts/fixtures/llm-proxy-imports.json', '--lock', 'deno.lock', '--frozen']],
   ['edge-deno-quick-entry', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/quick-entry/deno.json']],
   ['edge-deno-notifications', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/lifecycle-reminders/deno.json']],
   ['edge-deno-door-access', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/door-access/deno.json']],
@@ -85,6 +86,7 @@ for (const [id, job, command, args] of [
   gates[`suite:${id}`] = { id: `suite:${id}`, command, args, job, local: command !== 'deno', evidenceClass: 'static', inputs: broadInputs, requires: [] };
 }
 
+gates['suite:edge-deno-llm-proxy'].inputs = [...broadInputs, 'deno.lock'];
 gates['suite:meter-capture-python'].inputs = [...broadInputs, 'infra/meter-capture-worker/**', '.github/workflows/ci-gates.yml'];
 
 for (const suiteId of Object.keys(MIN_FILES_TO_SHARD)) {

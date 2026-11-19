@@ -91,7 +91,7 @@ Owner mở `/settings/general` → tab **Thu chi**:
   writer: `income_expenses.approve` ở toà của phiếu (`app_private.has_building_perm_v1` — hàm boolean dùng
   chung, `require_building_perm_v1` của câu 26 cũng gọi hàm này); phiếu không gắn toà chỉ super admin. Mọi đường cùng một hàm luật
   `app_private.ie_self_approve_over_threshold_blocked_v1`: REST thẳng `approve_income_expense_v1`/`approve_voucher`,
-  nút Duyệt của công ty còn luồng LEGACY, Thanh toán phiếu phí nháp, Chốt lương, Copilot. Bị chặn ⇒ 42501 +
+  nút Duyệt của công ty còn luồng LEGACY, Thanh toán phiếu phí nháp và Chốt lương. Hermes cũng kiểm hàm này khi xử lý `expense.approve`. Khi duyệt qua RPC của CRM, bị chặn ⇒ 42501 +
   HINT `ie_self_approve_over_threshold`; web hỏi cổng `ie_self_approve_gate_v1` ở hộp **Xác nhận duyệt phiếu**
   (mọi nơi bấm Duyệt đều qua hộp này): khoá nút + giải thích, và hỏi lại ngay trước khi lưu đổi sổ/ảnh hay
   duyệt. Người khác có quyền duyệt vẫn duyệt bình thường. Phiếu chờ duyệt **dưới** ngưỡng (hạng mục bắt buộc

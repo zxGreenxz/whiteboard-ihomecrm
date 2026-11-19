@@ -33,7 +33,7 @@ Toàn bộ site được đối chiếu lại với bản production `81c5a3cd` 
 | Lương | Màn Lương & thu nhập mới, khoản định kỳ theo phiên bản, hoa hồng tính theo sổ. | [Bảng lương](/03-quan-ly-van-hanh/bang-luong/) |
 | Tài khoản | Ghi nhớ công ty đã chọn theo tài khoản; khi đăng xuất hoặc đổi tài khoản, trình duyệt xoá trạng thái của tài khoản trước. | [Đăng nhập](/01-bat-dau/dang-nhap/) |
 | Giao diện | Lúc chờ dữ liệu hiện khối xám thay cho chữ "Đang tải…"; quyền giao diện tính theo công ty và toà nhà. | [Làm quen giao diện](/01-bat-dau/lam-quen-giao-dien/) |
-| Tạm ngưng | Chat Zalo tự động và trợ lý AI Copilot đang **tạm ngưng**; các trang liên quan chỉ mô tả trạng thái hiện hành. | [Chat Zalo](/03-quan-ly-van-hanh/chat-zalo/), [Trợ lý AI](/05-cai-dat/tro-ly-ai/) |
+| Tạm ngưng | Ngày 07/10/2026, việc phát triển Chat Zalo tự động và AI Copilot đã tạm ngưng. Sau mốc này, dự án gỡ chat Copilot trên web. | [Chat Zalo](/03-quan-ly-van-hanh/chat-zalo/), [Kết nối Hermes hiện nay](/05-cai-dat/tro-ly-ai/) |
 
 ## Nguồn nào đáng tin khi có khác biệt?
 

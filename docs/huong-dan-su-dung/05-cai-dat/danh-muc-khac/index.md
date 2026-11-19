@@ -23,7 +23,7 @@ Trang **Danh mục khác** (`/settings/categories`, dòng phụ *"Quản lý cá
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Ở thanh bên trái, mở **Cài đặt hệ thống** => **Danh mục khác**. (Cùng nhóm còn có **Cài đặt chung**, **Mẫu biểu**, **Tổ chức**, **Thành viên**, **Mẫu vai trò**, **Trợ lý AI**, **Quay số may mắn** — tuỳ quyền của bạn.)
+**Bước 1**: Ở thanh bên trái, mở **Cài đặt hệ thống** => **Danh mục khác**. (Cùng nhóm còn có **Cài đặt chung**, **Mẫu biểu**, **Tổ chức**, **Thành viên**, **Mẫu vai trò**, **Kết nối Hermes**, **Quay số may mắn** — tuỳ quyền của bạn.)
 
 **Bước 2**: Màn hình hiện ba khối thẻ. Mỗi thẻ có tên và một dòng mô tả ngắn.
 

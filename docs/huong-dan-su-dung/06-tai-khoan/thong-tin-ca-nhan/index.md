@@ -72,11 +72,11 @@ Công tắc **Bật trên thiết bị này** (thẻ Thông báo đẩy) quyết
 
 ### Chọn công ty làm việc
 
-Thẻ **Công ty làm việc** (ngay dưới ảnh đại diện) có ô **Công ty đang chọn**. Copilot và ô ghi nhanh có AI dùng công ty này để xác định phạm vi dữ liệu.
+Thẻ **Công ty làm việc** (ngay dưới ảnh đại diện) có ô **Công ty đang chọn**. Hermes và ô ghi nhanh có AI dùng công ty này để xác định phạm vi dữ liệu.
 
 Lựa chọn **tự lưu theo tài khoản**, không cần bấm **Lưu thay đổi**: đăng xuất rồi đăng nhập lại, đóng mở web, mở ứng dụng đã ghim hoặc đăng nhập trên trình duyệt khác đều khôi phục công ty đã chọn, cho đến khi bạn đổi. Nếu chưa đồng bộ được (ví dụ mất mạng), thẻ báo *"Chưa lưu được lựa chọn công ty lên tài khoản. Lựa chọn trên thiết bị vẫn được giữ; hãy thử lại."* kèm nút **Thử lại**. Nếu tải danh sách lỗi, bấm **Thử lại**; lựa chọn đã lưu không bị xoá. Tài khoản chưa có công ty nào thấy dòng *"Tài khoản chưa có công ty khả dụng. Liên hệ quản trị viên để được cấp quyền."* Nếu công ty không còn khả dụng, hệ thống yêu cầu chọn lại (chỉ còn một công ty thì tự chọn).
 
-Nếu Copilot nhắc chọn tổ chức, bấm **Mở Tài khoản để chọn công ty** ngay trong khung chat. Ở **Ví cá nhân** hoặc **Báo chi nhanh**, nếu chưa có công ty đã chọn, ô ghi nhanh cho chọn công ty ngay để dùng AI đọc ảnh và giọng nói; nội dung đang soạn vẫn được giữ, và bạn vẫn dùng được **Nhập tay** khi chưa có công ty.
+Ở **Ví cá nhân** hoặc **Báo chi nhanh**, nếu chưa có công ty đã chọn, ô ghi nhanh cho chọn công ty ngay để dùng AI đọc ảnh và giọng nói; nội dung đang soạn vẫn được giữ, và bạn vẫn dùng được **Nhập tay** khi chưa có công ty.
 
 ### Trên điện thoại
 
@@ -136,7 +136,7 @@ Nút **Đổi mật khẩu** đổi **mật khẩu đăng nhập thật**. Sau k
 ## Quy trình liên quan
 
 - [Gói cước](/06-tai-khoan/goi-cuoc/) — gói thuê bao và hạn sử dụng của tài khoản.
-- [Trợ lý AI](/05-cai-dat/tro-ly-ai/) — Copilot dùng công ty bạn chọn ở đây.
+- [Kết nối Hermes](/05-cai-dat/tro-ly-ai/) dùng công ty bạn chọn ở đây.
 - [Chat Zalo](/03-quan-ly-van-hanh/chat-zalo/) — nguồn phát nhiều thông báo đẩy.
 - [Thành viên tổ chức](/05-cai-dat/nhan-vien-doi-ngu/) — nơi quản trị viên quản lý thành viên, vai trò và phạm vi.
 - [Mẫu vai trò và phân quyền](/05-cai-dat/phan-quyen/) — quyết định mỗi tài khoản làm được gì.

@@ -64,8 +64,10 @@ chưa tạo việc nào.
 
 ## Theo dõi và nhắc (tool riêng, requestId từ `crm_new_request_id`)
 
-- Tìm việc theo mã: `crm_task_follow_list` status=open, limit=50, lần lượt role=assigned_by_me, assigned_to_me, team; khớp đúng
-  `code`, lấy `id` làm `jobId`.
+- Tìm việc đang mở theo mã bằng `crm_task_follow_list` với `status=open`, `limit=50` và vai trò người dùng nêu.
+  Nếu chưa rõ vai trò, tìm lần lượt `assigned_by_me`, `assigned_to_me`, `team`. Với mỗi vai trò, bắt đầu ở `offset=0`.
+  Khi khớp đúng `code`, lấy `id` làm `jobId` và dừng tìm. Nếu chưa khớp và còn `nextOffset`, giữ nguyên vai trò và gọi
+  trang tiếp với `offset=nextOffset`. Hết các trang, chỉ báo chưa tìm thấy mã trong phạm vi đã tra.
 - Đặt theo dõi: `crm_task_follow_set` {requestId, jobId, objective, remindBeforeMinutes, notifyAssigner}. Dừng:
   `crm_task_follow_stop` {requestId, followId, expectedVersion}. CRM tự nhắc; không tạo cron Hermes.
 

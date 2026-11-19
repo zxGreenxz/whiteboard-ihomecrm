@@ -215,7 +215,7 @@ export function goiYLive(plan, riskMap) {
 // Default preview is for a human/agent. The complete snapshot stays in JSON evidence.
 export function summarizeGatePlan(plan) {
   return {
-    snapshot: plan.snapshot, profiles: plan.profiles, fullFallback: plan.fullFallback,
+    snapshot: plan.snapshot, profiles: plan.profiles, fullFallback: plan.fullFallback, crossReview: plan.crossReview,
     changedPaths: plan.changedPaths, reasons: plan.reasons, gateIds: plan.gateIds,
     gates: plan.gateIds.map((id) => { const gate = getGate(id, plan); return { id, command: gate.command, args: gate.args, local: gate.local, job: gate.job, evidenceClass: gate.evidenceClass, requires: gate.requires }; }),
     suites: plan.suiteSelections.map(({ id, runner, mode, files, viewports }) => ({ id, runner, mode, testFileCount: files.length, viewports })),
@@ -223,7 +223,7 @@ export function summarizeGatePlan(plan) {
     generatorIds: plan.generatorIds, requiredJobs: plan.requiredJobs,
     requiredExternalWorkflows: plan.requiredExternalWorkflows, browserRequirements: plan.browserRequirements,
     unavailable: plan.unavailable, localEvidence: plan.localEvidence ?? [], executionMismatches: plan.executionMismatches,
-    deferred: 'Zalo/Copilot — không chạy và không tính là pass',
+    deferred: 'Các test và gate tạm hoãn được liệt kê trong tooling/deferred-modules.json.',
   };
 }
 

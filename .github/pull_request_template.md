@@ -12,7 +12,7 @@
 - Receipt `gate:truoc-push` và test tập trung (đạt/tổng):
 - E2E headless, ảnh chụp/console nếu chạm runtime/UX:
 - Đột biến nếu chạm invariant high-risk hoặc gate có thể xanh rỗng:
-- Review chéo (tier có `crossReview`): base SHA · head SHA · người/agent review · kết luận
+- Review chéo theo Contract §3 (gồm các thay đổi bắt buộc review và các diff có `crossReview`): base SHA · head SHA · người/agent review · kết luận
 
 ## Phát hành
 

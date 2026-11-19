@@ -19,13 +19,13 @@ status: published
 Toàn bộ mục 08 là tài liệu đề xuất/trình bày. Route, quyền, trạng thái, flow và timeline trong các trang này không xác nhận tính năng đang chạy trong production. Muốn biết runtime hiện hành, đối chiếu hướng dẫn vận hành và source code.
 :::
 
-::: info Đối chiếu với bản đang chạy — 07/10/2026
+::: info Đối chiếu tại mốc 07/10/2026
 Một phần các kế hoạch dưới đây **đã thành tính năng thật**. Khi cần hướng dẫn thao tác, hãy dùng trang vận hành tương ứng thay vì bản kế hoạch:
 
-| Kế hoạch | Đã có trong bản đang chạy (đối chiếu mã nguồn commit `81c5a3cd`) | Trang hướng dẫn |
+| Kế hoạch | Ghi nhận ở commit `81c5a3cd` | Trang hướng dẫn |
 |---|---|---|
 | Quy trình thu chi | Bốn trục trạng thái phiếu; **Duyệt** tách **Duyệt và Thu/Chi**; chi bắt buộc sổ quỹ + ngày + chứng từ; báo cáo lợi nhuận tính cả phiếu chờ duyệt; máy chủ chặn chốt lợi nhuận khi tháng còn phiếu chờ duyệt; Người giữ sổ / Người biết sổ; luật chi theo hạng mục (**Cam kết chi**); **danh mục chi chuẩn**; **Báo chi nhanh**. | [Thu chi](/03-quan-ly-van-hanh/thu-chi/) · [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) · [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) · [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) · [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
-| AI Copilot | Trợ lý chat trong app có entitlement và kill switch; công cụ đọc dữ liệu; tạo phiếu thu chi qua bước xem trước + xác nhận (RPC giao dịch); điều khiển giao diện chỉ qua danh sách control an toàn; lọc link do mô hình sinh; mã PIN xác nhận bước nhạy cảm. | [Trợ lý AI](/05-cai-dat/tro-ly-ai/) |
+| AI Copilot | Bản tháng 10 có chat Copilot trong ứng dụng. Giao diện này đã được gỡ sau đó. | [Kết nối Hermes hiện nay](/05-cai-dat/tro-ly-ai/) |
 
 Chi tiết từng mục nằm ở khung *Trạng thái triển khai* đầu mỗi trang kế hoạch.
 :::
@@ -36,7 +36,7 @@ Chi tiết từng mục nằm ở khung *Trạng thái triển khai* đầu mỗ
   <p class="plan-lead">Nơi mở một kế hoạch để thuyết trình ngay hoặc in thành báo cáo: mục tiêu kinh doanh, quy trình tương lai, kiến trúc hệ thống, lộ trình triển khai, rủi ro và tiêu chí nghiệm thu.</p>
   <div class="plan-actions">
     <a class="plan-action plan-action-primary" href="/08-ke-hoach-phat-trien/quy-trinh-chi-phi/">Xem quy trình thu chi</a>
-    <a class="plan-action" href="/08-ke-hoach-phat-trien/ai-copilot/">Xem kế hoạch AI Copilot</a>
+    <a class="plan-action" href="/08-ke-hoach-phat-trien/ai-copilot/">Xem kế hoạch Copilot đã lưu trữ</a>
   </div>
 </div>
 
@@ -71,8 +71,8 @@ Chi tiết từng mục nằm ở khung *Trạng thái triển khai* đầu mỗ
   </a>
   <a class="plan-card plan-card-link" href="/08-ke-hoach-phat-trien/ai-copilot/">
     <div class="plan-audience-label">AI · VẬN HÀNH · TÀI CHÍNH</div>
-    <h3>AI Copilot bám sát nghiệp vụ ptcrm</h3>
-    <p>Đưa AI từ công cụ hỏi đáp thử nghiệm thành trợ lý đọc dữ liệu, chuẩn bị hồ sơ và tạo bản nháp an toàn, không vượt quyền người dùng.</p>
+    <h3>Kế hoạch Copilot (lưu trữ)</h3>
+    <p>Đề xuất tháng 7/2026 về việc tra cứu dữ liệu, chuẩn bị hồ sơ và tạo bản nháp trong phạm vi quyền của người dùng.</p>
     <span class="plan-link-label">Mở bản trình bày →</span>
   </a>
   <a class="plan-card plan-card-link" href="/08-ke-hoach-phat-trien/mau-plan/">
