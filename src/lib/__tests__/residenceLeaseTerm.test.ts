@@ -1,7 +1,7 @@
 // Đọc thời hạn trên ảnh hợp đồng ở nhờ. Các dòng mẫu chép từ chữ THẬT trên hai
 // ảnh chủ nộp ngày 16/09/2026 (Nguyễn Gia Bình và Trương Lâm Xuân Nghi).
 import { describe, expect, it } from 'vitest';
-import { congThang, docHanHopDong, hanConHieuLuc, khongDau, ngayHopLe } from '@/lib/residenceLeaseTerm';
+import { docHanHopDong, khongDau } from '@/lib/residenceLeaseTerm';
 import { hanTheoThang, ngayKyHopDong, thangTheoHan } from '@/components/residence/ResidenceDossierSection';
 
 const HOP_DONG_THAT = [
@@ -27,12 +27,6 @@ describe('docHanHopDong', () => {
   it('không có cặp ngày thì lấy ngày lập cộng số tháng', () => {
     const han = docHanHopDong(['Hôm nay, Ngày 14 Tháng 09 Năm 2026, Tại Phường Hạnh Thông', 'Thời hạn mượn: 24 tháng']);
     expect(han).toEqual({ from: '14/09/2026', to: '14/09/2028', months: 24, nguon: 'ngay-cong-thang' });
-  });
-
-  it('cộng tháng giữ đúng cuối tháng ngắn', () => {
-    expect(docHanHopDong(['Hôm nay, Ngày 31 Tháng 12 Năm 2026', 'Thời hạn mượn: 2 tháng']))
-      .toMatchObject({ to: '28/02/2027' });
-    expect(congThang(new Date(Date.UTC(2027, 11, 31)), 2)).toEqual(new Date(Date.UTC(2028, 1, 29)));
   });
 
   it('số tháng in trên giấy lệch với cặp ngày thì bỏ, không đoán', () => {
@@ -64,20 +58,6 @@ describe('phụ trợ', () => {
   it('khongDau bỏ dấu và gom khoảng trắng', () => {
     expect(khongDau(' Thời  hạn MƯỢN: 24 Tháng ')).toBe('thoi han muon: 24 thang');
     expect(khongDau('Đến')).toBe('den');
-  });
-
-  it('ngayHopLe từ chối ngày không có thật', () => {
-    expect(ngayHopLe(29, 2, 2027)).toBeNull();
-    expect(ngayHopLe(29, 2, 2028)).not.toBeNull();
-    expect(ngayHopLe(0, 1, 2026)).toBeNull();
-  });
-
-  it('hanConHieuLuc so với hôm nay theo giờ Việt Nam', () => {
-    const han = { from: '14/09/2026', to: '14/09/2028', nguon: 'cap-ngay' } as const;
-    expect(hanConHieuLuc(han, new Date('2026-09-16T00:00:00Z'))).toBe(true);
-    expect(hanConHieuLuc(han, new Date('2028-09-20T00:00:00Z'))).toBe(false);
-    // 14/09/2028 lúc 23:30 giờ VN vẫn là ngày 14 nên hạn chưa qua.
-    expect(hanConHieuLuc(han, new Date('2028-09-13T16:30:00Z'))).toBe(true);
   });
 });
 

@@ -4,6 +4,13 @@
   "deferredModules": "tooling/deferred-modules.json",
   "sourceSelectionRules": [
     {
+      "id": "timezone-verifier",
+      "sourcePaths": ["scripts/check-timezone-stability.mjs"],
+      "suiteId": "app-unit",
+      "testPatterns": ["scripts/__tests__/check-timezone-stability.test.mjs"],
+      "gates": ["check-timezone"]
+    },
+    {
       "id": "invoice-component-revision",
       "sourcePaths": [
         "supabase/migrations/*_invoice_component_revision_consistency.sql",
