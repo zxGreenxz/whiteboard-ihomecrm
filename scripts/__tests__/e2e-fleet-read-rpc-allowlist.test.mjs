@@ -15,7 +15,8 @@ const MODULE_PATH = fileURLToPath(new URL("../../.e2e-fleet/support/read-rpc-all
 const SURFACE_PATH = fileURLToPath(new URL("../../contracts/surfaces/rpc-surface.json", import.meta.url));
 
 /**
- * 17 tên VOLATILE kế thừa từ danh sách đọc cũ của các spec (trước PR #205). Mỗi tên chỉ được ở
+ * 16 tên VOLATILE kế thừa từ danh sách đọc cũ của các spec (trước PR #205; get_notification_org_config_v1 gỡ 22/10
+ * vì web chuyển sang get_notification_org_config_v2 chỉ ở /account/notifications, PR #275). Mỗi tên chỉ được ở
  * nhóm khai ở đây; thêm tên VOLATILE mới hoặc chuyển nhóm phải sửa bảng này kèm lý do.
  * "Chỉ SELECT" = thân hàm ở migration định nghĩa cuối không INSERT/UPDATE/DELETE; chỉ thiếu khai STABLE.
  */
@@ -23,7 +24,6 @@ const VOLATILE_EXCEPTIONS = {
   business_performance_organizations_v1: { groups: ["SHELL"], reason: "chỉ SELECT; sidebar/báo cáo gọi khi mở app (useBusinessPerformance)" },
   is_company_owner_self_v1: { groups: ["SHELL"], reason: "chỉ SELECT, trả boolean; mọi màn hỏi vai chủ công ty (useIsCompanyOwner)" },
   is_org_owner_self_v1: { groups: ["SHELL"], reason: "chỉ SELECT, trả boolean; mọi màn hỏi vai chủ org (useIsOrgOwner)" },
-  get_notification_org_config_v1: { groups: ["SHELL"], reason: "chỉ SELECT; chuông thông báo đọc cấu hình (useNotificationSettings)" },
   get_my_notification_preferences_v1: { groups: ["SHELL"], reason: "chỉ SELECT; chuông thông báo đọc sở thích (useNotificationSettings)" },
   get_invoice_statistics_v2: { groups: ["dashboard", "invoices"], reason: "chỉ SELECT; thẻ thống kê hoá đơn cũ ở / và /invoices" },
   get_customer_credit_balance_v1: { groups: ["invoices"], reason: "chỉ SELECT, trả numeric; số dư có của khách ở /invoices/:id" },

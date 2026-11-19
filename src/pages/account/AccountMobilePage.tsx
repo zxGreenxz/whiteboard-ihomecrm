@@ -1,7 +1,6 @@
-import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
 import { focusFirstError } from '@/lib/formErrors';
 import { passwordFieldErrors, AvatarProfilePartialError } from '@/lib/accountFeedback';
-import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -13,11 +12,8 @@ import { useProfile, useUpdateProfile, useUploadAvatar, useChangePassword } from
 import { useAuth, useLogout } from "@/hooks/useAuth";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
-import { isPushSupported, isSubscribed, enablePush, disablePush } from "@/lib/push";
-import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
 import AccountOrganizationCard from "@/components/account/AccountOrganizationCard";
 import { toast } from "sonner";
-import { useOrganization } from "@/contexts/OrganizationContext";
 import { testMediaSource } from '@/lib/storage/testMedia';
 
 const APP_VERSION = "5.2.0";
@@ -34,7 +30,8 @@ const initialsOf = (name?: string | null, email?: string | null) => {
 /**
  * Tài khoản — màn hình app full-screen mobile (web-app). Dựng theo handoff
  * Claude Design (iHomeCRM Mobile.dc.html · 1k). Nối dữ liệu thật: useProfile +
- * đổi mật khẩu + tải ảnh đại diện + bật/tắt Web Push (@/lib/push) + đăng xuất.
+ * đổi mật khẩu + tải ảnh đại diện + đăng xuất. Thông báo (push của máy này, loại thông báo,
+ * giờ yên) nằm ở /account/notifications — ở đây chỉ còn một mục dẫn sang.
  * Scope .cm-stage/.cm-app, ngoài MainLayout.
  */
 export default function AccountMobilePage() {
@@ -43,7 +40,6 @@ export default function AccountMobilePage() {
   const { data: profile } = profileQuery;
   const { data: authUser } = useAuth();
   const { data: perms } = useMyPermissions();
-  const { selectedOrganizationId } = useOrganization();
   const updateProfile = useUpdateProfile();
   const uploadAvatar = useUploadAvatar();
   const changePassword = useChangePassword();
@@ -62,11 +58,6 @@ export default function AccountMobilePage() {
   const [passwordError, setPasswordError] = useState("");
   const [avatarError, setAvatarError] = useState("");
 
-  const [pushOn, setPushOn] = useState<boolean | null>(null);
-  const [pushBusy, setPushBusy] = useState(false);
-  const [pushError, setPushError] = useState("");
-  const [pendingPush, setPendingPush] = useState<unknown>(null);
-
   useEffect(() => {
     if (profile && !init) {
       setFullName(profile.full_name || "");
@@ -75,21 +66,6 @@ export default function AccountMobilePage() {
       setInit(true);
     }
   }, [profile, init]);
-
-  useEffect(() => {
-    let alive = true;
-    if (isPushSupported()) {
-      isSubscribed()
-        .then((s) => alive && setPushOn(s))
-        .catch(error => { if (alive) {
-          setPushOn(null);
-          setPushError(actionErrorMessage(error, "Chưa kiểm tra được trạng thái thông báo đẩy"));
-        } });
-    }
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   const isAdmin = canUse(perms, "users", "view");
   const roleLabel = isAdmin ? "Quản trị viên" : "Nhân viên";
@@ -129,55 +105,6 @@ export default function AccountMobilePage() {
         setConfirmPassword("");
       },
     });
-  };
-
-  const onTogglePush = async (next: boolean) => {
-    if (!isPushSupported()) {
-      toast.error("Trình duyệt/thiết bị không hỗ trợ thông báo đẩy");
-      return;
-    }
-    setPushBusy(true);
-    setPushError("");
-    try {
-      if (next) {
-        const res = await enablePush(selectedOrganizationId);
-        if (res === "granted") {
-          setPushOn(true);
-          toast.success("Đã bật thông báo đẩy trên thiết bị này");
-        } else if (res === "denied") {
-          toast.error("Bạn đã chặn quyền thông báo. Hãy mở lại trong cài đặt trình duyệt.");
-        } else {
-          toast.info("Chưa cấp quyền thông báo");
-        }
-      } else {
-        const result = await disablePush();
-        if (result === "unsupported") {
-          toast.info("Trình duyệt/thiết bị không hỗ trợ thông báo đẩy");
-          return;
-        }
-        setPushOn(false);
-        if (result === "already-disabled") toast.info("Thiết bị này đã tắt thông báo đẩy.");
-        else toast.success("Đã tắt thông báo trên thiết bị này");
-      }
-    } catch (e) {
-      setPushError(actionErrorMessage(e, "Chưa xác nhận được thay đổi thông báo đẩy"));
-      if (hasUnconfirmedResponse(e)) { setPushOn(null); setPendingPush(e); }
-      notifyActionError(e, "Chưa xác nhận được thay đổi thông báo đẩy");
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
-  const readPushState = async () => {
-    setPushBusy(true);
-    try {
-      setPushOn(await isSubscribed(pendingPush));
-      setPendingPush(null);
-      setPushError("");
-    } catch (error) {
-      setPushOn(null);
-      setPushError(actionErrorMessage(error, "Chưa kiểm tra được trạng thái thông báo đẩy"));
-    } finally { setPushBusy(false); }
   };
 
   return (
@@ -269,30 +196,17 @@ export default function AccountMobilePage() {
 
             <div className="msub"><span className="msub-t">Tùy chọn</span></div>
             <div className="acc-rows">
-              {pushError && <p role="alert" className="text-sm text-destructive">{pushError}</p>}
-              <div className="sp-rowcard">
+              {/* Một lối duy nhất sang trang Cài đặt thông báo (cũng chỉ bọc ProtectedRoute):
+                  bật push của máy này, gửi thử, hướng dẫn iPhone, loại thông báo, giờ yên. */}
+              <button className="sp-rowcard" type="button" onClick={() => navigate("/account/notifications")}>
                 <span className="ic brand"><Bell /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <span className="gn">Thông báo đẩy</span>
-                  {pushOn === null && <button type="button" className="text-sm underline" onClick={() => void readPushState()} disabled={pushBusy}>Tải lại trạng thái thiết bị</button>}
-                  <span className="gv">{pushOn === null ? "Chưa xác định trạng thái đăng ký của thiết bị" : "Nhắc nợ · hoá đơn · công việc"}</span>
+                  <span className="gn">Cài đặt thông báo</span>
+                  <span className="gv">Thiết bị nhận · loại thông báo · giờ yên</span>
                 </div>
-                <button
-                  className={"sp-switch" + (pushOn ? " on" : "")}
-                  onClick={() => !pushBusy && onTogglePush(!pushOn)}
-                  aria-label="Thông báo đẩy"
-                  disabled={pushBusy || pushOn === null}
-                >
-                  <span className="knob" />
-                </button>
-              </div>
+                <span className="chev"><ChevronRight size={18} /></span>
+              </button>
             </div>
-
-            {/* Sở thích thông báo cá nhân — đặt NGAY dưới công tắc push, ở /account/profile.
-                Đây là lối duy nhất 8/10 người nhận thông báo có thể tự tắt loại họ không
-                muốn: họ không có `settings.view` nên /settings/general đóng với họ, và
-                trang đó cũng không có nhánh mobile. */}
-            <NotificationPreferencesCard variant="mobile" />
 
             <div className="acc-rows">
               <div className="sp-rowcard">

@@ -1,11 +1,21 @@
 export type NetworkCenterMode = "off" | "demo" | "production";
 
+/**
+ * Bốn projection đã khử nhạy mà màn Network Center nghe realtime.
+ *
+ * 21/10/2026 (RT-OTHER-1, RT-DB-2): BỎ `network_worker_building_status`. Heartbeat
+ * worker UPSERT bảng đó ~6.300 lần/ngày mà KHÔNG RPC hay màn nào đọc nó; mỗi nhịp
+ * tim (~30 s) vẫn làm tab Network Center — kể cả tab ẩn — gọi lại ~21 RPC ra đúng
+ * dữ liệu cũ. Bảng rời publication ở migration
+ * 20261021170902_realtime_publication_toi_uu.sql. Nhịp tim từng là cơ chế tự làm
+ * tươi duy nhất sau khi rớt kết nối; nay việc đó do bắt kịp của subscribeResilient
+ * (src/lib/network-center/realtimeSync.ts).
+ */
 export const NETWORK_CENTER_REALTIME_TABLES = [
   "network_device_current",
   "network_interface_current",
   "network_incidents",
   "network_command_events",
-  "network_worker_building_status",
 ] as const;
 
 export type NetworkCenterRealtimeTable = (typeof NETWORK_CENTER_REALTIME_TABLES)[number];

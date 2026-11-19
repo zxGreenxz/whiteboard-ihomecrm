@@ -1,22 +1,41 @@
-export interface LifecycleRpc {
-  (name: string, args?: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }>;
-}
+import {
+  callSendPush,
+  configErrorCountsAsFailure,
+  FAILURE_OUTCOMES,
+  formatEdgeError,
+  rpcValue,
+  runGenericPushDrain,
+  type DrainOptions,
+  type DrainResult,
+  type DrainRpc,
+  type FetchLike,
+} from '../_shared/push-drain.ts';
+
+// Một lượt cron 15' (B12, plan 2026-10-21 §3) chạy BA pha, mỗi pha cô lập lỗi:
+//   (a) maintenance — notification_maintenance_v1: đối soát thông báo lỗi thời, dọn push_send_log;
+//   (b) lifecycle   — sweep TỪNG công ty, rồi claim/validate/settle nhắc vòng đời (gồm họ nhắc hoá đơn/HĐ/cọc,
+//                     logic ở SQL);
+//   (c) drain       — hàng đợi push E1–E6 dùng chung (_shared/push-drain.ts).
+// Pha lỗi ghi lifecycle_reminder_record_failure_v1 với tiền tố '[maintenance]'/'[lifecycle]'/'[drain]'
+// rồi pha sau VẪN chạy. Kết quả ok=false ⇒ edge trả 503 để cron/health thấy lượt hỏng.
+// Ngân sách thời gian: LIFECYCLE_RUN_BUDGET_MS tính từ lúc vào runLifecycleReminders (đầu handler) cho CẢ ba
+// pha — pg_net gọi hàm này với timeout 120 s; drain ngừng mở lời gọi send-push mới khi hết ngân sách.
+
+/** Tổng ngân sách một lượt cron (3 pha), chừa ~10 s cho settle/record_run trước timeout 120 s của pg_net. */
+export const LIFECYCLE_RUN_BUDGET_MS = 110_000;
+
+export type LifecycleRpc = DrainRpc;
+
 export interface LifecycleDelivery {
   id: string;
   lease: string;
   user_id: string;
+  organization_id: string | null;
   idempotency_key: string;
   notification_ids: string[];
   title: string;
   body: string;
   url: string;
-}
-type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
-
-async function rpcValue(rpc: LifecycleRpc, name: string, args?: Record<string, unknown>) {
-  const result = await rpc(name, args);
-  if (result.error) throw new Error(`${name}: ${result.error.message}`);
-  return result.data;
 }
 
 export function parseLifecycleDelivery(value: unknown): LifecycleDelivery {
@@ -28,64 +47,196 @@ export function parseLifecycleDelivery(value: unknown): LifecycleDelivery {
   if (!Array.isArray(row.notification_ids) || row.notification_ids.some(id => typeof id !== 'string')) {
     throw new Error('Malformed lifecycle notification IDs');
   }
-  return row as unknown as LifecycleDelivery;
+  if (row.organization_id !== undefined && row.organization_id !== null && typeof row.organization_id !== 'string') {
+    throw new Error('Malformed lifecycle delivery: organization_id');
+  }
+  return {
+    ...(row as unknown as LifecycleDelivery),
+    organization_id: typeof row.organization_id === 'string' && row.organization_id ? row.organization_id : null,
+  };
 }
 
-/** Server-only sweep. No browser, financial jobs or global drain dependency. */
-export async function runLifecycleReminders(rpc: LifecycleRpc, fetcher: FetchLike, url: string, serviceKey: string) {
-  const tally: Record<string, number> = {};
-  let delivered = 0;
-  const failures: string[] = [];
-  try {
-    const sweep = await rpcValue(rpc, 'lifecycle_reminder_sweep_v1');
-    const rawBatch = await rpcValue(rpc, 'lifecycle_reminder_claim_v1', { p_limit: 10 });
-    if (!Array.isArray(rawBatch)) throw new Error('Malformed lifecycle claim response');
-    for (const raw of rawBatch) {
-      const claimed = parseLifecycleDelivery(raw);
-      // Recheck immediately before HTTP; permission/source changes since batch claim
-      // discard this delivery. We send only fresh count text, no customer details.
-      const validated = await rpcValue(rpc, 'lifecycle_reminder_validate_v1', { p_id: claimed.id, p_lease: claimed.lease });
-      if (validated === null) { tally.SKIPPED = (tally.SKIPPED ?? 0) + 1; continue; }
-      const item = parseLifecycleDelivery(validated);
-      let outcome = 'PROVIDER_ERROR';
-      let sent = 0;
-      let error: string | null = null;
-      try {
-        const response = await fetcher(`${url}/functions/v1/send-push`, {
-          method: 'POST', headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: item.user_id, idempotencyKey: item.idempotency_key, notificationIds: item.notification_ids,
-            title: item.title, body: item.body, url: item.url, tag: `lifecycle:${item.id}` }),
-          signal: AbortSignal.timeout(8000),
-        });
-        const body: unknown = await response.json();
-        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Invalid push response body');
-        const value = body as Record<string, unknown>;
-        const allowed = ['SENT', 'PARTIAL', 'DUPLICATE', 'NO_DEVICE', 'CONFIG_ERROR', 'ALL_FAILED', 'PROVIDER_ERROR', 'BAD_REQUEST', 'UNAUTHORIZED'];
-        if (typeof value.outcome !== 'string' || !allowed.includes(value.outcome)) throw new Error('Invalid push outcome');
-        outcome = value.outcome;
-        sent = typeof value.sent === 'number' && Number.isInteger(value.sent) && value.sent >= 0 ? value.sent : 0;
-        error = typeof value.error === 'string' ? value.error : null;
-        // HTTP 200 / DUPLICATE are not proof of provider acceptance. CONFIG_ERROR
-        // is returned before send-push gets an idempotencyKey (e.g. TEST no VAPID).
-        if (['SENT', 'PARTIAL'].includes(outcome) && (sent === 0 || value.idempotencyKey !== item.idempotency_key)) {
-          throw new Error('Push acceptance receipt does not match this attempt');
-        }
-      } catch (reason) {
-        outcome = 'PROVIDER_ERROR'; sent = 0; error = String(reason);
-      }
-      await rpcValue(rpc, 'lifecycle_reminder_settle_v1', { p_id: item.id, p_lease: item.lease, p_outcome: outcome, p_sent: sent, p_error: error });
-      tally[outcome] = (tally[outcome] ?? 0) + 1;
-      if (['SENT', 'PARTIAL'].includes(outcome) && sent > 0) delivered++;
-      if (['PROVIDER_ERROR', 'ALL_FAILED', 'BAD_REQUEST', 'UNAUTHORIZED'].includes(outcome)) failures.push(`${item.id}: ${outcome}`);
-    }
-    if (failures.length) {
-      await rpcValue(rpc, 'lifecycle_reminder_record_failure_v1', { p_error: failures.join('; ') });
-    }
-    return { ok: failures.length === 0, sweep, batches: rawBatch.length, delivered, outcomes: tally };
-  } catch (reason) {
-    // A failed sweep/claim/settle must be observable and retriable, never a daily
-    // done flag. Propagate if the health write also fails; edge returns HTTP 500.
-    await rpcValue(rpc, 'lifecycle_reminder_record_failure_v1', { p_error: String(reason).slice(0, 2000) });
-    throw reason;
+export interface LifecycleSweepResult {
+  organizationId: string;
+  result: unknown;
+}
+
+export interface LifecyclePhaseState {
+  /** Kết quả sweep theo từng công ty (công ty sweep lỗi không có mặt ở đây mà nằm ở `failures`). */
+  sweep: LifecycleSweepResult[];
+  batches: number;
+  delivered: number;
+  outcomes: Record<string, number>;
+  failures: string[];
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** lifecycle_reminder_org_ids_v1() → uuid[] (công ty ACTIVE). Sai hình dạng ⇒ ném, không đoán. */
+export function parseLifecycleOrgIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.some((id) => typeof id !== 'string' || !UUID_RE.test(id))) {
+    throw new Error('Malformed lifecycle_reminder_org_ids_v1 response');
   }
+  return value as string[];
+}
+
+/**
+ * Sweep TỪNG công ty: mỗi RPC có trần statement_timeout 8 s riêng của PostgREST (một lệnh quét mọi công ty
+ * sẽ chạm trần khi dữ liệu/công ty tăng). Không bao giờ ném: lỗi lấy danh sách hay lỗi một công ty chỉ vào
+ * `state.failures` ('sweep <org>: …'), công ty sau vẫn sweep, và claim/validate/settle vẫn chạy cho delivery
+ * đã có sẵn.
+ */
+export async function runLifecycleSweeps(rpc: LifecycleRpc, state: LifecyclePhaseState): Promise<void> {
+  let orgIds: string[];
+  try {
+    orgIds = parseLifecycleOrgIds(await rpcValue(rpc, 'lifecycle_reminder_org_ids_v1'));
+  } catch (reason) {
+    state.failures.push(`sweep org_ids: ${formatEdgeError(reason)}`);
+    return;
+  }
+  for (const organizationId of orgIds) {
+    try {
+      const result = await rpcValue(rpc, 'lifecycle_reminder_sweep_v1', { p_organization_id: organizationId });
+      state.sweep.push({ organizationId, result });
+    } catch (reason) {
+      state.failures.push(`sweep ${organizationId}: ${formatEdgeError(reason)}`);
+    }
+  }
+}
+
+/**
+ * Pha (b). Sweep tự cô lập lỗi (xem runLifecycleSweeps). Ném khi claim/validate/settle hỏng; `state` giữ số đếm
+ * và các lỗi tới lúc hỏng.
+ */
+export async function runLifecyclePhase(
+  rpc: LifecycleRpc,
+  fetcher: FetchLike,
+  url: string,
+  serviceKey: string,
+  state: LifecyclePhaseState,
+): Promise<LifecyclePhaseState> {
+  await runLifecycleSweeps(rpc, state);
+  // Không có env đánh dấu TEST: CONFIG_ERROR là lỗi trừ khi URL chứng minh là project TEST (thiếu VAPID cố ý).
+  const configErrorIsFailure = configErrorCountsAsFailure(url);
+  const rawBatch = await rpcValue(rpc, 'lifecycle_reminder_claim_v1', { p_limit: 10 });
+  if (!Array.isArray(rawBatch)) throw new Error('Malformed lifecycle claim response');
+  state.batches = rawBatch.length;
+  for (const raw of rawBatch) {
+    const claimed = parseLifecycleDelivery(raw);
+    // Recheck immediately before HTTP; permission/source changes since batch claim
+    // discard this delivery. We send only fresh count text, no customer details.
+    const validated = await rpcValue(rpc, 'lifecycle_reminder_validate_v1', { p_id: claimed.id, p_lease: claimed.lease });
+    if (validated === null) { state.outcomes.SKIPPED = (state.outcomes.SKIPPED ?? 0) + 1; continue; }
+    const item = parseLifecycleDelivery(validated);
+    // send-push chép data.notificationIds/organizationId vào payload ⇒ SW bấm vào đánh dấu đọc
+    // đúng dòng và chuyển đúng công ty. HTTP 200/DUPLICATE không phải bằng chứng đã nhận —
+    // callSendPush chỉ đọc outcome và đòi biên nhận khớp khoá của lượt này.
+    const data: Record<string, unknown> = { notificationIds: item.notification_ids };
+    if (item.organization_id) data.organizationId = item.organization_id;
+    const pushed = await callSendPush(fetcher, url, serviceKey, {
+      userId: item.user_id, idempotencyKey: item.idempotency_key, notificationIds: item.notification_ids,
+      title: item.title, body: item.body, url: item.url, tag: `lifecycle:${item.id}`, data,
+    });
+    const sent = pushed.outcome === 'SENT' || pushed.outcome === 'PARTIAL' ? pushed.sent : 0;
+    await rpcValue(rpc, 'lifecycle_reminder_settle_v1', {
+      p_id: item.id, p_lease: item.lease, p_outcome: pushed.outcome, p_sent: sent, p_error: pushed.error,
+    });
+    state.outcomes[pushed.outcome] = (state.outcomes[pushed.outcome] ?? 0) + 1;
+    if ((pushed.outcome === 'SENT' || pushed.outcome === 'PARTIAL') && sent > 0) state.delivered++;
+    if (FAILURE_OUTCOMES.has(pushed.outcome) || (pushed.outcome === 'CONFIG_ERROR' && configErrorIsFailure)) {
+      state.failures.push(`${item.id}: ${pushed.outcome}`);
+    }
+  }
+  return state;
+}
+
+export interface PhaseFailure {
+  ok: false;
+  error: string;
+  /** Có khi chính lệnh ghi lifecycle_reminder_record_failure_v1 cũng hỏng. */
+  failureLogError: string | null;
+}
+
+export type MaintenanceReport = { ok: true; result: unknown } | PhaseFailure;
+export type LifecycleReport = LifecyclePhaseState & { ok: boolean; error: string | null; failureLogError: string | null };
+export type DrainReport = (DrainResult & { failureLogError: string | null }) | (PhaseFailure & { job: 'push_drain' });
+
+export interface LifecycleRunResult {
+  ok: boolean;
+  maintenance: MaintenanceReport;
+  lifecycle: LifecycleReport;
+  drain: DrainReport;
+}
+
+async function recordPhaseFailure(rpc: LifecycleRpc, phase: 'maintenance' | 'lifecycle' | 'drain', message: string): Promise<string | null> {
+  try {
+    await rpcValue(rpc, 'lifecycle_reminder_record_failure_v1', { p_error: `[${phase}] ${message}`.slice(0, 2000) });
+    return null;
+  } catch (reason) {
+    // Không ném: pha sau vẫn phải chạy; ok=false của pha này đã đủ để edge trả 503.
+    const text = formatEdgeError(reason);
+    console.error('[lifecycle-reminders] ghi lỗi pha thất bại', phase, text);
+    return text;
+  }
+}
+
+/**
+ * Server-only. Không phụ thuộc trình duyệt, job tài chính hay lịch Vercel.
+ * `drainOptions.startedAt` vắng ⇒ lấy lúc vào hàm (handler gọi ngay sau kiểm auth, nên đó là đầu request);
+ * `deadlineMs` vắng ⇒ LIFECYCLE_RUN_BUDGET_MS cho cả ba pha.
+ */
+export async function runLifecycleReminders(
+  rpc: LifecycleRpc,
+  fetcher: FetchLike,
+  url: string,
+  serviceKey: string,
+  drainOptions: DrainOptions = {},
+): Promise<LifecycleRunResult> {
+  const now = drainOptions.now ?? Date.now;
+  const budget: DrainOptions = {
+    deadlineMs: LIFECYCLE_RUN_BUDGET_MS,
+    ...drainOptions,
+    now,
+    startedAt: drainOptions.startedAt ?? now(),
+  };
+
+  // (a) Bảo trì: chạy TRƯỚC để thông báo đã lỗi thời thành CANCELLED trước khi claim/push.
+  let maintenance: MaintenanceReport;
+  try {
+    maintenance = { ok: true, result: await rpcValue(rpc, 'notification_maintenance_v1') };
+  } catch (reason) {
+    const error = formatEdgeError(reason);
+    maintenance = { ok: false, error, failureLogError: await recordPhaseFailure(rpc, 'maintenance', error) };
+  }
+
+  // (b) Lifecycle + họ nhắc server.
+  const state: LifecyclePhaseState = { sweep: [], batches: 0, delivered: 0, outcomes: {}, failures: [] };
+  let lifecycle: LifecycleReport;
+  try {
+    await runLifecyclePhase(rpc, fetcher, url, serviceKey, state);
+    lifecycle = state.failures.length
+      ? { ...state, ok: false, error: null, failureLogError: await recordPhaseFailure(rpc, 'lifecycle', state.failures.join('; ')) }
+      : { ...state, ok: true, error: null, failureLogError: null };
+  } catch (reason) {
+    // Claim/validate/settle hỏng phải quan sát được và thử lại được ở nhịp sau, không bao giờ là cờ "xong ngày".
+    // Lỗi sweep (nếu có) đã nằm trong state.failures nên đi kèm `detail`.
+    const error = formatEdgeError(reason);
+    const detail = state.failures.length ? `${error} | ${state.failures.join('; ')}` : error;
+    lifecycle = { ...state, ok: false, error, failureLogError: await recordPhaseFailure(rpc, 'lifecycle', detail) };
+  }
+
+  // (c) Drain chung E1–E6.
+  let drain: DrainReport;
+  try {
+    const result = await runGenericPushDrain(rpc, fetcher, url, serviceKey, budget);
+    const ok = result.ok && result.failures.length === 0;
+    const problems = [result.error, result.recordError && `record_run ${result.recordError}`, result.failures.join('; ')]
+      .filter((part): part is string => !!part);
+    drain = { ...result, ok, failureLogError: ok ? null : await recordPhaseFailure(rpc, 'drain', problems.join(' | ')) };
+  } catch (reason) {
+    const error = formatEdgeError(reason);
+    drain = { job: 'push_drain', ok: false, error, failureLogError: await recordPhaseFailure(rpc, 'drain', error) };
+  }
+
+  return { ok: maintenance.ok && lifecycle.ok && drain.ok, maintenance, lifecycle, drain };
 }

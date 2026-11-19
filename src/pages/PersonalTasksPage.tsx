@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Bell, CheckCheck, Download, ListTodo, Plus, Clock3 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePersonalTasks } from '@/hooks/usePersonalTasks';
@@ -24,7 +24,14 @@ function PersonalTasksBoard({ userId }: { userId: string }) {
   const { tasks, error, loading, busy, refresh, add, change, remove } = usePersonalTasks(userId);
   const reminders = usePersonalTaskReminders(userId);
   const [active, setActive] = useState<TaskStatus>('todo');
-  const [sheet, setSheet] = useState<SheetState>(null);
+  // `?mo=nhac-hen`: trang Cài đặt thông báo dẫn thẳng vào ô Nhắc hẹn (nhắc cục bộ của máy này).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [sheet, setSheet] = useState<SheetState>(() => searchParams.get('mo') === 'nhac-hen' ? { type: 'reminders' } : null);
+  useEffect(() => {
+    if (searchParams.get('mo') !== 'nhac-hen') return;
+    const next = new URLSearchParams(searchParams); next.delete('mo');
+    setSearchParams(next, { replace: true }); // Đóng ô rồi tải lại trang không tự mở lại.
+  }, [searchParams, setSearchParams]);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     let timer: number;

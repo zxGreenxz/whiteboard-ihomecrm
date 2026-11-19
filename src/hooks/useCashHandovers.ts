@@ -100,7 +100,10 @@ export const useCashHandoverList = () => {
     enabled: !!currentUser?.id,
     // Polling nhẹ để người nhận thấy phiên mới mà không cần reload.
     // 60s là đủ cho badge (trước 30s — x2 request nền vô ích trên instance nhỏ).
-    refetchInterval: 60_000,
+    // 21/10/2026 (RT-OTHER-5): 60 s → 5 phút. Hub realtime phủ cash_handovers
+    // (key ['cash-handovers']) và từ nay bắt kịp sau rớt kết nối, nên poll chỉ
+    // còn là lưới an toàn cuối.
+    refetchInterval: 5 * 60_000,
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<CashHandover[]> => {
       // Select đúng cột UI dùng (CashHandover/HandoverItemLite) thay '*' —

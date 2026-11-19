@@ -96,6 +96,16 @@ export interface NotificationRoute {
 export const NOTIFICATION_URL_ALLOWLIST: readonly NotificationRoute[] = [
   // Ngày của tôi — App.tsx:380, KHÔNG bọc RequirePermission ⇒ đích dự phòng an toàn.
   { path: "/my-day", module: null },
+  // Ba đích dưới chỉ ProtectedRoute. Thêm 21/10/2026 vì bấm push giờ cũng điều hướng
+  // SPA qua bảng này (cầu nối service worker): thiếu chúng thì "Gửi thông báo thử"
+  // (url '/') và nhắc "Việc của tôi" (url '/viec-cua-toi') bấm vào không đi đâu.
+  { path: "/", module: null },
+  { path: "/viec-cua-toi", module: null },
+  { path: "/account/notifications", module: null },
+  // settingsRoutes.tsx — chỉ ProtectedRoute, trang tự kiểm quyền. Đích của cảnh báo lịch
+  // Hermes (hermes_schedule_notify_v1/v2). Thiếu dòng này thì bấm push khi app đang mở
+  // không đi đâu, còn mở tab mới lại tới đúng trang (NOTIF-CLIENT-5).
+  { path: "/settings/hermes", module: null },
   // App.tsx:316
   { path: "/notifications", module: "notifications" },
   // App.tsx:367. E1 cần CẢ HAI param: chỉ `approval_status=UNAPPROVED` mà thiếu
@@ -135,6 +145,8 @@ export const NOTIFICATION_URL_ALLOWLIST: readonly NotificationRoute[] = [
   { path: "/finance/cashbooks/closure", idSegment: true, idKind: "int", module: "cashbooks" },
   // App.tsx:365 / :345 — fallback cho các dòng thông báo cũ mang invoice_id/contract_id.
   { path: "/invoices", idSegment: true, module: "invoices" },
+  // Nhắc hoá đơn sắp đến hạn/quá hạn phía server (lane lifecycle mở rộng 21/10/2026) trỏ danh sách.
+  { path: "/invoices", module: "invoices" },
   { path: "/contracts", idSegment: true, module: "contracts" },
   { path: "/contracts", module: "contracts" },
   { path: "/rooms", module: "rooms" },

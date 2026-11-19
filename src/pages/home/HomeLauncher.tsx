@@ -14,6 +14,11 @@ import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { LAUNCHER_SECTIONS, type LauncherTile } from './launcherTiles';
 import InstallHint from '@/components/pwa/InstallHint';
 import { usePrefetchHeavyPages } from '@/hooks/usePrefetchHeavyPages';
+import { useUnreadNotificationsCount } from '@/hooks/useNotifications';
+import { canUse } from '@/lib/permissionPages';
+
+/** Số trên nút chuông trang chủ: cùng quy ước với chuông desktop (99+). */
+const nhanSoChuaDoc = (n: number): string => (n > 99 ? '99+' : String(n));
 
 // Rút gọn tiền cho ô hero: 18.4tr · 84.5tr · 1.2 tỷ (đồng bộ style Space Mono
 // của Thu tiền). Số nhỏ < 1.000 thì để nguyên.
@@ -88,6 +93,10 @@ const HomeLauncher = () => {
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
   const [animateIn] = useState(() => !enteredOnce());
   const superAdmin = useIsSuperAdmin();
+  // Chuông chỉ hiện khi vào được /notifications (route bọc RequirePermission
+  // notifications.view — thiếu quyền thì bấm vào bị đá ngược về chính trang này).
+  const xemThongBao = !permsLoading && canUse(perms, 'notifications', 'view');
+  const { data: soChuaDoc } = useUnreadNotificationsCount();
 
   // Ẩn splash tức thì ngay khi launcher mount (skeleton bên dưới lo phần dữ liệu).
   useEffect(() => {
@@ -124,9 +133,16 @@ const HomeLauncher = () => {
                 <span className="hh-name">{name}</span>
               </div>
               <div className="hh-actions">
-                <Link to="/notifications" className="hh-icbtn" aria-label="Thông báo">
-                  <Bell /><span className="nt" />
-                </Link>
+                {xemThongBao ? (
+                  <Link
+                    to="/notifications"
+                    className="hh-icbtn"
+                    aria-label={soChuaDoc ? `Thông báo: ${nhanSoChuaDoc(soChuaDoc)} chưa đọc` : 'Thông báo'}
+                  >
+                    {/* Số thật thay chấm đỏ cố định cũ (luôn báo "có mới" kể cả khi 0). */}
+                    <Bell />{soChuaDoc ? <span className="nt" aria-hidden="true">{nhanSoChuaDoc(soChuaDoc)}</span> : null}
+                  </Link>
+                ) : null}
                 <Link to="/account/profile" className="hh-avatar" aria-label="Tài khoản">
                   {avatarInitial(profile?.full_name, profile?.email || user?.email)}
                 </Link>

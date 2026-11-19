@@ -1,11 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import NotificationBell from './NotificationBell';
+import RealtimeSyncBanner from '@/components/layout/RealtimeSyncBanner';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/hooks/useAuth';
 import { SIDEBAR_EASING, useSidebarState } from './useSidebarState';
 import { LucideIcon } from 'lucide-react';
+
+/** Mốc lg của Tailwind: từ đây sidebar thay header mobile. */
+const LG_QUERY = '(min-width: 1024px)';
+
+/**
+ * Bố cục desktop (≥ lg) hay mobile — khởi tạo ĐỒNG BỘ từ matchMedia để khung
+ * đầu không dựng cả hai chuông rồi gỡ một. Không có matchMedia (test cũ) ⇒ coi
+ * như desktop, đúng như trình duyệt rộng mặc định.
+ */
+function useLayoutDesktop(): boolean {
+  const doc = () => typeof window === 'undefined' || typeof window.matchMedia !== 'function' || window.matchMedia(LG_QUERY).matches;
+  const [desktop, setDesktop] = useState(doc);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(LG_QUERY);
+    const onChange = () => setDesktop(mql.matches);
+    mql.addEventListener('change', onChange);
+    onChange();
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return desktop;
+}
 
 interface MainLayoutProps {
   /** Personal mobile surface supplies its own bottom navigation. */
@@ -45,6 +68,10 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBl
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { data: user } = useAuth();
   const sidebar = useSidebarState(user?.id);
+  // CHỈ MỘT chuông mỗi trang. Trước đây header mobile (ẩn bằng CSS trên desktop) và
+  // sidebar desktop (ẩn bằng CSS trên mobile) đều dựng NotificationBell: gấp đôi
+  // observer + DropdownMenu, và mỗi sự kiện realtime render hai lần.
+  const desktop = useLayoutDesktop();
 
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
 
@@ -52,7 +79,7 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBl
     <div className="min-h-screen bg-background">
       {/* Header — chỉ còn trên mobile (desktop đã dồn hết vào sidebar) */}
       <div className={hideMobileHeader ? 'hidden' : 'lg:hidden'}>
-        <Header onMenuClick={toggleMobileMenu} />
+        <Header onMenuClick={toggleMobileMenu} showNotifications={!desktop} />
       </div>
 
       <div className="flex">
@@ -77,7 +104,7 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBl
             onToggle={sidebar.toggle}
             onPointerEnter={sidebar.onPointerEnter}
             onPointerLeave={sidebar.onPointerLeave}
-            notificationSlot={<NotificationBell />}
+            notificationSlot={desktop ? <NotificationBell /> : undefined}
           />
         </div>
 
@@ -92,11 +119,19 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBl
         </Sheet>
 
         {/* Main Content Area */}
-        <main className="min-w-0 flex-1 overflow-x-hidden">
+        <main
+          className={
+            fullBleed
+              ? 'flex h-[calc(100vh-4rem)] min-w-0 flex-1 flex-col overflow-x-hidden lg:h-screen'
+              : 'min-w-0 flex-1 overflow-x-hidden'
+          }
+        >
+          {/* Dải cảnh báo khi cập nhật tự động gián đoạn (plan mục A6) — hàng trong luồng. */}
+          <RealtimeSyncBanner />
           {fullBleed ? (
-            /* Full-height: không breadcrumbs/padding; cố định = viewport (desktop)
-               hoặc viewport - header mobile */
-            <div className="h-[calc(100vh-4rem)] overflow-hidden lg:h-screen">{children}</div>
+            /* Full-height: không breadcrumbs/padding. <main> cố định = viewport (desktop)
+               hoặc viewport - header mobile; khối này lấy phần còn lại sau dải cảnh báo. */
+            <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
           ) : (
             /* Page Content (breadcrumbs removed) */
             <div className={hideMobileHeader ? '' : 'p-4 lg:p-6'}>

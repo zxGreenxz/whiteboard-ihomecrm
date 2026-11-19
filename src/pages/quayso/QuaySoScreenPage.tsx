@@ -30,6 +30,7 @@ import {
 import LuckyWheelCanvas, { fireConfetti } from './LuckyWheelCanvas';
 import AnimalRaceTrack from './AnimalRaceTrack';
 import MultiRoundStage from './MultiRoundStage';
+import { dangHoiThua, nhipHoiManChieu, taoTheoDoiDong } from './quaySoPolling';
 import './quayso.css';
 
 /** Bật/tắt chế độ toàn màn hình thật (Fullscreen API). */
@@ -67,25 +68,26 @@ export default function QuaySoScreenPage() {
   const [uncertain, setUncertain] = useState(false);
   const pendingSpin = useRef(false);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
+  const theoDoiDong = useRef(taoTheoDoiDong());
   const fs = useFullscreen();
 
   const queryKey = ['quayso-screen', eventParam, slug] as const;
+  // Chưa xong: hỏi cả khi tab ẩn (đang chạy chương trình, không được lỡ "Mở
+  // lượt"). Đã xong/đã đóng: chỉ hỏi khi tab HIỆN — tab màn chiếu bỏ quên ở nền
+  // không hỏi 30 s/lần vô hạn; bấm Quay luôn hỏi server trước (handleSpin).
+  const hoiThua = dangHoiThua(queryClient.getQueryData<LuckyPublicState>(queryKey));
   const stateQuery = useQuery<LuckyPublicState>({
     queryKey,
     meta: { errorDisplay: "inline", label: "trạng thái quay số" },
     enabled: Boolean(eventParam || slug),
     queryFn: () => fetchLuckyPublicState(eventParam, null, slug),
-    refetchIntervalInBackground: true,
-    // Còn lượt chưa quay ⇒ hỏi dồn 1,5 giây một lần: chủ giải bấm "Mở lượt" ở
-    // trang quản trị thì màn chiếu phải bắt được gần như tức thì, chứ để 5 giây
-    // thì khán phòng nhìn thấy một khoảng chết ngay sau tiếng bấm.
-    refetchInterval: (query) => {
-      const s = query.state.data;
-      if (!s?.ok) return 5000;
-      const conLuot = (s.rounds ?? []).some((r) => r.status !== 'drawn');
-      return conLuot ? 1500 : 5000;
-    },
+    refetchIntervalInBackground: !hoiThua,
+    // 1,5 s khi còn lượt chưa quay; quay xong thì GIÃN 30 s chứ không dừng
+    // (RT-CLIENT-2: phải thấy được "Huỷ kết quả và mở lại"); chỉ dừng hẳn khi
+    // sự kiện đã đóng quá 6 giờ — xem quaySoPolling.ts.
+    refetchInterval: (query) => nhipHoiManChieu(query.state.data, theoDoiDong.current),
   });
 
   const state = stateQuery.data;
@@ -132,9 +134,32 @@ export default function QuaySoScreenPage() {
   const handleSpin = async () => {
     if (pendingSpin.current || uncertain || !event) return;
     setErr(null);
+    setNotice(null);
     if (drawn) {
-      setRevealedFor(null);
-      setSpinNonce((n) => n + 1);
+      // RT-CLIENT-2: cache 'drawn' có thể đã cũ — quản trị "Huỷ kết quả và mở
+      // lại" giữa lúc quay thử và quay thật. Hỏi server TRƯỚC khi diễn lại; chỉ
+      // diễn khi server vẫn 'drawn' với đúng mốc drawnAt đang hiện.
+      const drawnAtDangHien = event.drawnAt;
+      setBusy(true);
+      pendingSpin.current = true;
+      try {
+        const current = await stateQuery.refetch();
+        const fresh = current.data?.ok ? current.data.event : undefined;
+        if (current.error || !fresh) {
+          setErr(publicFailure(current.error, 'kiểm tra được kết quả mới nhất trước khi quay lại'));
+          return;
+        }
+        if (fresh.status !== 'drawn' || fresh.drawnAt !== drawnAtDangHien) {
+          setRevealedFor(null);
+          setNotice('Kết quả trên máy chủ đã thay đổi — màn hình đã cập nhật theo trạng thái mới, chưa diễn lại kết quả cũ.');
+          return;
+        }
+        setRevealedFor(null);
+        setSpinNonce((n) => n + 1);
+      } finally {
+        pendingSpin.current = false;
+        setBusy(false);
+      }
       return;
     }
     setBusy(true);
@@ -269,6 +294,7 @@ export default function QuaySoScreenPage() {
               )}
 
               {err && <p role="alert" className="qs-codeerr">{err}</p>}
+              {notice && <p role="status" className="qs-screen-hint">{notice}</p>}
               {uncertain && <button type="button" disabled={stateQuery.isFetching} onClick={async () => {
                 const result = await stateQuery.refetch();
                 if (!result.error && result.data?.ok) { setUncertain(false); setErr(null); }

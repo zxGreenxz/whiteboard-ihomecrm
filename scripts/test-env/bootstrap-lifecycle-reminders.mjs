@@ -51,9 +51,15 @@ END $schedule$;
 COMMIT;`;
 }
 
+// Same multipart bundle as test-env:edge: repo-root-relative file names plus the ../_shared files the
+// function imports (push-drain.ts); verify_jwt is always true for this function.
+export async function buildLifecycleDeployForm(root) {
+  const { dungGoiDeploy, formDeploy } = await import('./edge.mjs');
+  return formDeploy(dungGoiDeploy('lifecycle-reminders', { goc: root }), { name: 'lifecycle-reminders', verify_jwt: true });
+}
+
 async function main() {
   if (!process.argv.includes('--apply')) throw new Error('Bootstrap requires --apply; use only after reviewed TEST migration install');
-  const { readFileSync } = await import('node:fs');
   const { credential, ketNoi, batBuocDichTest, mgmt, psql, repoRoot } = await import('./lib.mjs');
   const cred = credential();
   if (!cred.testPat) throw new Error('TEST management PAT required');
@@ -70,11 +76,7 @@ async function main() {
   try { await mgmt(cred.testPat,'POST',`/v1/projects/${cred.testRef}/secrets`,edgeSecrets); }
   catch { throw new Error('TEST lifecycle dedicated Edge credential configuration failed'); }
   // Deploy the additive function without requiring a production counterpart.
-  const form = new FormData();
-  form.append('metadata', JSON.stringify({name:'lifecycle-reminders',entrypoint_path:'index.ts',verify_jwt:true}));
-  for (const file of ['index.ts','runner.ts']) {
-    form.append('file', new Blob([readFileSync(resolve(repoRoot,'supabase/functions/lifecycle-reminders',file))]),file);
-  }
+  const form = await buildLifecycleDeployForm(repoRoot);
   const response = await fetch(`https://api.supabase.com/v1/projects/${cred.testRef}/functions/deploy?slug=lifecycle-reminders`, {
     method:'POST',headers:{Authorization:`Bearer ${cred.testPat}`},body:form,
   });

@@ -3,6 +3,11 @@ import { runLifecycleReminders } from './runner.ts';
 
 // Deploy with verify_jwt=true. Also require the exact dedicated service credential;
 // decoding a supplied JWT role is never sufficient authorization for this sweep.
+// Mỗi lượt cron 15' chạy 3 pha (bảo trì → lifecycle → drain push chung, xem runner.ts):
+// 200 khi cả ba pha ok, 503 khi có pha lỗi (JSON trả từng pha), 500 chỉ khi ngoại lệ ngoài dự kiến.
+// Hàm import ../_shared/push-drain.ts ⇒ mọi đường deploy phải đưa file đó lên cùng: CLI
+// `supabase functions deploy lifecycle-reminders` tự bundle; Management API multipart dùng quy ước tên file tính từ
+// gốc repo (scripts/test-env/edge.mjs `dungGoiDeploy`, cũng là đường `npm run test-env:edge -- lifecycle-reminders`).
 Deno.serve(async (request: Request) => {
   const url = Deno.env.get('SUPABASE_URL');
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');

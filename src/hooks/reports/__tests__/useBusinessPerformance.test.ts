@@ -261,6 +261,15 @@ describe("business performance data hooks", () => {
     ).toBe(true);
   });
 
+  it("Sidebar gọi không poll: chỉ còn staleTime 30 phút, không refetchInterval (RT-OTHER-4)", () => {
+    const menu = useBusinessPerformanceOrganizations(true, {
+      poll: false,
+    }) as unknown as QueryOptions<unknown[]>;
+    expect(menu).toMatchObject({ staleTime: 30 * 60 * 1000, refetchInterval: false });
+    const page = useBusinessPerformanceOrganizations() as unknown as QueryOptions<unknown[]>;
+    expect(page).toMatchObject({ staleTime: 300_000, refetchInterval: 300_000 });
+  });
+
   it("keeps the caller-level enablement gate disabled", () => {
     const filters = buildBusinessPerformanceFilters(
       "2024-02",

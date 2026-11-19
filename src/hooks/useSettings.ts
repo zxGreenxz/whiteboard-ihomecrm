@@ -249,10 +249,6 @@ export function useNotificationConfig() {
   );
 }
 
-export function useUpdateNotificationConfig() {
-  return useUpdateSetting<NotificationConfig>('notification_config');
-}
-
 export function useCodeGenerationConfig() {
   return useSetting<CodeGenerationConfig>(
     'code_generation_config',
@@ -406,7 +402,6 @@ const GENERAL_SETTINGS_DEFAULTS: GeneralSettingsMap = {
   // 20250101000012) làm lần đọc sau khi gạt từ chối cả bộ cài đặt — '1' vốn hiển thị là TẮT.
   contract_payment_date_setting: false,
   contract_show_expiring_status: true,
-  contract_overdue_notification: false,
   // Invoice tab
   invoice_auto_approve_meter: false,
   invoice_auto_approve: false,
@@ -420,9 +415,8 @@ const GENERAL_SETTINGS_DEFAULTS: GeneralSettingsMap = {
   invoice_allow_tenant_meter: false,
   // Payment tab
   payment_auto_approve: false,
-  // Notification tab
-  notification_invoice_reminder: false,
-  notification_payment_reminder: false,
+  // Tab Thông báo không còn khoá riêng: contract_overdue_notification, notification_invoice_reminder
+  // và notification_payment_reminder là công tắc giả (không nơi nào đọc) — đã gỡ cùng giao diện.
 };
 
 /**
