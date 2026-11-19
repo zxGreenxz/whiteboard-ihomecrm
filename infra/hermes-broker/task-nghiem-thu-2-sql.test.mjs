@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { testTaskSqlMutations } from './task-sql-mutation-cases.mjs';
 import assert from 'node:assert/strict';
 import { setupNghiemThu, ORG, BUILDING, ROOM, MANAGER, STAFF, ROOM_A201, u } from './task-nghiem-thu-fixture.mjs';
 import { migration, TYPE_SUA, TYPE_VE_SINH } from './task-action-fixture.mjs';
@@ -170,12 +171,5 @@ test('mutation (lượt 12): explicit-type tiers, the clash rule, every new offe
         const asked = await f.run('task.update', 'auto', 1, { job: 'sửa vòi nước', note: 'x' });
         return (await f.run('task.update', 'auto', 2, { job: asked.candidates[0].name, note: 'x' })).kind === 'applied'; }],
   ];
-  for (const [label, mutant, probe] of CASES) {
-    await t.test(label, async () => {
-      assert.equal(await probe(await setup(t)), true, 'bản sửa chặn');
-      const f = await setup(t);
-      await f.db.exec(mutant);
-      assert.equal(await probe(f), false, 'đột biến lọt ⇒ test không rỗng');
-    });
-  }
+  await testTaskSqlMutations(t, await setup(t), CASES);
 });

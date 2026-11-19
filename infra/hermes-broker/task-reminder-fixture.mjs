@@ -82,10 +82,22 @@ export async function setupReminders(t, { reminder = REMINDER_SQL, worker = WORK
   const outbox = () => db.query(`SELECT id,user_id,binding_id,kind,reminder_date::text,job_ids,job_total,body,state,attempts,error_code,instance_id,
     not_before,provider_started_at IS NOT NULL started,sent_at IS NOT NULL sent FROM app_private.task_reminder_outbox ORDER BY user_id,kind`).then(result => result.rows);
   // Worker gọi dưới service_role (như supabase-js với khoá service), không JWT người dùng.
+  let inCase = false;
+  const rollbackCase = work => f.rollbackCase(async () => {
+    inCase = true;
+    try { await work(); } finally { inCase = false; }
+  });
   const asRole = async (sql, args, role = 'service_role') => {
-    await db.exec('BEGIN'); await db.exec(`SET LOCAL ROLE ${role}`);
-    try { const value = (await db.query(sql, args)).rows[0]; await db.exec('COMMIT'); return value; }
-    catch (error) { await db.exec('ROLLBACK'); throw error; }
+    await db.exec(inCase ? 'SAVEPOINT reminder_worker' : 'BEGIN');
+    try {
+      await db.exec(`SET LOCAL ROLE ${role}`);
+      const value = (await db.query(sql, args)).rows[0];
+      await db.exec(inCase ? 'RESET ROLE; RELEASE SAVEPOINT reminder_worker' : 'COMMIT');
+      return value;
+    } catch (error) {
+      await db.exec(inCase ? 'ROLLBACK TO SAVEPOINT reminder_worker; RELEASE SAVEPOINT reminder_worker' : 'ROLLBACK');
+      throw error;
+    }
   };
   const claim = (instance = INSTANCE, limit = 5, role) => asRole('SELECT public.zalo_worker_claim_task_reminders_v1($1,$2) r', [instance, limit], role).then(row => row.r);
   const begin = (id, instance = INSTANCE) => asRole('SELECT public.zalo_worker_begin_task_reminder_v1($1,$2) r', [id, instance]).then(row => row.r);
@@ -96,5 +108,5 @@ export async function setupReminders(t, { reminder = REMINDER_SQL, worker = WORK
     (organization_id,user_id,binding_id,kind,reminder_date,job_ids,job_total,body,not_before)
     VALUES($1,$2,$3,$4,(clock_timestamp() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date,$5::uuid[],$6,'nháp',clock_timestamp()-interval '1 second') RETURNING id`,
     [ORG, user, binding, kind, jobIds, jobIds.length])).rows[0].id;
-  return { ...f, db, job, enable, enqueue, outbox, asRole, claim, begin, settle, queueNow };
+  return { ...f, db, job, enable, enqueue, outbox, asRole, claim, begin, settle, queueNow, rollbackCase };
 }

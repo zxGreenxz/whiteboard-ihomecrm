@@ -6,6 +6,7 @@ import yaml from "js-yaml";
 import { globSangRegex, khopGlob, phanLoai } from "../check-risk-classifier.mjs";
 import { isDeferredGate, isDeferredTest, DEFERRED_TEST_PATTERNS } from "./deferred-modules.mjs";
 import { GATE_REGISTRY, GENERATOR_REGISTRY, isOfflineBrowserSelection } from "./gate-registry.mjs";
+import { MIN_FILES_TO_SHARD } from "./gate-test-shards.mjs";
 import { isTimezoneTest } from "./timezone-suite.mjs";
 import { indexInputConflicts } from "./local-gate-snapshot.mjs";
 import { LIVE_BROWSER_OBLIGATION, LOCAL_E2E_EVIDENCE_DIR, applyLocalE2eEvidence, gitFleetResolver } from "./gate-e2e-local-evidence.mjs";
@@ -228,6 +229,10 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
       if (!files.length) continue;
     }
     const selection = { id: suite.id, runner: suite.runner, files, mode: all ? "all" : "targeted", reason: all ? "Full active fallback" : rules.map((r) => r.id).join(", ") || "Changed owned test", viewports: unique(rules.flatMap((r) => r.viewports ?? [])) };
+    if (environment === "ci" && files.length >= (MIN_FILES_TO_SHARD[suite.id] ?? Infinity)) {
+      selection.shards = 2;
+      gates.add(`suite:${suite.id}-shard-2`);
+    }
     suiteSelections.push(selection);
     if (suite.runner === "playwright") {
       browserRequirements.push({ suiteId: suite.id, files, viewports: selection.viewports.length ? selection.viewports : ["affected"], reason: selection.reason });

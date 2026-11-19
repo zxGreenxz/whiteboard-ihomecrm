@@ -16,6 +16,10 @@ test('selection digest is order independent and rejects changed/empty/duplicate/
   assert.equal(selectionDigest(files), selectionDigest([...files].reverse()));
   assert.deepEqual(selectedVitestFiles(planFor(files), selectionDigest(files)), [...files].sort());
   assert.throws(() => selectedVitestFiles(planFor(files), 'other'), /digest/);
+  const undersized = planFor(['src/only.test.ts']);
+  undersized.suiteSelections[0].shards = 2;
+  assert.throws(() => selectedVitestFiles(undersized, 'unused', 2), /at least one file/);
+  assert.throws(() => selectedVitestFiles(planFor(files), 'unused', 2), /Invalid test shard/);
   for (const invalid of [[], ['src/a.test.ts', 'src/a.test.ts'], ['../x.test.ts'], ['/x.test.ts'], ['src/*.test.ts'], ['C:/x.test.ts']]) {
     assert.throws(() => selectedVitestFiles(planFor(invalid), 'unused'), /selection|path|duplicate/i);
   }

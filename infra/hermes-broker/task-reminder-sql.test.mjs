@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { testTaskSqlMutations } from './task-sql-mutation-cases.mjs';
 import test from 'node:test';
 import { setupReminders, bindUser, REMINDER_SQL, WORKER_SQL, ORG, USER, ACCOUNT, INSTANCE, BINDING, FOREIGN, STAFF, OTHER_INSTANCE } from './task-reminder-fixture.mjs';
 
@@ -250,12 +251,5 @@ test('mutation: recipient membership, NULL gate = on, worker lease, unknown neve
         try { return (await f.begin(id)).reason === 'jobs_closed'; } catch { return false; }
       }],
   ];
-  for (const [label, mutant, probe] of probes) {
-    await t.test(label, async () => {
-      assert.equal(await probe(await setupReminders(t)), true, 'bản gốc chặn');
-      const f = await setupReminders(t);
-      await f.db.exec(mutant);
-      assert.equal(await probe(f), false, 'đột biến lọt ⇒ test không rỗng');
-    });
-  }
+  await testTaskSqlMutations(t, await setupReminders(t), probes);
 });
