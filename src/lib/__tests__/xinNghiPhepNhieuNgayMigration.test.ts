@@ -13,8 +13,22 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * super_admins; v5_recompute_streak chỉ ghi lại lần gọi. Một kết nối nên không dựng được hai phiên chạy song song.
  *
  * Lịch tháng 11–12/2026: Chủ nhật 22/11, 29/11, 06/12, 13/12, 20/12, 27/12; 01/01/2027 thứ Sáu, 03/01/2027 Chủ nhật.
+ *
+ * Đo ĐỊNH NGHĨA ĐANG CHẠY: sau file này còn nạp 20261119035131 (CREATE OR REPLACE cả hai hàm — câu thiếu số dư nêu ngày,
+ * chặn duyệt ngày lễ, khoá theo thứ tự ngày) HAI lượt, trên đúng thân production của request_paid_leave / approve_leave
+ * (tiền kiểm của nó so md5). Ca riêng của 20261119035131 ở phepChanNgayLeMigration.test.ts.
  */
 const FILE = "supabase/migrations/20261119020927_xin_nghi_phep_nhieu_ngay.sql";
+const FILE_VA = "supabase/migrations/20261119035131_chan_phep_ngay_le_va_va_nho.sql";
+/** Nguyên văn câu tạo hàm `public.<ten>` trong một file migration (tới hết dấu đóng thân + ";"). */
+function cauTao(file: string, ten: string): string {
+  const sql = readFileSync(file, "utf8");
+  const i = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${ten}(`);
+  const m = /AS\s+(\$[a-z_]*\$)/i.exec(sql.slice(i));
+  if (i < 0 || !m) throw new Error(`Không thấy câu tạo ${ten} trong ${file}`);
+  const batDau = i + m.index + m[0].length;
+  return sql.slice(i, sql.indexOf(`${m[1]};`, batDau) + m[1].length + 1);
+}
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const [ORG_A, ORG_B, CHU, JOEY, NHAN_VIEN_KHAC] = [1, 2, 3, 4, 5].map(id);
 const HOM_NAY = "2026-11-19";
@@ -82,7 +96,7 @@ async function daDungTrongNam(n: number, status = "leave_approved", batDau = 0) 
 
 beforeAll(async () => {
   await db.exec(`
-    CREATE ROLE authenticated; CREATE ROLE anon;
+    CREATE ROLE authenticated; CREATE ROLE anon; CREATE ROLE service_role;
     CREATE SCHEMA auth;
     GRANT USAGE ON SCHEMA public, auth TO authenticated, anon;
     SET test.today = '${HOM_NAY}';
@@ -92,6 +106,8 @@ beforeAll(async () => {
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text);
     CREATE TABLE public.super_admins (user_id uuid PRIMARY KEY, created_at timestamptz NOT NULL);
     CREATE TABLE public.memberships (user_id uuid, organization_id uuid);
+    CREATE TABLE public.salary_holidays (organization_id uuid NOT NULL, holiday_date date NOT NULL);
+    CREATE TABLE public.salary_award_errors (staff_id uuid, fn_name text, error_text text, payload jsonb);
     CREATE TABLE public.salary_attendance_day (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id uuid NOT NULL REFERENCES auth.users(id),
@@ -147,9 +163,15 @@ beforeAll(async () => {
     INSERT INTO public.super_admins VALUES ('${CHU}', '2026-01-01');
     INSERT INTO public.memberships VALUES ('${JOEY}', '${ORG_A}'), ('${NHAN_VIEN_KHAC}', '${ORG_B}'), ('${CHU}', '${ORG_A}'), ('${CHU}', '${ORG_B}');
   `);
+  // Đúng thân production của hai hàm cũ (20261119035131 so md5 trước khi thay), ACL như production.
+  await db.exec(cauTao("supabase/migrations/20261007082645_request_paid_leave_notification_org.sql", "request_paid_leave"));
+  await db.exec(cauTao("supabase/migrations/20260703000004_v5_myday.sql", "approve_leave"));
   const sql = readFileSync(FILE, "utf8");
   await db.exec(sql);
   await db.exec(sql);
+  const va = readFileSync(FILE_VA, "utf8");
+  await db.exec(va);
+  await db.exec(va);
 }, 30000);
 afterAll(() => db.close());
 
@@ -339,7 +361,7 @@ describe("request_paid_leave_range — số dư phép năm phải đủ cho mọ
       await daDungTrongNam(7);
       await daDungTrongNam(2, "pending_leave", 7);
       const e = await loi(() => xin(JOEY, "2026-11-20", "2026-11-23"));
-      expect(e).toMatchObject({ code: "P0001", hint: "leave_quota_exceeded", message: "Số dư phép chỉ còn đủ 2 ngày, đơn này cần 3 ngày — bớt ngày rồi gửi lại" });
+      expect(e).toMatchObject({ code: "P0001", hint: "leave_quota_exceeded", message: "Số dư phép chỉ đủ cho 2 ngày đầu của đơn, hết từ ngày 23/11/2026 (tích lũy 11 — đã dùng 11) — bớt ngày rồi gửi lại" });
       expect((await ngay()).filter((d) => d.work_date >= HOM_NAY)).toEqual([]);
       expect(await thongBao()).toEqual([]);
     });
@@ -349,7 +371,7 @@ describe("request_paid_leave_range — số dư phép năm phải đủ cho mọ
     await trongGiaoDich(async () => {
       await daDungTrongNam(11);
       const e = await loi(() => xin(JOEY, "2026-11-20", "2026-11-21"));
-      expect(e).toMatchObject({ hint: "leave_quota_exceeded", message: "Số dư phép đã hết (tích lũy 11 — đã dùng 11)" });
+      expect(e).toMatchObject({ hint: "leave_quota_exceeded", message: "Số dư phép đã hết cho ngày 20/11/2026 (tích lũy 11 — đã dùng 11)" });
     });
   });
 
@@ -364,7 +386,7 @@ describe("request_paid_leave_range — số dư phép năm phải đủ cho mọ
     await trongGiaoDich(async () => {
       await daDungTrongNam(11);
       const e = await loi(() => xin(JOEY, "2026-12-31", "2027-01-02"));
-      expect(e.message).toBe("Số dư phép chỉ còn đủ 2 ngày, đơn này cần 3 ngày — bớt ngày rồi gửi lại");
+      expect(e.message).toBe("Số dư phép chỉ đủ cho 2 ngày đầu của đơn, hết từ ngày 02/01/2027 (tích lũy 1 — đã dùng 1) — bớt ngày rồi gửi lại");
       expect((await xin(JOEY, "2026-12-31", "2027-01-01")).requested).toEqual(["2026-12-31", "2027-01-01"]);
     });
   });
