@@ -54,20 +54,40 @@ export function createActionReads({ catalog, ...options } = {}) {
   });
 }
 
-/** Lớp quyền mở rộng: khoá Action của danh mục được bật cho người dùng (registry ∩ trần công ty ∩ quyền CRM) + phạm vi toà. */
-export function createActionAuth({ baseAuth, reads, catalog } = {}) {
-  if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function') || !Array.isArray(catalog?.keys))
+/** Danh mục thao tác SỐNG phía SQL: các dòng của app_private.hermes_action_policies, đọc qua `actions` của
+ * hermes_action_capabilities_v1 mỗi lần lớp quyền chạy (Đợt 2b, review Mốc 2 mục 6). Connector mới chạy với DB cũ (chưa có dòng của
+ * một thao tác) thì thao tác đó không "sống": runtime không quảng bá nó và broker không nghỉ hưu họ tool cũ mà nó thay. Của cả tiến
+ * trình (danh mục SQL là của cả DB, không theo người); chưa đọc được lần nào, hoặc RPC vắng ⇒ không thao tác nào sống. */
+export function createActionLiveCatalog() {
+  let ids = new Set();
+  return Object.freeze({
+    observe(actions) { ids = new Set(actions !== null && typeof actions === 'object' && !Array.isArray(actions) ? Object.keys(actions) : []); },
+    has: id => ids.has(id),
+  });
+}
+
+/** Lớp quyền mở rộng: khoá Action của danh mục được bật cho người dùng (registry ∩ trần công ty ∩ quyền CRM) + phạm vi toà.
+ * `live` (tuỳ chọn) ghi lại danh mục thao tác sống mỗi lần đọc capability.
+ * `borrowedKeys` (tuỳ chọn, ⊆ khoá danh mục): khoá mà MỘT lớp quyền khác trong chuỗi đã là nguồn cấp (vd. sale_phong.lock_room của lớp
+ * Sale, khoá cho contract.room_lock / room_unlock). Hai lớp cùng cấp một khoá là context_changed (rào ở mọi lớp), nên lớp này không
+ * kiểm, không cấp các khoá đó; thao tác dùng chúng vẫn chạy được khi lớp chủ của khoá cấp (runtime xét quyền cuối cùng của chuỗi), còn
+ * SQL của thao tác tự kiểm lại registry / chính sách / quyền CRM / phạm vi mỗi lượt. */
+export function createActionAuth({ baseAuth, reads, catalog, live, borrowedKeys = [] } = {}) {
+  if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function') || !Array.isArray(catalog?.keys) ||
+      !Array.isArray(borrowedKeys) || borrowedKeys.some(key => typeof key !== 'string' || !catalog.keys.includes(key)) || new Set(borrowedKeys).size !== borrowedKeys.length)
     throw new TypeError('invalid_action_auth');
-  const KEYS = catalog.keys;
+  const BORROWED = new Set(borrowedKeys);
+  const KEYS = catalog.keys.filter(key => !BORROWED.has(key));
   return Object.freeze({ verifySession: input => baseAuth.verifySession(input), async readAuthorization(input) {
-    if (!KEYS.length) return baseAuth.readAuthorization(input);
+    // Danh mục rỗng: không gọi RPC nào. Danh mục chỉ có khoá mượn vẫn đọc capability để biết thao tác nào sống.
+    if (!catalog.keys.length) return baseAuth.readAuthorization(input);
     const extended = await readWithBaseAuthorization(baseAuth, input,
       () => reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal }));
     const current = extended.current;
     // Khoá của họ này chỉ đến từ capabilities, không bao giờ từ lớp quyền gốc.
     if (KEYS.some(key => current.permissions.action.includes(key) || current.companyCeilings.action.includes(key))) fail('context_changed');
     const cap = extended.capability();
-    if (cap === null) return current;
+    if (cap === null) { live?.observe(null); return current; }
     if (!domainExact(cap, ['organizationId', 'userId', 'membershipId', 'authorizationVersion', 'isSuperadmin', 'policyVersion', 'permissions', 'actions']) ||
         cap.organizationId !== input.organizationId || cap.userId !== input.userId || cap.membershipId !== current.membership.membershipId ||
         cap.authorizationVersion !== current.membership.authorizationVersion || cap.isSuperadmin !== current.isSuperadmin ||
@@ -84,6 +104,7 @@ export function createActionAuth({ baseAuth, reads, catalog } = {}) {
       if (permission.companyEnabled) ceilings.push(key);
       if (permission.allowed) { granted.push(key); scopes[key] = { buildingIds: [...permission.buildingIds], cashbookIds: [] }; }
     }
+    live?.observe(cap.actions);
     return { ...current, permissions: { ...current.permissions, action: [...current.permissions.action, ...granted] },
       companyCeilings: { ...current.companyCeilings, action: [...current.companyCeilings.action, ...ceilings] },
       scopesByPermission: { ...current.scopesByPermission, ...scopes }, epoch: createHash('sha256').update(JSON.stringify({ base: current.epoch, cap })).digest('hex') };

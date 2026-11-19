@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cameraConnectionSchema, type CameraConnection, type CameraIngest } from "./cameraApiTypes.js";
 
 import type {
   CommandClaim,
@@ -245,6 +246,17 @@ export class NetworkCenterApiClient implements NetworkCenterWorkerApi {
       items: z.array(connectionSchema).max(500),
     }));
     return data.items as NetworkConnection[];
+  }
+
+  async listCameraConnections(): Promise<CameraConnection[]> {
+    const data = await this.#post("camera-connections", { limit: 100 }, z.object({
+      items: z.array(cameraConnectionSchema).max(100),
+    }));
+    return data.items;
+  }
+
+  async ingestCamera(payload: CameraIngest): Promise<unknown> {
+    return this.#post("camera-ingest", { payload }, z.object({ accepted: z.literal(true) }).passthrough());
   }
 
   async heartbeat(input: {

@@ -9,6 +9,7 @@ import { ClickNum, Popover, Menu, Modal, Ring, useCountUp } from "./salaryCommon
 import { BonusPop, InvestmentPop, CommissionPop, AdvancePop, RoomRentPop } from "./salaryPopovers";
 import { SalChartModal } from "./salaryChart";
 import type { SalManager, SalAdjustment } from "@/lib/managerSalary";
+import type { SalaryPayoutChoice } from "@/lib/salaryProfit";
 
 const I = SAL_ICONS;
 // Ngày chi theo GIỜ LOCAL — toISOString() là UTC, chi lương lúc 00:00-07:00 VN
@@ -28,7 +29,8 @@ interface MonthlyProps {
   canPay: boolean;
   onSaveAdjustment: (staffId: string, payload: SalAdjustPayload) => Promise<unknown> | void;
   onRemoveAdjustment: (adjId: string) => void;
-  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => Promise<unknown> | void;
+  /** Hộp trả lương không có ô chọn từng khoản ⇒ không gửi `choice`: phần lợi nhuận trả hết phần chưa trả. */
+  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string, choice?: SalaryPayoutChoice) => Promise<unknown> | void;
   onBulkPayout: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => Promise<unknown> | void;
   onLock: () => Promise<unknown> | void;
   onUnlock: () => Promise<unknown> | void;

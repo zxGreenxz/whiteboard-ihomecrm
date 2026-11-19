@@ -9,11 +9,30 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:async(name:string)=
  return builder;
 }}}));
 import {useManagerSalary,useStaffDisplayMonth} from '../useManagerSalary';
-const useReadQuery=(engine:'legacy'|'v5'='legacy')=>(useManagerSalary('2026-09-01',engine) as unknown as {queryFn:()=>Promise<{managers:unknown[]}>}).queryFn();
-beforeEach(()=>{h.tables={manager_salary_config:{data:[{staff_id:'staff',user_id:'owner',organization_id:'org',base_salary:100,default_room_rent:0}],error:null}};h.rpcs={v5_month_money_bulk:{data:{},error:null}};});
+import type {SalManager} from '@/lib/managerSalary';
+const useReadQuery=(engine:'legacy'|'v5'='legacy')=>(useManagerSalary('2026-09-01',engine) as unknown as {queryFn:()=>Promise<{managers:SalManager[]}>}).queryFn();
+// E12 salary_profit_inputs_v1 — dòng trung tính của nhân viên không phải cổ đông.
+const profitStaff=(over:Record<string,unknown>={})=>({staff_id:'staff',organization_id:'org',shareholder_id:null,sheet_status:'NONE',profit_draft:false,allocations:[],by_building:[],allocated_total:0,investment_month:0,investment_cap:0,marker_through:null,settled_by_marker:false,settlement:null,paid_lines:[],paid_investment:0,paid_offset:0,advance_open:0,advance_offset_month:0,suggested_advance_offset:0,remaining_offset:0,offset_conflict:false,needs_review:{count:0,suggested:0},...over});
+beforeEach(()=>{h.tables={manager_salary_config:{data:[{staff_id:'staff',user_id:'owner',organization_id:'org',base_salary:100,default_room_rent:0}],error:null}};h.rpcs={v5_month_money_bulk:{data:{},error:null},salary_profit_inputs_v1:{data:{period_month:'2026-09-01',staff:[profitStaff()]},error:null}};});
 describe('required salary read sources',()=>{
  it('keeps a confirmed empty configuration distinct from failure',async()=>{h.tables.manager_salary_config.data=[];await expect(useReadQuery()).resolves.toMatchObject({managers:[]});});
- it.each(['manager_salary_config','profiles','salary_monthly','shareholders','profit_monthly','income_expenses','buildings','income_expense_types'])('rejects a missing %s response instead of calculating zeros',async table=>{h.tables[table]={data:null,error:null};await expect(useReadQuery()).rejects.toThrow();});
+ it.each(['manager_salary_config','profiles','salary_monthly','income_expenses','income_expense_types'])('rejects a missing %s response instead of calculating zeros',async table=>{h.tables[table]={data:null,error:null};await expect(useReadQuery()).rejects.toThrow();});
+ it.each(['shareholders','profit_monthly','profit_allocations','buildings'])('no longer reads %s directly — profit share comes from the server (E12)',async table=>{h.tables[table]={data:null,error:null};await expect(useReadQuery()).resolves.toMatchObject({managers:[{investment:0,profit:null}]});});
+ it('rejects a missing or failed profit-input read instead of an investment of zero',async()=>{
+  h.rpcs.salary_profit_inputs_v1={data:null,error:null};await expect(useReadQuery()).rejects.toThrow();
+  const error={code:'42501',message:'SALARY_PROFIT_DENIED: x'};h.rpcs.salary_profit_inputs_v1={data:null,error};await expect(useReadQuery()).rejects.toBe(error);
+  h.rpcs.salary_profit_inputs_v1={data:{period_month:'2026-09-01',staff:[]},error:null};await expect(useReadQuery()).rejects.toThrow();
+ });
+ it('shareholder: investment from LOCKED allocations with server labels; profit advance lowers take-home inside advance',async()=>{
+  h.rpcs.salary_profit_inputs_v1={data:{period_month:'2026-09-01',staff:[profitStaff({shareholder_id:'sh',sheet_status:'DRAFT',allocations:[{building_id:'b1',building_label:'T1',amount:'300',status:'LOCKED',is_stale:false},{building_id:'b2',building_label:'T2',amount:50,status:'DRAFT',is_stale:false}],investment_month:300,investment_cap:300,advance_offset_month:120,suggested_advance_offset:120})]},error:null};
+  const [m]=(await useReadQuery()).managers;
+  expect(m).toMatchObject({investment:300,investmentBy:[{b:'T1',amount:300}],investmentLocked:true,advance:120,profit:{advanceOffset:120,investmentMonth:300}});
+  expect(m.calc).toMatchObject({gross:400,takehome:280});
+ });
+ it('shareholder whose company still has unlocked buildings and no locked share: profit pending, not zero',async()=>{
+  h.rpcs.salary_profit_inputs_v1={data:{period_month:'2026-09-01',staff:[profitStaff({shareholder_id:'sh',sheet_status:'DRAFT',profit_draft:true})]},error:null};
+  await expect(useReadQuery()).resolves.toMatchObject({managers:[{investmentLocked:false}]});
+ });
  it('does not replace a missing work ledger with no work',async()=>{h.rpcs.salary_work_ledger={data:null,error:null};await expect(useReadQuery()).rejects.toThrow();});
  it('preserves a permission-filtered v5 response with omitted staff keys',async()=>{await expect(useReadQuery('v5')).resolves.toMatchObject({managers:[{base:100}]});});
  it('does not use legacy amounts when the entire v5 response is missing',async()=>{h.rpcs.v5_month_money_bulk={data:null,error:null};await expect(useReadQuery('v5')).rejects.toThrow();});

@@ -52,6 +52,10 @@ Nhãn **Staff / Chưa gán** và cột **Toà nhà được giao** đếm theo b
 
 Mô tả trong hộp thoại còn nhắc "phân role + assign building qua trang Phân quyền nhân viên" — đó là tên trang cũ; nay việc này làm ở **Thành viên** và **Mẫu vai trò** như mục dưới.
 
+## Đặt lại mật khẩu
+
+Cột **Thao tác** có nút **Đặt lại mật khẩu** ở mọi dòng trừ dòng của chính bạn; cột này chỉ hiện với super admin. Hộp thoại giống ở màn [Thành viên](/05-cai-dat/nhan-vien-doi-ngu/): nhập hoặc **Tạo ngẫu nhiên** mật khẩu mới (ít nhất 6 ký tự), bấm **Đặt lại mật khẩu**, rồi **Chép** mật khẩu gửi cho người đó. Người đó bị đăng xuất khỏi các thiết bị đang dùng. Mỗi lần đặt lại được ghi vào **Nhật ký phân quyền** của các công ty người đó thuộc về.
+
 ## Đưa người dùng vào tổ chức
 
 Tạo tài khoản ở đây chưa đủ để người đó làm việc trong một công ty. Quy trình chính là mời từ `/settings/members`:

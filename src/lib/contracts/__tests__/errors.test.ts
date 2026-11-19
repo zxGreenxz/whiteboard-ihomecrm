@@ -61,6 +61,19 @@ describe("phân loại lỗi ở biên RPC/Edge", () => {
     expect(isRetryable("unknown")).toBe(false);
   });
 
+  it('PT422 finalized settlement correction needs an adjustment, never automatic retry', () => {
+    const error = {
+      code: 'PT422',
+      message: 'Finalized settlement reading requires accounting and contract adjustment before correction',
+    };
+    const category = classifyDbError(error);
+    expect(category).toBe('conflict');
+    expect(isUserActionable(category)).toBe(true);
+    expect(isRetryable(category)).toBe(false);
+    expect(retryOnlyConcurrency(0, error)).toBe(false);
+    expect(toResult({ data: null, error })).toMatchObject({ kind: 'loi', category: 'conflict', retryable: false });
+  });
+
   it.each([
     ["42501", "permission"],
     ["22000", "validation"],

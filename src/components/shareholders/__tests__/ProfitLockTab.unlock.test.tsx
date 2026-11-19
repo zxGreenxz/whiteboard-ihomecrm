@@ -11,6 +11,13 @@ import type {
   ProfitCloseState,
   ProfitCloseStateRow,
 } from "@/hooks/useShareholderProfit";
+import {
+  FIXED_FEE_KINDS,
+  computeProfitReportChecks,
+  type ProfitReportChecksResult,
+} from "@/lib/profitReportChecks";
+import { UNALLOCATED_REASON_SYSTEM_MESSAGE, UNLOCK_REASON_SYSTEM_MESSAGE } from "@/lib/profitClose";
+import { readProfitState } from "@/lib/profitReadModels";
 
 const state = vi.hoisted(() => ({
   unlockCalls: [] as unknown[],
@@ -21,6 +28,23 @@ const state = vi.hoisted(() => ({
   closingStatus: [] as unknown[],
   preview: undefined as ProfitClosePreview | undefined,
   closeCalls: [] as unknown[],
+  lockChecks: {
+    checks: null as ProfitReportChecksResult | null,
+    isLoading: false,
+    isError: false,
+    operatedBuildingIds: new Set<string>() as ReadonlySet<string>,
+  },
+  // F06: gói RPC phát sinh sau chốt (undefined = chưa có / lỗi).
+  postLock: undefined as unknown,
+  postLockArgs: null as unknown,
+  // Đối số adjustments mỗi lần render gọi useProfitClosePreview (JSON) + preview đang tải lần đầu.
+  previewArgs: [] as string[],
+  previewPending: false,
+  // D2.11: ảnh hưởng tới lương và sổ tổng (E14) khi mở khoá / đặt lại / chốt lại.
+  impact: { data: undefined as unknown, isLoading: false, isFetching: false, isError: false, error: null as unknown },
+  impactArgs: [] as { organizationId: string | null; periodMonth: string | null; buildingIds: readonly string[] | null; enabled?: boolean }[],
+  impactRefetch: (() => undefined) as () => unknown,
+  resetCalls: [] as unknown[],
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -38,7 +62,7 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
     variables: state.closeVariables,
     mutateAsync: async (input: unknown) => { state.closeCalls.push(input); },
   }),
-  useResetProfitPeriod: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useResetProfitPeriod: () => ({ isPending: false, mutateAsync: async (input: unknown) => { state.resetCalls.push(input); } }),
   useUnlockProfitMonth: () => ({
     isPending: false,
     mutateAsync: async (input: unknown) => {
@@ -47,14 +71,19 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
       return { run_id: "run-1", affected_buildings: 2, idempotent_replay: false };
     },
   }),
-  useProfitClosePreview: () => ({
-    data: state.preview,
-    isLoading: false,
-    isFetching: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
+  useProfitClosePreview: (_organizationId?: string, _periodMonth?: string, adjustments: unknown[] = []) => {
+    state.previewArgs.push(JSON.stringify(adjustments));
+    return state.previewPending
+      ? { data: undefined, status: "pending", fetchStatus: "fetching", isLoading: true, isFetching: true, isError: false, error: null, refetch: vi.fn() }
+      : {
+          data: state.preview,
+          isLoading: false,
+          isFetching: false,
+          isError: false,
+          error: null,
+          refetch: vi.fn(),
+        };
+  },
   useProfitCloseState: (organizationId?: string) => ({
     data: organizationId ? state.profitState : undefined,
     isLoading: false,
@@ -64,6 +93,23 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
     refetch: vi.fn(),
   }),
   useProfitTotalGroupPeers: () => ({ data: {}, status: "success", fetchStatus: "idle", isLoading: false, isError: false, error: null, refetch: vi.fn() }),
+}));
+// Bộ dò chi cố định + toà vận hành (rà 21/10 F20/F07) — mock gọn một chỗ.
+vi.mock("@/hooks/useProfitLockChecks", () => ({
+  useProfitLockChecks: () => state.lockChecks,
+}));
+vi.mock("@/hooks/useProfitPostLock", () => ({
+  useProfitPostLock: (o: unknown) => {
+    state.postLockArgs = o;
+    return { data: state.postLock };
+  },
+}));
+vi.mock("@/hooks/profit-ledger/useProfitLedgerQueries", () => ({
+  useProfitUnlockSalaryImpact: (input: (typeof state.impactArgs)[number]) => {
+    state.impactArgs.push(input);
+    if (!input.enabled) return { data: undefined, isLoading: false, isFetching: false, isError: false, error: null, refetch: vi.fn() };
+    return { ...state.impact, refetch: state.impactRefetch };
+  },
 }));
 
 import ProfitLockTab from "../ProfitLockTab";
@@ -113,6 +159,21 @@ const dong = (buildingId: string, buildingName: string): ProfitCloseStateRow => 
   locked_at: "2026-08-02T00:00:00Z",
 });
 
+// Dữ liệu GIẢ của E14 (không phải số production).
+function impactOf(paid: unknown[], effects: unknown[]) {
+  return { organization_id: ORG, period_month: KY, building_ids: null, paid_via_salary: paid, ledger_effects: effects };
+}
+const DA_TRA_QUA_LUONG = {
+  shareholder_id: "sh-1", name: "Cổ đông A", staff_id: "u-1", investment: 2_000_000, advance_offset: 0,
+  salary_voucher_ids: ["sv-1"], salary_voucher_codes: ["PC0001"],
+  voucher_states: [{ salary_voucher_id: "sv-1", approval_status: "APPROVED", posting_status: "POSTED" }],
+  needs_review_count: 0, offset_conflict: false, paid_offset: 0, advance_offset_month: 0, sheet_status: "LOCKED",
+};
+const SO_TONG_DOI = {
+  shareholder_id: "sh-1", name: "Cổ đông A", staff_id: "u-1", balance_now: 1_000_000, allocations_in_scope: 3_000_000,
+  allocations_removed: 3_000_000, balance_after: -2_000_000, becomes_advance: true, advance_after: true, settled_by_marker: false,
+};
+
 const TRANG_THAI: ProfitCloseState = {
   organization_id: ORG,
   period_month: KY,
@@ -152,6 +213,22 @@ beforeEach(() => {
   state.profitState = TRANG_THAI;
   state.preview = undefined;
   state.closeCalls = [];
+  state.postLock = undefined;
+  state.postLockArgs = null;
+  state.previewArgs = [];
+  state.previewPending = false;
+  // Mặc định: không ai nhận phần lợi nhuận tháng này qua lương, sổ tổng không đổi ⇒ hộp như cũ.
+  state.impact = { data: impactOf([], []), isLoading: false, isFetching: false, isError: false, error: null };
+  state.impactArgs = [];
+  state.impactRefetch = () => undefined;
+  state.resetCalls = [];
+  // Mặc định: đã dò, không có khoản thiếu/trùng nào.
+  state.lockChecks = {
+    checks: computeProfitReportChecks({ rows: [], buildings: [], today: "2026-10-22" }),
+    isLoading: false,
+    isError: false,
+    operatedBuildingIds: new Set<string>(),
+  };
 });
 afterEach(cleanup);
 
@@ -239,6 +316,22 @@ describe("ProfitLockTab — lỗi chốt tháng", () => {
 });
 
 describe("ProfitLockTab — tháng chốt kiểu cũ (N-A3-01)", () => {
+  it("đọc bản chốt thiếu chi tiết nguồn, hiện Chưa lưu thay vì số 0", async () => {
+    state.profitState = readProfitState({
+      ...TRANG_THAI,
+      rows: TRANG_THAI.rows.map(row => ({ ...row, source_revenue: null, source_expense: null, is_stale: true })),
+    }, ORG, KY);
+    render(<ProfitLockTab organizations={ORGS} />);
+    const checkbox = await screen.findByRole('checkbox', { name: 'Chọn 15KV' });
+    const cells = within(checkbox.closest('tr')!).getAllByRole('cell');
+    expect(cells[2].textContent).toBe('Chưa lưu');
+    expect(cells[3].textContent).toBe('Chưa lưu');
+    expect(cells[4].textContent).toContain('1.000.000');
+    expect(screen.queryByText('Chưa tải được số liệu chốt lợi nhuận.')).toBeNull();
+    expect(state.closeCalls).toHaveLength(0);
+    expect(state.unlockCalls).toHaveLength(0);
+  });
+
   it("lúc xem hiện 'Giữ lại (chốt kiểu cũ)', không gắn đỏ 'Chưa chọn'", async () => {
     const cu = {
       ...dong(B1, "15KV"),
@@ -274,9 +367,9 @@ async function mountClose(rowPatch: Partial<ProfitClosePreview['rows'][number]> 
 it('vùng chọn trống hiện đỏ/focus checkbox, không disable toast-only', async () => {
  await mountClose(); const all = screen.getByRole('checkbox', { name: 'Chọn tất cả nhà' }); fireEvent.click(all);
  const button = screen.getByRole('button', { name: 'Chốt 0 nhà đã chọn' }) as HTMLButtonElement; expect(button.disabled).toBe(false); fireEvent.click(button);
- await waitFor(() => expect(document.activeElement).toBe(all)); expect(all.getAttribute('aria-invalid')).toBe('true'); expect(screen.getByRole('alert').textContent).toMatch(/Chọn ít nhất một nhà/); expect(state.closeCalls).toHaveLength(0);
+ await waitFor(() => expect(document.activeElement).toBe(all)); expect(all.getAttribute('aria-invalid')).toBe('true'); expect(document.getElementById('profitBuildings-error')?.textContent).toMatch(/Chọn ít nhất một nhà/); expect(state.closeCalls).toHaveLength(0);
 });
-it.each(['abc', '-', '1.234'])('điều chỉnh draft %s giữ raw/đỏ/focus và không ghi giá trị cũ', async raw => {
+it.each(['abc', '-', '1,234'])('điều chỉnh draft %s giữ raw/đỏ/focus và không ghi giá trị cũ', async raw => {
  const button = await mountClose(); const amount = screen.getByLabelText('Điều chỉnh lợi nhuận 15KV') as HTMLInputElement;
  fireEvent.focus(amount); fireEvent.change(amount, { target: { value: raw } }); fireEvent.blur(amount); fireEvent.click(button);
  await waitFor(() => expect(document.activeElement).toBe(amount)); expect(amount.value).toBe(raw); expect(amount.getAttribute('aria-invalid')).toBe('true'); expect(state.closeCalls).toHaveLength(0); expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -286,13 +379,324 @@ it('lý do điều chỉnh focus đúng ô dòng nhà, giữ số đã nhập', 
  fireEvent.focus(amount); fireEvent.change(amount, { target: { value: '-123' } }); fireEvent.blur(amount); await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(button);
  await waitFor(() => expect(document.activeElement).toBe(reason)); expect(reason.getAttribute('aria-invalid')).toBe('true'); expect(amount.value).toBe('-123'); expect(state.closeCalls).toHaveLength(0);
 });
-it('thiếu cách xử lý residual vẫn bấm validation và focus select của đúng nhà', async () => {
- const button = await mountClose({ unallocated_profit: 100000, shareholder_percent_total: 90, shareholder_allocated_amount: 900000 }); expect((button as HTMLButtonElement).disabled).toBe(false); fireEvent.click(button);
- const select = screen.getByRole('combobox', { name: 'Cách xử lý phần chưa phân bổ 15KV' }); await waitFor(() => expect(document.activeElement).toBe(select)); expect(select.getAttribute('aria-invalid')).toBe('true');expect(document.getElementById(select.getAttribute('aria-describedby')??'')?.getAttribute('role')).toBe('alert'); expect(state.closeCalls).toHaveLength(0);
+it('residual chưa chọn gì: mặc định Giữ lại lợi nhuận, lý do để trống vẫn chốt được và gửi câu mặc định', async () => {
+ const button = await mountClose({ unallocated_profit: 100000, shareholder_percent_total: 90, shareholder_allocated_amount: 900000 });
+ const select = screen.getByRole('combobox', { name: 'Cách xử lý phần chưa phân bổ 15KV' }); expect(select.textContent).toContain('Giữ lại lợi nhuận');
+ expect((screen.getByLabelText('Lý do xử lý phần chưa phân bổ 15KV') as HTMLInputElement).value).toBe('');
+ fireEvent.click(button); const hop = await screen.findByRole('alertdialog'); expect(select.getAttribute('aria-invalid')).not.toBe('true');
+ fireEvent.click(within(hop).getByText('Chốt 1 nhà')); await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+ expect((state.closeCalls[0] as { adjustments: unknown[] }).adjustments).toEqual([
+  { building_id: B1, adjustment_amount: 0, adjustment_reason: null, unallocated_disposition: 'RETAINED_EARNINGS', unallocated_disposition_reason: 'Giữ lại lợi nhuận — không ghi lý do' },
+ ]);
 });
-it('có disposition nhưng thiếu lý do residual focus đúng ô reason', async () => {
- const button = await mountClose({ unallocated_profit: 100000, unallocated_disposition: 'RETAINED_EARNINGS', shareholder_percent_total: 90, shareholder_allocated_amount: 900000 }); expect((button as HTMLButtonElement).disabled).toBe(false); fireEvent.click(button);
- const reason = screen.getByLabelText('Lý do xử lý phần chưa phân bổ 15KV'); await waitFor(() => expect(document.activeElement).toBe(reason)); expect(reason.getAttribute('aria-invalid')).toBe('true');expect(document.getElementById(reason.getAttribute('aria-describedby')??'')?.getAttribute('role')).toBe('alert'); expect(state.closeCalls).toHaveLength(0);
+it('lý do residual đã ghi nhưng quá ngắn focus đúng ô reason, không mở hộp chốt', async () => {
+ const button = await mountClose({ unallocated_profit: 100000, unallocated_disposition: 'RETAINED_EARNINGS', shareholder_percent_total: 90, shareholder_allocated_amount: 900000 }); expect((button as HTMLButtonElement).disabled).toBe(false);
+ const reason = screen.getByLabelText('Lý do xử lý phần chưa phân bổ 15KV'); fireEvent.change(reason, { target: { value: 'ngắn' } }); fireEvent.click(button);
+ await waitFor(() => expect(document.activeElement).toBe(reason)); expect(reason.getAttribute('aria-invalid')).toBe('true');expect(document.getElementById(reason.getAttribute('aria-describedby')??'')?.getAttribute('role')).toBe('alert'); expect(screen.queryByRole('alertdialog')).toBeNull(); expect(state.closeCalls).toHaveLength(0);
+});
+
+describe("ProfitLockTab — rà 21/10 (F20 dò chi cố định, F07 nhãn, F60 lý do)", () => {
+  const ALL_KEYS = FIXED_FEE_KINDS.map((k) => k.key);
+  // 15KV chỉ bật Tiền nhà, mức giả 10tr/kỳ, tháng chưa có phiếu nào ⇒ THIẾU.
+  const thieuTienNha = () =>
+    computeProfitReportChecks({
+      rows: [],
+      buildings: [{ id: B1, name: "15KV", is_virtual: false, has_elevator: false, hidden_fixed_expenses: ALL_KEYS.filter((k) => k !== "tien_nha"), status: "ACTIVE" }],
+      feeRates: [{ buildingId: B1, feeCategory: "tien_nha", defaultAmount: 10_000_000 }],
+      expenseTypes: [],
+      scopeBuildingIds: [B1],
+      today: "2026-10-22",
+    });
+
+  it("còn khoản thiếu: hộp chốt liệt kê và chỉ chốt được sau khi tick 'đã xem'", async () => {
+    state.lockChecks = { ...state.lockChecks, checks: thieuTienNha() };
+    const button = await mountClose();
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).getByText(/Còn 1 khoản chi cố định thiếu hoặc có thể trùng/)).toBeTruthy();
+    expect(within(hop).getByText("Tiền nhà")).toBeTruthy();
+    const chot = within(hop).getByRole("button", { name: "Chốt 1 nhà" }) as HTMLButtonElement;
+    expect(chot.disabled).toBe(true);
+    fireEvent.click(chot);
+    expect(state.closeCalls).toHaveLength(0);
+
+    fireEvent.click(within(hop).getByRole("checkbox", { name: "Đã xem cảnh báo chi cố định" }));
+    await waitFor(() => expect(chot.disabled).toBe(false));
+    fireEvent.click(chot);
+    await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+  });
+
+  it("không có khoản thiếu: không bắt tick, chốt được ngay", async () => {
+    const button = await mountClose();
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).queryByRole("checkbox", { name: "Đã xem cảnh báo chi cố định" })).toBeNull();
+    const chot = within(hop).getByRole("button", { name: "Chốt 1 nhà" }) as HTMLButtonElement;
+    expect(chot.disabled).toBe(false);
+    fireEvent.click(chot);
+    await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+  });
+
+  it("đang dò thì chờ; dò lỗi thì phải tick (không chặn cứng)", async () => {
+    state.lockChecks = { ...state.lockChecks, checks: null, isLoading: true };
+    const button = await mountClose();
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).getByText(/Đang dò chi cố định/)).toBeTruthy();
+    expect((within(hop).getByRole("button", { name: "Chốt 1 nhà" }) as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+
+    state.lockChecks = { ...state.lockChecks, checks: null, isLoading: false, isError: true };
+    const button2 = await mountClose();
+    fireEvent.click(button2);
+    const hop2 = await screen.findByRole("alertdialog");
+    expect(within(hop2).getByText(/Chưa dò được chi cố định/)).toBeTruthy();
+    const chot2 = within(hop2).getByRole("button", { name: "Chốt 1 nhà" }) as HTMLButtonElement;
+    expect(chot2.disabled).toBe(true);
+    fireEvent.click(within(hop2).getByRole("checkbox", { name: "Đã xem cảnh báo chi cố định" }));
+    await waitFor(() => expect(chot2.disabled).toBe(false));
+  });
+
+  it("toà vận hành cho chủ nhà có nhãn; lỗi/không quyền (tập rỗng) thì không nhãn", async () => {
+    state.lockChecks = { ...state.lockChecks, operatedBuildingIds: new Set([B1]) };
+    render(<ProfitLockTab organizations={ORGS} />);
+    const nhan = await screen.findAllByTestId("landlord-operated-label");
+    expect(nhan).toHaveLength(1);
+    expect(nhan[0]?.textContent).toMatch(/Vận hành cho chủ nhà — LN chốt là của cả toà, chưa trừ phần chủ nhà/);
+    cleanup();
+
+    state.lockChecks = { ...state.lockChecks, operatedBuildingIds: new Set<string>() };
+    render(<ProfitLockTab organizations={ORGS} />);
+    await screen.findByRole("checkbox", { name: "Chọn tất cả nhà" });
+    expect(screen.queryByTestId("landlord-operated-label")).toBeNull();
+  });
+
+  it("F06: toà đã chốt có khoản phát sinh sau chốt ⇒ nhãn 'N khoản … (chưa cộng)'; không có thì không nhãn", async () => {
+    const khoan = (voucher: string, building: string) => ({
+      voucher_id: voucher, building_id: building, building_name: "x", month: KY, locked_at: "2026-08-02T00:00:00Z",
+      code: "PT0001", name: "Thu HĐ", restricted: false, voucher_date: KY, type: "INCOME", invoice_month: KY.slice(0, 7),
+      period_from: null, period_to: null, income: 1_000, expense: 0, created_at: "2026-08-05T00:00:00Z", approved_at: null,
+    });
+    state.postLock = {
+      from: KY, to: KY, locked: [],
+      after_lock: [khoan("v1", B1), khoan("v2", B1)],
+    };
+    render(<ProfitLockTab organizations={ORGS} />);
+    const nhan = await screen.findAllByTestId("post-lock-label");
+    expect(nhan).toHaveLength(1);
+    expect(nhan[0]?.textContent).toBe("2 khoản phát sinh sau chốt (chưa cộng)");
+    // chỉ hỏi các toà đang LOCKED của đúng tháng
+    expect(state.postLockArgs).toMatchObject({ from: KY, to: KY, buildingIds: [B1, B2].sort(), enabled: true });
+    cleanup();
+
+    state.postLock = undefined;
+    render(<ProfitLockTab organizations={ORGS} />);
+    await screen.findByRole("checkbox", { name: "Chọn tất cả nhà" });
+    expect(screen.queryByTestId("post-lock-label")).toBeNull();
+  });
+
+  it("lý do mở khoá là nguyên câu báo lỗi ⇒ không gửi, báo đúng lỗi", async () => {
+    const hop = await moHopMoKhoa();
+    const oLyDo = within(hop).getByLabelText("Lý do mở khoá");
+    fireEvent.change(oLyDo, { target: { value: "Lý do mở khoá phải có 8–1000 ký tự" } });
+    fireEvent.click(within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }));
+    expect(await within(hop).findByText(UNLOCK_REASON_SYSTEM_MESSAGE)).toBeTruthy();
+    expect(state.unlockCalls).toHaveLength(0);
+  });
+
+  it("lý do giữ lại là nguyên câu báo lỗi (dữ liệu T7) ⇒ không mở hộp chốt, báo tại ô", async () => {
+    const button = await mountClose({
+      unallocated_profit: 100000,
+      unallocated_disposition: "RETAINED_EARNINGS",
+      unallocated_disposition_reason: "Lý do xử lý phải có 8–500 ký tự",
+      shareholder_percent_total: 90,
+      shareholder_allocated_amount: 900000,
+    });
+    fireEvent.click(button);
+    const reason = screen.getByLabelText("Lý do xử lý phần chưa phân bổ 15KV");
+    await waitFor(() => expect(document.activeElement).toBe(reason));
+    expect(document.getElementById(reason.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+      UNALLOCATED_REASON_SYSTEM_MESSAGE,
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(state.closeCalls).toHaveLength(0);
+  });
 });
 
 it('preview thiếu source hash hiện inline reload, giữ điều chỉnh và không mở xác nhận',async()=>{const button=await mountClose({},'');fireEvent.click(button);const alert=(await screen.findByText('Chưa xác nhận được dữ liệu nguồn. Tải lại số liệu trước khi chốt.')).closest('[role="alert"]') as HTMLElement;expect(alert).toBeTruthy();expect(within(alert).getByRole('button',{name:'Tải lại số liệu'})).toBeTruthy();expect(screen.queryByRole('alertdialog')).toBeNull();expect(state.closeCalls).toHaveLength(0);});
+
+// Chủ báo 29/10 + 14/11: mỗi lần chọn cách xử lý / gõ lý do là "trang giựt một cái load màn
+// hình" — khoá preview đổi theo từng phím ⇒ cả tab thành khung xương, ô đang gõ bị gỡ khỏi DOM.
+describe("ProfitLockTab — không tải lại preview khi gõ lý do / chọn cách xử lý", () => {
+  const residual = { unallocated_profit: 100000, shareholder_percent_total: 90, shareholder_allocated_amount: 900000 };
+  const lastArgs = () => state.previewArgs[state.previewArgs.length - 1];
+
+  it("gõ lý do (phần chưa phân bổ + điều chỉnh) không đổi đối số preview; ô gõ vẫn giữ focus và đủ chữ", async () => {
+    await mountClose(residual);
+    const before = lastArgs();
+    expect(JSON.parse(before)).toEqual([]);
+
+    const reason = screen.getByLabelText("Lý do xử lý phần chưa phân bổ 15KV") as HTMLInputElement;
+    reason.focus();
+    for (const value of ["g", "gi", "giu lai de chi sau"]) {
+      fireEvent.change(reason, { target: { value } });
+    }
+    const adjReason = screen.getByLabelText("Lý do điều chỉnh 15KV") as HTMLInputElement;
+    fireEvent.change(adjReason, { target: { value: "lý do điều chỉnh dài" } });
+    reason.focus();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+    expect(lastArgs()).toBe(before);
+    expect(document.activeElement).toBe(reason);
+    expect(reason.value).toBe("giu lai de chi sau");
+    // Chọn Giữ lại/Chuyển kỳ sau: payload preview không chứa cách xử lý (xem
+    // buildProfitPreviewAdjustments + profitClose.test); đo trên trình duyệt thật 14/11: 0 lượt preview.
+  });
+
+  it("đổi số điều chỉnh mới gửi preview — chỉ số tiền, sau debounce", async () => {
+    await mountClose(residual);
+    const amount = screen.getByLabelText("Điều chỉnh lợi nhuận 15KV") as HTMLInputElement;
+    amount.focus();
+    fireEvent.change(amount, { target: { value: "150000" } });
+    expect(JSON.parse(lastArgs())).toEqual([]);
+    await waitFor(() => expect(JSON.parse(lastArgs())).toEqual([
+      { building_id: B1, adjustment_amount: 150000, adjustment_reason: null, unallocated_disposition: null, unallocated_disposition_reason: null },
+    ]));
+    expect(document.activeElement).toBe(amount);
+  });
+
+  it("chốt vẫn gửi đủ lý do và cách xử lý dù preview chỉ nhận số tiền", async () => {
+    const button = await mountClose({ ...residual, unallocated_disposition: "CARRY_FORWARD" });
+    fireEvent.change(screen.getByLabelText("Lý do xử lý phần chưa phân bổ 15KV"), { target: { value: "chuyen sang ky sau de chia" } });
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    fireEvent.click(within(hop).getByText("Chốt 1 nhà"));
+    await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+    expect((state.closeCalls[0] as { adjustments: unknown[] }).adjustments).toEqual([
+      { building_id: B1, adjustment_amount: 0, adjustment_reason: null, unallocated_disposition: "CARRY_FORWARD", unallocated_disposition_reason: "chuyen sang ky sau de chia" },
+    ]);
+  });
+
+  it("đang tải số liệu thì thanh chọn tổ chức/tháng vẫn hiện, chỉ vùng số liệu chờ", async () => {
+    state.previewPending = true;
+    state.profitState = { ...TRANG_THAI, rows: [], snapshot_ids: [], snapshot_count: 0, locked_count: 0, can_lock: true };
+    render(<ProfitLockTab organizations={CLOSE_ORGS} />);
+    expect(await screen.findByRole("combobox", { name: "Chọn tổ chức" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Chọn tháng" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Chọn tất cả nhà" })).toBeNull();
+  });
+});
+
+// D2.11: mở khoá / đặt lại / chốt lại tháng lợi nhuận đã trả qua lương ⇒ liệt kê ai, bao nhiêu, phiếu
+// lương nào, sổ tổng thành bao nhiêu; phải tick "tôi hiểu". E14 đang tải / lỗi ⇒ khoá nút (đóng an toàn).
+describe("ProfitLockTab — ảnh hưởng tới lương và sổ tổng (D2.11)", () => {
+  const LY_DO = "Sửa phiếu PC2607001 nhập sai số tiền";
+  const ACK = "Đã hiểu ảnh hưởng tới lương và sổ tổng";
+
+  it("mở khoá: có người nhận qua lương ⇒ liệt kê và khoá nút tới khi tick; gửi đúng phạm vi E14", async () => {
+    state.impact = { ...state.impact, data: impactOf([DA_TRA_QUA_LUONG], [SO_TONG_DOI]) };
+    const hop = await moHopMoKhoa();
+    const muc = within(hop).getByTestId("profit-salary-impact");
+    expect(muc.textContent).toMatch(/Cổ đông A đã nhận 2\.000\.000 đ lợi nhuận tháng này qua lương/);
+    expect(muc.textContent).toMatch(/PC0001 \(đã chi\)/);
+    // Số dư RÒNG của sổ tổng âm thì nói "âm" — "tạm ứng" là con số khác (đọc từ vị thế).
+    expect(muc.textContent).toMatch(/sổ tổng 1\.000\.000 đ → âm 2\.000\.000 đ/);
+    expect(within(muc).getByText("thành âm")).toBeTruthy();
+    expect(state.impactArgs.at(-1)).toEqual({ organizationId: ORG, periodMonth: KY, buildingIds: [B1, B2], enabled: true });
+
+    fireEvent.change(within(hop).getByLabelText("Lý do mở khoá"), { target: { value: LY_DO } });
+    const nut = within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }) as HTMLButtonElement;
+    expect(nut.disabled).toBe(true);
+    fireEvent.click(nut);
+    expect(state.unlockCalls).toHaveLength(0);
+
+    fireEvent.click(within(hop).getByRole("checkbox", { name: ACK }));
+    await waitFor(() => expect(nut.disabled).toBe(false));
+    fireEvent.click(nut);
+    await waitFor(() => expect(state.unlockCalls).toHaveLength(1));
+  });
+
+  it("mở khoá: E14 lỗi ⇒ câu lỗi + Thử lại, nút khoá (không mở khoá mù)", async () => {
+    const refetch = vi.fn();
+    state.impactRefetch = refetch;
+    state.impact = {
+      data: undefined, isLoading: false, isFetching: false, isError: true,
+      error: { code: "42501", message: "SALARY_PROFIT_DENIED: không có quyền" },
+    };
+    const hop = await moHopMoKhoa();
+    fireEvent.change(within(hop).getByLabelText("Lý do mở khoá"), { target: { value: LY_DO } });
+    const nut = within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }) as HTMLButtonElement;
+    expect(nut.disabled).toBe(true);
+    expect(within(hop).getByText(/tạm khoá nút để an toàn/)).toBeTruthy();
+    fireEvent.click(within(hop).getByRole("button", { name: "Thử lại" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(nut);
+    expect(state.unlockCalls).toHaveLength(0);
+  });
+
+  it("mở khoá: E14 đang tải ⇒ nút khoá", async () => {
+    state.impact = { data: undefined, isLoading: true, isFetching: true, isError: false, error: null };
+    const hop = await moHopMoKhoa();
+    fireEvent.change(within(hop).getByLabelText("Lý do mở khoá"), { target: { value: LY_DO } });
+    expect((within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(hop).getByText(/Đang kiểm ai đã nhận/)).toBeTruthy();
+  });
+
+  it("mở khoá: không ai nhận qua lương ⇒ như cũ, không ô tick", async () => {
+    const hop = await moHopMoKhoa();
+    expect(within(hop).getByTestId("profit-salary-impact-empty")).toBeTruthy();
+    expect(within(hop).queryByRole("checkbox", { name: ACK })).toBeNull();
+    fireEvent.change(within(hop).getByLabelText("Lý do mở khoá"), { target: { value: LY_DO } });
+    fireEvent.click(within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }));
+    await waitFor(() => expect(state.unlockCalls).toHaveLength(1));
+  });
+
+  it("đặt lại: cùng luật — có ảnh hưởng ⇒ khoá tới khi tick, E14 theo đúng nhà đang đặt lại", async () => {
+    state.impact = { ...state.impact, data: impactOf([DA_TRA_QUA_LUONG], [SO_TONG_DOI]) };
+    render(<ProfitLockTab organizations={ORGS} />);
+    await chonHetNha();
+    fireEvent.click(screen.getByRole("button", { name: "Đặt lại 2 nhà đã chọn" }));
+    const hop = await screen.findByRole("alertdialog");
+    expect(state.impactArgs.at(-1)).toEqual({ organizationId: ORG, periodMonth: KY, buildingIds: [B1, B2].sort(), enabled: true });
+    fireEvent.change(within(hop).getByLabelText("Lý do đặt lại"), { target: { value: LY_DO } });
+    const nut = within(hop).getByRole("button", { name: "Đặt lại 2 nhà" }) as HTMLButtonElement;
+    expect(nut.disabled).toBe(true);
+    fireEvent.click(within(hop).getByRole("checkbox", { name: ACK }));
+    await waitFor(() => expect(nut.disabled).toBe(false));
+    fireEvent.click(nut);
+    await waitFor(() => expect(state.resetCalls).toHaveLength(1));
+  });
+
+  it("chốt lại tháng đã chốt: có người nhận qua lương ⇒ hộp chốt lại liệt kê + bắt tick", async () => {
+    state.impact = { ...state.impact, data: impactOf([DA_TRA_QUA_LUONG], [SO_TONG_DOI]) };
+    const daChot = {
+      id: "snap-15KV", status: "LOCKED" as const, computed_profit: 1_000_000, adjustment_amount: 0, adjustment_reason: null,
+      adjusted_profit: 1_000_000, management_salary: 0, distributable_profit: 1_000_000, shareholder_percent_total: 100,
+      shareholder_allocated_amount: 1_000_000, unallocated_profit: 0, unallocated_disposition: null,
+      unallocated_disposition_reason: null, source_hash: "b".repeat(32), locked_at: "2026-08-02T00:00:00Z",
+    };
+    state.preview = { organization_id: ORG, period_month: KY, source_hash: "a".repeat(32), is_locked: true, is_stale: false, rows: [{ ...previewRow(), current_snapshot: daChot }] };
+    state.profitState = { ...TRANG_THAI, rows: [dong(B1, "15KV")], snapshot_ids: ["snap-15KV"], snapshot_count: 1, locked_count: 1, can_lock: true };
+    render(<ProfitLockTab organizations={CLOSE_ORGS} />);
+    const nutChotLai = await screen.findByRole("button", { name: "Chốt lại 1 nhà đã chọn" });
+    fireEvent.change(document.querySelector('[name="overallReason"]')!, { target: { value: "Sửa phiếu thu nhập sai rồi chốt lại" } });
+    await waitFor(() => expect((nutChotLai as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(nutChotLai);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).getByTestId("profit-salary-impact-paid").textContent).toMatch(/Cổ đông A đã nhận 2\.000\.000 đ/);
+    expect(state.impactArgs.at(-1)).toEqual({ organizationId: ORG, periodMonth: KY, buildingIds: [B1], enabled: true });
+    const chot = within(hop).getByRole("button", { name: "Chốt lại 1 nhà" }) as HTMLButtonElement;
+    expect(chot.disabled).toBe(true);
+    fireEvent.click(within(hop).getByRole("checkbox", { name: ACK }));
+    await waitFor(() => expect(chot.disabled).toBe(false));
+    fireEvent.click(chot);
+    await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+  });
+
+  it("chốt lần đầu (chưa chốt) không hỏi E14", async () => {
+    const button = await mountClose();
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).queryByTestId("profit-salary-impact")).toBeNull();
+    expect(state.impactArgs.every((args) => !args.enabled)).toBe(true);
+  });
+});

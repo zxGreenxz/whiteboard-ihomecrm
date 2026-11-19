@@ -1,0 +1,9 @@
+# Canh mạng cho mọi sidecar Hermes. Cài theo infra/hermes-fleet/README.md (script chép ra đường cố định lúc cài).
+[Unit]
+Description=iHome Hermes - canh mang moi sidecar (dung chung network namespace voi worker Zalo)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /usr/local/libexec/ihome-hermes/fleet-netwatch.sh
+TimeoutStartSec=3min

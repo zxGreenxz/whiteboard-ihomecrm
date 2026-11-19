@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Copy,
+  KeyRound,
   Landmark,
   Loader2,
   Mail,
@@ -46,6 +47,7 @@ import {
   useInviteMember,
   authorizationErrorMessage,
   useOrganizationMembers,
+  useOrganizationProfile,
   useOrganizationRoles,
   type MemberType,
   type OrganizationMember,
@@ -55,6 +57,13 @@ import {
   MemberAuthorizationDialog,
 } from '@/components/authorization/MemberAuthorizationDialog';
 import { ScopePicker, tenNgan } from '@/components/authorization/ScopePicker';
+import {
+  ResetUserPasswordDialog,
+  type ResetUserPasswordTarget,
+} from '@/components/account/ResetUserPasswordDialog';
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
+import { useIsOrgOwner } from '@/hooks/useIsOrgOwner';
+import { hienDatLaiMatKhauThanhVien, quyenDaXacNhan, toChucDemoDaXacNhan } from '@/lib/resetUserPassword';
 
 const MAU_LOAI: Record<string, string> = {
   OWNER: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200',
@@ -70,6 +79,18 @@ export default function MembersPage() {
   const [tim, setTim] = useState('');
   const [dangSua, setDangSua] = useState<string | null>(null);
   const [moMoi, setMoMoi] = useState(false);
+  const [datLaiCho, setDatLaiCho] = useState<ResetUserPasswordTarget | null>(null);
+  // Cờ HIỂN THỊ: đang tải hoặc lỗi thì coi như không có quyền. Hàng rào thật ở hàm Edge.
+  const laSuperAdmin = quyenDaXacNhan(useIsSuperAdmin());
+  // Cờ theo vai hệ thống TENANT_OWNER (sát vị ngữ chặt ở server hơn cờ "chủ công ty" khớp theo tên vai).
+  const laChuCongTy = quyenDaXacNhan(useIsOrgOwner());
+  // Chỉ chủ công ty (không phải superadmin) mới cần biết tổ chức có phải công ty demo không.
+  const profileQuery = useOrganizationProfile(laChuCongTy && !laSuperAdmin);
+  const boiCanhDatLai = {
+    isSuperAdmin: laSuperAdmin,
+    isCompanyOwner: laChuCongTy,
+    toChucLaDemo: toChucDemoDaXacNhan(profileQuery, data?.organizationId),
+  };
 
   const loc = useMemo(() => {
     const members = data?.members ?? [];
@@ -116,7 +137,16 @@ export default function MembersPage() {
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
             {loc.map((m) => (
-              <TheThanhVien key={m.membershipId} m={m} onSua={() => setDangSua(m.membershipId)} />
+              <TheThanhVien
+                key={m.membershipId}
+                m={m}
+                onSua={() => setDangSua(m.membershipId)}
+                onDatLaiMatKhau={
+                  hienDatLaiMatKhauThanhVien(boiCanhDatLai, m)
+                    ? () => setDatLaiCho({ userId: m.userId, name: tenThanhVien(m), login: m.email })
+                    : undefined
+                }
+              />
             ))}
             {!loc.length && !error && (
               <p className="col-span-full rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -134,9 +164,17 @@ export default function MembersPage() {
         onOpenChange={(v) => !v && setDangSua(null)}
       />
       <HopThoaiMoi open={moMoi} onOpenChange={setMoMoi} />
+      <ResetUserPasswordDialog
+        target={datLaiCho}
+        onOpenChange={(open) => {
+          if (!open) setDatLaiCho(null);
+        }}
+      />
     </MainLayout>
   );
 }
+
+const tenThanhVien = (m: OrganizationMember) => m.fullName || m.email || 'Không tên';
 
 /**
  * Gộp các bản ghi vai trò trùng tên thành MỘT dòng.
@@ -159,13 +197,23 @@ function gopVaiTro(m: OrganizationMember) {
   return [...gop.values()];
 }
 
-function TheThanhVien({ m, onSua }: { m: OrganizationMember; onSua: () => void }) {
-  const ten = m.fullName || m.email || 'Không tên';
+function TheThanhVien({
+  m,
+  onSua,
+  onDatLaiMatKhau,
+}: {
+  m: OrganizationMember;
+  onSua: () => void;
+  /** Không truyền ⇒ không hiện nút (xem `hienDatLaiMatKhauThanhVien`). */
+  onDatLaiMatKhau?: () => void;
+}) {
+  const ten = tenThanhVien(m);
   return (
     <Card className={cn(m.status !== 'ACTIVE' && 'opacity-70')}>
       <CardContent className="space-y-3 p-4">
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
+        {/* flex-wrap: thẻ hẹp (điện thoại, lưới 2 cột) không đủ chỗ cho tên + hai nút thì nút xuống dòng. */}
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+          <div className="min-w-[10rem] flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="truncate font-medium">{ten}</span>
               <Badge className={cn('border-0 font-normal', MAU_LOAI[m.memberType])}>
@@ -184,10 +232,23 @@ function TheThanhVien({ m, onSua }: { m: OrganizationMember; onSua: () => void }
             </div>
             {m.email && <p className="truncate text-xs text-muted-foreground">{m.email}</p>}
           </div>
-          <Button variant="outline" size="sm" onClick={onSua}>
-            <Settings2 className="mr-1.5 h-4 w-4" />
-            Phân quyền
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={onSua}>
+              <Settings2 className="mr-1.5 h-4 w-4" />
+              Phân quyền
+            </Button>
+            {onDatLaiMatKhau && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onDatLaiMatKhau}
+                aria-label={`Đặt lại mật khẩu cho ${ten}`}
+              >
+                <KeyRound className="mr-1.5 h-4 w-4" />
+                Đặt lại mật khẩu
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="space-y-1.5">

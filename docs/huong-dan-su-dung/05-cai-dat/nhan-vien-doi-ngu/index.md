@@ -62,6 +62,21 @@ Vai trò không kèm phạm vi nào thì không cấp được quyền gì. Mở
 
 ![Bước 5 - Màn Tổ chức của DEMO: hồ sơ tổ chức, bốn ô số liệu, lời mời và nhật ký phân quyền](./images/buoc-03-to-chuc.webp)
 
+## Đặt lại mật khẩu cho thành viên
+
+Dùng khi nhân viên quên mật khẩu, nhất là tài khoản đăng nhập bằng username hoặc số điện thoại, vì không có email thật để nhận thư **Quên mật khẩu**.
+
+1. Trên thẻ của người đó, bấm **Đặt lại mật khẩu**.
+2. Nhập **Mật khẩu mới**, hoặc bấm **Tạo ngẫu nhiên** để lấy 12 ký tự dễ đọc. Mật khẩu cần ít nhất 6 ký tự và không được có dấu cách ở đầu hoặc cuối.
+3. Bấm **Đặt lại mật khẩu**. Màn xác nhận hiện mật khẩu mới kèm nút **Chép**. Gửi mật khẩu cho người đó qua kênh riêng. Họ bị đăng xuất khỏi các thiết bị đang dùng (chậm nhất khoảng 1 giờ) và nên tự đổi lại ở trang Hồ sơ sau khi đăng nhập.
+
+Ai thấy nút này:
+
+- **Chủ công ty** thấy nút ở **Nhân sự** và **Đối tác** của công ty mình. Nút không hiện ở thẻ **Chủ sở hữu**, **Cổ đông**, ở thẻ của chính bạn, và không hiện gì ở công ty demo. Máy chủ còn từ chối khi người đó đồng thời thuộc một công ty khác mà bạn không làm chủ.
+- **Super admin** đặt lại được cho mọi người, trừ chính mình.
+
+Mỗi lần bấm đặt lại được ghi ngay vào **Nhật ký phân quyền** ở màn **Tổ chức**, dạng *Đặt lại mật khẩu cho &lt;tên&gt;*, kèm người làm và thời điểm. Nếu hệ thống chắc chắn chưa đổi được, nhật ký có thêm dòng *Đặt lại mật khẩu không thành cho &lt;tên&gt;*. Nếu hộp thoại báo *Chưa xác nhận được mật khẩu đã đổi hay chưa*, thử đăng nhập bằng mật khẩu mới hoặc đặt lại lần nữa.
+
 ## Vai trò, phạm vi và ngoại lệ
 
 Mỗi thành viên có thể mang nhiều vai trò; mỗi vai trò gắn cho người đó phải kèm ít nhất một phạm vi:
@@ -107,6 +122,8 @@ Vai trò là gói quyền dùng chung, không phải bản sao chép vào từng
 | Có quyền nhưng không thao tác được ở một toà/sổ | Kiểm tra phạm vi của vai trò và ngoại lệ **Cấm** của người đó |
 | Ô **Tên tổ chức** bị khoá | Cần quyền sửa cài đặt chung |
 | Muốn sửa quyền của chính mình | Hộp thoại báo *"Không thể tự sửa quyền của chính mình."* — nhờ một chủ sở hữu khác thực hiện |
+| Nhân viên quên mật khẩu, tài khoản không có email thật | Chủ công ty bấm **Đặt lại mật khẩu** trên thẻ người đó (xem mục **Đặt lại mật khẩu cho thành viên** ở trên) |
+| Đặt lại mật khẩu báo *Đặt lại mật khẩu quá nhiều lần* | Mỗi người bấm được tối đa 10 lần, mỗi tài khoản bị đặt lại tối đa 5 lần trong 10 phút. Đợi vài phút rồi thử lại |
 
 ## Quy trình liên quan
 

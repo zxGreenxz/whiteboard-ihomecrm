@@ -10,7 +10,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { VehicleWithRelations } from '@/types/vehicle';
-import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionCheck';
 import { LoadingState } from '@/components/loading/LoadingState';
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
@@ -34,13 +35,11 @@ export default function VehicleListTable({
   onDelete,
   isLoading,
 }: VehicleListTableProps) {
-  const { canManageBuilding, canManageAll } = useMyBuildingScope();
+  const { data: perms } = useMyPermissions();
   // Phương tiện không gắn building (vd hộp xe chung) chỉ caller toàn quyền
   // quản; staff theo tòa phải khớp building_id.
-  const canManageVehicle = (vehicle: VehicleWithRelations) => {
-    if (canManageAll) return true;
-    return canManageBuilding(vehicle.building_id);
-  };
+  const canManageVehicle = (row: VehicleWithRelations, action: 'edit' | 'delete') =>
+    canUse(perms, 'vehicles', action, row.building_id ?? undefined);
 
   if (isLoading) {
     return (
@@ -112,7 +111,7 @@ export default function VehicleListTable({
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1">
-                  {canManageVehicle(vehicle) && (
+                  {canManageVehicle(vehicle, 'edit') && (
                     <Button
                       size="icon"
                       variant="ghost"
@@ -122,7 +121,7 @@ export default function VehicleListTable({
                       <Pencil className="h-4 w-4" />
                     </Button>
                   )}
-                  {canManageVehicle(vehicle) && (
+                  {canManageVehicle(vehicle, 'delete') && (
                     <Button
                       size="icon"
                       variant="ghost"

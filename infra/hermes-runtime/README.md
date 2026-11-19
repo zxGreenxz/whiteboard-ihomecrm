@@ -9,17 +9,52 @@ The production connector host in this directory (`host-cli.mjs`, `host-service.m
 gateway/driver, `agent-process.py` wrapper and model relay) was never deployed and
 was removed on 17/10/2026; this P1 experiment does not depend on it.
 
-The runtime image is pinned to Hermes `v0.21.6`, source commit
-`818c13be1dc4fd28987e1e881a9408224afd4535`, Linux amd64 manifest digest
-`sha256:ffa4fbb471c2bc8c85fbcfc629347585cc1586c86d2e6db465d01203ce696d95`.
+The runtime image is pinned to Hermes `v0.22.2` (release date string `2026.9.24`),
+source commit `d923a5eb487a17c0a68801bba9ef0f56c81040a8`, Linux amd64 manifest digest
+`sha256:a11574b7fe8e1631d7d88d556677dac693bc058abf558cdeb899155688c1bf05`.
 The upstream annotated tag's release receipt binds that commit to index digest
-`sha256:9774f4f39a9bb8c2f68ce728ed5e99ddbad282163be56764afacf88ed952b784`;
+`sha256:36099926da316742423544e055d4734777105ffe6341873af5459b957d0c2919`;
 the Linux amd64 member and its config are checked by content digest. This is an
 unsigned upstream release receipt, not a signed build attestation or a reproducible
 build proof. The runner still records image labels and rejects a conflicting revision.
 An absent revision label stays unverified independently of the release receipt.
-Earlier runtime receipts for `32d095e8…` used an image outside this release receipt
-and do not certify the current image. The current image needs a new runtime run.
+Earlier runtime receipts do not certify the current image: those for `32d095e8…`
+used an image outside any release receipt, and those for `ffa4fbb4…` belong to the
+previous pin, v0.21.6. The current image needs a new runtime run.
+
+### Pin synced to production on 11/11/2026 (v0.21.6 → v0.22.2)
+
+Production moved to v0.22.2 before this repository did, so until the sync CI probed
+a different version than production ran.
+
+- Read on the production host on 11/11/2026: container `hermes-owner` runs the digest
+  above and reports `Hermes Agent v0.22.2 (2026.9.24)`, upstream `d923a5eb`,
+  Python 3.14.7. The image was built on 15/10/2026 and the running container was
+  created on 23/10/2026. No receipt records the moment of the upgrade itself:
+  repository notes already mention v0.22.2 on that host on 19/10 and 21/10
+  (`docs/plans/hermes-crm/STATUS.md`, `infra/hermes-broker/wave2-registry.mjs`).
+- What was re-established for the new pin on 11/11/2026: the tag object, release,
+  index and Linux amd64 manifest were fetched again from GitHub and Docker Hub and
+  `image-provenance.json` was rebuilt from those bytes only (`assertImageProvenance`
+  passes offline). The receipt is still unsigned. Nothing from the v0.21.6 artifact
+  was carried over. The image config blob named by that manifest was also fetched by
+  digest: it was created on 2026-10-15T06:20:46Z and carries no labels at all, so
+  there is no revision label to compare against the pinned commit.
+- Still missing for the new pin: the live `docker image inspect` check
+  (`assertPinnedImageInspection`) and a synthetic runtime receipt. No Docker daemon
+  was available where the pin was synced; jobs `native-upstream` and
+  `synthetic-isolation` of the `Hermes synthetic runtime` workflow produce both.
+- Behaviour found on v0.22.2 in production: a manual `hermes cron run <id>` executes
+  the job synchronously inside the CLI process, without the gateway's live adapters,
+  so it cannot deliver through the Zalo plugin; a scheduled run is executed by the
+  ticker inside the gateway and delivers through the live adapter. The code path
+  (`hermes_cli/cron.py` `_job_action`, `tools/cronjob_tools.py` `_run_claimed_job`)
+  differs from v0.21.6 only in typing and lint edits, so this is an observation made
+  on v0.22.2, not a change introduced by it. Details:
+  [Zalo native plugin](../hermes-zalo-native/README.md), "Cron".
+- The production Zalo plugin is a backport (the plugin released on 16/10 plus the
+  `cron_deliver_env_var` declaration), not this repository's current `adapter.py`.
+  The probes here test the repository's adapter against the pin, not that backport.
 
 ## Commands
 

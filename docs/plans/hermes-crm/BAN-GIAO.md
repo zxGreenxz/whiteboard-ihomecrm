@@ -118,15 +118,16 @@ Chưa ghi được qua Hermes (chủ hoãn 16/10): hợp đồng, cọc, hoá đ
 - Đã xong sáng 19/10: liên kết Zalo với kết nối mới. Bot Ihome ghi nhận đúng nick chính và web báo "Đã liên kết nick Zalo của bạn với kết nối Hermes".
 - Còn lại của chủ: thử vài câu qua Zalo trên kết nối mới, rồi thu hồi kết nối cũ `…624ef30e` (**chưa thu hồi**).
 
-**Liên kết Zalo:** mục "Điều khiển Hermes qua Zalo" → chọn kết nối và bot → tạo mã → từ nick chính nhắn mã cho bot → bấm xác nhận. UID Zalo là theo góc nhìn bot (cùng một người có UID khác nhau ở mỗi nick). Mã chỉ sống 5 phút và theo tài khoản; sau khi nhắn phải bấm kiểm tra trên web. Bài học 19/10:
+**Liên kết Zalo:** mục "Điều khiển Hermes qua Zalo" → chọn kết nối và bot → tạo mã → từ nick chính nhắn mã cho bot → bấm xác nhận. UID Zalo là theo góc nhìn bot (cùng một người có UID khác nhau ở mỗi nick). Mã chỉ sống 15 phút và theo tài khoản; sau khi nhắn phải bấm kiểm tra trên web. Bài học 19/10:
 - Phải **ngắt liên kết cũ trước** (một nick chính + một bot chỉ có một liên kết đang hoạt động).
-- Mã `/hermes-link` hạn 5 phút: gửi ngay sau khi tạo.
+- Mã `/hermes-link` có hạn 15 phút (ràng buộc `expires_at` trong `20261019034850`): gửi ngay sau khi tạo.
 - Kiểm bot đã nhận mã qua log worker (container `ihome-zalo-worker`): dòng `hermes link <status>`.
+- Từ 10/11/2026 (`20261110072604`, PR #405, đã áp TEST và production): khi trợ lý **không có liên kết Zalo nào đang hoạt động**, bước xác nhận tự chuyển lựa chọn của trợ lý sang kết nối của mã vừa tạo và ghi kết nối cũ vào nhật ký quyền. Trước đó, lựa chọn còn trỏ kết nối đã thu hồi thì xác nhận luôn báo `hermes_zalo_context_changed`, trong khi nút "Dùng kết nối này cho trợ lý" chỉ hiện khi đã có liên kết, nên không có lối ra. Khi trợ lý đang có liên kết hoạt động thì vẫn như cũ: đổi kết nối chỉ qua nút đó. Ràng buộc "một nick chính + một bot chỉ một liên kết đang hoạt động" không đổi: tài khoản CRM khác muốn dùng cùng nick trên cùng bot phải ngắt liên kết kia trước. Lùi: đưa `revert/hermes_zalo_confirm_reselect_unbound_revert_v1.sql` thành một migration forward mới.
 
 **Lỗi đã biết trên `/settings/hermes`, CHƯA sửa (19/10):**
 - Trang báo nhầm "Chưa đọc được danh sách quyền…" trong lúc đang tải; chờ tải xong rồi xem lại.
 - Mỗi lời gọi `/api/hermes/connections/*` mất 7–9 s.
-- Quy trình liên kết Zalo khó dùng (mã 5 phút, theo tài khoản, phải bấm kiểm tra trên web).
+- Quy trình liên kết Zalo khó dùng (mã có hạn 15 phút, theo tài khoản, phải bấm kiểm tra trên web). Riêng vòng kẹt khi lựa chọn của trợ lý trỏ kết nối đã thu hồi đã sửa 10/11/2026 (xem mục Liên kết Zalo).
 
 **Bot của công ty:** chỉ người có quyền quản trị phù hợp bật/tắt; tắt bot thu hồi mọi liên kết qua bot đó.
 
@@ -155,7 +156,7 @@ Giữ nguyên khi thao tác (tối ưu tốc độ 16/10): `connector.json` ph�
 
 1. Chọn commit đã merge vào main, CI main xanh.
 2. **Migration trước, connector sau.** Bản gọi RPC mới thì áp migration production qua forward lane trước, rồi kiểm từng hàm mới trên production bằng `select to_regprocedure('<hàm>(<kiểu tham số>)') is not null` — phải trả `true`. Ví dụ từ #189 (commit `1a6fdc59`) connector gọi `hermes_scope_buildings_v1` ở mọi lượt xác thực (migration `20261017023242`): `select to_regprocedure('public.hermes_scope_buildings_v1(text,uuid)') is not null`. Thiếu hàm thì mọi lượt ra `backend_unavailable`.
-3. Dựng gói release từ đúng commit đó (thư mục `infra/hermes-broker`, `infra/hermes-runtime`, `infra/hermes-zalo-router`, `src/lib/roomSaleFacts.ts`, `worker/lib/hermes-link.js`, `worker/package.json`, `vendor/xlsx-0.20.3.tgz`, `package.json`, `package-lock.json`, bỏ test) → giải nén vào `releases/<sha8>` → `npm ci --omit=dev --ignore-scripts` bằng Node 24 của `/opt/ihome-hermes/node` → thử import `host-service.mjs` bằng user 10004.
+3. Dựng gói release từ đúng commit đó bằng `git archive` TOÀN CÂY (như production; danh sách thư mục chọn tay cũ thiếu `worker/lib/*` ⇒ 04/11/2026 connector TEST chết `ERR_MODULE_NOT_FOUND worker/lib/hermes-native-files.js`, xem [HOST_SERVICE](../../../infra/hermes-runtime/HOST_SERVICE.md#release-package)); ghi file `RELEASE_SHA` = sha đầy đủ của commit → giải nén vào `releases/<sha8>` → `npm ci --omit=dev --ignore-scripts` bằng Node 24 của `/opt/ihome-hermes/node` → thử import `host-service.mjs` bằng user 10004. Skill CRM chuẩn của release đưa vào hồ sơ Hermes bằng `infra/hermes-skills/deploy.sh` (xem [README](../../../infra/hermes-skills/README.md)).
 4. Đổi symlink `/opt/ihome-hermes/current` sang release mới → `systemctl restart hermes-connector` → kiểm `GET /` 404, `/mcp` không token 401 qua tunnel. **Giữ nguyên** `/etc/ihome-hermes/connector.json` (không chép đè từ file mẫu).
 5. `docker restart hermes-owner` (chờ hết lượt đang trả lời) để Hermes đọc lại danh sách tool. **Không tạo lại sidecar.** Buộc phải tạo lại thì dùng đúng lệnh `docker run` ở [kênh Zalo native](../../../infra/hermes-zalo-native/README.md): phải có `--entrypoint hermes` và `--memory 900m --memory-swap 1800m`.
 
@@ -186,13 +187,21 @@ WHERE n.nspname IN ('public','app_private')
 
 | Thành phần | Phiên bản |
 | --- | --- |
-| Hermes | `nousresearch/hermes-agent` v0.21.6, image `sha256:ffa4fbb4…`, plugin `ihome-zalo-native` từ PR #175 (ghi 16/10, không đổi trong các PR 17–18/10) |
+| Hermes | `nousresearch/hermes-agent` v0.21.6, image `sha256:ffa4fbb4…`, plugin `ihome-zalo-native` từ PR #175 (ghi 16/10, không đổi trong các PR 17–18/10). Bản đọc lại 11/11/2026 là v0.22.2: xem ghi chú dưới bảng |
 | Connector | release main `b023563a` (sáng 19/10), 65 tool khi kết nối đủ quyền; bản lùi `14c6588a` |
 | Model | 9router `cx/gpt-6-luna` (từ 16/10 05:57) |
 | CRM | production `ptcrm.vercel.app` phục vụ `81c49363` (promote 19/10 sáng); trước đó `d001edac` (18/10, dựng qua API vì Vercel chặn hạn mức dựng do push git). Khách hàng (#196), Hợp đồng (#197), Hoá đơn (#201) và sửa trang tài chính (#209) đã ở production |
 | Schema production 16–19/10 | #185 (2 migration), #187 (5), #190 (4), #189 `20261017023242`, #196 `20261017115708`, #206 `20261018044046_toi_uu_ham_quyen_rls_v1` (18/10), đợt 2 25 migration `20261018000000…20261018090000` (19/10), #217 ba migration `20261018182656`, `20261018185339`, `20261018185413` (19/10); mỗi lượt có commit biên nhận lane. Registry năng lực: 32 khoá đọc mới bật 19/10, 3 khoá tắt |
 
 Phiên cập nhật tài liệu 19/10 không có quyền VPS/DB: release VPS và app ghi theo báo cáo vận hành; migration lấy từ các commit biên nhận trên main. Dòng Hermes ở bảng trên là ghi từ 16/10, chưa kiểm lại sau lần dọn đĩa 19/10 (đã xoá image hermes-agent cũ).
+
+**Cập nhật 11/11/2026, riêng dòng Hermes (các dòng khác vẫn là ảnh chụp 19/10):**
+
+- Đọc trên máy production ngày 11/11/2026: container `hermes-owner` chạy `nousresearch/hermes-agent@sha256:a11574b7fe8e1631d7d88d556677dac693bc058abf558cdeb899155688c1bf05`; `hermes --version` báo `Hermes Agent v0.22.2 (2026.9.24)`, upstream `d923a5eb`, Python 3.14.7. Image dựng ngày 15/10/2026, container đang chạy được tạo ngày 23/10/2026.
+- Production lên v0.22.2 trước, repo đồng bộ bản ghim sau: repo ghim v0.21.6 tới ngày 11/11/2026 rồi mới chuyển sang v0.22.2 (commit `d923a5eb487a17c0a68801bba9ef0f56c81040a8`). Không có biên nhận nào ghi đúng lúc nâng; ghi chú dọn đĩa 19/10 ở mục 4 đã nhắc runtime v0.22.2.
+- Hành vi ghi nhận trên v0.22.2 (không phải thay đổi do bản nâng): chạy tay `hermes cron run <id>` chạy job ngay trong tiến trình CLI, không có adapter đang sống của gateway, nên không giao được tin qua plugin Zalo. Lượt cron theo lịch vẫn giao được. Chi tiết ở [README plugin](../../../infra/hermes-zalo-native/README.md), mục hành vi "Cron".
+- Plugin Zalo trên production là bản phát hành 16/10 cộng khai báo `cron_deliver_env_var`, không phải `adapter.py` của `main` (xem [HOC-CO-KIEM-DUYET 4.6.1](HOC-CO-KIEM-DUYET.md)).
+- Bản ghim, cách kiểm provenance và phần bằng chứng còn thiếu: [infra/hermes-runtime/README.md](../../../infra/hermes-runtime/README.md).
 
 ## 6. Lưu ý về model
 

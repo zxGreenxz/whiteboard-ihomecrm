@@ -203,11 +203,11 @@ export default function CloseCashbookDialog({
           <div className="space-y-3">
             <div className="rounded-md border border-red-300 bg-red-50 p-3 space-y-2">
               <p className="text-sm font-semibold text-red-800 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" /> Sau khi {confirmerName} xác nhận, kỳ này khoá VĨNH VIỄN
+                <AlertTriangle className="h-4 w-4" /> Sau khi {confirmerName} xác nhận, kỳ này được khóa
               </p>
               <ul className="list-disc pl-5 text-sm text-red-800 space-y-1">
-                <li>Mọi phiếu có ngày phát sinh ≤ ngày chốt sẽ không sửa, huỷ hay xoá được nữa.</li>
-                <li>Không ai mở lại được — kể cả chủ tổ chức. Sai sót phát hiện sau phải xử lý bằng phiếu điều chỉnh ở kỳ hiện tại.</li>
+                <li>Mọi phiếu có ngày phát sinh ≤ ngày chốt sẽ không sửa, huỷ hay xoá được khi kỳ đang khóa.</li>
+                <li>Chỉ chủ tổ chức được mở khóa, phải ghi lý do và lưu lịch sử. Biên bản chốt cũ được giữ nguyên; cũng có thể xử lý sai sót bằng phiếu điều chỉnh ở kỳ hiện tại.</li>
                 <li>Vẫn bổ sung được ảnh chứng từ và ghi chú cho phiếu cũ; chỉ số tiền là khoá cứng.</li>
               </ul>
             </div>

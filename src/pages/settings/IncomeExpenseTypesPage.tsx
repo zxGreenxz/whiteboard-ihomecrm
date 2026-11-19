@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import MainLayout from '@/components/layout/MainLayout';
 import IncomeExpenseTypeList from '@/components/income-expense-types/IncomeExpenseTypeList';
@@ -79,7 +79,7 @@ export default function IncomeExpenseTypesPage() {
   const draftKey=useRef<string|null>(null);
 
   const form = useForm<IncomeExpenseTypeFormValues>({
-    resolver: zodResolver(incomeExpenseTypeFormSchema),
+    resolver: zodResolver(incomeExpenseTypeFormSchema) as Resolver<IncomeExpenseTypeFormValues>,
     defaultValues: {
       name: '',
       type: undefined,

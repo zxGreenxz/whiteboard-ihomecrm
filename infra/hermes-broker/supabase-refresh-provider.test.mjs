@@ -279,6 +279,83 @@ test('default verifier reuses Auth validation through the fixed, bounded user en
   assert.equal(calls[1].options.method, 'GET'); assert.equal(calls[1].options.redirect, 'error');
 });
 
+test('probe: only 2xx is reachable; a 3xx answer, a refused key (401/403), a missing path, 429 or 5xx is not; one request, body never read', async () => {
+  for (const status of [300, 401, 403, 404, 429, 500, 502, 503]) {
+    let requests = 0, cancelled = false, pulled = 0;
+    const f = setup({ fetch: async () => {
+      requests++;
+      return new Response(new ReadableStream({ pull(c) { pulled++; c.enqueue(new TextEncoder().encode('private-health-detail')); },
+        cancel() { cancelled = true; } }, { highWaterMark: 0 }), { status });
+    } });
+    await assert.rejects(f.provider.probe({ signal: f.controller.signal }), code('refresh_provider_unavailable'));
+    assert.equal(requests, 1); assert.equal(cancelled, true); assert.equal(pulled, 0);
+  }
+});
+
+test('probe: one GET of the fixed Auth health path with the publishable key only; a 2xx answer is reachable and its body is never read', async () => {
+  for (const status of [200, 204]) {
+    const requests = []; let cancelled = false, pulled = 0;
+    const f = setup({ fetch: async (url, options) => {
+      requests.push({ url, options });
+      return new Response(status === 204 ? null : new ReadableStream({ pull(c) { pulled++; c.enqueue(new TextEncoder().encode('private-health-detail')); },
+        cancel() { cancelled = true; } }, { highWaterMark: 0 }), { status });
+    } });
+    const task = f.provider.beginProbe({ signal: f.controller.signal }); assert(Object.isFrozen(task));
+    const result = await task.result; await task.drained;
+    assert.deepEqual(result, { reachable: true }); assert(Object.isFrozen(result));
+    assert.equal(requests.length, 1);
+    const [{ url, options }] = requests;
+    assert.equal(url, 'https://fixture.supabase.co/auth/v1/health');
+    assert.deepEqual(Object.keys(options).sort(), ['headers', 'method', 'redirect', 'signal']); // no body
+    assert.equal(options.method, 'GET'); assert.equal(options.redirect, 'error'); assert(options.signal instanceof AbortSignal);
+    assert.deepEqual(options.headers, { apikey: 'sb_publishable_fixture', accept: 'application/json' }); // no bearer, no session material
+    if (status !== 204) assert.equal(cancelled, true);
+    assert.equal(pulled, 0);
+  }
+  const f = setup(); // The convenience form needs no input and never touches the verifier or the token grant.
+  assert.deepEqual(await f.provider.probe(), { reachable: true });
+  assert.deepEqual(f.calls.map(call => call.url), ['https://fixture.supabase.co/auth/v1/health']); assert.equal(f.verifications.length, 0);
+});
+
+test('probe: a network error, a redirect refused by fetch or its own short deadline is not reachable; fixed codes, no retry', async () => {
+  let count = 0;
+  const down = setup({ fetch: async () => { count++; throw new Error('private-network-detail'); } });
+  await assert.rejects(down.provider.probe({ signal: down.controller.signal }), code('refresh_provider_unavailable'));
+  assert.equal(count, 1);
+  const forged = setup({ fetch: async () => { throw new SupabaseRefreshError('private-token-detail'); } });
+  await assert.rejects(forged.provider.probe(), code('refresh_provider_unavailable'));
+  // The probe has its own deadline, far below the refresh deadline, and aborts the transport it gave up on.
+  let sentSignal; const started = deferred();
+  const slow = setup({ probeTimeoutMs: 5, fetch: (_url, options) => { sentSignal = options.signal; started.resolve(); return new Promise(() => {}); } });
+  const before = Date.now();
+  await assert.rejects(slow.provider.probe(), code('refresh_timeout'));
+  assert(Date.now() - before < 2000, 'bounded by probeTimeoutMs, not by the 10 s refresh deadline'); assert.equal(sentSignal.aborted, true);
+  for (const probeTimeoutMs of [0, -1, 1.5, 10_001, '3000', null]) assert.throws(() => setup({ probeTimeoutMs }), { message: 'invalid_refresh_provider_config' });
+  assert.doesNotThrow(() => setup({ probeTimeoutMs: 10_000 }));
+});
+
+test('probe: invalid input and pre-cancelled calls dispatch nothing; cancellation and close own the late response until it drains', async () => {
+  const f = setup();
+  for (const input of [null, 'signal', [], { signal: {} }, { accessToken: 'fixture' }, { refreshToken: 'fixture' }, { url: 'https://evil.invalid' }]) {
+    await assert.rejects(f.provider.probe(input), code('refresh_invalid_request'));
+  }
+  f.controller.abort(new Error('caller-private-detail'));
+  await assert.rejects(f.provider.probe({ signal: f.controller.signal }), code('refresh_cancelled'));
+  assert.equal(f.calls.length, 0);
+  // Caller cancellation: the public result is bounded, the late response body is still cancelled and drained.
+  const fetched = deferred(), started = deferred(), cancelling = deferred(), cancelled = deferred(); let sentSignal;
+  const g = setup({ fetch(_url, options) { sentSignal = options.signal; started.resolve(); return fetched.promise; } });
+  const task = g.provider.beginProbe({ signal: g.controller.signal }); await started.promise; g.controller.abort();
+  await assert.rejects(task.result, code('refresh_cancelled')); assert.equal(sentSignal.aborted, true);
+  let drained = false, closed = false; void task.drained.then(() => { drained = true; });
+  const closing = g.provider.close(); void closing.then(() => { closed = true; });
+  await tick(); assert.equal(drained, false); assert.equal(closed, false);
+  await assert.rejects(g.provider.probe(), code('refresh_closed'));
+  fetched.resolve(new Response(new ReadableStream({ cancel() { cancelling.resolve(); return cancelled.promise; } })));
+  await cancelling.promise; await tick(); assert.equal(drained, false); assert.equal(closed, false);
+  cancelled.resolve(); await task.drained; await closing;
+});
+
 test('default verifier bounds response bytes and rejects Auth denial without disclosing details', async () => {
   let cancelled = false;
   const f = setup({ verifySession: undefined, maxResponseBytes: 10, fetch: async () => new Response(new ReadableStream({

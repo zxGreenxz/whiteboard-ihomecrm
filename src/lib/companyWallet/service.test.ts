@@ -7,7 +7,7 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')
 const [owner, org, walletId, accountId, buildingId, requestKey] = [1, 2, 3, 4, 5, 6].map(id);
 const wallet = { id: walletId, user_id: owner, organization_id: org, name: 'Bank', icon: '🏦', kind: 'bank', account_id: accountId, is_preferred: true, hidden: false, version: 1, account_name: 'Company bank', balance: 50, balance_visible: true, can_use: true };
 const snapshot = { owner_id: owner, organization_id: org, schema_version: 1, wallets: [wallet], transactions: [] };
-const input: CreateIncomeExpenseInput = { type: 'EXPENSE', name: 'Paper', building_id: buildingId, account_id: accountId, voucher_date: '2026-10-08', items: [{ income_expense_type_id: id(7), description: 'Paper', quantity: 1, unit_price: 100, start_date: '2026-10-08', end_date: '2026-10-08' }] };
+const input: CreateIncomeExpenseInput = { type: 'EXPENSE', name: 'Paper', business_result_accounting: null, attachments: [], building_id: buildingId, account_id: accountId, voucher_date: '2026-10-08', items: [{ income_expense_type_id: id(7), description: 'Paper', quantity: 1, unit_price: 100, start_date: '2026-10-08', end_date: '2026-10-08' }] };
 describe('company wallet typed service', () => {
  it('rejects cross-owner/org rows and inconsistent masked balances', () => {
   expect(parseCompanyWalletSnapshot(snapshot, owner, org)).toEqual(snapshot);

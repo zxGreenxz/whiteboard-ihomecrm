@@ -21,6 +21,33 @@ export function unallocatedDispositionLabel(
 
 export const UNALLOCATED_PROFIT_TOLERANCE = 0.01;
 
+// Chủ chốt 16/11/2026: phần chưa phân bổ MẶC ĐỊNH giữ lại lợi nhuận, ô lý do không bắt buộc.
+// Hàm chốt và CHECK `profit_monthly_unallocated_reason_v3` vẫn đòi lý do 8–500 ký tự, nên ô
+// để trống thì gửi câu mặc định dưới đây (cùng cách `Chốt lợi nhuận lần đầu …` của ghi chú chốt).
+export const DEFAULT_UNALLOCATED_DISPOSITION: ProfitUnallocatedDisposition =
+  "RETAINED_EARNINGS";
+
+export function defaultUnallocatedDispositionReason(
+  disposition: ProfitUnallocatedDisposition,
+): string {
+  return `${unallocatedDispositionLabel(disposition)} — không ghi lý do`;
+}
+
+/** Lý do đã lưu chỉ là câu mặc định ⇒ nạp lại nháp thành ô trống, không bày như lý do người gõ. */
+export function isDefaultUnallocatedDispositionReason(text: string): boolean {
+  const normalized = normalizeReasonText(text);
+  return (["RETAINED_EARNINGS", "CARRY_FORWARD"] as const).some(
+    (disposition) =>
+      normalizeReasonText(defaultUnallocatedDispositionReason(disposition)) ===
+      normalized,
+  );
+}
+
+/** Lỗi ô lý do xử lý phần chưa phân bổ: để trống là hợp lệ; đã ghi thì 8–500 ký tự, không chép câu báo lỗi. */
+export function unallocatedReasonProblem(text: string): ReasonProblem | null {
+  return text.trim() === "" ? null : reasonProblem(text, 8, 500);
+}
+
 export interface ProfitCloseDraft {
   adjustmentAmount: number;
   adjustmentReason: string;
@@ -97,16 +124,24 @@ export function hasUnallocatedProfitResidual(value: unknown): boolean {
 }
 
 function seedDraft(row: ProfitCloseDraftSeed): ProfitCloseDraft {
+  const storedDisposition = normalizeUnallocatedDisposition(
+    row.unallocatedDisposition,
+  );
+  // Lý do chỉ đi kèm cách xử lý người dùng đã chọn. Chưa chọn / chốt kiểu cũ ⇒ ô trống:
+  // không để câu backfill "…without an explicit decision" thành lý do của quyết định mới.
+  const storedReason = storedDisposition
+    ? row.unallocatedDispositionReason?.trim() ?? ""
+    : "";
   return {
     // A locked snapshot contributes only its signed adjustment. Its old absolute
     // adjusted profit must never become the base for a fresh server calculation.
     adjustmentAmount: row.locked ? finiteMoney(row.snapshotAdjustmentAmount) : 0,
     adjustmentReason: row.locked ? row.snapshotAdjustmentReason?.trim() ?? "" : "",
-    unallocatedDisposition: normalizeUnallocatedDisposition(
-      row.unallocatedDisposition,
-    ),
-    unallocatedDispositionReason:
-      row.unallocatedDispositionReason?.trim() ?? "",
+    // Chưa chọn (hoặc chốt kiểu cũ) ⇒ mặc định giữ lại lợi nhuận.
+    unallocatedDisposition: storedDisposition ?? DEFAULT_UNALLOCATED_DISPOSITION,
+    unallocatedDispositionReason: isDefaultUnallocatedDispositionReason(storedReason)
+      ? ""
+      : storedReason,
   };
 }
 
@@ -123,6 +158,61 @@ export function mergeProfitCloseDrafts(
         : seedDraft(row);
   }
   return next;
+}
+
+/**
+ * Đọc số điều chỉnh người dùng gõ. Nhận "1.000.000" (chấm ngăn nghìn kiểu Việt, có thể kèm
+ * ",5" phần lẻ), "1000000", "-250000", "12.5" / "12,5" (tối đa 2 chữ số lẻ). Ô rỗng = 0.
+ * Không đọc được ⇒ NaN (validateProfitCloseDrafts báo lỗi tại ô khi bấm chốt).
+ */
+export function parseSignedAdjustment(raw: string): number {
+  const text = raw.trim().replace(/\s+/g, "");
+  if (text === "" ) return 0;
+  // Nhóm nghìn phải bắt đầu bằng chữ số khác 0: "0.500" là số lẻ (quá 2 chữ số ⇒ NaN), không phải 500.
+  if (/^-?[1-9]\d{0,2}(?:\.\d{3})+(?:,\d{1,2})?$/.test(text)) {
+    return Number(text.replace(/\./g, "").replace(",", "."));
+  }
+  if (/^-?\d+(?:[.,]\d{0,2})?$/.test(text)) return Number(text.replace(",", "."));
+  return NaN;
+}
+
+/**
+ * Điều chỉnh gửi cho PREVIEW — chỉ phần làm đổi số: toà có số điều chỉnh khác 0.
+ *
+ * SQL (`_profit_close_preview_core_v2` + `_profit_enrich_unallocated_v3`): số preview chỉ
+ * phụ thuộc `adjustment_amount` từng toà (toà vắng mặt = 0); lý do điều chỉnh và cách xử lý
+ * phần chưa phân bổ chỉ được ĐỌC LẠI rồi trả về, còn source_hash (CAS khi chốt) không chứa
+ * điều chỉnh. Gửi cả lý do/cách xử lý làm khoá preview đổi theo TỪNG PHÍM gõ và mỗi lần chọn
+ * "Giữ lại/Chuyển kỳ sau" ⇒ preview tải lại vô ích (chủ báo 29/10 và 14/11: "giựt load màn
+ * hình"). Bỏ toà = 0 để lúc mở tab nạp nháp toàn 0 không sinh lượt preview thứ hai.
+ * Lượt CHỐT vẫn gửi đủ trường qua `buildProfitCloseAdjustments`.
+ */
+export function buildProfitPreviewAdjustments(
+  drafts: ProfitCloseDraftMap,
+): ProfitCloseAdjustmentPayload[] {
+  return Object.keys(drafts)
+    .sort()
+    .map((buildingId) => ({
+      building_id: buildingId,
+      adjustment_amount: finiteMoney(drafts[buildingId]?.adjustmentAmount),
+      adjustment_reason: null,
+      unallocated_disposition: null,
+      unallocated_disposition_reason: null,
+    }))
+    // Số chưa hợp lệ (vượt numeric(15,2) hoặc quá 2 chữ số lẻ) mà gửi đi thì SQL ném lỗi và
+    // cả vùng số liệu thành báo lỗi; bỏ khỏi preview, ô đó báo lỗi tại chỗ khi bấm chốt.
+    .filter(
+      (adjustment) =>
+        adjustment.adjustment_amount !== 0 &&
+        isStorableAdjustmentAmount(adjustment.adjustment_amount),
+    );
+}
+
+function isStorableAdjustmentAmount(value: number): boolean {
+  return (
+    Math.abs(value) <= 9_999_999_999_999.99 &&
+    Math.abs(Math.round(value * 100) - value * 100) <= 1e-8
+  );
 }
 
 export function buildProfitCloseAdjustments(
@@ -143,21 +233,134 @@ export function buildProfitCloseAdjustments(
       ? hasUnallocatedProfitResidual(unallocatedProfitByBuilding[buildingId])
       : draft.unallocatedDisposition !== null;
     const unallocatedDisposition = hasResidual
-      ? normalizeUnallocatedDisposition(draft.unallocatedDisposition)
+      ? normalizeUnallocatedDisposition(draft.unallocatedDisposition) ??
+        DEFAULT_UNALLOCATED_DISPOSITION
       : null;
-    const unallocatedDispositionReason = hasResidual
-      ? draft.unallocatedDispositionReason.trim()
-      : "";
+    // Ô lý do để trống ⇒ gửi câu mặc định (máy chủ vẫn đòi 8–500 ký tự).
+    const unallocatedDispositionReason = unallocatedDisposition
+      ? draft.unallocatedDispositionReason.trim() ||
+        defaultUnallocatedDispositionReason(unallocatedDisposition)
+      : null;
     return {
       building_id: buildingId,
       adjustment_amount: adjustmentAmount,
       adjustment_reason:
         adjustmentAmount === 0 ? null : adjustmentReason || null,
       unallocated_disposition: unallocatedDisposition,
-      unallocated_disposition_reason:
-        unallocatedDispositionReason || null,
+      unallocated_disposition_reason: unallocatedDispositionReason,
     };
   });
+}
+
+// ── Lý do chép nguyên câu báo lỗi (F60, rà 21/10) ─────────────────────
+//
+// Luật cũ chỉ đo ĐỘ DÀI 8–500 ký tự, mà chính câu báo lỗi "Lý do xử lý phải có
+// 8–500 ký tự" dài 31 ký tự ⇒ dán nó vào ô lý do là qua. Dữ liệu thật đã có 6 dòng
+// chốt T7 mang đúng câu đó làm lý do giữ lại — nhật ký chốt mất nghĩa. Client từ
+// chối khi cả ô chỉ là một câu báo lỗi/gợi ý của màn này (hoặc một câu luật độ dài).
+// Máy chủ KHÔNG kiểm điều này (không sửa hàm SQL nào) — đây là lưới phía giao diện.
+
+/** Câu báo lỗi / gợi ý mà màn chốt lợi nhuận hiện ra cho người dùng. */
+const PROFIT_SYSTEM_MESSAGES: readonly string[] = [
+  "Số điều chỉnh không hợp lệ",
+  "Số điều chỉnh tối đa 2 chữ số thập phân",
+  "Lý do điều chỉnh phải có 8–500 ký tự",
+  "Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau",
+  "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự",
+  "Lý do xử lý phải có 8–500 ký tự",
+  "Chọn cách xử lý phần chưa phân bổ",
+  "Chọn cách xử lý",
+  "Cách xử lý phần chưa phân bổ không hợp lệ",
+  "Lý do chốt lại phải có 8–1000 ký tự",
+  "Lý do mở khoá phải có 8–1000 ký tự",
+  "Lý do đặt lại phải có 8–1000 ký tự",
+  "Lý do cần có 8–1000 ký tự.",
+  "Nhập lý do đặt lại từ 8 đến 1000 ký tự.",
+  "Nhập lý do mở khóa từ 8 đến 1000 ký tự.",
+  "Chọn ít nhất một nhà để chốt",
+  "Vùng chọn đang lẫn nhà đã chốt và nhà chưa chốt — tách làm hai lượt",
+  "Chưa xác nhận được dữ liệu nguồn. Tải lại số liệu trước khi chốt.",
+  "Đang cập nhật preview theo điều chỉnh mới nhất",
+  "Lý do (ít nhất 8 ký tự)",
+  "Lý do xử lý (ít nhất 8 ký tự)",
+  "Lý do xử lý (không bắt buộc)",
+  "Không bắt buộc",
+  "Không bắt buộc cho lần chốt đầu",
+  "Bắt buộc: lý do đặt lại",
+  "Bắt buộc: mô tả vì sao cần thay snapshot đã chốt",
+  "reason must contain 8..1000 characters",
+];
+
+/** Câu báo khi ô lý do chỉ là câu báo lỗi — CHÍNH chúng cũng bị từ chối nếu bị dán lại. */
+export const ADJUSTMENT_REASON_SYSTEM_MESSAGE =
+  "Lý do điều chỉnh đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+export const UNALLOCATED_REASON_SYSTEM_MESSAGE =
+  "Lý do xử lý phần chưa phân bổ đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+export const RECLOSE_REASON_SYSTEM_MESSAGE =
+  "Lý do chốt lại đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+export const CLOSE_NOTE_SYSTEM_MESSAGE =
+  "Ghi chú lần chốt đang chép câu báo lỗi của hệ thống — ghi nội dung thật hoặc để trống";
+export const UNLOCK_REASON_SYSTEM_MESSAGE =
+  "Lý do mở khoá đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+export const RESET_REASON_SYSTEM_MESSAGE =
+  "Lý do đặt lại đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+
+/** Chuẩn hoá để so: NFC, chữ thường, gạch ngang/khoảng trắng gom một kiểu, bỏ dấu câu cuối,
+ *  dấu thanh kiểu cũ "khóa" ≡ kiểu mới "khoá". */
+export function normalizeReasonText(text: string): string {
+  return text
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/óa/g, "oá")
+    .replace(/òa/g, "oà")
+    .replace(/ỏa/g, "oả")
+    .replace(/õa/g, "oã")
+    .replace(/ọa/g, "oạ")
+    .replace(/[‐-―−]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, "-")
+    .trim()
+    .replace(/^["'“”‘’\s]+/u, "")
+    .replace(/["'“”‘’\s.!?…:;,]+$/u, "");
+}
+
+const KNOWN_SYSTEM_MESSAGES: ReadonlySet<string> = new Set(
+  [
+    ...PROFIT_SYSTEM_MESSAGES,
+    ADJUSTMENT_REASON_SYSTEM_MESSAGE,
+    UNALLOCATED_REASON_SYSTEM_MESSAGE,
+    RECLOSE_REASON_SYSTEM_MESSAGE,
+    CLOSE_NOTE_SYSTEM_MESSAGE,
+    UNLOCK_REASON_SYSTEM_MESSAGE,
+    RESET_REASON_SYSTEM_MESSAGE,
+  ].map(normalizeReasonText),
+);
+
+/** Câu NGẮN chỉ nói luật độ dài / chỉ là lời từ chối của màn này. */
+const SYSTEM_MESSAGE_PATTERNS: readonly RegExp[] = [
+  /(phải|cần) có \d+-\d+ ký tự$/u,
+  /từ \d+ đến \d+ ký tự$/u,
+  /\(?ít nhất \d+ ký tự\)?$/u,
+  /\d+\.\.\d+ characters$/u,
+  /đang chép câu báo lỗi/u,
+];
+
+/** true khi CẢ ô lý do chỉ là một câu báo lỗi / gợi ý của hệ thống, không phải lý do thật. */
+export function isSystemMessageReason(text: string): boolean {
+  const normalized = normalizeReasonText(text);
+  if (!normalized) return false;
+  if (KNOWN_SYSTEM_MESSAGES.has(normalized)) return true;
+  if (normalized.length > 120) return false;
+  return SYSTEM_MESSAGE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export type ReasonProblem = "LENGTH" | "SYSTEM_MESSAGE";
+
+/** Lỗi của một ô lý do bắt buộc: độ dài (sau cắt khoảng trắng) hoặc chép câu báo lỗi. */
+export function reasonProblem(text: string, min: number, max: number): ReasonProblem | null {
+  const trimmed = text.trim();
+  if (trimmed.length < min || trimmed.length > max) return "LENGTH";
+  return isSystemMessageReason(trimmed) ? "SYSTEM_MESSAGE" : null;
 }
 
 export function validateProfitCloseDrafts(
@@ -177,22 +380,19 @@ export function validateProfitCloseDrafts(
       rowErrors[buildingId] = "Số điều chỉnh không hợp lệ";
       continue;
     }
-    if (
-      Math.abs(draft.adjustmentAmount) > 9_999_999_999_999.99 ||
-      Math.abs(
-        Math.round(draft.adjustmentAmount * 100) - draft.adjustmentAmount * 100,
-      ) > 1e-8
-    ) {
+    if (!isStorableAdjustmentAmount(draft.adjustmentAmount)) {
       rowErrors[buildingId] = "Số điều chỉnh tối đa 2 chữ số thập phân";
       continue;
     }
-    if (
-      draft.adjustmentAmount !== 0 &&
-      (draft.adjustmentReason.trim().length < 8 ||
-        draft.adjustmentReason.trim().length > 500)
-    ) {
-      rowErrors[buildingId] = "Lý do điều chỉnh phải có 8–500 ký tự";
-      continue;
+    if (draft.adjustmentAmount !== 0) {
+      const problem = reasonProblem(draft.adjustmentReason, 8, 500);
+      if (problem) {
+        rowErrors[buildingId] =
+          problem === "LENGTH"
+            ? "Lý do điều chỉnh phải có 8–500 ký tự"
+            : ADJUSTMENT_REASON_SYSTEM_MESSAGE;
+        continue;
+      }
     }
 
     const unallocatedProfit =
@@ -203,19 +403,29 @@ export function validateProfitCloseDrafts(
           "Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau";
         continue;
       }
-      const dispositionReason = draft.unallocatedDispositionReason.trim();
-      if (dispositionReason.length < 8 || dispositionReason.length > 500) {
+      const problem = unallocatedReasonProblem(draft.unallocatedDispositionReason);
+      if (problem) {
         rowErrors[buildingId] =
-          "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự";
+          problem === "LENGTH"
+            ? "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự"
+            : UNALLOCATED_REASON_SYSTEM_MESSAGE;
       }
     }
   }
 
-  const overallReasonError =
-    options.reclose &&
-    (options.overallReason.trim().length < 8 || options.overallReason.trim().length > 1000)
-      ? "Lý do chốt lại phải có 8–1000 ký tự"
+  const overallProblem = options.reclose
+    ? reasonProblem(options.overallReason, 8, 1000)
+    : isSystemMessageReason(options.overallReason)
+      ? "SYSTEM_MESSAGE"
       : null;
+  const overallReasonError =
+    overallProblem === "LENGTH"
+      ? "Lý do chốt lại phải có 8–1000 ký tự"
+      : overallProblem === "SYSTEM_MESSAGE"
+        ? options.reclose
+          ? RECLOSE_REASON_SYSTEM_MESSAGE
+          : CLOSE_NOTE_SYSTEM_MESSAGE
+        : null;
 
   return {
     valid: Object.keys(rowErrors).length === 0 && !overallReasonError,

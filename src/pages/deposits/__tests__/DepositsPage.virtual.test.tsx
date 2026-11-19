@@ -144,6 +144,14 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("DepositsPage · sổ cọc đầy đủ với danh sách dài", () => {
+  it("cảnh báo nhiều phiếu hoàn ngay cả khi tiền khớp hồ sơ", () => {
+    fx.persisted["flt:deposits:tab"] = "refunds";
+    fx.refunds = [{ ...hoanCoc(2), posted_refund_count: 2, posted_refund_codes: ["DEMO-PC-01", "DEMO-PC-02"] }];
+    render(<DepositsPage />);
+    expect(screen.getByRole("alert").textContent).toContain("Có 2 phiếu hoàn đã vào sổ");
+    expect(screen.getByRole("alert").textContent).toContain("DEMO-PC-01, DEMO-PC-02");
+    expect(screen.queryByText(/Lệch hồ sơ/)).toBeNull();
+  });
   it("tab Đủ/Thiếu cọc: 500 HĐ → DOM chỉ chứa một cửa sổ dòng, số đếm vẫn là 500", () => {
     fx.persisted["flt:deposits:tab"] = "rooms";
     fx.held = Array.from({ length: 500 }, (_, i) => hdThieuCoc(i));

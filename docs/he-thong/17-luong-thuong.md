@@ -245,6 +245,10 @@ Khoản trả cho người quản lý điều hành được trừ khỏi LN t�
 
 **Phép 1-chạm** ([20260703000004](supabase/migrations/20260703000004_v5_myday.sql)): `request_paid_leave` (V5.1: ngày xin ≥ 01/09/2026 dùng **số dư năm** `LEAST(12, tháng × rate) − đã dùng trong năm`; trước đó quota theo tháng; chỉ hôm nay/ngày tới, chặn CN, idempotent, báo chủ) → `approve_leave` (chủ duyệt → `leave_approved` = **ngày trung tính**: `v5_n_chuan(tháng, user) = COUNT(T2–T7 − lễ) − số-phép-duyệt` → đơn giá ngày `budget/N_chuẩn` **tự tăng**, nhân viên không thiệt).
 
+**Đơn nhiều ngày** ([20261119020927](supabase/migrations/20261119020927_xin_nghi_phep_nhieu_ngay.sql)): màn Hôm nay gọi `request_paid_leave_range(p_from, p_to, p_reason)` — chỉ ghi **ngày làm** của công ty người xin (`vn_workdays`: bỏ CN **và ngày lễ**, ngày lễ trả ở `holidays`; không bỏ thì phép rơi vào ngày lễ bị trừ hai lần khỏi N_chuẩn vì `v5_n_chuan_for_org_v1` trừ mọi ngày `leave_approved` trong tháng), tối đa 31 ngày lịch, từng ngày theo luật `request_paid_leave` (số dư phải đủ cho MỌI ngày mới, ngày đã có đơn giữ nguyên, có ngày công ⇒ từ chối cả đơn), ghi cả đơn trong một giao dịch, các ngày chung `evidence.batch`, một thông báo cho chủ. Chủ duyệt/từ chối cả đơn bằng `approve_leave_batch(p_user, p_dates, p_approve)` (cổng `is_admin()` như `approve_leave`; mọi ngày phải đang `pending_leave`, tính lại chuỗi mỗi tháng bị chạm, một thông báo). `request_paid_leave` / `approve_leave` giữ nguyên — tab Đơn xin nghỉ ở Bảng lương vẫn duyệt lẻ từng ngày.
+
+**Chặn ngày lễ ở các đường xin / duyệt** ([20261119035131](supabase/migrations/20261119035131_chan_phep_ngay_le_va_va_nho.sql)): `request_paid_leave` (một ngày) từ chối ngày không có trong `vn_workdays` (`leave_no_workday`) và dùng chung khoá advisory với `request_paid_leave_range`; `approve_leave` / `approve_leave_batch` không DUYỆT được ngày Chủ nhật / ngày lễ của tổ chức trên dòng ngày công (`leave_not_workday`, chỉ từ chối được); `approve_leave_batch` khoá dòng theo thứ tự ngày; câu thiếu số dư của đơn nhiều ngày nêu ngày bị chặn. Đo production 19/11/2026: 0 dòng phép nằm trên Chủ nhật / ngày lễ. Còn hở: ngày lễ THÊM SAU khi phép đã duyệt vẫn bị trừ hai lần (đường thêm ngày lễ không kiểm phép); bên xin tra ngày lễ theo tổ chức lương của người gọi, bên duyệt theo tổ chức trên dòng ngày công (trùng nhau với người một tổ chức).
+
 ### 4.9. V5 — tiền, LOCK, nghi án/kết án ([20260703000005](supabase/migrations/20260703000005_v5_money_lock.sql))
 
 - **`v5_month_money(user, month)`** (đọc-only): `attend = round(budget/N_chuẩn) × min(ticked, N_chuẩn)`, áp **sàn mềm** (≥13 ngày → tối thiểu 3tr, config) và **trần budget 6tr**; `streak = Σ delta các mốc banked`, trần 3tr. `get_salary_progress_v5` = money + lưới ngày cho self-view.
@@ -282,6 +286,7 @@ flowchart LR
 - Bảng v3: owner/admin full; **quản lý SELECT được dòng CỦA MÌNH** (`msc_self_select`, `sm_self_select`, `sa_self_select` qua salary_monthly, `sws_self_select`) — nền cho self-view realtime. Riêng `salary_bonus_rules`/`salary_holidays` owner-only (staff đọc phần cần thiết qua RPC SECDEF). Policy `income_expenses_select_salary_staff` cho quản lý thấy phiếu HH/ứng gắn mình.
 - Bảng V5: `inspection_sessions` staff CRUD phiên của mình; `inspection_photos` **không có policy INSERT** (ghi qua RPC); **SAD/SSS chỉ SELECT self/admin — mọi ghi qua RPC SECDEF**; `cron_runs`/`salary_award_errors` admin-only. Toàn bộ RPC ghi V5 theo chuẩn: SECURITY DEFINER + `search_path` + advisory lock + idempotent + log `salary_award_errors` (cùng bài học class-bug generator ở [01](01-phan-quyen-nhan-su.md)/doc nội bộ).
 - Route: `/reports/coverage` bọc `AdminOnlyRoute`; `/my-day` + `/finance/my-salary` mọi user đăng nhập ([App.tsx](src/App.tsx)).
+- Xem việc theo người (`/my-day/team`, `/my-day/bao-cao`, `/my-day/nguoi/*`): chỉ chủ công ty và super admin; cổng nằm trong thân hàm `app_private.staff_day_can_view_v1`. Xem [27-viec-cua-quan-ly-va-diem-danh-gps](27-viec-cua-quan-ly-va-diem-danh-gps.md).
 
 ### 4.13. ⚠️ Ranh giới ĐÃ CODE vs THIẾT KẾ (V5)
 
@@ -300,11 +305,11 @@ Con số "chuyên cần 6tr + streak 3tr banked" xuất phát từ thiết kế 
 
 **Mobile** (nhánh `usePhoneViewport`): shell web-app trọn màn [SalaryAdminMobile](src/components/salary/SalaryAdminMobile.tsx) — 4 tab đáy (Lương / Cá nhân / Bảng kê / Cấu hình), thao tác chốt/trả/adjustment đầy đủ.
 
-**Vai nhân viên** (không phải admin): trang tự rơi về self-view — desktop [SalarySelf](src/components/salary/SalarySelf.tsx) trong MainLayout, phone [SalarySelfMobile](src/components/salary/SalarySelfMobile.tsx) (theme QUEST tối, gaming — tạo động lực); tháng hiển thị theo chính sách lùi-tháng (mục 4.6). Chưa được cấu hình hưởng lương → thông điệp hướng dẫn.
+**Vai nhân viên** (không phải admin): trang tự rơi về self-view [SalarySelfView](src/components/salary/SalarySelfView.tsx) — desktop trong MainLayout, phone trọn màn có thanh tab; tháng hiển thị theo chính sách lùi-tháng (mục 4.6). Chưa được cấu hình hưởng lương → thông điệp hướng dẫn.
 
 ### 5.2. `/finance/my-salary` — "Lương của tôi" trọn màn ([MySalaryPage](src/pages/finance/MySalaryPage.tsx), commit `8300610`)
 
-Sidebar mục "Bảng lương" với **nhân viên** mở trang này ở **TAB MỚI** (`selfHref` trong [Sidebar](src/components/layout/Sidebar.tsx)); admin vẫn vào `/finance/salary` in-app. Desktop = [SalarySelfDesktop](src/components/salary/SalarySelfDesktop.tsx) (QUEST full-screen, tự dựng chrome, điều hướng lùi lịch sử tháng nhưng **chặn vượt mốc được phép xem**); phone = SalarySelfMobile. Dữ liệu dùng chung `useManagerSalary` — số nhân viên thấy luôn = số admin thấy.
+Sidebar mục "Bảng lương" với **nhân viên** mở trang này ở **TAB MỚI** (`selfHref` trong [Sidebar](src/components/layout/Sidebar.tsx)); admin vẫn vào `/finance/salary` in-app. Cả desktop lẫn phone dùng [SalarySelfView](src/components/salary/SalarySelfView.tsx) (trọn màn, tự dựng thanh đầu trang, điều hướng lùi lịch sử tháng nhưng **chặn vượt mốc được phép xem**): Tổng thu nhập − Trừ khi trả = Còn nhận ghi chi tiết dưới từng cột, hàng hoạt động tháng (ngày công, mốc chuỗi v5 đạt x/y, việc có thưởng, ngày CN/lễ) kèm tiền, rồi từng khoản theo nhóm — bấm một khoản mở căn cứ hoặc đủ danh sách việc/ngày. Từng khoản lấy từ [salaryIncomeItems](src/components/salary/salaryIncomeItems.ts), cùng hàm với tab "Thu nhập & thanh toán" của quản trị; dữ liệu dùng chung `useManagerSalary` — số nhân viên thấy luôn = số admin thấy.
 
 ### 5.3. `/my-day` — "Ngày hôm nay của tôi" ([MyDayPage](src/pages/my-day/MyDayPage.tsx), V5 S3)
 
@@ -314,8 +319,10 @@ Màn trung tâm vòng lặp V5 phía nhân viên, mobile-first (desktop bó 480p
 3. **Khối B** — "Hôm nay nên ghé": tối đa 3 toà red/yellow kèm lý-do-bằng-chữ.
 4. **Khối C** — việc đang mở của tôi (link `/tasks`).
 5. **Khối F** — 2 thanh tiến trình: chuyên cần `ticked/N_chuẩn` + tiền tạm tính/budget; chuỗi hiện mốc kế, khiên `free+reserve`, chip mốc 🔒 banked.
-6. **Xin phép 1-chạm** (hiện quota còn lại) + **onboarding "Tôi đã hiểu"** bắt buộc từ chặng `shadow_money` (lưu `ui_preferences.v5_onboarding_ack`).
+6. **Xin nghỉ phép** từ ngày → đến ngày trong một đơn ([LeaveRequestForm](src/components/staff-day/LeaveRequestForm.tsx), hiện số dư còn lại; xem trước đọc `vn_workdays`) + **onboarding "Tôi đã hiểu"** bắt buộc từ chặng `shadow_money` (lưu `ui_preferences.v5_onboarding_ack`).
 Phiên kiểm tra chạy trong dialog [InspectionRunner](src/components/inspections/InspectionRunner.tsx) (mục 4.8). Copy động viên tập trung ở [v5Copy.ts](src/lib/v5Copy.ts).
+
+Chủ công ty và super admin còn thấy bộ chọn người ở đầu màn này để xem từng quản lý: xem [27-viec-cua-quan-ly-va-diem-danh-gps](27-viec-cua-quan-ly-va-diem-danh-gps.md).
 
 ### 5.4. `/reports/coverage` — dashboard chủ V5 ([OwnerDashboardV5](src/pages/reports/OwnerDashboardV5.tsx), S4+S5, AdminOnly)
 

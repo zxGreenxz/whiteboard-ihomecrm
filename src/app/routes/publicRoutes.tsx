@@ -25,6 +25,9 @@ import {
   ForgotPassword,
   ResetPassword,
   PublicContractInvoicePage,
+  LandlordSettlementPublicPage,
+  LandlordPortalPage,
+  CameraSharePage,
   PhongTrongPage,
   QuaySoPage,
   QuaySoScreenPage,
@@ -67,6 +70,42 @@ export const publicRoutes = (
       element={
         <Suspense fallback={null}>
           <PhongTrongPage />
+        </Suspense>
+      }
+    />
+
+    {/* Quyết toán vận hành CHỈ ĐỌC cho chủ nhà (21/10/2026). Token do chủ công ty
+        tạo ở /reports/finance/quyet-toan-van-hanh, thu hồi được; RPC trả NULL khi
+        token sai/thu hồi và không lộ id nội bộ. KHÔNG bọc ProtectedRoute. */}
+    <Route
+      path="/qt/:token"
+      element={
+        <Suspense fallback={null}>
+          <LandlordSettlementPublicPage />
+        </Suspense>
+      }
+    />
+
+    {/* Link tên miền cho chủ nhà vào bằng PIN (24/10/2026): /cn/<tên link>; tên miền riêng
+        (cgiang/agiang.chillhome.io.vn) mở thẳng trang này ở AppRoutes. Server chống dò PIN,
+        phiên thu hồi được. KHÔNG bọc ProtectedRoute. */}
+    <Route
+      path="/cn/:slug"
+      element={
+        <Suspense fallback={null}>
+          <LandlordPortalPage />
+        </Suspense>
+      }
+    />
+
+    {/* Khách xem lại camera được chia sẻ (10/11/2026): /xem-camera/<ID>, vào bằng ID + mật khẩu nhân viên tạo ở
+        Trung tâm mạng → Camera. Server chống dò mật khẩu, lượt chia sẻ tự hết hạn và thu hồi được; phiên chỉ xem lại
+        một kênh trong khung giờ đã chia sẻ. Không có ID trên đường dẫn thì khách tự nhập. KHÔNG bọc ProtectedRoute. */}
+    <Route
+      path="/xem-camera/:code?"
+      element={
+        <Suspense fallback={null}>
+          <CameraSharePage />
         </Suspense>
       }
     />

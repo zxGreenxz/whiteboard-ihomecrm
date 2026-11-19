@@ -1,0 +1,15 @@
+# Nạp đề xuất mỗi tối 20:55 giờ VN, ĐỘC LẬP với kiểm học tập: job kiểm chết hay không chạy thì lần nạp này vẫn chạy, gửi
+# "lần kiểm cuối" (cũ) lên CRM và báo outbox quá cũ (mã 3 ⇒ OnFailure). Ngày thường kiểm học tập (20:40) đã gọi nạp qua
+# OnSuccess; chạy thêm lần này an toàn (SQL bỏ trùng). Xong trước tin Zalo tổng hợp 21:00.
+[Unit]
+Description=iHome Hermes - nap de xuat bai hoc hang ngay 20:55 gio VN
+
+[Timer]
+OnCalendar=*-*-* 20:55:00 Asia/Ho_Chi_Minh
+Persistent=true
+RandomizedDelaySec=60
+AccuracySec=1min
+Unit=ihome-hermes-learning-ingest.service
+
+[Install]
+WantedBy=timers.target

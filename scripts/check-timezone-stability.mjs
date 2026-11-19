@@ -49,22 +49,27 @@ const ZONES = ['UTC', 'Asia/Ho_Chi_Minh', 'Pacific/Kiritimati', 'Pacific/Midway'
  * không phình. Chỉ đọc, không đổi cách chạy vitest.
  */
 export function extractVitestFailures(output, limit = 40) {
-  const plain = output.replace(/\[[0-9;]*m/g, '');
-  const lines = [];
+  // Vitest vẫn tô màu khi không có TTY: thiếu \u001b thì ESC còn sót, dòng FAIL không khớp `^\s*`.
+  const plain = output.replace(/\u001b\[[0-9;]*m/g, '');
+  const failed = [];
+  const details = [];
   for (const raw of plain.split(/\r?\n/)) {
     const line = raw.trimEnd();
-    if (/^\s*(FAIL|×|✗)\s/.test(line) || /^\s*(Error|AssertionError|TypeError|RangeError)\b/.test(line) ||
+    // jsdom in dòng này ở stderr cho mọi test đi qua window.scrollTo; không phải lỗi test.
+    if (/Not implemented:/.test(line)) continue;
+    // Tên test đỏ đứng trước: console.error của các test xanh cũng bắt đầu bằng "Error" và in sớm hơn.
+    if (/^\s*(FAIL|×|✗)\s/.test(line)) failed.push(line.trim());
+    else if (/^\s*(Error|AssertionError|TypeError|RangeError)\b/.test(line) ||
         /timed out in \d+ms/.test(line) || /^\s*❯\s+\S+\.test\.[cm]?[jt]sx?:\d+/.test(line)) {
-      lines.push(line.trim());
-      if (lines.length >= limit) break;
+      details.push(line.trim());
     }
   }
-  return lines;
+  return [...failed, ...details].slice(0, limit);
 }
 
 export function parseVitestSummary(output) {
   // Vitest in màu ANSI; bỏ trước khi khớp, nếu không regex trượt hết.
-  const plain = output.replace(/\[[0-9;]*m/g, '');
+  const plain = output.replace(/\u001b\[[0-9;]*m/g, '');
   const tests = /Tests\s+(?:(\d+) failed\s*\|\s*)?(\d+) passed/.exec(plain);
   const files = /Test Files\s+(?:(\d+) failed\s*\|\s*)?(\d+) passed/.exec(plain);
   if (!tests || !files) return null;

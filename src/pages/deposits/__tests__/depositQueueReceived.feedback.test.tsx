@@ -44,6 +44,7 @@ vi.mock('@/components/deposits/RoomReservationPanel', () => ({ RoomReservationPa
 vi.mock('@/components/deposits/RoomSaleLocksPanel', () => ({ RoomSaleLocksPanel: () => null }));
 vi.mock('@/components/deposits/ReservationPendingRefundList', () => ({ ReservationPendingRefundList: () => null }));
 vi.mock('@/components/deposits/ReservationSettlementDialog', () => ({ ReservationSettlementDialog: () => null }));
+vi.mock('../DepositRefundMobilePanel', () => ({ DepositRefundMobilePanel: () => null }));
 vi.mock('@/components/deposits/HoldDeadlineDialog', () => ({
   HoldDeadlineDialog: ({ target }: { target: HoldDeadlineTarget | null }) => target
     ? <output data-testid="deadline-target">{JSON.stringify(target)}</output> : null,

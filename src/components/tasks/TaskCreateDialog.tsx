@@ -57,7 +57,8 @@ export default function TaskCreateDialog({
   onSuccess,
 }: TaskCreateDialogProps) {
   const { data: authUser } = useAuth();
-  const buildingsQuery = useBuildings();
+  // Kèm toà ảo để giao được việc cho Kho Văn Phòng Chung (gõ mã "vp" hoặc "chung").
+  const buildingsQuery = useBuildings({ includeVirtual: true });
   const { data: buildings = [] } = buildingsQuery;
   const roomsQuery = useRooms();
   const { data: allRooms = [] } = roomsQuery;

@@ -2,6 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { Wallet, Lock, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import CashbookReopenAction from './CashbookReopenAction';
 import { type AccountWithBalance } from "@/hooks/useAccounts";
 import {
   useMyCashbookAccessV2,
@@ -16,6 +17,7 @@ interface Props {
   onDelete: (id: string) => void;
   /** Đợt 6: mở nghi thức chốt & bàn giao (thay cho khoá/mở khoá tay). */
   onClose: (acc: AccountWithBalance) => void;
+  onReopen: (acc: AccountWithBalance) => void;
 }
 
 const formatVND = (n: number) =>
@@ -28,6 +30,7 @@ export function CashbookListMobile({
   onEdit,
   onDelete,
   onClose,
+  onReopen,
 }: Props) {
   // §12.6/§1810: binding KNOWER = biết sổ, KHÔNG thấy tồn quỹ (parity desktop).
   const { data: myAccess } = useMyCashbookAccessV2();
@@ -136,9 +139,7 @@ export function CashbookListMobile({
                   </span>
                 </span>
                 <div className="flex items-center gap-0.5">
-                  {/* Đợt 6: giữ parity với bản desktop — khoá sổ là kết quả
-                      của nghi thức hai bên, và "Mở khoá" đã bị gỡ vì
-                      lock_cashbook_period_v1(p_unlock) luôn ném [CASHBOOK_CLOSED]. */}
+                  <CashbookReopenAction cashbookId={acc.id} locked={isLocked} onClick={() => onReopen(acc)} compact />
                   {canManage && !isLocked && (
                     <Button
                       variant="ghost"

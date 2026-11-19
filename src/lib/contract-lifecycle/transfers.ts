@@ -4,7 +4,7 @@ import type { Json } from '@/integrations/supabase/types';
 import type { ExtraChargeItem } from '@/lib/contractValidation';
 import { buildFinalizeContractExitCaseArgs, parseContractExitCase, type FinalizeContractExitCaseInput } from '@/lib/contractExitCases';
 
-const uuid=z.string().uuid();
+const uuid=z.string().guid();
 const createSchema=z.object({oldExitCaseId:uuid,newDraftId:uuid,expectedExitVersion:z.number().int().positive(),
   expectedDraftRevision:z.number().int().positive(),mode:z.enum(['SELF_FOUND','BROKER']),
   depositMode:z.enum(['NEW_PAYMENT','OLD_DEPOSIT_OFFSET']),termMode:z.enum(['KEEP_OLD_END_DATE','NEW_TERM']),

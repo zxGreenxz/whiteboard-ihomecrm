@@ -16,7 +16,7 @@ export const itemSchema = z.object({
 // Schema cho form Phiếu thu/chi
 const incomeExpenseFormBase = z.object({
   type: z.enum(['INCOME', 'EXPENSE'], {
-    required_error: 'Vui lòng chọn loại phiếu',
+    error: (issue) => (issue.input === undefined ? 'Vui lòng chọn loại phiếu' : undefined),
   }),
   name: z.string().min(1, 'Vui lòng nhập tên phiếu'),
   building_id: z.string().min(1, 'Chọn toà nhà cho phiếu.'),
@@ -38,15 +38,17 @@ const incomeExpenseFormBase = z.object({
   business_result_accounting: z.boolean().nullable().default(null),
   attachments: z.array(z.string()).default([]),
   // Cài đặt lặp lại (mirror Resident "Cài đặt lặp lại")
+  // Giữ `.optional()` trơn: thứ tự `.default(x).optional()` cũ không có tác dụng ở
+  // zod 3 (thiếu key ra undefined), còn zod 4 sẽ áp default — bỏ default để kết
+  // quả parse không đổi; giá trị mặc định của form nằm ở defaultValues.
   repeat_cycle: z
     .enum(['NONE', 'WEEK', 'MONTH', 'QUARTER', 'YEAR'])
-    .default('NONE')
     .optional(),
-  repeat_infinity: z.boolean().default(false).optional(),
-  repeat_count: z.coerce.number({ invalid_type_error: 'Nhập số lần lặp là số nguyên từ 1 đến 240.' }).int('Nhập số lần lặp là số nguyên từ 1 đến 240.').min(0, 'Nhập số lần lặp là số nguyên từ 1 đến 240.').max(240, 'Nhập số lần lặp là số nguyên từ 1 đến 240.').default(0).optional(),
+  repeat_infinity: z.boolean().optional(),
+  repeat_count: z.coerce.number({ error: (issue) => (issue.input === undefined ? undefined : 'Nhập số lần lặp là số nguyên từ 1 đến 240.') }).int('Nhập số lần lặp là số nguyên từ 1 đến 240.').min(0, 'Nhập số lần lặp là số nguyên từ 1 đến 240.').max(240, 'Nhập số lần lặp là số nguyên từ 1 đến 240.').optional(),
   // true (mặc định): phiếu định kỳ con tự APPROVED + kế thừa sổ. false: con sinh
   // NHÁP (sổ trống) — thanh toán + duyệt tại trang Đóng tiền tập trung.
-  repeat_auto_approve: z.boolean().default(true).optional(),
+  repeat_auto_approve: z.boolean().optional(),
   items: z.array(itemSchema).min(1, 'Vui lòng thêm ít nhất 1 hạng mục'),
 });
 
@@ -83,12 +85,12 @@ export type IncomeExpenseFormValues = z.infer<typeof incomeExpenseFormSchema>;
 export const incomeExpenseTypeFormSchema = z.object({
   name: z.string().min(1, 'Vui lòng nhập tên loại'),
   type: z.enum(['income', 'expense'], {
-    required_error: 'Vui lòng chọn loại',
+    error: (issue) => (issue.input === undefined ? 'Vui lòng chọn loại' : undefined),
   }),
   // Nhóm (category) bắt buộc — mỗi hạng mục phải thuộc 1 nhóm để dễ thống kê,
   // phân loại thu chi. Nhận null từ combobox → coerce '' rồi chặn rỗng.
   category: z
-    .string({ invalid_type_error: 'Vui lòng chọn nhóm Thu/Chi' })
+    .string({ error: (issue) => (issue.input === undefined ? undefined : 'Vui lòng chọn nhóm Thu/Chi') })
     .nullable()
     .transform((v) => (v ?? '').trim())
     .pipe(z.string().min(1, 'Vui lòng chọn nhóm Thu/Chi')),
@@ -119,7 +121,7 @@ export const incomeExpenseTemplateFormSchema = z.object({
   template_file_url: z.string().nullable().optional(),
   is_default: z.boolean().optional().default(false),
   is_income_template: z.boolean().optional().default(false),
-  field_mappings: z.record(z.string()).nullable().optional(),
+  field_mappings: z.record(z.string(), z.string()).nullable().optional(),
 });
 
 export type IncomeExpenseTemplateFormValues = z.infer<typeof incomeExpenseTemplateFormSchema>;
@@ -162,6 +164,8 @@ export const batchItemSchema = z
     room_id: z.string().nullable().optional(),
     income_expense_type_id: z.string().min(1, 'Vui lòng chọn loại hạng mục'),
     type_name: z.string().optional(),
+    // "Tên phiếu lẻ" riêng của dòng — xem batchChildVoucherName.
+    voucher_name: z.string().nullable().optional(),
     description: z.string().nullable().optional(),
     quantity: z.number().int().min(1).default(1),
     unit_price: z.number().min(0, 'Số tiền phải >= 0'),
@@ -175,7 +179,7 @@ export const batchItemSchema = z
 
 export const incomeExpenseBatchFormSchema = z.object({
   type: z.enum(['INCOME', 'EXPENSE'], {
-    required_error: 'Vui lòng chọn loại phiếu',
+    error: (issue) => (issue.input === undefined ? 'Vui lòng chọn loại phiếu' : undefined),
   }),
   shared_name: z.string().min(1, 'Vui lòng nhập tên phiếu chung'),
   account_id: z.string().min(1, 'Vui lòng chọn sổ quỹ'),
@@ -189,3 +193,20 @@ export const incomeExpenseBatchFormSchema = z.object({
 });
 
 export type IncomeExpenseBatchFormValues = z.infer<typeof incomeExpenseBatchFormSchema>;
+
+/**
+ * Tên phiếu lẻ sinh ra từ một dòng của phiếu tổng.
+ * Dòng có "Tên phiếu lẻ" ⇒ "<tên phiếu lẻ> - <tên phiếu tổng>" (vd "VSML 101 (3/7) - Chốt ML đợt 1"),
+ * để mỗi phiếu lẻ mang đúng nội dung của nó. Để trống ⇒ giữ cách cũ "<tên phiếu tổng> - <loại hạng mục>".
+ */
+export const batchChildVoucherName = (
+  sharedName: string,
+  item: { voucher_name?: string | null; type_name?: string | null },
+): string => {
+  const tenLe = item.voucher_name?.trim();
+  if (tenLe) {
+    const tenTong = sharedName.trim();
+    return tenTong ? `${tenLe} - ${tenTong}` : tenLe;
+  }
+  return `${sharedName} - ${item.type_name ?? ''}`.trim();
+};

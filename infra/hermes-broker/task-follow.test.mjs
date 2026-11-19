@@ -119,6 +119,15 @@ test('results: scope, role, party and echo checks fail closed', () => {
     assert.throws(() => taskFollowResult('list', bad, identity, input), /invalid_task_follow/);
   const mine = taskFollowInput('list', { organizationId: ORG, role: 'assigned_to_me' });
   assert.throws(() => taskFollowResult('list', { ...page, role: 'assigned_to_me' }, identity, mine), /invalid_task_follow/, 'assigned_to_me only returns my jobs');
+  // Ma trận CV-R13 (22/10): việc giao cho chính tôi ở toà ngoài phạm vi tasks.view là hợp lệ trong "giao cho tôi" (Q35); vẫn bị chặn
+  // ở assigned_by_me / team, và việc của người khác ở toà ngoài phạm vi vẫn bị chặn ở mọi role.
+  const outsideMine = { ...page, role: 'assigned_to_me', items: [item({ assigneeId: ME, buildingId: FOREIGN_BUILDING, follows: [] })] };
+  assert.deepEqual(taskFollowResult('list', outsideMine, identity, mine), outsideMine);
+  assert.throws(() => taskFollowResult('list', { ...outsideMine, role: 'assigned_by_me' }, identity, input), /invalid_task_follow/);
+  const team = taskFollowInput('list', { organizationId: ORG, role: 'team' });
+  assert.throws(() => taskFollowResult('list', { ...outsideMine, role: 'team' }, identity, team), /invalid_task_follow/);
+  assert.throws(() => taskFollowResult('list', { ...outsideMine, items: [item({ assigneeId: OTHER, buildingId: FOREIGN_BUILDING, follows: [] })] }, identity, mine),
+    /invalid_task_follow/);
   const setInput = taskFollowInput('set', { organizationId: ORG, requestId: REQ, jobId: JOB, objective: 'Theo dõi', remindBeforeMinutes: 30 });
   const set = { organizationId: ORG, requestId: REQ, outcome: 'applied', follow: { ...follow(), deadline: null } };
   assert.equal(taskFollowResult('set', set, identity, setInput).follow.id, FOLLOW);

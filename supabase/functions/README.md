@@ -7,6 +7,7 @@
 | Function | Vai trò | Auth chính |
 |---|---|---|
 | `admin-create-user` | **Tạo** user mới qua Supabase Admin API; không phải endpoint update | JWT hợp lệ + caller là `super_admin` |
+| `admin-reset-user-password` | Đặt mật khẩu mới cho user **khác** (nút "Đặt lại mật khẩu" ở `/settings/members` và `/admin/users`) | JWT người bấm; quyền quyết ở SQL `user_password_reset_begin_v1` (superadmin: mọi user; chủ công ty: thành viên mà mọi tổ chức đều do mình làm chủ và không phải công ty demo, trừ chủ/cổ đông/superadmin); khoá service chỉ dùng cho Auth Admin API |
 | `demo-reset` | Reset dữ liệu demo có cooldown/tripwire | POST + header `x-demo-secret` (không dùng admin JWT) |
 | `llm-proxy` | Proxy model cho AI Copilot, quota/reservation/usage | JWT + entitlement + cấu hình provider |
 | `quick-entry` | AI của trang Báo chi nhanh `/chi-tieu`: chép giọng (OpenRouter) + đọc chữ/ảnh bill (9router) | JWT + quyền ghi chi + công tắc `QUICK_ENTRY_MODE` |
@@ -88,7 +89,7 @@ Copilot. Hai đường, mỗi đường một nhà cung cấp:
 | Đường | Nhà cung cấp | Chuỗi mô hình mặc định (lỗi thì thử mô hình kế) |
 |---|---|---|
 | `POST …/quick-entry/audio/transcriptions` — chép giọng nói | OpenRouter | `google/chirp-3` → `deepgram/nova-3` → `openai/whisper-1` |
-| `POST …/quick-entry/chat/completions` — đọc chữ/ảnh bill ra JSON | 9router | `cx/gpt-5.6-terra(low)` → `cx/gpt-6-luna(low)` |
+| `POST …/quick-entry/chat/completions` — đọc chữ/ảnh bill ra JSON | 9router | `cx/gpt-6.1-terra(low)` → `cx/gpt-6-luna(low)` |
 
 Chuỗi đọc đổi 03/10/2026 theo lượt đo 02/10 trên 421 câu chi thật, từng mô hình chạy riêng (câu lệnh chỉ hỏi
 hạng mục mà trang dùng khi thẻ đã đủ tiền + toà): Terra low đúng 98,6%, trung vị 2,7 s, không câu nào quá
@@ -104,7 +105,7 @@ khác dù `language=vi` và vẫn trả 200 (chuỗi không dự phòng được
 chủ chọn)" — trang KHÔNG gửi `model`, chuỗi ở bảng trên (hoặc `QUICK_ENTRY_*_MODELS`) quyết định. Chỉ khi
 người dùng tự chọn một mô hình thì body mới có `model`. Máy chủ CHỈ nhận id trong danh sách cho phép
 (`STT_CHOICES` — 5 mô hình chép giọng tốt nhất; `READ_MODEL_CHOICES` × `READ_EFFORTS` — GPT-6.1 Sol,
-GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-5.6 Terra, GPT-5.6 Luna với mức tự động/minimal/low/medium/high/xhigh/max/ultra,
+GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-6.1 Terra, GPT-5.6 Luna với mức tự động/minimal/low/medium/high/xhigh/max/ultra,
 trừ `READ_UNSUPPORTED` = Astra + minimal), thử nó TRƯỚC rồi tới chuỗi mặc định; id lạ ⇒ chuỗi mặc định.
 `QUICK_ENTRY_CHOICES=off` bỏ qua mọi lựa chọn của người dùng (một mô hình đang trả sai mà người dùng đã
 lưu lựa chọn trên máy họ). Danh sách ô chọn ở `src/lib/quickEntry/models.ts` — test giữ khớp.

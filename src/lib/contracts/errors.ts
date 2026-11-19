@@ -114,11 +114,15 @@ const MA_SQLSTATE: Readonly<Record<string, ErrorCategory>> = {
   // HS001 là trạng thái đã đổi (xem trước lại).
   HD001: "internal_invariant",
   HS001: "conflict",
+  // C07 (20261026234255): HC001 = tập dượt kiểm hoãn của bước ghi hoá đơn Hermes sau khi chốt biên nhận (SET CONSTRAINTS ALL IMMEDIATE rồi
+  // tự lùi); chính hàm bắt (WHEN SQLSTATE 'HC001'), không ra tới client — lọt ra là chốt chặn vỡ.
+  HC001: "internal_invariant",
 };
 
 /** Mã của PostgREST (không phải SQLSTATE) — nằm cùng trường `code`. */
 const MA_POSTGREST: Readonly<Record<string, ErrorCategory>> = {
   PT409: "conflict", // stale domain snapshot: reload; never retry the unchanged request
+  PT422: "conflict", // finalized settlement meter source requires accounting/contract adjustment first
   // Kết quả đọc quá trần kích thước (20261017033630_hermes_full_read_owner_scope_v1): phải
   // thu hẹp truy vấn (limit nhỏ hơn / bộ lọc hẹp hơn); gọi lại y hệt sẽ quá trần y hệt.
   PT413: "validation",

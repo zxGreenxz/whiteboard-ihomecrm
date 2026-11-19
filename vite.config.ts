@@ -71,6 +71,8 @@ export default defineConfig(() => ({
     },
   },
   test: {
+    // Giống production: nạp cấu hình zod 4 dùng chung (jitless, câu báo mặc định zod 3).
+    setupFiles: ["./src/lib/zodConfig.ts"],
     // .e2e-fleet/*.spec.ts are Playwright specs (see .e2e-fleet/playwright.config.ts),
     // not vitest unit tests — keep them out of `vitest run` so the CI quality gate
     // does not fail on Playwright-only APIs (test.use, FLEET_BASE_URL, ...).

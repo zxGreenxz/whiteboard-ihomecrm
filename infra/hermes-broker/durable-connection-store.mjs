@@ -214,12 +214,32 @@ export function createDurableConnectionStore({ transport, clock = Date.now } = {
       const payload = Object.fromEntries(keys.map(key => [key, input[key]]));
       const result = await call('renewConnection', payload, options);
       // The exact expiry is selected by DB and may be shorter than the requested
-      // TTL (session/hard-age cap). Since the old lease must still be live in DB,
+      // TTL (session cap; the 30-day age cap ended 13/11). Since the old lease must still be live in DB,
       // this relative upper bound is valid without trusting the host clock.
       if (!exact(result, ['ok', 'status', 'expiresAt']) || result.ok !== true || result.status !== 'renewed' ||
           !positive(result.expiresAt) || result.expiresAt <= payload.expectedExpiresAt ||
           result.expiresAt > payload.expectedExpiresAt + payload.requestedTtlMs) invalidAck();
       return { ok: true, status: 'renewed', expiresAt: result.expiresAt };
+    },
+    // Recovery of a lapsed lease is decided by SQL alone, on its own clock: an
+    // ACTIVE connection with a usable session and live membership/policy whose
+    // token has not been dead for longer than the SQL grace. 'recovered' means SQL
+    // has just guaranteed the token a short window; 'live' means it wrote nothing;
+    // 'unavailable' is the only definitive refusal. The digest is the only input:
+    // no identity, expiry or duration is caller-selectable. The call is idempotent,
+    // so a lost ACK is repeated by the caller's next attempt, never by this adapter.
+    // The result names the credential for the trusted recovery lane only; it is not
+    // authority and carries no token, digest or session material.
+    async recoverConnection(input, options) {
+      if (!exact(input, ['tokenDigest']) || !digest(input.tokenDigest)) invalidRequest();
+      const result = await call('recoverConnection', { tokenDigest: input.tokenDigest }, options);
+      if (exact(result, ['status']) && result.status === 'unavailable') return Object.freeze({ status: 'unavailable' });
+      if (!exact(result, ['status', 'connectionId', 'credentialRef', 'binding', 'sessionReady', 'sessionExpiresAt', 'expiresAt']) ||
+          !['recovered', 'live'].includes(result.status) || !uuid(result.connectionId) || !uuid(result.credentialRef) ||
+          typeof result.sessionReady !== 'boolean' || !positive(result.sessionExpiresAt) || !positive(result.expiresAt)) invalidAck();
+      return Object.freeze({ status: result.status, connectionId: result.connectionId, credentialRef: result.credentialRef,
+        binding: Object.freeze(binding(result.binding, invalidAck)), sessionReady: result.sessionReady,
+        sessionExpiresAt: result.sessionExpiresAt, expiresAt: result.expiresAt });
     },
     async revokeConnection(input, options) {
       if (!exact(input, ['connectionId', 'expectedEpoch']) || !uuid(input.connectionId) ||

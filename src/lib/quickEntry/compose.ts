@@ -8,8 +8,9 @@
 //
 // AI chỉ điền ô còn TRỐNG (số tiền 0, toà null, kỳ null). Hai ô luôn có giá trị nên cần khoá riêng:
 // `touched` (người dùng đã sửa — không gì được đè) và `locked` (ngày nói rõ trong chữ; hạng mục
-// theo cụm phí/mã khách hàng/luật categoryRules). Hạng mục đoán theo trùng từ là đoán yếu nên AI
-// được thay.
+// theo cụm phí/mã khách hàng/luật chủ đặt). Hạng mục đoán theo trùng từ là đoán yếu nên AI
+// được thay. Gợi ý hạng mục do hàm SQL dùng chung ie_category_suggest_v1 tính (ctx.suggestCategory,
+// ghép hai lượt quanh một lần gọi RPC — sharedRules.ts).
 // ID toà/hạng mục luôn do bộ dò cục bộ tra.
 
 import { normalizeForParse } from "./amount";
@@ -17,7 +18,8 @@ import { segmentMessage, type Segment } from "./segment";
 import { findDateHint, findPeriodHint } from "./dateWords";
 import { resolveBuildingMention, resolveBuildingRoom, type ResolveRefs, type ResolveResult } from "./resolve";
 import { canonicalizeSpoken, canonicalizeSpokenRooms } from "./spokenBuilding";
-import { suggestCategory, type CategoryRef } from "./categorySuggest";
+import type { CategoryRef } from "./categorySuggest";
+import type { SuggestCategory, SuggestType } from "./sharedRules";
 import { groupByPlace } from "./convert";
 import { MAX_DESCRIPTION, type DraftLine, type DraftMode, type QuickDraft } from "./draft";
 import { MAX_PROMPT_CATEGORIES } from "./prompt";
@@ -73,6 +75,8 @@ export interface ComposeContext {
   createdAt?: number;
   newId: () => string;
   defaultAccountFor: (buildingId: string | null) => string | null;
+  /** Gợi ý hạng mục của hàm SQL dùng chung (composeWithSuggestions); không có lượt RPC ⇒ noSuggestion. */
+  suggestCategory: SuggestCategory;
 }
 
 const EDGE_PUNCT = /^[\s,;:.\-–—]+|[\s,;:.\-–—]+$/g;
@@ -219,7 +223,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     }
 
     const suggestion = company
-      ? suggestCategory(ctx.categories.filter(c=>c.type===inferTransactionType(segText).toLowerCase()), description, { feeCategory: place.feeCategory ?? msg.feeCategory })
+      ? ctx.suggestCategory(inferTransactionType(segText).toLowerCase() as SuggestType, description, place.feeCategory ?? msg.feeCategory ?? null)
       : null;
 
     const flags: DraftFlag[] = [];
@@ -372,7 +376,7 @@ function lineCategory(item: AiItem | undefined, description: string, feeCategory
   const mapped = fromIndex(item?.category ?? null, ctx.categories);
   const type=item?.transactionType??'EXPENSE';
   if (mapped) return mapped.type===type.toLowerCase()?mapped.id:null;
-  const s = suggestCategory(ctx.categories.filter(c=>c.type===type.toLowerCase()), description, { feeCategory });
+  const s = ctx.suggestCategory(type.toLowerCase() as SuggestType, description, feeCategory);
   // Ảnh bill không có lượt AI sau ⇒ gợi ý yếu của luật dòng tiền để trống cho người dùng chọn.
   return s && s.reason !== "rule_weak" ? s.id : null;
 }

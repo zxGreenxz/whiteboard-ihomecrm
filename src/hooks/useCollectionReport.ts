@@ -22,6 +22,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import type { InvoiceWithRelations } from '@/types/invoice';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { useThuTienBuildings } from '@/hooks/useThuTienBuildings';
 
 // Cột/embeds ĐÚNG những gì /thu-tien dùng. name_sort giữ lại vì sort client
 // của trang so theo name. organization_id: sổ nhận tiền (get_receiving_cashbooks_v1)
@@ -42,12 +44,18 @@ const THU_TIEN_SELECT = `
 `;
 
 /** 1 query hoá đơn/kỳ (mọi toà) dùng chung cho cả trang Thu tiền. */
-export const useThuTienInvoices = (billing_month: string) =>
-  useQuery({
+export const useThuTienInvoices = (billing_month: string) => {
+  const { selectedOrganizationId } = useOrganization();
+  const scope = useThuTienBuildings();
+  const buildingIds = scope.data?.map(building => building.id).sort();
+  return useQuery({
     // Root 'invoices' GIỮ NGUYÊN → mọi invalidateQueries(['invoices']) hiện có
     // (useBulkRecordPayment/useDeletePayment/useUpdateInvoiceNote…) vẫn bắt được.
-    queryKey: ['invoices', 'thu-tien', billing_month],
+    queryKey: ['invoices', 'thu-tien', selectedOrganizationId, buildingIds, billing_month],
+    enabled: !!selectedOrganizationId && buildingIds !== undefined && !scope.isError,
     queryFn: async (): Promise<InvoiceWithRelations[]> => {
+      if (!selectedOrganizationId || !buildingIds) throw new Error('Chưa xác nhận phạm vi thu tiền.');
+      if (buildingIds.length === 0) return [];
       // Filter y hệt useInvoices({billing_month}) mặc định: bỏ đã xoá + đã huỷ.
       // PAGED: nguồn DUY NHẤT của /thu-tien — vượt 1000 HĐ/kỳ mà không phân
       // trang là phòng biến mất khỏi grid + báo cáo cộng thiếu (bug cap-1000).
@@ -59,6 +67,8 @@ export const useThuTienInvoices = (billing_month: string) =>
             .select(THU_TIEN_SELECT) as any)
             .is('deleted_at', null)
             .neq('status', 'CANCELLED')
+            .eq('organization_id', selectedOrganizationId)
+            .in('building_id', buildingIds)
             .eq('billing_month', billing_month)
             .order('created_at', { ascending: false })
             .order('id', { ascending: true }) // tiebreaker cho .range() ổn định
@@ -88,6 +98,7 @@ export const useThuTienInvoices = (billing_month: string) =>
       });
     },
   });
+};
 
 interface CollectionReportParams {
   /** undefined = tất cả toà */

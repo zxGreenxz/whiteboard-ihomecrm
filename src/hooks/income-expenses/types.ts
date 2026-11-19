@@ -122,6 +122,12 @@ export interface IncomeExpenseWithRelations {
   supplements?: import('@/lib/incomeExpenseSupplement').IncomeExpenseSupplement[];
   id: string;
   user_id: string;
+  /**
+   * Người LẬP phiếu theo cột `income_expenses.maker_user_id`. Phiếu chi theo sổ tổng lợi nhuận ghi `user_id` là chủ
+   * công ty (không phải người bấm lập) nên "phiếu của tôi" ở các phiếu đó phải so cột này. Chỉ danh sách Thu chi
+   * (đọc thẳng bảng) mang trường này; đường đọc chi tiết qua RPC không trả ⇒ vắng = không biết, KHÔNG phải "không ai".
+   */
+  maker_user_id?: string | null;
   /** Finance V2 (§12.1): org để resolve route + 4 trục trạng thái + version CAS. */
   organization_id: string | null;
   posting_mode: "CASHBOOK" | "NON_CASH" | null;
@@ -199,21 +205,6 @@ export interface ImportIncomeExpenseRow extends ExcelImportRow {
   source_row?: number;
   building_id: string;
   income_expense_type_id: string;
-}
-
-// Tạo phiếu CHI chia lợi nhuận cổ đông:
-// - EXPENSE trên sổ quỹ thu nguồn, gắn shareholder_id
-// - business_result_accounting=false (không tính KQKD — là chia lãi, không phải chi phí)
-// - tòa = tòa ảo "Chung" (không thuộc tòa thật)
-// - 1 item type "Chia lợi nhuận cổ đông" → trigger set total_amount = amount
-export interface CreateProfitDistributionInput {
-  organizationId: string;
-  shareholder_id: string;
-  shareholder_name?: string;
-  amount: number;
-  account_id: string;
-  voucher_date: string;
-  note?: string | null;
 }
 
 // Tạo phiếu CHI trả LƯƠNG ĐIỀU HÀNH (giống chia lợi nhuận cổ đông):

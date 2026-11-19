@@ -203,6 +203,18 @@ describe("parseJobQuickInput", () => {
     expect(r3.buildingId).toBe("b-1");
   });
 
+  it.each(["vp", "VP", "chung", "Chung"])(
+    "khớp Kho Văn Phòng Chung bằng mã %s, việc cho cả toà",
+    (ma) => {
+      const kho: BuildingRef = { id: "b-kho", name: "Kho Văn Phòng Chung", code: "Chung, VP" };
+      const r = parseJobQuickInput(`tn ${ma} sửa bóng đèn`, today, [...buildings, kho], rooms, jobTypes);
+      expect(r.buildingId).toBe("b-kho");
+      expect(r.isBuildingWide).toBe(true);
+      expect(r.roomId).toBeNull();
+      expect(r.hasAnyError).toBe(false);
+    },
+  );
+
   it("ignores extra whitespace around aliases", () => {
     const buildingsExtra: BuildingRef[] = [
       { id: "b-x", name: "X", code: "  alpha  ,  bravo   ,charlie" },

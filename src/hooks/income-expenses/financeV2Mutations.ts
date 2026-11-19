@@ -34,6 +34,8 @@ import { validateAttachmentFile } from "@/components/income-expenses/AttachmentU
 import { MAX_ATTACHMENT_BYTES, uploadToken } from "@/lib/evidenceUpload";
 import { periodBlockMessage } from "@/lib/cashbookClosing";
 import { isStaleVersionError } from "@/lib/incomeExpenseRevision";
+// Phiếu chi theo sổ tổng: lỗi chốt F1/F1b (mã PROFIT_LEDGER_…) ra câu riêng thay câu chung chung.
+import { ledgerAwareWorkflowError } from "@/lib/profitLedger/voucherFailure";
 
 // RPC v2 chưa có trong generated types cho tới lần regen sau forward-apply.
 type RpcResult = { data: unknown; error: { code?: string; message?: string } | null };
@@ -76,8 +78,11 @@ export function isOwnedBySystemFlow(message: string | null | undefined): boolean
   return /owned by system flow/i.test(message ?? "");
 }
 
-/** Duyệt-only V2: balance KHÔNG đổi (khác legacy). */
-export function useApproveIncomeExpenseV2(options:{scope?:'target'}={}) {
+/**
+ * Duyệt-only V2: balance KHÔNG đổi (khác legacy).
+ * `deferFeedback`: người gọi tự báo + tự làm mới (hộp chốt chi của chủ nói theo trạng thái thật của cả lượt).
+ */
+export function useApproveIncomeExpenseV2(options:{scope?:'target'; deferFeedback?:boolean}={}) {
   const invalidate = useInvalidateMoney();
   const {selectedOrganizationId}=useOrganization();
   const workflow=useRef(persistentFinancialWorkflow('voucher-v2-approve',options));
@@ -112,15 +117,17 @@ export function useApproveIncomeExpenseV2(options:{scope?:'target'}={}) {
       },undefined,args.organizationId??selectedOrganizationId??undefined);
     },
     onSuccess: (data) => {
+      if (options.deferFeedback) return;
       invalidate();
       const feedback = voucherLifecycleFeedback(data, "approve");
       toast[feedback.kind](feedback.message);
     },
     onError: (e: Error) => {
+      if (options.deferFeedback) return;
       // Phiếu vừa bị sửa khi đang mở hộp Duyệt (đợt 1 sửa phiếu): nói bằng lời
       // người đọc được và kéo bản mới về, thay cho "approval_version mismatch".
       if (isStaleVersionError(e) || voucherOutcomeUnknown(e)) invalidate();
-      toast.error(workflowErrorMessage(e,'duyệt phiếu'));
+      toast.error(ledgerAwareWorkflowError(e,'duyệt phiếu'));
     },
   });
 }
@@ -147,7 +154,7 @@ export function usePostApprovedIncomeExpenseV2() {
       const feedback = voucherLifecycleFeedback(data, "post");
       toast[feedback.kind](feedback.message);
     },
-    onError: (e: unknown) => { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(workflowErrorMessage(e,'ghi nhận thu/chi')); },
+    onError: (e: unknown) => { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(ledgerAwareWorkflowError(e,'ghi nhận thu/chi')); },
   });
 }
 
@@ -176,7 +183,7 @@ export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'; defer
         toast[feedback.kind](feedback.message);
       }
     },
-    onError: (e: unknown) => { if (!options.deferFeedback) { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(workflowErrorMessage(e,'duyệt và ghi nhận thu/chi')); } },
+    onError: (e: unknown) => { if (!options.deferFeedback) { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(ledgerAwareWorkflowError(e,'duyệt và ghi nhận thu/chi')); } },
   });
 }
 
@@ -398,9 +405,10 @@ async function prepareQuickExpenseBatchEvidenceWithCache(
 }
 
 /** Binding sổ của CHÍNH actor (CUSTODIAN/KNOWER) — nguồn lọc selector §12.6. */
-export function useMyCashbookAccessV2() {
+export function useMyCashbookAccessV2(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["my-cashbook-access-v2"],
+    enabled: options.enabled ?? true,
     staleTime: 60_000,
     retry: false,
     queryFn: async () => {

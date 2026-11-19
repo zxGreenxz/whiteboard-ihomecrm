@@ -62,7 +62,7 @@ const supabaseDeps: DoorEdgeDeps = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const okEnvelope = z.object({ ok: z.literal(true), data: z.unknown() });
+const okEnvelope = z.object({ ok: z.literal(true), data: z.unknown().optional() });
 
 /** Đọc status + JSON từ `error.context` (Response) của FunctionsHttpError. */
 async function readErrorResponse(context: unknown): Promise<{ status: number | null; body: unknown }> {
@@ -80,7 +80,7 @@ async function readErrorResponse(context: unknown): Promise<{ status: number | n
 export async function invokeDoorAccess<T>(
   caller: DoorAccessCaller,
   body: Record<string, unknown>,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T, unknown>,
   context: { operation: string; mutation: boolean },
   deps: DoorEdgeDeps = supabaseDeps,
 ): Promise<T> {
@@ -159,9 +159,9 @@ export interface DeleteKeyInput {
 }
 
 export function doorAccessEdge(caller: DoorAccessCaller, deps: DoorEdgeDeps = supabaseDeps) {
-  const read = <T>(body: Record<string, unknown>, schema: z.ZodType<T, z.ZodTypeDef, unknown>, operation: string) =>
+  const read = <T>(body: Record<string, unknown>, schema: z.ZodType<T, unknown>, operation: string) =>
     invokeDoorAccess(caller, body, schema, { operation, mutation: false }, deps);
-  const write = <T>(body: Record<string, unknown>, schema: z.ZodType<T, z.ZodTypeDef, unknown>, operation: string) =>
+  const write = <T>(body: Record<string, unknown>, schema: z.ZodType<T, unknown>, operation: string) =>
     invokeDoorAccess(caller, body, schema, { operation, mutation: true }, deps);
 
   return {

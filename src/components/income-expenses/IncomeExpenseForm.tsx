@@ -6,7 +6,7 @@ import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedb
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { focusFirstError,applyFeedbackToForm } from '@/lib/formErrors';
 import {friendlyError} from '@/lib/friendlyError';
 import {VOUCHER_ERROR_RULES} from '@/lib/voucherErrorRules';
@@ -89,6 +89,8 @@ import { useMyCashbookAccessV2 } from '@/hooks/income-expenses/financeV2Mutation
 import { useContractsLegacy } from '@/hooks/useContracts';
 import { useIncomeExpenseTypes, type IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
+import { ShareholderAdvanceVoucherPanel } from './ShareholderAdvanceVoucherPanel';
+import type { AdvanceOptions } from '@/lib/profitLedger/positionReaders';
 import AttachmentUpload from './AttachmentUpload';
 import BankSelect from './BankSelect';
 import { matchRecipientBankCode, RECIPIENT_BANKS } from '@/lib/vietqrDeeplink';
@@ -99,6 +101,14 @@ import { todayISO } from '@/lib/collect';
 import { toast } from 'sonner';
 import { isCommissionType } from '@/lib/managerSalary';
 import { isCommissionVoucher } from '@/lib/commissionIntervention';
+import { useProfitLockedMonthsForForm } from '@/hooks/useProfitPostLock';
+import {
+  lockedBuildingNameOf,
+  lockedMonthsOf,
+  postLockFormBlock,
+  postLockFormMonths,
+  type PostLockFormInput,
+} from '@/lib/profitPostLock';
 
 interface IncomeExpenseFormProps {
   open: boolean;
@@ -275,6 +285,22 @@ const IncomeExpenseFormInner = ({
   // Item selector dialog
   const [isItemSelectorOpen, setIsItemSelectorOpen] = useState(false);
 
+  // Chế độ "Tạm Ứng" (tạm ứng lợi nhuận cổ đông, 18/11/2026): CHỈ phiếu CHI TẠO MỚI (không sửa, không tạo bản
+  // sao). Người dùng chọn mục "Tạm Ứng" ở ô chọn hạng mục — mục đó chỉ hiện khi máy chủ nói người này lập được
+  // (đang giữ sổ quỹ + có cổ đông được cấp quyền tạm ứng). Khác null ⇒ thân form thường được ẩn (giữ nguyên nội
+  // dung đang nhập), thay bằng ShareholderAdvanceVoucherPanel và lưu bằng lệnh tạm ứng riêng.
+  const advanceCreateMode = !initialVoucher && !initialCopyFrom;
+  const [shareholderAdvance, setShareholderAdvance] = useState<AdvanceOptions | null>(null);
+  // Đang gửi lệnh lập phiếu tạm ứng: khoá tab "Phiếu thu" và nút đóng hộp — rời chế độ giữa chừng thì lưu xong
+  // sẽ đóng nhầm form thường.
+  const [advanceSaving, setAdvanceSaving] = useState(false);
+  // Hộp đóng (lưu xong / huỷ bỏ) ⇒ lần mở sau bắt đầu lại ở form phiếu thường, không giữ chế độ Tạm Ứng cũ.
+  useEffect(() => {
+    if (open) return;
+    setShareholderAdvance(null);
+    setAdvanceSaving(false);
+  }, [open]);
+
   // Item rows with type_name for display (not part of Zod schema)
   const [itemRows, setItemRows] = useState<FormItemRow[]>([]);
 
@@ -340,7 +366,7 @@ const IncomeExpenseFormInner = ({
     shouldFocusError: false,
     // Phiếu có hạng mục cọc phải chọn phòng — xem depositRoomRule.ts.
     resolver: withDepositRoomRule(
-      zodResolver(accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema),
+      zodResolver(accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema) as Resolver<IncomeExpenseFormValues>,
       (values) =>
         needsDepositRoom(values.items.map((it) => it.income_expense_type_id), values.room_id, depositTypeIds)
           ? ['room_id']
@@ -369,6 +395,11 @@ const IncomeExpenseFormInner = ({
   });
 
   const voucherType = form.watch('type');
+  const advanceActive = advanceCreateMode && !!shareholderAdvance && voucherType === 'EXPENSE';
+  // Toà của phiếu tạm ứng là toà ảo của công ty (máy chủ tự gắn). Form chỉ hiện tên khi biết chắc (đúng một toà ảo
+  // trong danh sách người này thấy); không thì thân Tạm Ứng hiện tên chuẩn.
+  const virtualBuildings = buildings.filter((b) => b.is_virtual);
+  const advanceBuildingName = virtualBuildings.length === 1 ? virtualBuildings[0].name : null;
 
   // ── Cảnh báo trùng ô ────────────────────────────────────────────────
   // Ô = (toà, loại phiếu, kỳ chồng lấn). Bấm đôi đã bị chặn từ trước (RPC bắt
@@ -720,6 +751,8 @@ const IncomeExpenseFormInner = ({
 
   const onSubmit = async (data: IncomeExpenseFormValues) => {
     if (detailBlocked || detailConflict || reconcileRequired || cashbookAccessError || sourceUnavailable) return;
+    // F06: tháng đã chốt LN (khối lỗi đỏ đã hiện, nút Lưu đã mờ) — chặn cả Enter.
+    if (postLockBlock.kind === 'BLOCKED') return;
     setSubmitError(null);
     if (!isEditing && manualCommissionCreate) { setSubmitError("Lập hoa hồng từ Hợp đồng để lưu cấu hình tính tiền và lý do nếu có điều chỉnh."); return; }
     if ((revisionNeedsReason && !revisionReasonOk) || (forfeitKqkdMode && forfeitKqkdChanged && !forfeitReasonOk)) {
@@ -867,12 +900,66 @@ const IncomeExpenseFormInner = ({
     0
   );
 
+  // Rà 21/10 F06 (chủ chốt 22/10/2026): tháng đã chốt LN của toà khoá cả phiếu có KỲ trong tháng
+  // đó ⇒ báo đỏ ngay trong form, không cho Lưu. Máy chủ vẫn là hàng rào thật (lỗi máy chủ ra đúng
+  // câu này qua periodBlockMessage). Thu tiền hoá đơn tháng đã chốt không bị chặn.
+  const watchedVoucherDate = form.watch('voucher_date');
+  const postLockCurrent: PostLockFormInput = {
+    voucherDate: watchedVoucherDate,
+    hasInvoice: !!voucher?.invoice_id,
+    businessResultAccounting: forfeitKqkdWatched ?? null,
+    items: itemRows.map((r) => ({
+      startDate: r.keepNullPeriod ? null : r.start_date,
+      endDate: r.keepNullPeriod ? null : r.end_date,
+      countsInPnl: !depositTypeIds.has(r.income_expense_type_id) && !internalTypeIds.has(r.income_expense_type_id),
+    })),
+  };
+  const postLockOriginal: PostLockFormInput | null = voucher
+    ? {
+        voucherDate: voucher.voucher_date,
+        hasInvoice: !!voucher.invoice_id,
+        businessResultAccounting: voucher.business_result_accounting ?? null,
+        items: (voucher.items ?? []).map((it) => ({
+          startDate: it.start_date,
+          endDate: it.end_date,
+          countsInPnl: it.accounting_class != null ? it.accounting_class === 'PNL' : !it.is_deposit,
+        })),
+      }
+    : null;
+  const postLockSaves = canEdit || forfeitKqkdMode;
+  const postLockQuery = useProfitLockedMonthsForForm({
+    buildingIds: [watchedBuildingId, voucher?.building_id],
+    months: postLockFormMonths(postLockCurrent, postLockOriginal),
+    enabled: postLockSaves,
+  });
+  const postLockNameOf = (id: string | null | undefined) =>
+    buildings.find((b) => b.id === id)?.name ?? lockedBuildingNameOf(postLockQuery.data, id);
+  const postLockBlock = postLockSaves
+    ? postLockFormBlock({
+        current: {
+          input: postLockCurrent,
+          lockedMonths: lockedMonthsOf(postLockQuery.data, watchedBuildingId),
+          buildingName: postLockNameOf(watchedBuildingId),
+        },
+        original: voucher
+          ? {
+              input: postLockOriginal!,
+              lockedMonths: lockedMonthsOf(postLockQuery.data, voucher.building_id),
+              buildingName: postLockNameOf(voucher.building_id),
+              // Máy chủ chỉ xét kỳ của bản cũ khi phiếu đang tính LN (đã duyệt).
+              periodCounts: voucher.approval_status === 'APPROVED',
+            }
+          : null,
+        isEdit: !!voucher,
+      })
+    : ({ kind: 'NONE' } as const);
+
   if (sourceId && detail.isFetchedAfterMount && (!detail.isSuccess || !detail.data)) {
     return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent aria-describedby={undefined}><DialogTitle>Chi tiết phiếu</DialogTitle><p role="alert">Không tải được đầy đủ chi tiết phiếu hoặc bạn không còn quyền xem.</p><Button onClick={() => detail.refetch()}>Thử lại</Button></DialogContent></Dialog>;
   }
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={(next) => { if (!next && advanceActive && advanceSaving) return; onOpenChange(next); }}>
         <DialogContent
           className={
             isMobile
@@ -954,9 +1041,12 @@ const IncomeExpenseFormInner = ({
             <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, (errors) => {
               if (errors.room_id?.type === 'deposit_room') toast.error(DEPOSIT_ROOM_REQUIRED_MESSAGE);
               void focusFirstError(errors, { root: formRef.current });
-            })} className="space-y-4">
+            })} className={advanceActive ? "hidden" : "space-y-4"}>
               <QueryRegion label="danh mục lập phiếu" queries={requiredSources} skeleton="none"><></></QueryRegion>
               {submitError && !staleVersion && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
+              {postLockBlock.kind === 'BLOCKED' && (
+                <p role="alert" className="text-sm text-destructive" data-testid="ie-form-profit-locked">{postLockBlock.message}</p>
+              )}
               {cashbookAccessError && <div role="alert" className="text-sm text-destructive">Chưa kiểm tra được quyền sử dụng sổ quỹ. <Button type="button" variant="outline" onClick={() => retryCashbooks()}>Tải lại sổ quỹ</Button></div>}
               {/* Step 1: Voucher type tab toggle */}
               <Tabs
@@ -1792,6 +1882,7 @@ const IncomeExpenseFormInner = ({
                     disabled={
                       cashbookAccessError || sourceUnavailable || reconcileRequired || isPending ||
                       staleVersion || detailBlocked || detailConflict ||
+                      postLockBlock.kind === 'BLOCKED' ||
                       (forfeitKqkdMode && !forfeitKqkdChanged)
                     }
                     className={isMobile ? "flex-1" : ""}
@@ -1803,6 +1894,47 @@ const IncomeExpenseFormInner = ({
               </div>
             </form>
           </Form>
+
+          {/* Chế độ "Tạm Ứng": thân form thường ở trên đang ẩn; thân riêng này lưu bằng lệnh tạm ứng cổ đông,
+              KHÔNG đi đường tạo phiếu thường. Bấm "Phiếu thu" hoặc bỏ hạng mục Tạm Ứng ⇒ quay về form thường. */}
+          {advanceActive && shareholderAdvance && (
+            <div className="space-y-4" data-testid="ie-form-advance-mode">
+              <Tabs
+                value="EXPENSE"
+                onValueChange={(value) => {
+                  if (value !== 'INCOME' || advanceSaving) return;
+                  setShareholderAdvance(null);
+                  form.setValue('type', 'INCOME');
+                }}
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger
+                    value="INCOME"
+                    disabled={advanceSaving}
+                    title={advanceSaving ? 'Đang lưu phiếu tạm ứng — chờ xong rồi mới đổi loại phiếu.' : undefined}
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  >
+                    <ArrowUp className="h-4 w-4 mr-1" />
+                    Phiếu thu
+                  </TabsTrigger>
+                  <TabsTrigger value="EXPENSE" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                    <ArrowDown className="h-4 w-4 mr-1" />
+                    Phiếu chi
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <ShareholderAdvanceVoucherPanel
+                organizationId={selectedOrganizationId ?? null}
+                options={shareholderAdvance}
+                buildingName={advanceBuildingName}
+                isMobile={isMobile}
+                onExit={() => { if (!advanceSaving) setShareholderAdvance(null); }}
+                onClose={() => onOpenChange(false)}
+                onSaved={onSaved}
+                onSavingChange={setAdvanceSaving}
+              />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1813,6 +1945,9 @@ const IncomeExpenseFormInner = ({
         voucherType={voucherType}
         onSelect={handleItemsSelected}
         selectedTypeIds={itemRows.map((r) => r.income_expense_type_id)}
+        shareholderAdvance={advanceCreateMode
+          ? { organizationId: selectedOrganizationId ?? null, onPick: setShareholderAdvance }
+          : undefined}
       />
     </>
   );

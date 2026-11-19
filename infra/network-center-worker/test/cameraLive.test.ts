@@ -1,0 +1,539 @@
+import { Readable } from "node:stream";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ArchiveJobs } from "../src/cameraArchive.js";
+import { createLiveDependencies, createLiveServer, LiveSessions, LiveError, liveConfigSchema, publicStatus, validateOffer, type LiveDependencies } from "../src/cameraLive.js";
+import { mediaConfiguration } from "../src/cameraLiveMain.js";
+
+const config = liveConfigSchema.parse({
+  supabaseUrl: "https://tryymsxyyckgbrmmvozx.supabase.co", publishableKey: "test-publishable-key-placeholder", origins: ["https://crm.example.test"],
+  recorders: [{ id: "10000000-0000-4000-8000-000000000001", organizationId: "20000000-0000-4000-8000-000000000001", buildingId: "30000000-0000-4000-8000-000000000001", channels: [1, 2], rtspOrigin: "rtsp://10.0.0.1:18554", username: "fixture", password: "fixture-password" }],
+});
+const recorder = config.recorders[0]!;
+const offer = "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=recvonly\r\na=rtpmap:96 H265/90000\r\n";
+const actor = { id: "40000000-0000-4000-8000-000000000001", expiresAt: 500_000 };
+function setup() {
+  let now = 100_000;
+  const dependencies: LiveDependencies = { authorize: vi.fn(async () => actor), start: vi.fn(async () => ({ location: "http://127.0.0.1:18889/fixed/whep/session", answer: offer })), stop: vi.fn(async () => {}), fatal: vi.fn(), now: () => now };
+  return { dependencies, sessions: new LiveSessions(dependencies), advance: (ms: number) => { now += ms; } };
+}
+afterEach(() => vi.restoreAllMocks());
+
+describe("camera live session boundaries", () => {
+  it("reclaims only the previous document's HD encoders before starting the new group after F5", async () => {
+    const { sessions } = setup();
+    const wide = { ...recorder, channels: [1, 2, 3, 4, 5] };
+    const view = "50000000-0000-4000-8000-000000000001";
+    const otherView = "50000000-0000-4000-8000-000000000002";
+    await sessions.start(actor, wide, 1, offer, undefined, "hd", view);
+    await Promise.all([2, 3, 4].map((channel) => sessions.start(actor, wide, channel, offer, undefined, "sd", view)));
+    const other = await sessions.start(actor, wide, 1, offer, undefined, "sd", otherView);
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    await sessions.closeView(actor, wide, view);
+    expect(sessions.size).toBe(1); expect(sessions.find(other.id)).toBeTruthy();
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "hd", otherView)).resolves.toHaveProperty("id");
+    await expect(sessions.start(actor, wide, 1, offer, undefined, "hd", view)).rejects.toMatchObject({ code: "LIVE_VIEW_CLOSED" });
+  });
+  it("fences delayed POSTs, awaits pending media cleanup, and keeps reservations until cleanup is confirmed", async () => {
+    const { sessions, dependencies } = setup();
+    const view = "50000000-0000-4000-8000-000000000001";
+    let finish!: (value: { location: string; answer: string }) => void;
+    let removed!: () => void;
+    vi.mocked(dependencies.start).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    vi.mocked(dependencies.stop).mockImplementationOnce(() => new Promise((resolve) => { removed = resolve; }));
+    const pending = sessions.start(actor, recorder, 1, offer, undefined, "fullhd", view);
+    const rejection = expect(pending).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+    let closed = false;
+    const closing = sessions.closeView(actor, recorder, view).then(() => { closed = true; });
+    await expect(sessions.start(actor, recorder, 2, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    await expect(sessions.start(actor, recorder, 1, offer, undefined, "hd", view)).rejects.toMatchObject({ code: "LIVE_VIEW_CLOSED" });
+    finish({ location: "pending-media", answer: offer }); await vi.waitFor(() => expect(dependencies.stop).toHaveBeenCalled());
+    expect(closed).toBe(false); expect(sessions.size).toBe(1);
+    removed(); await Promise.all([closing, rejection]); expect(sessions.size).toBe(0);
+  });
+  it("isolates view cleanup by verified actor and recorder, including a cancel arriving before POST", async () => {
+    const { sessions, dependencies, advance } = setup();
+    const view = "50000000-0000-4000-8000-000000000001";
+    await sessions.start(actor, recorder, 1, offer, undefined, "hd", view);
+    await sessions.closeView({ ...actor, id: "other-user" }, recorder, view);
+    await sessions.closeView(actor, { ...recorder, id: "10000000-0000-4000-8000-000000000002" }, view);
+    expect(sessions.size).toBe(1); expect(dependencies.stop).not.toHaveBeenCalled();
+    const next = "50000000-0000-4000-8000-000000000002";
+    await sessions.closeView(actor, recorder, next);
+    await expect(sessions.start(actor, recorder, 2, offer, undefined, "hd", next)).rejects.toMatchObject({ code: "LIVE_VIEW_CLOSED" });
+    await sessions.closeView(actor, recorder, view); await sessions.closeView(actor, recorder, view);
+    expect(dependencies.stop).toHaveBeenCalledOnce();
+    advance(120_001); await sessions.closeView(actor, recorder, next);
+    await expect(sessions.start(actor, recorder, 1, offer, undefined, "hd", view)).resolves.toHaveProperty("id");
+  });
+  it("accepts one receive-only audio track but rejects publishing and duplicate tracks", () => {
+    const audio = "m=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=recvonly\r\na=rtpmap:111 opus/48000/2\r\n";
+    expect(() => validateOffer(offer + audio)).not.toThrow();
+    for (const invalid of [offer + audio + audio, offer + audio.replace("recvonly", "sendrecv"), offer + audio.replace("recvonly", "sendonly"), offer.replace("recvonly", "sendonly") + audio]) {
+      expect(() => validateOffer(invalid)).toThrow("INVALID_VIDEO_OFFER");
+    }
+  });
+  it("rejects unconfigured channels, publishers, extra audio/data tracks and oversized SDP before opening media", async () => {
+    const { sessions, dependencies } = setup();
+    await expect(sessions.start(actor, recorder, 3, offer)).rejects.toMatchObject({ status: 404 });
+    for (const invalid of [offer.replace("recvonly", "sendrecv"), offer + "m=audio 9 UDP/TLS/RTP/SAVPF 8\r\n", offer + "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n", offer + "a=recvonly\r\n", offer + " ".repeat(65536)]) {
+      expect(() => validateOffer(invalid)).toThrow("INVALID_VIDEO_OFFER");
+    }
+    expect(dependencies.start).not.toHaveBeenCalled();
+  });
+  it("reserves pending sessions against concurrent limit bypass", async () => {
+    const { sessions, dependencies } = setup();
+    const resolve: Array<(value: { location: string; answer: string }) => void> = [];
+    vi.mocked(dependencies.start).mockImplementation(() => new Promise((done) => resolve.push(done)));
+    const pending = Array.from({ length: 16 }, () => sessions.start(actor, recorder, 1, offer));
+    await expect(sessions.start(actor, recorder, 1, offer)).rejects.toMatchObject({ code: "CAMERA_LIMIT" });
+    expect(dependencies.start).toHaveBeenCalledTimes(16);
+    resolve.forEach((done) => done({ location: "private-session", answer: offer })); await Promise.all(pending);
+  });
+  it("bounds distinct live encoders even during pending creates and shares a profile between viewers", async () => {
+    const { sessions, dependencies } = setup();
+    const wide = { ...recorder, channels: [1, 2, 3, 4, 5] };
+    const finish: Array<(value: { location: string; answer: string }) => void> = [];
+    vi.mocked(dependencies.start).mockImplementation(() => new Promise((resolve) => finish.push(resolve)));
+    const pending = [sessions.start(actor, wide, 1, offer, undefined, "hd")];
+    await expect(sessions.start({ ...actor, id: "other-viewer" }, wide, 2, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    pending.push(sessions.start(actor, wide, 1, offer, undefined, "hd"));
+    pending.push(sessions.start(actor, wide, 2, offer, undefined, "sd"));
+    pending.push(sessions.start(actor, wide, 3, offer, undefined, "original"));
+    expect(dependencies.start).toHaveBeenCalledTimes(4);
+    finish.forEach((resolve) => resolve({ location: "shared", answer: offer })); await Promise.all(pending);
+    await expect(sessions.start(actor, wide, 1, offer, undefined, "fullhd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    await sessions.closeAll();
+    vi.mocked(dependencies.start).mockResolvedValue({ location: "next", answer: offer });
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "fullhd")).resolves.toHaveProperty("id");
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "fullhd")).resolves.toHaveProperty("id");
+    await expect(sessions.start(actor, wide, 1, offer, undefined, "fullhd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    await expect(sessions.start(actor, wide, 1, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+  });
+  it("binds renew and delete to the verified owner, without letting another user extend or close a session", async () => {
+    const { sessions, dependencies, advance } = setup();
+    const session = await sessions.start(actor, recorder, 1, offer);
+    vi.mocked(dependencies.authorize).mockResolvedValue({ ...actor, id: "other-user" });
+    await expect(sessions.renew(session.id, "other-token")).rejects.toMatchObject({ status: 403 });
+    await expect(sessions.stop(session.id, "other-token")).rejects.toMatchObject({ status: 403 });
+    expect(dependencies.stop).not.toHaveBeenCalled();
+    advance(75_001); await sessions.expire(); expect(dependencies.stop).toHaveBeenCalledOnce(); expect(sessions.size).toBe(0);
+  });
+  it("rechecks building access on every renew and expires video after revoked access or JWT expiry", async () => {
+    const { sessions, dependencies, advance } = setup();
+    const session = await sessions.start({ ...actor, expiresAt: 110_000 }, recorder, 1, offer);
+    expect(session.expiresAt).toBe(110_000);
+    vi.mocked(dependencies.authorize).mockRejectedValue(new LiveError(403, "CAMERA_ACCESS_DENIED"));
+    await expect(sessions.renew(session.id, "revoked-token")).rejects.toMatchObject({ status: 403 });
+    advance(10_001); await sessions.expire(); expect(dependencies.stop).toHaveBeenCalledOnce();
+  });
+  it("does not revive an expired lease when authorization completes late", async () => {
+    const { sessions, dependencies, advance } = setup();
+    const session = await sessions.start(actor, recorder, 1, offer);
+    let finish!: (value: typeof actor) => void;
+    vi.mocked(dependencies.authorize).mockImplementation(() => new Promise((done) => { finish = done; }));
+    const pending = sessions.renew(session.id, "token"); advance(75_001); await sessions.expire(); finish(actor);
+    await expect(pending).rejects.toMatchObject({ code: "SESSION_EXPIRED" }); expect(sessions.size).toBe(0);
+  });
+  it("cleans up media that finishes starting after its reservation expired", async () => {
+    const { sessions, dependencies, advance } = setup();
+    let finish!: (value: { location: string; answer: string }) => void;
+    vi.mocked(dependencies.start).mockImplementation(() => new Promise((done) => { finish = done; }));
+    const pending = sessions.start(actor, recorder, 1, offer); advance(75_001); await sessions.expire();
+    finish({ location: "late-session", answer: offer });
+    await expect(pending).rejects.toMatchObject({ code: "SESSION_EXPIRED" }); expect(dependencies.stop).toHaveBeenCalledWith("late-session");
+  });
+  it("terminates the media process when cleanup cannot be confirmed", async () => {
+    const { sessions, dependencies } = setup();
+    const session = await sessions.start(actor, recorder, 1, offer);
+    vi.mocked(dependencies.stop).mockRejectedValue(new Error("unreachable"));
+    await sessions.stop(session.id, "token"); expect(dependencies.fatal).toHaveBeenCalledOnce();
+  });
+});
+
+describe("camera live upstream authorization", () => {
+  it("passes native SD/main video and audio directly, sharing encoders only for resized profiles", () => {
+    const encoder = `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`;
+    const media = mediaConfiguration(config, encoder);
+    const paths = media.paths as Record<string, { source: string; runOnDemand?: string }>;
+    for (const suffix of ["-hd", "-fullhd"]) {
+      const path = paths[`camera-${recorder.id}-1${suffix}`]!;
+      expect(path.source).toBe("publisher"); expect(path.runOnDemand).toContain("libopus"); expect(path.runOnDemand).toContain("0:a:0?");
+      expect(path.runOnDemand).not.toContain(recorder.password); expect(path.runOnDemand).not.toContain(recorder.rtspOrigin);
+      expect(path.runOnDemand).toContain(suffix === "-hd" ? "1280" : "1920");
+      expect(path.runOnDemand).toContain(suffix === "-hd" ? "fps=15,scale=" : "fps=10,scale=");
+      expect(path.runOnDemand).toContain("flags=fast_bilinear");
+      expect(path.runOnDemand).toContain(`'libx264' '-threads' '${suffix === "-fullhd" ? 2 : 1}'`);
+      expect(path.runOnDemand).toContain(`camera-${recorder.id}-1-original`);
+    }
+    for (const suffix of ["", "-original"]) {
+      const path = paths[`camera-${recorder.id}-1${suffix}`]!;
+      expect(path.runOnDemand).toBeUndefined(); expect(new URL(path.source).searchParams.get("subtype")).toBe(suffix ? "0" : "1");
+    }
+    expect(() => mediaConfiguration(config, "/tmp/unverified-ffmpeg")).toThrow("LIVE_ENCODER_INVALID");
+  });
+  const id = actor.id;
+  const token = `test.${Buffer.from(JSON.stringify({ sub: id, exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url")}.signature`;
+  const allowed = { recorders: [{ id: recorder.id, organization_id: recorder.organizationId, building_id: recorder.buildingId, enabled: true, channel_count: 16 }] };
+  it("uses the user's JWT for both verified identity and building-scoped RPC", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ id })).mockResolvedValueOnce(Response.json(allowed));
+    await expect(createLiveDependencies(config, vi.fn(), request).authorize(token, recorder)).resolves.toMatchObject({ id });
+    expect(request.mock.calls[1]?.[0]).toContain("/rpc/camera_building_snapshot_v1");
+    expect(request.mock.calls[1]?.[1]).toMatchObject({ headers: { Authorization: `Bearer ${token}`, "Content-Profile": "public", "Accept-Profile": "public" }, body: JSON.stringify({ p_building_id: recorder.buildingId }), redirect: "error" });
+  });
+  it.each(["organization_id", "building_id", "id", "enabled"] as const)("denies mismatched %s even when a snapshot is returned", async (field) => {
+    const changed = { ...allowed.recorders[0], [field]: field === "enabled" ? false : "99999999-9999-4999-8999-999999999999" };
+    const request = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ id })).mockResolvedValueOnce(Response.json({ recorders: [changed] }));
+    await expect(createLiveDependencies(config, vi.fn(), request).authorize(token, recorder)).rejects.toMatchObject({ status: 403 });
+  });
+  it("rejects invalid Auth before any RPC, without trusting JWT claims", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response("denied", { status: 401 }));
+    await expect(createLiveDependencies(config, vi.fn(), request).authorize(token, recorder)).rejects.toMatchObject({ status: 401 }); expect(request).toHaveBeenCalledOnce();
+  });
+  it("rejects upstream redirect locations and fails closed on uncertain create", async () => {
+    const fatal = vi.fn();
+    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(offer, { status: 201, headers: { Location: "https://outside.example/private" } }));
+    await expect(createLiveDependencies(config, fatal, request).start(recorder, 1, offer)).rejects.toMatchObject({ code: "UPSTREAM_INVALID" }); expect(fatal).toHaveBeenCalledOnce();
+    request.mockRejectedValue(new Error("timeout"));
+    await expect(createLiveDependencies(config, fatal, request).start(recorder, 1, offer)).rejects.toMatchObject({ code: "MEDIA_START_UNCERTAIN" }); expect(fatal).toHaveBeenCalledTimes(2);
+    request.mockResolvedValue(new Response(offer, { status: 201, headers: { Location: "http://[malformed" } }));
+    await expect(createLiveDependencies(config, fatal, request).start(recorder, 1, offer)).rejects.toMatchObject({ code: "UPSTREAM_INVALID" }); expect(fatal).toHaveBeenCalledTimes(3);
+  });
+  it("only binds signaling and path control to loopback and restricts publishing to generated playback paths", () => {
+    const media = mediaConfiguration(config);
+    expect(media).toMatchObject({ rtsp: true, rtspAddress: "127.0.0.1:18895", rtspTransports: ["tcp"], rtmp: false, hls: false, srt: false, moq: false, api: true, apiAddress: "127.0.0.1:18897", apiAllowOrigins: [], playback: false, webrtcAddress: "127.0.0.1:18889", webrtcLocalUDPAddress: "", webrtcLocalTCPAddress: "", webrtcIPsFromInterfaces: false });
+    expect(Object.values(media.paths).every((path) => path.record === false && path.sourceOnDemand === true)).toBe(true);
+    expect(new URL(media.paths[`camera-${recorder.id}-1`]!.source).searchParams.get("subtype")).toBe("1");
+    expect(new URL(media.paths[`camera-${recorder.id}-1-hd`]!.source).searchParams.get("subtype")).toBe("0");
+    expect(media.authInternalUsers[0]).toEqual({ user: "any", ips: ["127.0.0.1"], permissions: [{ action: "read" }, { action: "api" }, { action: "publish", path: "~^playback-[a-f0-9-]{36}$" }] });
+  });
+});
+
+describe("camera live HTTP boundary", () => {
+  it("authenticates reload cleanup, scopes it to the actor's view, and rejects delayed creation", async () => {
+    const { dependencies } = setup(); const { server, sessions } = createLiveServer(config, dependencies);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
+    const base = `http://127.0.0.1:${address.port}/camera-live/v1/recorders/${recorder.id}`;
+    const view = "50000000-0000-4000-8000-000000000001";
+    const headers = { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation", "Content-Type": "application/sdp", "X-Camera-View-Id": view };
+    try {
+      const post = () => fetch(base + "/channels/1/sessions?quality=hd", { method: "POST", headers, body: offer });
+      expect((await post()).status).toBe(201);
+      const url = base + `/live-views/${view}`;
+      expect((await fetch(url, { method: "DELETE", headers: { Origin: config.origins[0]! } })).status).toBe(401);
+      vi.mocked(dependencies.authorize).mockRejectedValueOnce(new LiveError(403, "CAMERA_ACCESS_DENIED"));
+      expect((await fetch(url, { method: "DELETE", headers })).status).toBe(403); expect(sessions.size).toBe(1);
+      expect((await fetch(url, { method: "DELETE", headers })).status).toBe(200); expect(sessions.size).toBe(0);
+      expect((await post()).status).toBe(409);
+      expect((await fetch(base + "/channels/1/sessions", { method: "POST", headers: { ...headers, "X-Camera-View-Id": "invalid" }, body: offer })).status).toBe(400);
+      const cors = await fetch(base, { method: "OPTIONS", headers });
+      expect(cors.headers.get("access-control-allow-headers")).toContain("X-Camera-View-Id");
+    } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
+  });
+  it("keeps recorder authorization on HD requests and rejects arbitrary quality or channel paths", async () => {
+    const { dependencies } = setup(); const { server, sessions } = createLiveServer(config, dependencies);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
+    const base = `http://127.0.0.1:${address.port}/camera-live/v1/recorders/${recorder.id}/channels/1/sessions`;
+    const headers = { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation", "Content-Type": "application/sdp" };
+    try {
+      vi.mocked(dependencies.authorize).mockRejectedValueOnce(new LiveError(403, "CAMERA_ACCESS_DENIED"));
+      expect((await fetch(base + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(403); expect(dependencies.start).not.toHaveBeenCalled();
+      expect((await fetch(base + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(201);
+      expect(dependencies.start).toHaveBeenLastCalledWith(recorder, 1, offer, undefined, "hd");
+      await sessions.closeAll();
+      for (const quality of ["fullhd", "original"]) {
+        expect((await fetch(base + `?quality=${quality}`, { method: "POST", headers, body: offer })).status).toBe(201);
+        expect(dependencies.start).toHaveBeenLastCalledWith(recorder, 1, offer, undefined, quality);
+      }
+      expect((await fetch(base + "?quality=outside", { method: "POST", headers, body: offer })).status).toBe(404);
+      expect((await fetch(base.replace("channels/1/", "channels/99/") + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(404);
+    } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
+  });
+  it("gửi lỗi thượng nguồn 502/504 ra ngoài bằng 503 kèm mã lỗi và CORS, để Cloudflare không thay mất phản hồi", async () => {
+    expect([502, 504, 500, 503, 429, 409, 404, 403, 401, 400, 201, 200].map(publicStatus)).toEqual([503, 503, 500, 503, 429, 409, 404, 403, 401, 400, 201, 200]);
+    const { dependencies } = setup(); const { server, sessions } = createLiveServer(config, dependencies);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
+    const base = `http://127.0.0.1:${address.port}/camera-live/v1/recorders/${recorder.id}/channels/1/sessions`;
+    const headers = { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation", "Content-Type": "application/sdp" };
+    try {
+      // Đúng ca đo trên production: bộ chuyển mã không lên hình ⇒ CAMERA_UNAVAILABLE với status nội bộ 502.
+      for (const [status, code] of [[502, "CAMERA_UNAVAILABLE"], [502, "CODEC_UNSUPPORTED"], [504, "RECORDING_UNAVAILABLE"]] as const) {
+        vi.mocked(dependencies.start).mockRejectedValueOnce(new LiveError(status, code));
+        const response = await fetch(base, { method: "POST", headers, body: offer });
+        expect(response.status).toBe(503); expect(await response.json()).toEqual({ code });
+        expect(response.headers.get("access-control-allow-origin")).toBe(config.origins[0]);
+        expect(sessions.size).toBe(0);
+      }
+      // Mã không bị Cloudflare thay thì giữ nguyên.
+      vi.mocked(dependencies.start).mockRejectedValueOnce(new LiveError(429, "CAMERA_LIMIT"));
+      const limited = await fetch(base, { method: "POST", headers, body: offer });
+      expect(limited.status).toBe(429); expect(await limited.json()).toEqual({ code: "CAMERA_LIMIT" });
+    } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
+  });
+  it("requires allowed origin and bearer token and does not expose upstream configuration", async () => {
+    const { dependencies } = setup(); const { server } = createLiveServer(config, dependencies);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
+    const base = `http://127.0.0.1:${address.port}/camera-live/v1/recorders/${recorder.id}`;
+    try {
+      expect((await fetch(base)).status).toBe(403);
+      expect((await fetch(base, { headers: { Origin: config.origins[0]! } })).status).toBe(401);
+      const response = await fetch(base, { headers: { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation" } });
+      expect(response.status).toBe(200); const body = await response.text();
+      expect(body).toContain('"channels":[1,2]'); expect(body).not.toContain(recorder.password); expect(body).not.toContain(recorder.rtspOrigin);
+      expect((await fetch(base + "?token=secret", { headers: { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation" } })).status).toBe(404);
+    } finally { await new Promise<void>((done) => server.close(() => done())); }
+  });
+});
+
+describe("camera guest share boundary", () => {
+  const shareId = "60000000-0000-4000-8000-000000000001";
+  const guestToken = `cs_${"A".repeat(43)}`;
+  // Recordings are only valid after 2000, so these session tests run on their own fixed clock T.
+  const T = Date.UTC(2026, 10, 10, 12, 0, 0);
+  const from = T - 7200_000; const to = T - 3600_000;
+  const guest = { id: `share:${shareId}`, expiresAt: T + 3600_000, share: { channel: 2, start: from, end: to, viewer: "a".repeat(32) } };
+  /** The same share opened from another login (another phone or tab). */
+  const device = (letter: string) => ({ ...guest, share: { ...guest.share, viewer: letter.repeat(32) } });
+  function guestSetup() {
+    let now = T;
+    const dependencies: LiveDependencies = { authorize: vi.fn(async () => guest), start: vi.fn(async () => ({ location: "http://127.0.0.1:18889/fixed/whep/session", answer: offer })), stop: vi.fn(async () => {}), fatal: vi.fn(), now: () => now };
+    return { dependencies, sessions: new LiveSessions(dependencies), advance: (ms: number) => { now += ms; } };
+  }
+  const range = (start: number, end: number, quality?: "sd" | "hd" | "fullhd" | "original") => ({ start: new Date(start).toISOString(), end: new Date(end).toISOString(), ...(quality ? { quality } : {}) });
+  const archived = { ...recorder, archiveEnabled: true, archiveOrigin: "http://10.0.0.1:18080" };
+  const payload = (overrides: Record<string, unknown> = {}) => ({
+    share_id: shareId, recorder_id: recorder.id, organization_id: recorder.organizationId, building_id: recorder.buildingId, channel: 2, channel_name: "SAN PHOI", building_name: "Toà thử",
+    window_start: "2026-11-09T01:00:00+00:00", window_end: "2026-11-09T02:00:00+00:00", expires_at: new Date(Date.now() + 3600_000).toISOString(), ...overrides,
+  });
+
+  it("maps an opaque share session to one channel and window through the anon RPC, never through Auth", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(payload()));
+    const actor = await createLiveDependencies(config, vi.fn(), request).authorize(guestToken, recorder);
+    expect(actor).toMatchObject({ id: `share:${shareId}`, share: { channel: 2, start: Date.parse("2026-11-09T01:00:00Z"), end: Date.parse("2026-11-09T02:00:00Z") } });
+    expect(request).toHaveBeenCalledOnce();
+    // One login is one viewer: stable for that session string, different for another login of the same share, never the string itself.
+    expect(actor.share?.viewer).toMatch(/^[0-9a-f]{32}$/u); expect(guestToken).not.toContain(actor.share?.viewer);
+    const login = (token: string) => createLiveDependencies(config, vi.fn(), vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(payload()))).authorize(token, recorder);
+    const again = await login(guestToken); const elsewhere = await login(`cs_${"B".repeat(43)}`);
+    expect(again.share?.viewer).toBe(actor.share?.viewer); expect(elsewhere.id).toBe(actor.id); expect(elsewhere.share?.viewer).not.toBe(actor.share?.viewer);
+    expect(request.mock.calls[0]?.[0]).toBe("https://tryymsxyyckgbrmmvozx.supabase.co/rest/v1/rpc/camera_share_authorize_v1");
+    expect(request.mock.calls[0]?.[1]).toMatchObject({ method: "POST", headers: { apikey: config.publishableKey, Authorization: `Bearer ${config.publishableKey}`, "Content-Profile": "public" }, body: JSON.stringify({ p_token: guestToken }), redirect: "error" });
+  });
+  it("ends an expired, revoked or malformed share and refuses a share of another recorder, tenant or channel", async () => {
+    const authorize = (body: unknown) => createLiveDependencies(config, vi.fn(), vi.fn<typeof fetch>().mockResolvedValue(Response.json(body))).authorize(guestToken, recorder);
+    await expect(authorize(null)).rejects.toMatchObject({ status: 401, code: "SHARE_ENDED" });
+    await expect(authorize(payload({ expires_at: new Date(Date.now() - 1000).toISOString() }))).rejects.toMatchObject({ status: 401, code: "SHARE_ENDED" });
+    for (const field of ["recorder_id", "organization_id", "building_id"]) await expect(authorize(payload({ [field]: "99999999-9999-4999-8999-999999999999" }))).rejects.toMatchObject({ status: 403, code: "CAMERA_ACCESS_DENIED" });
+    await expect(authorize(payload({ channel: 3 }))).rejects.toMatchObject({ status: 403, code: "CAMERA_ACCESS_DENIED" });
+    const request = vi.fn<typeof fetch>();
+    await expect(createLiveDependencies(config, vi.fn(), request).authorize("cs_too-short-to-be-a-share-session", recorder)).rejects.toMatchObject({ status: 401, code: "SHARE_ENDED" });
+    expect(request).not.toHaveBeenCalled();
+    await expect(createLiveDependencies(config, vi.fn(), vi.fn<typeof fetch>().mockResolvedValue(new Response("down", { status: 500 }))).authorize(guestToken, recorder)).rejects.toMatchObject({ status: 503 });
+  });
+  it("lets a guest replay only the shared channel inside the window, re-encoded, one stream per device", async () => {
+    const { sessions, dependencies } = guestSetup();
+    await expect(sessions.start(guest, archived, 2, offer)).rejects.toMatchObject({ status: 403, code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, archived, 2, offer, undefined, "sd")).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, archived, 1, offer, range(from, to, "sd"))).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, archived, 2, offer, range(from - 1000, to, "sd"))).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, archived, 2, offer, range(from, to + 1000, "sd"))).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, archived, 2, offer, range(from, to))).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, archived, 2, offer, range(from, to, "original"))).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    expect(dependencies.start).not.toHaveBeenCalled(); expect(sessions.size).toBe(0);
+    const first = await sessions.start(guest, archived, 2, offer, range(from, to, "sd"));
+    const second = await sessions.start(guest, archived, 2, offer, range(from + 60_000, to - 60_000, "hd"));
+    expect(sessions.size).toBe(1); expect(() => sessions.find(first.id)).toThrow(); expect(sessions.find(second.id)).toBeTruthy();
+    expect(dependencies.stop).toHaveBeenCalledOnce();
+    // Staff playback is untouched by the guest rules: other channel, wider range, native stream.
+    await expect(sessions.start({ ...actor, expiresAt: T + 60_000 }, archived, 1, offer, range(from - 3600_000, to + 1800_000))).resolves.toHaveProperty("id");
+  });
+  it("lets two devices watch one share and gives a third the place of the one open longest", async () => {
+    const { sessions, dependencies } = guestSetup();
+    const first = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    const second = await sessions.start(device("b"), archived, 2, offer, range(from + 60_000, to, "hd"));
+    expect(sessions.size).toBe(2); expect(dependencies.stop).not.toHaveBeenCalled();
+    // The first device reloads: only its own stream is replaced, the other device keeps watching.
+    const reloaded = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(first.id)).toThrow(); expect(sessions.find(second.id)).toBeTruthy();
+    // A third device: the stream open longest (the second device's) stops, the newest two stay.
+    const third = await sessions.start(device("c"), archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(second.id)).toThrow();
+    expect(sessions.find(reloaded.id)).toBeTruthy(); expect(sessions.find(third.id)).toBeTruthy();
+    expect(dependencies.stop).toHaveBeenCalledTimes(2);
+  });
+  it("holds one share to two devices even where the gateway has room for more guest streams", async () => {
+    const { dependencies } = guestSetup(); const sessions = new LiveSessions(dependencies, 4);
+    const first = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    const second = await sessions.start(device("b"), archived, 2, offer, range(from, to, "sd"));
+    const third = await sessions.start(device("c"), archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(first.id)).toThrow();
+    expect(sessions.find(second.id)).toBeTruthy(); expect(sessions.find(third.id)).toBeTruthy();
+    // The room that is left belongs to other shares.
+    await expect(sessions.start({ ...guest, id: "share:60000000-0000-4000-8000-000000000002" }, archived, 2, offer, range(from, to, "sd"))).resolves.toHaveProperty("id");
+    expect(sessions.size).toBe(3);
+  });
+  it("keeps the first viewer of every share when one share holds both guest streams", async () => {
+    const { sessions } = guestSetup();
+    const other = { ...guest, id: "share:60000000-0000-4000-8000-000000000002" };
+    const first = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    const second = await sessions.start(device("b"), archived, 2, offer, range(from, to, "sd"));
+    // Another share arrives while the gateway-wide guest cap is full: the share with two streams gives up its older one.
+    const theirs = await sessions.start(other, archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(first.id)).toThrow();
+    expect(sessions.find(second.id)).toBeTruthy(); expect(sessions.find(theirs.id)).toBeTruthy();
+    // Now each share has one viewer. A new login of either (the guest reopened the link in another tab, the old stream
+    // still inside its lease) takes the place of its own share's stream and never cuts the other share off.
+    const reopened = await sessions.start({ ...other, share: { ...other.share, viewer: "d".repeat(32) } }, archived, 2, offer, range(from, to, "sd"));
+    expect(sessions.size).toBe(2); expect(() => sessions.find(theirs.id)).toThrow();
+    expect(sessions.find(second.id)).toBeTruthy(); expect(sessions.find(reopened.id)).toBeTruthy();
+    // A third share has nothing of its own to give and nobody holds two streams: refused, the two viewers stay.
+    await expect(sessions.start({ ...guest, id: "share:60000000-0000-4000-8000-000000000003" }, archived, 2, offer, range(from, to, "sd"))).rejects.toMatchObject({ status: 429, code: "PLAYBACK_BUSY" });
+    expect(sessions.find(second.id)).toBeTruthy(); expect(sessions.find(reopened.id)).toBeTruthy();
+  });
+  it("leaves a share that gave way one stream short when the newcomer's recorder then fails", async () => {
+    const { sessions, dependencies } = guestSetup();
+    const first = await sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"));
+    const second = await sessions.start(device("b"), archived, 2, offer, range(from, to, "sd"));
+    vi.mocked(dependencies.start).mockRejectedValueOnce(new LiveError(503, "CAMERA_UNAVAILABLE"));
+    await expect(sessions.start({ ...guest, id: "share:60000000-0000-4000-8000-000000000002" }, archived, 2, offer, range(from, to, "sd"))).rejects.toMatchObject({ code: "CAMERA_UNAVAILABLE" });
+    // Known cost of keeping the transcode cap: the stream that gave way is not restored; its device retries into the free slot.
+    expect(sessions.size).toBe(1); expect(() => sessions.find(first.id)).toThrow(); expect(sessions.find(second.id)).toBeTruthy();
+    await expect(sessions.start(device("a"), archived, 2, offer, range(from, to, "sd"))).resolves.toHaveProperty("id");
+  });
+  it("caps concurrent guest streams and cuts a guest off when the share stops authorizing", async () => {
+    const { sessions, dependencies, advance } = guestSetup();
+    const other = (n: number) => ({ ...guest, id: `share:60000000-0000-4000-8000-00000000000${n}` });
+    await sessions.start(other(2), archived, 2, offer, range(from, to, "sd"));
+    const mine = await sessions.start(other(3), archived, 2, offer, range(from, to, "sd"));
+    await expect(sessions.start(other(4), archived, 2, offer, range(from, to, "sd"))).rejects.toMatchObject({ status: 429, code: "PLAYBACK_BUSY" });
+    vi.mocked(dependencies.authorize).mockResolvedValueOnce(other(2));
+    await expect(sessions.renew(mine.id, guestToken)).rejects.toMatchObject({ code: "SESSION_OWNER_MISMATCH" });
+    // Revoked or expired: the lease can no longer be renewed, so the stream is cut when the current lease runs out.
+    vi.mocked(dependencies.authorize).mockRejectedValue(new LiveError(401, "SHARE_ENDED"));
+    await expect(sessions.renew(mine.id, guestToken)).rejects.toMatchObject({ code: "SHARE_ENDED" });
+    expect(sessions.find(mine.id)).toBeTruthy();
+    advance(75_001); await sessions.expire();
+    expect(() => sessions.find(mine.id)).toThrow(); expect(sessions.size).toBe(0); expect(dependencies.stop).toHaveBeenCalledTimes(2);
+  });
+  it("lets only one of two racing starts of the same device through", async () => {
+    const { sessions } = guestSetup();
+    const results = await Promise.allSettled([sessions.start(guest, archived, 2, offer, range(from, to, "sd")), sessions.start(guest, archived, 2, offer, range(from, to, "hd"))]);
+    expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(results.find((result) => result.status === "rejected")).toMatchObject({ reason: { status: 429, code: "CAMERA_LIMIT" } });
+    expect(sessions.size).toBe(1);
+  });
+  it("keeps a guest's seeks inside the range the session started with", async () => {
+    const { sessions, dependencies } = guestSetup(); dependencies.control = vi.fn(async () => {});
+    const session = await sessions.start(guest, archived, 2, offer, range(from + 60_000, to - 60_000, "sd"));
+    await expect(sessions.control(session.id, guestToken, { time: new Date(from + 120_000).toISOString(), speed: 2 })).resolves.toMatchObject({ speed: 2 });
+    expect(dependencies.control).toHaveBeenCalledOnce();
+    for (const outside of [from, to - 60_000, to]) await expect(sessions.control(session.id, guestToken, { time: new Date(outside).toISOString(), speed: 1 })).rejects.toMatchObject({ code: "INVALID_PLAYBACK_RANGE" });
+    expect(dependencies.control).toHaveBeenCalledOnce();
+  });
+  it("answers a share token only on playback routes and with capabilities narrowed to its channel", async () => {
+    const guestConfig = { ...config, recorders: [archived] };
+    const { dependencies } = setup(); dependencies.playbackQualities = ["sd", "hd", "fullhd", "original"];
+    dependencies.preview = vi.fn(async () => "data:image/jpeg;base64,AA");
+    vi.mocked(dependencies.authorize).mockResolvedValue({ ...guest, expiresAt: Date.now() + 60_000, share: { ...guest.share, start: Date.now() - 7200_000, end: Date.now() - 3600_000 } });
+    const { server, sessions } = createLiveServer(guestConfig, dependencies);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
+    const base = `http://127.0.0.1:${address.port}/camera-live/v1`;
+    const headers = { Origin: config.origins[0]!, Authorization: `Bearer ${guestToken}` };
+    const json = { ...headers, "Content-Type": "application/json" };
+    const denied = async (response: Response) => { expect(response.status).toBe(403); expect(await response.json()).toEqual({ code: "SHARE_SCOPE_DENIED" }); };
+    try {
+      await denied(await fetch(`${base}/recorders/${recorder.id}/channels/2/sessions`, { method: "POST", headers: { ...headers, "Content-Type": "application/sdp" }, body: offer }));
+      await denied(await fetch(`${base}/recorders/${recorder.id}/live-views/50000000-0000-4000-8000-000000000001`, { method: "DELETE", headers }));
+      await denied(await fetch(`${base}/recorders/${recorder.id}/channels/2/archive`, { method: "POST", headers: json, body: "{}" }));
+      await denied(await fetch(`${base}/recorders/${recorder.id}/archive`, { headers }));
+      await denied(await fetch(`${base}/archive/50000000-0000-4000-8000-000000000001/file`, { headers }));
+      expect(dependencies.authorize).not.toHaveBeenCalled(); expect(dependencies.start).not.toHaveBeenCalled();
+      const capabilities = await (await fetch(`${base}/recorders/${recorder.id}`, { headers })).json();
+      expect(capabilities).toMatchObject({ channels: [2], maxView: 1, liveQualities: [], archive: false, playback: true, playbackPreview: false, playbackQualities: ["sd", "hd"] });
+      const second = (ms: number) => new Date(Math.floor(ms / 1000) * 1000).toISOString();
+      const inside = { offer, start: second(Date.now() - 7000_000), end: second(Date.now() - 6900_000), quality: "sd" };
+      await denied(await fetch(`${base}/recorders/${recorder.id}/channels/1/playback`, { method: "POST", headers: json, body: JSON.stringify(inside) }));
+      await denied(await fetch(`${base}/recorders/${recorder.id}/channels/2/playback`, { method: "POST", headers: json, body: JSON.stringify({ ...inside, end: second(Date.now() - 1800_000) }) }));
+      // Thumbnails are staff-only even inside the shared window: they would compete for the two gateway-wide preview slots.
+      await denied(await fetch(`${base}/recorders/${recorder.id}/channels/2/preview`, { method: "POST", headers: json, body: JSON.stringify({ start: inside.start, end: second(Date.parse(inside.start) + 10_000) }) }));
+      expect(dependencies.start).not.toHaveBeenCalled(); expect(dependencies.preview).not.toHaveBeenCalled();
+    } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
+  });
+});
+
+describe("camera live recorder vendor", () => {
+  const entry = { id: "10000000-0000-4000-8000-000000000009", organizationId: recorder.organizationId, buildingId: recorder.buildingId, channels: [1, 9], rtspOrigin: "rtsp://192.168.1.10:554", username: "fixture", password: "fixture-password" };
+  const load = (...recorders: unknown[]) => liveConfigSchema.safeParse({ supabaseUrl: config.supabaseUrl, publishableKey: config.publishableKey, origins: config.origins, recorders });
+  const issues = (value: unknown) => { const result = load(value); return result.success ? [] : result.error.issues.map((issue) => issue.message); };
+  const unsupported = "Archive export is not supported for HIKVISION recorders";
+  it("accepts the known vendors, leaves a recorder without one untouched and rejects anything else at load", () => {
+    const plain = load(entry); expect(plain.success && plain.data.recorders[0]).toEqual(entry);
+    for (const vendor of ["DAHUA", "KBVISION", "HIKVISION"]) expect(issues({ ...entry, vendor })).toEqual([]);
+    for (const vendor of ["hikvision", "Hikvision", "UNIVIEW", "", null, 1]) expect(load({ ...entry, vendor }).success).toBe(false);
+    expect(load({ ...entry, vendor: "HIKVISION", streamKey: "fixture" }).success).toBe(false);
+  });
+  it("rejects clip export on a Hikvision recorder with its own error, and playbackEnabled where archiveEnabled already decides", () => {
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveEnabled: true, archiveOrigin: "http://192.168.1.10:80" })).toEqual([unsupported]);
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveEnabled: true })).toEqual([unsupported]);
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveOrigin: "http://192.168.1.10:80" })).toEqual([unsupported]);
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveEnabled: true, playbackEnabled: true })).toEqual([unsupported]);
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveEnabled: false, playbackEnabled: true })).toEqual([]);
+    expect(issues({ ...entry, vendor: "HIKVISION", playbackEnabled: false })).toEqual([]);
+    // Dahua/KBVision validation is what it was: export needs a private origin, and there is no second playback switch.
+    expect(issues({ ...entry, archiveEnabled: true })).toEqual(["Private archive origin required"]);
+    expect(issues({ ...entry, vendor: "DAHUA", archiveEnabled: true, archiveOrigin: "http://192.168.1.10:80" })).toEqual([]);
+    expect(issues({ ...entry, playbackEnabled: true })).toEqual(["playbackEnabled is not used for DAHUA recorders; set archiveEnabled"]);
+    expect(issues({ ...entry, vendor: "KBVISION", playbackEnabled: false })).toEqual(["playbackEnabled is not used for KBVISION recorders; set archiveEnabled"]);
+  });
+  it("offers a Hikvision recorder live and playback without export, and answers export requests like any recorder without it", async () => {
+    const loaded = load({ ...entry, vendor: "HIKVISION", playbackEnabled: true }, { ...entry, id: "10000000-0000-4000-8000-000000000008" }, { ...entry, id: "10000000-0000-4000-8000-000000000007", vendor: "KBVISION", archiveEnabled: true, archiveOrigin: "http://192.168.1.10:80" });
+    if (!loaded.success) throw new Error("fixture");
+    const [hikvision, withoutExport, exporting] = loaded.data.recorders as [typeof recorder, typeof recorder, typeof recorder];
+    const { dependencies } = setup(); const encode = vi.fn();
+    Object.assign(dependencies, { control: vi.fn(), preview: vi.fn(), liveQualities: ["sd", "hd", "fullhd", "original"], playbackQualities: ["sd", "hd", "fullhd", "original"] });
+    const jobs = new ArchiveJobs({ authorize: dependencies.authorize, encode, remove: vi.fn(), audit: vi.fn(), fatal: vi.fn() });
+    // Two gateways: one where another recorder exports (archive service present), one serving Hikvision only.
+    const mixed = createLiveServer(loaded.data, dependencies, { jobs, open: () => Readable.from([]) });
+    const alone = createLiveServer({ ...loaded.data, recorders: [hikvision] }, dependencies);
+    const listen = async (server: typeof mixed.server) => { await new Promise<void>((done) => server.listen(0, "127.0.0.1", done)); const address = server.address(); if (!address || typeof address === "string") throw new Error("address"); return `http://127.0.0.1:${address.port}/camera-live/v1`; };
+    const headers = { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation" }; const json = { ...headers, "Content-Type": "application/json" };
+    const clip = JSON.stringify({ start: "2026-10-20T08:00:00+07:00", end: "2026-10-20T08:01:00+07:00", purpose: "export" });
+    const answer = async (response: Response) => [response.status, await response.json()];
+    try {
+      const base = await listen(mixed.server); const only = await listen(alone.server);
+      const qualities = ["sd", "hd", "fullhd", "original"];
+      // Hikvision: a seek or speed change is a new stream (no control on a running one), at speeds both measured firmware generations reach.
+      const hikvisionPlayback = { playback: true, playbackControl: false, playbackPreview: true, playbackSpeeds: [1, 2, 4], playbackQualities: qualities };
+      for (const root of [base, only]) expect(await (await fetch(`${root}/recorders/${hikvision.id}`, { headers })).json()).toEqual({ channels: [1, 9], maxView: 16, leaseSeconds: 75, liveQualities: qualities, archive: false, ...hikvisionPlayback });
+      expect(await (await fetch(`${base}/recorders/${exporting.id}`, { headers })).json()).toMatchObject({ archive: true, playback: true, playbackControl: true, playbackPreview: true, playbackSpeeds: [1, 2, 4, 6, 8], playbackQualities: qualities });
+      expect(await (await fetch(`${base}/recorders/${withoutExport.id}`, { headers })).json()).toMatchObject({ archive: false, playback: false, playbackControl: false, playbackPreview: false, playbackSpeeds: [], playbackQualities: [] });
+      for (const id of [hikvision.id, withoutExport.id]) {
+        expect(await answer(await fetch(`${base}/recorders/${id}/channels/1/archive`, { method: "POST", headers: json, body: clip }))).toEqual([503, { code: "ARCHIVE_NOT_CONFIGURED" }]);
+        expect(await answer(await fetch(`${base}/recorders/${id}/archive`, { headers }))).toEqual([404, { code: "CAMERA_NOT_CONFIGURED" }]);
+      }
+      expect(await answer(await fetch(`${only}/recorders/${hikvision.id}/channels/1/archive`, { method: "POST", headers: json, body: clip }))).toEqual([503, { code: "ARCHIVE_NOT_CONFIGURED" }]);
+      expect(await answer(await fetch(`${only}/recorders/${hikvision.id}/archive`, { headers }))).toEqual([503, { code: "ARCHIVE_NOT_CONFIGURED" }]);
+      expect(encode).not.toHaveBeenCalled();
+      // A guest share of a Hikvision channel gets the same narrowed playback capabilities as any other share, plus the
+      // start lead its player needs to draw the time bar. Staff are never told a lead: their sessions are not moved.
+      vi.mocked(dependencies.authorize).mockResolvedValue({ id: "share:60000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 60_000, share: { channel: 9, start: Date.now() - 7200_000, end: Date.now() - 3600_000, viewer: "a".repeat(32) } });
+      const asGuest = { ...headers, Authorization: `Bearer cs_${"A".repeat(43)}` };
+      expect(await (await fetch(`${only}/recorders/${hikvision.id}`, { headers: asGuest })).json()).toEqual({ channels: [9], maxView: 1, leaseSeconds: 75, liveQualities: [], archive: false, playback: true, playbackControl: false, playbackPreview: false, playbackSpeeds: [1, 2, 4], playbackQualities: ["sd", "hd"], playbackStartLeadSeconds: 15 });
+      // A Dahua/KBVision guest gets exactly the object it got before the lead existed: no new key at all.
+      expect(await (await fetch(`${base}/recorders/${exporting.id}`, { headers: asGuest })).text()).toBe(`{"channels":[9],"maxView":1,"leaseSeconds":75,"liveQualities":[],"archive":false,"playback":true,"playbackControl":true,"playbackPreview":false,"playbackSpeeds":[1,2,4,6,8],"playbackQualities":["sd","hd"]}`);
+    } finally { for (const { server } of [mixed, alone]) { server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); } }
+  });
+  it("builds no Dahua URL for a Hikvision recorder and keeps both vendors side by side in one media configuration", () => {
+    const loaded = load(recorder, { ...entry, vendor: "HIKVISION" }); if (!loaded.success) throw new Error("fixture");
+    const paths = mediaConfiguration(loaded.data).paths;
+    expect(new URL(paths[`camera-${recorder.id}-2`]!.source).pathname).toBe("/cam/realmonitor");
+    expect(new URL(paths[`camera-${entry.id}-9`]!.source).pathname).toBe("/Streaming/Channels/902");
+    expect(new URL(paths[`camera-${entry.id}-9-hd`]!.source).pathname).toBe("/Streaming/Channels/901");
+    expect(Object.entries(paths).filter(([name]) => name.includes(entry.id)).every(([, path]) => !path.source.includes("/cam/") && new URL(path.source).search === "")).toBe(true);
+  });
+});

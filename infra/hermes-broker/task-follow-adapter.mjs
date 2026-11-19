@@ -37,9 +37,12 @@ export function createTaskFollowReads(options) {
 /** Merge the follow capability observation into an already resolved CRM
  * authorization. A malformed or mismatched observation is a context change,
  * never a silent grant; absence (null) keeps the input authorization. */
-export function extendTaskFollowAuthorization(current, cap, input) {
+// skip (Công việc Mốc 3): khoá mà lớp khung chung đã là nguồn (task.update ⇒ tasks.edit, task.cancel ⇒ tasks.delete SỐNG phía SQL) —
+// vẫn kiểm khuôn, không cấp lại và không tính là trùng nguồn.
+export function extendTaskFollowAuthorization(current, cap, input, { skip = [] } = {}) {
   if (cap === null) return current;
-  if (KEYS.some(([key, mode]) => current.permissions[mode].includes(key) || current.companyCeilings[mode].includes(key))) throw new BrokerError('context_changed');
+  if (!Array.isArray(skip) || skip.some(key => !KEYS.some(([known, mode]) => known === key && mode === 'action'))) throw new TypeError('invalid_task_follow_skip');
+  if (KEYS.some(([key, mode]) => !skip.includes(key) && (current.permissions[mode].includes(key) || current.companyCeilings[mode].includes(key)))) throw new BrokerError('context_changed');
   if (!domainExact(cap, ['organizationId', 'userId', 'membershipId', 'authorizationVersion', 'isSuperadmin', 'policyVersion', 'permissions']) ||
     cap.organizationId !== input.organizationId || cap.userId !== input.userId || cap.membershipId !== current.membership.membershipId ||
     cap.authorizationVersion !== current.membership.authorizationVersion || cap.isSuperadmin !== current.isSuperadmin ||
@@ -54,6 +57,7 @@ export function extendTaskFollowAuthorization(current, cap, input) {
       value.buildingIds.some(id => !domainId(id)) || new Set(value.buildingIds).size !== value.buildingIds.length ||
       (!value.allowed && value.buildingIds.length) || (mode === 'read' && value.buildingIds.length) ||
       (mode === 'action' && value.allowed && !value.buildingIds.length)) throw new BrokerError('context_changed');
+    if (skip.includes(key)) continue;
     if (value.companyEnabled) ceilings[mode].push(key);
     if (value.allowed) { permissions[mode].push(key); scopes[key] = { buildingIds: [...value.buildingIds], cashbookIds: [] }; }
   }

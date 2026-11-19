@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -46,7 +46,7 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
   const updateTemplate = useUpdateIncomeExpenseTemplate();
 
   const form = useForm<IncomeExpenseTemplateFormValues>({
-    resolver: zodResolver(incomeExpenseTemplateFormSchema),
+    resolver: zodResolver(incomeExpenseTemplateFormSchema) as Resolver<IncomeExpenseTemplateFormValues>,
     defaultValues: {
       name: '',
       description: '',

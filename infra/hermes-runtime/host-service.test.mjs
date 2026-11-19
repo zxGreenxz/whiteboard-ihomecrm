@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { createHermesHost } from './host-service.mjs';
 import { createHermesBackend } from '../hermes-broker/server.mjs';
+import { createConnectorMaintenance } from '../hermes-broker/connector-maintenance.mjs';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -10,13 +11,14 @@ const connectorLimits = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinut
 function fixture(t, changes = {}) {
   const events = [], server = createServer((_req, res) => res.end('fixture'));
   const key = Buffer.alloc(32, 7);
-  let closes = 0, stage, callLog, maintenanceLog;
+  let closes = 0, stage, callLog, maintenanceLog, ownershipLog; const saved = [];
   const configuration = { paths: { stateRoot: '/state', handoffDirectory: '/state/handoff' },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
     ...(changes.zaloProvisioning ? { zaloProvisioning: changes.zaloProvisioning } : {}),
     http: {}, mode: 'connector', limits: connectorLimits, listenPort: 0,
     ...(changes.readFastPath === undefined ? {} : { readFastPath: changes.readFastPath }),
     ...(changes.roomRead === undefined ? {} : { roomRead: changes.roomRead }),
+    ...(changes.authorityCacheTtlMs === undefined ? {} : { authorityCacheTtlMs: changes.authorityCacheTtlMs }),
     dispose() { events.push('dispose'); key.fill(0); } };
   const handoff = { stage: async () => {}, async list() { events.push('list'); await changes.list?.(); return []; },
     async close() { events.push('wal-close'); await changes.walClose?.(); } };
@@ -24,7 +26,8 @@ function fixture(t, changes = {}) {
     startWorkMemoryRetention() { assert(server.listening); events.push('retention-start'); },
     async close() { if (closes++) return; events.push('backend-close'); await changes.backendClose?.(); } };
   const factories = {
-    async acquireHostOwnership(options) { assert.deepEqual(options, { stateRoot: '/state' }); events.push('lock'); await changes.lock?.();
+    async acquireHostOwnership(options, ports) { assert.deepEqual(options, { stateRoot: '/state' }); assert.deepEqual(Object.keys(ports), ['log']);
+      ownershipLog = ports.log; events.push('lock'); await changes.lock?.();
       return { async release() { events.push('release'); await changes.release?.(); } }; },
     async prepareState(paths) { assert.equal(paths, configuration.paths); events.push('state'); return '/state/audit'; },
     createHostAudit() { return { write: async () => {}, async close() { events.push('audit-close'); await changes.auditClose?.(); } }; },
@@ -34,6 +37,8 @@ function fixture(t, changes = {}) {
       assert.equal(options.connectorOnly, true); assert.equal(options.limits, connectorLimits);
       assert.equal(options.readFastPath, changes.readFastPath);
       assert.equal(options.roomRead, changes.roomRead);
+      assert.equal(Object.hasOwn(options, 'authorityCacheTtlMs'), changes.authorityCacheTtlMs !== undefined);
+      assert.equal(options.authorityCacheTtlMs, changes.authorityCacheTtlMs);
       assert.equal(typeof options.callLog, changes.callLogOff ? 'undefined' : 'function'); callLog = options.callLog;
       assert.deepEqual(Object.keys(options.handoff), ['stage']); stage = options.handoff.stage; return backend; },
     createNativeBindingReconciler(options) {
@@ -43,14 +48,20 @@ function fixture(t, changes = {}) {
         status(){return{state:'pending',pending:1};},
         async close(){events.push('zalo-reconciler-stop');await changes.zaloClose?.();}};
     },
+    createHealthyRecord(options) { assert.deepEqual(options, { directory: '/state' }); events.push('healthy-record');
+      return { async load() { return changes.healthyIds ?? []; }, async save(ids) { saved.push(ids); } }; },
     createConnectorMaintenance(options) { assert.equal(options.backend, backend); assert.equal(options.handoff, handoff);
-      assert.deepEqual(Object.keys(options), ['handoff', 'backend', 'log']); assert.equal(typeof options.log, 'function'); maintenanceLog = options.log;
+      // 10 minutes is the maximum the loop accepts: it leaves ~9 minutes of retries before the 15-minute token expires.
+      assert.deepEqual(Object.keys(options), ['handoff', 'backend', 'renewBeforeMs', 'healthyIds', 'onHealthyChange', 'log']);
+      assert.equal(options.renewBeforeMs, 600000); assert.deepEqual(options.healthyIds, changes.healthyIds ?? []);
+      options.onHealthyChange(['10000000-0000-4000-8000-000000000001']);
+      assert.equal(typeof options.log, 'function'); maintenanceLog = options.log;
       return { start() { events.push('connector-maintenance-start'); assert(server.listening); },
         async close() { events.push('connector-maintenance-stop'); await changes.maintenanceClose?.(); } }; },
   };
   const host = createHermesHost(configuration, { factories });
   t.after(async () => { await host.close().catch(() => {}); server.close(); server.closeAllConnections(); });
-  return { host, events, server, key, handoff, get stage() { return stage; }, get callLog() { return callLog; }, get maintenanceLog() { return maintenanceLog; } };
+  return { host, events, server, key, handoff, saved, get stage() { return stage; }, get callLog() { return callLog; }, get maintenanceLog() { return maintenanceLog; }, get ownershipLog() { return ownershipLog; } };
 }
 
 test('connector composition is inert until start, requires WAL, binds loopback and disposes original keys after both copies', async t => {
@@ -86,6 +97,12 @@ test('host forwards the explicit private read rollout flag to the backend', asyn
 test('host forwards the explicit room read source flag to the backend and omits it by default', async t => {
   for (const roomRead of [undefined, 'legacy', 'page']) {
     const f = fixture(t, roomRead === undefined ? {} : { roomRead }); await f.host.start(); await f.host.close();
+  }
+});
+
+test('host forwards an explicit authority cache TTL (28/10) and omits it by default so the backend keeps 30 minutes', async t => {
+  for (const authorityCacheTtlMs of [undefined, 0, 600_000]) {
+    const f = fixture(t, authorityCacheTtlMs === undefined ? {} : { authorityCacheTtlMs }); await f.host.start(); await f.host.close();
   }
 });
 
@@ -174,6 +191,7 @@ test('actual backend and connector maintenance compose behind the real loopback 
   const host = createHermesHost(configuration, { factories: {
     async acquireHostOwnership() { return { async release() { events.push('release'); } }; },
     async prepareState() { return '/state/audit'; },
+    createHealthyRecord() { return { async load() { return []; }, async save() {} }; },
     createHostAudit() { return { async write() {}, async close() { events.push('audit-close'); } }; },
     createConnectionHandoff() { return { async list() { lists++; return []; }, async stage() {}, async close() { events.push('wal-close'); } }; },
     createStorePool() { return { async connect() { throw Error('unexpected external SQL'); }, async end() { events.push('pool-close'); } }; },
@@ -233,4 +251,99 @@ test('connector maintenance sink: one stdout JSON line per record, and HERMES_CA
   f.maintenanceLog(record);
   assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
   info.mock.restore(); await f.host.close();
+});
+
+test('stale lock recovery sink: one stdout JSON line like the host_* events, and HERMES_CALL_LOG=0 does not silence it', async t => {
+  const previous = process.env.HERMES_CALL_LOG;
+  t.after(() => { if (previous === undefined) delete process.env.HERMES_CALL_LOG; else process.env.HERMES_CALL_LOG = previous; });
+  process.env.HERMES_CALL_LOG = '0';
+  const f = fixture(t, { callLogOff: true }); await f.host.start();
+  const info = t.mock.method(console, 'info', () => {});
+  const record = { event: 'host_stale_lock_refused', reason: 'same_boot' };
+  f.ownershipLog(record);
+  assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
+  info.mock.restore(); await f.host.close();
+});
+
+test('the healthy-connection record is loaded before maintenance starts and saved through onHealthyChange', async t => {
+  const ids = ['10000000-0000-4000-8000-000000000009'];
+  const f = fixture(t, { healthyIds: ids }); await f.host.start();
+  assert(f.events.indexOf('healthy-record') < f.events.indexOf('connector-maintenance-start'));
+  assert.deepEqual(f.saved, [['10000000-0000-4000-8000-000000000001']]);
+  await f.host.close();
+});
+
+test('the real healthy record is atomic and owner-only, and a missing, tampered, oversized or symlinked file reads as empty', async t => {
+  const { mkdtemp, writeFile, readFile, rm, stat, symlink, readdir } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const { createHealthyRecord } = await import('./host-service.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'healthy-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const a = '10000000-0000-4000-8000-00000000000a', b = '10000000-0000-4000-8000-00000000000b';
+  const record = createHealthyRecord({ directory });
+  assert.deepEqual(await record.load(), []);
+  await Promise.all([record.save([a]), record.save([a, b])]); // serialised: the last call wins, no temporary file is left
+  assert.deepEqual(await record.load(), [a, b]);
+  assert.deepEqual(await readdir(directory), ['connector-healthy.json']);
+  if (process.platform !== 'win32') assert.equal((await stat(join(directory, 'connector-healthy.json'))).mode & 0o777, 0o600);
+  assert.doesNotMatch(await readFile(join(directory, 'connector-healthy.json'), 'utf8'), /hc_/);
+  const file = join(directory, 'connector-healthy.json');
+  await writeFile(file, JSON.stringify({ v: 1, ids: [a, 'not-a-uuid', 7, 'hc_' + 'a'.repeat(43)] })); assert.deepEqual(await record.load(), [a]);
+  await writeFile(file, '{broken'); assert.deepEqual(await record.load(), []);
+  await writeFile(file, JSON.stringify({ v: 2, ids: [a] })); assert.deepEqual(await record.load(), []);
+  await writeFile(file, 'x'.repeat(9000)); assert.deepEqual(await record.load(), []);
+  await rm(file); await writeFile(join(directory, 'other.json'), JSON.stringify({ v: 1, ids: [b] }));
+  try { await symlink(join(directory, 'other.json'), file); assert.deepEqual(await record.load(), []); } catch (error) { if (error.code !== 'EPERM') throw error; }
+});
+
+test('the real backend reaches the maintenance loop whole, so its recovery lane is used; a recovered connection is one stdout JSON line', async t => {
+  const key = Buffer.alloc(32, 23); let received, sink;
+  const configuration = { paths: { stateRoot: '/state', handoffDirectory: '/state/handoff' },
+    supabase: { url: 'https://fixture.supabase.co', publishableKey: 'sb_publishable_fixture' },
+    store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
+    http: { allowedHosts: ['broker.example:8443'], allowedOrigins: ['https://crm.example'] },
+    mode: 'connector', limits: connectorLimits, listenPort: 0, dispose() { key.fill(0); } };
+  const host = createHermesHost(configuration, { factories: {
+    async acquireHostOwnership() { return { async release() {} }; },
+    async prepareState() { return '/state/audit'; },
+    createHealthyRecord() { return { async load() { return []; }, async save() {} }; },
+    createHostAudit() { return { async write() {}, async close() {} }; },
+    createConnectionHandoff() { return { async list() { return []; }, async stage() {}, async close() {} }; },
+    createStorePool() { return { async connect() { throw Error('unexpected external SQL'); }, async end() {} }; },
+    createHermesBackend(config) { return createHermesBackend({ ...config, fetch: async () => { throw Error('unexpected external HTTP'); } }); },
+    // The real loop validates the lane at construction; the host passes the backend object itself, not a projection of it.
+    createConnectorMaintenance(options) { received = options.backend; sink = options.log; return createConnectorMaintenance(options); },
+  } });
+  try {
+    await host.start();
+    for (const method of ['resolveConnection', 'beginExternalConnectionMaintenance', 'beginExternalConnectionRecovery']) assert.equal(typeof received[method], 'function', method);
+    const info = t.mock.method(console, 'info', () => {});
+    const record = { event: 'connector_connection_recovered', ts: '2026-11-13T15:00:00.000Z', connectionId: '1a2b3c4d', status: 'recovered', refreshed: true };
+    sink(record);
+    assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
+    info.mock.restore();
+  } finally { await host.close(); }
+  assert.equal(host.status().state, 'closed');
+});
+
+test('the recovery lane refreshes the provider session with at least the maintenance lead, so a session inside that lead is refreshed under the window SQL has just guaranteed', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const server = await readFile(new URL('../hermes-broker/server.mjs', import.meta.url), 'utf8');
+  const refresh = Number(/createConnectionMaintenance\(\{[^}]*?refreshBeforeMs:\s*(\d+)/s.exec(server)?.[1]);
+  const recovery = Number(/createConnectionRecovery\(\{[^}]*?refreshBeforeMs:\s*(\d+)/s.exec(server)?.[1]);
+  assert(Number.isSafeInteger(refresh) && Number.isSafeInteger(recovery), 'both leads are literal numbers');
+  assert(recovery >= refresh, `recovery refreshBeforeMs ${recovery} < maintenance refreshBeforeMs ${refresh}`);
+  assert.match(server, /createConnectionRecovery\(\{[^}]*\brefreshManager\b[^}]*\bdependencyScope\b/s, 'same refresh manager and scope as maintenance');
+  // The lane refuses to be built without a probe; the real composition gives it the provider the refresh manager itself uses.
+  assert.match(server, /createRefreshManager\(\{[^;]*?\bprovider: refreshProvider\b/s);
+  assert.match(server, /createConnectionRecovery\(\{[^}]*\bproviderProbe: refreshProvider\b/s);
+});
+
+test('the session refresh lead in server.mjs is at least the renewal lead the host passes (a shorter one fails every session cycle)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const server = await readFile(new URL('../hermes-broker/server.mjs', import.meta.url), 'utf8');
+  const host = await readFile(new URL('./host-service.mjs', import.meta.url), 'utf8');
+  const refresh = Number(/createConnectionMaintenance\(\{[^}]*?refreshBeforeMs:\s*(\d+)/s.exec(server)?.[1]);
+  const renew = Number(/createConnectorMaintenance\(\{[^}]*?renewBeforeMs:\s*(\d+)/s.exec(host)?.[1]);
+  assert(Number.isSafeInteger(refresh) && Number.isSafeInteger(renew), 'both leads are literal numbers');
+  assert(refresh >= renew, `refreshBeforeMs ${refresh} < renewBeforeMs ${renew}`);
 });

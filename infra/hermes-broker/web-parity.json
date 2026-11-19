@@ -1404,7 +1404,7 @@
           "contains": "crm.salary_locked_month_v1"
         }
       ],
-      "notes": "Hermes CHỈ đọc tháng đã chốt; tháng chưa chốt web tính ở trình duyệt (useManagerSalary.ts) nên Hermes trả \"không có số\", không đoán. Khác web: trang hiện lương cứng/đầu tư/ứng SỐNG kể cả tháng đã chốt, Hermes dùng số đã chốt (base_salary, investment_profit, advances_total); \"Đã trả\" là cột sống. Trần tháng (isStaffMonthVisible/latestVisibleStaffYm/staffCeilingYm) được chép sang SQL trong hermes_w2c_read_v1."
+      "notes": "Hermes CHỈ đọc tháng đã chốt; tháng chưa chốt web tính ở trình duyệt (useManagerSalary.ts) nên Hermes trả \"không có số\", không đoán. Khác web: trang hiện lương cứng/đầu tư/ứng SỐNG kể cả tháng đã chốt, Hermes dùng số đã chốt (base_salary, investment_profit, advances_total); \"Đã trả\" là cột sống. Trần tháng (isStaffMonthVisible/latestVisibleStaffYm/staffCeilingYm) được chép sang SQL trong hermes_w2c_read_v1. KHÁC WEB CÓ CHỦ Ý (Đợt 2 sổ tổng, 15/11/2026): với nhân viên là cổ đông, web tách dòng \"Trừ tạm ứng lợi nhuận\" và \"Lợi nhuận đã trả theo mốc\" (chỉ có khi đã đặt mốc, từ SHADOW) nhưng cộng cả hai vào advances_total lúc chốt (lib/salaryProfit.ts); Hermes đọc advances_total đã chốt nên gộp chúng vào \"ứng\" — chủ quyết định Hermes không đổi."
     },
     {
       "id": "w2c-salary-staff-months",
@@ -1486,7 +1486,7 @@
     {
       "id": "cashbook-daily-cash-flow",
       "kind": "rpc",
-      "description": "Sổ quỹ theo ngày và Dòng tiền năm (crm_read_report report=cashbook_daily, cash_flow): Hermes gọi cùng cashbook_opening_balance + cashflow_by_day như useCashBook, rồi chép phép tính của hai trang: tồn đầu/cuối cộng dồn từng ngày, ngày không phát sinh = 0, mặc định đầu tháng → hôm nay (DailyCashbookReport) và gộp 12 tháng + 4 quý của cả năm, mặc định năm nay (CashFlowReport).",
+      "description": "Sổ quỹ theo ngày: Hermes gọi cùng cashbook_opening_balance + cashflow_by_day như web, giữ lịch sử luân chuyển để đối chiếu số dư.",
       "rpc": [
         "cashbook_opening_balance",
         "cashflow_by_day"
@@ -1501,11 +1501,6 @@
           "path": "src/pages/reports/finance/DailyCashbookReport.tsx",
           "region": "cashbook-daily-cash-flow",
           "sha256": "286f1cc9f985b9185afa35e64cb043e664bdb43c03d5b78a6c5ff07d66a69bea"
-        },
-        {
-          "path": "src/pages/reports/finance/CashFlowReport.tsx",
-          "region": "cashbook-daily-cash-flow",
-          "sha256": "5588175babd0e47f00deab9182283ad83d627ab1e9c9474309c481032ac733c3"
         }
       ],
       "webCalls": [
@@ -1528,30 +1523,58 @@
           "note": "cashbook_daily"
         },
         {
-          "sql": "public.cashbook_cash_flow_v1",
-          "calls": [
-            "cashflow_by_day"
-          ],
-          "note": "cash_flow"
-        },
-        {
           "sql": "app_private.hermes_w2b_read_v1",
           "calls": [
-            "cashbook_daily_v1",
-            "cashbook_cash_flow_v1"
+            "cashbook_daily_v1"
           ],
-          "note": "cashbook_daily, cash_flow"
+          "note": "cashbook_daily"
         },
         {
           "path": "infra/hermes-broker/wave2-b-contract.mjs",
           "contains": "crm.cashbook_daily_v1"
+        }
+      ],
+      "notes": "Dòng tiền năm dùng cashbook_cash_flow_v1 ở mục cash-flow-external-report. Sổ quỹ ngày vẫn giữ bút toán bàn giao, sổ ảo và hoàn tác để đối chiếu số dư."
+    },
+    {
+      "id": "cash-flow-external-report",
+      "kind": "rpc",
+      "description": "Dòng tiền bên ngoài của đúng công ty: web và Hermes dùng chung cashbook_cash_flow_v1, loại DEMO, sổ ảo, bàn giao nội bộ và phiếu hoàn tác; giữ tiền cọc/hoàn trả thực tế.",
+      "rpc": [
+        "cashbook_cash_flow_v1"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useCashFlowReport.ts",
+          "region": "cash-flow-external-report",
+          "sha256": "251eaf47d5eee36e0b9331bfacbb9d628edb9ad421f0d424e7a9cf3ee0cecd0f"
+        },
+        {
+          "path": "src/pages/reports/finance/CashFlowReport.tsx",
+          "region": "cash-flow-external-report",
+          "sha256": "ed78bd802e01001bc66e1cdf4aaba2cf1381cda8c808525a782976cfa529579b"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useCashFlowReport.ts",
+          "rpc": "cashbook_cash_flow_v1"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "cashbook_cash_flow_v1"
+          ],
+          "note": "cash_flow"
         },
         {
           "path": "infra/hermes-broker/wave2-b-contract.mjs",
           "contains": "crm.cashbook_cash_flow_v1"
         }
       ],
-      "notes": "Đã biết 18/10: tổng thu/chi của trang ngày (summary web) lấy từ cashbook_period_totals, Hermes cộng từ các dòng cashflow_by_day nên không gọi cashbook_period_totals (không có marker). Hermes gọi hai RPC theo VỊ TRÍ tham số (p_before_date, p_building_id, p_account_id / p_start, p_end, p_building_id, p_account_id): đổi thứ tự tham số RPC là hỏng mà bản đồ không bắt. Hai RPC lọc my_org_ids() nên người ở nhiều công ty được Hermes gọi từng sổ của đúng công ty kết nối."
+      "notes": "RPC trả 12 tháng và 4 quý cho từng phạm vi toà. Web chỉ cộng dòng tháng; quý/năm được cộng từ tháng, tránh đếm lại quý. Các cặp ghi nhận–hoàn tác bị loại trên toàn lịch sử, kể cả khác kỳ. KHÁC WEB CÓ CHỦ Ý (Đợt 2, 15/11/2026): web thêm cột \"Trong đó: chi chia lợi nhuận\" (cổ đông + lương điều hành) đọc cashbook_cash_flow_profit_payout_v1, chỉ hiện với người có quyền xem phần chi lợi nhuận, tính ngoài vùng parity; Hermes không trả cột này, tổng dòng tiền vẫn khớp cashbook_cash_flow_v1."
     },
     {
       "id": "cashbook-list",
@@ -1858,7 +1881,7 @@
     {
       "id": "shareholder-profit",
       "kind": "mirrored",
-      "description": "Lợi nhuận cổ đông (crm_read_report report=profit_my_share, profit_shareholders): tab Tổng quan tự xem của cổ đông (ShareholderSelfView) và Tổng quan quản lý (ProfitOverviewTab). Web đọc profit_allocations kèm kỳ chốt profit_monthly, phiếu chi chia lợi nhuận (income_expenses EXPENSE/APPROVED gắn cổ đông), cổ đông còn hiệu lực, tên toà qua get_my_share_buildings, rồi computeShareholderSummary (được chia, đã ứng, còn lại) và lọc năm; Hermes chép bằng profit_my_share_v1 và profit_shareholder_summary_v1.",
+      "description": "Lợi nhuận cổ đông (crm_read_report report=profit_my_share, profit_shareholders): Tổng quan quản lý (ProfitOverviewTab trong ProfitHubPage). Web đọc profit_allocations kèm kỳ chốt profit_monthly, phiếu chi chia lợi nhuận (income_expenses EXPENSE/APPROVED gắn cổ đông), cổ đông còn hiệu lực, rồi computeShareholderSummary (được chia, đã ứng, còn lại) và lọc năm; Hermes chép bằng profit_my_share_v1 và profit_shareholder_summary_v1. Nguồn gốc của profit_my_share_v1 là tab tự xem của cổ đông (ShareholderSelfView, tên toà qua get_my_share_buildings); từ Đợt 3 (D3.14) tab đó chỉ còn đọc sổ tổng nên không còn vùng parity, và trên web chỉ ProfitManagerSelfView còn gọi get_my_share_buildings.",
       "web": [
         {
           "path": "src/hooks/useShareholderProfit.ts",
@@ -1874,11 +1897,6 @@
           "path": "src/lib/shareholderProfit.ts",
           "region": "shareholder-profit",
           "sha256": "8bb05b80b834e8bc30c335f0a7de5d6df00800e8b97f87d1d6090eae68035317"
-        },
-        {
-          "path": "src/components/shareholders/ShareholderSelfView.tsx",
-          "region": "shareholder-profit",
-          "sha256": "e10764fc3973be033425b6f14bceef1599aa773fd4f2a3d0ede922025b32b4b9"
         },
         {
           "path": "src/components/shareholders/ProfitOverviewTab.tsx",
@@ -1933,7 +1951,7 @@
           "contains": "crm.profit_shareholder_summary_v1"
         }
       ],
-      "notes": "Đã biết 18/10: tab tự xem của web chỉ hiện khi canReport && !isManager (người quản lý lợi nhuận thấy tab quản lý thay vào), Hermes profit_my_share trả phần của chính người hỏi nếu họ là cổ đông và có reports_finance.profit_distribution, không áp !isManager. ProfitHubPage bọc canReport, canViewManagedProfit và isManager (super admin, canLock/canUnlock, distribute, manage_shareholders): profit_shareholders đòi shareholder_profit.view VÀ isManager như tab Tổng quan quản lý (sửa sau review PR #208), chặt hơn web ở chỗ chốt/mở chốt LN chỉ tính ở đúng công ty kết nối (web some() mọi công ty). Hermes lọc năm bằng extract(year) còn web startsWith(năm). Dòng nhìn thấy do RLS profit_*/shareholders/income_expenses quyết, Hermes không chép policy."
+      "notes": "Đã biết 18/10: tab tự xem của web chỉ hiện khi canReport && !isManager (người quản lý lợi nhuận thấy tab quản lý thay vào), Hermes profit_my_share trả phần của chính người hỏi nếu họ là cổ đông và có reports_finance.profit_distribution, không áp !isManager. ProfitHubPage bọc canReport, canViewManagedProfit và isManager (super admin, canLock/canUnlock, distribute, manage_shareholders): profit_shareholders đòi shareholder_profit.view VÀ isManager như tab Tổng quan quản lý (sửa sau review PR #208), chặt hơn web ở chỗ chốt/mở chốt LN chỉ tính ở đúng công ty kết nối (web some() mọi công ty). Hermes lọc năm bằng extract(year) còn web startsWith(năm). Dòng nhìn thấy do RLS profit_*/shareholders/income_expenses quyết, Hermes không chép policy. KHÁC WEB CÓ CHỦ Ý (Đợt 2 sổ tổng, 15/11/2026): khi công tắc shareholder_profit.ledger_payout.v1 ở SHADOW/CANONICAL/FROZEN, web hiện số SỔ TỔNG — Tổng quan quản lý (ProfitOverviewTab, cả bản điện thoại ProfitOverviewMobile: ba ô Được chia (sau mốc) / Đã chi / Còn phải trả và bảng sổ tổng) đọc shareholder_profit_ledger_v1, tab tự xem (ShareholderSelfView/Mobile) đọc shareholder_profit_my_ledger_v1: được chia chỉ tính các tháng đã chốt SAU mốc \"đã trả đủ\", phiếu chờ duyệt trừ vào số dư, trừ phần lợi nhuận đã trả qua phiếu lương (sau phần lương bù tạm ứng), số âm là đang tạm ứng. Các vùng parity ở trên giữ nguyên chữ; ở Tổng quan quản lý (ProfitOverviewTab) chúng vẫn nuôi ô Tổng LN đã chốt, biểu đồ và ma trận phân bổ ở mọi route, còn ba ô Được chia / Đã ứng / Còn lại chỉ theo chúng khi LEGACY (từ SHADOW đọc sổ tổng). ĐỢT 3 (D3.14 — chủ quyết định làm ngay 16/11/2026, không chờ hết 7 ngày theo dõi bất biến): web gỡ thân cũ của tab tự xem (ShareholderSelfView, ShareholderSelfMobile) và dòng \"Từ công ty\" cũ của Ví cá nhân — sổ tổng tắt (LEGACY) thì các màn này chỉ hiện một câu báo tắt, không số; vùng parity ShareholderSelfView.tsx đã gỡ khỏi bản đồ, web không còn màn tự xem của cổ đông nào tính theo cách cũ (ProfitManagerSelfView — tự xem lương điều hành — vẫn tính kiểu cũ). Về LEGACY sau D3.14 cần bản lùi R6 + deployment web cũ đã xác minh. Hermes (profit_my_share_v1, profit_shareholder_summary_v1) vẫn tính theo cách cũ — chủ quyết định Hermes không đổi — nên từ SHADOW trở đi số Hermes trả (được chia luỹ kế, đã ứng, còn lại) có thể khác số web."
     },
     {
       "id": "personal-finance",
@@ -2107,7 +2125,7 @@
         {
           "path": "src/hooks/useCollectionReport.ts",
           "region": "thu-tien-collection",
-          "sha256": "a686734e77546a62934102ba1387945cf580e1842cc8b40a0842ec6720528504"
+          "sha256": "6b5631eabf33cae85d22f50a26c0b8ae116b71aaf2d82e1647d4dd7479079b52"
         },
         {
           "path": "src/pages/ThuTien.tsx",
@@ -2559,11 +2577,11 @@
     {
       "id": "receivables-fast-read",
       "kind": "mirrored",
-      "description": "Fast read công nợ (crm_read_receivables qua hermes_domain_read_fast_v1): nhánh receivables của hermes_domain_read_v2 (APPROVED/PARTIAL_PAID/OVERDUE, còn nợ >0, lọc due_date/trạng thái/chữ, keyset id, limit+1) chép sang reader INVOKER dưới RLS. Candidate B2 20/10, readFastPath mặc định false. B5c 21/10 (20261020171321): cả hai lane thêm buildingName/buildingCode (LEFT JOIN buildings theo room.building_id) để model gom nợ theo toà. Nợ thực 22/10 (20261021185540): cả hai lane gọi cùng public.invoice_effective_outstanding_v1 cho cả tập lọc — nợ đã kéo sang hoá đơn gánh còn mở cùng tập chỉ đếm một lần.",
+      "description": "Fast read công nợ (crm_read_receivables qua hermes_domain_read_fast_v1): nhánh receivables của hermes_domain_read_v2 (APPROVED/PARTIAL_PAID/OVERDUE, còn nợ >0, lọc due_date/trạng thái/chữ, keyset id, limit+1) chép sang reader INVOKER dưới RLS. Candidate B2 20/10, readFastPath mặc định false. B5c 21/10 (20261020171321): cả hai lane thêm buildingName/buildingCode (LEFT JOIN buildings theo room.building_id) để model gom nợ theo toà. Nợ thực 22/10 (20261021185540): cả hai lane gọi cùng public.invoice_effective_outstanding_v1 cho cả tập lọc — nợ đã kéo sang hoá đơn gánh còn mở cùng tập chỉ đếm một lần. Lượt 15 Thu chi 24/10 (20261024193001): v2 lấy kết nối qua bản đọc không khoá app_private.hermes_read_connection_v1 (đầu hàm + kiểm lại cuối hàm) — nhánh receivables byte-identical, đã soát lại lane nhanh: parity giữ nguyên.",
       "sql": [
         {
           "function": "public.hermes_domain_read_v2",
-          "sha256": "e0ddaede72d4a230afce2e4e5a1a15bcc04ef4ef9a77e3d28df9a26d8a9a48ce"
+          "sha256": "af94bc669b9fa765b9be5c517115631f849b4581ca29a70690f42e784a454a8f"
         }
       ],
       "hermes": [

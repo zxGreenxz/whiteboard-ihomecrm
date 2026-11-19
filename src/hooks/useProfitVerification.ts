@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   calculateNonKqkdAmounts,
   requireProfitVerificationRpcData,
+  type ProfitVerificationVoucherType,
 } from "@/lib/profitVerification";
 import { VOUCHER_SOURCES } from "@/lib/voucherSources";
 
@@ -38,9 +39,19 @@ export interface ProfitVerificationData {
   noBookIncome: number;
   noBookExpense: number;
   /** Tổng engine SQL fa_monthly_pnl_accrual (null = không chạy/không áp dụng). */
-  fa: { income: number; expense: number; byBuilding: Map<string, { income: number; expense: number }> } | null;
+  fa: {
+    income: number;
+    expense: number;
+    /** Khoá = building_id (F35: tên toà có thể trùng/đổi). */
+    byBuilding: Map<string, { name: string; income: number; expense: number }>;
+  } | null;
   /** Đã thu thực tế của hoá đơn kỳ (mọi thời điểm thu). */
   invoicePaid: number | null;
+  /**
+   * F36: phiếu ĐÃ HUỶ trong kỳ (theo ngày phiếu) — phần tính KQKD (kqkd_amount).
+   * null = không tải được (thông tin phụ, không làm hỏng cả thanh).
+   */
+  cancelled: { income: number; expense: number } | null;
 }
 
 export function useProfitVerification(opts: {
@@ -50,9 +61,11 @@ export function useProfitVerification(opts: {
   buildingIds?: string[];
   pnlOnly: boolean;
   accrualMode: boolean;
+  /** F48: lọc loại phiếu của trang — RPC thống kê chỉ lấy chiều đang xem. */
+  voucherType?: ProfitVerificationVoucherType;
   enabled?: boolean;
 }) {
-  const { ym, startDate, endDate, buildingIds, pnlOnly, accrualMode, enabled = true } = opts;
+  const { ym, startDate, endDate, buildingIds, pnlOnly, accrualMode, voucherType = "all", enabled = true } = opts;
   // `undefined` chứ không phải `null`: cả ba RPC dùng bIds (get_income_expense_layer_stats,
   // fa_monthly_pnl_accrual, get_invoice_statistics_v2) đều khai `p_building_ids uuid[]
   // DEFAULT NULL::uuid[]` → bỏ khoá khỏi payload là ĐÚNG mặc định server, và kiểu sinh
@@ -62,7 +75,7 @@ export function useProfitVerification(opts: {
 
   return useQuery({
     meta:{label:"đối chiếu lợi nhuận",errorDisplay:"inline"},
-    queryKey: ["profit-verification", ym, bIds, pnlOnly, accrualMode],
+    queryKey: ["profit-verification", ym, bIds, pnlOnly, accrualMode, voucherType],
     enabled: enabled && !!ym,
     staleTime: 60_000,
     queryFn: async (): Promise<ProfitVerificationData> => {
@@ -71,9 +84,11 @@ export function useProfitVerification(opts: {
         p_start_date: startDate,
         p_end_date: endDate,
         p_internal_sources: INTERNAL_SOURCES,
+        // F48: chỉ lấy chiều đang xem (RPC có p_type); 'all' = bỏ khoá.
+        ...(voucherType === "all" ? {} : { p_type: voucherType }),
       };
 
-      const [draftRes, allRes, kqkdRes, faRes, invRes] = await Promise.all([
+      const [draftRes, allRes, kqkdRes, faRes, invRes, cancelledRes] = await Promise.all([
         // Phiếu nháp trong kỳ (mọi phiếu UNAPPROVED → rơi vào pending của RPC).
         supabase.rpc("get_income_expense_layer_stats", {
           ...statsArgs,
@@ -106,6 +121,14 @@ export function useProfitVerification(opts: {
         supabase.rpc("get_invoice_statistics_v2", {
           p_billing_month: ym,
           p_building_ids: bIds,
+        }),
+        // F36: phiếu ĐÃ HUỶ trong kỳ. RPC chỉ trả phiếu CANCELLED khi p_kqkd_only
+        // = true (nhánh còn lại lọc approval_status <> 'CANCELLED') ⇒ lấy phần
+        // kqkd_amount theo chiều (cash_income/cash_expense của nhánh KQKD).
+        supabase.rpc("get_income_expense_layer_stats", {
+          ...statsArgs,
+          p_approval: "CANCELLED",
+          p_kqkd_only: true,
         }),
       ]);
 
@@ -141,7 +164,7 @@ export function useProfitVerification(opts: {
         if (!Array.isArray(faRows)) {
           throw new Error("UNAVAILABLE: RPC engine chia cổ đông trả sai định dạng");
         }
-        const byBuilding = new Map<string, { income: number; expense: number }>();
+        const byBuilding = new Map<string, { name: string; income: number; expense: number }>();
         let income = 0;
         let expense = 0;
         for (const row of faRows) {
@@ -149,12 +172,32 @@ export function useProfitVerification(opts: {
           const exp = Number(row.expense) || 0;
           income += inc;
           expense += exp;
-          byBuilding.set(row.building_name ?? "—", { income: inc, expense: exp });
+          // F35: khoá theo building_id, cộng dồn nếu engine trả nhiều dòng/toà.
+          const key = String(row.building_id ?? row.building_name ?? "—");
+          const prev = byBuilding.get(key);
+          byBuilding.set(key, {
+            name: row.building_name ?? prev?.name ?? "—",
+            income: (prev?.income ?? 0) + inc,
+            expense: (prev?.expense ?? 0) + exp,
+          });
         }
         fa = { income, expense, byBuilding };
       }
 
       const inv = one("thống kê hoá đơn", invRes);
+
+      // F36: thông tin phụ — lỗi/không có dòng thì bỏ qua, không làm hỏng thanh.
+      const cancelledRow = cancelledRes.error
+        ? null
+        : Array.isArray(cancelledRes.data)
+          ? cancelledRes.data[0]
+          : cancelledRes.data;
+      const cancelled = cancelledRow
+        ? {
+            income: Number(cancelledRow.cash_income) || 0,
+            expense: Number(cancelledRow.cash_expense) || 0,
+          }
+        : null;
 
       return {
         draftCount: Number(draft?.pending_count) || 0,
@@ -167,6 +210,7 @@ export function useProfitVerification(opts: {
         noBookExpense: Number(all?.pending_expense) || 0,
         fa,
         invoicePaid: inv ? Number(inv.total_paid) || 0 : null,
+        cancelled,
       };
     },
   });

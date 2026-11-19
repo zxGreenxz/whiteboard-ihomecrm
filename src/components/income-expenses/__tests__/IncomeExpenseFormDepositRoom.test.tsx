@@ -50,6 +50,8 @@ vi.mock('@/hooks/useIncomeExpenseTypes', () => ({
 vi.mock('@/hooks/useVoucherSlotWarning', () => ({
   useVoucherSlotWarning: () => ({ data: [], status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, error: null, refetch: vi.fn() }),
 }));
+// F06: tháng đã chốt LN của toà — test này không xét, coi như chưa chốt tháng nào.
+vi.mock('@/hooks/useProfitPostLock', () => ({ useProfitLockedMonthsForForm: () => ({ data: undefined }) }));
 vi.mock('../IncomeExpenseItemSelector', () => ({ default: () => null }));
 vi.mock('../AttachmentUpload', () => ({ default: () => null }));
 

@@ -4,7 +4,7 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { X, Pencil, Trash2, Wallet } from "lucide-react";
+import { History, X, Pencil, Trash2, Wallet } from "lucide-react";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
 import {
   useCashbookAccessAdminV2,
@@ -24,6 +24,7 @@ interface Props {
   account: AccountWithBalance | null;
   onEdit: (acc: AccountWithBalance) => void;
   onDelete: (id: string) => void;
+  onReopenHistory: (acc: AccountWithBalance) => void;
 }
 
 
@@ -48,6 +49,7 @@ export function CashbookDetailDialog({
   account,
   onEdit,
   onDelete,
+  onReopenHistory,
 }: Props) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -184,6 +186,10 @@ export function CashbookDetailDialog({
               <Row label="Mô tả:" value={account.description} />
             )}
           </div>
+
+          <Button variant="outline" className="mt-4 w-full" onClick={() => { onOpenChange(false); onReopenHistory(account); }}>
+            <History className="mr-2 h-4 w-4" />Lịch sử mở khóa
+          </Button>
 
           {/* CTA: Xem thu chi */}
           <button

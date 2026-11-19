@@ -9,7 +9,9 @@ const S = APP_SCHEMAS.map(lit).join(',');
 // Vai dịch vụ đăng nhập được trên production vì có tiến trình ngoài dùng (kho bền của connector Hermes
 // trên VPS). TEST không chạy tiến trình đó và không bao giờ chép mật khẩu ⇒ dựng lại NOLOGIN. Chỉ thuộc
 // tính login được hạ; superuser/createdb/createrole/replication/bypassrls vẫn phải tắt như mọi vai khác.
-const PROD_LOGIN_SERVICE_ROLES = Object.freeze(['hermes_store_host']);
+// hermes_store_learning: login của job nạp đề xuất bài học (chỉ thuộc vai hermes_learning_ingest, migration 20261101064441 tạo
+// NOLOGIN) — đặt sẵn để khi scripts/hermes-learning-login.mjs bật đăng nhập trên production, test-env:sync không dừng vì "vai lạ có LOGIN".
+const PROD_LOGIN_SERVICE_ROLES = Object.freeze(['hermes_store_host', 'hermes_store_learning']);
 
 /** Hạ login của đúng vai dịch vụ đã duyệt khi chụp metadata production để dựng TEST. */
 export function haDangNhapVaiDichVu(meta) {

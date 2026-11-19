@@ -6,7 +6,7 @@ import {
 } from '@/lib/saleRoomOperations';
 import { saleRoomPolicyInputSchema, saleRoomPolicySchema, type SaleRoomPolicyInput } from '@/lib/saleRoomPolicyTypes';
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const revision = z.string().regex(/^[a-f0-9]{32}$/);
 const roomRequest = z.object({ roomId: uuid, expectedRevision: revision, requestId: uuid });
 export const saveSalePolicyInputSchema = roomRequest.extend({ policy: saleRoomPolicyInputSchema }).strict();

@@ -6,6 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { AuditTab } from "./tabs/AuditTab";
 import { BackupsTab } from "./tabs/BackupsTab";
 import { ChangesTab } from "./tabs/ChangesTab";
+import { CamerasTab } from "./tabs/CamerasTab";
 import { ClientsTab } from "./tabs/ClientsTab";
 import { ConfigurationTab } from "./tabs/ConfigurationTab";
 import { IncidentsTab } from "./tabs/IncidentsTab";
@@ -36,6 +37,7 @@ export function BuildingTabs({ site, controller }: { site: NetworkBuilding; cont
       <TabsContent value="interfaces"><InterfacesTab site={site} isDemo={controller.isDemo} /></TabsContent>
       <TabsContent value="clients"><ClientsTab site={site} isDemo={controller.isDemo} /></TabsContent>
       <TabsContent value="topology"><TopologyTab site={site} controller={controller} isDemo={controller.isDemo} /></TabsContent>
+      <TabsContent value="cameras"><CamerasTab key={`${controller.actor.id}:${site.buildingId}`} site={site} controller={controller} /></TabsContent>
       <TabsContent value="incidents"><IncidentsTab site={site} controller={controller} /></TabsContent>
       <TabsContent value="configuration"><ConfigurationTab site={site} controller={controller} /></TabsContent>
       <TabsContent value="backups"><BackupsTab site={site} controller={controller} /></TabsContent>

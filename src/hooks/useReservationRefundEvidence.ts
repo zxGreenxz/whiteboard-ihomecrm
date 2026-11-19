@@ -6,7 +6,7 @@ import { hydrateIncomeExpenseSupplements } from '@/hooks/income-expenses/supplem
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 
 const refundEvidenceSchema = z.object({
-  voucher: z.object({ id: z.string().uuid(), code: z.string().nullable(), voucher_date: z.string(),
+  voucher: z.object({ id: z.string().guid(), code: z.string().nullable(), voucher_date: z.string(),
     approval_status: z.string(), posting_status: z.string().nullable(), attachments: z.array(z.string()).nullable() }),
 });
 interface RefundEvidenceVoucher {

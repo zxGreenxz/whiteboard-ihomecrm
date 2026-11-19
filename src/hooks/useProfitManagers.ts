@@ -77,6 +77,9 @@ export const useProfitManagers = () => {
   });
 };
 
+// Quản lý ĐÃ XOÁ còn số (rà 21/10, F21): từ Đợt 2 Tổng quan đọc thẳng sổ lương điều hành (E10 giữ
+// người đã xoá còn số dư / phiếu chờ duyệt, kèm tên) — không còn đọc riêng tên người đã nghỉ ở đây.
+
 // Quản lý điều hành tương ứng tài khoản đang đăng nhập (null nếu không phải).
 export const useMyProfitManager = () => {
   return useQuery({

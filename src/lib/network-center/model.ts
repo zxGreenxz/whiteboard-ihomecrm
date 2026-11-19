@@ -35,6 +35,7 @@ export const NETWORK_CENTER_TABS = [
   { value: "interfaces", label: "Cổng giao tiếp" },
   { value: "clients", label: "Thiết bị kết nối" },
   { value: "topology", label: "Aruba & sơ đồ" },
+  { value: "cameras", label: "Camera" },
   { value: "incidents", label: "Sự cố & SLA" },
   { value: "configuration", label: "Cấu hình" },
   { value: "backups", label: "Sao lưu & so sánh" },
@@ -273,7 +274,7 @@ export const NETWORK_ACTION_DEFINITIONS: NetworkActionDefinition[] = [
 const requestSchema = z.object({
   type: z.enum(["flush_dns_cache", "renew_dhcp_lease", "cycle_access_port", "reboot_router"]),
   reason: z.string().trim().min(8, "Lý do phải có ít nhất 8 ký tự"),
-  fields: z.record(z.union([z.string(), z.number(), z.boolean()])),
+  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
   confirmation: z.string().optional(),
 });
 

@@ -20,6 +20,10 @@ import {
   RotateCcw,
   History,
   CopyPlus,
+  Undo2,
+  BadgeCheck,
+  CalendarX,
+  ClipboardCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
@@ -33,8 +37,10 @@ import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
-import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
-import { AUDIT_TONE_CLASSES, auditActionLabel, voucherEditAction } from "@/lib/incomeExpenseRevision";
+import { AUDIT_TONE_CLASSES, auditActionLabel } from "@/lib/incomeExpenseRevision";
+import { voucherActionAvailability } from "@/lib/voucherActionRules";
+import type { FlexCancelEligibility } from "@/hooks/income-expenses/flexMutations";
+import type { IncomeCancelEligibility } from "@/hooks/income-expenses/incomeVoucherCancel";
 import { useIsCompanyOwner } from "@/hooks/useIsCompanyOwner";
 import { RevisionHistory, VoucherRevisionBadges } from "@/components/income-expenses/RevisionSummary";
 import { CollectionMethodAction } from "@/components/income-expenses/CollectionMethodAction";
@@ -69,7 +75,8 @@ interface Props {
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
   quickExpense?: QuickExpenseActions;
-  onCancel?: (id: string, type?: string | null) => void;
+  /** Kèm phiếu: phiếu chi theo sổ tổng mở hộp huỷ có lý do riêng. */
+  onCancel?: (id: string, type?: string | null, voucher?: IncomeExpenseWithRelations) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
   /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
@@ -78,6 +85,18 @@ interface Props {
   onPostApproved?: (v: IncomeExpenseWithRelations) => void;
   /** Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ (tiền về sổ, phiếu chờ chi lại/huỷ). */
   onReversePosting?: (v: IncomeExpenseWithRelations) => void;
+  // Đủ nút như bản máy tính (28/10/2026) — luật hiện chung ở src/lib/voucherActionRules.ts.
+  /** Huỷ duyệt: đưa phiếu đã ghi nhận về Chờ duyệt (chỉ super admin). */
+  onUnapprove?: (id: string) => void;
+  /** Đánh dấu đã kiểm tra. */
+  onVerify?: (v: IncomeExpenseWithRelations) => void;
+  /** Lịch sử phiếu (mốc lập / duyệt / huỷ + thay đổi). */
+  onHistory?: (v: IncomeExpenseWithRelations) => void;
+  /** Dừng lặp lại phiếu gốc đang lặp (ghi ngay, như ở danh sách máy tính). */
+  onStopRecurring?: (id: string) => void;
+  /** Câu trả lời trước của máy chủ cho nút Huỷ (can_flex_cancel_v1 / can_cancel_income_voucher_v1). */
+  cancelEligibility?: Record<string, FlexCancelEligibility>;
+  incomeCancelEligibility?: Record<string, IncomeCancelEligibility>;
 }
 
 const fmtVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
@@ -137,6 +156,12 @@ function IncomeExpenseDetailMobileContent({
   onCopy,
   onPostApproved,
   onReversePosting,
+  onUnapprove,
+  onVerify,
+  onHistory,
+  onStopRecurring,
+  cancelEligibility,
+  incomeCancelEligibility,
   still = false,
   locked = false,
 }: Props & { voucher: IncomeExpenseWithRelations; still?: boolean; locked?: boolean }) {
@@ -198,21 +223,25 @@ function IncomeExpenseDetailMobileContent({
   const v2Routes = useFinanceV2Routes();
   const vv = v as { organization_id?: string | null; posting_status?: string | null };
   const canonicalV2 = isCanonicalRead(v2Routes.getOrg(vv.organization_id ?? null));
-  const postingStatus = vv.posting_status ?? null;
   const isExpense = v.type === "EXPENSE";
   const accent = v.type === "INCOME" ? "#1f9d57" : "#d6453f";
-  const isCreator = !!currentUserId && v.user_id === currentUserId;
-  // Đợt 1 sửa phiếu: chỉ phiếu Chờ duyệt sửa được (có lưu vết) hoặc chế độ đổi cờ
-  // KQKD phiếu bỏ cọc; bỏ "Sửa phiếu (Super Admin)" trên phiếu đã duyệt/đã huỷ.
-  const editAction = voucherEditAction(v, { isAdmin, isCompanyOwner });
-  const showFullEdit = monetaryActionsAllowed && !!onEdit && editAction.show;
-  const showQuickEdit = canShowAnnotateAction({
-    hasHandler: !!onQuickEdit,
-    isUnapproved,
-    isAdmin,
-    isCreator,
-    canEdit: canUse(perms, "income_expenses", "edit"),
-  });
+  // Nút nào hiện: MỘT bảng luật dùng chung với bản máy tính (src/lib/voucherActionRules.ts —
+  // đối chiếu hàm SQL thật). Sửa: chỉ phiếu Chờ duyệt sửa được (có lưu vết) hoặc chế độ đổi cờ
+  // KQKD phiếu bỏ cọc.
+  const can = voucherActionAvailability(
+    v,
+    { perms, isAdmin, isSuperAdmin, isCompanyOwner, currentUserId },
+    {
+      canonicalRead: canonicalV2,
+      monetaryActionsAllowed,
+      canReverseSettlementRefund,
+      flexEligibility: cancelEligibility?.[v.id],
+      incomeEligibility: incomeCancelEligibility?.[v.id],
+    },
+  );
+  const showFullEdit = !!onEdit && can.edit.show;
+  const showQuickEdit = !!onQuickEdit && can.annotate;
+  const isVerified = !!v.verified_at;
 
   const Row = ({
     label,
@@ -269,8 +298,8 @@ function IncomeExpenseDetailMobileContent({
               <button
                 className="vd-act"
                 style={{ background: "#f59e0b" }}
-                aria-label={editAction.title || "Sửa"}
-                title={editAction.title}
+                aria-label={can.edit.title || "Sửa"}
+                title={can.edit.title}
                 onClick={() => {
                   onEdit!(v);
                   onClose();
@@ -293,7 +322,7 @@ function IncomeExpenseDetailMobileContent({
                 <FilePlus2 size={15} />
               </button>
             )}
-            {monetaryActionsAllowed && isUnapproved && onApprove && (
+            {can.approve && onApprove && (
               <button
                 className="vd-act"
                 style={{ background: "#16a34a" }}
@@ -306,15 +335,25 @@ function IncomeExpenseDetailMobileContent({
                 <CheckCircle2 size={15} />
               </button>
             )}
+            {/* Phiếu chi theo sổ tổng: duyệt ở màn Chờ duyệt (thấy số dư sổ tổng trước khi duyệt). */}
+            {can.approveVia === "INBOX" && (
+              <button
+                className="vd-act"
+                style={{ background: "#16a34a" }}
+                aria-label="Duyệt ở màn Chờ duyệt"
+                title="Duyệt ở màn Chờ duyệt (xem số dư sổ tổng trước khi duyệt)"
+                onClick={() => {
+                  onClose();
+                  navigate("/approvals");
+                }}
+              >
+                <ClipboardCheck size={15} />
+              </button>
+            )}
             {monetaryActionsAllowed && !locked && <QuickExpenseButton voucher={v} quick={quickExpense} />}
             {/* V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ (CUSTODIAN, không
                 cần quyền duyệt); phiếu ĐÃ HOÀN TÁC cũng Thu/Chi LẠI được. */}
-            {monetaryActionsAllowed && onPostApproved &&
-              !isCancelled &&
-              v.approval_status === "APPROVED" &&
-              postingStatus !== "POSTED" &&
-              postingStatus !== "NOT_APPLICABLE" &&
-              canonicalV2 && (
+            {can.postApproved && onPostApproved && (
                 <button
                   className="vd-act"
                   style={{ background: "#2563eb" }}
@@ -328,10 +367,7 @@ function IncomeExpenseDetailMobileContent({
                 </button>
               )}
             {/* Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ. */}
-            {(monetaryActionsAllowed || canReverseSettlementRefund) && onReversePosting &&
-              !isCancelled &&
-              postingStatus === "POSTED" &&
-              canonicalV2 && (
+            {can.reverse && onReversePosting && (
                 <button
                   className="vd-act"
                   style={{ background: "#7c3aed" }}
@@ -344,20 +380,39 @@ function IncomeExpenseDetailMobileContent({
                   <RotateCcw size={15} />
                 </button>
               )}
-            {monetaryActionsAllowed && !isCancelled && onCancel && (
+            {/* Huỷ duyệt: phiếu đã ghi nhận → Chờ duyệt (chỉ super admin), như bản máy tính. */}
+            {can.unapprove && onUnapprove && (
+              <button
+                className="vd-act"
+                style={{ background: "#d97706" }}
+                aria-label="Huỷ duyệt"
+                title="Huỷ duyệt (chuyển về Chờ duyệt) — Super Admin"
+                onClick={() => {
+                  onUnapprove(v.id);
+                  onClose();
+                }}
+              >
+                <Undo2 size={15} />
+              </button>
+            )}
+            {/* Máy chủ chặn vì khoá sổ / chốt lãi… thì VẪN cho chạm: hộp xác nhận nói rõ "Không huỷ
+                được: …" (điện thoại không có tooltip để đọc lý do trên nút mờ). */}
+            {can.cancel.show && onCancel && (
               <button
                 className="vd-act"
                 style={{ background: "#f97316" }}
                 aria-label="Huỷ"
+                title={can.cancel.reason ? `Huỷ phiếu — ${can.cancel.reason}`
+                  : can.cancel.via === "PROFIT_LEDGER" ? "Huỷ phiếu chi theo sổ tổng (ghi lý do)" : undefined}
                 onClick={() => {
-                  onCancel(v.id, v.type);
+                  onCancel(v.id, v.type, v);
                   onClose();
                 }}
               >
                 <Ban size={15} />
               </button>
             )}
-            {isCancelled && isSuperAdmin && onRestore && (
+            {can.restore && onRestore && (
               <button
                 className="vd-act"
                 style={{ background: "#16a34a" }}
@@ -371,7 +426,7 @@ function IncomeExpenseDetailMobileContent({
               </button>
             )}
             {/* Tạo bản sao: phiếu đã huỷ → form tạo mới prefill toàn bộ */}
-            {isCancelled && onCopy && (
+            {can.copy && onCopy && (
               <button
                 className="vd-act"
                 style={{ background: "#2563eb" }}
@@ -382,6 +437,49 @@ function IncomeExpenseDetailMobileContent({
                 }}
               >
                 <CopyPlus size={15} />
+              </button>
+            )}
+            {can.verify && onVerify && (
+              <button
+                className="vd-act"
+                style={{ background: isVerified ? "#059669" : "#a1a1aa" }}
+                aria-label={isVerified ? "Đã kiểm tra" : "Đánh dấu đã kiểm tra"}
+                title={isVerified
+                  ? `Đã kiểm bởi ${v.verified_by_name ?? ""}${v.verified_note ? " — " + v.verified_note : ""}`
+                  : "Đánh dấu đã kiểm tra"}
+                onClick={() => {
+                  onVerify(v);
+                  onClose();
+                }}
+              >
+                <BadgeCheck size={15} />
+              </button>
+            )}
+            {onHistory && (
+              <button
+                className="vd-act"
+                style={{ background: "#64748b" }}
+                aria-label="Xem lịch sử phiếu"
+                onClick={() => {
+                  onHistory(v);
+                  onClose();
+                }}
+              >
+                <History size={15} />
+              </button>
+            )}
+            {can.stopRecurring && onStopRecurring && (
+              <button
+                className="vd-act"
+                style={{ background: "#71717a" }}
+                aria-label="Dừng lặp lại"
+                title="Dừng lặp lại (giữ phiếu + các phiếu đã sinh)"
+                onClick={() => {
+                  onStopRecurring(v.id);
+                  onClose();
+                }}
+              >
+                <CalendarX size={15} />
               </button>
             )}
             <button

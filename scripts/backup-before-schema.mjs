@@ -292,9 +292,12 @@ async function main(argv) {
   // `pg_restore --list` đọc mục lục bản dump. File cụt thì lệnh này lỗi; file
   // đủ thì đếm được số mục TABLE DATA.
   const pgRestore = pgDump.replace(/pg_dump(\.exe)?$/i, (m) => m.replace("dump", "restore"));
-  const liet = spawnSync(pgRestore, ["--list", outFile], { encoding: "utf8" });
+  // The catalog listing can exceed spawnSync's 1 MiB default as schema grows.
+  // ENOBUFS is a reader limit, not evidence that pg_dump produced a corrupt file.
+  const liet = spawnSync(pgRestore, ["--list", outFile], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   if (liet.error || liet.status !== 0) {
-    console.error("❌ Bản dump KHÔNG đọc lại được — file cụt hoặc hỏng. Đã xoá.");
+    console.error("❌ Không xác minh được mục lục bản dump. Đã xoá.");
+    if (liet.error) console.error(String(liet.error.message).slice(0, 300));
     if (liet.stderr) console.error(String(liet.stderr).slice(0, 600));
     rmSync(outFile, { force: true });
     return 1;

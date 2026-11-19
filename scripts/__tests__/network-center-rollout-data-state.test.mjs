@@ -71,6 +71,17 @@ const STAGE_27 =
 // stage 23/25/27.
 const STAGE_28 =
   "supabase/migrations/20260829010000_network_center_h196a_downstream.sql";
+const STAGE_29 =
+  "supabase/migrations/20261022145352_network_center_camera_monitoring_v1.sql";
+const STAGE_30 =
+  "supabase/migrations/20261110070438_network_center_camera_share_v1.sql";
+// Stage 31 (10/11/2026): vendor thứ ba HIKVISION. Không tạo object nào — nới CHECK
+// vendor và thay thân public.network_center_worker_camera_connections_v1 (thêm khoá
+// vendor), nên nó không có MEASURED_ABSENT_STAGE_31. Hàm đó vốn đã nằm trong
+// MEASURED_ABSENT_BODIES từ stage 29 (phép đo 03/08/2026 có trước cả hai); thân vắng
+// mặt giờ thuộc về stage định nghĩa nó sau cùng, tức stage 31.
+const STAGE_31 =
+  "supabase/migrations/20261110160847_network_center_camera_vendor_hikvision_v1.sql";
 
 // Measured against production on 2026-08-03, read-only, via the Management API.
 // These are the ONLY manifest descriptors that were absent.
@@ -109,6 +120,66 @@ const MEASURED_ABSENT_STAGE_28 = [
   "table:app_private.network_h196a_quarantine",
 ];
 
+// Camera monitoring was introduced after the 03/08/2026 measurement. Pin its
+// descriptors explicitly so a changed camera surface cannot silently alter the
+// historical fixture or weaken the rollout's unexpected-object detection.
+const MEASURED_ABSENT_STAGE_29 = [
+  "function_service_only:public.network_center_admin_enroll_camera_v1(uuid,uuid,uuid,uuid,text,text,text,integer,text,text,boolean)",
+  "function_service_only:public.network_center_worker_camera_connections_v1(text,integer)",
+  "function_service_only:public.network_center_worker_camera_ingest_v1(text,jsonb)",
+  "function:public.camera_building_events_v1(uuid,integer,timestamp with time zone,uuid)",
+  "function:public.camera_building_snapshot_v1(uuid)",
+  "function:public.network_center_admin_enroll_camera_v1(uuid,uuid,uuid,uuid,text,text,text,integer,text,text,boolean)",
+  "function:public.network_center_worker_camera_connections_v1(text,integer)",
+  "function:public.network_center_worker_camera_ingest_v1(text,jsonb)",
+  "index:app_private:camera_recorder_connections_pkey",
+  "index:public:camera_events_building_time_idx",
+  "index:public:camera_events_pkey",
+  "index:public:camera_events_recorder_id_event_key_key",
+  "index:public:camera_recorder_current_pkey",
+  "index:public:camera_recorders_organization_id_building_id_id_key",
+  "index:public:camera_recorders_pkey",
+  "policy:public.camera_events:camera_events_hide_sandbox_admin:restrictive:select:authenticated:4532c1be9dcf8124e34ec4b4c317768c9e27b06b40634c66c520e31aa4878051",
+  "policy:public.camera_events:camera_events_view:permissive:select:authenticated:556883c57b40d37835a6cdb6e4646092a416dbe7bee421ee87a37aa1e035cf22",
+  "policy:public.camera_recorder_current:camera_recorder_current_hide_sandbox_admin:restrictive:select:authenticated:4532c1be9dcf8124e34ec4b4c317768c9e27b06b40634c66c520e31aa4878051",
+  "policy:public.camera_recorder_current:camera_recorder_current_view:permissive:select:authenticated:bda6e5bea776fd40df17234cffa09bb1a3e0d7b64f08b0aa4c5397567bb6b4a9",
+  "policy:public.camera_recorders:camera_recorders_hide_sandbox_admin:restrictive:select:authenticated:4532c1be9dcf8124e34ec4b4c317768c9e27b06b40634c66c520e31aa4878051",
+  "policy:public.camera_recorders:camera_recorders_view:permissive:select:authenticated:31ad6d8666b62f57e92ce7aef526aa4c9b7812aa6bf416f1232b8fb11972bf18",
+  "rls:public.camera_events",
+  "rls:public.camera_recorder_current",
+  "rls:public.camera_recorders",
+  "table:app_private.camera_recorder_connections",
+  "table:public.camera_events",
+  "table:public.camera_recorder_current",
+  "table:public.camera_recorders",
+];
+
+// Camera share (10/11/2026) cũng ra đời sau phép đo 03/08/2026: toàn bộ hai mươi
+// descriptor của nó vắng mặt. Ghi tường minh như stage 28/29 để bề mặt chia sẻ
+// camera đổi thì fixture này đỏ.
+const MEASURED_ABSENT_STAGE_30 = [
+  "function:app_private.camera_share_actor_can_v1(uuid,uuid)",
+  "function:app_private.camera_share_cleanup_v1()",
+  "function:app_private.camera_share_of_session_v1(text)",
+  "function:app_private.camera_share_payload_v1(uuid)",
+  "function:public.camera_share_authorize_v1(text)",
+  "function:public.camera_share_create_v1(uuid,integer,timestamp with time zone,timestamp with time zone,integer,text)",
+  "function:public.camera_share_login_v1(text,text)",
+  "function:public.camera_share_logout_v1(text)",
+  "function:public.camera_share_revoke_v1(uuid)",
+  "function:public.camera_shares_v1(uuid)",
+  "index:app_private:camera_share_login_failures_ma",
+  "index:app_private:camera_share_login_failures_pkey",
+  "index:app_private:camera_share_sessions_luot",
+  "index:app_private:camera_share_sessions_pkey",
+  "index:app_private:camera_shares_code_key",
+  "index:app_private:camera_shares_pkey",
+  "index:app_private:camera_shares_toa",
+  "table:app_private.camera_share_login_failures",
+  "table:app_private.camera_share_sessions",
+  "table:app_private.camera_shares",
+];
+
 const MEASURED_STALE_BODIES = [
   "app_private.network_center_bind_managed_interface_v1",
   "app_private.network_center_worker_inventory_legacy_impl_v1",
@@ -116,6 +187,21 @@ const MEASURED_STALE_BODIES = [
   "public.network_center_watchdog_liveness_v1",
 ];
 const MEASURED_ABSENT_BODIES = [
+  "app_private.camera_share_actor_can_v1",
+  "app_private.camera_share_cleanup_v1",
+  "app_private.camera_share_of_session_v1",
+  "app_private.camera_share_payload_v1",
+  "public.camera_share_authorize_v1",
+  "public.camera_share_create_v1",
+  "public.camera_share_login_v1",
+  "public.camera_share_logout_v1",
+  "public.camera_share_revoke_v1",
+  "public.camera_shares_v1",
+  "public.camera_building_events_v1",
+  "public.camera_building_snapshot_v1",
+  "public.network_center_admin_enroll_camera_v1",
+  "public.network_center_worker_camera_connections_v1",
+  "public.network_center_worker_camera_ingest_v1",
   "app_private.network_center_guard_h196a_parent_v1",
   "app_private.network_center_h196a_inventory_v1",
   "public.network_center_list_h196a_v1",
@@ -145,7 +231,12 @@ async function productionFixture() {
       ...manifest.postApply.required,
     ]),
   ];
-  const absent = new Set([...MEASURED_ABSENT, ...MEASURED_ABSENT_STAGE_28]);
+  const absent = new Set([
+    ...MEASURED_ABSENT,
+    ...MEASURED_ABSENT_STAGE_28,
+    ...MEASURED_ABSENT_STAGE_29,
+    ...MEASURED_ABSENT_STAGE_30,
+  ]);
   const present = every.filter((descriptor) => !absent.has(descriptor));
 
   const owned = new Map(
@@ -166,17 +257,20 @@ async function productionFixture() {
 // testing something else.
 test("the fixture reproduces the state measured on production", async () => {
   const { manifest, expectations, present, live, every } = await productionFixture();
-  assert.equal(every.length, 457);
+  assert.equal(every.length, 505);
   assert.equal(present.length, 438);
-  assert.equal(manifest.migrations.length, 28);
+  assert.equal(manifest.migrations.length, 31);
   assert.equal(manifest.migrations[22].path, STAGE_23);
   assert.equal(manifest.migrations[24].path, STAGE_25);
   assert.equal(manifest.migrations[26].path, STAGE_27);
+  assert.equal(manifest.migrations[28].path, STAGE_29);
+  assert.equal(manifest.migrations[29].path, STAGE_30);
+  assert.equal(manifest.migrations[30].path, STAGE_31);
   const classification = classifyCatalog(manifest, present, { expectations, live });
-  assert.equal(classification.bodyMismatches.length, 13);
+  assert.equal(classification.bodyMismatches.length, 28);
   assert.deepEqual(
     [...new Set(classification.bodyMismatches.map((item) => item.migration))].sort(),
-    [STAGE_23, STAGE_25, STAGE_27, STAGE_28].sort(),
+    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29, STAGE_30, STAGE_31].sort(),
     "every stale body must belong to an unapplied stage; an earlier one would be a different bug",
   );
 });

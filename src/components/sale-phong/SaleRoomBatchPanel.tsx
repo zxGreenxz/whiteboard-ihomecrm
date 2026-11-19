@@ -22,11 +22,11 @@ const label = (row: SaleRoomInventoryRow) => `${row.buildingName} · ${row.name}
 const livePolicies = (row: SaleRoomInventoryRow) => (row.policies ?? (row.policy ? [row.policy] : []))
   .filter(policy => ['ACTIVE', 'SCHEDULED'].includes(policy.status));
 const formSchema = z.object({
-  mode: z.enum(['patch', 'policy', 'cancel']), selected: z.array(z.string().uuid()).max(50),
+  mode: z.enum(['patch', 'policy', 'cancel']), selected: z.array(z.string().guid()).max(50),
   fields: z.object({ rent_price: z.string().max(30).optional(), room_type: z.string().max(5000).optional(),
     amenities: z.string().max(5000).optional(), sale_note: z.string().max(5000).optional(), description: z.string().max(5000).optional() }).strict(),
   policy: z.object({ title: z.string(), content: z.string(), start: z.string(), end: z.string() }).strict(), reason: z.string(),
-  cancelTargets: z.record(z.string().uuid()).optional(),
+  cancelTargets: z.record(z.string(), z.string().guid()).optional(),
 }).strict();
 function restoreForm(key: string) {
   try { const raw = sessionStorage.getItem(key); return { value: raw ? formSchema.parse(JSON.parse(raw)) : null, warning: '' }; }

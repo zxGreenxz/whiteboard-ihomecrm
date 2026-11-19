@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 export const companyWalletKindSchema = z.enum(['cash', 'bank', 'sp_card', 'credit_card']);
 export type CompanyWalletKind = z.infer<typeof companyWalletKindSchema>;
 const fields = z.object({

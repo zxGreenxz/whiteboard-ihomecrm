@@ -1,0 +1,27 @@
+services:
+  meter-capture-worker:
+    platform: linux/amd64
+    build: .
+    init: true
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 96
+    mem_limit: 4g
+    cpus: 2
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    tmpfs:
+      - /tmp:size=1073741824,mode=1777,noexec,nosuid
+    environment:
+      METER_CAPTURE_API_BASE_URL: ${METER_CAPTURE_API_BASE_URL:?Set the deployed Edge function HTTPS URL}
+      METER_CAPTURE_WORKER_TOKEN: ${METER_CAPTURE_WORKER_TOKEN:?Set the dedicated worker bearer}
+      METER_CAPTURE_AI_BASE_URL: ${METER_CAPTURE_AI_BASE_URL:-}
+      METER_CAPTURE_AI_KEY: ${METER_CAPTURE_AI_KEY:-}
+      METER_CAPTURE_AI_MODEL: ${METER_CAPTURE_AI_MODEL:-cx/gpt-6.1-sol}
+      METER_CAPTURE_WORKER_ID: ${METER_CAPTURE_WORKER_ID:-meter-cpu-1}

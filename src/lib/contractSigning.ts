@@ -7,7 +7,7 @@ import { buildMeterBoundaryPayload, type MeterBoundaryInput } from '@/lib/contra
 import { buildFirstInvoiceItems, buildFirstInvoiceDiscount, normalizeFirstBillingPeriod, validateFirstBillingPeriod } from '@/lib/firstInvoiceBuilder';
 import type { ContractCreateDepositReceiptInput, ContractCreateFirstInvoiceInput, ContractCreateRequest } from '@/lib/contractCreateRpc';
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const date = new Date(`${value}T12:00:00Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
@@ -146,12 +146,12 @@ export function buildContractSigningArgs(organizationId: string, input: Contract
       p_source_voucher_ids: [...reservation.sourceVoucherIds] } : {}) };
 }
 
-const templateDataSchema = z.record(z.union([z.string(), z.number().finite(), z.array(z.record(z.union([z.string(), z.number().finite()]))) ]));
+const templateDataSchema = z.record(z.string(), z.union([z.string(), z.number().finite(), z.array(z.record(z.string(), z.union([z.string(), z.number().finite()]))) ]));
 export const contractSigningSchema = z.object({
   id: uuid, organization_id: uuid, building_id: uuid, room_id: uuid, draft_id: uuid,
   revision: z.number().int().positive(), document_id: uuid, document_sha256: sha, template_sha256: sha,
   template_path: z.string(), template_snapshot: z.object({ id: uuid, name: z.string(), updated_at: z.string() }),
-  document_data: templateDataSchema, terms: z.unknown(), party_snapshot: z.array(z.record(z.unknown())), creation_options: z.record(z.unknown()),
+  document_data: templateDataSchema, terms: z.unknown().optional(), party_snapshot: z.array(z.record(z.string(), z.unknown())), creation_options: z.record(z.string(), z.unknown()),
   reservation_id: uuid.nullable().default(null), reservation_revision: z.number().int().positive().nullable().default(null), source_voucher_ids: z.array(uuid).default([]),
   received_on: dateOnly, contract_id: uuid, contract_number: z.string().min(1), request_id: uuid, signed_by: uuid, signed_at: z.string(),
   official_document_path: z.string(), official_document_sha256: sha.nullable(),
@@ -163,7 +163,8 @@ export type ContractSigningSnapshot = z.infer<typeof contractSigningSnapshotSche
 export function signingErrorMessage(error: unknown): string {
   if(error instanceof FinancialWorkflowError)return workflowErrorMessage(error,'ghi nhận ký hợp đồng');
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
-  if (code === '40001') return 'Phiên bản nháp, tài liệu hoặc thông tin khách đã thay đổi. Tải lại, kiểm tra và xuất lại trước khi ký.';
+  // PT409 (HTTP 409) từ 20261116015253; 40001 là mã cũ mà PostgREST tự chạy lại tới 504.
+  if (code === 'PT409' || code === '40001') return 'Phiên bản nháp, tài liệu hoặc thông tin khách đã thay đổi. Tải lại, kiểm tra và xuất lại trước khi ký.';
   if (code === '42501' || code === '28000') return 'Bạn không có quyền thực hiện thao tác này.';
   if (code === '55P03') return 'Phòng đang có cọc hoặc giữ chỗ. Nhánh ký từ nháp chưa hỗ trợ chuyển nguồn giữ chỗ này.';
   if (code === '55000') {

@@ -10,6 +10,10 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN RETURN; END;
   RAISE EXCEPTION 'ZALO_TEST_EXPECTED_DENIAL: %',p_label;
 END $$;
+-- Từ 20261104173640 hàm tạm do postgres tạo không còn EXECUTE cho PUBLIC; hai helper này được gọi dưới
+-- authenticated và service_role (cả trong zalo-broadcast-album.sql nối sau trong cùng phiên).
+GRANT EXECUTE ON FUNCTION pg_temp.zalo_assert(boolean, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION pg_temp.zalo_denied(text, text) TO authenticated, service_role;
 
 DO $fixtures$
 DECLARE oa uuid:='aaaa0000-0000-4000-8000-000000000001'; ob uuid:='dddd0000-0000-4000-8000-000000000001';

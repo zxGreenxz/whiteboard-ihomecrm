@@ -33,6 +33,9 @@ const code = expected => error => error.code === expected;
 const sorted = values => [...values].sort();
 const foundation = readFileSync(W2_FOUNDATION_PATH, 'utf8'), fixes = readFileSync(W2_FIXES_PATH, 'utf8'), invoker = readFileSync(W2_INVOKER_PATH, 'utf8');
 const orgfence = readFileSync(W2_ORG_FENCE_PATH, 'utf8');
+// Thân sống của hermes_member_v1 (20261104231450): người thường nhiều công ty được nhận ở công ty mình là thành viên ACTIVE.
+const LIVE_MEMBER = /CREATE OR REPLACE FUNCTION app_private\.hermes_member_v1\([\s\S]*?\n\$fn\$;/
+  .exec(readFileSync('supabase/migrations/20261104231450_hermes_member_nhieu_cong_ty_v1.sql', 'utf8'))[0];
 const stripComments = sql => sql.replace(/--[^\n]*/g, '');
 const block = (sql, name) => {
   const found = sql.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`, 'g'));
@@ -137,8 +140,16 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
     'supabase/migrations/20261021044814_hermes_w2_customer_status_summary_v1.sql',
     // R2d (21/10): v3 customers đếm khách chưa có hợp đồng (withoutContract) — bản kế tiếp của hàm nền.
     'supabase/migrations/20261021063453_hermes_w2_customers_without_contract_v1.sql',
+    // Đợt 2 trang Hợp đồng: khoá contracts.view vào tập khoá dùng lại.
+    'supabase/migrations/20261022043540_hermes_w2_contracts_view_reused_v1.sql',
     // Thu chi Mốc 3 (22/10): tham số minAmount — bản kế tiếp của từ điển + bộ kiểm tham số (hàm nền).
-    'supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql']);
+    'supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql',
+    // Công việc Mốc 4 (23/10): tasks.view vào tập khoá dùng lại (báo cáo tasks_board) — bản kế tiếp của hàm nền.
+    'supabase/migrations/20261022180359_hermes_w2_tasks_view_reused_v1.sql',
+    // Hợp đồng lượt 11 (24/10, D-HĐ9): chi tiết HĐ của v3 trả publicPath '/c/<public_code>' — bản kế tiếp của hàm nền.
+    'supabase/migrations/20261024040003_hermes_w2_contract_detail_public_path_v1.sql',
+    // Thu chi lượt 14: tham số nền maxAmount.
+    'supabase/migrations/20261024120208_hermes_w2_max_amount_param_v1.sql']);
   for (const letter of ['a', 'b', 'c', 'd']) await assertPackageParity({ db }, letter);
 }));
 
@@ -559,7 +570,8 @@ test('công ty (P2-a): RLS super admin / RLS web phủ công ty khác rộng hơ
   await db.exec(`INSERT INTO public.fixture_w2_org_rows VALUES(1,'${ORG}','${BUILDING}'),(2,'${FOREIGN}',null),(3,'${ORG}','${OTHER_BUILDING}'),(4,'${FOREIGN}','${BUILDING}')`);
   const visible = async () => (await env.call('SELECT (SELECT array_agg(n ORDER BY n) FROM public.fixture_w2_org_rows) result', [])) ?? [];
   assert.deepEqual(await visible(), [1, 3], 'RLS: chỉ công ty là thành viên');
-  // Người thường là thành viên ACTIVE của hai công ty: Hermes từ chối cả lượt trước khi gọi gói.
+  // Thân đóng băng 20261012061447 của fixture: người thường ACTIVE ở hai công ty bị từ chối trước khi gọi gói. Từ 20261104231450
+  // họ được nhận ở công ty mình là thành viên — thử ở vòng dưới, cùng rào công ty.
   await db.exec('SAVEPOINT two_orgs');
   await db.exec(`INSERT INTO public.organization_memberships(id,user_id,organization_id,status) VALUES('${uid(60)}','${USER}','${FOREIGN}','ACTIVE')`);
   await assert.rejects(run(env, 'b'), error => error.code === '42501' && /hermes_ordinary_org_ambiguous/.test(error.message), 'người thường hai công ty');
@@ -567,7 +579,11 @@ test('công ty (P2-a): RLS super admin / RLS web phủ công ty khác rộng hơ
   // RLS rộng hơn kết nối: super admin (là thành viên vẫn một công ty), hoặc RLS web phủ công ty khác (my_org_ids).
   for (const [label, widen] of [['RLS web phủ công ty khác', `CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE
       SECURITY DEFINER SET search_path=pg_catalog,public AS $$SELECT ARRAY['${ORG}','${FOREIGN}']::uuid[]$$`],
-    ['super admin', `INSERT INTO public.super_admins VALUES('${USER}')`]]) {
+    ['super admin', `INSERT INTO public.super_admins VALUES('${USER}')`],
+    ['người thường hai công ty (thân 20261104231450)', `${LIVE_MEMBER}
+      INSERT INTO public.organization_memberships(id,user_id,organization_id,status) VALUES('${uid(60)}','${USER}','${FOREIGN}','ACTIVE');
+      CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public
+        AS $$SELECT ARRAY['${ORG}','${FOREIGN}']::uuid[]$$`]]) {
     await db.exec('SAVEPOINT widen');
     await db.exec(widen);
     assert.deepEqual(await visible(), [1, 2, 3, 4], `${label}: RLS thấy cả công ty khác`);

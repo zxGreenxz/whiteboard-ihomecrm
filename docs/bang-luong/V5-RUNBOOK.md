@@ -25,7 +25,7 @@
 
 ## 3. 3 nút của chủ (<10 phút/ngày)
 
-1. **Duyệt phép**: thông báo "Xin phép nghỉ có lương" → gọi RPC `approve_leave(user, date, true/false)` (UI hàng chờ sẽ bổ sung; tạm thời từ thông báo).
+1. **Duyệt phép**: thông báo "Xin phép nghỉ có lương" mở màn **Hôm nay** — thẻ **Đơn xin nghỉ chờ duyệt** duyệt/từ chối cả đơn (kể cả đơn nhiều ngày) bằng RPC `approve_leave_batch(user, dates[], true/false)`; tab **Đơn xin nghỉ** ở Bảng lương duyệt lẻ từng ngày bằng `approve_leave(user, date, true/false)`.
 2. **Duyệt sự cố thiết bị**: thông báo "Báo sự cố thiết bị" → `approve_device_issue(session_id, true)` → hệ tick tay `MANUAL_DEVICE_ISSUE` có audit.
 3. **Nghi án**: `/reports/coverage` tab Nghi án — máy chỉ flag (`v5_flag_day`), nhân viên có **48h kháng nghị** (`v5_appeal`), CHỦ kết án (`v5_verdict`). Xác nhận gian lận = huỷ công ngày đó + tước mốc chuỗi đã khoá của THÁNG (ngày sạch + sàn mềm giữ nguyên; không hồi tố tháng đã LOCK).
 

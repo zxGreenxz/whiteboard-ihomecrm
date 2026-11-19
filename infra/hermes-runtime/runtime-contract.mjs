@@ -4,10 +4,10 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { BlockList, isIP } from 'node:net';
 
-export const HERMES_IMAGE = 'nousresearch/hermes-agent@sha256:ffa4fbb471c2bc8c85fbcfc629347585cc1586c86d2e6db465d01203ce696d95';
-export const HERMES_RELEASE = 'v0.21.6';
-export const HERMES_COMMIT = '818c13be1dc4fd28987e1e881a9408224afd4535';
-const HERMES_TAG_OBJECT = 'f27cdbce5ab63eafe8633b293a75151409da5769';
+export const HERMES_IMAGE = 'nousresearch/hermes-agent@sha256:a11574b7fe8e1631d7d88d556677dac693bc058abf558cdeb899155688c1bf05';
+export const HERMES_RELEASE = 'v0.22.2';
+export const HERMES_COMMIT = 'd923a5eb487a17c0a68801bba9ef0f56c81040a8';
+const HERMES_TAG_OBJECT = '7b77e29eedd85a8497ce2821448dac7964dc46f6';
 const REGISTRY_MANIFESTS = 'https://registry-1.docker.io/v2/nousresearch/hermes-agent/manifests/';
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const sha256 = raw => `sha256:${createHash('sha256').update(raw).digest('hex')}`;
@@ -42,7 +42,8 @@ export function controlBridgeAddresses(network, interfaces) {
 
 // Offline verification of the reviewed upstream receipt and content-addressed
 // manifest chain. This is NOT a signed attestation or reproducible-build proof.
-// The mutable Docker :v0.21.6 tag was an older attempt, not this release receipt.
+// Docker tags are mutable and never the pin: :v0.21.6 was an older attempt than its
+// release receipt. :v0.22.2 resolved to the receipt's index when read on 2026-11-11.
 export function assertImageProvenance(artifact) {
   assert.equal(artifact?.schemaVersion, 1); assert.equal(artifact.kind, 'unsigned_release_receipt');
   assert.equal(artifact.repositoryUrl, 'https://github.com/NousResearch/hermes-agent');

@@ -186,6 +186,9 @@ const settingsSchema = { type: 'object', additionalProperties: false, required: 
 // the broker no longer lists or calls them; vacant-room sends are scheduled by the
 // CRM automation through crm_zalo_broadcast_*.
 export const SCHEDULE_RETIRED_NOTE = 'Lịch chữ cũ của Hermes chỉ còn để xem/thu hồi; lịch gửi ảnh phòng trống xem/sửa bằng crm_zalo_broadcast_status/crm_zalo_broadcast_update.';
+// Operation nghỉ hưu → tool thay. broker.mjs ẩn và từ chối đúng các operation này; catalog-names.mjs liệt kê tên tool nghỉ hưu
+// cho hướng dẫn chuẩn (infra/hermes-skills) từ cùng bảng.
+export const SCHEDULE_RETIRED_BY = Object.freeze({ create: 'crm_zalo_broadcast_update', update: 'crm_zalo_broadcast_update' });
 const descriptions = Object.freeze({
   list: `Read legacy Hermes text schedules owned by this connection, including revision, last runs and open issues. ${SCHEDULE_RETIRED_NOTE}`,
   issues: 'Read why CRM schedules of this connection are blocked or failing (machine-readable reason, open/closed state) and which deliveries of this connection are UNKNOWN_EFFECT. Read-only; nothing is retried.',

@@ -95,7 +95,7 @@ function answerShape(tool, args, path) {
 }
 
 test('T4: dữ liệu — đúng 21 câu §B.6 + câu 5, 59 (R2c phần 2), số câu không trùng, không SĐT/mã dài, mọi mục SUMMARY_PENDING có câu dùng', () => {
-  assert.deepEqual(TOOL_PLAN_CASES.map(entry => entry.n), [3, 5, 10, 13, 14, 15, 16, 19, 21, 26, 29, 32, 33, 35, 36, 40, 47, 49, 58, 59, 72, 73, 76]);
+  assert.deepEqual(TOOL_PLAN_CASES.map(entry => entry.n), [3, 5, 10, 13, 14, 15, 16, 19, 21, 26, 29, 32, 33, 35, 36, 40, 47, 49, 58, 59, 72, 73, 76, 'CV-R04', 'CV-R06', 'CV-R11']);
   for (const entry of TOOL_PLAN_CASES) {
     assert.doesNotMatch(JSON.stringify(entry, (_, value) => value instanceof RegExp ? String(value) : value), /\d{7,}/, `câu ${entry.n}: không SĐT/số dài`);
     assert.ok(entry.answerFrom.length > 0, `câu ${entry.n}`);
@@ -251,7 +251,9 @@ test('broker: hint chỉ đi kèm lời gọi validator đã từ chối; có t�
 
 test('§12.1 ca khung họ thao tác ghi: mỗi kết quả dẫn tới đúng lời gọi kế tiếp bằng câu hướng dẫn tĩnh', () => {
   const sources = { run: ACTION_RUN_TOOL.description, unknown_action: needsInput({ action: null, reason: 'unknown_action' }).huongDan,
-    confirmation_required: confirmationRequired({ action: 'probe.confirm', requestId: null, preview: {}, warnings: [], confirmToken: null, expiresAt: null }).huongDan };
+    confirmation_required: confirmationRequired({ action: 'probe.confirm', requestId: null, preview: {}, warnings: [], confirmToken: null, expiresAt: null }).huongDan,
+    consent_unclear: needsInput({ action: 'contract.return', reason: 'consent_unclear' }).huongDan,
+    consent_confirm: confirmationRequired({ action: 'contract.return', requestId: null, preview: {}, warnings: [], confirmToken: null, expiresAt: null, consent: true }).huongDan };
   assert.ok(ACTION_PLAN_CASES.length >= 4);
   for (const entry of ACTION_PLAN_CASES) assert.match(sources[entry.source], entry.match, entry.when);
 });

@@ -7,179 +7,14 @@ import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { todayISO } from "@/lib/collect";
-import { fundLinesOf, isSupplementaryLabel } from "@/lib/salaryFundReport";
-import type { SalAdjustment, SalAppliedOverride, SalManager } from "@/lib/managerSalary";
-import { RECURRING_CATEGORY_LABEL, RECURRING_SOURCE_LABEL } from "@/lib/salaryRecurring";
+import type { SalAdjustment, SalAdvanceItem, SalManager } from "@/lib/managerSalary";
+import { profitDeductionsOf, profitOffsetFor, salaryProfitPayoutBlock, type SalaryPayoutChoice } from "@/lib/salaryProfit";
 import type { EditableLine } from "./SalaryAmountEditDialog";
+import { INCOME_GROUP as GROUP, incomeItemsOf as itemsOf, type IncomeGroupKey as GroupKey, type IncomeItem as Item } from "./salaryIncomeItems";
 import type { PendingPayout } from "@/hooks/useSalaryFund";
 import type { SalaryAccount } from "./SalaryMonthly";
 import { salFmt } from "./salaryFormat";
 import { MONO, MUTED, StChip, type ChipTone } from "./salaryFundUi";
-
-type GroupKey = "vh" | "sale" | "dh";
-const GROUP: Record<GroupKey | "ded", { title: string; src: string; color: string }> = {
-  vh: { title: "Lương vận hành", src: "Quỹ lương vận hành của công ty", color: "#188552" },
-  sale: { title: "Hoa hồng & thưởng Sale", src: "Chi phí của tòa phát sinh giao dịch", color: "#6334b7" },
-  dh: { title: "Thu nhập đồng hành", src: "Phần lợi nhuận được phân bổ theo tòa", color: "#0e7490" },
-  ded: { title: "Ứng & cấn trừ", src: "Không phải thu nhập — giảm tiền thực chuyển", color: "#c32222" },
-};
-
-interface Item {
-  id: string;
-  g: GroupKey;
-  label: string;
-  why: string;
-  amount: number | null;
-  chip: { t: string; tone: ChipTone };
-  payable: boolean;
-  strike?: boolean;
-  trace: [string, string][];
-  adj?: SalAdjustment;
-  /** Khoá ghi đè số tiền (base, streak, job:…, rec:…, sale:…, dh:…) — không có thì không sửa được. */
-  key?: string;
-  /** Số máy tính (trước sửa tay). */
-  computed?: number;
-  ovr?: SalAppliedOverride | null;
-  /** Hoa hồng ở sổ thật: phần đã/sẽ chi từ sổ đó — luôn đi kèm, trừ khỏi tiền chuyển. */
-  paidElsewhere?: number;
-  /** Phiếu HH chờ duyệt ở sổ thật — có thể gán quản lý để chuyển sang trả qua lương. */
-  assignVoucherId?: string;
-  assignVersion?: number;
-}
-
-// Dòng đã sửa tay: chip, dòng mô tả và các bước căn cứ hiện số máy tính + lý do.
-function withOverride(it: Item, ovr: SalAppliedOverride | undefined): Item {
-  if (!ovr) return { ...it, ovr: null, computed: it.amount ?? 0 };
-  return {
-    ...it,
-    ovr,
-    computed: ovr.computed,
-    chip: { t: "Sửa tay", tone: "tasks" },
-    why: `Máy tính ${salFmt(ovr.computed)} · ${ovr.reason}`,
-    trace: [
-      ...it.trace,
-      ["Số máy tính", salFmt(ovr.computed)],
-      ["Số đã sửa tay", `${salFmt(ovr.amount)} · ${ovr.reason}`],
-      ["Người sửa", `${ovr.byName || "—"} · ${new Date(ovr.at).toLocaleString("vi-VN")}`],
-    ],
-  };
-}
-
-function itemsOf(m: SalManager): Item[] {
-  const locked = m.status === "LOCKED";
-  const out: Item[] = [];
-  for (const l of fundLinesOf(m)) {
-    // Khoản nhập tay đi riêng bên dưới để giữ id (sửa/xoá được); ở đây chỉ còn
-    // dòng lệch theo số đã chốt của nhóm này.
-    if (l.group === "extra" && l.key !== "extra-locked") continue;
-    const isAdj = l.group === "extra";
-    const key = l.key === "base" || (l.group === "work" && l.key !== "work-locked") ? l.key : undefined;
-    out.push(withOverride({
-      id: "vh:" + l.key, g: "vh", label: l.label, why: l.note || "", amount: l.amount, payable: true, key,
-      chip: locked ? { t: "Đã chốt", tone: "success" } : isAdj ? { t: "Nhập tay", tone: "neutral" } : { t: "Tạm tính", tone: "warning" },
-      trace: [
-        ["Căn cứ", l.note || l.label],
-        [l.group === "base" ? "Bằng chứng" : isAdj ? "Cách phát sinh" : "Bằng chứng",
-          l.group === "base" ? `${m.workdays} ngày công · bảng kê công việc` : isAdj ? "Thưởng/Trừ nhập tay trong bảng lương" : `${m.stats.jobs} việc trong bảng kê · ${m.stats.repairs} việc sửa chữa`],
-        ["Trạng thái kỳ", locked ? "Đã chốt — dùng số đóng băng" : "Chưa chốt — số có thể đổi đến khi chốt"],
-        ["Nguồn chịu tiền", GROUP.vh.src],
-      ],
-    }, key ? m.overrides?.[key] : undefined));
-  }
-  m.adjustments.filter((a) => a.recurring).forEach((a) => {
-    const r = a.recurring!;
-    const key = a.id as string;
-    out.push(withOverride({
-      id: key, g: "vh", label: a.label, amount: a.amount, payable: true, key,
-      why: `${RECURRING_CATEGORY_LABEL[r.category]} định kỳ` + (a.note ? " · " + a.note : ""),
-      chip: locked ? { t: "Đã chốt", tone: "success" } : { t: "Định kỳ", tone: "info" },
-      trace: [
-        ["Cách phát sinh", "Khoản định kỳ — tự áp mỗi kỳ theo phiên bản đang hiệu lực"],
-        ["Loại", RECURRING_CATEGORY_LABEL[r.category] + (r.buildingName ? ` · ${r.buildingName}` : "")],
-        ["Nguồn chịu tiền", RECURRING_SOURCE_LABEL[r.category] + (r.category === "SUPPLEMENTARY" ? " — không ghi vào thu chi của toà" : "")],
-        ["Đổi mức / ngừng", "Nguồn lương & khoản định kỳ → Khoản định kỳ"],
-      ],
-    }, m.overrides?.[key]));
-  });
-  m.adjustments.filter((a) => !a.recurring).forEach((a, i) => out.push({
-    id: "adj:" + (a.id || i), g: "vh", label: a.label, amount: a.amount, payable: true, adj: a,
-    why: (a.amount < 0 ? "Trừ nhập tay" : "Thưởng nhập tay") + (a.note ? " · " + a.note : ""),
-    chip: locked ? { t: "Đã chốt", tone: "success" } : { t: "Nhập tay", tone: "neutral" },
-    trace: [
-      ["Cách phát sinh", (a.amount < 0 ? "Trừ" : "Thưởng") + " nhập tay trong bảng lương"],
-      ["Ghi chú", a.note || "—"],
-      ["Phân loại báo cáo", a.amount < 0 ? "Khoản trừ" : isSupplementaryLabel(a.label) ? "Lương QL bổ sung (nhận theo nhãn)" : "Phụ cấp"],
-      ["Nguồn chịu tiền", isSupplementaryLabel(a.label) && a.amount > 0 ? "Chủ cấp bổ sung" : GROUP.vh.src],
-    ],
-  }));
-  // Hoa hồng (migration 20260927155251, phương án A): phiếu ở sổ ảo "Hoa hồng QL chờ trả
-  // lương" trả qua lương; phiếu ở sổ thật là thu nhập nhưng tiền đã/sẽ ra từ sổ đó, nên
-  // luôn đi kèm (không bỏ chọn được) và bị trừ lại ở khung thanh toán.
-  m.commissionItems.forEach((c, i) => {
-    const key = c.voucherId ? "sale:" + c.voucherId : undefined;
-    const fromBook = (c.paidElsewhere || 0) > 0;
-    const book = c.paidFrom || "sổ quỹ khác";
-    const status = c.approved ? "Đã duyệt (đã tính chi phí tòa)" : "Chờ duyệt — tự duyệt khi chốt lương";
-    const chip: Item["chip"] = locked
-      ? { t: "Đã chốt", tone: "success" }
-      : !fromBook ? { t: "Trả qua lương", tone: "success" }
-      : c.approved ? { t: "Đã chi từ sổ", tone: "neutral" }
-      : { t: "Chưa gán QL", tone: "warning" };
-    const why = !fromBook
-      ? (locked ? "Đã chốt cùng bảng lương" : c.approved ? "Đã duyệt · trả qua lương" : "Chờ duyệt · tự duyệt khi chốt, trả qua lương")
-      : c.approved ? `Đã chi từ sổ ${book} — tính thu nhập, không chuyển lại`
-      : `Khi duyệt sẽ chi từ sổ ${book} — bấm để chuyển sang trả qua lương`;
-    out.push(withOverride({
-      id: "sale:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: true, key, why, chip,
-      paidElsewhere: fromBook ? c.paidElsewhere : 0,
-      assignVoucherId: fromBook && !c.approved && !locked ? c.voucherId : undefined,
-      assignVersion: c.version,
-      trace: [
-        ["Phiếu Sale nguồn", c.label],
-        ["Quản lý nhận", c.assigned ? "Chọn ở ô QL của phiếu" : "Khớp tên người nhận trên phiếu"],
-        ["Trạng thái phiếu", status],
-        ["Sổ giữ tiền", fromBook ? `${book} (sổ thật) — tiền ra từ sổ này, lương không chuyển lại` : "Hoa hồng QL chờ trả lương (sổ ảo) — tiền trả qua lương"],
-        ["Chi phí tòa", "Ghi một lần tại phiếu Sale nguồn — trả qua lương không ghi thêm"],
-        ["Nguồn chịu tiền", GROUP.sale.src],
-      ],
-    }, key ? m.overrides?.[key] : undefined));
-  });
-  m.commissionFlagged.forEach((c, i) => {
-    const inc = c.includedElsewhere;
-    const ky = inc ? inc.period.slice(5, 7) + "/" + inc.period.slice(0, 4) : "này";
-    // Dấu khoá theo (phiếu, kỳ) và meta chỉ trả dấu của kỳ đang xem ⇒ ở đây luôn là
-    // "đã tính cho NGƯỜI KHÁC trong kỳ này".
-    out.push({
-      id: "sale-paid:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: false, strike: true,
-      why: `Đã tính vào lương kỳ ${ky} của người khác — không cộng lại`,
-      chip: { t: "Đã tính cho người khác", tone: "neutral" },
-      trace: [
-        ["Phiếu Sale nguồn", c.label],
-        ["Dấu chốt lương", `Đã tính vào lương kỳ ${ky} của một quản lý khác`],
-        ["Kết quả", "Không cộng vào thu nhập người này — mỗi phần hoa hồng chỉ vào lương một người"],
-        ["Cần làm", "Nếu sai người: mở chốt lương người kia kỳ này rồi chốt lại"],
-      ],
-    });
-  });
-  if (!m.investmentLocked) {
-    out.push({
-      id: "dh:pending", g: "dh", label: "Lợi nhuận kỳ chưa chốt", amount: null, payable: false,
-      why: "Chưa đủ cơ sở xác nhận — không phải bằng 0", chip: { t: "Lợi nhuận chưa chốt", tone: "warning" },
-      trace: [["Trạng thái", "Lợi nhuận tòa chưa chốt"], ["Nguồn chịu tiền", GROUP.dh.src]],
-    });
-  } else {
-    m.investmentBy.forEach((a, i) => {
-      const key = "dh:" + a.b;
-      out.push(withOverride({
-        id: "dh:" + a.b + i, g: "dh", label: `${a.b} · lợi nhuận kỳ`, amount: a.amount, payable: a.amount !== 0, key,
-        why: a.amount > 0 ? "Đã chốt · phân bổ theo thỏa thuận hiện hành" : "Đã chốt · phần phân bổ bằng 0",
-        chip: a.amount > 0 ? { t: "Đã xác nhận", tone: "success" } : { t: "Đã chốt · bằng 0", tone: "neutral" },
-        trace: [["Tòa", a.b], ["Lợi nhuận tòa", "Đã chốt"], ["Thỏa thuận", "Tỷ lệ đọc từ thỏa thuận tòa"], ["Nguồn chịu tiền", GROUP.dh.src]],
-      }, m.overrides?.[key]));
-    });
-  }
-  return out;
-}
 
 interface Props {
   managers: SalManager[];
@@ -189,7 +24,8 @@ interface Props {
   pending: PendingPayout[];
   accounts: SalaryAccount[];
   canPay: boolean;
-  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => Promise<unknown> | void;
+  /** `choice` (cổ đông, kỳ chưa chốt): phần lợi nhuận đầu tư được chọn trả — luỹ kế của tháng. */
+  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string, choice?: SalaryPayoutChoice) => Promise<unknown> | void;
   /** Mutation trả lương đang chạy — khoá nút để không lập phiếu hai lần. */
   payBusy: boolean;
   onOpenLedger: (f: { who: string }) => void;
@@ -279,17 +115,29 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
   // chốt (phiếu HH duyệt ở nơi khác, ứng huỷ…), nên không cho chọn từng khoản.
   const fz = m.status === "LOCKED" ? m.frozen ?? null : null;
   const lockedPay = m.status === "LOCKED";
-  const blocked = hasPending || !canPay || payBusy;
-  // Khoản âm và hoa hồng đã chi từ sổ thật luôn đi kèm (bỏ chọn cái sau không đổi tiền
-  // chuyển, chỉ làm lệch thu nhập); trạng thái bỏ chọn cũ không áp cho khoản đã thành âm.
-  const forced = (i: Item) => (i.amount ?? 0) < 0 || (i.paidElsewhere ?? 0) > 0;
+  // Cổ đông: bảng chốt trước mốc "đã trả đủ" / chưa gồm phần trừ đã trừ ⇒ chặn trả, phải chốt lại.
+  const profitBlock = salaryProfitPayoutBlock(m);
+  const blocked = hasPending || !canPay || payBusy || !!profitBlock;
+  // Khoản âm, hoa hồng đã chi từ sổ thật và đầu tư đã trả theo mốc luôn đi kèm (bỏ chọn hai cái
+  // sau không đổi tiền chuyển, chỉ làm lệch thu nhập); bỏ chọn cũ không áp cho khoản đã thành âm.
+  const forced = (i: Item) => (i.amount ?? 0) < 0 || (i.paidElsewhere ?? 0) > 0 || !!i.markerPaid;
   const chosen = items.filter((i) => i.payable && (lockedPay || forced(i) || !off[i.id]));
   const bySrc = (g: GroupKey) => chosen.filter((i) => i.g === g).reduce((s, i) => s + (i.amount ?? 0), 0);
   const vS = fz && m.calc ? m.calc.gross - fz.investment - fz.commission : bySrc("vh");
   const sS = fz ? fz.commission : bySrc("sale");
   const dS = fz ? fz.investment : bySrc("dh");
   const totalOb = vS + sS + dS;
-  const advance = fz ? fz.advance : m.advance;
+  // Sổ tổng (chỉ cổ đông; nhân viên thường đều bằng 0): "ứng" của bảng đã gồm phần trừ tạm ứng lợi
+  // nhuận và phần đã trả theo mốc. Kỳ chưa chốt: trừ tạm ứng chỉ trong phần đầu tư đang chọn trả.
+  const { offset: profitOffset, marker: markerPaid } = profitDeductionsOf(m);
+  const investmentSelected = chosen.filter((i) => i.g === "dh" && !i.markerPaid).reduce((s, i) => s + (i.amount ?? 0), 0);
+  const offsetApplied = lockedPay ? profitOffset : profitOffsetFor(m, investmentSelected);
+  const advance = fz ? fz.advance : m.advance - profitOffset + offsetApplied;
+  const salaryAdvance = advance - offsetApplied - markerPaid;
+  // Số đầu tư bảng lương tính khác số máy chủ (vừa có ghi đè / chốt lợi nhuận) ⇒ chốt và trả sẽ bị từ chối.
+  const serverInvestment = m.profit?.investmentMonth ?? null;
+  const investmentDrift = !lockedPay && m.investmentLocked && serverInvestment !== null && Math.abs(m.investment - serverInvestment) >= 0.005
+    ? serverInvestment : null;
   // Hoa hồng đã/sẽ chi từ sổ thật. Kỳ chốt: suy từ số đóng băng (gross − ứng − phòng −
   // thực nhận) để các dòng luôn cộng khớp, kể cả kỳ chốt trước khi có tách này (= 0).
   const paidOut = lockedPay && m.calc
@@ -307,8 +155,21 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
     </div>
   );
 
+  const advanceLine = (a: SalAdvanceItem) => {
+    if (a.kind === "PROFIT_ADVANCE") return {
+      label: a.label, chip: "Tạm ứng LN", tone: "warning" as ChipTone, amount: lockedPay ? a.amount : offsetApplied,
+      sub: lockedPay || offsetApplied >= a.amount
+        ? "Đang tạm ứng lợi nhuận — trừ trong phần lợi nhuận đầu tư tháng này, phần còn lại chuyển tháng sau"
+        : `Chỉ trừ trong phần lợi nhuận đầu tư đang chọn trả (cả tháng: ${salFmt(a.amount)})`,
+    };
+    if (a.kind === "PROFIT_MARKER") return {
+      label: a.label, chip: "Đã trả theo mốc", tone: "neutral" as ChipTone, amount: a.amount,
+      sub: "Phần đầu tư tháng này đã trả trước mốc \"đã trả đủ\" — tính vào thu nhập, không chuyển lại",
+    };
+    return { label: a.label, sub: `Ứng ngày ${a.date} · đã chi, trừ vào lương kỳ`, chip: "Đã ứng", tone: "neutral" as ChipTone, amount: a.amount };
+  };
   const ded = [
-    ...m.advanceItems.map((a) => ({ label: a.label, sub: `Ứng ngày ${a.date} · đã chi, trừ vào lương kỳ`, chip: "Đã ứng", tone: "neutral" as ChipTone, amount: a.amount })),
+    ...m.advanceItems.map(advanceLine),
     ...m.roomRentItems.map((r) => ({ label: "Tiền phòng", sub: r.label + " · cấn trừ khi thanh toán", chip: "Cấn trừ", tone: "danger" as ChipTone, amount: r.amount })),
   ];
 
@@ -375,7 +236,9 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
           <Row k="Chi phí tòa · khoản Sale nguồn" v={salFmt(sS)} dot={GROUP.sale.color} />
           <Row k="Phân bổ lợi nhuận" v={salFmt(dS)} dot={GROUP.dh.color} />
           <Row k={lockedPay ? "Tổng thu nhập đã chốt" : "Tổng thu nhập được chọn"} v={salFmt(totalOb)} strong />
-          {advance > 0 && <Row k="Đã ứng (trừ lúc ứng)" v={"−" + salFmt(advance)} fg="hsl(var(--status-danger-fg))" />}
+          {salaryAdvance > 0 && <Row k="Đã ứng (trừ lúc ứng)" v={"−" + salFmt(salaryAdvance)} fg="hsl(var(--status-danger-fg))" />}
+          {offsetApplied > 0 && <Row k="Trừ tạm ứng lợi nhuận" v={"−" + salFmt(offsetApplied)} fg="hsl(var(--status-danger-fg))" />}
+          {markerPaid > 0 && <Row k="Lợi nhuận đã trả theo mốc (không chuyển lại)" v={"−" + salFmt(markerPaid)} fg="hsl(var(--status-danger-fg))" />}
           {paidOut > 0 && <Row k="Hoa hồng chi từ sổ thật (không chuyển lại)" v={"−" + salFmt(paidOut)} fg="hsl(var(--status-danger-fg))" />}
           {m.paid > 0 && <Row k="Đã trả trước đó" v={"−" + salFmt(m.paid)} fg="hsl(var(--status-danger-fg))" />}
         </div>
@@ -397,10 +260,13 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
           <input type="date" className="sal-input mono" {...feedback.field("date")} value={date} onChange={(e) => setDate(e.target.value)} disabled={blocked} />{feedback.issue("date")}</div>
         <div className="sal-field"><label>Ghi chú</label>
           <input className="sal-input" value={note} onChange={(e) => setNote(e.target.value)} disabled={blocked} /></div>
+        {profitBlock && <div role="alert" style={{ fontSize: 12, borderRadius: 8, padding: "10px 12px", background: "hsl(var(--status-danger-bg))", color: "hsl(var(--status-danger-fg))" }}>{profitBlock}</div>}
+        {investmentDrift !== null && <div role="note" style={{ fontSize: 12, borderRadius: 8, padding: "10px 12px", background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" }}>Phần lợi nhuận đầu tư trên bảng ({salFmt(m.investment)}) khác số đã chốt hiện tại ({salFmt(investmentDrift)}) — bấm Tính lại trước khi trả hoặc chốt lương.</div>}
+        {(m.profit?.needsReviewCount ?? 0) > 0 && <div role="note" style={{ fontSize: 12, borderRadius: 8, padding: "10px 12px", background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" }}>Còn {m.profit?.needsReviewCount} phiếu lương cần chủ xem lại phần lợi nhuận — chi lợi nhuận cho {m.short} tạm khoá tới khi chủ xác nhận. Lương vẫn trả được.</div>}
         <button className="sal-btn sal-btn--primary" style={{ justifyContent: "center" }}
           disabled={blocked || feedback.saving || feedback.blocked}
-          onClick={() => void feedback.run(() => onPayout(m.id, m.name, cash, acc, date, note), () => {}, {amount: cash <= 0 ? "Không còn tiền phải chuyển." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})}>
-          {!canPay ? "Không có quyền trả lương" : payBusy ? "Đang lập phiếu…" : hasPending ? "Đang có phiếu chờ duyệt" : cash <= 0 ? "Không còn tiền phải chuyển" : "Lập yêu cầu thanh toán"}
+          onClick={() => void feedback.run(() => onPayout(m.id, m.name, cash, acc, date, note, m.profit && !lockedPay ? { investmentSelected } : undefined), () => {}, {amount: cash <= 0 ? "Không còn tiền phải chuyển." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})}>
+          {!canPay ? "Không có quyền trả lương" : payBusy ? "Đang lập phiếu…" : profitBlock ? "Chưa trả được — cần chốt lại" : hasPending ? "Đang có phiếu chờ duyệt" : cash <= 0 ? "Không còn tiền phải chuyển" : "Lập yêu cầu thanh toán"}
         </button>{feedback.notice}{feedback.issue("amount")}
         {lockedPay && <span style={{ fontSize: 11.5, color: "hsl(var(--status-warning-fg))" }}>Kỳ đã chốt — trả theo số đã chốt, không chọn từng khoản.</span>}
         <span style={{ fontSize: 11.5, color: MUTED }}>Tạo một phiếu chi lương chờ duyệt (không tính KQKD). Khi đã có phiếu chờ duyệt, người này bị khóa để không lập trùng. Bấm tên khoản để xem căn cứ.</span>

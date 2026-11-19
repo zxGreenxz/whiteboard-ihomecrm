@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { adjustmentReconcileBlocker, buildAdjustmentItems, pricingFromInvoice } from '@/lib/invoiceAdjustmentEntry';
+import { AdjustmentKeptLineMissingError, buildAdjustmentItems, pricingFromInvoice } from '@/lib/invoiceAdjustmentEntry';
+import type { AdjustmentItem } from '@/lib/invoiceAdjustmentEditor';
 import { decomposeInvoice } from '@/lib/invoiceEntry';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
@@ -17,10 +18,18 @@ const invoice = {
   ],
 } as unknown as InvoiceWithRelations;
 
+// Dòng giữ nguyên do hàm dùng chung invoice_adjustment_build_v1 trả (luật lệch thành tiền ở database, kiểm ở invoice-edit-sql.test.mjs).
+// Ở đây: dòng đã lưu đi nguyên dạng máy chủ trả; overrides = dòng máy chủ đã quy đổi.
+const keptFrom = (inv: InvoiceWithRelations, overrides: Record<string, Partial<AdjustmentItem>> = {}): ReadonlyMap<string, AdjustmentItem> =>
+  new Map((inv.invoice_items ?? []).map((i) => [i.id, { id: i.id, service_id: i.service_id ?? null, type: i.type, accounting_class: i.accounting_class ?? 'REVENUE',
+    description: i.description, unit_price: i.unit_price, quantity: i.quantity, coefficient: i.coefficient ?? 1, previous_reading: i.previous_reading ?? null,
+    current_reading: i.current_reading ?? null, from_date: i.from_date ?? null, to_date: i.to_date ?? null, sort_order: i.sort_order, ...overrides[i.id] } as AdjustmentItem]));
+const kept = keptFrom(invoice);
+
 describe('buildAdjustmentItems', () => {
   it('passes every untouched line through verbatim, including coefficient, readings, dates and order', () => {
     const d = decomposeInvoice(invoice);
-    const items = buildAdjustmentItems(d.values, d);
+    const items = buildAdjustmentItems(d.values, d, kept);
     const byId = Object.fromEntries(items.map((i) => [i.id, i]));
     expect(byId[U(11)]).toMatchObject({ description: 'Tiền thuê phòng L01 (09/2026)', unit_price: 6_400_000, sort_order: 0 });
     expect(byId[U(12)]).toMatchObject({ service_id: U(90), unit_price: 3500, quantity: 68, previous_reading: 3467, current_reading: 3535, from_date: '2026-09-01', sort_order: 1 });
@@ -32,7 +41,7 @@ describe('buildAdjustmentItems', () => {
 
   it('rebuilds only the structured line that changed and keeps its id, service and order', () => {
     const d = decomposeInvoice(invoice);
-    const items = buildAdjustmentItems({ ...d.values, current_reading: 3600, electric_amount: 133 * 3500 }, d);
+    const items = buildAdjustmentItems({ ...d.values, current_reading: 3600, electric_amount: 133 * 3500 }, d, kept);
     const electric = items.find((i) => i.id === U(12))!;
     expect(electric).toMatchObject({ service_id: U(90), description: 'Tiền điện (3467 → 3600)', unit_price: 3500, quantity: 133, previous_reading: 3467, current_reading: 3600, sort_order: 1, accounting_class: 'REVENUE' });
     expect(items.find((i) => i.id === U(11))).toMatchObject({ unit_price: 6_400_000 });
@@ -43,7 +52,7 @@ describe('buildAdjustmentItems', () => {
     const d = decomposeInvoice(invoice);
     const custom = d.values.custom_items.map((c) => (c.id === U(15) ? { ...c, unit_price: 80_000 } : c));
     custom.push({ type: 'OTHER', accounting_class: 'REVENUE', description: 'Gửi xe', quantity: 1, unit_price: 100_000 });
-    const items = buildAdjustmentItems({ ...d.values, custom_items: custom }, d);
+    const items = buildAdjustmentItems({ ...d.values, custom_items: custom }, d, kept);
     expect(items.find((i) => i.id === U(15))).toMatchObject({ type: 'PENALTY', unit_price: 80_000, sort_order: 3 });
     const added = items.find((i) => i.id === null)!;
     expect(added).toMatchObject({ description: 'Gửi xe', unit_price: 100_000, accounting_class: 'REVENUE', coefficient: 1, sort_order: 5 });
@@ -53,11 +62,11 @@ describe('buildAdjustmentItems', () => {
   it('rewrites an edited deposit as one full-amount line instead of scaling by the old coefficient', () => {
     const d = decomposeInvoice(invoice);
     const custom = d.values.custom_items.map((c) => (c.id === U(14) ? { ...c, unit_price: 3_000_000, quantity: 1, coefficient: 1 } : c));
-    const items = buildAdjustmentItems({ ...d.values, custom_items: custom }, d);
+    const items = buildAdjustmentItems({ ...d.values, custom_items: custom }, d, kept);
     expect(items.find((i) => i.id === U(14))).toMatchObject({ accounting_class: 'DEPOSIT', unit_price: 3_000_000, quantity: 1, coefficient: 1, from_date: '2026-09-01', sort_order: 4 });
   });
 
-  it('keeps the stored amount of a legacy line whose amount differs from price × quantity', () => {
+  it('passes the server-normalised legacy line (stored amount ≠ price × quantity) through unchanged', () => {
     // Dòng điện cũ: unit 3500, quantity 1, amount 294.000 (84 kWh). Server tính lại u×q×c → phải quy về 1 dòng 294.000.
     const legacy = { ...invoice, invoice_items: [
       invoice.invoice_items![0],
@@ -65,26 +74,22 @@ describe('buildAdjustmentItems', () => {
     ] } as unknown as InvoiceWithRelations;
     const d = decomposeInvoice(legacy);
     expect(d.values.electric_amount).toBe(294_000);
-    const items = buildAdjustmentItems(d.values, d);
+    const items = buildAdjustmentItems(d.values, d, keptFrom(legacy, { [U(12)]: { unit_price: 294_000, quantity: 1, coefficient: 1 } }));
     expect(items.find((i) => i.id === U(12))).toMatchObject({ unit_price: 294_000, quantity: 1, coefficient: 1, previous_reading: 4247, current_reading: 4331 });
   });
 
   it('drops a structured line the user zeroed and removed extras', () => {
     const d = decomposeInvoice(invoice);
-    const items = buildAdjustmentItems({ ...d.values, water_amount: 0, custom_items: d.values.custom_items.filter((c) => c.id !== U(15)) }, d);
+    const items = buildAdjustmentItems({ ...d.values, water_amount: 0, custom_items: d.values.custom_items.filter((c) => c.id !== U(15)) }, d, kept);
     expect(items.map((i) => i.id)).toEqual([U(11), U(12), U(14)]);
   });
 });
 
-describe('adjustmentReconcileBlocker', () => {
-  it('blocks when hand-entered previous debt has no matching sources', () => {
-    expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 100_000, previous_debt_sources: [] })).toMatch(/không khớp nguồn đối chiếu \(0 đ\)/);
-    expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 100_000, previous_debt_sources: [{ type: 'invoice', id: 'x', amount: 60_000, label: 'a' }] })).toMatch(/60.000 đ/);
-  });
-  it('allows reconciled debt and zero debt; blocks settlement invoices until the server handles DISCOUNT sign', () => {
-    expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 100_000, previous_debt_sources: [{ type: 'invoice', id: 'x', amount: 40_000, label: 'a' }, { type: 'deposit', contract_id: 'c', amount: 60_000, label: 'b' }] })).toBeNull();
-    expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 0, previous_debt_sources: [] })).toBeNull();
-    expect(adjustmentReconcileBlocker({ kind: 'SETTLEMENT', previous_debt: 0, previous_debt_sources: [] })).toMatch(/thanh lý chưa hỗ trợ điều chỉnh/);
+describe('dòng giữ nguyên lấy từ máy chủ', () => {
+  it('thiếu dòng của hoá đơn trong kết quả máy chủ (hoá đơn vừa đổi) ⇒ dừng, không tự dựng lại dòng', () => {
+    const d = decomposeInvoice(invoice);
+    const partial = new Map([...kept].filter(([id]) => id !== U(14)));
+    expect(() => buildAdjustmentItems(d.values, d, partial)).toThrow(AdjustmentKeptLineMissingError);
   });
 });
 

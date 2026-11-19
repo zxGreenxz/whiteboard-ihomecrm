@@ -61,6 +61,8 @@ Chi tiết xem [Thông tin cá nhân](/06-tai-khoan/thong-tin-ca-nhan/).
 3. `/reset-password` kiểm tra phiên khôi phục. Nếu link hết hạn, đã dùng hoặc không hợp lệ, quay lại xin link mới.
 4. Mật khẩu mới cần tối thiểu **8 ký tự**, có chữ hoa, chữ thường và số; danh sách yêu cầu được đánh dấu ngay khi bạn gõ.
 
+Tài khoản đăng nhập bằng username hoặc số điện thoại không có email thật nên không dùng được luồng này. Hãy nhờ chủ công ty bấm **Đặt lại mật khẩu** trên thẻ của bạn ở **Thành viên**. Xem [Thành viên tổ chức](/05-cai-dat/nhan-vien-doi-ngu/).
+
 ## Nhận lời mời tổ chức
 
 Người quản trị tạo lời mời bằng nút **Mời thành viên** tại `/settings/members` và gửi link cho bạn. Mở link `/invite/:token`:

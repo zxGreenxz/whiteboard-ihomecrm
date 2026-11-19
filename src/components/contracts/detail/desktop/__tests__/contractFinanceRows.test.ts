@@ -231,6 +231,25 @@ describe("dungBangTaiChinh — cấu trúc nhóm", () => {
     });
     expect(kq.nhom.find((n) => n.khoa === "QUYET_TOAN")?.canhBao).toBeNull();
   });
+  it("nhiều phiếu hoàn vẫn cảnh báo khi tổng tiền khớp hồ sơ, không thay đổi số quyết toán", () => {
+    const input = { contract: { ...COC, status: "TERMINATED" }, depositVouchers: [], invoices: [],
+      terminationInfo: { ...QUYET_TOAN, posted_refund: 2_828_500 } };
+    const before = dungBangTaiChinh(input);
+    const result = dungBangTaiChinh({ ...input, terminationInfo: { ...input.terminationInfo,
+      posted_refund_count: 2, posted_refund_codes: ["DEMO-PC-01", "DEMO-PC-02"] } });
+    expect(result.nhom.find(n => n.khoa === "QUYET_TOAN")?.canhBao).toContain("Có 2 phiếu hoàn đã vào sổ");
+    expect(result.nhom.find(n => n.khoa === "QUYET_TOAN")?.canhBao).toContain("DEMO-PC-01, DEMO-PC-02");
+    expect(result.tong).toEqual(before.tong);
+    expect(result.nhom.find(n => n.khoa === "QUYET_TOAN")?.dong).toEqual(before.nhom.find(n => n.khoa === "QUYET_TOAN")?.dong);
+  });
+  it("quyết toán âm là khách nợ, không phải thiếu phiếu hoàn; vẫn cảnh báo nếu đã chi hoàn trái hồ sơ", () => {
+    const input = { contract: { ...COC, status: "TERMINATED" }, depositVouchers: [], invoices: [],
+      terminationInfo: { ...QUYET_TOAN, refund_amount: -1000, posted_refund: 0, posted_refund_count: 0, posted_refund_codes: [] } };
+    expect(dungBangTaiChinh(input).nhom.find(n => n.khoa === "QUYET_TOAN")?.canhBao).toBeNull();
+    const paid = dungBangTaiChinh({ ...input, terminationInfo: { ...input.terminationInfo,
+      posted_refund: 500, posted_refund_count: 1, posted_refund_codes: ["DEMO-PC-01"] } });
+    expect(paid.nhom.find(n => n.khoa === "QUYET_TOAN")?.canhBao).toContain("lệch 1.500");
+  });
 
   it("hoá đơn đã huỷ vẫn cộng vào tổng nhưng được đánh dấu", () => {
     // Giữ NGUYÊN công thức outstandingAmount đang chạy (nó cộng mọi hoá đơn

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
 import { authorityRequestEntries, BROKER_AUTHORITY } from './authority-request-scope.mjs';
+import { AUTHORITY_CONTEXT_CACHE, authorityContextKey, forgetsAuthorityContext } from './authority-context-cache.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -95,7 +96,8 @@ function authorization(value, before, now) {
     scopesByPermission: permissionScopes(current.scopesByPermission, granted) };
 }
 
-/** Trusted read-only resolver, not a broker, tool dispatcher or authority cache.
+/** Trusted read-only resolver, not a broker or tool dispatcher (its optional
+ * context cache, described at the end, only serves explicit opt-in callers).
  * Requires createDurableConnectionStore.readConnection plus real Auth verification.
  * Extended auth contract: the P1 readAuthorization shape with membershipId and
  * authorizationVersion INSIDE membership, and scopesByPermission[key] containing
@@ -124,11 +126,24 @@ function authorization(value, before, now) {
  * handed to exactly one following resolve of the same checkpoint. Outside that
  * window (maintenance, renewal, runtime) every call is fully fresh. Auth and CRM
  * authorization are read concurrently; their checks keep the sequential order.
+ *
+ * Optional contextCache (authority-context-cache.mjs): a call whose options carry
+ * AUTHORITY_CONTEXT_CACHE (only authenticate/tools/list and the host renewal lane)
+ * may reuse the last CRM authorization read (auth.readAuthorization) of the same
+ * token while the joined store snapshot (minus token expiry) is unchanged and the
+ * entry is younger than its TTL. The store snapshot is still read twice, the
+ * envelope opened and the Auth session verified on every call; all checks below
+ * run on the reused value. Calls without the flag (tools/call, services) always
+ * read CRM authorization and refresh the entry after a fully successful build.
+ * unauthorized/forbidden/context_changed seen here drop the token's entry.
  */
-export function createDurableAuthority({ connectionStore, crypto, auth, clock = Date.now, timeoutMs = 10000 } = {}) {
+export function createDurableAuthority({ connectionStore, crypto, auth, clock = Date.now, timeoutMs = 10000, permissionGaps, contextCache } = {}) {
   if (typeof connectionStore?.readConnection !== 'function' || typeof crypto?.open !== 'function' ||
       typeof auth?.verifySession !== 'function' || typeof auth?.readAuthorization !== 'function' || typeof clock !== 'function' ||
-      !positive(timeoutMs) || timeoutMs > 30000) throw new TypeError('invalid_durable_authority_config');
+      !positive(timeoutMs) || timeoutMs > 30000 || (permissionGaps !== undefined && typeof permissionGaps?.observe !== 'function') ||
+      (contextCache !== undefined && (['mark', 'lookup', 'remember', 'forgetDigest', 'discardDigest'].some(key => typeof contextCache?.[key] !== 'function') ||
+        !Number.isSafeInteger(contextCache.ttlMs))))
+    throw new TypeError('invalid_durable_authority_config');
   const issued = new WeakSet(), owner = Object.freeze({});
   const now = () => { const value = clock(); if (!positive(value)) malformed(); return value; };
   // One-shot hand-over inside a single broker checkpoint (authority-request-scope).
@@ -140,6 +155,15 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
   };
   const offer = (tokenDigest, entry) => { authorityRequestEntries(owner)?.set(tokenDigest, entry); };
   const brokerCall = options => options !== null && typeof options === 'object' && options[BROKER_AUTHORITY] === true;
+  // Only an explicit trusted opt-in reuses the remembered CRM read; anything else reads it again.
+  const contextCall = options => contextCache !== undefined && contextCache.ttlMs > 0 &&
+    options !== null && typeof options === 'object' && options[AUTHORITY_CONTEXT_CACHE] === true;
+  // unauthorized (revoked/expired token, invalid Auth session) only discards the entry;
+  // forbidden/context_changed also fence out CRM reads that were in flight.
+  const forgetOn = (tokenDigest, error) => {
+    if (!contextCache || !(error instanceof BrokerError) || !forgetsAuthorityContext(error)) return;
+    if (error.code === 'unauthorized') contextCache.discardDigest(tokenDigest); else contextCache.forgetDigest(tokenDigest);
+  };
   async function bounded(signal, operation) {
     if (!(signal instanceof AbortSignal)) malformed();
     if (signal.aborted) malformed();
@@ -166,11 +190,12 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
         return handed.result;
       }
     }
-    return fresh(presentedToken, tokenDigest, options?.signal, broker);
+    return fresh(presentedToken, tokenDigest, options?.signal, broker, contextCall(options));
   }
   // broker: the dispatcher's own read. Only it may open with the admission
   // identify snapshot and only its result is offered to the next service.
-  function fresh(presentedToken, tokenDigest, signal, broker) {
+  // reuse: the caller opted into the remembered CRM authorization read.
+  function fresh(presentedToken, tokenDigest, signal, broker, reuse = false) {
     const handed = broker ? take(tokenDigest, 'identified') : undefined;
     const pending = bounded(signal, async (innerSignal, check) => {
       const read = async () => {
@@ -192,12 +217,19 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
       try { material = validateSessionMaterial(crypto.open(before.session.envelope, before.session.binding)); }
       catch { malformed(); }
       if (material.expiresAt <= now() || material.expiresAt !== before.session.expiresAt) fail('unauthorized');
+      // The remembered CRM read is bound to every stored field except the token's
+      // own expiry (renewal moves it); a changed epoch, session revision, binding,
+      // membership version or policy is a different key and reads CRM again.
+      const cacheKey = contextCache && contextCache.ttlMs > 0 ? authorityContextKey(before) : undefined;
+      const remembered = reuse && cacheKey ? contextCache.lookup(tokenDigest, cacheKey) : undefined;
+      const cacheMark = cacheKey && remembered === undefined ? contextCache.mark() : undefined;
       // Auth and CRM authorization are independent reads of the same bearer and
       // start together, but are awaited in the sequential order: an Auth
       // rejection is returned at once and leaving bounded() aborts the CRM read.
       const verifying = Promise.resolve().then(() => auth.verifySession({ accessToken: material.accessToken, signal: innerSignal }));
-      const reading = Promise.resolve().then(() => auth.readAuthorization({ accessToken: material.accessToken, userId: before.connection.userId,
-        organizationId: before.connection.organizationId, signal: innerSignal }));
+      const reading = remembered !== undefined ? Promise.resolve(remembered)
+        : Promise.resolve().then(() => auth.readAuthorization({ accessToken: material.accessToken, userId: before.connection.userId,
+          organizationId: before.connection.organizationId, signal: innerSignal }));
       void reading.catch(() => {});
       const verified = await verifying; check();
       verifiedSession(verified, before.session.binding, material, now());
@@ -213,12 +245,19 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
       const assistantScopeIds = after.policy.scopeIds.filter(id => row.scopeIds.includes(id));
       const policyEpoch = fingerprint({ crmEpoch: current.epoch, membership: after.membership, policy: after.policy });
       const contextVersion = fingerprint({ database: after, authorization: current, effective, assistantScopeIds });
+      // Lượt 11: khoá thao tác đã bật ở công ty + chính sách trợ lý + kết nối mà người dùng thiếu quyền CRM (crm-permission-gaps.mjs).
+      permissionGaps?.observe(contextVersion, current.companyCeilings.action.filter(key => after.policy.action.includes(key) &&
+        row.restrictions.action.includes(key) && !current.permissions.action.includes(key)));
       const result = freeze({ row: { id: row.id, assistantId: row.assistantId, userId: row.userId, organizationId: row.organizationId,
         state: row.state, epoch: row.epoch, expiresAt: row.expiresAt, restrictions: row.restrictions },
       effective, policyEpoch, isSuperadmin: current.isSuperadmin, assistantScopeIds,
       scopesByPermission: current.scopesByPermission, contextVersion });
+      // Only a CRM read that passed every check above is remembered (or refreshed),
+      // never longer than the provider session behind it, and never if any entry
+      // was forgotten while this read was in flight.
+      if (cacheKey && remembered === undefined) contextCache.remember(tokenDigest, cacheKey, live, material.expiresAt, cacheMark);
       issued.add(result); return result;
-    });
+    }).catch(error => { forgetOn(tokenDigest, error); throw error; });
     if (broker) offer(tokenDigest, { kind: 'resolved', result: pending });
     return pending;
   }
@@ -240,7 +279,7 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
         const current = snapshot(value, tokenDigest, now());
         if (broker) offer(tokenDigest, { kind: 'identified', snapshot: current });
         return Object.freeze({ connectionId: current.connection.id });
-      });
+      }).catch(error => { forgetOn(tokenDigest, error); throw error; });
     },
     resolve, async checkUnchanged(presentedToken, before, options = {}) {
     if (!issued.has(before)) fail('context_changed');
@@ -257,7 +296,7 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
         if (value !== before) after = value;
       }
     }
-    after ??= await fresh(presentedToken, tokenDigest, options?.signal, broker);
-    if (after.contextVersion !== before.contextVersion) fail('context_changed');
+    after ??= await fresh(presentedToken, tokenDigest, options?.signal, broker, contextCall(options));
+    if (after.contextVersion !== before.contextVersion) { contextCache?.forgetDigest(tokenDigest); fail('context_changed'); }
   } });
 }

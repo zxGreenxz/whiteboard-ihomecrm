@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ct01Schema, type CT01FormValues } from '@/lib/ct01Validation';
 import { autoFillCT01FromCustomer } from '@/lib/ct01Helpers';
@@ -33,7 +33,7 @@ interface CT01FormProps {
 
 export function CT01Form({ customer, onSubmit, isLoading }: CT01FormProps) {
   const form = useForm<CT01FormValues>({
-    resolver: zodResolver(ct01Schema),
+    resolver: zodResolver(ct01Schema) as Resolver<CT01FormValues>,
     defaultValues: {
       registration_authority: '',
       full_name: '',

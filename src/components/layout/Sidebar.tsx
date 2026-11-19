@@ -17,6 +17,7 @@ import {
 } from './useSidebarState';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
+import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
 import { canShowSurface } from '@/lib/superAdminSurface';
 import { useBusinessPerformanceOrganizations } from '@/hooks/reports/useBusinessPerformance';
 import { canUse } from '@/lib/permissionPages';
@@ -75,7 +76,9 @@ import {
   LogOut,
   Network,
   BadgeCheck,
+  Handshake,
   Fingerprint,
+  Sun,
 } from 'lucide-react';
 
 interface NavItem {
@@ -94,6 +97,8 @@ interface NavItem {
   superAdminOnly?: boolean;
   /** Business Performance chỉ hiện sau khi roster tổ chức tải thành công và không rỗng. */
   requiresBusinessPerformanceOrganization?: boolean;
+  /** Chỉ hiện cho chủ công ty hoặc super admin (cờ hiển thị — RPC của trang mới là hàng rào). */
+  requiresCompanyOwnerOrSuperAdmin?: boolean;
   /**
    * Với NHÂN VIÊN (không phải admin của module): mở `selfHref` ở TAB MỚI thay vì
    * điều hướng in-app. Dùng cho "Bảng lương" → trang "Lương của tôi" trọn-màn QUEST.
@@ -129,6 +134,10 @@ export const navigationGroups: NavGroup[] = [
     items: [
       // Bảng tin = trang chủ kiêm fallback của RequirePermission → luôn hiện.
       { title: 'Bảng tin', href: '/', icon: LayoutDashboard },
+      // Hôm nay: ô đầu tiên của launcher điện thoại nhưng trước 19/11/2026 không có mục nào trên
+      // máy tính. Route /my-day không bọc RequirePermission (ai đăng nhập cũng có ngày công của
+      // mình) ⇒ không khai `module`, luôn hiện như ô launcher.
+      { title: 'Hôm nay', href: '/my-day', icon: Sun },
       ...navFieldsFor('map').map((x) => ({ ...x, icon: Map }) satisfies NavItem),
     ],
   },
@@ -213,6 +222,9 @@ export const navigationGroups: NavGroup[] = [
           { title: 'Tài khoản theo ngày', href: '/reports/finance/daily-cashbook', icon: Book, module: 'reports_finance', action: 'daily_cashbook' },
           { title: 'Dòng tiền', href: '/reports/finance/cash-flow', icon: TrendingUp, module: 'reports_finance', action: 'cash_flow' },
           { title: 'Báo cáo Lợi Nhuận', href: '/reports/finance/profit-distribution', icon: PieChart, module: 'reports_finance', action: 'profit_distribution' },
+          // Chủ xem việc từng quản lý: cờ hiển thị; hàm staff_day_* mới là hàng rào.
+          { title: 'Việc của quản lý', href: '/my-day/team', icon: Users, requiresCompanyOwnerOrSuperAdmin: true },
+          { title: 'Quyết toán vận hành', href: '/reports/finance/quyet-toan-van-hanh', icon: Handshake, requiresCompanyOwnerOrSuperAdmin: true },
           { title: 'Lịch thanh toán', href: '/reports/finance/payment-schedule', icon: Calendar, module: 'reports_finance', action: 'payment_schedule' },
           ...navFieldsFor('overpayment').map((x) => ({ ...x, icon: Coins }) satisfies NavItem),
           { title: 'Danh sách tiền cọc', href: '/reports/finance/deposits', icon: Wallet, module: 'reports_finance', action: 'deposits_report' },
@@ -320,6 +332,7 @@ const Sidebar = ({
   // Không poll: chỉ để quyết định hiện một mục menu (RT-OTHER-4) — xem hook.
   const businessPerformanceOrganizations = useBusinessPerformanceOrganizations(true, { poll: false });
   const superAdmin = useIsSuperAdmin();
+  const companyOwner = useIsCompanyOwner();
   const canShowBusinessPerformance =
     businessPerformanceOrganizations.isSuccess &&
     (businessPerformanceOrganizations.data?.length ?? 0) > 0;
@@ -337,6 +350,9 @@ const Sidebar = ({
   const canShow = (item: NavItem) => {
     if (item.requiresBusinessPerformanceOrganization) {
       return canShowBusinessPerformance;
+    }
+    if (item.requiresCompanyOwnerOrSuperAdmin) {
+      return superAdmin.data === true || companyOwner.data === true;
     }
     return canShowSurface(item, perms, !superAdmin.isError && !superAdmin.isLoading && !superAdmin.isPending && superAdmin.data === true);
   };

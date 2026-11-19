@@ -11,7 +11,7 @@ const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày cấp CCCD/CMND 
 
 export const buildingLegalOwnerSchema = z.object({
   full_name: z.string().trim().max(200, 'Họ tên chủ sở hữu không được quá 200 ký tự.'),
-  birth_year: z.number({ invalid_type_error: 'Nhập năm sinh chủ sở hữu bằng số.' }).int('Năm sinh chủ sở hữu phải là số nguyên.').min(1800, 'Năm sinh chủ sở hữu phải từ 1800 đến 2200.').max(2200, 'Năm sinh chủ sở hữu phải từ 1800 đến 2200.').nullable(),
+  birth_year: z.number({ error: (issue) => (issue.input === undefined ? undefined : 'Nhập năm sinh chủ sở hữu bằng số.') }).int('Năm sinh chủ sở hữu phải là số nguyên.').min(1800, 'Năm sinh chủ sở hữu phải từ 1800 đến 2200.').max(2200, 'Năm sinh chủ sở hữu phải từ 1800 đến 2200.').nullable(),
   id_number: z.string().trim().max(50, 'CCCD/CMND chủ sở hữu không được quá 50 ký tự.'),
   id_issue_date: dateOnly.nullable(),
   id_issue_place: z.string().trim().max(500, 'Nơi cấp CCCD/CMND không được quá 500 ký tự.').transform(value => value || defaultIssuePlace),

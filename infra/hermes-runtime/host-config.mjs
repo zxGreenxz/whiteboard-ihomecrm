@@ -2,6 +2,13 @@ import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { validateNativeProvisioningConfiguration } from '../hermes-zalo-native/profile-provisioning.mjs';
+import { validAuthorityCacheTtl } from '../hermes-broker/authority-context-cache.mjs';
+
+// Cùng luật với infra/hermes-broker/public-link.mjs (backend kiểm lại): chỉ https, đúng dạng origin.
+const publicWebOrigin = value => {
+  if (typeof value !== 'string' || value.length > 200) return false;
+  try { const url = new URL(value); return url.protocol === 'https:' && url.origin === value; } catch { return false; }
+};
 
 const VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const fail = () => { throw new Error('host_config_invalid'); };
@@ -118,12 +125,20 @@ export async function loadHostConfiguration(configPath) {
     let input;
     try { input = parse(bytes); } finally { bytes.fill(0); }
     if (input?.version !== 2 || input?.mode !== 'connector') fail();
-    exact(input, ['version', 'mode', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort'], ['limits', 'zaloProvisioning', 'readFastPath', 'roomRead', 'actionProbe']);
+    exact(input, ['version', 'mode', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort'], ['limits', 'zaloProvisioning', 'readFastPath', 'roomRead', 'actionProbe', 'actionPages', 'publicWebOrigin', 'authorityCacheTtlMs']);
     if (Object.hasOwn(input, 'readFastPath') && typeof input.readFastPath !== 'boolean') fail();
     // Direct room tool source: 'legacy' (default) or 'page' (B3 hermes_available_rooms_page_v1).
     if (Object.hasOwn(input, 'roomRead') && !['legacy', 'page'].includes(input.roomRead)) fail();
     // Đợt 1 nền chung: true chỉ trên connector TEST (danh mục thao tác thử probe.*); vắng = danh mục rỗng như production.
     if (Object.hasOwn(input, 'actionProbe') && typeof input.actionProbe !== 'boolean') fail();
+    // Đợt 2: tên trang có thao tác ghi thật (vd ["contract"]); server kiểm tên trang có trong danh mục. Vắng = rỗng như production.
+    if (Object.hasOwn(input, 'actionPages') && (!Array.isArray(input.actionPages) || input.actionPages.length > 8 ||
+      input.actionPages.some(page => typeof page !== 'string' || !/^[a-z]{2,16}$/.test(page)) || new Set(input.actionPages).size !== input.actionPages.length)) fail();
+    // Lượt 11 (D-HĐ9): origin web cho link công khai của HĐ (crm_read_contract_detail publicLink), vd "https://app.example.vn".
+    // Chỉ https, đúng dạng origin; vắng = không link, như trước.
+    if (Object.hasOwn(input, 'publicWebOrigin') && !publicWebOrigin(input.publicWebOrigin)) fail();
+    // 28/10: hạn nhớ quyền CRM (ms) cho ping/tools/list/gia hạn; vắng = mặc định của backend (30 phút), 0 = tắt, còn lại 1–60 phút.
+    if (Object.hasOwn(input, 'authorityCacheTtlMs') && !validAuthorityCacheTtl(input.authorityCacheTtlMs)) fail();
     const limits = connectorLimits(input.limits);
     exact(input.supabase, ['url', 'publishableKey']); exact(input.store, ['projectRef', 'host', 'role', 'passwordFile'], ['caFile']);
     exact(input.encryption, ['activeKeyVersion', 'keys']); exact(input.http, ['allowedHosts', 'allowedOrigins']);
@@ -176,7 +191,10 @@ export async function loadHostConfiguration(configPath) {
       encryption: Object.freeze({ activeKeyVersion, keys }), http, paths, ...(zaloProvisioning===undefined?{}:{zaloProvisioning}),
       ...(input.readFastPath === undefined ? {} : { readFastPath: input.readFastPath }),
       ...(input.roomRead === undefined ? {} : { roomRead: input.roomRead }),
-      ...(input.actionProbe === undefined ? {} : { actionProbe: input.actionProbe }), mode: 'connector', limits, listenPort: input.listenPort,
+      ...(input.actionProbe === undefined ? {} : { actionProbe: input.actionProbe }),
+      ...(input.actionPages === undefined ? {} : { actionPages: Object.freeze([...input.actionPages]) }),
+      ...(input.publicWebOrigin === undefined ? {} : { publicWebOrigin: input.publicWebOrigin }),
+      ...(input.authorityCacheTtlMs === undefined ? {} : { authorityCacheTtlMs: input.authorityCacheTtlMs }), mode: 'connector', limits, listenPort: input.listenPort,
       dispose() { if (disposed) return; disposed = true; for (const material of owned) material.fill(0); keys.clear(); },
     });
   } catch { for (const material of owned) material.fill(0); keys.clear(); fail(); }

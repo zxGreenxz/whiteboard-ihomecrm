@@ -6,7 +6,7 @@ import { focusFirstError } from "@/lib/formErrors";
 import { CUSTOMER_HINT_MAX, reservationErrorMessage } from "@/lib/reservationIdentityRpc";
 import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useQueryClient } from "@tanstack/react-query";
@@ -174,7 +174,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
 
   const form = useForm<DepositFormValues>({
     shouldFocusError: false,
-    resolver: zodResolver(depositSchema),
+    resolver: zodResolver(depositSchema) as Resolver<DepositFormValues>,
     defaultValues: {
       customer_id: "",
       customer_hint: "",

@@ -48,6 +48,8 @@ BEGIN
     END;
   END LOOP;
 END $q$;
+-- Từ 20261104173640 hàm tạm do postgres tạo không còn EXECUTE cho PUBLIC: cấp vai sẽ gọi trước khi hạ vai.
+GRANT EXECUTE ON FUNCTION pg_temp._quet0() TO authenticated;
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims='{"sub":"99999999-0000-4000-8000-000000000099","role":"authenticated"}';
 SELECT pg_temp._quet0();

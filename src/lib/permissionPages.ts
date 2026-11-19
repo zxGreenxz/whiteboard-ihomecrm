@@ -324,6 +324,7 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/income-expense",
         features: [
           ...crud("income_expenses", "phiếu thu chi"),
+          f("income_expenses", "edit_draft", "Sửa phiếu nháp chưa duyệt, chưa ghi sổ", "manage"),
           f("income_expenses", "approve", "Duyệt phiếu thu chi", "elevated"),
           f("income_expenses", "cancel", "Huỷ phiếu thu chi", "manage"),
           f("income_expenses", "print", "In phiếu thu chi", "manage"),
@@ -380,6 +381,21 @@ export const PAGE_GROUPS: PageGroup[] = [
             desc: "Sinh phiếu chi lương quản lý trong kỳ đã chốt.",
           }),
           f("shareholder_profit", "export", "Xuất dữ liệu lợi nhuận", "manage"),
+          // Ba khoá của sổ tổng lợi nhuận. Hai khoá "xem" CỐ Ý không khai tier "view": nút "Chỉ xem"
+          // của trang (PermissionPicker, setPageViewOnly) bật mọi feature tier view, tức một cú bấm
+          // sẽ cấp luôn quyền xem tỷ lệ % và doanh thu / lợi nhuận toà.
+          // Từ Đợt 2 (giao diện sổ tổng) hai khoá "xem" có tác dụng ngay: tab "BC Doanh Thu Chi Phí" và
+          // dòng tỷ lệ % chỉ hiện khi có quyền. Khoá tạm ứng (tên khoá giữ nguyên) từ 18/11/2026 là quyền ĐƯỢC TẠM
+          // ỨNG: tự lập từ sổ mình giữ, hoặc nhận phiếu Tạm Ứng người giữ sổ khác lập ở Thu chi.
+          f("shareholder_profit", "advance_own_cashbook", "Được tạm ứng lợi nhuận", "elevated", {
+            desc: "Cấp riêng từng người ở Thành viên → Ngoại lệ. Người có quyền này được tạm ứng lợi nhuận: tự lập phiếu từ sổ quỹ mình đang giữ, hoặc nhận phiếu Tạm Ứng do người giữ sổ khác lập ở Thu chi. Mọi phiếu chờ chủ duyệt; tạm ứng cộng dồn và được khấu trừ khi chủ chốt chi lợi nhuận.",
+          }),
+          f("shareholder_profit", "view_percent", "Xem tỷ lệ % chia lợi nhuận", "elevated", {
+            desc: "Cổ đông thấy tỷ lệ % cổ phần của chính mình ở từng toà.",
+          }),
+          f("shareholder_profit", "view_building_totals", "Xem doanh thu / lợi nhuận toà", "elevated", {
+            desc: "Mở tab BC Doanh Thu Chi Phí; cổ đông xem doanh thu, chi phí, lợi nhuận các toà mình có phần. Kèm quyền xem báo cáo dòng tiền: thấy cột tổng chi chia lợi nhuận theo tháng / toà (cộng của mọi cổ đông và lương điều hành).",
+          }),
         ],
       },
       {

@@ -250,10 +250,10 @@ function WorkAssistantPanel({ userId, organizationId, currentScope }: Omit<Props
  * khác trên trang, dữ liệu chỉ được đọc khi người dùng mở khối này. */
 export function HermesWorkAssistant({ userId, organizationId, currentScope, reconcileSlot }: Props) {
   const [opened, setOpened] = useState(false);
-  return <section aria-label="Trợ lý của tôi" className="space-y-4">
+  return <section aria-label="Trợ lý của tôi" className="space-y-4 rounded-xl border bg-card p-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="font-semibold">Trợ lý của tôi</h2>
-        <p className="text-sm text-muted-foreground">Ghi nhớ công việc CRM bạn chia sẻ và các việc trợ lý đang theo dõi, nhắc hạn.</p></div>
+      <div><h2 className="font-semibold">Ghi nhớ và việc trợ lý theo dõi</h2>
+        <p className="text-sm text-muted-foreground">Ghi chú công việc bạn cho Hermes nhớ, và các việc Hermes đang theo dõi, nhắc hạn.</p></div>
       <Button variant="outline" onClick={() => setOpened(value => !value)}>{opened ? 'Thu gọn' : 'Mở trợ lý của tôi'}</Button>
     </div>
     {opened && <WorkAssistantPanel userId={userId} organizationId={organizationId} currentScope={currentScope} />}

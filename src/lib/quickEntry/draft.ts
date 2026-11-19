@@ -61,7 +61,7 @@ export interface QuickDraft {
 export const quickDraftSchema=z.object({
  id:z.string().min(1),mode:z.enum(['company','personal']),date:z.string(),name:z.string(),vendor:z.string().nullable(),
  buildingId:z.string().nullable(),roomId:z.string().nullable(),accountId:z.string().nullable(),attachmentUrls:z.array(z.string()),
- transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalWalletId:z.string().nullable().optional(),personalRequestKey:z.string().uuid().optional(),personalProtocol:z.literal(1).optional(),
+ transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalWalletId:z.string().nullable().optional(),personalRequestKey:z.string().guid().optional(),personalProtocol:z.literal(1).optional(),
  entrySource:z.literal('personal_wallet').optional(),companyWalletId:z.string().nullable().optional(),companyOrganizationId:z.string().optional(),createdAt:z.number().finite().nonnegative().optional(),
  paymentKind:z.enum(['bank','cash','sp_card','credit_card']).nullable().optional(),paymentEvidence:z.enum(['bank_transfer','cash']).nullable().optional(),paymentPlatform:z.literal('shopee').nullable().optional(),
  lines:z.array(z.object({description:z.string(),amount:z.number().finite(),categoryId:z.string().nullable(),personalCategory:z.string().nullable(),periodStart:z.string().nullable(),periodEnd:z.string().nullable(),transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalCategoryId:z.string().nullable().optional()})).max(200),

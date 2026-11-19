@@ -26,6 +26,19 @@ it.each([{...preview,organization_id:'other'},{...preview,period_month:'2026-08-
 it('preview valid V3 SQL shape preserves real negative profit and numeric strings',async()=>{m.rpc.mockResolvedValue({data:preview,error:null});const h=renderHook(()=>useProfitClosePreview(org,month),{wrapper});await waitFor(()=>expect(h.result.current.isSuccess).toBe(true));expect(h.result.current.data?.rows[0]).toMatchObject({computed_profit:-500,revenue:0,unallocated_profit:-500,current_snapshot:null});});
 
 const monthly={id:'snapshot-a',user_id:'actor-a',building_id:'b-a',period_month:month,computed_profit:-500,adjusted_profit:-500,management_salary:0,shareholder_percent_total:100,shareholder_allocated_amount:0,unallocated_profit:-500,unallocated_disposition:null,unallocated_disposition_reason:null,status:'LOCKED',note:null,locked_at:null,locked_by:null};
+it('legacy state keeps unavailable source totals null without blocking the month',async()=>{
+ const row={...monthly,building_name:'Nhà A',is_virtual:false,building_deleted:false,adjustment_amount:0,adjustment_reason:null,distributable_profit:-500,source_revenue:null,source_expense:null,source_hash:hash,is_stale:true,stale_reason:'LEGACY_BASELINE',revision_number:1};
+ m.rpc.mockResolvedValue({data:{...state,snapshot_ids:[row.id],snapshot_count:1,locked_count:1,active_real_snapshot_count:1,rows:[row]},error:null});
+ const h=renderHook(()=>useProfitCloseState(org,month),{wrapper});
+ await waitFor(()=>expect(h.result.current.isSuccess).toBe(true));
+ expect(h.result.current.data?.rows[0]).toMatchObject({source_revenue:null,source_expense:null,computed_profit:-500});
+});
+it.each(['source_revenue','source_expense'])('current preview still requires %s even for legacy snapshots',async field=>{
+ m.rpc.mockResolvedValue({data:{...preview,buildings:[{...previewRow,[field]:null}]},error:null});
+ const h=renderHook(()=>useProfitClosePreview(org,month),{wrapper});
+ await waitFor(()=>expect(h.result.current.isError).toBe(true));
+ expect(h.result.current.data).toBeUndefined();
+});
 const pm={period_month:month,building_id:'b-a',status:'LOCKED'};
 const populated=[{name:'monthly',useHook:()=>useProfitMonthly(),data:[monthly]},{name:'share allocation',useHook:()=>useProfitAllocations(),data:[{id:'alloc-a',user_id:'actor-a',profit_monthly_id:'snapshot-a',shareholder_id:'share-a',percent:100,amount:0,pm}]},{name:'manager allocation',useHook:()=>useProfitManagerAllocations(),data:[{id:'alloc-a',user_id:'actor-a',profit_monthly_id:'snapshot-a',manager_id:'manager-a',amount:0,pm}]},{name:'share payout',useHook:()=>useShareholderDistributions(),data:[{id:'payout-a',shareholder_id:'share-a',total_amount:50,voucher_date:'2026-09-30',name:'Chi A',account_id:null,building_id:'b-a'}]},{name:'manager payout',useHook:()=>useManagerSalaryPayouts(),data:[{id:'payout-a',profit_manager_id:'manager-a',total_amount:50,voucher_date:'2026-09-30',name:'Chi A',account_id:null,building_id:'b-a'}]}];
 for(const v of populated)it(v.name+' full actual list source remains successful',async()=>{m.reply.mockResolvedValue({data:[],error:null}).mockResolvedValueOnce({data:v.data,error:null});const h=renderHook(()=>{const q=v.useHook();return {isSuccess:q.isSuccess,data:q.data};},{wrapper});await waitFor(()=>expect(h.result.current.isSuccess).toBe(true));expect(h.result.current.data?.[0]).toHaveProperty('id',v.data[0].id);});

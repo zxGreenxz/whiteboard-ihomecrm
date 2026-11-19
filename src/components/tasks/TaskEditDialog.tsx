@@ -53,7 +53,8 @@ export default function TaskEditDialog({
   onSuccess,
 }: TaskEditDialogProps) {
   const { data: authUser } = useAuth();
-  const buildingsQuery = useBuildings();
+  // Kèm toà ảo: việc ở Kho Văn Phòng Chung phải hiện đúng tên toà khi sửa.
+  const buildingsQuery = useBuildings({ includeVirtual: true });
   const {data: buildings = []} = buildingsQuery;
   const jobTypesQuery = useJobTypes();
   const {data: jobTypes = []} = jobTypesQuery;

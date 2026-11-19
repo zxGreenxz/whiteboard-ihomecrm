@@ -67,6 +67,10 @@ if [[ "$(grep -Ec '^Signer #[0-9]+ certificate SHA-256 digest: ' "$evidence/apk-
   printf 'APK signing certificate does not match the configured release key.\n' >&2
   exit 1
 fi
+# What every pull request checks on the debug APK, here with the release package name and label:
+# version, the single launcher, the approved permission list. The verifier gets no signing material.
+env -u IHOME_SIGNING_STORE -u IHOME_SIGNING_PASSWORD \
+  bash ./ci-verify-apk.sh "$apk" 'vn.ihome.smsgateway' 'iHome Gateway' "$evidence"
 sha256sum "$apk" > "$evidence/apk-sha256.txt"
 printf '%s\n' "$expected_certificate" > "$evidence/signing-certificate-sha256.txt"
 cp "$signing_dir/signing-cert.der" "$evidence/signing-certificate.der"

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -96,7 +96,7 @@ export default function RoomFormDialog({
 
   // Form
   const form = useForm<RoomFormData>({
-    resolver: zodResolver(roomSchema),
+    resolver: zodResolver(roomSchema) as Resolver<RoomFormData>,
     defaultValues: {
       building_id: '',
       floor: 0,

@@ -237,7 +237,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
 
 export async function serveChromeBuild(directory, testOrigin) {
   const root = await realpath(directory);
-  const csp = `default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ${testOrigin} ${testOrigin.replace('https:', 'wss:')}; img-src 'self' data: blob: ${testOrigin}; media-src 'self' blob: ${testOrigin}; worker-src 'self' blob:; frame-src 'none'; base-uri 'self'; form-action 'self'`;
+  const csp = `default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ${testOrigin} ${testOrigin.replace('https:', 'wss:')}; img-src 'self' data: blob: https://tile.openstreetmap.org https://tile.openstreetmap.de https://*.tile.openstreetmap.fr ${testOrigin}; media-src 'self' blob: ${testOrigin}; worker-src 'self' blob:; frame-src 'none'; base-uri 'self'; form-action 'self'`;
   const server = createServer(async (request, response) => {
     const host = `127.0.0.1:${server.address().port}`;
     if (request.headers.host !== host) { response.writeHead(403).end(); return; }

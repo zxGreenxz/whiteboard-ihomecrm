@@ -4,7 +4,7 @@ export type MeterBoundaryKind='MOVE_IN'|'MOVE_OUT';
 export type MeterBoundaryState='VERIFIED'|'MISSING'|'REVIEW';
 export interface MeterBoundaryReadingInput {meterId:string;reading:number;measuredAt:string;evidence?:string|null}
 export type MeterBoundaryInput={state:'VERIFIED';readings:MeterBoundaryReadingInput[]} | {state:'MISSING';reason:string};
-const uuid=z.string().uuid();
+const uuid=z.string().guid();
 const inputSchema=z.discriminatedUnion('state',[
   z.object({state:z.literal('VERIFIED'),readings:z.array(z.object({meterId:uuid,reading:z.number().finite().nonnegative(),measuredAt:z.string().datetime({offset:true}),evidence:z.string().nullable().optional()}).strict())}).strict(),
   z.object({state:z.literal('MISSING'),reason:z.string().trim().min(1)}).strict(),
@@ -28,7 +28,7 @@ export async function readMeterBoundarySet(invoke:MeterBoundaryInvoker,organizat
   return result===null?null:setSchema.parse(result);
 }
 export function buildReviseMeterBoundaryArgs(organizationId:string,input:ReviseMeterBoundaryInput){
-  const value=z.object({setId:uuid,expectedRevision:z.number().int().positive(),idempotencyKey:z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/),reason:z.string().trim().min(1),boundary:z.unknown()}).strict().parse(input);
+  const value=z.object({setId:uuid,expectedRevision:z.number().int().positive(),idempotencyKey:z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/),reason:z.string().trim().min(1),boundary:z.unknown().optional()}).strict().parse(input);
   return {p_organization_id:uuid.parse(organizationId),p_set_id:value.setId,p_expected_revision:value.expectedRevision,p_idempotency_key:value.idempotencyKey,p_reason:value.reason,p_payload:buildMeterBoundaryPayload(input.boundary)};
 }
 export async function reviseMeterBoundarySet(invoke:MeterBoundaryInvoker,organizationId:string,input:ReviseMeterBoundaryInput):Promise<ContractMeterBoundarySet>{

@@ -1,7 +1,7 @@
 # Cổ đông, Profit Close V2 và ví cá nhân
 
-> **Reviewed:** 2026-08-27
-> Nguồn hiện hành: `src/components/shareholders/**`, `src/hooks/useShareholderProfit.ts`, `src/hooks/income-expenses/specialized.ts` và migrations `20260720210000`–`20260720223000`.
+> **Reviewed:** 2026-10-21 (mục 5–7 viết lại 2026-11-18 theo luồng tạm ứng + chốt chi theo tháng; 5.2, 5.5, 6, 7 sửa 2026-11-19: chủ Duyệt và Chi ngay trong hộp)
+> Nguồn hiện hành: `src/components/shareholders/**`, `src/hooks/useShareholderProfit.ts`, `src/hooks/income-expenses/specialized.ts`, `src/lib/profitLedger/**`, `src/hooks/profit-ledger/**` và migrations `20260720210000`–`20260720223000`, `20261118041911` (tạm ứng cổ đông + chốt chi lợi nhuận).
 
 ## 1. Phạm vi
 
@@ -9,7 +9,7 @@ Domain này trả lời bốn câu hỏi:
 
 1. Lợi nhuận của từng toà trong tháng là bao nhiêu?
 2. Sau lương điều hành và điều chỉnh có lý do, mỗi cổ đông được chia bao nhiêu?
-3. Đã chi cho cổ đông/quản lý bao nhiêu, còn phải trả bao nhiêu?
+3. Đã chi cho cổ đông/quản lý bao nhiêu; mỗi cổ đông còn bao nhiêu lợi nhuận chưa chi và đang có bao nhiêu tạm ứng?
 4. User tự ghi chép ví cá nhân thế nào mà không lẫn với sổ quỹ doanh nghiệp?
 
 Trang chính là `/reports/finance/profit-distribution` (`ProfitHubPage`). Cổ đông/quản lý được gắn tài khoản chỉ xem phần của mình; người có quyền quản trị thấy các tab Tổng quan, Chốt LN tháng và Cổ đông & tỷ lệ.
@@ -119,6 +119,38 @@ Không cần mở khoá/xoá allocation bằng nhiều DML client như flow cũ.
   `a10_profit_month_lock_requires_no_pending` trên `profit_monthly`, phủ mọi đường đặt `locked_at`).
 - Mở khoá: `profit_unlock_v2` kèm lý do 8–1000 ký tự (lưu `profit_close_runs` + `profit_close_revisions`).
 
+**Khoá theo KỲ + phát sinh sau chốt** (rà 21/10 F06, chủ chốt 22/10/2026 "chặn hẳn", migration
+[20261022172918](../../supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql)):
+- Lợi nhuận tính theo **kỳ** (`fa_accrual_allocations`: phiếu gắn hoá đơn ⇒ tháng hoá đơn; hạng mục có kỳ ⇒
+  các tháng của kỳ; không kỳ ⇒ tháng ngày phiếu), nên ngoài ngày phiếu, trigger còn xét **tháng KQKD theo kỳ**:
+  phiếu (bản cũ đang tính LN = đã duyệt; bản mới đã duyệt hoặc chờ duyệt) có phần KQKD rơi vào tháng đã chốt của
+  toà ⇒ khoá **cả phiếu** như khoá theo ngày phiếu — lập, sửa, xoá, huỷ, **duyệt**, khôi phục đều bị chặn, với mọi
+  người. Cùng các ngoại lệ không đổi tiền ở trên. Hạng mục: trigger AFTER `a02_ie_items_profit_period_lock` (thêm /
+  sửa / xoá dòng có kỳ trong tháng đã chốt). Câu lỗi: `[PROFIT_LOCKED] Tháng MM/YYYY của toà X đã chốt lợi nhuận —
+  không ghi được phiếu có kỳ trong tháng này. Muốn ghi: mở khoá tháng ở tab Chốt LN.` Form phiếu
+  (`postLockFormBlock` trong `src/lib/profitPostLock.ts`) báo đúng câu này trước khi lưu và mờ nút Lưu.
+- **Thu mới nợ cũ** vẫn đi: phiếu theo hoá đơn (tháng KQKD = tháng hoá đơn) không bị cửa kỳ chặn — thu tiền hoá
+  đơn của tháng đã chốt (kèm tiền thối/hoàn trả gắn hoá đơn) và duyệt khoản đó vẫn làm được. Phiếu chờ duyệt có kỳ
+  trong tháng đã chốt (dữ liệu trước khoá kỳ) vẫn huỷ/xoá được.
+- **Chi / Thu phiếu đã duyệt vẫn đi** (chủ chốt 16/11/2026, migration
+  [20261116090142](../../supabase/migrations/20261116090142_chi_phieu_da_duyet_qua_khoa_thang_ln.sql)): cửa chặn
+  chốt chỉ đòi hết phiếu chờ duyệt, nên tháng có thể chốt khi còn phiếu **đã duyệt chưa chi**. Ghi sổ không đổi lợi
+  nhuận tháng (`fa_accrual_allocations` không đọc cột ghi sổ / sổ quỹ), nên trigger miễn đúng hai bước của nút Chi
+  / Thu và tự kiểm delta: (A) đóng dấu ghi sổ `UNPOSTED`/`REVERSED` → `POSTED` của phiếu đã duyệt, chỉ các cột dấu
+  ghi sổ đổi, có token vòng đời V2 của chính phiếu, bút toán trỏ tới là bút toán thật chưa đảo đúng sổ quỹ; (B) scope
+  `ANNOTATE` chỉ **thêm** ảnh chứng từ khi phiếu đã duyệt còn chờ ghi sổ. Duyệt, huỷ duyệt, hoàn tác ghi sổ, huỷ,
+  sửa, gỡ ảnh, sửa ghi chú vẫn bị khoá. Token do mọi writer definer của vòng đời V2 cấp nên (A) mở cho mọi đường
+  definer ghi sổ phiếu đã duyệt, không riêng nút Chi. Khoá **sổ quỹ** không đổi: sổ đã chốt & bàn giao qua **ngày
+  phiếu** thì ghi sổ vẫn bị `[CASHBOOK_CLOSED]`.
+- **Phát sinh sau chốt**: `public.profit_post_lock_vouchers_v1(p_from, p_to, p_building_ids)` (chỉ đọc, DEFINER,
+  quyền `can_access_building`, anon ⇒ 42501) trả toà×tháng đã chốt và các phiếu đã duyệt đóng góp KQKD vào tháng
+  đã chốt (theo `fa_accrual_allocations`) mà **tạo hoặc duyệt sau lúc chốt** — thu tiền hoá đơn tháng đã chốt, hoặc
+  dữ liệu cũ trước khoá kỳ. Báo cáo LN (chế độ theo kỳ) **không cộng** chúng vào tháng đã chốt: bỏ khỏi danh sách
+  thu/chi và tổng (dòng "Của iHome", bộ dò, phần chờ duyệt tính trên tổng mới), hiện chip "Phát sinh sau chốt —
+  chưa cộng vào tháng đã chốt: N khoản · thu X · chi Y" kèm danh sách; thanh kiểm chứng trừ đúng phần này phía
+  engine (không báo LỆCH giả) và chuyển "cần xem lại". Tab Chốt LN gắn nhãn "N khoản phát sinh sau chốt (chưa
+  cộng)". Muốn cộng: mở khoá tháng ở tab Chốt LN rồi chốt lại.
+
 ### 4.4. Đặt lại tháng
 
 Toà đã chốt xen toà chưa chốt KHÔNG còn là trạng thái hỏng — đó chính là thứ chốt-theo-từng-toà tạo ra. Chỉ khi tháng còn snapshot nằm trên toà ảo/đã xoá (`has_out_of_scope_snapshots`) hoặc không thể reclose an toàn thì UI mới dùng **Đặt lại**.
@@ -134,12 +166,55 @@ Tham số `p_target_building_ids` (thêm 27/08/2026) thu hẹp TÁC ĐỘNG về
 
 Nếu snapshot đổi trước lúc reset, server trả conflict. Reset bỏ snapshot hiện tại nhưng lịch sử revision vẫn giữ để kiểm toán.
 
-## 5. Chi lợi nhuận và lương điều hành
+## 5. Chi lợi nhuận, tạm ứng cổ đông và lương điều hành
 
-- `distribute_shareholder_profit_v1` tạo request chi lợi nhuận canonical với idempotency và đi qua approval engine.
-- `manager_salary_payout_v1` làm tương tự cho lương điều hành, nhưng writer hiện yêu cầu operation `shareholder_profit.pay_manager` trong backend trong khi permission catalog/UI chưa expose action này. Nút hiện có thể hiện ra từ tab Tổng quan nhưng request sẽ bị backend từ chối nếu actor chưa được grant trực tiếp; đây là gap authorization cần xử lý riêng.
-- Sau duyệt/post, phiếu chi nằm trên toà ảo `Chung`, gắn `shareholder_id` hoặc `profit_manager_id`, và `business_result_accounting=false` để không trừ ngược KQKD đã dùng làm nguồn chia.
-- Tổng quan tính `Còn lại = allocation đã chốt − phiếu chi hợp lệ đã post/duyệt`.
+Từ 18/11/2026 (migration [20261118041911](../../supabase/migrations/20261118041911_tam_ung_co_dong_va_chot_chi_loi_nhuan.sql)) đây là HAI nghiệp vụ tách nhau trên sổ tổng lợi nhuận cổ đông: **tạm ứng** là của cổ đông được cấp quyền tạm ứng, cộng dồn; **chi lợi nhuận** là chủ chốt theo tháng. Phiếu cũ không sửa.
+
+### 5.1. Hai con số của mỗi cổ đông
+
+Chủ đọc qua `shareholder_profit_positions_v1` (mọi cổ đông, kể cả cổ đông đã xoá còn số); cổ đông tự xem qua `shareholder_profit_my_position_v1` (kèm các lần chốt):
+
+- **Lợi nhuận chưa chi** — phần được chia đã chốt (sau mốc "đã trả đủ") mà chủ chưa chốt chi. Có thể **âm** (vd một tháng đã chốt chi được mở chốt lại); lần chốt chi sau tự trừ lại.
+- **Tạm ứng đang có** — mọi phiếu chi lợi nhuận **đã duyệt** của cổ đông lập sau mốc "đã trả đủ" mà chưa được khấu trừ ở một lần chốt — gồm phiếu Tạm Ứng mới VÀ phiếu chi lập bằng lệnh cũ trước 18/11/2026 (`shareholder_profit_ledger_payout_v1`); phiếu tiền của chính các lần chốt không tính. Luôn ≥ 0. Giảm khi chủ chốt chi (khấu trừ), khi phiếu bị huỷ, khi lương giữ lại để trừ, hoặc khi đặt mốc "đã trả đủ" (phiếu trước mốc không còn tính). Tạm ứng **chờ duyệt** hiện riêng ("chờ duyệt …"), chưa được khấu trừ khi chốt.
+- Bất biến: lợi nhuận chưa chi − tạm ứng đang có − tạm ứng chờ duyệt = số dư ròng của sổ tổng. Lệch ⇒ máy chủ dừng (`PROFIT_LEDGER_POSITION_DRIFT`), giao diện không hiện số.
+- Số đầu trang Tổng quan của chủ cộng đúng các dòng bảng "Sổ tổng theo cổ đông" đang hiện; chưa đọc được số thì hiện "—", không bao giờ hiện 0 thay số chưa biết.
+
+### 5.2. Chi lợi nhuận = chốt đến hết một tháng, không nhập tay số tiền
+
+Quyền `shareholder_profit.distribute`. Hộp "Chi lợi nhuận cổ đông" (nút Chi của từng cổ đông hoặc "Chi lợi nhuận"):
+
+1. Chọn cổ đông và **"Chốt đến hết tháng N"** — mặc định là tháng đủ điều kiện mới nhất do máy chủ trả; chỉ chọn được tháng còn lợi nhuận chưa chi (tháng đã chốt lợi nhuận, sau mốc, không trước lần chốt chi gần nhất).
+2. Máy chủ tính (`shareholder_profit_settlement_preview_v1`): **X** = lợi nhuận chưa chi đến hết N; **khấu trừ tạm ứng** K = min(X, tạm ứng đang có); **thực chi** = X − K. Ba dòng này khoá, không sửa được.
+3. Thực chi > 0 ⇒ chọn sổ quỹ + ngày chi; bên dưới là khối **"Duyệt và Chi"** (từ 19/11/2026 — chủ chốt "gộp vào 1 màn hình luôn Duyệt và Chi có ảnh phía dưới như bình thường", "làm đúng luồng thu chi"), cùng ô ảnh chứng từ với hộp "Duyệt và Chi" của Thu chi. MỘT nút làm hai bước, đúng luồng thu chi:
+   - lệnh chốt lập **phiếu chi chờ duyệt** và lưu xong ở Chờ duyệt (giao dịch riêng);
+   - cùng tài khoản làm tiếp cho đúng phiếu đó: chủ **đang giữ** sổ quỹ đã chọn (như hộp Chi xác định người giữ sổ) và quyền chi phủ cả công ty ⇒ ảnh chứng từ **bắt buộc**, nút **"Duyệt và Chi"**: gắn ảnh lên phiếu (không gắn được — phiếu sổ tổng là hạng mục hạn chế — thì ảnh vào kho chứng từ riêng như hộp Chi) rồi `approve_and_post_income_expense_v2` ⇒ phiếu **đã chi**, tiền ra khỏi sổ. Chủ **không giữ** sổ đó (hoặc quyền chi chỉ theo toà — hộp chưa biết người bấm có phải người nhận) ⇒ không có ô ảnh, nút **"Lập phiếu và duyệt"**: `approve_income_expense_v2` ⇒ phiếu đã duyệt, người giữ sổ bấm **Chi** (kèm ảnh) ở Thu chi. Không có quyền duyệt thu chi ⇒ nút "Lập phiếu chờ duyệt" như trước;
+   - bước sau hỏng ⇒ phiếu nằm ở Chờ duyệt, hộp nói rõ phiếu nào đang chờ và vì sao, nút **"Làm tiếp"** chỉ làm lại bước sau cho đúng phiếu đó (không chốt lại, không lập phiếu thứ hai); máy chủ chặn người nhận tự chi (`PROFIT_LEDGER_PAYEE_SELF_POST`) ⇒ "Làm tiếp" hạ về chỉ Duyệt; chưa rõ kết quả thì không làm tiếp ở hộp mà mở phiếu ở Thu chi đối chiếu. Phiếu cũng xử lý được ở Thu chi / Chờ duyệt như phiếu thường (Chờ duyệt không liệt kê phiếu cho chính người lập — xem bước 6).
+
+   Thông báo theo trạng thái thật: đã duyệt và chi / đã duyệt, chờ người giữ sổ Chi / đã lập, đang chờ duyệt. Thực chi = 0 ⇒ nút "Chốt, không ra tiền" (có bước xác nhận): không lập phiếu, không có bước duyệt / chi, có hiệu lực ngay.
+4. Lệnh chốt `shareholder_profit_settle_v1` gửi kèm đúng hai số đang hiện (`p_expected_recognized`, `p_expected_cash`). Số vừa đổi ⇒ PT409 `PROFIT_LEDGER_SETTLE_CHANGED`, không ghi gì; hộp tải lại xem trước để chủ xem số mới rồi tự bấm lại (không tự gửi lại).
+5. Máy chủ (chốt F1 `app_private.guard_profit_ledger_payout_v1`, nới 19/11/2026) với phiếu sổ tổng **do chủ lập** (`maker_kind = 'OWNER'`: phiếu tiền của lần chốt, phiếu lương điều hành): người có quyền chi của loại chủ thể (`shareholder_profit.distribute` / `shareholder_profit.pay_manager`) **tự duyệt** được phiếu mình lập, **duyệt** được dù mình là người nhận, **Chi** được dù mình là người nhận khi quyền chi đó phủ **cả công ty** (không ngoại lệ super admin) — ở mọi đường V2 (cả màn Chờ duyệt). Hai luật V2 giữ nguyên: phiếu phải lưu ở Chờ duyệt trước rồi mới duyệt ở giao dịch sau; ghi sổ phải có chứng từ FINALIZED. Phiếu tạm ứng (`CUSTODIAN_*`) giữ luật cũ: người duyệt khác người lập và người nhận.
+6. Ở Thu chi, người lập phiếu chủ lập (có quyền chi của loại chủ thể và quyền duyệt thu chi ở toà của phiếu) có nút **Duyệt** (kèm "Duyệt và Chi…", chỉ chi từ đúng sổ lúc lập) ngay trên dòng phiếu — Chờ duyệt luôn loại người lập khỏi danh sách người duyệt. Phiếu chi lợi nhuận cổ đông thì dòng phải đọc được cách lập (E7: chủ lập, không phải phiếu tạm ứng) mới hiện nút. Người nhận / chủ khác vẫn duyệt ở Chờ duyệt (thấy số dư sổ tổng); nút Chi theo trạng thái như cũ.
+
+Hộp nhắc (không chặn) khi còn tạm ứng chờ duyệt (chưa được khấu trừ lần này), và khi cổ đông chưa có mốc "đã trả đủ" lẫn chưa chốt lần nào — lần chốt đầu gom toàn bộ phần được chia từ đầu, nên đặt mốc trước nếu tháng cũ đã trả ngoài app (có nút mở hộp đặt mốc, cả trên điện thoại). Các lần chốt còn hiệu lực liệt kê trong hộp: lần **không có phiếu tiền** huỷ bằng "Huỷ chốt" (`shareholder_profit_settlement_void_v1`, lý do 8–1000 ký tự); lần **có phiếu tiền** thì huỷ / từ chối chính phiếu chi đó — lần chốt tự hết hiệu lực, hai con số tự trở lại.
+
+Web không còn gọi lệnh chi theo số tiền nhập tay (`shareholder_profit_ledger_payout_v1`) và xem trước cũ của nó cho cổ đông.
+
+### 5.3. Tạm ứng của cổ đông
+
+Người được cấp quyền `shareholder_profit.advance_own_cashbook`. Mọi khoản ứng là **tạm ứng**, cộng dồn; ứng vượt lợi nhuận chưa chi chỉ **cảnh báo**, không chặn; mọi phiếu **chờ chủ duyệt** (người duyệt khác người lập và người nhận).
+
+- **Tự ứng** — nút "Chi tạm ứng cho tôi" ở màn tự xem, tab "Tạm ứng LN", và ở Tổng quan của chủ khi chính chủ là cổ đông của công ty đang xem và có quyền này. Chỉ chi từ sổ quỹ mình đang **giữ**; chưa giữ sổ nào ⇒ nhờ người đang giữ sổ lập phiếu Tạm Ứng hộ ở Thu chi.
+- **Lập ở Thu chi** — phiếu CHI tạo mới, chọn hạng mục **"Tạm Ứng"** (chỉ có khi `shareholder_profit_advance_options_v1` báo lập được: sổ tổng chạy thật, người lập đang giữ sổ, có người nhận). Toà khoá về Kho Văn Phòng Chung; "người nhận" là dropdown những cổ đông có quyền tạm ứng (kể cả chính mình); sổ quỹ chỉ còn các sổ người lập đang giữ (máy chủ đã loại sổ ảo); một số tiền. Lưu bằng `shareholder_profit_advance_v1`, không đi lệnh tạo phiếu thường. Không có ở form lô, tạo nhanh, Báo chi nhanh.
+- Người giữ sổ **lập hộ** không thấy số nào của cổ đông: xem trước, kết quả lập và câu lỗi không mang số; khi người đó tự huỷ phiếu chờ duyệt của mình, kết quả huỷ cũng không có số dư sau huỷ (máy chủ trả `balance_after` null cho người không có quyền chi lợi nhuận và không phải người nhận). Người lập (tự ứng hay lập hộ) tự huỷ được phiếu còn chờ duyệt; phiếu đã duyệt / đã chi thì chỉ người có quyền chi lợi nhuận huỷ.
+
+### 5.4. Mốc "đã trả đủ"
+
+`profit_ledger_set_marker_v1` đặt / đè / gỡ mốc "đã trả đủ đến hết tháng X": mọi khoản tới hết X không còn tính vào hai con số. Mốc **không lùi trước tháng đã chốt chi**: cổ đông có lần chốt còn hiệu lực đến hết tháng M thì mốc sớm hơn M bị từ chối (`PROFIT_LEDGER_MARKER_BEFORE_SETTLEMENT`); muốn đặt mốc sớm hơn thì huỷ lần chốt đó trước. Con số "tạm ứng bị xoá" của mốc cộng cả phần tạm ứng đã được khấu trừ ở các lần chốt.
+
+### 5.5. Lương điều hành và hạch toán
+
+- `manager_salary_payout_v1` lập phiếu lương điều hành (quyền `shareholder_profit.pay_manager`); số còn lại đọc từ sổ lương điều hành `profit_manager_ledger_v1`. Sổ tổng chạy thật (CANONICAL) ⇒ hộp "Chi lương điều hành" có cùng khối **"Duyệt và Chi"** như hộp chốt chi lợi nhuận (mục 5.2 bước 3, 5): giữ sổ ⇒ lập phiếu + Duyệt và Chi kèm ảnh chứng từ; không giữ sổ ⇒ lập phiếu + duyệt; bước sau hỏng ⇒ "Làm tiếp". Route khác chỉ lập phiếu chờ duyệt như trước.
+- Phiếu chi lợi nhuận, tạm ứng và lương điều hành nằm trên toà ảo `Chung`, gắn `shareholder_id` hoặc `profit_manager_id`, và `business_result_accounting=false` để không trừ ngược KQKD đã dùng làm nguồn chia.
 
 Các adapter frontend vẫn có fallback coexistence được phân loại cho tới T7 drain; trạng thái 15/15 writer ON nằm ở [authorization/README.md](../authorization/README.md).
 
@@ -150,8 +225,9 @@ Các adapter frontend vẫn có fallback coexistence được phân loại cho t
 | `shareholder_profit.view` | Xem báo cáo/phần được chia trong phạm vi cho phép; cũng là quyền đọc `profit_total_group_peers_v2` (bản đồ toà nào phải chốt cùng toà nào) |
 | `shareholder_profit.lock` | Preview, close và reclose toàn kỳ |
 | `shareholder_profit.unlock` | Xem state và reset/unlock theo guard |
-| `shareholder_profit.distribute` | Lập request chi lợi nhuận |
-| `shareholder_profit.pay_manager` | Backend operation dự kiến để lập request trả lương điều hành; **chưa có trong permission catalog/UI**, không coi là quyền đã cấp được từ màn Phân quyền |
+| `shareholder_profit.distribute` | Chốt chi lợi nhuận cổ đông theo tháng (hộp chốt, không nhập tay số tiền) rồi Duyệt và Chi ngay trong hộp (tự duyệt được phiếu chủ lập, duyệt dù mình là người nhận; Chi khi mình là người nhận thì quyền phải phủ cả công ty), huỷ lần chốt không có phiếu tiền, đặt mốc "đã trả đủ"; xem hai con số của mọi cổ đông |
+| `shareholder_profit.advance_own_cashbook` | Được tạm ứng lợi nhuận: tự ứng từ sổ quỹ mình đang giữ, hoặc nhận phiếu Tạm Ứng do người giữ sổ lập hộ ở Thu chi |
+| `shareholder_profit.pay_manager` | Chi lương điều hành (lương quản lý) từ lợi nhuận; tự duyệt được phiếu lương điều hành mình lập, duyệt dù mình là người nhận; Chi khi mình là người nhận thì quyền phải phủ cả công ty |
 | `shareholder_profit.manage_shareholders` | Quản lý cổ đông, tỷ lệ và cấu hình liên quan |
 
 RPC/RLS kiểm organization và scope; ẩn/hiện tab ở frontend không phải lớp bảo vệ cuối.
@@ -160,10 +236,12 @@ RPC/RLS kiểm organization và scope; ẩn/hiện tab ở frontend không phả
 
 - `ProfitLockTab.tsx`: chọn organization/tháng, **tick từng toà**, preview, điều chỉnh, close/reclose/unlock/reset theo đúng vùng chọn. Tick một toà thuộc nhóm `TOTAL_GROUP` thì cả nhóm được chọn theo (và bỏ tick cũng bỏ cả nhóm) — logic thuần ở `expandTotalGroupSelection` trong `src/lib/profitClose.ts`.
 - `useProfitCloseOrganizations`, `useProfitCloseState`, `useProfitClosePreview`, `useCloseProfitPeriod`, `useResetProfitPeriod`: client của RPC V2.
-- `ProfitOverviewTab.tsx`: tổng allocation, đã chi và còn lại.
+- `ProfitOverviewTab.tsx` / `ProfitOverviewMobile.tsx`: Tổng quan của chủ — bảng / thẻ "Sổ tổng theo cổ đông" (được chia sau mốc, đã chi kèm chờ duyệt, qua lương, lợi nhuận chưa chi, tạm ứng đang có) với nút Sổ / Mốc / Chi; "Chi tạm ứng cho tôi" khi chủ đồng thời là cổ đông có quyền tạm ứng.
 - `ShareConfigTab.tsx`: cổ đông, tỷ lệ và quản lý điều hành.
-- `ShareholderSelfView.tsx`, `ProfitManagerSelfView.tsx`: self-view.
-- `ProfitDistributeDialog.tsx`, `ManagerSalaryPayoutDialog.tsx`: tạo request chi tiền.
+- `ShareholderSelfView.tsx`, `ShareholderAdvanceTab.tsx`, `ProfitManagerSelfView.tsx`: self-view (hai con số, các lần chốt, phiếu của mình) và tab "Tạm ứng LN".
+- `ProfitDistributeDialog.tsx`: hộp chốt chi lợi nhuận theo tháng; `ProfitSelfAdvanceDialog.tsx`: tự tạm ứng; `ProfitLedgerMarkerDialog.tsx`: mốc "đã trả đủ"; `ShareholderAdvanceVoucherPanel.tsx` (form Thu chi): phiếu Tạm Ứng; `ManagerSalaryPayoutDialog.tsx`: lương điều hành.
+- Khối "Duyệt và Chi" của hai hộp chủ chi: `OwnerPayoutPostingSection.tsx` (ô ảnh `PostingEvidenceUpload` dùng chung với hộp Duyệt và Chi của Thu chi), `useOwnerPayoutPosting` (đọc lại phiếu vừa lập, chọn Duyệt và Chi / chỉ Duyệt theo sổ người bấm giữ, gọi đúng hook duyệt của màn Chờ duyệt), `useDeferredPostingEvidence` (ảnh chọn trước khi phiếu được lập: tải lên kho, gắn lên phiếu khi bấm, đường lùi kho chứng từ riêng). Luật nút Thu chi của phiếu sổ tổng ở `src/lib/voucherActionRules.ts`.
+- Số và chữ dùng chung ở `src/lib/profitLedger/positionView.ts` (hai con số, câu nhắc), bộ đọc RPC ở `positionReaders.ts`, hook ở `src/hooks/profit-ledger/`.
 
 ## 8. Kiểm tra khi thay đổi
 
@@ -177,3 +255,18 @@ RPC/RLS kiểm organization và scope; ẩn/hiện tab ở frontend không phả
 8. Nếu migration đụng view, chạy `node scripts/check-view-invoker.mjs`.
 
 Xem hướng dẫn thao tác: [Chia lợi nhuận](../huong-dan-su-dung/03-quan-ly-van-hanh/chia-loi-nhuan/).
+
+## 9. Toà vận hành cho chủ nhà — quyết toán tháng (chủ chốt 21/10/2026)
+
+Toà do chủ nhà sở hữu, công ty vận hành và nhận % lợi nhuận tháng theo thoả thuận riêng từng toà — không thuê lại, không có tiền nhà. Toà loại này **không** quyết toán qua Profit Close V2 hay chia cổ đông ở trên.
+
+- Màn `/reports/finance/quyet-toan-van-hanh` (chủ công ty / super admin, RPC chặn 42501) và link chỉ đọc `/qt/:token` cho chủ nhà (không đăng nhập, thu hồi được, không lộ id nội bộ).
+- Công thức một nơi: `app_private.landlord_settlement_compute_v1` ([migration](../../supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql)). Phiếu đã duyệt; dòng lãi lỗ (đúng vị ngữ KQKD canonical: `business_result_accounting IS DISTINCT FROM false` và (`IS TRUE` hoặc `accounting_class = 'PNL'`)) chia tháng **theo kỳ** ghi trên hạng mục — chủ chốt 22/10 — bằng `app_private.landlord_kqkd_lines_v1`, bản chép đúng luật xếp tháng của `fa_accrual_allocations` (hoá đơn ⇒ tháng hoá đơn; kỳ nhiều tháng ⇒ chia đều; không kỳ ⇒ ngày phiếu) nhưng không xét quyền người gọi (link chủ nhà) và có cả phiếu chờ duyệt; test PGlite so từng đồng với định nghĩa sống của `fa_accrual_allocations`. Lợi nhuận quyết toán vì thế bằng đúng lợi nhuận toà trên Báo cáo LN (phần đã duyệt). Cọc / tiền khách trả thừa / dòng không tính / tiền thối là dòng tiền thật ⇒ theo **ngày phiếu**. Phiếu ở sổ quỹ thuộc danh sách sổ chủ nhà ⇒ chủ nhà giữ; mọi sổ khác ⇒ quản lý giữ.
+- Phần quản lý = `round(LN × %)` khi LN > 0, ngược lại 0đ. Chủ nhà trả quản lý = phần quản lý + quản lý chi − quản lý thu + cọc/tiền khách trả thừa/tiền thối đang nằm ở sổ chủ nhà (âm ⇒ quản lý trả lại chủ nhà). Làm tròn **không** tính (là phần khách trả thiếu được bỏ qua). Cọc ở sổ quản lý chỉ hiển thị.
+- % quản lý và sổ chủ nhà theo **phiên bản tháng** (`app_private.landlord_operation_terms`, tháng M dùng `valid_from` lớn nhất ≤ M). Sửa "từ tháng X" (mặc định ngay sau tháng chốt gần nhất): so với điều khoản đang áp ở X, **trường nào đổi thì ghi trường đó** cho X và mọi mốc sau X — đổi % không kéo theo sổ của mốc khác và ngược lại; tháng trước X giữ nguyên; X không được là tháng đã chốt. Không dời "áp dụng từ tháng" ra sau tháng đã chốt (55000). Sổ chủ nhà thêm mới phải là sổ quỹ thật, chưa xoá (sổ đang có mà sau bị xoá vẫn giữ được).
+- Thanh lý tách theo `system_source` (`termination.revenue`, `forfeit_revenue`, `extra_receipt`, `refund`, `offset`, `rent_refund_*`); mọi dòng thuộc đúng một nhóm (tính KQKD / cọc / không tính) — nhóm "không tính" vẫn liệt kê kèm lý do.
+- Chốt tháng: chỉ tháng đã qua, không còn phiếu chờ duyệt, không có phiếu đã duyệt mà bút toán sổ quỹ bị đảo hoặc chưa ghi sổ (UNPOSTED), không có phiếu dùng sổ chủ nhà của toà vận hành khác, không có phiếu của toà khác ghi vào sổ chủ nhà của toà này, tháng đầu tiên không còn phiếu chờ duyệt ghi ngày trước tháng áp dụng, số dư đầu kỳ đã được đánh dấu "đã đối chiếu với chủ nhà" (khi số dư hoặc cọc trước kỳ ở sổ chủ nhà khác 0). Dấu đối chiếu gắn với **cơ sở** lúc xác nhận (tháng áp dụng + cọc trước kỳ): dời tháng hay cọc trước kỳ đổi (phiếu nhập muộn, đổi sổ) thì hết hiệu lực; xác nhận mới chỉ được nhận khi cơ sở không đổi ngay trong lần lưu đó và đúng số cọc trước kỳ màn đã hiện (`p_opening_seen_pre_start`) — không ai "xác nhận" một con số chưa thấy. CAS theo `source_hash` (chỉ dòng KQKD và cọc ở sổ chủ nhà — duyệt cọc giữ chỗ ở sổ quản lý không làm tháng "đã đổi"), append-only. Chốt **không khoá phiếu**: phiếu đổi sau khi chốt ⇒ màn báo "đổi sau khi chốt"; mở chốt (lý do ≥ 8 ký tự) rồi chốt lại.
+- Màn quản trị (không có trên link chủ nhà) kèm: khối **đối chiếu với Báo cáo LN** (`fa_accrual_allocations`) — cùng luật kỳ nên khớp từng đồng; lệch chỉ khi tháng đã chốt mà phiếu đổi sau đó, hoặc luật kỳ của `fa_accrual_allocations` đổi mà bản chép chưa đổi (lỗi kỹ thuật, màn báo đỏ); cảnh báo khoản chi cố định chưa có phiếu (theo Phí cố định theo toà, điện/nước mặc định, bỏ tiền nhà; hạng mục đã gắn khoá là nguồn đúng), phiếu ở toà khác/toà ảo có nhắc tên toà (bỏ dấu), phiếu toà khác ghi vào sổ chủ nhà, phiếu chờ duyệt trước tháng áp dụng, khoản lãi lỗ có **kỳ trước tháng áp dụng** mà phiếu lập sau (không tính, không chặn chốt). Dòng lãi lỗ mà hạng mục không còn tồn tại (KQKD bỏ qua) hiện ở "không tính" kèm lý do. Hộp cài đặt đánh dấu sổ "dùng chung với N toà khác" và không gợi ý sổ dùng chung.
+- Link chủ nhà: không lộ id, tên sổ chỉ còn "Sổ chủ nhà" / "Sổ quản lý" / "Cấn trừ cọc (nội bộ)", tên phiếu có hạng mục hạn chế bị che; ghi chú chốt và ghi chú thanh toán chủ nhà xem được. Toà bị xoá mềm / chuyển toà ảo ⇒ link chết. Huỷ thanh toán / thu hồi link: id/token không có và không có quyền trả cùng lỗi 42501.
+- Thanh toán quyết toán giữa hai bên ghi ở `app_private.landlord_settlement_payments` (không sinh phiếu thu/chi, huỷ phải có lý do). Còn lại = số dư đầu kỳ + Σ quyết toán tháng đã chốt − chủ nhà đã trả + quản lý đã trả; chưa chốt tháng nào thì màn ghi "Chưa chốt tháng nào" thay vì 0 đ.
+- Báo cáo Lợi Nhuận giữ **tổng lợi nhuận** như cũ và thêm **một dòng "Lợi nhuận của iHome"** = tổng − phần chủ nhà của các toà vận hành trong phạm vi đang xem (chủ chốt 22/10: phần chủ nhà vẫn tính, không hiện thành dòng riêng). Phần chủ nhà lấy từ `public.landlord_ihome_profit_v1` theo toà × tháng: tháng đã chốt lấy số đã chốt, tháng mở là số tạm tính; chỉ toà người gọi xem được (`can_access_building`). Chốt LN tháng (Profit Close) **chưa đổi**: vẫn chốt lợi nhuận toàn toà.

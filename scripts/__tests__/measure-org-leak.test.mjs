@@ -9,7 +9,40 @@ import {
   xepNhomTheoSoDo,
   MA_THOAT_CHOT_HONG,
   nhanVaiTrenLog,
+  sqlDoBangKhongCotOrg,
+  sqlDoMotVai,
 } from "../measure-org-leak.mjs";
+
+// Đo 05/11/2026 trên production ngay sau khi áp 20261104173640 (thu PUBLIC EXECUTE): gate --live đỏ
+// org_leak_query_unsettled, câu #4 ra 42501 permission denied for function _quet. Mặc định hàm của
+// postgres không còn cấp PUBLIC — kể cả hàm tạm — nên hàm tạm gọi dưới authenticated phải được GRANT
+// tường minh, trong cùng transaction, TRƯỚC khi hạ vai (sau đó không còn quyền cấp).
+describe("hàm tạm gọi dưới authenticated — GRANT tường minh trước khi hạ vai", () => {
+  const kiemCapHamTam = (sql) => {
+    const haVai = sql.indexOf("SET LOCAL ROLE authenticated");
+    expect(haVai).toBeGreaterThan(0);
+    const ten = [...sql.matchAll(/CREATE FUNCTION (pg_temp\.\w+)\(/g)].map((m) => m[1]);
+    expect(ten.length).toBeGreaterThan(0);
+    for (const t of ten) {
+      const cap = sql.indexOf(`GRANT EXECUTE ON FUNCTION ${t}(`);
+      expect(cap, `${t} phải được GRANT`).toBeGreaterThan(sql.indexOf(`CREATE FUNCTION ${t}(`));
+      expect(cap, `${t} phải được GRANT trước khi hạ vai`).toBeLessThan(haVai);
+      expect(sql.slice(cap, sql.indexOf(";", cap))).toMatch(/ TO authenticated$/);
+    }
+  };
+
+  it("quét một vai: _quet(uuid) cấp cho authenticated", () => {
+    const sql = sqlDoMotVai("00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-0000000000aa", ["bang_a"]);
+    kiemCapHamTam(sql);
+    expect(sql).toContain("GRANT EXECUTE ON FUNCTION pg_temp._quet(uuid) TO authenticated;");
+  });
+
+  it("quét bảng không cột organization_id: _quet0() cấp cho authenticated", () => {
+    const sql = sqlDoBangKhongCotOrg(["bang_b"]);
+    kiemCapHamTam(sql);
+    expect(sql).toContain("GRANT EXECUTE ON FUNCTION pg_temp._quet0() TO authenticated;");
+  });
+});
 
 // Repo public: log CI ai cũng đọc, nên email/tên đăng nhập tài khoản thật không
 // được in ở đó; local vẫn in để người chạy biết đang đo vai nào.

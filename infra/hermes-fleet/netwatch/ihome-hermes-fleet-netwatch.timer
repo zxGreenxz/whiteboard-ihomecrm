@@ -1,0 +1,11 @@
+[Unit]
+Description=iHome Hermes - canh mang moi sidecar moi 2 phut
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=ihome-hermes-fleet-netwatch.service
+
+[Install]
+WantedBy=timers.target

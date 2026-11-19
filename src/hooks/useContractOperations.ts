@@ -45,7 +45,7 @@ export const useRenewContract = () => {
       return workflow.current.run(params.contractId,"gia hạn hợp đồng",async progress=>{
         const {data,error}=await supabase.rpc("renew_contract_with_notice_v1",{...args,p_request_id:progress.requestKey});
         if(error)throw error;
-        const parsedId=z.string().uuid().safeParse(data);
+        const parsedId=z.string().guid().safeParse(data);
         if(parsedId.success)progress.completed.push({id:parsedId.data,label:`Hợp đồng cần đối chiếu: ${parsedId.data}`});
         if(!parsedId.success||parsedId.data!==params.contractId)throw new TypeError("Unconfirmed contract operation ID");
         const receipt=await readContractNoticeOperationReceipt(selectedOrganizationId,progress.requestKey,params,'RENEW');
@@ -87,7 +87,7 @@ export const useTransferRoom = () => {
       return workflow.current.run(params.contractId,"chuyển phòng",async progress=>{
         const {data,error}=await supabase.rpc("transfer_room_with_notice_v1",{...args,p_request_id:progress.requestKey});
         if(error)throw error;
-        const parsedId=z.string().uuid().safeParse(data);
+        const parsedId=z.string().guid().safeParse(data);
         if(parsedId.success)progress.completed.push({id:parsedId.data,label:`Hợp đồng cần đối chiếu: ${parsedId.data}`});
         if(!parsedId.success||parsedId.data!==params.contractId)throw new TypeError("Unconfirmed contract operation ID");
         const receipt=await readContractNoticeOperationReceipt(selectedOrganizationId,progress.requestKey,params,'TRANSFER_ROOM');

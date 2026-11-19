@@ -13,7 +13,7 @@ export const linkKeyFormSchema = z
   })
   .superRefine((values, ctx) => {
     if (values.mode === "customer") {
-      if (!z.string().uuid().safeParse(values.customerId).success) {
+      if (!z.string().guid().safeParse(values.customerId).success) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customerId"], message: "Chọn khách đang thuê." });
       }
       return;
@@ -60,7 +60,7 @@ const integerIn = (min: number, max: number, message: string) =>
 export const isDeviceKind = (value: string): value is DoorDeviceKind => (DEVICE_KINDS as readonly string[]).includes(value);
 
 export const deviceFormSchema = z.object({
-  buildingId: z.string().uuid({ message: "Chọn tòa." }),
+  buildingId: z.string().guid({ message: "Chọn tòa." }),
   displayName: z
     .string()
     .refine((value) => value.trim().length > 0, { message: "Nhập tên hiển thị." })

@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, FileSpreadsheet, Zap, Droplet, ChevronRight, X, Gauge } from "lucide-react";
+import { ArrowLeft, Plus, FileSpreadsheet, Zap, Droplet, ChevronRight, X, Gauge, Camera } from "lucide-react";
 import "@/styles/mobileApp.css";
 import "@/styles/financeMobile.css";
 import "@/styles/estateMobile.css";
@@ -15,6 +15,7 @@ import type { BuildingWithRelations } from "@/types/building";
 import { InlineSkeleton, LoadingState } from "@/components/loading/LoadingState";
 
 const currentMonth = new Date().toISOString().slice(0, 7);
+const MeterCaptureDialog = lazy(() => import('@/components/meter-readings/capture/MeterCaptureDialog'));
 
 const compactNum = (n: number | null | undefined) => {
   if (!n) return "0";
@@ -61,6 +62,8 @@ export default function MeterReadingsMobilePage() {
   const [fabOpen, setFabOpen] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isCaptureOpen, setIsCaptureOpen] = useState(false);
+  const [hasCaptureOpened, setHasCaptureOpened] = useState(false);
   const pagination = usePagination(30);
 
   const buildingsQuery = useBuildings();
@@ -121,6 +124,7 @@ export default function MeterReadingsMobilePage() {
           </div>
 
           <div className="mbody">
+            <button className="loadmore" onClick={() => { setHasCaptureOpened(true); setIsCaptureOpen(true); }}><Camera className="inline h-4 w-4 mr-2" />Chụp đồng hồ / quản lý tem QR</button>
             <div className="cm-filterbar">
               <select className="cm-select" aria-label="Tháng" value={filters.month} onChange={(e) => patch({ month: e.target.value })}>
                 {months.map((m) => (
@@ -271,6 +275,7 @@ export default function MeterReadingsMobilePage() {
       </div>
 
       {/* Thêm chỉ số / Import — dùng lại dialog desktop */}
+      {hasCaptureOpened && <Suspense fallback={null}><MeterCaptureDialog open={isCaptureOpen} onOpenChange={setIsCaptureOpen} month={filters.month} /></Suspense>}
       <MeterReadingForm open={isFormOpen} onOpenChange={setIsFormOpen} reading={null} />
       <MeterReadingImportDialog open={isImportOpen} onOpenChange={setIsImportOpen} />
     </div>

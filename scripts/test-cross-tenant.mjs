@@ -869,6 +869,14 @@ export const TENANT_DATA_CASE_IDS = Object.freeze([
   "salary.cross_organization_money_denied",
   "salary.cross_organization_nchuan_denied",
   "salary.cross_organization_bulk_empty",
+  "staff_day.cross_organization_summary_denied",
+  "staff_day.cross_organization_route_denied",
+  "staff_day.cross_organization_journey_denied",
+  "staff_day.cross_organization_calendar_denied",
+  "staff_day.team_other_organization_denied",
+  "staff_period.report_other_organization_denied",
+  "gps_checkin.cross_organization_slots_denied",
+  "gps_checkin.settings_other_organization_denied",
   "salary.config_not_borrowed_from_production",
   "salary_attendance_day.production_rows_invisible",
   "salary_streak_state.production_rows_invisible",
@@ -1047,6 +1055,49 @@ SELECT pg_temp._td_expect_true(
   'salary.cross_organization_bulk_empty',
   format('SELECT public.v5_month_money_bulk(ARRAY[%L]::uuid[], %L::date) = ''{}''::jsonb',
          fixture.prod_salary_user_id, fixture.prod_salary_month)
+) FROM _td_fixture fixture;
+
+-- Màn «xem theo người» và điểm danh GPS: chủ công ty DEMO truyền UUID người của công ty thật,
+-- hoặc truyền thẳng organization_id của công ty thật, đều phải bị chặn ở thân hàm.
+SELECT pg_temp._td_expect_42501(
+  'staff_day.cross_organization_summary_denied',
+  format('SELECT public.staff_day_summary_v1(%L::uuid)', fixture.prod_salary_user_id)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_42501(
+  'staff_day.cross_organization_route_denied',
+  format('SELECT public.staff_day_route_v1(%L::uuid)', fixture.prod_salary_user_id)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_42501(
+  'staff_day.cross_organization_journey_denied',
+  format('SELECT public.staff_day_journey_v1(%L::uuid, %L::date)', fixture.prod_salary_user_id, fixture.prod_salary_month)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_42501(
+  'staff_day.cross_organization_calendar_denied',
+  format('SELECT public.staff_day_calendar_v1(%L::uuid, %L::date)', fixture.prod_salary_user_id, fixture.prod_salary_month)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_42501(
+  'staff_day.team_other_organization_denied',
+  format('SELECT public.staff_day_team_v1(NULL::date, %L::uuid)', fixture.prod_organization_id)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_42501(
+  'staff_period.report_other_organization_denied',
+  format('SELECT public.staff_period_report_v1(%L::date, (%L::date + 6), %L::uuid)',
+         fixture.prod_salary_month, fixture.prod_salary_month, fixture.prod_organization_id)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_42501(
+  'gps_checkin.cross_organization_slots_denied',
+  format('SELECT public.gps_checkin_slots_v1(%L::uuid, %L::date)', fixture.prod_salary_user_id, fixture.prod_salary_month)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_42501(
+  'gps_checkin.settings_other_organization_denied',
+  format('SELECT public.gps_checkin_settings_get_v1(%L::uuid)', fixture.prod_organization_id)
 ) FROM _td_fixture fixture;
 
 -- Bộ luật lương của org thật không được chảy sang tổ chức khác. So theo khối

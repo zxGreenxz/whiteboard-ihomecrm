@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
-const pageSchema=z.object({items:z.array(z.object({id:z.string().uuid(),contract_id:z.string().uuid(),
+const pageSchema=z.object({items:z.array(z.object({id:z.string().guid(),contract_id:z.string().guid(),
   contract_number:z.string().nullable(),building_name:z.string(),room_name:z.string(),effective_on:z.string(),
   state:z.enum(['MISSING','REVIEW']),
   exit_state:z.enum(['PENDING','FINALIZED']).nullable().optional(),

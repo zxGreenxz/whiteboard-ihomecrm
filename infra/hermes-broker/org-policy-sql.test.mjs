@@ -5,6 +5,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { splitSqlStatements } from '../../scripts/network-center-function-bodies.mjs';
 const root=new URL('../../',import.meta.url);
 const foundation=readFileSync(new URL('supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql',root),'utf8');
+// Thân sống của hermes_member_v1 (20261104231450): người nhiều công ty được nhận ở công ty mình là thành viên ACTIVE.
+const memberSource=readFileSync(new URL('supabase/migrations/20261104231450_hermes_member_nhieu_cong_ty_v1.sql',root),'utf8');
 const setter=readFileSync(new URL('supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql',root),'utf8');
 const candidate=readFileSync(new URL('supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql',root),'utf8');
 function body(source,name){const result=splitSqlStatements(source).map(value=>value.replace(/--[^\n]*/g,'').trim()).find(value=>value.startsWith('CREATE OR REPLACE FUNCTION '+name+'('));assert(result,name);return result;}
@@ -46,7 +48,7 @@ test('actual policy getter and existing policy writer on synthetic CRM tables',a
     INSERT INTO app_private.hermes_capabilities VALUES('assistant.context.read','read',true),('rooms.view','read',true),('future.read','read',true),('future.write','action',true);
     INSERT INTO app_private.hermes_org_policies VALUES('${ORG}',false,2,ARRAY['assistant.context.read','future.read'],ARRAY['future.write'],ARRAY['${ROOM_SCOPE}'::uuid,'${CASH_SCOPE}'],'${USER}',clock_timestamp());
   `);
-  for(const name of ['app_private.hermes_member_v1','app_private.hermes_validate_limits_v1'])await db.exec(body(foundation,name));
+  await db.exec(body(memberSource,'app_private.hermes_member_v1'));await db.exec(body(foundation,'app_private.hermes_validate_limits_v1'));
   await db.exec(body(setter,'public.hermes_set_org_policy_v1'));
   await db.exec('REVOKE ALL ON FUNCTION public.hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[]) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor; GRANT EXECUTE ON FUNCTION public.hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[]) TO authenticated;');
   await db.exec(candidate);
@@ -83,9 +85,15 @@ test('actual policy getter and existing policy writer on synthetic CRM tables',a
     ['revoked member','UPDATE organization_memberships SET revoked_at=clock_timestamp()'],
     ['expired member',"UPDATE organization_memberships SET valid_to=clock_timestamp()-interval '1 second'"],
     ['inactive org',"UPDATE organizations SET status='INACTIVE'"],
-    ['offboarded actor','UPDATE app_private.fixture SET offboarded=true'],
-    ['ordinary multi-org',`INSERT INTO organization_memberships(id,user_id,organization_id,status) VALUES('${OTHER}','${USER}','${OTHER}','ACTIVE')`]
+    ['offboarded actor','UPDATE app_private.fixture SET offboarded=true']
   ])await scenario(name+' cannot read admin policy',async()=>{await db.exec(sql);await assert.rejects(call(),code('42501'));});
+  await scenario('ordinary multi-org admin reads only the requested organization policy and scopes',async()=>{
+    await db.exec(`INSERT INTO organization_memberships(id,user_id,organization_id,status) VALUES('${OTHER}','${USER}','${OTHER}','ACTIVE')`);
+    const own=await call();assert.equal(own.organizationId,ORG);assert.equal(own.isSuperadmin,false);assert.equal(own.policy.version,2);
+    assert.deepEqual(own.choices.scopes.map(s=>s.scopeId),[ORG_SCOPE,ROOM_SCOPE,AREA_SCOPE]);assert(!JSON.stringify(own).includes('PRIVATE FOREIGN LABEL'));
+    const other=await call({org:OTHER});assert.equal(other.organizationId,OTHER);assert.equal(other.policy.version,0);assert.deepEqual(other.policy.scopeIds,[]);
+    assert(other.choices.scopes.every(s=>[FOREIGN_SCOPE,FOREIGN_ORG_SCOPE].includes(s.scopeId)));assert(!JSON.stringify(other).includes('Nhà A'));
+  });
   await scenario('missing actor or foreign requested org denied',async()=>{await assert.rejects(call({actor:''}),code('42501'));await assert.rejects(call({org:OTHER}),code('42501'));});
   await scenario('superadmin still requests an explicit member organization and sees no other org policy',async()=>{
     await db.exec(`INSERT INTO super_admins VALUES('${USER}');INSERT INTO organization_memberships(id,user_id,organization_id,status) VALUES('${OTHER}','${USER}','${OTHER}','ACTIVE')`);

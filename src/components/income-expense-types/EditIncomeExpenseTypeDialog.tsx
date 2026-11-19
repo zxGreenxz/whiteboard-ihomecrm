@@ -1,7 +1,7 @@
 import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
 import {focusFirstError} from '@/lib/formErrors';
 import { useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -82,7 +82,7 @@ const EditIncomeExpenseTypeDialog = ({
   const canManageRestricted = canUse(perms, 'income_expenses', 'restricted_view');
 
   const form = useForm<IncomeExpenseTypeFormValues>({
-    resolver: zodResolver(incomeExpenseTypeFormSchema),
+    resolver: zodResolver(incomeExpenseTypeFormSchema) as Resolver<IncomeExpenseTypeFormValues>,
     defaultValues: {
       name: '',
       type: 'expense',

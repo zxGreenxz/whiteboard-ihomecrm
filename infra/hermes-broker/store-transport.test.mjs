@@ -37,6 +37,29 @@ test('renewal is one fixed private write and a lost response cannot be reported 
   assert.equal(lost.calls.length, 2); assert.deepEqual(lost.releases, [true]);
 });
 
+test('recovery is one fixed private write of the executor scope; a lost response is unknown and the learning scope cannot call it', async () => {
+  const f = setup(), payload = { tokenDigest: 'a'.repeat(64) };
+  await f.transport.call('recoverConnection', payload, f);
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls[1].text, 'SELECT app_private.hermes_store_recover_connection_v1($1::jsonb) AS result');
+  assert.equal(f.calls[1].queryMode, 'extended'); assert.deepEqual(f.calls[1].values, [JSON.stringify(payload)]);
+  // It may revive a lapsed lease, so it is a write: a lost response never reads as "nothing happened".
+  const lost = setup({ query: async () => { throw new Error('private'); } });
+  await assert.rejects(lost.transport.call('recoverConnection', payload, lost), code('store_outcome_unknown'));
+  assert.equal(lost.calls.length, 2); assert.deepEqual(lost.releases, [true]);
+  for (const [sqlCode, expected] of [['42501', 'store_denied'], ['40001', 'store_conflict'], ['22023', 'store_rejected']]) {
+    const denied = setup({ query: () => { throw Object.assign(new Error('private denial'), { code: sqlCode, severity: 'ERROR' }); } });
+    await assert.rejects(denied.transport.call('recoverConnection', payload, denied), code(expected));
+  }
+  const learning = setup({ scope: 'learning' });
+  await assert.rejects(learning.transport.call('recoverConnection', payload, learning), code('invalid_store_request'));
+  assert.equal(learning.calls.length, 0);
+  for (const name of ['app_private.hermes_store_recover_connection_v1', 'hermes_store_recover_connection_v1', 'recover_connection']) {
+    await assert.rejects(f.transport.call(name, payload, f), code('invalid_store_request'));
+  }
+  assert.equal(f.calls.length, 2);
+});
+
 test('private command operations map only to fixed executor functions and every lost ACK is a write outcome unknown', async t => {
   for (const [operation, suffix] of [['claimPrivateCommand', 'claim_private_command'],
     ['dispatchPrivateCommand', 'dispatch_private_command'], ['finishPrivateCommand', 'finish_private_command'],
@@ -232,4 +255,27 @@ test('Zalo queue uses fixed read/ACK functions and only ACK uncertainty is a wri
     const lost=setup({query:()=>{throw Error('PRIVATE');}});
     await assert.rejects(lost.transport.call(op,{},lost),code(expected));
   }
+});
+
+test('học có kiểm duyệt: phạm vi learning chỉ gọi đúng hàm nạp, kiểm vai riêng; kho bền connector không gọi được hàm nạp', async () => {
+  const f = setup({ scope: 'learning' });
+  assert.deepEqual(await f.transport.call('ingestLearningProposals', { proposals: [] }, f), { status: 'ok' });
+  assert.match(f.calls[0].text, /g\.rolname = 'hermes_learning_ingest'\s+AND pg_catalog\.pg_has_role\(current_user, g\.oid, 'USAGE'\)\) AS scoped/);
+  assert.match(f.calls[0].text, /'supabase_admin','hermes_store_executor'\)/);
+  assert.doesNotMatch(f.calls[0].text, /pg_has_role\(current_user, 'hermes_store_executor', 'MEMBER'\) AS scoped/);
+  assert.equal(f.calls[1].text, 'SELECT app_private.hermes_store_learning_ingest_v1($1::jsonb) AS result');
+  for (const operation of ['activate', 'readConnection', 'claimPrivateCommand', 'pruneWorkMemories']) {
+    await assert.rejects(f.transport.call(operation, {}, f), code('invalid_store_request'));
+  }
+  assert.equal(f.calls.length, 2);
+  const executor = setup();
+  await assert.rejects(executor.transport.call('ingestLearningProposals', {}, executor), code('invalid_store_request'));
+  assert.equal(executor.calls.length, 0);
+  // Login nạp còn thuộc kho bền connector (privileged_member) hoặc không thuộc vai nạp (scoped=false) ⇒ từ chối trước khi gọi hàm.
+  for (const delta of [{ scoped: false }, { privileged_member: true }, { role: 'hermes_store_executor' }]) {
+    const refused = setup({ scope: 'learning', actor: { ...principal(), ...delta } });
+    await assert.rejects(refused.transport.call('ingestLearningProposals', {}, refused), code('store_principal_refused'));
+    assert.equal(refused.calls.length, 1);
+  }
+  for (const scope of ['', 'Learning', 'constructor', 'toString', null]) assert.throws(() => setup({ scope }));
 });

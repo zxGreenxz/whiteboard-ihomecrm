@@ -404,6 +404,28 @@ AS $fn$
   )
 $fn$;
 
+-- The camera forward migration uses the platform building-scope predicate.
+-- This proof models active membership and excludes deleted buildings, just as
+-- its can_do_on_building shim above; camera authorization has its own proof.
+CREATE FUNCTION public.can_access_building(_building_id uuid)
+RETURNS boolean LANGUAGE sql STABLE
+SET search_path TO 'pg_catalog', 'public'
+AS $fn$
+  SELECT public.can_do_on_building('network_center', 'view', _building_id)
+$fn$;
+
+CREATE TABLE public.super_admins (user_id uuid PRIMARY KEY);
+CREATE FUNCTION public.is_super_admin() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'pg_catalog'
+AS $fn$
+  SELECT EXISTS (SELECT FROM public.super_admins WHERE user_id = auth.uid())
+$fn$;
+CREATE FUNCTION public.sandbox_org_ids() RETURNS uuid[]
+LANGUAGE sql STABLE SET search_path TO 'pg_catalog'
+AS $fn$
+  SELECT ARRAY['cccc0000-0000-4000-8000-000000000001'::uuid]
+$fn$;
+
 CREATE TABLE public.network_devices (
   id uuid PRIMARY KEY,
   organization_id uuid NOT NULL,

@@ -11,6 +11,8 @@ export const ASSISTANT2 = u(101), SESSION2 = u(102), CONNECTION2 = u(103), OTHER
 export const binding2 = { connectionId: CONNECTION2, tokenDigest: 'c'.repeat(64), expectedEpoch: 1, expectedPolicyVersion: 1,
   expectedMembershipId: ASSIGNEE, expectedAuthorizationVersion: 1, expectedSessionRevision: 1 };
 export const followPath = 'supabase/migrations/20261015110000_hermes_task_follow_v1.sql';
+// Known-gap hermes-pham-vi-toa-chua-giao-web mục (3) (Công việc Mốc 4): standing grant còn đòi buildings.view ở toà của việc.
+export const followBuildingPath = 'supabase/migrations/20261022180351_hermes_task_follow_building_v1.sql';
 const source = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const policy = (src, name) => src.match(new RegExp(`(?:CREATE|ALTER) POLICY "?${name}"? ON (?:public\\.)?\\w+[\\s\\S]*?;`, 'i'))[0];
 
@@ -20,7 +22,7 @@ const policy = (src, name) => src.match(new RegExp(`(?:CREATE|ALTER) POLICY "?${
  * authorize/scope helpers is a per-user permission table port. Notifications,
  * notify gate, Vault JWT and pg_net are synthetic ports. */
 export async function setupFollow(t, { sql = readFileSync(process.env.HERMES_TASK_FOLLOW_SQL ?? followPath, 'utf8'), fixes = reviewFixesSql(),
-  retry = fixes === null ? null : notifyRetryDigestSql() } = {}) {
+  retry = fixes === null ? null : notifyRetryDigestSql(), building = retry === null ? null : readFileSync(followBuildingPath, 'utf8') } = {}) {
   const base = await taskSetup(t);
   const { db } = base;
   await db.exec(`
@@ -28,7 +30,8 @@ export async function setupFollow(t, { sql = readFileSync(process.env.HERMES_TAS
     INSERT INTO public.fixture_perm(user_id,permission,building_id) VALUES
       ('${USER}','tasks.view','${BUILDING}'),('${USER}','tasks.create','${BUILDING}'),('${USER}','tasks.edit','${BUILDING}'),
       ('${USER}','tasks.delete','${BUILDING}'),('${USER}','users.view',null),
-      ('${ASSIGNEE}','tasks.view','${BUILDING}'),('${ASSIGNEE}','tasks.create','${BUILDING}'),('${ASSIGNEE}','tasks.edit','${BUILDING}');
+      ('${ASSIGNEE}','tasks.view','${BUILDING}'),('${ASSIGNEE}','tasks.create','${BUILDING}'),('${ASSIGNEE}','tasks.edit','${BUILDING}'),
+      ('${USER}','buildings.view','${BUILDING}'),('${ASSIGNEE}','buildings.view','${BUILDING}');
     CREATE OR REPLACE FUNCTION app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)
       RETURNS TABLE(allowed boolean,authorization_version bigint,nearest_deadline timestamptz) LANGUAGE sql AS $$
       SELECT allowed AND $2='${ORG}'::uuid AND EXISTS(SELECT 1 FROM public.fixture_perm p WHERE p.user_id=$1 AND p.permission=$3
@@ -86,6 +89,8 @@ export async function setupFollow(t, { sql = readFileSync(process.env.HERMES_TAS
   // retry:null stops at the review fixes.
   if (fixes !== null) await applyReviewFixes(db, fixes);
   if (retry !== null) await applyNotifyRetryDigest(db, retry);
+  // building:null dừng ở bản retry (grant chưa kiểm buildings.view).
+  if (building !== null) { await db.exec(building); await db.exec(building); }
   const installed = (await db.query("SELECT bool_or(enabled) enabled,count(*)::int n FROM app_private.hermes_capabilities WHERE capability IN ('tasks.edit','tasks.delete')")).rows[0];
   if (installed.n !== 2 || installed.enabled !== false) throw new Error('task follow capabilities must install disabled');
   await db.exec("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('tasks.edit','tasks.delete')");

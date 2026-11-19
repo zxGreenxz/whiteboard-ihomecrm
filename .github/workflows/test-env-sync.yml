@@ -17,7 +17,7 @@ concurrency:
 jobs:
   sync:
     if: github.ref == 'refs/heads/main' && github.repository == 'zxGreenxz/whiteboard-ihomecrm'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Từ runner GitHub (Mỹ) tới Supabase Singapore mỗi câu lệnh mất một vòng ~200 ms: đo
     # 23/09 lượt đồng bộ mất 45–60 phút (tại máy ở VN: ~10 phút). Chừa đủ để không bị cắt
     # giữa chừng — cắt ngang để TEST dở dang tới lượt sau.

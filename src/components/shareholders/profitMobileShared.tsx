@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-// UI + định dạng dùng chung cho 2 tab MOBILE của trang Báo cáo Lợi Nhuận
-// (ProfitOverviewMobile + ShareholderSelfMobile) — import từ thiết kế
+// UI + định dạng dùng chung cho các tab MOBILE của trang Báo cáo Lợi Nhuận
+// (ProfitOverviewMobile, ShareholderLedgerSelfMobile, tab Tạm ứng…) — import từ thiết kế
 // claude.ai/design "ProfitMobileC" (mobile-app-finance-interface-design).
 
 // Tiền rút gọn kiểu thiết kế: 1,25 tỷ · 12,5tr · 500k · 0đ.

@@ -76,6 +76,64 @@
 .cm-app .mbody { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; padding: 16px 16px calc(var(--copilot-fab-inset, 84px) + env(safe-area-inset-bottom)); }
 .cm-app .mbody::-webkit-scrollbar { display: none; }
 
+/* ===== Ô hàng chờ trên đầu trang (Quyết toán, Nháp…); bấm mở bảng trượt ===== */
+.cm-app .cm-qtiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin-bottom: 14px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; box-shadow: var(--sh-1); }
+.cm-app .cm-qtile { appearance: none; border: 0; background: var(--surface); height: 48px; min-width: 0; padding: 0 10px 0 13px; display: flex; align-items: center; gap: 8px; font-family: var(--font); color: var(--ink); text-align: left; cursor: pointer; }
+.cm-app .cm-qtile:active { background: var(--surface-2); }
+.cm-app .cm-qtile:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.cm-app .cm-qtile-label { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .cm-qtile svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--ink-3); }
+/* Máy hẹp: bỏ mũi tên để nhường chỗ cho nhãn, không để nhãn bị cắt thành "Chờ quyết…". */
+@media (max-width: 419px) {
+  .cm-app .cm-qtile { padding: 0 10px 0 11px; }
+  .cm-app .cm-qtile-label { font-size: 12.5px; }
+  .cm-app .cm-qtile svg { display: none; }
+}
+.cm-app .cm-qcount, .cm-sheet .cm-qcount { font-family: "Space Mono", ui-monospace, monospace; font-size: 12px; font-weight: 700; line-height: 1; padding: 4px 8px; border-radius: 999px; border: 1px solid #e7e3da; color: #514c42; background: #f5f3ee; }
+.cm-app .cm-qcount.warn, .cm-sheet .cm-qcount.warn { border-color: #f0dca8; color: #92400e; background: #fbf1da; }
+
+/* ===== Bảng trượt hàng chờ — portal ra body nên tự khai token, không nằm trong .cm-stage ===== */
+div:has(+ .cm-sheet) { background: rgba(27, 24, 19, .45); }
+.cm-sheet { --line: #e7e3da; --line-2: #efece4; --ink: #1b1813; --ink-2: #514c42; --ink-soft: #6b655a; --brand: #1f7a52; --brand-600: #1a6645; max-width: 432px; margin-inline: auto; border-radius: 20px 20px 0 0; background: #fff; color: var(--ink); font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif; }
+.cm-sheet > button { top: 10px; right: 8px; width: 44px; height: 44px; display: grid; place-items: center; opacity: 1; }
+.cm-sheet > button svg { width: 20px; height: 20px; }
+.cm-sheet .cm-sheet-head { flex-shrink: 0; display: flex; align-items: flex-start; gap: 8px; padding: 16px 56px 12px 16px; border-bottom: 1px solid var(--line); text-align: left; }
+.cm-sheet .cm-sheet-titles { flex: 1; min-width: 0; }
+.cm-sheet .cm-sheet-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; letter-spacing: -.2px; color: var(--ink); }
+.cm-sheet .cm-sheet-desc { margin-top: 4px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: var(--ink-soft); }
+.cm-sheet .cm-qsection { display: flex; flex-direction: column; min-height: 0; }
+.cm-sheet .cm-qbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.cm-sheet .cm-qbody > [role="alert"] { margin: 12px 16px; }
+.cm-sheet .cm-qlist > :not(.cm-qrows) { padding-inline: 16px; }
+.cm-sheet .cm-qrows { display: flex; flex-direction: column; gap: 1px; background: var(--line-2); }
+.cm-sheet .cm-qrow { display: flex; align-items: center; gap: 12px; padding: 13px 16px; background: #fff; }
+.cm-sheet .cm-qrow-main { flex: 1; min-width: 0; }
+.cm-sheet .cm-qrow-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.cm-sheet .cm-qrow-loc { font-size: 14.5px; font-weight: 700; letter-spacing: -.2px; color: var(--ink); text-decoration: underline; text-decoration-color: #d9d4c8; text-underline-offset: 3px; }
+.cm-sheet .cm-qrow-loc.plain { text-decoration: none; }
+.cm-sheet .cm-qrow-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #f5f3ee; color: var(--ink-2); white-space: nowrap; }
+.cm-sheet .cm-qrow-tag.done { background: #e8f3ec; color: var(--brand-600); }
+.cm-sheet .cm-qrow-detail { margin-top: 5px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.cm-sheet .cm-qrow-code { margin-top: 3px; font-family: "Space Mono", ui-monospace, monospace; font-size: 11.5px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.cm-sheet .cm-qrow-note { margin-top: 4px; font-size: 12px; font-weight: 500; color: #075985; }
+.cm-sheet .cm-qrow-actions { flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+.cm-sheet .cm-qbtn { height: 44px; padding: 0 13px; border-radius: 11px; border: 1px solid var(--brand); background: #fff; color: var(--brand); font-size: 13px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+.cm-sheet .cm-qbtn:hover { background: #e8f3ec; color: var(--brand-600); }
+.cm-sheet .cm-qbtn-primary { border-color: transparent; background: var(--brand); color: #fff; }
+.cm-sheet .cm-qbtn-primary:hover { background: var(--brand-600); color: #fff; }
+.cm-sheet .cm-qbtn.danger { border-color: #f2c8c4; color: #b3261e; }
+.cm-sheet .cm-qbtn.danger:hover { background: #fcebe9; color: #b3261e; }
+.cm-sheet .cm-qbtn-icon { width: 44px; height: 44px; flex-shrink: 0; border-radius: 11px; color: var(--ink-2); }
+.cm-sheet .cm-qbtn-icon[aria-expanded="true"] { background: var(--line-2); }
+.cm-sheet .cm-qdraft { padding: 12px 8px 12px 16px; background: #fff; }
+.cm-sheet .cm-qdraft-top { display: flex; align-items: center; gap: 6px; }
+.cm-sheet .cm-qdraft-top .cm-qbtn { border-color: var(--line); color: var(--ink); }
+.cm-sheet .cm-qdraft-meta { margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--ink-soft); }
+.cm-sheet .cm-qdraft-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; padding: 12px 8px 2px 0; }
+.cm-sheet .cm-qdraft-actions .cm-qbtn { padding-inline: 8px; }
+.cm-sheet .cm-qdraft-actions .cm-qbtn:not(.cm-qbtn-primary):not(.danger) { border-color: var(--line); color: var(--ink); }
+.cm-sheet .cm-qdraft-actions .wide { grid-column: 1 / -1; }
+
 /* ===== Status tabs ===== */
 .cm-app .lfilter { display: flex; gap: 7px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
 .cm-app .lfilter::-webkit-scrollbar { display: none; }

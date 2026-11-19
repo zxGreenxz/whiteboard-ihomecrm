@@ -8,7 +8,7 @@ export const invoiceRentSupportContextSchema = z.object({
   version: z.literal(1),
   expected_plan_revision: z.number().int().positive().safe(),
   manual_discount_amount: z.string().regex(/^\d+(?:\.\d{1,2})?$/),
-  request_id: z.string().uuid(),
+  request_id: z.string().guid(),
 }).strict();
 export type InvoiceRentSupportContext = z.infer<typeof invoiceRentSupportContextSchema>;
 /** Exact canonical request readback. Never infer success from amount/date/month. */

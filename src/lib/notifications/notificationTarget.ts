@@ -8,7 +8,7 @@
 // nút hỏng — thay vì được hạ về /my-day như mọi đích khác (NOTIF-SERVER-4).
 // =============================================================
 
-import { resolveNotificationUrl } from "@/lib/notificationRoutes";
+import { notificationRawUrl, resolveNotificationUrl } from "@/lib/notificationRoutes";
 import type { PermsLike } from "@/lib/permissionPages";
 
 export interface ThongBaoCoDich {
@@ -29,11 +29,12 @@ export function duongDanDuPhong(n: ThongBaoCoDich): string | null {
 
 /**
  * Đích điều hướng khi bấm: metadata.url TRƯỚC (nơi phát sự kiện mới biết đích đúng:
- * danh sách đã lọc, phiếu cụ thể, tab bàn giao…), rồi mới tới đường suy từ id.
+ * danh sách đã lọc, phiếu cụ thể, tab bàn giao…), kể cả đích suy từ nhãn v5 khi nơi phát
+ * không gắn url (notificationRawUrl, vd. đơn xin nghỉ → /my-day), rồi mới tới đường suy từ id.
  * null ⇒ không điều hướng.
  */
 export function dichThongBao(n: ThongBaoCoDich, perms: PermsLike): string | null {
-  return resolveNotificationUrl(n.metadata?.url, perms) ?? resolveNotificationUrl(duongDanDuPhong(n), perms);
+  return resolveNotificationUrl(notificationRawUrl(n.metadata), perms) ?? resolveNotificationUrl(duongDanDuPhong(n), perms);
 }
 
 /**

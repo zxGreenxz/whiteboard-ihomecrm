@@ -92,21 +92,21 @@ const optionalText = nullableText.optional();
 const layoutSchema = z.object({
   canvasW: z.number(), canvasH: z.number(), corridor: boxSchema,
   fixtures: z.array(boxSchema.extend({ id: z.string(), kind: z.enum(['elevator', 'stairs']) })),
-  rooms: z.record(boxSchema),
+  rooms: z.record(z.string(), boxSchema),
 });
 const payloadSchema = z.object({
   areas: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
   buildings: z.array(z.object({
     id: z.string(), name: z.string(), code: nullableText, district: nullableText, ward: nullableText,
     address: nullableText, total_floors: z.number().nullable(), area_ids: z.array(z.string()).nullable().optional(),
-    floor_layouts: z.record(layoutSchema).nullable().optional(), images: z.unknown(),
+    floor_layouts: z.record(z.string(), layoutSchema).nullable().optional(), images: z.unknown().optional(),
     public_contact_name: optionalText, public_contact_phone: optionalText, public_map_url: optionalText,
     elec_rate: z.number().nullable().optional(), public_lift_type: optionalText,
   })),
   rooms: z.array(z.object({
     id: z.string(), building_id: z.string(), floor: z.number(), name: z.string(), code: nullableText,
     area: z.number().nullable(), rent_price: z.number().nullable(), deposit_amount: z.number().nullable().optional(),
-    max_occupants: z.number().nullable(), amenities: z.unknown(), images: z.unknown(), description: nullableText,
+    max_occupants: z.number().nullable(), amenities: z.unknown().optional(), images: z.unknown().optional(), description: nullableText,
     sale_note: optionalText, sale_bonus_note: optionalText, room_type: optionalText, sale_status_note: optionalText, sale_fact_key: optionalText,
     status_public: z.enum(['free', 'soon', 'rented', 'pass']), avail_date: nullableText,
     sale_state: z.enum(['READY', 'NOTICE', 'NOTICE_OVERDUE', 'PREPARING', 'RENTED', 'PASS']).nullable().optional(),

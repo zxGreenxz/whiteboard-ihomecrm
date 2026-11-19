@@ -22,31 +22,36 @@ export type { BusinessPerformanceInvalidationRule, BusinessPerformanceSubtype, S
  */
 /** Dependencies of the settlement read models; independent of the fee grids. */
 export const CONTRACT_SETTLEMENT_INVALIDATION_RULES: Partial<Record<SyncTable, readonly string[]>> = {
-  income_expenses: ['vouchers', 'lifecycle'],
-  income_expense_items: ['vouchers', 'lifecycle'],
+  income_expenses: ['vouchers', 'lifecycle', 'profit-commission-checks'],
+  income_expense_items: ['vouchers', 'lifecycle', 'profit-commission-checks'],
   income_expense_supplements: ['supplements'],
-  invoices: ['lifecycle'],
+  invoices: ['lifecycle', 'profit-commission-checks'],
   payments: ['lifecycle'],
   accounts: ['vouchers', 'lifecycle'],
-  contracts: ['vouchers', 'movements', 'lifecycle', 'commission-basis'],
+  contracts: ['vouchers', 'movements', 'lifecycle', 'commission-basis', 'profit-commission-checks'],
   contract_terminations: ['vouchers', 'movements', 'lifecycle'],
   contract_transfers: ['vouchers', 'movements', 'lifecycle'],
   reservation_deposit_settlements: ['vouchers', 'movements', 'lifecycle'],
-  rooms: ['vouchers', 'movements', 'lifecycle', 'commission-basis'],
-  buildings: ['org-of-buildings', 'vouchers', 'movements', 'lifecycle', 'commission-basis'],
+  rooms: ['vouchers', 'movements', 'lifecycle', 'commission-basis', 'profit-commission-checks'],
+  buildings: ['org-of-buildings', 'vouchers', 'movements', 'lifecycle', 'commission-basis', 'profit-commission-checks'],
   customers: ['vouchers', 'movements', 'lifecycle'],
 };
 
-/** Voucher detail RPCs are also mounted by the settlement modals. */
+/**
+ * Voucher detail RPCs are also mounted by the settlement modals.
+ * `room-cash-lifecycle` (get_room_cash_lifecycle_v1) là nguồn tiền của lane Thu
+ * tiền và ngăn kéo Báo cáo LN — collector làm mới các khoá gốc này TRƯỚC
+ * subtype 'contract-settlement' để lane chạy lại không đọc cache cũ.
+ */
 export const SETTLEMENT_FACTS_INVALIDATION_RULES: Partial<Record<SyncTable, readonly string[]>> = {
-  income_expenses: ['termination-refund-facts', 'commission-voucher-facts'],
-  income_expense_items: ['termination-refund-facts', 'commission-voucher-facts'],
-  contracts: ['termination-refund-facts', 'commission-voucher-facts'],
-  contract_terminations: ['termination-refund-facts'],
-  contract_transfers: ['termination-refund-facts'],
+  income_expenses: ['termination-refund-facts', 'commission-voucher-facts', 'room-cash-lifecycle'],
+  income_expense_items: ['termination-refund-facts', 'commission-voucher-facts', 'room-cash-lifecycle'],
+  contracts: ['termination-refund-facts', 'commission-voucher-facts', 'room-cash-lifecycle'],
+  contract_terminations: ['termination-refund-facts', 'room-cash-lifecycle'],
+  contract_transfers: ['termination-refund-facts', 'room-cash-lifecycle'],
   reservation_deposit_settlements: ['termination-refund-facts'],
-  invoices: ['termination-refund-facts'],
-  payments: ['termination-refund-facts'],
+  invoices: ['termination-refund-facts', 'room-cash-lifecycle'],
+  payments: ['termination-refund-facts', 'room-cash-lifecycle'],
   accounts: ['termination-refund-facts', 'commission-voucher-facts'],
   rooms: ['termination-refund-facts', 'commission-voucher-facts'],
   buildings: ['termination-refund-facts', 'commission-voucher-facts'],

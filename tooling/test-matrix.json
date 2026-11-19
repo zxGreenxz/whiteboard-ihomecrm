@@ -4,6 +4,20 @@
   "deferredModules": "tooling/deferred-modules.json",
   "sourceSelectionRules": [
     {
+      "id": "invoice-component-revision",
+      "sourcePaths": [
+        "supabase/migrations/*_invoice_component_revision_consistency.sql",
+        "src/lib/__tests__/fixtures/invoice-component-revision-before.sql",
+        "src/lib/__tests__/invoiceComponentRevision.test.ts"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/lib/__tests__/invoiceComponentRevision.test.ts",
+        "src/lib/__tests__/paidInvoiceAdjustmentGuard.test.ts",
+        "src/hooks/__tests__/useInvoiceAdjustments.test.tsx"
+      ]
+    },
+    {
       "id": "navigation",
       "sourcePaths": [
         "src/components/layout/**",
@@ -151,6 +165,26 @@
       ]
     },
     {
+      "id": "admin-reset-user-password-edge",
+      "sourcePaths": [
+        "supabase/functions/admin-reset-user-password/**"
+      ],
+      "suiteId": "edge-deno-admin-reset-password",
+      "testPatterns": [
+        "supabase/functions/admin-reset-user-password/*.test.ts"
+      ]
+    },
+    {
+      "id": "gps-checkin-edge",
+      "sourcePaths": [
+        "supabase/functions/gps-checkin-ingest/**"
+      ],
+      "suiteId": "edge-deno-gps-checkin",
+      "testPatterns": [
+        "supabase/functions/gps-checkin-ingest/*.test.ts"
+      ]
+    },
+    {
       "id": "network-edge",
       "sourcePaths": [
         "supabase/functions/network-center-worker/**",
@@ -229,9 +263,13 @@
         ".github/workflows/migration-restore-drill.yml"
       ],
       "suiteId": "app-unit",
-      "testPatterns": ["scripts/__tests__/restore-hermes-drill.test.mjs"],
+      "testPatterns": [
+        "scripts/__tests__/restore-hermes-drill.test.mjs"
+      ],
       "workflowOwner": ".github/workflows/migration-restore-drill.yml",
-      "jobs": ["restore-drill"]
+      "jobs": [
+        "restore-drill"
+      ]
     },
     {
       "id": "migration-target-native",
@@ -249,6 +287,8 @@
       "suiteId": "node-native",
       "testPatterns": [
         "scripts/__tests__/migration-target.test.mjs",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
@@ -572,6 +612,18 @@
       "testPatterns": [
         "infra/hermes-broker/**/*.test.mjs",
         "scripts/__tests__/test-hermes-broker-authz.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-official-skills",
+      "$comment": "Skill CRM chuẩn của Hermes (infra/hermes-skills) phải khớp tool/thao tác hiện hành của connector; script triển khai chạy thử trên cây giả.",
+      "sourcePaths": [
+        "infra/hermes-skills/**"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/official-skills.test.mjs",
+        "infra/hermes-broker/official-skills-deploy.test.mjs"
       ]
     },
     {
@@ -919,9 +971,14 @@
         "package.json"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["infra/hermes-zalo-native/**/*.test.mjs", "worker/deploy/**/*.test.mjs"],
+      "testPatterns": [
+        "infra/hermes-zalo-native/**/*.test.mjs",
+        "worker/deploy/**/*.test.mjs"
+      ],
       "workflowOwner": ".github/workflows/hermes-runtime.yml",
-      "jobs": ["native-upstream"]
+      "jobs": [
+        "native-upstream"
+      ]
     },
     {
       "id": "hermes-native-deployment",
@@ -936,7 +993,9 @@
         ".github/workflows/hermes-runtime.yml"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["worker/deploy/**/*.test.mjs"]
+      "testPatterns": [
+        "worker/deploy/**/*.test.mjs"
+      ]
     },
     {
       "id": "hermes-native-zalo-transport",
@@ -949,7 +1008,9 @@
         "worker/index.js"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["infra/hermes-zalo-native/**/*.test.mjs"]
+      "testPatterns": [
+        "infra/hermes-zalo-native/**/*.test.mjs"
+      ]
     },
     {
       "id": "hermes-native-zalo-caller",
@@ -967,6 +1028,17 @@
         "worker/__tests__/hermes-inbound.test.js",
         "worker/__tests__/session-lifecycle.test.js",
         "worker/__tests__/inbound-history.test.js"
+      ]
+    },
+    {
+      "id": "hermes-session-reset",
+      "$comment": "Plugin làm mới phiên 04:00: entrypoint node:test chạy unittest stdlib (Python >= 3.11, bash) và đỏ khi 0 test hoặc có skip.",
+      "sourcePaths": [
+        "infra/hermes-session-reset/**"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-session-reset/**/*.test.mjs"
       ]
     },
     {
@@ -1094,6 +1166,66 @@
         "infra/hermes-broker/tool-plan.test.mjs",
         "scripts/__tests__/hermes-durable-schema.test.mjs",
         "scripts/__tests__/hermes-private-flow.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-invoice-actions",
+      "sourcePaths": [
+        "supabase/migrations/*_invoice_collection_plan_v1.sql",
+        "supabase/migrations/*_hermes_invoice_action_v1.sql",
+        "supabase/migrations/*_hermes_invoice_meter_v1.sql",
+        "supabase/migrations/*_meter_readings_v2.sql",
+        "supabase/migrations/*_hermes_invoice_edit_v1.sql",
+        "supabase/migrations/*_invoice_adjustment_build_v1.sql",
+        "supabase/migrations/*_meter_readings_plan_previous_period_v1.sql",
+        "supabase/migrations/*_hermes_invoice_collect_v2.sql",
+        "supabase/migrations/*_hermes_w2a_invoice_shared_v1.sql",
+        "infra/hermes-broker/meter-trigger-bodies.json",
+        "infra/hermes-broker/invoice-writer-bodies.json",
+        "infra/hermes-broker/invoice-actions-*.mjs",
+        "infra/hermes-broker/action-catalog.mjs",
+        "infra/hermes-broker/action-reasons.mjs",
+        "infra/hermes-broker/capability-contract.mjs",
+        "infra/hermes-broker/finance-fixture.mjs",
+        "infra/hermes-broker/invoice-write-fixture.mjs",
+        "infra/hermes-broker/crm-shared-read-sql-fixture.mjs",
+        "infra/hermes-broker/broker.mjs",
+        "infra/hermes-broker/server.mjs",
+        "infra/hermes-runtime/host-ownership.mjs",
+        "scripts/hermes-task-function-contract.mjs",
+        "scripts/test-hermes-private-flow.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/invoice-actions.test.mjs",
+        "infra/hermes-broker/invoice-write-sql.test.mjs",
+        "infra/hermes-broker/invoice-write-race-sql.test.mjs",
+        "infra/hermes-broker/invoice-meter-sql.test.mjs",
+        "infra/hermes-broker/invoice-meter-race-sql.test.mjs",
+        "infra/hermes-broker/invoice-edit-sql.test.mjs",
+        "infra/hermes-broker/invoice-edit-race-sql.test.mjs",
+        "infra/hermes-broker/action-catalog.test.mjs",
+        "infra/hermes-broker/invoice-collection-plan-sql.test.mjs",
+        "infra/hermes-broker/action-reasons.test.mjs",
+        "infra/hermes-broker/action-tools-budget.test.mjs",
+        "infra/hermes-broker/server.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs"
+      ]
+    },
+    {
+      "id": "invoice-collection-plan-parity",
+      "sourcePaths": [
+        "src/lib/collectPlan.ts",
+        "src/lib/collectionSettlement.ts",
+        "src/lib/duplicateCollection.ts",
+        "src/lib/changeAccounts.ts",
+        "src/lib/__tests__/fixtures/invoice-collection-plan-vectors.json",
+        "supabase/migrations/*_invoice_collection_plan_v1.sql"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/lib/__tests__/invoiceCollectionPlanVectors.test.ts"
       ]
     },
     {
@@ -1254,6 +1386,103 @@
       ]
     },
     {
+      "id": "hermes-learning-review-ui",
+      "sourcePaths": [
+        "src/hermes/learningReviewClient.ts",
+        "src/hermes/HermesLearningReview.tsx",
+        "src/pages/settings/HermesConnectionsPage.tsx"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/hermes/learningReviewClient.test.ts",
+        "src/hermes/HermesLearningReview.test.tsx",
+        "src/pages/settings/HermesConnectionsPage.learning.test.tsx",
+        "src/pages/settings/HermesConnectionsPage.test.tsx"
+      ],
+      "viewports": [
+        "affected"
+      ]
+    },
+    {
+      "id": "hermes-learning-proposals-sql",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_learning_proposals_v1.sql",
+        "infra/hermes-broker/learning-proposals-sql.test.mjs",
+        "infra/hermes-broker/store-transport.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/learning-proposals-sql.test.mjs",
+        "infra/hermes-broker/store-transport.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-learning-action-sql",
+      "$comment": "Đợt 3 học có kiểm duyệt: trang thao tác learning.digest / learning.decide (vỏ INVOKER + bước DEFINER, cột announced_at, khoá seed TẮT) và danh mục connector của trang. Khung giờ tin tối 20261111015658 (lượt ghi của learning.digest chỉ nhận trong 20:55–21:10 giờ Việt Nam theo đồng hồ database) và file lùi của nó.",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_learning_action_v1.sql",
+        "supabase/migrations/*_hermes_learning_digest_window_v1.sql",
+        "docs/plans/hermes-crm/revert/hermes_learning_digest_window_revert_v1.sql",
+        "infra/hermes-broker/learning-action-contract.mjs",
+        "infra/hermes-broker/learning-digest.mjs",
+        "infra/hermes-broker/learning-action-sql.test.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/learning-action-sql.test.mjs",
+        "infra/hermes-broker/learning-action.test.mjs",
+        "infra/hermes-broker/learning-proposals-sql.test.mjs",
+        "infra/hermes-broker/learning-digest.test.mjs",
+        "infra/hermes-broker/action-runtime.test.mjs",
+        "infra/hermes-broker/action-tools-budget.test.mjs",
+        "infra/hermes-broker/server.test.mjs",
+        "infra/hermes-broker/official-skills.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-learning-audit",
+      "sourcePaths": [
+        "infra/hermes-learning-audit/**",
+        "scripts/hermes-learning-login.mjs",
+        "supabase/migrations/*_hermes_store_learning_role.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-learning-audit/**/*.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-log-keeper",
+      "sourcePaths": [
+        "infra/hermes-log-keeper/**"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-log-keeper/**/*.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-fleet",
+      "$comment": "Công cụ mỗi người một trợ lý Hermes (infra/hermes-fleet): kế hoạch thuần, helper theo từng UID và điều phối trên máy chủ giả. Đổi bộ ghi hồ sơ, operator kênh, handoff hay launcher worker cũng chạy lại vì công cụ gọi thẳng các file đó.",
+      "sourcePaths": [
+        "infra/hermes-fleet/**",
+        "infra/hermes-zalo-native/profile-provisioning.mjs",
+        "infra/hermes-zalo-native/profile-provisioning-cli.mjs",
+        "infra/hermes-zalo-native/operator.mjs",
+        "infra/hermes-zalo-native/plugin.yaml",
+        "infra/hermes-broker/connection-handoff.mjs",
+        "infra/hermes-runtime/host-config.mjs",
+        "worker/lib/hermes-native-files.js",
+        "worker/deploy/zalo-worker.sh"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-fleet/**/*.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-assistant-capabilities-ui",
       "sourcePaths": [
         "supabase/migrations/*_hermes_domain_*.sql",
@@ -1268,6 +1497,7 @@
         "infra/hermes-broker/connection-management.mjs",
         "infra/hermes-broker/customer-action-contract.mjs",
         "infra/hermes-broker/expense-actions-contract.mjs",
+        "infra/hermes-broker/invoice-actions-contract.mjs",
         "supabase/migrations/*_hermes_task_follow_capabilities_hook.sql",
         "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
         "src/hermes/capabilityLabels.ts",
@@ -1283,7 +1513,9 @@
         "src/hermes/HermesOrgPolicySettings.test.tsx",
         "src/pages/settings/HermesConnectionsPage.test.tsx"
       ],
-      "viewports": ["affected"]
+      "viewports": [
+        "affected"
+      ]
     },
     {
       "id": "hermes-room-pass-actions",
@@ -1515,6 +1747,7 @@
         "supabase/migrations/*_hermes_user_display_name_v1.sql",
         "infra/hermes-broker/read-name-resolution.mjs",
         "infra/hermes-broker/domain-mount.mjs",
+        "infra/hermes-broker/public-link.mjs",
         "infra/hermes-broker/broker.mjs"
       ],
       "suiteId": "node-native",
@@ -1522,7 +1755,9 @@
         "infra/hermes-broker/name-directory-sql.test.mjs",
         "infra/hermes-broker/read-name-resolution.test.mjs",
         "infra/hermes-broker/broker.test.mjs",
-        "infra/hermes-broker/server.test.mjs"
+        "infra/hermes-broker/server.test.mjs",
+        "infra/hermes-broker/public-link.test.mjs",
+        "infra/hermes-broker/wave2-a-hoa-don.test.mjs"
       ]
     },
     {
@@ -1534,6 +1769,89 @@
       "testPatterns": [
         "infra/hermes-broker/copied-text-parity-sql.test.mjs",
         "infra/hermes-broker/full-read-*.test.mjs"
+      ]
+    },
+    {
+      "id": "meter-capture-worker",
+      "sourcePaths": [
+        "infra/meter-capture-worker/**"
+      ],
+      "suiteId": "meter-capture-python",
+      "testPatterns": [
+        "infra/meter-capture-worker/worker.test.mjs"
+      ]
+    },
+    {
+      "id": "meter-capture-edge",
+      "sourcePaths": [
+        "supabase/functions/meter-capture-worker/**"
+      ],
+      "suiteId": "edge-deno-meter-capture",
+      "testPatterns": [
+        "supabase/functions/meter-capture-worker/index.test.ts"
+      ]
+    },
+    {
+      "id": "meter-capture-sql",
+      "sourcePaths": [
+        "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql",
+        "supabase/migrations/20261023142638_meter_capture_sol_review.sql",
+        "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql",
+        "supabase/migrations/20261023150206_meter_capture_correction_chain.sql",
+        "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs"
+      ]
+    },
+    {
+      "id": "meter-capture-runtime",
+      "sourcePaths": [
+        "infra/meter-capture-worker/**",
+        ".github/workflows/meter-capture-runtime.yml",
+        "tooling/runtime-matrix.json",
+        "tooling/test-matrix.json"
+      ],
+      "suiteId": "meter-capture-runtime",
+      "testPatterns": [
+        "infra/meter-capture-worker/runtime.test.mjs"
+      ],
+      "workflowOwner": ".github/workflows/meter-capture-runtime.yml",
+      "jobs": [
+        "cpu-runtime"
+      ]
+    },
+    {
+      "id": "public-execute-revoke-native",
+      "$comment": "Thu EXECUTE của PUBLIC (20261104173640): PostgreSQL thật chạy migration và SQL của gate check-definer-acl (cũng là phép của kiem-bao-mat-sau-khoi-phuc).",
+      "sourcePaths": [
+        "supabase/migrations/20261104173640_thu_public_execute_ham_ung_dung.sql",
+        "scripts/check-definer-acl.mjs",
+        "scripts/definer-acl-baseline.json",
+        "scripts/kiem-bao-mat-sau-khoi-phuc.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/thu-public-execute-sql.test.mjs"
+      ]
+    },
+    {
+      "id": "public-execute-revoke-analysis",
+      "sourcePaths": [
+        "supabase/migrations/20261104173640_thu_public_execute_ham_ung_dung.sql",
+        "scripts/check-definer-acl.mjs",
+        "scripts/definer-acl-baseline.json",
+        "scripts/kiem-bao-mat-sau-khoi-phuc.mjs"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/check-definer-acl-public-execute.test.mjs",
+        "scripts/__tests__/check-definer-acl-denylist.test.mjs",
+        "scripts/__tests__/kiem-bao-mat-sau-khoi-phuc.test.mjs"
       ]
     }
   ],
@@ -1614,6 +1932,10 @@
         "infra/**",
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",
         "scripts/__tests__/hermes-customer-function-catalog.test.mjs",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+        "scripts/__tests__/meter-capture-fixture.test.mjs",
+        "scripts/__tests__/meter-capture-readiness.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
@@ -1684,7 +2006,8 @@
         "scripts/__tests__/hermes-public-conflict-schema.test.mjs",
         "scripts/__tests__/hermes-private-flow.test.mjs",
         "scripts/__tests__/hermes-cde-live.test.mjs",
-        "infra/hermes-zalo-router/**/*.test.mjs"
+        "infra/hermes-zalo-router/**/*.test.mjs",
+        "scripts/__tests__/thu-public-execute-sql.test.mjs"
       ],
       "ciJobs": [
         {
@@ -1762,6 +2085,50 @@
       ],
       "environment": "ci",
       "timeoutMinutes": 60
+    },
+    {
+      "id": "edge-deno-gps-checkin",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/gps-checkin-ingest/deno.json supabase/functions/gps-checkin-ingest/index.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
+      "runtime": "deno 2.9.4",
+      "risk": "authorization",
+      "includes": [
+        "supabase/functions/gps-checkin-ingest/*.test.ts"
+      ],
+      "note": "Cổng nhận điểm danh GPS của app iHome Gateway: chỉ gửi SHA-256 của bearer và mã ghép nối xuống SQL, từ chối sai hợp đồng trước khi chạm DB, ánh xạ lỗi SQL sang HTTP, biên nhận DB sai dạng trả 502.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 5
+    },
+    {
+      "id": "edge-deno-admin-reset-password",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/admin-reset-user-password/deno.json supabase/functions/admin-reset-user-password/index.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
+      "runtime": "deno 2.9.4",
+      "risk": "authorization",
+      "includes": [
+        "supabase/functions/admin-reset-user-password/*.test.ts"
+      ],
+      "note": "Đặt lại mật khẩu cho user khác: kiểm quyền ở SQL bằng JWT người bấm TRƯỚC khi chạm Auth, khoá service chỉ ở lời gọi Auth, mật khẩu chỉ ở thân lời gọi Auth, header Content-Profile trên đường fetch thật, chốt đúng SUCCEEDED/FAILED/UNKNOWN và ánh xạ lỗi sang HTTP.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 5
     },
     {
       "id": "edge-deno-door-access",
@@ -1939,7 +2306,7 @@
       ],
       "environment": "ci",
       "timeoutMinutes": 60,
-      "note": "Job validate (Linux) chay 21/23 file; job worker-powershell-windows (windows-latest) chay 2 file PowerShell con lai. Chia doi 11/08/2026 — truoc do 2 file do chay tren Linux va DUOC KY VONG FAIL.",
+      "note": "Job validate (Linux) chay 21/23 file; job worker-powershell-windows (windows-2025-vs2026) chay 2 file PowerShell con lai. Chia doi 11/08/2026 — truoc do 2 file do chay tren Linux va DUOC KY VONG FAIL.",
       "excludes": [
         "scripts/__tests__/check-ts-baseline.test.mjs"
       ]
@@ -1953,6 +2320,10 @@
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+        "scripts/__tests__/meter-capture-fixture.test.mjs",
+        "scripts/__tests__/meter-capture-readiness.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",
@@ -2026,7 +2397,12 @@
         "scripts/__tests__/hermes-cde-live.test.mjs",
         "infra/hermes-zalo-router/**/*.test.mjs",
         "infra/hermes-zalo-native/**/*.test.mjs",
-        "worker/deploy/**/*.test.mjs"
+        "infra/hermes-learning-audit/**/*.test.mjs",
+        "infra/hermes-log-keeper/**/*.test.mjs",
+        "infra/hermes-session-reset/**/*.test.mjs",
+        "infra/hermes-fleet/**/*.test.mjs",
+        "worker/deploy/**/*.test.mjs",
+        "scripts/__tests__/thu-public-execute-sql.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",
@@ -2132,7 +2508,7 @@
       ],
       "environment": "ci",
       "timeoutMinutes": 35,
-      "note": "Builds APK and test APK, runs every unit test and Android lint. Native execution has a separate mandatory suite below."
+      "note": "One app with two features (bank messages and GPS check-in). Builds APK and test APK, runs every unit test of both features and Android lint, and compares the APK permissions with the approved list. Native execution has a separate mandatory suite below."
     },
     {
       "id": "e2e-bank-events",
@@ -2175,7 +2551,73 @@
       ],
       "environment": "ci",
       "timeoutMinutes": 35,
-      "note": "Every connected Android instrumentation test must run, and setup/status screenshots must exist. Compiling test APK is not accepted as execution."
+      "note": "Runs on Android 15 (bank-message, check-in and Home suites) and Android 10 (check-in and Home suites) emulators. Every declared instrumentation test must pass with none skipped, the screenshots must be real PNG files, a fresh install opened to Home must ask for nothing and arm nothing, and the encrypted check-in queue is read back from a separate process after a force-stop. Compiling test APK is not accepted as execution. An emulator cannot prove real-phone sleep or vendor battery behaviour."
+    },
+    {
+      "id": "meter-capture-python",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "node --test",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "node --test infra/meter-capture-worker/worker.test.mjs",
+      "runtime": "node 24.18.0 + python 3.12.10",
+      "risk": "normal",
+      "includes": [
+        "infra/meter-capture-worker/worker.test.mjs"
+      ],
+      "note": "Node entrypoint discovers every test_*.py, requires exact Python runtime and fails on zero tests or skips. Synthetic fixtures only; no OCR model, Docker, credentials or paid AI calls.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 10
+    },
+    {
+      "id": "edge-deno-meter-capture",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/meter-capture-worker/deno.json supabase/functions/meter-capture-worker/index.test.ts --allow-env",
+      "runtime": "deno 2.9.4",
+      "risk": "normal",
+      "includes": [
+        "supabase/functions/meter-capture-worker/index.test.ts"
+      ],
+      "note": "Gateway fixtures cover user JWT/worker bearer separation, scoped leases, original media receipts, private evidence and server-side hashing. No production access.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 10
+    },
+    {
+      "id": "meter-capture-runtime",
+      "workflowOwner": ".github/workflows/meter-capture-runtime.yml",
+      "runner": "node --test",
+      "ciJob": "Meter capture CPU runtime / cpu-runtime",
+      "command": "node --test infra/meter-capture-worker/runtime.test.mjs",
+      "runtime": "node 24.18.0 + Linux Docker + pinned Python 3.12.10 image",
+      "risk": "infrastructure",
+      "includes": [
+        "infra/meter-capture-worker/runtime.test.mjs"
+      ],
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/meter-capture-runtime.yml",
+          "job": "cpu-runtime"
+        }
+      ],
+      "ciCommandStep": "Build pinned worker and verify synthetic OCR and clip decoding offline",
+      "environment": "ci",
+      "timeoutMinutes": 25,
+      "note": "Build the pinned CPU image and run actual PaddleOCR/OpenCV/FFmpeg against synthetic JPEG and H.264 fixtures without network, credentials or AI calls. This is runtime integration evidence, not a real-meter accuracy benchmark."
     }
   ],
   "ignore": [

@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
+import { createActionCatalog } from './action-catalog.mjs';
+import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
+import { TASK_ACTIONS } from './task-actions-contract.mjs';
+import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
+import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
+import { LEARNING_ACTIONS, LEARNING_REVIEW_KEY } from './learning-action-contract.mjs';
+import { formatLearningDigest } from './learning-digest.mjs';
+import { SALE_ACTIONS } from './sale-action-contract.mjs';
+import { SALE_RETIRED_OPERATIONS } from './sale-tool-contract.mjs';
+import { ACTION_REASONS } from './action-reasons.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 import { CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, DOMAIN_SUMMARIES, FAST_READ_OPERATIONS, summarizeRows } from './domain-contract.mjs';
 
@@ -75,6 +85,11 @@ function fakeBackend() {
       assert.equal(endpoint.search, '?grant_type=password'); assert.equal(args.password, 'synthetic-password'); signInCount++;
       return Response.json({ token_type: 'bearer', access_token: assistantJwt, refresh_token: 'SYNTHETIC-REFRESH-SECRET', user: { id: I.user } });
     }
+    // As the real Auth health path answers (measured 13/11/2026): 200 with a publishable key, 401 without one; it takes no bearer.
+    if (endpoint.pathname === '/auth/v1/health') {
+      assert.equal(bearer, undefined, 'the reachability probe never carries a bearer');
+      return options.headers.apikey ? Response.json({ name: 'GoTrue' }) : Response.json({ message: 'No API key found in request' }, { status: 401 });
+    }
     if (bearer !== browserJwt && !acceptedAssistantTokens.has(bearer)) return Response.json({ error: 'not authorized' }, { status: 401 });
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: I.user });
     // B5d: the crm_auth_context directory (hermes_organization_name_v1, hermes_building_directory_v1) is optional too — absent ⇒ null, never a failed call.
@@ -83,7 +98,10 @@ function fakeBackend() {
       '/rest/v1/rpc/hermes_connection_options_v7', '/rest/v1/rpc/hermes_connection_context_v7', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2',
       '/rest/v1/rpc/hermes_organization_name_v1', '/rest/v1/rpc/hermes_building_directory_v1',
       // R2c part 2 (c): the asker's own display name is optional the same way.
-      '/rest/v1/rpc/hermes_user_display_name_v1'].includes(endpoint.pathname))
+      '/rest/v1/rpc/hermes_user_display_name_v1',
+      // Đợt 2b: danh mục production có task.create ⇒ lớp thao tác chung đọc hermes_action_capabilities_v1 và lớp task đọc thẳng
+      // capability theo dõi việc; vắng (PGRST202) ⇒ không cấp khoá, như mọi họ tuỳ chọn.
+      '/rest/v1/rpc/hermes_action_capabilities_v1', '/rest/v1/rpc/hermes_task_follow_capabilities_v1'].includes(endpoint.pathname))
       return Response.json({ code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null }, { status: 404 });
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: I.org,
       membershipId: I.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
@@ -134,7 +152,10 @@ function fakeBackend() {
     http: { allowedHosts: [HOST], allowedOrigins: [ORIGIN] }, fetch, clock: () => clock, audit: async event => { audits.push(structuredClone(event)); } };
   return { configuration, calls, sql, audits, releases, key, principal, pool, privateOperations, providerOperations, acceptedAssistantTokens,
     read: () => ({ joined, poolEnds, prepareCount, signInCount, clock }),
-    nearSessionExpiry() { clock = NOW + 57 * 60000; joined.connection.expiresAt = clock + 120000; },
+    // Three minutes of session and of token lease left: a refresh is due and the lease is still above the minimum a
+    // refresh may start under (refresh-window.mjs, 150 s; the lease was 120 s here before that minimum existed).
+    nearSessionExpiry() { clock = NOW + 57 * 60000; joined.connection.expiresAt = clock + 180000; },
+    advance(ms) { clock += ms; }, // the stored lease and session keep their instants: an outage of that length
     grantRooms() { // A trusted fixture models an already-granted connection; browser connect remains default-off.
       joined.connection.restrictions.read.push('rooms.view'); joined.connection.scopeIds = [I.scope];
       joined.policy.read.push('rooms.view'); joined.policy.scopeIds = [I.scope]; joined.policy.version++;
@@ -261,7 +282,7 @@ test('construction does no I/O, requires explicit audit/config, exposes no priva
     assert.throws(() => createHermesBackend({ ...f.configuration, ...delta }), error => error.message === 'invalid_backend_config' && error.cause === undefined);
   }
   const backend = createHermesBackend(f.configuration);
-  assert.deepEqual(Object.keys(backend), ['server', 'close', 'resolveConnection', 'renewConnection', 'beginConnectionMaintenance', 'beginExternalConnectionMaintenance', 'startWorkMemoryRetention', 'workMemoryRetentionStatus']); assert.equal(backend.server.listening, false);
+  assert.deepEqual(Object.keys(backend), ['server', 'close', 'resolveConnection', 'renewConnection', 'beginConnectionMaintenance', 'beginExternalConnectionMaintenance', 'beginExternalConnectionRecovery', 'startWorkMemoryRetention', 'workMemoryRetentionStatus']); assert.equal(backend.server.listening, false);
   assert.equal(f.calls.length, 0); assert.equal(f.sql.length, 0); assert.equal(f.audits.length, 0);
   assert.equal(backend.server.requestTimeout, 15000); assert.equal(backend.server.headersTimeout, 10000); assert.equal(backend.server.maxHeadersCount, 32);
   const first = backend.close(); assert.equal(backend.close(), first); await first;
@@ -529,6 +550,222 @@ test('server auth chain consults customer/action/sale capability RPCs; absent RP
     assert.equal(JSON.parse(response.body.result.content[0].text).error, 'tool_not_available', name);
   }
   assert(!f.calls.some(call => /hermes_(customer_create_action|expense_action|expense_write|sale_actions|sale_policy_actions)_v1$/.test(call.path)), 'no action RPC without capability');
+});
+
+test('actionPages: host opt-in per page on top of the production Thu chi catalog; absent RPC keeps crm_action_* hidden', async t => {
+  const f = fakeBackend();
+  for (const actionPages of ['contract', ['nope'], ['contract', 'contract'], [1], {}])
+    assert.throws(() => createHermesBackend({ ...f.configuration, actionPages }), error => error.message === 'invalid_backend_config', JSON.stringify(actionPages));
+  // Danh mục production đã có thao tác Thu chi (expense.*, gộp #271) nên cấu hình mặc định cũng hỏi capabilities của thao tác;
+  // không có actionPages thì không nạp thao tác Hợp đồng và không bao giờ gọi RPC trang Hợp đồng.
+  const off = fakeBackend(), plain = await listening(t, off.configuration), offToken = (await plain.connect()).body.token;
+  off.grantRooms();
+  assert(!(await plain.mcp(offToken)).body.result.tools.some(tool => tool.name.startsWith('crm_action_')));
+  assert(off.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1'), 'danh mục Thu chi mặc định hỏi capabilities của thao tác');
+  assert(!off.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
+  const on = fakeBackend(), http = await listening(t, { ...on.configuration, actionPages: ['contract'] }), token = (await http.connect()).body.token;
+  on.grantRooms();
+  const listed = (await http.mcp(token)).body.result.tools.map(tool => tool.name);
+  assert(on.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1' && call.options.headers.authorization === `Bearer ${assistantJwt}`));
+  assert(!listed.some(name => name.startsWith('crm_action_')), 'RPC vắng ⇒ không khoá nào ⇒ họ thao tác ẩn');
+  assert(!on.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
+});
+
+// Chat thật 31/10 (hồ sơ owner, production): crm_action_list page=contract trả 8 thao tác, contract.room_lock / room_unlock nằm ở
+// notPermitted (forbidden); crm_sale_action list có room_release nhưng không có room_lock. Tái hiện bằng đúng chuỗi ghép của server.mjs
+// (lớp thao tác MƯỢN sale_phong.lock_room, lớp Sale cấp) với câu trả lời capability như production: registry bật, chính sách công ty
+// trung tính, kết nối inherit_crm giữ khoá — nhưng quyền CRM của tài khoản chủ (vai "Chủ công ty") THIẾU sale_phong.lock_room, nên
+// hermes_sale_capabilities_v1 trả { allowed: false, companyEnabled: true }. Có quyền CRM ⇒ hai thao tác hiện, tám thao tác kia y nguyên.
+// Từ 05/11 crm_sale_action không còn room_lock / room_release / reservation_* ở mọi ca (rời cầu Sale): giữ phòng chỉ còn contract.room_lock;
+// gọi thẳng qua HTTP nhận action_rejected + lý do + câu tĩnh, không RPC ghi nào.
+test('Hợp đồng: khoá tạm phòng mượn sale_phong.lock_room của lớp Sale — thiếu quyền CRM ⇒ forbidden, có quyền ⇒ hiện, kết nối không giữ khoá ⇒ ẩn', async t => {
+  const catalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS, ...CONTRACT_ACTIONS]);
+  const CONTRACT_KEYS = ['contracts.create', 'contracts.edit', 'contracts.renew', 'contracts.terminate'];
+  const TC_KEYS = catalog.keys.filter(key => key.startsWith('income_expenses.'));
+  const f = fakeBackend(), baseFetch = f.configuration.fetch;
+  // Quyền CRM của tài khoản chủ: có contracts.*, income_expenses.*, deposits.*, rooms.edit, sale_phong.manage_images; sale_phong.lock_room
+  // tuỳ ca. Trần công ty (companyEnabled) theo chính sách công ty của fixture (joined.policy.action), như SQL: registry ∩ chính sách.
+  const state = { crmLock: false };
+  const crm = key => key === 'sale_phong.lock_room' ? state.crmLock : SALE_ACTIONS.includes(key) || CONTRACT_KEYS.includes(key) || TC_KEYS.includes(key);
+  const capability = key => {
+    const on = f.read().joined?.policy.action.includes(key) === true, allowed = on && crm(key);
+    return { allowed, companyEnabled: on, buildingIds: allowed ? [I.building] : [] };
+  };
+  const member = () => ({ organizationId: I.org, userId: I.user, membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1 });
+  f.configuration.fetch = async (url, options) => {
+    const path = new URL(url).pathname;
+    // SQL trả mọi khoá có dòng chính sách, kể cả sale_phong.lock_room của contract.room_lock; lớp thao tác bỏ qua khoá mượn.
+    if (path === '/rest/v1/rpc/hermes_action_capabilities_v1') return Response.json({ ...member(),
+      permissions: Object.fromEntries(catalog.keys.map(key => [key, capability(key)])), actions: Object.fromEntries(catalog.ids.map(action => [action, {}])) });
+    if (path === '/rest/v1/rpc/hermes_sale_capabilities_v1') return Response.json({ ...member(),
+      permissions: Object.fromEntries(SALE_ACTIONS.map(key => [key, capability(key)])) });
+    return baseFetch(url, options);
+  };
+  const http = await listening(t, { ...f.configuration, actionPages: ['contract'] }), token = (await http.connect()).body.token;
+  // inherit_crm: khoá kết nối = mọi khoá registry đang bật; chính sách công ty trung tính (0 dòng hermes_org_policies) = cùng tập.
+  const joined = f.read().joined;
+  const project = keys => { joined.connection.restrictions.action = [...keys]; joined.policy.action = [...keys]; };
+  const beforeTc = [...new Set([...SALE_ACTIONS, 'sale_phong.edit', ...catalog.keys.filter(key => !TC_KEYS.includes(key))])].sort();
+  const call = async (name, args) => {
+    const response = await http.mcp(token, 'tools/call', { name, arguments: args });
+    assert.equal(response.body.result.isError, false, response.text);
+    return JSON.parse(response.body.result.content[0].text);
+  };
+  const contract = () => call('crm_action_list', { page: 'contract' });
+  const saleOperations = async () => (await call('crm_sale_action', { operation: 'list' })).operations.map(entry => entry.operation);
+  const EIGHT = ['contract.notice_set', 'contract.notice_cancel', 'contract.renew', 'contract.return', 'contract.occupant_add',
+    'contract.occupant_remove', 'contract.draft', 'contract.renew_batch'];
+  const LOCKS = ['contract.room_lock', 'contract.room_unlock'];
+
+  // 1. Như production 31/10 08:19–08:21 (Thu chi chưa bật): đúng hai câu trả lời bot đã nhận.
+  project(beforeTc);
+  const observed = await contract();
+  assert.deepEqual(observed.items.map(item => item.action), EIGHT);
+  assert.deepEqual(observed.notPermitted.map(item => [item.action, item.reason]), LOCKS.map(action => [action, 'forbidden']));
+  const sale = await saleOperations();
+  assert(sale.includes('room_patch'), sale.join());
+  assert.deepEqual(sale.filter(operation => Object.hasOwn(SALE_RETIRED_OPERATIONS, operation)), [], sale.join());
+
+  // 2. Bật Thu chi (income_expenses.* vào registry ⇒ vào kết nối + chính sách) không đụng khoá tạm: vẫn thiếu quyền CRM ⇒ vẫn forbidden.
+  project([...beforeTc, ...TC_KEYS]);
+  const withTc = await contract();
+  assert.deepEqual(withTc.items.map(item => item.action), EIGHT);
+  assert.deepEqual(withTc.notPermitted.map(item => item.action), LOCKS);
+
+  // 3. Có quyền CRM sale_phong.lock_room: hai thao tác hiện đúng chỗ, hết notPermitted, tám thao tác kia giữ nguyên từng mục.
+  state.crmLock = true;
+  const granted = await contract();
+  assert.deepEqual(granted.items.map(item => item.action), ['contract.notice_set', 'contract.notice_cancel', ...LOCKS, ...EIGHT.slice(2)]);
+  assert.equal(granted.notPermitted, undefined);
+  assert.deepEqual(granted.items.filter(item => !LOCKS.includes(item.action)), withTc.items);
+  // Có quyền CRM giữ phòng mà Sale vẫn không quảng bá; gọi thẳng ⇒ lỗi rõ chỉ sang contract.room_lock / cọc trên web (qua mcp-http).
+  assert.deepEqual((await saleOperations()).filter(operation => Object.hasOwn(SALE_RETIRED_OPERATIONS, operation)), []);
+  for (const [operation, reason] of Object.entries(SALE_RETIRED_OPERATIONS)) {
+    const refused = await http.mcp(token, 'tools/call', { name: 'crm_sale_action', arguments: { operation, input: {} } });
+    assert.equal(refused.body.result.isError, true, operation);
+    assert.deepEqual(JSON.parse(refused.body.result.content[0].text), { error: 'action_rejected', reason, detail: ACTION_REASONS[reason].text }, operation);
+  }
+
+  // 4. Kết nối loại trừ khoá (chính sách công ty tường minh vẫn có khoá) HOẶC chính sách công ty tắt khoá (SQL trả companyEnabled
+  // false): ẩn mà không báo thiếu quyền, dù người dùng có quyền CRM.
+  const all = [...beforeTc, ...TC_KEYS], without = all.filter(key => key !== 'sale_phong.lock_room');
+  for (const [restrictions, policy] of [[without, all], [all, without]]) {
+    joined.connection.restrictions.action = [...restrictions]; joined.policy.action = [...policy];
+    const hidden = await contract();
+    assert.deepEqual(hidden.items.map(item => item.action), EIGHT);
+    assert.equal(hidden.notPermitted, undefined);
+    assert(!(await saleOperations()).includes('room_lock'));
+  }
+  assert(!f.calls.some(call => /hermes_(contract_action|sale_actions)_v1$/.test(call.path)), 'chỉ liệt kê, không gọi RPC ghi');
+});
+
+// Đợt 3 học có kiểm duyệt (HOC-CO-KIEM-DUYET.md mục 4): host bật actionPages ["learning"] ⇒ learning.digest / learning.decide qua đúng
+// RPC trang hermes_learning_action_v1; kết quả learning.digest mang message dựng TẤT ĐỊNH bằng formatLearningDigest (link theo
+// publicWebOrigin, ngày theo announcedAt của SQL), không chuyển nội dung đề xuất; crm_action_status (cùng biên nhận) cho cùng tin;
+// learning.decide xem trước rồi lượt 2 gửi đúng bản đã giải + basis. Không bật trang ⇒ không thao tác learning.*, không gọi RPC trang;
+// tools/list y hệt nhau dù bật hay không (thêm trang không tốn byte tools/list).
+test('actionPages learning: tin tối tất định từ kết quả SQL, duyệt qua xem trước; không bật trang ⇒ danh mục như cũ', async t => {
+  const ORIGIN_WEB = 'https://app.example.vn', RID = id(91);
+  const SQL_DIGEST = { announcedAt: '2026-11-04T14:00:00.123456Z', pendingTotal: 3, items: [
+    { seq: 7, kind: 'skill_crm_write', title: 'Skill crm-task-management: tạo việc', content: 'Gọi crm_action_run task.create.' },
+    { seq: 5, kind: 'memory_crm_write', title: 'Bộ nhớ: phiếu thu', content: 'Dùng expense.create cho phiếu chi.' }] };
+  const expected = formatLearningDigest({ proposals: SQL_DIGEST.items, pendingTotal: 3, webOrigin: ORIGIN_WEB, date: new Date(SQL_DIGEST.announcedAt) });
+  const run = async actionPages => {
+    const f = fakeBackend(), baseFetch = f.configuration.fetch, rpcs = [], state = { outsideWindow: false };
+    const catalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS, ...CONTRACT_ACTIONS, ...LEARNING_ACTIONS]);
+    const member = () => ({ organizationId: I.org, userId: I.user, membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1 });
+    // SQL đã bật trang (dòng chính sách + khoá): khoá Bài học + một khoá production (phiếu chi) được cấp, khoá khác tắt ở công ty — để
+    // so tools/list khi ba tool chung cùng hiện.
+    const GRANTED = [LEARNING_REVIEW_KEY, 'income_expenses.create'];
+    f.configuration.fetch = async (url, options) => {
+      const path = new URL(url).pathname;
+      if (path === '/rest/v1/rpc/hermes_action_capabilities_v1') return Response.json({ ...member(),
+        permissions: Object.fromEntries(catalog.keys.map(key => [key, GRANTED.includes(key) ? { allowed: true, companyEnabled: true, buildingIds: key === LEARNING_REVIEW_KEY ? [] : [I.building] }
+          : { allowed: false, companyEnabled: false, buildingIds: [] }])), actions: Object.fromEntries(catalog.ids.map(action => [action, {}])) });
+      if (path === '/rest/v1/rpc/hermes_learning_action_v1') {
+        const args = JSON.parse(options.body); rpcs.push(args);
+        assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
+        // Khung giờ tin tối (20261111015658): ngoài 20:55–21:10 SQL trả đúng khuôn này, không ghi gì.
+        if (args.p_action === 'learning.digest' && state.outsideWindow) return Response.json({ kind: 'rejected', reason: 'learning_digest_outside_window' });
+        if (args.p_action === 'learning.digest') return Response.json({ kind: 'applied', link: '/settings/hermes?tab=bai-hoc', result: SQL_DIGEST });
+        if (args.p_phase !== 'apply') return Response.json({ kind: 'preview', basis: 'b'.repeat(32), confirm: 'required', warnings: ['Không có đề xuất số: #9.'],
+          resolved: { proposalIds: [id(70), id(71)], numbers: [1, 3] }, preview: { action: 'learning.decide', decision: 'DUYỆT', items: [{ number: 1 }, { number: 3 }] } });
+        return Response.json({ kind: 'applied', link: '/settings/hermes?tab=bai-hoc', result: { decision: 'approve', numbers: [1, 3], count: 2 } });
+      }
+      if (path === '/rest/v1/rpc/hermes_action_status_v1') return Response.json({ kind: 'status', outcome: 'applied', action: 'learning.digest', result: SQL_DIGEST });
+      return baseFetch(url, options);
+    };
+    const http = await listening(t, { ...f.configuration, publicWebOrigin: ORIGIN_WEB, ...(actionPages ? { actionPages } : {}) });
+    const token = (await http.connect()).body.token;
+    const joined = f.read().joined;
+    joined.connection.restrictions.action = [...GRANTED]; joined.policy.action = [...GRANTED];
+    const call = async (name, args) => {
+      const response = await http.mcp(token, 'tools/call', { name, arguments: args });
+      assert.equal(response.body.result.isError, false, response.text);
+      return JSON.parse(response.body.result.content[0].text);
+    };
+    const raw = (name, args) => http.mcp(token, 'tools/call', { name, arguments: args });
+    return { call, raw, rpcs, state, tools: (await http.mcp(token)).body.result.tools };
+  };
+
+  const on = await run(['contract', 'learning']);
+  assert.deepEqual((await on.call('crm_action_list', {})).items.filter(item => item.page === 'learning').map(item => [item.action, item.confirm]),
+    [['learning.digest', 'if_required'], ['learning.decide', 'if_required']]);
+  assert.deepEqual((await on.call('crm_action_list', { page: 'learning' })).items.map(item => item.action), ['learning.digest', 'learning.decide']);
+  const digest = await on.call('crm_action_run', { action: 'learning.digest', requestId: RID });
+  assert.deepEqual(digest, { outcome: 'applied', applied: true, action: 'learning.digest', requestId: RID, link: '/settings/hermes?tab=bai-hoc',
+    result: { message: expected, newCount: 2, numbers: [7, 5], pendingTotal: 3 } });
+  assert.match(digest.result.message, /^Bài học Hermes chờ duyệt \(04\/11\): 2 đề xuất mới/);
+  assert.match(digest.result.message, /Xem kỹ: https:\/\/app\.example\.vn\/settings\/hermes\?tab=bai-hoc$/);
+  assert.deepEqual([on.rpcs[0].p_action, on.rpcs[0].p_phase, on.rpcs[0].p_params, on.rpcs[0].p_resolved, on.rpcs[0].p_expected_basis],
+    ['learning.digest', 'auto', {}, null, null]);
+  assert.deepEqual((await on.call('crm_action_status', { requestId: RID })).result, digest.result, 'tra trạng thái cho đúng tin cũ');
+  const preview = await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [3, 1], decision: 'approve' } });
+  assert.deepEqual([preview.outcome, preview.preview.decision, preview.warnings], ['confirmation_required', 'DUYỆT', ['Không có đề xuất số: #9.']]);
+  const applied = await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [3, 1], decision: 'approve' },
+    requestId: preview.requestId, confirmToken: preview.confirmToken });
+  assert.deepEqual(applied.result, { decision: 'approve', numbers: [1, 3], count: 2 });
+  assert.deepEqual([on.rpcs.at(-1).p_phase, on.rpcs.at(-1).p_resolved, on.rpcs.at(-1).p_expected_basis, on.rpcs.at(-1).p_params],
+    ['apply', { proposalIds: [id(70), id(71)], numbers: [1, 3] }, 'b'.repeat(32), { numbers: [3, 1], decision: 'approve' }]);
+  // Khuôn tham số sai ⇒ needs_input, không gọi SQL.
+  const before = on.rpcs.length;
+  assert.equal((await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [], decision: 'approve' } })).reason, 'invalid_params');
+  assert.equal((await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [1], decision: 'maybe' } })).reason, 'invalid_params');
+  assert.equal(on.rpcs.length, before);
+  // Khung giờ tin tối: SQL từ chối learning.digest gọi ngoài 20:55–21:10 ⇒ mô hình nhận LỖI rõ (isError) với đúng mã + câu tĩnh của danh
+  // sách đóng — không tin, không nội dung đề xuất, không khuôn "applied" nào để nhầm là đã gửi; connector gọi SQL đúng một lần, không
+  // tự gọi lại. learning.decide không dính khung giờ.
+  on.state.outsideWindow = true;
+  const refused = await on.raw('crm_action_run', { action: 'learning.digest', requestId: id(92) });
+  assert.equal(refused.body.result.isError, true, refused.text);
+  assert.deepEqual(JSON.parse(refused.body.result.content[0].text), { error: 'action_rejected', reason: 'learning_digest_outside_window',
+    detail: ACTION_REASONS.learning_digest_outside_window.text });
+  assert.equal(on.rpcs.length, before + 1, 'bị từ chối ⇒ connector không tự gọi lại');
+  assert.deepEqual([on.rpcs.at(-1).p_action, on.rpcs.at(-1).p_phase], ['learning.digest', 'auto']);
+  assert.equal((await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [3, 1], decision: 'approve' } })).outcome, 'confirmation_required');
+  on.state.outsideWindow = false;
+
+  // Không bật trang (cấu hình như production): cùng SQL đã bật vẫn không có thao tác learning.*, gọi thẳng ⇒ unknown_action, không gọi
+  // RPC trang; tools/list y hệt bản bật trang (ba tool chung tĩnh, enum page không có learning).
+  for (const actionPages of [undefined, ['contract']]) {
+    const off = await run(actionPages);
+    assert.deepEqual(off.tools, on.tools, JSON.stringify(actionPages));
+    assert.ok(off.tools.some(tool => tool.name === 'crm_action_run'));
+    const listed = (await off.call('crm_action_list', {})).items.map(item => item.action);
+    assert.ok(listed.includes('expense.create') && !listed.some(action => action.startsWith('learning.')), listed.join());
+    for (const action of ['learning.digest', 'learning.decide'])
+      assert.equal((await off.call('crm_action_run', { action, params: action === 'learning.decide' ? { numbers: [1], decision: 'approve' } : {} })).reason, 'unknown_action');
+    assert.equal(off.rpcs.length, 0);
+  }
+});
+
+// Lượt 11 (D-HĐ9): origin web để ghép link công khai của HĐ (crm_read_contract_detail publicLink); chỉ https, đúng dạng origin.
+test('publicWebOrigin: optional https origin for the contract public link; anything else is refused', async t => {
+  const f = fakeBackend();
+  for (const publicWebOrigin of ['http://app.example.vn', 'https://app.example.vn/', 'app.example.vn', '', null, 1])
+    assert.throws(() => createHermesBackend({ ...f.configuration, publicWebOrigin }), error => error.message === 'invalid_backend_config', JSON.stringify(publicWebOrigin));
+  const http = await listening(t, { ...f.configuration, publicWebOrigin: 'https://app.example.vn' });
+  assert.equal(typeof (await http.connect()).body.token, 'string');
 });
 
 test('composed direct room response finishes with initial admission after audit-time revoke; the next call is rejected', async t => {
@@ -800,6 +1037,168 @@ test('maintenance wait is bounded: a request still parked after the wait gets 50
   assert.equal((await http.mcp(token)).status, 200);
 });
 
+// The SQL side of recovery as its contract states it: only the digest goes in; a lapsed lease gets a short window.
+const probes = f => f.calls.filter(call => call.path === '/auth/v1/health');
+function arrangeRecovery(f, { sessionReady = true, status = 'recovered' } = {}) {
+  const inputs = [], joined = f.read().joined;
+  inputs.probesBefore = []; // how many reachability probes had gone out when SQL was asked
+  f.privateOperations.set('recover_connection', input => {
+    inputs.push(structuredClone(input)); inputs.probesBefore.push(probes(f).length);
+    if (joined.connection.state !== 'active') return { status: 'unavailable' };
+    if (status === 'recovered') joined.connection.expiresAt = f.read().clock + 300_000;
+    return { status, connectionId: joined.connection.id, credentialRef: joined.connection.credentialRef, binding: structuredClone(joined.session.binding),
+      sessionReady, sessionExpiresAt: joined.session.expiresAt, expiresAt: joined.connection.expiresAt };
+  });
+  return inputs;
+}
+const RECOVER_SQL = 'SELECT app_private.hermes_store_recover_connection_v1($1::jsonb) AS result';
+
+test('external recovery asks only the fixed store function with the token digest, parks its token and leaves admission to the normal authority path', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal, joined = f.read().joined;
+  f.advance(20 * 60000); // the host lost the database for longer than the 15-minute lease; the session is still good
+  await assert.rejects(http.resolveConnection(token, { signal: signal() }), { code: 'unauthorized' });
+  assert.equal((await http.mcp(token)).status, 401);
+  const inputs = arrangeRecovery(f), respond = f.privateOperations.get('recover_connection'), entered = deferred(), held = deferred();
+  f.privateOperations.set('recover_connection', async input => { entered.resolve(); await held.promise; return respond(input); });
+  const operation = http.beginExternalConnectionRecovery(token, { signal: signal() }); assert(Object.isFrozen(operation));
+  assert.throws(() => http.beginExternalConnectionRecovery(token, { signal: signal() }), { code: 'busy' });
+  assert.throws(() => http.beginExternalConnectionMaintenance(token, { signal: signal() }), { code: 'busy' }); // one lane per token at a time
+  await entered.promise;
+  assert.equal((await http.mcp(token)).body.error, 'connection_maintenance'); // parked like maintenance
+  assert.equal((await http.mcp('hc_' + 'z'.repeat(43))).status, 401); // only this token is parked
+  held.resolve();
+  const result = await operation.result; await operation.drained;
+  assert.deepEqual(result, { ok: true, status: 'recovered', connectionId: I.connection, refreshed: false }); assert(Object.isFrozen(result));
+  assert.deepEqual([...inputs], [{ tokenDigest: joined.connection.tokenDigest }]);
+  assert.equal(f.sql.filter(query => query.text === RECOVER_SQL).length, 1);
+  // The Auth provider was probed once, before SQL was asked, with the publishable key only: no bearer, no body.
+  assert.deepEqual(inputs.probesBefore, [1]); assert.equal(probes(f).length, 1);
+  const probe = probes(f)[0].options;
+  assert.equal(probe.method, 'GET'); assert.equal(probe.body, undefined);
+  assert.deepEqual(probe.headers, { apikey: 'sb_publishable_fixture', accept: 'application/json' });
+  for (const secret of [token, joined.connection.tokenDigest, joined.connection.credentialRef, I.assistantSession, assistantJwt, 'binding', 'credentialRef']) {
+    assert(!JSON.stringify(result).includes(secret), secret);
+  }
+  assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 1); // the login only: a good session is not refreshed
+  // Recovery admitted nothing by itself: the same live authority path serves the token again and the normal lane extends the window.
+  const owner = await http.resolveConnection(token, { signal: signal() });
+  assert.equal(owner.expiresAt, f.read().clock + 300_000); assert.equal((await http.mcp(token)).status, 200);
+  const renewal = http.beginExternalConnectionMaintenance(token, { signal: signal() });
+  assert.equal((await renewal.result).status, 'renewed'); await renewal.drained;
+  for (const route of ['/api/hermes/connections/recover', '/internal/hermes/connection/recover']) assert.equal((await http.send(route, {})).status, 404);
+  assert(!(await http.mcp(token)).body.result.tools.some(tool => /recover/i.test(tool.name)));
+});
+
+test('external recovery refreshes an expired provider session under the revived lease, through the same composed refresh manager', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal;
+  f.advance(61 * 60000); // an outage longer than the provider session as well
+  await assert.rejects(http.resolveConnection(token, { signal: signal() }), { code: 'unauthorized' });
+  const refresh = arrangeRefresh(f), inputs = arrangeRecovery(f, { sessionReady: false });
+  const operation = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  const result = await operation.result; await operation.drained;
+  assert.deepEqual(result, { ok: true, status: 'recovered', connectionId: I.connection, refreshed: true });
+  assert.equal(inputs.length, 1);
+  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  const order = f.sql.map(query => /hermes_store_(\w+)_v1/.exec(query.text ?? '')?.[1]).filter(name => /recover|refresh/.test(name ?? ''));
+  assert.deepEqual(order, ['recover_connection', 'acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']); // revive first, refresh second
+  assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 2); // one login, one refresh
+  assert.equal(f.read().joined.session.revision, 2);
+  for (const secret of [token, assistantJwt, refresh.nextJwt, 'SYNTHETIC-REFRESH', 'credentialRef', 'sessionId']) assert(!JSON.stringify(result).includes(secret));
+  assert.equal((await http.resolveConnection(token, { signal: signal() })).expiresAt, f.read().clock + 300_000);
+  assert.equal((await http.mcp(token)).status, 200);
+  assert(!f.sql.some(query => /hermes_store_renew_connection/.test(query.text))); // recovery renews nothing: that stays the normal lane
+});
+
+test('external recovery: a refused provider refresh is a transient rejection; only the next SQL answer can end the connection', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal;
+  f.advance(61 * 60000);
+  const refresh = arrangeRefresh(f), inputs = arrangeRecovery(f, { sessionReady: false });
+  f.providerOperations.refresh = () => Response.json({ error: 'invalid_grant' }, { status: 400 });
+  const failed = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  await assert.rejects(failed.result, error => error.code === 'recovery_refresh_refused' && error.message === 'recovery_refresh_refused'); await failed.drained;
+  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'reconnect_session']); // quarantined by the refresh fence, not by this lane
+  assert.equal((await http.mcp(token)).status, 401); // the fence is open again; the token is simply still refused
+  f.read().joined.connection.state = 'revoked'; // SQL now knows the session is beyond recovery
+  const final = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  assert.deepEqual(await final.result, { ok: true, status: 'unavailable', refreshed: false }); await final.drained;
+  assert.equal(inputs.length, 2); assert.equal(refresh.operations.length, 3); // no second refresh
+});
+
+test('external recovery: an unreachable Auth provider is a transient rejection before SQL is asked; the lease is not moved and no refresh is dispatched', async t => {
+  const f = fakeBackend(), fetch = f.configuration.fetch, refusedProbes = []; let reachable = false;
+  // Only the fixed health path of the Auth origin is cut off: the same network state in which a dispatched refresh would be lost.
+  f.configuration.fetch = (url, options) => {
+    if (new URL(url).pathname !== '/auth/v1/health' || reachable) return fetch(url, options);
+    refusedProbes.push({ ...options }); return Promise.reject(new Error('PRIVATE network down'));
+  };
+  const http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal;
+  f.advance(61 * 60000); // lease and provider session both lapsed during the outage
+  const refresh = arrangeRefresh(f), inputs = arrangeRecovery(f, { sessionReady: false }), lapsed = f.read().joined.connection.expiresAt;
+  const blocked = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  await assert.rejects(blocked.result, error => error.code === 'recovery_provider_unreachable' && error.message === 'recovery_provider_unreachable' && error.cause === undefined);
+  await blocked.drained;
+  assert.equal(refusedProbes.length, 1); assert.equal(inputs.length, 0); assert.equal(refresh.operations.length, 0);
+  assert(refusedProbes[0].signal instanceof AbortSignal); assert.equal(refusedProbes[0].signal.aborted, true); // given up and cancelled
+  assert.deepEqual(refusedProbes[0].headers, { apikey: 'sb_publishable_fixture', accept: 'application/json' });
+  assert(!f.sql.some(query => query.text === RECOVER_SQL)); assert.equal(f.read().joined.connection.expiresAt, lapsed); // no SQL window was spent
+  assert.equal(f.read().joined.session.revision, 1); assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 1); // the login only
+  assert.equal((await http.mcp(token)).status, 401); // the fence is open again; the token is simply still refused
+  reachable = true; // the provider answers: the very next attempt revives the lease and refreshes under it
+  const operation = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  assert.deepEqual(await operation.result, { ok: true, status: 'recovered', connectionId: I.connection, refreshed: true }); await operation.drained;
+  assert.deepEqual(inputs.probesBefore, [1]); assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  assert.equal((await http.mcp(token)).status, 200);
+});
+
+test('a session refresh due under a lease below the minimum is refused by maintenance before any dispatch; once the lease has lapsed, recovery refreshes under a fresh window', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal;
+  f.nearSessionExpiry(); f.read().joined.connection.expiresAt = f.read().clock + 120000; // refresh due with two minutes of lease left
+  const refresh = arrangeRefresh(f), inputs = arrangeRecovery(f, { sessionReady: false });
+  const refused = http.beginExternalConnectionMaintenance(token, { signal: signal() });
+  await assert.rejects(refused.result, error => error.code === 'maintenance_rejected' && error.outcomeUnknown === false); await refused.drained;
+  assert.equal(refresh.operations.length, 0); assert(!f.sql.some(query => /hermes_store_renew_connection/.test(query.text)));
+  assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 1); assert.equal(f.read().joined.session.revision, 1);
+  assert.equal((await http.mcp(token)).status, 200); // nothing was dispatched: the fence is open and the token still serves
+  f.advance(4 * 60000); // the lease (and the session) lapse instead of being refreshed across
+  await assert.rejects(http.resolveConnection(token, { signal: signal() }), { code: 'unauthorized' });
+  const operation = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  assert.deepEqual(await operation.result, { ok: true, status: 'recovered', connectionId: I.connection, refreshed: true }); await operation.drained;
+  assert.equal(inputs.length, 1); assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  const renewal = http.beginExternalConnectionMaintenance(token, { signal: signal() }); // five minutes of lease, fresh session: plain renewal
+  assert.equal((await renewal.result).status, 'renewed'); await renewal.drained;
+  assert.equal(refresh.operations.length, 4); assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 2); // one login, one refresh
+  assert.equal((await http.mcp(token)).status, 200);
+});
+
+test('external recovery exists only on the connector, validates its caller and stops with the backend', async t => {
+  const entered = deferred(), held = deferred();
+  t.after(() => held.resolve()); // Before backend close: a held store call must not deadlock cleanup.
+  const f = fakeBackend(), plain = await listening(t, f.configuration), token = (await plain.connect()).body.token, signal = () => new AbortController().signal;
+  assert.throws(() => plain.beginExternalConnectionRecovery(token, { signal: signal() }), { code: 'invalid_request' });
+  const g = fakeBackend(), http = await listening(t, { ...g.configuration, connectorOnly: true }), own = (await http.connect()).body.token;
+  for (const bad of [[browserJwt, { signal: signal() }], [own], [own, { signal: {} }], ['hc_short', { signal: signal() }]]) {
+    assert.throws(() => http.beginExternalConnectionRecovery(...bad), { code: 'invalid_request' });
+  }
+  const aborted = new AbortController(); aborted.abort();
+  assert.throws(() => http.beginExternalConnectionRecovery(own, { signal: aborted.signal }), { code: 'backend_unavailable' });
+  assert.equal(g.sql.filter(query => query.text === RECOVER_SQL).length, 0);
+  // Close holds the pool-backed drain of an attempt in flight and refuses new ones.
+  g.advance(20 * 60000); arrangeRecovery(g);
+  const respond = g.privateOperations.get('recover_connection');
+  g.privateOperations.set('recover_connection', async input => { entered.resolve(); await held.promise; return respond(input); });
+  const operation = http.beginExternalConnectionRecovery(own, { signal: signal() }), rejected = assert.rejects(operation.result);
+  await entered.promise;
+  let closed = false, drained = false; const closing = http.close().then(() => { closed = true; }); void operation.drained.then(() => { drained = true; });
+  await tick(); assert.equal(closed, false); assert.equal(drained, false); // the fence result follows the actual drain, like maintenance
+  assert.throws(() => http.beginExternalConnectionRecovery(own, { signal: signal() }), { code: 'backend_unavailable' });
+  held.resolve(); await rejected; await operation.drained; await closing; assert.equal(closed, true); assert.equal(g.read().poolEnds, 0);
+});
+
 test('connector status shows only the caller\'s own connections with last MCP activity and a fixed error code', async t => {
   const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true }), token = (await http.connect()).body.token;
   const empty = await http.browser('status');
@@ -963,4 +1362,61 @@ test('options disconnect cannot release the global sixteen-request budget before
     const rejected=await http.browser('options');assert.equal(rejected.status,429);
     assert.equal(calls,16);assert.equal(active,16);assert.equal(peak,16);
   }finally{hold.resolve();await http.close();}
+});
+
+// Nhớ quyền 30 phút (28/10, authority-context-cache.mjs). Production đo 28/10: keepalive `ping` 180 s của Hermes (2 lần dựng authority
+// mỗi ping) + làn gia hạn ~10 phút (9–11 lần) = ~100 lần dựng/giờ, mỗi lần 15 RPC quyền CRM + /auth/v1/user.
+const PERMISSION_READ = path => /^\/rest\/v1\/rpc\/(?:get_authorization_context_v1|get_my_organizations|hermes_scope_buildings_v1|hermes_group_action_context_v1|hermes_[a-z0-9_]*capabilities(?:_v[0-9]+)?)$/.test(path);
+const INITIALIZE = { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'hermes-fixture', version: '1' } };
+
+test('nhớ quyền: ping/initialize/tools/list qua MCP không đọc lại RPC quyền CRM, tools/call vẫn đọc thật, authorityCacheTtlMs 0 giữ hành vi cũ', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true }), token = (await http.connect()).body.token;
+  const count = since => ({ permission: f.calls.slice(since).filter(call => PERMISSION_READ(call.path)).length,
+    user: f.calls.slice(since).filter(call => call.path === '/auth/v1/user').length });
+  let at = f.calls.length;
+  assert.equal((await http.mcp(token, 'ping')).status, 200);
+  const build = count(at).permission;
+  assert.ok(build >= 3, `one cold build reads context, directory, scope and capabilities (${build})`);
+  at = f.calls.length;
+  for (let n = 0; n < 5; n++) assert.equal((await http.mcp(token, 'ping')).status, 200);
+  assert.deepEqual((await http.mcp(token, 'tools/list')).body.result.tools.map(tool => tool.name), ['crm_auth_context']);
+  assert.equal((await http.mcp(token, 'initialize', INITIALIZE)).status, 200);
+  assert.deepEqual(count(at), { permission: 0, user: 14 }, 'seven warm calls: no CRM permission RPC, the Auth session still verified twice each');
+  at = f.calls.length;
+  const called = await http.mcp(token, 'tools/call', { name: 'crm_auth_context', arguments: {} });
+  assert.equal(called.body.result.isError, false);
+  assert.ok(count(at).permission >= 2 * build, 'tools/call builds the full authority at admission and after the audit');
+  // Thu hẹp kết nối (epoch mới) có hiệu lực ngay ở tools/list, không chờ hết hạn nhớ.
+  assert.equal((await http.browser('restrict', { connectionId: I.connection, expectedEpoch: 2, restrictions: { read: [], action: [] }, scopeIds: [] })).status, 200);
+  assert.deepEqual((await http.mcp(token, 'tools/list')).body.result.tools, []);
+  // Tắt bằng cấu hình: mỗi ping dựng authority đầy đủ hai lần như trước 28/10.
+  const g = fakeBackend(), legacy = await listening(t, { ...g.configuration, connectorOnly: true, authorityCacheTtlMs: 0 });
+  const legacyToken = (await legacy.connect()).body.token, legacyAt = g.calls.length;
+  for (let n = 0; n < 3; n++) assert.equal((await legacy.mcp(legacyToken, 'ping')).status, 200);
+  assert.equal(g.calls.slice(legacyAt).filter(call => PERMISSION_READ(call.path)).length, 3 * 2 * build);
+  t.diagnostic(`permission RPC per authority build=${build}; warm ping/tools/list/initialize=0; ttl 0: ${2 * build} per ping`);
+});
+
+test('nhớ quyền: làn gia hạn/refresh của host dùng lại quyền đã nhớ; revision phiên mới đọc lại đúng một lần', async t => {
+  const f = fakeBackend(), http = await listening(t, f.configuration), token = (await http.connect()).body.token;
+  const reads = since => f.calls.slice(since).filter(call => PERMISSION_READ(call.path)).length, signal = () => new AbortController().signal;
+  let at = f.calls.length; assert.equal((await http.mcp(token, 'ping')).status, 200); const build = reads(at);
+  at = f.calls.length;
+  assert.equal((await http.resolveConnection(token, { signal: signal() })).connectionId, I.connection);
+  assert.equal((await http.renewConnection(token, { signal: signal() })).status, 'renewed');
+  const plain = http.beginConnectionMaintenance(token, { signal: signal() });
+  assert.equal((await plain.result).status, 'renewed'); await plain.drained;
+  assert.equal(reads(at), 0, 'discovery, renewal and maintenance (12 authority builds) reuse the remembered CRM read');
+  f.nearSessionExpiry(); const refresh = arrangeRefresh(f);
+  at = f.calls.length;
+  assert.equal((await http.mcp(token, 'ping')).status, 200); // 57 min later: the 30-min entry has expired ⇒ one cold build
+  assert.equal(reads(at), build);
+  const operation = http.beginConnectionMaintenance(token, { signal: signal() });
+  assert.equal((await operation.result).status, 'renewed'); await operation.drained;
+  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  assert.equal(reads(at), 2 * build, 'the refreshed provider session (new revision) is read once, then reused by the rest of the lane');
+  assert(f.calls.filter(call => call.path === '/auth/v1/user' && call.options.headers.authorization === `Bearer ${refresh.nextJwt}`).length >= 2);
+  for (const authorityCacheTtlMs of [-1, 1, 59_999, 3_600_001, '1800000', null, 1.5]) {
+    assert.throws(() => createHermesBackend({ ...f.configuration, authorityCacheTtlMs }), /invalid_backend_config/, JSON.stringify(authorityCacheTtlMs));
+  }
 });

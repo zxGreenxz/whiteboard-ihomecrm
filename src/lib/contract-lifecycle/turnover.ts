@@ -6,14 +6,14 @@ import { classifyDbError } from '@/lib/contracts/errors';
 const civilDate = z.string().refine(value => isCivilDate(value) && value >= '0001-01-01', 'Ngày dự kiến không hợp lệ');
 const version = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const roomTurnoverStateSchema = z.object({
-  id:z.string().uuid(),organization_id:z.string().uuid(),room_id:z.string().uuid(),version,
-  epoch:z.number().int().positive(),source_contract_id:z.string().uuid().nullable(),status:z.enum(['PENDING','READY']),
-  expected_ready_on:civilDate.nullable(),responsible_user_id:z.string().uuid().nullable(),
+  id:z.string().guid(),organization_id:z.string().guid(),room_id:z.string().guid(),version,
+  epoch:z.number().int().positive(),source_contract_id:z.string().guid().nullable(),status:z.enum(['PENDING','READY']),
+  expected_ready_on:civilDate.nullable(),responsible_user_id:z.string().guid().nullable(),
   reason:z.string(),updated_at:z.string().datetime({offset:true}),
 });
 export type RoomTurnoverState = z.infer<typeof roomTurnoverStateSchema>;
 const historySchema = z.object({
-  id:z.string().uuid(),epoch:z.number().int().positive(),actor_id:z.string().uuid(),
+  id:z.string().guid(),epoch:z.number().int().positive(),actor_id:z.string().guid(),
   created_at:z.string().datetime({offset:true}),previous_state:roomTurnoverStateSchema.nullable(),
   new_state:roomTurnoverStateSchema,reason:z.string(),
 });
@@ -23,16 +23,16 @@ const snapshotSchema = z.object({
 export type RoomTurnoverSnapshot = z.infer<typeof snapshotSchema>;
 export const parseRoomTurnoverSnapshot = (value:unknown):RoomTurnoverSnapshot => snapshotSchema.parse(value);
 const queueSchema = z.object({today:civilDate,total:version,items:z.array(z.object({
-  room_id:z.string().uuid(),room_name:z.string(),building_id:z.string().uuid(),building_name:z.string(),
-  version,epoch:z.number().int().positive(),source_contract_id:z.string().uuid().nullable(),
-  expected_ready_on:civilDate.nullable(),responsible_user_id:z.string().uuid().nullable(),status:z.literal('PENDING'),
+  room_id:z.string().guid(),room_name:z.string(),building_id:z.string().guid(),building_name:z.string(),
+  version,epoch:z.number().int().positive(),source_contract_id:z.string().guid().nullable(),
+  expected_ready_on:civilDate.nullable(),responsible_user_id:z.string().guid().nullable(),status:z.literal('PENDING'),
 }))});
 export type RoomTurnoverQueue = z.infer<typeof queueSchema>;
 export const parseRoomTurnoverQueue = (value:unknown):RoomTurnoverQueue => queueSchema.parse(value);
 
 export const roomTurnoverFormSchema = z.object({
   status:z.enum(['PENDING','READY']),expectedReadyOn:z.union([civilDate,z.literal('')]),
-  responsibleUserId:z.union([z.string().uuid(),z.literal('')]),reason:z.string().trim().min(1,'Vui lòng nhập lý do / ghi chú').max(2000,'Lý do tối đa 2.000 ký tự'),
+  responsibleUserId:z.union([z.string().guid(),z.literal('')]),reason:z.string().trim().min(1,'Vui lòng nhập lý do / ghi chú').max(2000,'Lý do tối đa 2.000 ký tự'),
 });
 export type RoomTurnoverFormData = z.infer<typeof roomTurnoverFormSchema>;
 export interface SaveRoomTurnoverInput {
@@ -40,10 +40,10 @@ export interface SaveRoomTurnoverInput {
   expectedReadyOn:string|null;responsibleUserId:string|null;sourceContractId:string|null;reason:string;startNewCycle:boolean;
 }
 export function buildRoomTurnoverArgs(input:SaveRoomTurnoverInput) {
-  z.string().uuid().parse(input.organizationId);z.string().uuid().parse(input.roomId);
+  z.string().guid().parse(input.organizationId);z.string().guid().parse(input.roomId);
   version.parse(input.expectedVersion);
   const form = roomTurnoverFormSchema.parse({...input,expectedReadyOn:input.expectedReadyOn??'',responsibleUserId:input.responsibleUserId??''});
-  const source = z.string().uuid().nullable().parse(input.sourceContractId);
+  const source = z.string().guid().nullable().parse(input.sourceContractId);
   const payload = {
     status:form.status,expected_ready_on:form.expectedReadyOn||null,responsible_user_id:form.responsibleUserId||null,
     source_contract_id:source,reason:form.reason,start_new_cycle:input.startNewCycle,

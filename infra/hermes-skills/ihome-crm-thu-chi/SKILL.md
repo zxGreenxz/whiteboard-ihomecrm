@@ -1,0 +1,76 @@
+---
+name: ihome-crm-thu-chi
+description: "Thu chi CRM: lập, sửa, huỷ, duyệt phiếu chi."
+version: 1.0.0
+author: iHome CRM
+metadata:
+  hermes:
+    tags: [crm, ihome, official, expenses]
+    related_skills: [ihome-crm-ghi-chung, ihome-crm-hoa-don]
+---
+
+# Thu chi (trang /income-expense)
+
+Hướng dẫn chuẩn, cùng connector; khác skill tự học thì theo đây. Vòng ghi, xem trước, xác nhận, lỗi: `ihome-crm-ghi-chung`.
+Mọi thao tác dưới đây đi qua `crm_action_run`. Tiền ra (chi, mua, trả thợ, đóng cho nhà cung cấp) mới là phiếu chi.
+
+## When to Use
+
+Lập phiếu chi vận hành (mua đồ, sửa chữa, điện nước của toà, vệ sinh…), sửa / huỷ / duyệt phiếu chi, ghi chú phiếu (chi hoặc thu),
+hỏi khoản chi.
+
+## Chặn trước — không gọi tool nào (kể cả `crm_action_list`), trả lời một câu chỉ đúng trang web
+
+Chỉ khi việc được nhờ chính là LẬP / GHI khoản tiền dưới đây:
+
+- Chi hoa hồng sale / môi giới ⇒ Hợp đồng › Duyệt hoa hồng.
+- Thu / hoàn / trả / bổ sung cọc, bỏ cọc không kèm trả phòng ⇒ Quản lý cọc / thanh lý HĐ.
+- Lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách ⇒ Hợp đồng.
+- Lương, thưởng ⇒ Lương.
+- Lập / sửa / huỷ phiếu THU (kể cả "lập phiếu thu …", câu mở đầu bằng "Thu <tiền> <khoản>" dù có phòng / toà), phiếu hệ thống,
+  phiếu con định kỳ, mở lại phiếu đã huỷ ⇒ trang Thu chi (/income-expense).
+
+KHÔNG chặn:
+
+- Ghi chú vào phiếu đã có, kể cả phiếu thu ⇒ `expense.note` (mục dưới).
+- Khách trả phòng kèm bỏ cọc ⇒ `contract.return` `forfeit` = true (`ihome-crm-hop-dong`).
+- Khách (kể cả khách cũ) trả tiền HOÁ ĐƠN, kể cả hoá đơn thanh lý / "ck tiền quyết toán" ⇒ `ihome-crm-hoa-don`.
+- Ghi chú thưởng / hoa hồng cho sale của một phòng (`sale_bonus_note`, chỉ là chữ trên phòng, không tạo phiếu) ⇒
+  `ihome-crm-phong-sale-nhom`.
+
+## Lập phiếu chi — `expense.create`
+
+- `items` 1–5 khoản, mỗi khoản {`buildingName`, `roomName`, `amount`, `content`, `category`, `payee`, `voucherDate`,
+  `voucherDatePhrase`, `period`, `cashbook`}; gọi NGAY với những gì người dùng nói, không hỏi hạng mục trước.
+- `category`: để trống nếu người dùng không nêu (máy chủ tự suy từ nội dung); không tự điền, không tự đề xuất "Chi khác".
+  Máy chủ đưa gợi ý hạng mục ⇒ làm theo `detail` (một gợi ý ⇒ gọi lại ngay với gợi ý đó rồi hỏi đồng ý một lần).
+- Chưa rõ chi cho việc gì (chỉ có tiền + toà) ⇒ hỏi "chi cho việc gì?"; thiếu cả toà lẫn việc ⇒ hỏi gộp một câu.
+- "lấy tiền sổ X" ⇒ `cashbook` = X (không phải `payee`). "Đóng tiền điện / nước toà X <tiền>" không nêu phòng / khách = phiếu chi
+  cho nhà cung cấp; "phòng X ck <tiền>" = khách trả ⇒ `ihome-crm-hoa-don`.
+- Đọc nguyên văn từng khoản: `willBe` ("vào sổ ngay" / "chờ duyệt: …"), trần / cam kết của kỳ, `warnings`.
+
+## Ghi chú, sửa, huỷ, duyệt
+
+- `expense.note` {`voucherCode`, `note`, `buildingName` khi mã trùng giữa các toà}: phiếu chi hoặc phiếu thu; ghi thẳng.
+- `expense.edit` {`voucherCode`, trường đổi, `reason` khi đổi tiền / hạng mục / sổ / toà}: chỉ phiếu chi chờ duyệt.
+- `expense.cancel` {`voucherCode`, `reason` 8–1000 ký tự — luôn cần: đã nêu vì sao ⇒ gửi nguyên cụm, không tự đếm ký tự; chưa nêu,
+  hoặc máy chủ báo ngắn ⇒ hỏi; bot không tự ghép "huỷ phiếu", câu yêu cầu hay từ đệm cho đủ ký tự}: phiếu đã vào sổ ⇒ bút toán
+  đảo, không khôi phục được; lượt xác nhận kèm `consentText`.
+- `expense.approve` {`voucherCodes` ≤ 10, mỗi mã kèm ngày phiếu dạng "MÃ dd/mm/yyyy", `post` = false nếu chỉ duyệt chưa chi,
+  `buildingName`}: duyệt lô theo danh sách vừa đọc ⇒ gửi mã kèm ngày ngay lần đầu, không gửi voucherId / UUID; nhiều hơn 10 ⇒
+  làm 10 phiếu đầu, nói số còn lại. Đọc `plan` từng phiếu.
+  - Phiếu luồng hệ thống (thanh lý, hoàn cọc, hoa hồng, thưởng, lương, bàn giao, thu tiền hoá đơn, phiếu con định kỳ) trong lô:
+    máy chủ tự ghi "không làm" ở `plan` của phiếu đó và vẫn duyệt các phiếu khác — không tự lọc theo tên trước khi gửi. Báo: số
+    phiếu duyệt được, và từng phiếu "không làm" kèm đúng lý do ở `plan` (phiếu hệ thống ⇒ màn gốc trên web; không còn chờ duyệt;
+    không có quyền / không được tự duyệt…).
+  - Bị từ chối cả lô (`system_voucher`, Khoản 1) ⇒ KHÔNG phiếu nào trong lô duyệt được qua bot; máy chủ chỉ nêu lý do của phiếu
+    đầu (phiếu hệ thống), phiếu khác có thể vướng lý do khác. Không gửi lại đúng lô đó. Danh sách còn phiếu chưa gửi ⇒ gửi lô kế
+    (≤ 10); hết ⇒ nói chưa duyệt phiếu nào qua bot, phiếu đầu là phiếu hệ thống (duyệt ở màn gốc trên web), không gộp mọi phiếu
+    thành "phiếu hệ thống".
+
+## Đọc thu chi
+
+Hỏi THU ⇒ chỉ nêu thu; hỏi CHI ⇒ chỉ nêu chi; không kèm tổng phía kia khi không được hỏi.
+`crm_read_income_expenses` (không có tham số type; thu / chi xem `summary.byType`). Phiếu chi theo điều kiện (lớn nhất, trên /
+dưới X, chờ duyệt quá N ngày, theo toà): `crm_read_report` report=expense_vouchers. Theo hạng mục: report=expense_categories.
+Tab Chi phí của Phân tích tài chính: report=top_expenses. Danh sách sổ quỹ: report=cashbooks.

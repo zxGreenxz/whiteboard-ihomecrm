@@ -83,6 +83,7 @@ export const OverpaymentReport = lazy(() => import("../pages/reports/finance/Ove
 export const DepositsReport = lazy(() => import("../pages/reports/finance/DepositsReport"));
 export const ProfitHubPage = lazy(() => import("../pages/reports/finance/ProfitHubPage"));
 export const BusinessPerformanceReportPage = lazy(() => import("../pages/reports/finance/BusinessPerformanceReportPage"));
+export const LandlordSettlementPage = lazy(() => import("../pages/reports/finance/LandlordSettlementPage"));
 export const FinancialAnalysisReport = lazy(() => import("../pages/reports/finance/FinancialAnalysisReport"));
 export const BanGiaoReport = lazy(() => import("../pages/reports/finance/BanGiaoReport"));
 export const BanGiaoCycleReport = lazy(() => import("../pages/reports/finance/BanGiaoCycleReport"));
@@ -122,6 +123,13 @@ export const FloorsPage = lazy(() => import("../pages/settings/categories/Floors
 export const TaskTypesPage = lazy(() => import("../pages/settings/categories/TaskTypesPage"));
 export const TaskManagementPage = lazy(() => import("../pages/TaskManagementPage"));
 export const MyDayPage = lazy(() => import("../pages/my-day/MyDayPage"));
+export const TeamDayPage = lazy(() => import("../pages/my-day/TeamDayPage"));
+export const StaffDayPage = lazy(() => import("../pages/my-day/StaffDayPage"));
+export const StaffJourneyPage = lazy(() => import("../pages/my-day/StaffJourneyPage"));
+export const StaffCalendarPage = lazy(() => import("../pages/my-day/StaffCalendarPage"));
+export const StaffReportPage = lazy(() => import("../pages/my-day/StaffReportPage"));
+export const GpsCheckinPage = lazy(() => import("../pages/my-day/GpsCheckinPage"));
+export const GpsCheckinSettingsPage = lazy(() => import("../pages/my-day/GpsCheckinSettingsPage"));
 export const OwnerDashboardV5 = lazy(() => import("../pages/reports/OwnerDashboardV5"));
 
 // Tài khoản + Info + Public
@@ -129,6 +137,9 @@ export const ProfilePage = lazy(() => import("../pages/account/ProfilePage"));
 export const NotificationSettingsPage = lazy(() => import("../pages/account/NotificationSettingsPage"));
 export const SubscriptionPage = lazy(() => import("../pages/account/SubscriptionPage"));
 export const PublicContractInvoicePage = lazy(() => import("../pages/public/PublicContractInvoicePage"));
+export const LandlordSettlementPublicPage = lazy(() => import("../pages/public/LandlordSettlementPublicPage"));
+export const LandlordPortalPage = lazy(() => import("../pages/public/LandlordPortalPage"));
+export const CameraSharePage = lazy(() => import("../pages/public/CameraSharePage"));
 export const FaqPage = lazy(() => import("../pages/FaqPage"));
 export const ChangelogPage = lazy(() => import("../pages/ChangelogPage"));
 export const AppGuidePage = lazy(() => import("../pages/AppGuidePage"));

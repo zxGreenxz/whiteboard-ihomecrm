@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 const receivedFactSchema = z.object({
-  voucher_id: z.string().uuid(),
-  reservation_id: z.string().uuid().nullable(),
+  voucher_id: z.string().guid(),
+  reservation_id: z.string().guid().nullable(),
   received_amount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
 }).strict();
 export type ReservationReceivedFact = z.infer<typeof receivedFactSchema>;

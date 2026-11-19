@@ -116,9 +116,12 @@ function Khung({
   che = 'POST_APPROVED',
   dangGhiSo = false,
   hoaHong = false,
+  khoaSo = false,
 }: {
   giuKhiDong?: boolean;
   hoaHong?: boolean;
+  /** Phiếu chi theo sổ tổng: chỉ chi từ đúng sổ lúc lập. */
+  khoaSo?: boolean;
   loai?: 'INCOME' | 'EXPENSE';
   che?: 'POST_APPROVED' | 'APPROVE_AND_POST';
   /** Như trang truyền `isPending` của lệnh ghi sổ. */
@@ -135,6 +138,7 @@ function Khung({
     approvedTotal: 1_500_000,
     name: 'Sửa máy bơm',
     defaultCashbookId: SO,
+    cashbookLocked: khoaSo,
     attachments: [...may.anh],
   }));
   const hop = (
@@ -382,6 +386,31 @@ describe('C26/C27 — chứng từ lỗi có trạng thái bền vững', () => 
   });
 });
 
+
+// Đợt 2 sổ tổng: phiếu chi lợi nhuận / lương điều hành chỉ chi từ đúng sổ lúc lập; lỗi chốt F1/F1b của máy
+// chủ (mã PROFIT_LEDGER_…, phần lớn 55000 ⇒ HTTP 500) phải ra câu riêng, không phải câu chung chung.
+describe('phiếu chi theo sổ tổng', () => {
+  it('câu gợi ý nói rõ chỉ chi từ sổ lúc lập — không mời đổi sổ', () => {
+    render(<Khung khoaSo />);
+    expect(screen.getByTestId('posting-cashbook-locked').textContent).toBe('Phiếu chi theo sổ tổng chỉ chi được từ sổ quỹ đã chọn lúc lập.');
+    expect(screen.queryByText(/Đổi sổ khác cũng được/)).toBeNull();
+  });
+  it('máy chủ chặn bằng mã sổ tổng ⇒ câu tiếng Việt của sổ tổng; lỗi khác giữ câu cũ', async () => {
+    may.anh = [ANH_CU];
+    H.ghiSo.mockRejectedValueOnce({ code: '55000', message: 'PROFIT_LEDGER_ACCOUNT_LOCKED: chỉ ghi sổ bằng sổ quỹ lúc lập', details: null });
+    render(<Khung khoaSo />);
+    await waitFor(() => expect(H.goiMayChu).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await screen.findByText('Phiếu này chỉ chi được từ sổ quỹ đã chọn lúc lập.');
+    expect(screen.queryByText(/Chưa xác định được nguyên nhân/)).toBeNull();
+    cleanup();
+    H.ghiSo.mockRejectedValueOnce({ code: '55000', message: 'PROFIT_LEDGER_ROUTE_OFF: sổ tổng chưa bật', details: '{"route":"LEGACY"}' });
+    render(<Khung khoaSo />);
+    await waitFor(() => expect(H.goiMayChu).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await screen.findByText('Sổ tổng chưa bật — chưa duyệt hay chi phiếu này được (vẫn huỷ được).');
+  });
+});
 
 describe('chứng từ đã ghi nhưng kiểm tra lại lỗi', () => {
   it('giữ ảnh đã đính, báo phần chưa hoàn tất và không xoá ảnh khi đóng', async () => {

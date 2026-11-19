@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "profilesRoot": "/var/lib/ihome-hermes-profiles",
+  "archiveRoot": "/var/lib/ihome-hermes-profiles-archive",
+  "image": "nousresearch/hermes-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "uidRange": [10100, 10199],
+  "ram": { "defaultLimitMb": 700, "expectedMb": 450, "keepFreeMb": 150 },
+  "worker": {
+    "container": "ihome-zalo-worker",
+    "uid": 10002,
+    "nativeConfig": "/opt/ihome-zalo-worker/native-config/config.json"
+  },
+  "template": {
+    "sourceHome": "/var/lib/ihome-hermes-profiles/owner",
+    "sourceProfile": "owner",
+    "sharedEnvKeys": ["NINEROUTER_API_KEY"]
+  },
+  "connectors": {
+    "prod": {
+      "user": "ihome-hermes",
+      "config": "/etc/ihome-hermes/connector.json",
+      "unit": "hermes-connector.service",
+      "mcpUrl": "http://172.17.0.1:8740/mcp"
+    },
+    "test": {
+      "user": "ihome-hermes-test",
+      "config": "/etc/ihome-hermes-test/connector.json",
+      "unit": "hermes-connector-test.service",
+      "mcpUrl": "http://172.17.0.1:8741/mcp",
+      "trial": true,
+      "trialBridgePort": 8999
+    }
+  }
+}

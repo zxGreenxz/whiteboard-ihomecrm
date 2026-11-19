@@ -22,9 +22,9 @@ for (const id of [
   'check-management-api-writes', 'check-promote-readiness', 'check-migration-test-liveness',
   'check-doc-counts', 'check-new-modules-strict', 'check-ts-baseline', 'check-eslint-baseline',
   'check-docs', 'check-rpc-arg-names', 'check-rpc-name-literal', 'check-rpc-layer',
-  'check-realtime-key-ownership', 'check-vault-access',
+  'check-realtime-key-ownership', 'check-vault-access', 'check-workflow-runner-pins',
 ]) nodeGate(id);
-for (const id of ['check-agent-contract', 'check-capability-docs', 'check-baseline-doc', 'check-doc-counts', 'check-docs', 'check-test-matrix', 'check-workflow-paths']) gates[id].inputs = docsInputs;
+for (const id of ['check-agent-contract', 'check-capability-docs', 'check-baseline-doc', 'check-doc-counts', 'check-docs', 'check-test-matrix', 'check-workflow-paths', 'check-workflow-runner-pins']) gates[id].inputs = docsInputs;
 // P0 restores only offline checks for the CRM core reused by Hermes.
 // Live/model/browser checks remain deferred and are not runtime evidence.
 for (const id of ['check-copilot-docs-manifest', 'check-copilot-tool-inventory', 'check-copilot-forbidden-actions']) {
@@ -68,10 +68,14 @@ for (const [id, job, command, args] of [
   ['organization-backup-envelope', 'quality-gates', 'node', ['--test']],
   ['bank-event-gateway', 'quality-gates', 'node', ['--test']],
   ['edge-deno-bank-events', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/bank-event-ingest/deno.json']],
+  ['edge-deno-gps-checkin', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/gps-checkin-ingest/deno.json']],
+  ['edge-deno-admin-reset-password', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/admin-reset-user-password/deno.json']],
   ['edge-deno-llm-proxy', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/llm-proxy/deno.json']],
   ['edge-deno-quick-entry', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/quick-entry/deno.json']],
   ['edge-deno-notifications', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/lifecycle-reminders/deno.json']],
   ['edge-deno-door-access', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/door-access/deno.json']],
+  ['edge-deno-meter-capture', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/meter-capture-worker/deno.json']],
+  ['meter-capture-python', 'quality-gates', 'node', ['--test']],
   ['e2e-fleet', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
   ['e2e-personal-finance-demo', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
   ['e2e-personal-finance-product', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
@@ -79,6 +83,8 @@ for (const [id, job, command, args] of [
 ]) {
   gates[`suite:${id}`] = { id: `suite:${id}`, command, args, job, local: command !== 'deno', evidenceClass: 'static', inputs: broadInputs, requires: [] };
 }
+
+gates['suite:meter-capture-python'].inputs = [...broadInputs, 'infra/meter-capture-worker/**', '.github/workflows/ci-gates.yml'];
 
 export const GATE_REGISTRY = Object.freeze(gates);
 // Exact suite/file pairs only. Real TEST/preview specs remain outside default CI.

@@ -759,10 +759,11 @@ describe("Network Center Supabase repository boundary", () => {
     expect(harness.calls.filter((call) => call.name === "network_center_list_aruba_v1")).toHaveLength(0);
   });
 
-  it("surfaces a sanitized actionable settings-version conflict", async () => {
+  // PT409 = mã server trả từ 20261116015253; 40001 = mã cũ vẫn nhận.
+  it.each(["PT409", "40001"])("surfaces a sanitized actionable settings-version conflict (%s)", async (code) => {
     const repository = new RepositoryConstructor(async () => ({
       data: null,
-      error: { code: "40001", message: "database-detail=do-not-leak" },
+      error: { code, message: "database-detail=do-not-leak" },
     }));
 
     const failure = await repository.updateSettings(

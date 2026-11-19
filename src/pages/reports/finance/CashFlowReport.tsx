@@ -1,10 +1,15 @@
 import { QueryRegion, refetchStartedSources } from "@/components/errors/QueryRegion";
 import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
-import { useCashFlowByDay } from "@/hooks/useCashBook";
+import { useCashFlowReport } from "@/hooks/useCashFlowReport";
+import { monthlyProfitPayouts, useCashFlowProfitPayouts } from "@/hooks/useCashFlowProfitPayouts";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionCheck";
+import { extractCode } from "@/lib/contracts/errors";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import { useBuildings } from "@/hooks/useBuildings";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import {
@@ -23,10 +28,11 @@ const formatCurrency = (n: number) =>
 const QUARTER_LABEL = ["I", "II", "III", "IV"];
 
 export default function CashFlowReport() {
-  // hermes-parity:begin cashbook-daily-cash-flow — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
+  const { selectedOrganizationId } = useOrganization();
+  // hermes-parity:begin cash-flow-external-report — xem infra/hermes-broker/web-parity.json
   const currentYear = new Date().getFullYear();
   const [year, setYear] = usePersistedState<number>("flt:rpt-cash-flow:year", currentYear);
-  // hermes-parity:end cashbook-daily-cash-flow
+  // hermes-parity:end cash-flow-external-report
   const [buildingId, setBuildingId] = usePersistedState<string>("flt:rpt-cash-flow:buildingId", "all");
   const [series, setSeries] = useState<{
     income: boolean;
@@ -34,19 +40,22 @@ export default function CashFlowReport() {
     net: boolean;
   }>({ income: true, expense: true, net: true });
 
-  // hermes-parity:begin cashbook-daily-cash-flow
-  const startDate = `${year}-01-01`;
-  const endDate = `${year}-12-31`;
-  // hermes-parity:end cashbook-daily-cash-flow
-
+  // hermes-parity:begin cash-flow-external-report
   const buildingsQuery = useBuildings({ includeVirtual: true });
-  const { data: buildings = [] } = buildingsQuery;
-  const cashFlowByDayQuery = useCashFlowByDay(startDate, endDate, {
-    building_id: buildingId === "all" ? undefined : buildingId,
-  });
-  const { data: byDay = [], isLoading } = cashFlowByDayQuery;
+  const buildings = (buildingsQuery.data ?? []).filter((building) => building.organization_id === selectedOrganizationId);
+  const buildingSelectionReady = !!selectedOrganizationId && buildingsQuery.status === "success";
+  const invalidBuildingSelection = buildingSelectionReady && buildingId !== "all" && !buildings.some((building) => building.id === buildingId);
+  const effectiveBuildingId = invalidBuildingSelection ? "all" : buildingId;
+  useEffect(() => {
+    if (invalidBuildingSelection) setBuildingId("all");
+  }, [invalidBuildingSelection, setBuildingId]);
+  const cashFlowQuery = useCashFlowReport(
+    year,
+    buildingSelectionReady && effectiveBuildingId !== "all" ? effectiveBuildingId : undefined,
+    { enabled: buildingId === "all" || buildingSelectionReady },
+  );
+  const { data: periods = [], isLoading } = cashFlowQuery;
 
-  // hermes-parity:begin cashbook-daily-cash-flow
   // Aggregate to 12 months
   const monthly = useMemo(() => {
     const result = Array.from({ length: 12 }, (_, i) => ({
@@ -56,16 +65,16 @@ export default function CashFlowReport() {
       expense: 0,
       net: 0,
     }));
-    (byDay as any[]).forEach((d) => {
-      const m = parseInt(d.date.substring(5, 7), 10) - 1;
-      if (m >= 0 && m < 12) {
-        result[m].income += d.income || 0;
-        result[m].expense += d.expense || 0;
-      }
+    periods.forEach((period) => {
+      // RPC trả cả tháng và quý: chỉ cộng tháng, tránh tính lại dòng quý.
+      if (period.period.includes("-Q")) return;
+      const m = Number(period.period.slice(5, 7)) - 1;
+      result[m].income += period.income;
+      result[m].expense += period.expense;
     });
     result.forEach((r) => (r.net = r.income - r.expense));
     return result;
-  }, [byDay]);
+  }, [periods]);
 
   // Quarter aggregation
   const quarterly = useMemo(() => {
@@ -82,7 +91,36 @@ export default function CashFlowReport() {
     const expense = monthly.reduce((s, m) => s + m.expense, 0);
     return { income, expense, net: income - expense };
   }, [monthly]);
-  // hermes-parity:end cashbook-daily-cash-flow
+  // hermes-parity:end cash-flow-external-report
+
+  // "Trong đó: chi chia lợi nhuận" (cổ đông + lương điều hành; KHÔNG gồm phần lợi nhuận đầu tư trả trong
+  // phiếu lương của cổ đông kiêm nhân viên — nguồn salary.*) — NGOÀI vùng parity: Hermes không có cột
+  // này, số đã nằm trong "Chi ra". Chỉ hỏi máy chủ khi có quyền chi / chốt LN hoặc xem số toà; máy chủ đòi
+  // quyền đó TOÀN công ty, thiếu ⇒ 42501 ⇒ ẩn cột (không báo lỗi).
+  const { data: permissions } = useMyPermissions();
+  const canSeeProfitPayout = canUse(permissions, "shareholder_profit", "distribute") ||
+    canUse(permissions, "shareholder_profit", "lock") ||
+    canUse(permissions, "shareholder_profit", "view_building_totals");
+  const profitPayoutQuery = useCashFlowProfitPayouts(
+    year,
+    buildingSelectionReady && effectiveBuildingId !== "all" ? effectiveBuildingId : undefined,
+    { enabled: canSeeProfitPayout && (buildingId === "all" || buildingSelectionReady) },
+  );
+  const profitPayoutDenied = profitPayoutQuery.isError && extractCode(profitPayoutQuery.error) === "42501";
+  const showProfitPayout = canSeeProfitPayout && !profitPayoutDenied;
+  const profitPayoutFailed = showProfitPayout && profitPayoutQuery.isError;
+  const profitMonthly = useMemo(
+    () => (profitPayoutQuery.data ? monthlyProfitPayouts(profitPayoutQuery.data) : null),
+    [profitPayoutQuery.data],
+  );
+  // Ô số: chưa có số (đang tải / lỗi) ⇒ "…" / "—", không bao giờ hiện 0 đ thay cho số chưa đọc được.
+  const profitCell = (value: number | null) => (
+    value !== null ? formatCurrency(value) : profitPayoutFailed ? "—" : "…"
+  );
+  const profitOfQuarter = (quarter: number) =>
+    profitMonthly ? profitMonthly.slice((quarter - 1) * 3, quarter * 3).reduce((s, v) => s + v, 0) : null;
+  const profitOfMonth = (month: number) => (profitMonthly ? profitMonthly[month - 1] ?? null : null);
+  const profitOfYear = profitMonthly ? profitMonthly.reduce((s, v) => s + v, 0) : null;
 
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
@@ -110,7 +148,7 @@ export default function CashFlowReport() {
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Tòa nhà</span>
             <SearchableSelect
-              value={buildingId}
+              value={effectiveBuildingId}
               onValueChange={setBuildingId}
               className="w-[220px]"
               placeholder="Chọn tòa nhà"
@@ -122,7 +160,11 @@ export default function CashFlowReport() {
           </div>
         </div>
 
-        <QueryRegion label="báo cáo dòng tiền" queries={[cashFlowByDayQuery, buildingsQuery]} loading={<ChartSkeleton label="báo cáo dòng tiền" height={360} bars={12} onRetry={() => refetchStartedSources([cashFlowByDayQuery, buildingsQuery])} />}>
+        <p className="text-sm text-muted-foreground">
+          Dòng tiền thực thu, thực chi của tổ chức đang chọn; không gồm dữ liệu DEMO, sổ ảo, bàn giao nội bộ và phiếu đã hoàn tác. Tiền cọc thực nhận vẫn được tính vào thu.
+        </p>
+
+        <QueryRegion label="báo cáo dòng tiền" queries={[cashFlowQuery, buildingsQuery]} loading={<ChartSkeleton label="báo cáo dòng tiền" height={360} bars={12} onRetry={() => refetchStartedSources([cashFlowQuery, buildingsQuery])} />}>
         <div className="rounded-md border bg-card">
           <div className="border-b p-4 flex items-center justify-between flex-wrap gap-3">
             <h3 className="text-base font-semibold">Biểu đồ dòng tiền thu chi thực tế</h3>
@@ -173,18 +215,39 @@ export default function CashFlowReport() {
         <div className="rounded-md border bg-card">
           <div className="border-b p-4">
             <h3 className="text-base font-semibold">Bảng thu chi theo tháng và quý</h3>
+            {showProfitPayout && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                "Trong đó: chi chia LN" là phần của "Chi ra", không cộng thêm: chi chia lợi nhuận cổ đông và lương điều hành (không gồm phần lợi nhuận trả trong phiếu lương).
+              </p>
+            )}
+            {profitPayoutFailed && (
+              <p role="alert" className="mt-1 text-xs text-destructive">
+                Chưa tải được phần chi chia lợi nhuận.{" "}
+                <Button type="button" variant="link" className="h-auto p-0 text-xs align-baseline" onClick={() => { void profitPayoutQuery.refetch(); }}>
+                  Thử lại
+                </Button>
+              </p>
+            )}
           </div>
-          <Table>
+          {/* 10 cột (thêm "Trong đó: chi chia LN") ⇒ thu padding ngang để bảng vừa khung 1440, không phải cuộn ngang
+              mới thấy cột "Chênh lệch" theo tháng (đo 16/11/2026: 1167px trong khung 1126px). Chỉ đổi khoảng cách. */}
+          <Table className={showProfitPayout ? "[&_th]:px-2 [&_td]:px-2" : undefined}>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
                 <TableHead className="border-r font-semibold text-center w-16">Quý</TableHead>
-                <TableHead className="border-r text-right font-semibold">Doanh thu</TableHead>
-                <TableHead className="border-r text-right font-semibold">Chi phí</TableHead>
-                <TableHead className="border-r-2 text-right font-semibold">Lợi nhuận</TableHead>
+                <TableHead className="border-r text-right font-semibold">Thu vào</TableHead>
+                <TableHead className="border-r text-right font-semibold">Chi ra</TableHead>
+                {showProfitPayout && (
+                  <TableHead className="border-r text-right font-semibold" title="Đã nằm trong Chi ra — chi chia lợi nhuận cổ đông và lương điều hành (không gồm phần lợi nhuận trả trong phiếu lương)">Trong đó: chi chia LN</TableHead>
+                )}
+                <TableHead className="border-r-2 text-right font-semibold">Chênh lệch</TableHead>
                 <TableHead className="border-r font-semibold text-center w-16">Tháng</TableHead>
-                <TableHead className="border-r text-right font-semibold">Doanh thu</TableHead>
-                <TableHead className="border-r text-right font-semibold">Chi phí</TableHead>
-                <TableHead className="text-right font-semibold">Lợi nhuận</TableHead>
+                <TableHead className="border-r text-right font-semibold">Thu vào</TableHead>
+                <TableHead className="border-r text-right font-semibold">Chi ra</TableHead>
+                {showProfitPayout && (
+                  <TableHead className="border-r text-right font-semibold" title="Đã nằm trong Chi ra — chi chia lợi nhuận cổ đông và lương điều hành (không gồm phần lợi nhuận trả trong phiếu lương)">Trong đó: chi chia LN</TableHead>
+                )}
+                <TableHead className="text-right font-semibold">Chênh lệch</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -197,12 +260,22 @@ export default function CashFlowReport() {
                         <TableCell rowSpan={3} className="border-r text-center align-middle font-semibold">{q.label}</TableCell>
                         <TableCell rowSpan={3} className="border-r text-right align-middle tabular-nums">{formatCurrency(q.income)}</TableCell>
                         <TableCell rowSpan={3} className="border-r text-right align-middle tabular-nums">{formatCurrency(q.expense)}</TableCell>
+                        {showProfitPayout && (
+                          <TableCell rowSpan={3} className="border-r text-right align-middle tabular-nums text-muted-foreground" data-testid={`profit-payout-q${q.quarter}`}>
+                            {profitCell(profitOfQuarter(q.quarter))}
+                          </TableCell>
+                        )}
                         <TableCell rowSpan={3} className="border-r-2 text-right align-middle tabular-nums">{formatCurrency(q.net)}</TableCell>
                       </>
                     ) : null}
                     <TableCell className="border-r text-center">{m.month}</TableCell>
                     <TableCell className="border-r text-right tabular-nums text-emerald-700">{formatCurrency(m.income)}</TableCell>
                     <TableCell className="border-r text-right tabular-nums text-red-700">{formatCurrency(m.expense)}</TableCell>
+                    {showProfitPayout && (
+                      <TableCell className="border-r text-right tabular-nums text-muted-foreground" data-testid={`profit-payout-m${m.month}`}>
+                        {profitCell(profitOfMonth(m.month))}
+                      </TableCell>
+                    )}
                     <TableCell className="text-right tabular-nums">{formatCurrency(m.net)}</TableCell>
                   </TableRow>
                 ));
@@ -211,8 +284,11 @@ export default function CashFlowReport() {
                 <TableCell className="border-r font-bold">Cả năm</TableCell>
                 <TableCell className="border-r text-right tabular-nums">{formatCurrency(yearTotals.income)}</TableCell>
                 <TableCell className="border-r text-right tabular-nums">{formatCurrency(yearTotals.expense)}</TableCell>
+                {showProfitPayout && (
+                  <TableCell className="border-r text-right tabular-nums" data-testid="profit-payout-year">{profitCell(profitOfYear)}</TableCell>
+                )}
                 <TableCell className="border-r-2 text-right tabular-nums">{formatCurrency(yearTotals.net)}</TableCell>
-                <TableCell colSpan={4} />
+                <TableCell colSpan={showProfitPayout ? 5 : 4} />
               </TableRow>
             </TableBody>
           </Table>

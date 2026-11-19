@@ -40,6 +40,7 @@ import {
 } from "@/lib/depositWorkQueue";
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 import { ReservationPendingRefundList } from "@/components/deposits/ReservationPendingRefundList";
+import { DepositRefundMobilePanel } from "./DepositRefundMobilePanel";
 
 /**
  * Quản lý Cọc — màn hình app full-screen trên điện thoại (bản 2b của handoff
@@ -280,6 +281,7 @@ export default function DepositsMobilePage() {
           </div>
 
           <div className="mbody dp-body" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+            <DepositRefundMobilePanel />
             <RoomSaleLocksPanel enabled={view === 'work'} />
             <RoomReservationPanel enabled={view === 'work'} />
             {/* Màn tiền: dải KPI cộng từ nhiều nguồn nên vẫn chờ đủ nguồn (thiếu một nguồn

@@ -2,8 +2,9 @@
 // đăng nhập. Server (list_my_pending_approvals_v1) đã lọc theo auth.uid() nên
 // route không cần gate quyền: ai vào cũng chỉ thấy phần việc của mình.
 
-import { useState, useRef, useEffect } from "react";
+import { Fragment, useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,6 +35,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/useAuth";
 import {
   usePendingApprovals,
+  usePendingApprovalSources,
   useDecideApproval,
   type PendingApproval,
 } from "@/hooks/useApprovals";
@@ -62,12 +64,105 @@ import { loadIncomeExpenseDetails } from '@/lib/incomeExpenseDetailRpc';
 import { hasCompleteVoucherDetail } from '@/lib/incomeExpenseDetailRead';
 import { withDetailReadDeadline } from '@/hooks/income-expenses/detailRead';
 import { isCommissionVoucher } from '@/lib/commissionIntervention';
+// Đợt 2 sổ tổng (D2.9): phiếu chi lợi nhuận / lương điều hành — thẻ số dư sổ tổng, khoá Duyệt khi máy chủ
+// chắc chắn từ chối, "Duyệt và Chi…" chỉ từ đúng sổ lúc lập, câu báo lỗi theo mã chốt F1/F5.
+import { ProfitLedgerApprovalNote } from "@/components/approvals/ProfitLedgerApprovalNote";
+import { useProfitLedgerPayoutDetail } from "@/hooks/profit-ledger/useProfitLedgerQueries";
+import { invalidateProfitLedgerQueries } from "@/hooks/profit-ledger/useProfitLedgerMutations";
+import { ledgerApprovalGate } from "@/lib/profitLedger/approvalGate";
+import { isProfitLedgerVoucher } from "@/lib/profitLedger/vouchers";
+import { ledgerAwareVoucherFailure } from "@/lib/profitLedger/voucherFailure";
 
 const typeLabel = (type: string | null) => {
   if (type === "INCOME") return { text: "Phiếu thu", className: "bg-emerald-100 text-emerald-700" };
   if (type === "EXPENSE") return { text: "Phiếu chi", className: "bg-rose-100 text-rose-700" };
   return { text: type ?? "—", className: "bg-muted text-muted-foreground" };
 };
+
+/**
+ * Loại phiếu của một yêu cầu (RPC hộp thư không có nguồn phiếu, phải đọc riêng):
+ * LEDGER = phiếu chi theo sổ tổng; NORMAL = phiếu thường; LOADING = đang đọc; UNKNOWN = đọc lỗi hoặc người
+ * duyệt không đọc được chi tiết phiếu đó.
+ */
+type VoucherSourceState = "LEDGER" | "NORMAL" | "LOADING" | "UNKNOWN";
+
+/** Dòng chưa rõ loại: duyệt như phiếu thường — máy chủ vẫn là chốt cuối với phiếu chi lợi nhuận. */
+const UNKNOWN_SOURCE_HINT =
+  "Chưa xác định được loại phiếu — nếu là phiếu chi lợi nhuận / lương điều hành, máy chủ sẽ chặn khi chưa đủ điều kiện duyệt.";
+
+interface ApprovalActionsProps {
+  row: PendingApproval;
+  sourceState: VoucherSourceState;
+  /** Luật chung cho "Duyệt và Thu/Chi…": tổ chức ghi sổ kiểu mới, đang giữ sổ. */
+  postOption: boolean;
+  custodianBookIds: ReadonlySet<string>;
+  approveBusy: boolean;
+  postBusy: boolean;
+  rejectBusy: boolean;
+  mobile: boolean;
+  onApprove: () => void;
+  /** `lockedCashbookId`: phiếu sổ tổng chỉ chi từ sổ lúc lập; phiếu thường null. */
+  onPost: (lockedCashbookId: string | null) => void;
+  onReject: () => void;
+}
+
+/**
+ * Ba nút của một yêu cầu. Phiếu thường: y như trước. Phiếu chi theo sổ tổng: đọc E7 (cùng cache với thẻ số
+ * dư) — chưa thấy số dư hoặc máy chủ chắc chắn từ chối (sổ tổng chưa bật / đóng băng, phiếu chết, người
+ * nhận đã xoá, lương điều hành vượt) ⇒ khoá Duyệt; "Duyệt và Chi…" chỉ khi người duyệt giữ ĐÚNG sổ lúc lập.
+ * Dòng chưa rõ loại: đang đọc ⇒ khoá Duyệt; đọc không được ⇒ duyệt như phiếu thường, nêu rõ máy chủ sẽ
+ * chặn phiếu chi lợi nhuận. "Duyệt và Thu/Chi…" giữ như trước (openPosting đọc lại phiếu và tự chặn phiếu
+ * sổ tổng không đi qua đường khoá sổ). Từ chối luôn được (chốt F5 cho qua, số dư hồi).
+ */
+function ApprovalActions({
+  row, sourceState, postOption, custodianBookIds, approveBusy, postBusy, rejectBusy, mobile, onApprove, onPost, onReject,
+}: ApprovalActionsProps) {
+  const ledger = sourceState === "LEDGER";
+  const detail = useProfitLedgerPayoutDetail(ledger ? row.voucher_id : null);
+  const gate = ledger && detail.data ? ledgerApprovalGate(detail.data) : null;
+  const ledgerBlocked = ledger && (!gate || !!gate.blockReason);
+  const approveTitle = sourceState === "LOADING" ? "Đang kiểm tra loại phiếu…"
+    : sourceState === "UNKNOWN" ? UNKNOWN_SOURCE_HINT
+    : !ledger ? undefined
+    : gate?.blockReason ?? (gate ? undefined : detail.isError ? "Chưa tải được số dư sổ tổng" : "Đang tải số dư sổ tổng");
+  const lockedCashbookId = ledger ? gate?.accountId ?? null : null;
+  const showPost = postOption && (!ledger || (!ledgerBlocked && !!lockedCashbookId && custodianBookIds.has(lockedCashbookId)));
+  return (
+    <>
+      <Button
+        size="sm"
+        className={mobile ? "flex-1 bg-emerald-600 hover:bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-700"}
+        disabled={approveBusy || ledgerBlocked || sourceState === "LOADING"}
+        title={approveTitle}
+        onClick={onApprove}
+      >
+        <Check className="h-4 w-4 mr-1" />
+        Duyệt
+      </Button>
+      {showPost && (
+        <Button
+          size="sm"
+          variant="outline"
+          className={mobile ? "flex-1 border-blue-600 text-blue-700 hover:bg-blue-50" : "border-blue-600 text-blue-700 hover:bg-blue-50"}
+          disabled={postBusy}
+          onClick={() => onPost(lockedCashbookId)}
+        >
+          {row.voucher_type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
+        </Button>
+      )}
+      <Button
+        size="sm"
+        variant="destructive"
+        className={mobile ? "flex-1" : undefined}
+        disabled={rejectBusy}
+        onClick={onReject}
+      >
+        <X className="h-4 w-4 mr-1" />
+        Từ chối
+      </Button>
+    </>
+  );
+}
 
 const ApprovalsPage = () => {
   const navigate = useNavigate();
@@ -89,9 +184,28 @@ const ApprovalsPage = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [blockedRequests, setBlockedRequests] = useState<Set<string>>(() => new Set());
   const reportActionError = (error: unknown, requestId: string) => {
-    setActionError(voucherFailureMessage(error, "xử lý yêu cầu duyệt"));
+    // Lỗi chốt sổ tổng (PROFIT_LEDGER_…) ra câu riêng; lỗi khác như cũ.
+    setActionError(ledgerAwareVoucherFailure(error, "xử lý yêu cầu duyệt"));
     if (voucherOutcomeUnknown(error)) setBlockedRequests(previous => new Set(previous).add(requestId));
   };
+
+  // Nguồn phiếu (RPC hộp thư không có system_source): biết dòng nào là phiếu chi theo sổ tổng.
+  const queryClient = useQueryClient();
+  const sourcesQuery = usePendingApprovalSources(rows);
+  const sourceOf = (row: PendingApproval) => sourcesQuery.data?.[row.voucher_id] ?? null;
+  const isLedgerRow = (row: PendingApproval) => isProfitLedgerVoucher(sourceOf(row)?.system_source);
+  const sourceStateOf = (row: PendingApproval): VoucherSourceState => {
+    const source = sourceOf(row);
+    if (source) return isProfitLedgerVoucher(source.system_source) ? "LEDGER" : "NORMAL";
+    if (!row.organization_id || !row.voucher_id || sourcesQuery.isError) return "UNKNOWN";
+    // Chưa có câu trả lời cho đúng tập phiếu đang hiện (lần đầu, hoặc danh sách vừa đổi).
+    if (sourcesQuery.isPending || sourcesQuery.isPlaceholderData) return "LOADING";
+    return "UNKNOWN"; // đã đọc xong mà không có phiếu này: người duyệt không đọc được chi tiết phiếu.
+  };
+  // Gợi ý từng dòng chỉ khi riêng phiếu đó không đọc được; đọc lỗi cả lượt thì một câu báo chung ở trên.
+  const unknownSourceHint = (row: PendingApproval) => sourceStateOf(row) === "UNKNOWN" && !sourcesQuery.isError;
+  // Duyệt / từ chối / chi phiếu sổ tổng đổi số dư sổ tổng: làm mới cả các màn sổ tổng.
+  const refreshLedger = (row: PendingApproval) => { if (isLedgerRow(row)) invalidateProfitLedgerQueries(queryClient); };
 
   // Finance V2 route-aware: resolve route theo org của từng request (phiếu subject).
   // organization_id chưa có trên RPC ⇒ null ⇒ LEGACY (flow decide cũ, không đổi).
@@ -99,7 +213,8 @@ const ApprovalsPage = () => {
   const approveV2 = useApproveIncomeExpenseV2({scope:'target'});
   const approveAndPostV2 = useApproveAndPostIncomeExpenseV2({scope:'target'});
   // "Duyệt và Thu/Chi…" mở Posting dialog cho request này (chỉ org CANONICAL).
-  const [postTarget, setPostTarget] = useState<(PendingApproval & { isCommission: boolean }) | null>(null);
+  // lockedCashbookId: phiếu chi theo sổ tổng chỉ chi từ đúng sổ lúc lập (chốt F1 ACCOUNT_LOCKED).
+  const [postTarget, setPostTarget] = useState<(PendingApproval & { isCommission: boolean; lockedCashbookId: string | null }) | null>(null);
   const [openingPosting, setOpeningPosting] = useState(false);
   const postingRead = useRef<symbol | null>(null);
   useEffect(() => {
@@ -116,13 +231,16 @@ const ApprovalsPage = () => {
   // V2 duyệt-only áp cho request có phiếu subject (INCOME_EXPENSE) và org workflow-CANONICAL.
   const v2WorkflowFor = (row: PendingApproval) =>
     !!row.voucher_id && canWriteWorkflow(v2Routes.getOrg(row.organization_id));
-  // Option "Duyệt và Thu/Chi…" cần thêm posting-CANONICAL và actor đang giữ sổ.
+  // Option "Duyệt và Thu/Chi…" cần thêm posting-CANONICAL và actor đang giữ sổ — như trước, kể cả khi chưa
+  // rõ loại phiếu: openPosting đọc lại phiếu lúc bấm và tự chặn phiếu chi theo sổ tổng không đi qua đường
+  // khoá sổ; ApprovalActions xét thêm cho dòng đã biết là phiếu sổ tổng.
   const v2PostOptionFor = (row: PendingApproval) =>
     v2WorkflowFor(row) &&
     canWritePosting(v2Routes.getOrg(row.organization_id)) &&
     custodianBooks.length > 0;
+  const custodianBookIds = new Set(custodianBooks.map((book) => book.id));
 
-  const openPosting = async (row: PendingApproval) => {
+  const openPosting = async (row: PendingApproval, lockedCashbookId: string | null = null) => {
     if (postingRead.current || !row.organization_id || !row.voucher_id || blockedRequests.has(row.request_id) || !v2PostOptionFor(row)) return;
     const token = Symbol('approval voucher detail'); postingRead.current = token;
     setOpeningPosting(true); setActionError(null);
@@ -132,8 +250,15 @@ const ApprovalsPage = () => {
       if (!detail || detail.id !== row.voucher_id || detail.organization_id !== row.organization_id || !hasCompleteVoucherDetail(detail)
         || detail.approval_status !== 'UNAPPROVED' || detail.posting_status !== 'UNPOSTED')
         throw new Error('Chưa xác định được đầy đủ phiếu đang chờ duyệt. Vui lòng tải lại trước khi duyệt và thu/chi.');
+      // Phiếu sổ tổng: chỉ đi tiếp khi sổ của phiếu (đọc lại ngay lúc bấm) đúng là sổ đã chào trên dòng.
+      const ledger = isProfitLedgerVoucher(detail.system_source);
+      if (ledger && (!lockedCashbookId || detail.account_id !== lockedCashbookId)) {
+        setActionError('Phiếu chi theo sổ tổng chỉ chi được từ sổ quỹ đã chọn lúc lập — sổ trên phiếu vừa khác sổ đang chào. Tải lại danh sách rồi thử lại.');
+        return;
+      }
       setPostTarget({ ...row, isCommission: isCommissionVoucher(detail), voucher_type: detail.type,
-        voucher_name: detail.name, amount: detail.total_amount, approval_version: detail.approval_version, posting_version: detail.posting_version });
+        voucher_name: detail.name, amount: detail.total_amount, approval_version: detail.approval_version, posting_version: detail.posting_version,
+        lockedCashbookId: ledger ? lockedCashbookId : null });
     } catch (error) {
       if (postingRead.current === token) setActionError(voucherFailureMessage(error, 'đọc chi tiết phiếu trước khi duyệt và thu/chi'));
     } finally {
@@ -159,6 +284,7 @@ const ApprovalsPage = () => {
         decision: "REJECT",
         reason: reason.trim(),
       });
+      refreshLedger(rejecting);
       closeReject();
     } catch (error) {
       reportActionError(error, rejecting.request_id);
@@ -177,13 +303,32 @@ const ApprovalsPage = () => {
           organizationId: row.organization_id,
           expectedApprovalVersion: row.approval_version ?? 1,
         },
-        { onSuccess: () => refetch(), onError: error => reportActionError(error, row.request_id) },
+        { onSuccess: () => { refetch(); refreshLedger(row); }, onError: error => reportActionError(error, row.request_id) },
       );
       return;
     }
     decide.mutate({ requestId: row.request_id,
-        organizationId: row.organization_id, decision: "APPROVE", reason: null }, {onError: error => reportActionError(error, row.request_id)});
+        organizationId: row.organization_id, decision: "APPROVE", reason: null },
+      { onSuccess: () => refreshLedger(row), onError: error => reportActionError(error, row.request_id) });
   };
+  const rowActions = (r: PendingApproval, mobile: boolean) => (
+    <ApprovalActions
+      row={r}
+      sourceState={sourceStateOf(r)}
+      postOption={v2PostOptionFor(r)}
+      custodianBookIds={custodianBookIds}
+      approveBusy={decide.isPending || approveV2.isPending}
+      postBusy={decide.isPending || approveV2.isPending || approveAndPostV2.isPending || openingPosting}
+      rejectBusy={decide.isPending}
+      mobile={mobile}
+      onApprove={() => approve(r)}
+      onPost={(lockedCashbookId) => void openPosting(r, lockedCashbookId)}
+      onReject={() => setRejecting(r)}
+    />
+  );
+  const postBooks = postTarget?.lockedCashbookId
+    ? custodianBooks.filter((book) => book.id === postTarget.lockedCashbookId)
+    : custodianBooks;
 
   const emptyMsg = "Không có yêu cầu nào chờ bạn duyệt";
 
@@ -209,7 +354,16 @@ const ApprovalsPage = () => {
         </div>
 
         {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
-        {openingPosting && <p role="status" className="text-sm text-muted-foreground">Đang đối chiếu chi tiết phiếu trước khi duyệt và thu/chi…</p>}
+        {sourcesQuery.isError && (
+          <p role="alert" className="text-sm text-destructive">
+            Chưa xác định được loại phiếu chờ duyệt — chưa hiện được số dư sổ tổng. Vẫn duyệt được như phiếu thường;
+            nếu là phiếu chi lợi nhuận / lương điều hành, máy chủ sẽ chặn khi chưa đủ điều kiện duyệt.{" "}
+            <Button type="button" variant="link" className="h-auto p-0 align-baseline" onClick={() => { void sourcesQuery.refetch(); }}>
+              Thử lại
+            </Button>
+          </p>
+        )}
+        {openingPosting &&<p role="status" className="text-sm text-muted-foreground">Đang đối chiếu chi tiết phiếu trước khi duyệt và thu/chi…</p>}
         <QueryRegion label="yêu cầu chờ duyệt" queries={[pendingQuery]} skeleton={isMobile ? "list" : "table"} rows={isMobile ? 4 : 6}>
         {isLoading ? (
           <div className="space-y-2">
@@ -251,41 +405,12 @@ const ApprovalsPage = () => {
                   <div className="text-xs text-muted-foreground mt-1">
                     {r.maker_name ?? "—"} • {format(new Date(r.submitted_at), "dd/MM/yyyy HH:mm")}
                   </div>
+                  {isLedgerRow(r) && <ProfitLedgerApprovalNote voucherId={r.voucher_id} className="mt-2" />}
+                  {unknownSourceHint(r) && (
+                    <p className="mt-2 text-xs text-amber-700" data-testid="approval-source-unknown">{UNKNOWN_SOURCE_HINT}</p>
+                  )}
                   <div className="flex flex-wrap gap-2 mt-3">
-                    <Button
-                      size="sm"
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                      disabled={decide.isPending || approveV2.isPending}
-                      onClick={() => approve(r)}
-                    >
-                      <Check className="h-4 w-4 mr-1" />
-                      Duyệt
-                    </Button>
-                    {v2PostOptionFor(r) && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 border-blue-600 text-blue-700 hover:bg-blue-50"
-                        disabled={
-                          decide.isPending ||
-                          approveV2.isPending ||
-                          approveAndPostV2.isPending || openingPosting
-                        }
-                        onClick={() => void openPosting(r)}
-                      >
-                        {r.voucher_type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="flex-1"
-                      disabled={decide.isPending}
-                      onClick={() => setRejecting(r)}
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      Từ chối
-                    </Button>
+                    {rowActions(r, true)}
                   </div>
                 </Card>
               );
@@ -309,8 +434,11 @@ const ApprovalsPage = () => {
               <TableBody>
                 {rows.map((r) => {
                   const t = typeLabel(r.voucher_type);
+                  const ledger = isLedgerRow(r);
+                  const unknownHint = unknownSourceHint(r);
                   return (
-                    <TableRow key={r.request_id}>
+                    <Fragment key={r.request_id}>
+                    <TableRow className={ledger || unknownHint ? "border-b-0" : undefined}>
                       <TableCell className="font-medium">
                         <button
                           className="text-blue-600 hover:underline"
@@ -336,42 +464,26 @@ const ApprovalsPage = () => {
                       <TableCell className="text-center">{r.step_no}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700"
-                            disabled={decide.isPending || approveV2.isPending}
-                            onClick={() => approve(r)}
-                          >
-                            <Check className="h-4 w-4 mr-1" />
-                            Duyệt
-                          </Button>
-                          {v2PostOptionFor(r) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-blue-600 text-blue-700 hover:bg-blue-50"
-                              disabled={
-                                decide.isPending ||
-                                approveV2.isPending ||
-                                approveAndPostV2.isPending || openingPosting
-                              }
-                              onClick={() => void openPosting(r)}
-                            >
-                              {r.voucher_type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            disabled={decide.isPending}
-                            onClick={() => setRejecting(r)}
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Từ chối
-                          </Button>
+                          {rowActions(r, false)}
                         </div>
                       </TableCell>
                     </TableRow>
+                    {/* Ô tên phiếu cắt chữ: thẻ số dư sổ tổng nằm ở dòng phụ ngay dưới, cùng yêu cầu. */}
+                    {ledger && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={8} className="pt-0">
+                          <ProfitLedgerApprovalNote voucherId={r.voucher_id} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {unknownHint && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={8} className="pt-0 text-xs text-amber-700" data-testid="approval-source-unknown">
+                          {UNKNOWN_SOURCE_HINT}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -396,9 +508,13 @@ const ApprovalsPage = () => {
             type: postTarget.voucher_type === "INCOME" ? "INCOME" : "EXPENSE",
             approvedTotal: postTarget.amount ?? 0,
             name: postTarget.voucher_name ?? undefined,
+            // Phiếu chi theo sổ tổng: chỉ chào đúng sổ lúc lập (máy chủ chặn sổ khác).
+            ...(postTarget.lockedCashbookId
+              ? { defaultCashbookId: postTarget.lockedCashbookId, cashbookLocked: true }
+              : {}),
           }}
-          capability={{ isCustodian: custodianBooks.length > 0, canApprove: true }}
-          cashbookOptions={custodianBooks}
+          capability={{ isCustodian: postBooks.length > 0, canApprove: true }}
+          cashbookOptions={postBooks}
           cashbookError={cashbookError}
           onRetryCashbooks={retryCashbooks}
           expectedExecutionRevision={0}
@@ -420,6 +536,7 @@ const ApprovalsPage = () => {
           }
           onSubmit={async (input) => {
             await approveAndPostV2.mutateAsync({...input,organizationId:postTarget.organization_id});
+            if (postTarget.lockedCashbookId) invalidateProfitLedgerQueries(queryClient);
             setPostTarget(null);
             refetch();
           }}
@@ -447,6 +564,11 @@ const ApprovalsPage = () => {
             rows={4}
           />
           {reasonError && <p id="reject-reason-error" role="alert" className="text-sm text-destructive">Nhập lý do từ chối để người lập biết cần sửa gì.</p>}
+          {rejecting && isLedgerRow(rejecting) && (
+            <p className="text-xs text-muted-foreground">
+              Phiếu chi theo sổ tổng: từ chối xong số dư sổ tổng trả lại ngay; phiếu chỉ còn bỏ được bằng nút Huỷ (ghi lý do).
+            </p>
+          )}
           {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={closeReject} disabled={decide.isPending}>

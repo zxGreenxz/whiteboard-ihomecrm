@@ -2,7 +2,7 @@ import { focusFirstError } from '@/lib/formErrors';
 import { collectionFailureMessage } from '@/lib/collectionFeedback';
 import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
@@ -151,7 +151,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     register,
     control,
   } = useForm<PaymentFormData>({
-    resolver: zodResolver(paymentSchema),
+    resolver: zodResolver(paymentSchema) as Resolver<PaymentFormData>,
     shouldFocusError: false,
     defaultValues: {
       payment_lines: [{ amount: 0, payment_method: 'TM', account_id: '' }],

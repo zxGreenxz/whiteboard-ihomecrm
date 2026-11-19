@@ -266,7 +266,8 @@ function main() {
   // Them /chi-tieu (Bao chi nhanh, 01/10/2026) dua con so len 113 — trang co AI rieng, mien hop dong Copilot.
   // /viec-cua-toi: kho cá nhân trên thiết bị, được khai exemption riêng, tổng 114 route.
   // /cua-van-tay (Cửa vân tay, 21/10/2026): mở cửa thật + phát mã cửa, miễn hợp đồng Copilot — tổng 115.
-  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 115, actionIds);
+  // Quyết toán vận hành (21/10/2026): /reports/finance/quyet-toan-van-hanh + link /qt/:token, tổng 117.
+  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 117, actionIds);
   if (problems.length) {
     console.error(`Copilot page contracts: ${problems.length} problem(s)`);
     for (const problem of problems) console.error(`  - ${problem}`);

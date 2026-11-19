@@ -5,7 +5,7 @@ import {z} from 'zod';
 import type {Json} from '@/integrations/supabase/types';
 /** Tên khách gợi nhớ khi cọc chưa có khách trong danh bạ (migration 20261010114500). */
 export const CUSTOMER_HINT_MAX=120;
-const uuid=z.string().uuid(),date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),key=z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/);
+const uuid=z.string().guid(),date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),key=z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/);
 const receiptSchema=z.object({amount:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),accountId:uuid.nullable().optional(),voucherDate:date,name:z.string().trim().min(1).optional(),description:z.string().nullable().optional(),attachments:z.array(z.string().url().startsWith('https://')).optional()}).strict();
 export type ReservationReceiptInput=z.infer<typeof receiptSchema>;
 export interface CreateRoomReservationInput {roomId:string;customerId?:string|null;customerHint?:string|null;holdUntil?:string|null;intendedMoveInOn?:string|null;topupDueOn?:string|null;depositTarget?:number|null;notes?:string|null;receipt?:ReservationReceiptInput;existingVoucherIds?:string[];idempotencyKey:string}

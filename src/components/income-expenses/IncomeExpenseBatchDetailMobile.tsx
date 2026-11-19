@@ -4,7 +4,7 @@ import {VoucherPartialError,voucherFailureMessage,voucherOutcomeUnknown} from '@
 import {getBatchAccountIssue} from '@/hooks/income-expenses/batch';
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useVoucherWithBatch } from "@/hooks/useVoucherDetail";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { X, Ban, Layers, ChevronRight, Pencil, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { formatPeriod } from "@/lib/monthPeriod";
@@ -13,6 +13,7 @@ import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useUpdateBatchAccount } from "@/hooks/useIncomeExpenses";
+import { useVoucherCancelEligibility } from "@/hooks/income-expenses/useVoucherActions";
 import type {
   IncomeExpenseBatchSummary,
   IncomeExpenseWithRelations,
@@ -71,6 +72,9 @@ function IncomeExpenseBatchDetailContent({
   still = false,
 }: Props & { still?: boolean }) {
   const [child, setChild] = useState<IncomeExpenseWithRelations | null>(null);
+  // Phiếu con không nằm trong trang danh sách ⇒ tự hỏi máy chủ phiếu này huỷ được không.
+  const childList = useMemo(() => (child ? [child] : []), [child]);
+  const childCancel = useVoucherCancelEligibility(childList);
   // Xem ảnh đính kèm dùng chung ngay trên trang (overlay), KHÔNG mở tab mới.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
@@ -321,6 +325,8 @@ function IncomeExpenseBatchDetailContent({
           quickExpense={quickExpense}
           voucher={child}
           previewVoucher={child}
+          cancelEligibility={childCancel.cancelEligibility}
+          incomeCancelEligibility={childCancel.incomeCancelEligibility}
           onClose={() => setChild(null)}
           onEdit={
             onEditVoucher

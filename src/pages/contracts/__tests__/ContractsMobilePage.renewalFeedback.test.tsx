@@ -12,11 +12,8 @@ vi.mock('@/hooks/useMyBuildingScope',()=>({useMyBuildingScope:()=>({hasAnyScope:
 vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{}})}));
 vi.mock('@/hooks/usePersistedState',async()=>{const {useState}=await import('react');return {usePersistedState:(_key:string,value:unknown)=>useState(value)};});
 vi.mock('@/components/contracts/ContractFormDialog',()=>({ContractFormDialog:()=>null}));
-vi.mock('@/components/contracts/MoveOutNoticeQueue',()=>({MoveOutNoticeQueue:()=>null}));
-vi.mock('@/components/contracts/ContractDraftWorkspace',()=>({ContractDraftWorkspace:()=>null}));
+vi.mock('@/components/contracts/ContractMobileQueues',()=>({ContractMobileQueues:()=>null}));
 vi.mock('@/components/contracts/ContractCommissionFollowupPanel',()=>({ContractCommissionFollowupPanel:()=>null}));
-vi.mock('@/components/contracts/ContractExitQueue',()=>({ContractExitQueue:()=>null}));
-vi.mock('@/components/contracts/ContractMeterFollowupQueue',()=>({ContractMeterFollowupQueue:()=>null}));
 import ContractsMobilePage from '../ContractsMobilePage';
 let client:QueryClient;
 beforeEach(()=>{client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});h.response={data:null,error:null};});

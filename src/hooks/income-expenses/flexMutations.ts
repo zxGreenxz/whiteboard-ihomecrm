@@ -153,9 +153,10 @@ export const useCancelVoucherFlex = () => {
           // Cờ chế độ phía client đã cũ — kéo lại rồi mới báo.
           queryClient.invalidateQueries({ queryKey: ["finance-v2-routes"] });
         }
-        // 40001 = CAS chặn: người khác vừa đụng phiếu. Kéo lại danh sách để lần
-        // bấm sau cầm đúng version, nếu không người dùng bấm mãi vẫn 40001.
-        if (error.code === "40001") {
+        // CAS chặn: người khác vừa đụng phiếu. Kéo lại danh sách để lần bấm sau
+        // cầm đúng version, nếu không người dùng bấm mãi vẫn bị chặn. Server trả
+        // PT409 (HTTP 409) từ 20261116015253; 40001 là mã cũ (PostgREST tự chạy lại tới 504).
+        if (error.code === "PT409" || error.code === "40001") {
           queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
           queryClient.invalidateQueries({ queryKey: ["flex-cancel-eligibility"] });
         }
@@ -262,7 +263,7 @@ export const useVoucherChangeLog = (voucherId: string | null | undefined) =>
       if (error) throw error;
       return z.array(z.object({
         at:z.string(),actor_id:z.string().nullable(),actor_name:z.string().nullable(),scope:z.string(),op:z.string(),cols:z.array(z.string()).nullable(),
-        before:z.record(z.unknown()).nullable(),after:z.record(z.unknown()).nullable(),
+        before:z.record(z.string(), z.unknown()).nullable(),after:z.record(z.string(), z.unknown()).nullable(),
       })).parse(data) as VoucherChangeLogEntry[];
     },
   });

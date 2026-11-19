@@ -1,0 +1,13 @@
+# Chạy kiểm học tập mỗi tối 20:40 giờ VN — xong trước tin Zalo tổng hợp 21:00. Bị lỡ (máy tắt) thì chạy bù khi bật lại.
+[Unit]
+Description=iHome Hermes - kiem hoc tap hang ngay 20:40 gio VN
+
+[Timer]
+OnCalendar=*-*-* 20:40:00 Asia/Ho_Chi_Minh
+Persistent=true
+RandomizedDelaySec=120
+AccuracySec=1min
+Unit=ihome-hermes-learning-audit.service
+
+[Install]
+WantedBy=timers.target

@@ -1,6 +1,11 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 const h=vi.hoisted(()=>({list:[] as unknown,invoice:{} as unknown,account:{id:'cashbook',code:'Q',organization_id:null} as {id:string;code:string;organization_id:string|null},vouchers:[] as unknown,orgs:{organizations:[]} as unknown}));
 vi.mock('@tanstack/react-query',()=>({useQuery:(o:unknown)=>o}));
+vi.mock('@/contexts/OrganizationContext',async importOriginal=>({
+ ...await importOriginal<typeof import('@/contexts/OrganizationContext')>(),
+ useOrganization:()=>({selectedOrganizationId:'org-1'}),
+}));
+vi.mock('@/hooks/useThuTienBuildings',()=>({useThuTienBuildings:()=>({data:[{id:'b1'}],isError:false})}));
 vi.mock('@/lib/supabaseFetchAll',()=>({fetchAllRows:()=>Promise.resolve(h.list)}));
 vi.mock('@/hooks/useCashbookClosing',()=>({useCashbookClosings:vi.fn()}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:(fn:string)=>Promise.resolve(fn==='list_my_copilot_organizations_v1'?{data:h.orgs,error:null}:{data:null,error:{message:'unexpected rpc'}}),from:(table:string)=>{

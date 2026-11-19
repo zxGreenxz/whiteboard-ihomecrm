@@ -1,7 +1,7 @@
 import { focusFirstError } from '@/lib/formErrors';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Dialog,
@@ -63,7 +63,7 @@ export default function TaskTypeFormDialog({
   const [groupError,setGroupError] = useState("");
 
   const form = useForm<JobTypeFormValues>({
-    resolver: zodResolver(jobTypeFormSchema),
+    resolver: zodResolver(jobTypeFormSchema) as Resolver<JobTypeFormValues>,
     defaultValues: {
       name: "",
       job_group_id: "",

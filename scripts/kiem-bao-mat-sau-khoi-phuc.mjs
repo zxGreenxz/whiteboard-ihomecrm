@@ -10,6 +10,8 @@
 //   thì ngày phải khôi phục thật ta sẽ dựng lại một hệ thống hở. SQL của từng
 //   phép bên dưới chép NGUYÊN VĂN từ gate gốc (ghi nguồn tại chỗ); đổi luật ở
 //   gate gốc thì đổi cả đây — mỗi phép có một dòng trỏ ngược để không quên.
+//   (Hai phép đã thôi chép mà IMPORT thẳng luật của gate gốc: PUBLIC EXECUTE và
+//   stable-fn chạm khoá dòng.)
 //
 // PHẠM VI — và một phép CỐ Ý không mang sang
 //   Allowlist definer-acl KHÔNG áp được trên bản khôi phục: baseline chụp bằng
@@ -29,7 +31,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { docThieuMienTru, phanTichPublicExecute, sqlPublicExecute } from "./check-definer-acl.mjs";
 import { chanProduction, coPsql, hoiJson } from "./lib/goi-psql-dich.mjs";
+import { SQL_STABLE_FN_LOCKS } from "./lib/stable-fn-locks-sql.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MANIFEST = join(repoRoot, "supabase", "baseline", "manifest.json");
@@ -94,43 +98,14 @@ const SQL_DEM_SECURITY_DEFINER = `
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname IN ('public','app_private') AND p.prosecdef`;
 
-// Nguồn: check-stable-fn-locks.mjs — nguyên văn CTE, kể cả bước BỎ COMMENT
-// (không bỏ thì gate khớp vào chính câu văn nói rằng hàm không khoá dòng) và
-// LOCK TABLE (cũng ném 25006 y như FOR UPDATE trong transaction read-only).
+// Nguồn: check-stable-fn-locks.mjs → SQL_STABLE_FN_LOCKS ở lib/stable-fn-locks-sql.mjs (IMPORT,
+// không chép: một nguồn duy nhất cho luật) — kể cả bước BỎ COMMENT (không bỏ thì gate khớp vào
+// chính câu văn nói rằng hàm không khoá dòng) và LOCK TABLE (cũng ném 25006 y như FOR UPDATE
+// trong transaction read-only).
 //
-// BẢN GỐC LÀ NGUỒN, bản này là bản chép: từ 26/08/2026 check-stable-fn-locks
-// chạy trong CI (ci-gates.yml, job security-gates) nên nó không còn mồ côi.
-// Sửa CTE thì sửa BÊN ĐÓ trước rồi chép lại sang đây — hai bản trôi khỏi nhau
-// là đúng lớp lỗi khiến câu chú thích này tồn tại.
-const SQL_STABLE_FN_LOCKS = `
-  WITH RECURSIVE fns AS (
-    SELECT p.oid, n.nspname AS ns, p.proname AS nm, p.provolatile AS vol,
-           regexp_replace(
-             regexp_replace(pg_get_functiondef(p.oid), '/\\*.*?\\*/', ' ', 'gs'),
-             '--[^' || chr(10) || ']*', ' ', 'g') AS def,
-           p.proacl
-    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE p.prokind IN ('f','p') AND n.nspname IN ('public', 'app_private', 'api')
-  ),
-  seed AS (
-    SELECT oid, nm, 0 AS depth, nm AS via FROM fns
-    WHERE def ~* '\\mfor\\s+(share|update|no key update|key share)\\M'
-       OR def ~* '\\mlock\\s+(table\\s+)?[a-z_.]'
-  ),
-  closure AS (
-    SELECT oid, nm, depth, via FROM seed
-    UNION
-    SELECT f.oid, f.nm, c.depth + 1, c.via
-    FROM fns f JOIN closure c
-      ON c.depth < 4 AND f.oid <> c.oid AND f.def ~ ('\\m' || c.nm || '\\s*\\(')
-  )
-  SELECT DISTINCT ON (f.nm)
-         f.nm AS fn_name,
-         CASE f.vol WHEN 's' THEN 'STABLE' ELSE 'IMMUTABLE' END AS volatility,
-         c.via AS lock_from
-  FROM closure c JOIN fns f ON f.oid = c.oid
-  WHERE f.ns IN ('public', 'api') AND f.vol <> 'v'
-  ORDER BY f.nm, c.depth`;
+// Trước 15/11/2026 chỗ này là một bản CHÉP của CTE; hai bản trôi khỏi nhau là lớp lỗi mà cách
+// import này xoá hẳn. Thêm file import mới cho bộ kiểm này thì khai nó vào `paths:` của
+// migration-restore-drill.yml, nếu không sửa luật sẽ không kích hoạt lại bài diễn tập.
 
 // Nguồn: check-definer-acl.mjs → docTrangThaiSong (cùng bộ schema PostgREST
 // expose). Trên đích diễn tập chỉ so với DENYLIST — xem khối đầu file.
@@ -141,11 +116,18 @@ const SQL_ANON_DEFINER = `
     AND p.prosecdef AND has_function_privilege('anon', p.oid, 'EXECUTE')
   ORDER BY sig`;
 
+// Nguồn: check-definer-acl.mjs → sqlPublicExecute + phanTichPublicExecute (IMPORT, không chép: một
+// nguồn duy nhất cho luật). Bản dựng lại phải mang đúng việc 20261104173640 làm: không hàm ứng dụng
+// nào cấp EXECUTE cho PUBLIC, vai bị chặn chỉ gọi được hàm DEFINER riêng, mặc định của postgres
+// không cấp PUBLIC. Khác allowlist anon, phép này CÓ nghĩa trên đích diễn tập: baseline --no-acl
+// làm mọi hàm ra đời với PUBLIC, nên nếu forward lane không thu thì bản dựng lại mở toang.
+
 /**
  * Gom vi phạm từ số liệu đã đo. Thuần tuý, không I/O — test được từng luật.
  * Trả { dat, viPham: [{ phep, danhSach }] }.
  */
-export function phanTichBaoMat({ bangThieuRls, views, definerThieuSearchPath, stableLocks, anonDefiner, denylist }) {
+export function phanTichBaoMat({ bangThieuRls, views, definerThieuSearchPath, stableLocks, anonDefiner, denylist,
+  publicExecute = { hamPublic: [], vuotQuyen: [], macDinh: [], thieuQuyen: [] } }) {
   const viPham = [];
   if (bangThieuRls.length > 0) {
     viPham.push({ phep: "bảng public thiếu RLS", danhSach: bangThieuRls });
@@ -177,6 +159,18 @@ export function phanTichBaoMat({ bangThieuRls, views, definerThieuSearchPath, st
       danhSach: camMaSong,
     });
   }
+  if (publicExecute.hamPublic.length > 0) {
+    viPham.push({ phep: "hàm ứng dụng còn cấp EXECUTE cho PUBLIC (mọi vai gọi được)", danhSach: publicExecute.hamPublic });
+  }
+  if (publicExecute.vuotQuyen.length > 0) {
+    viPham.push({ phep: "vai bị chặn gọi được hàm SECURITY DEFINER ngoài danh sách riêng", danhSach: publicExecute.vuotQuyen });
+  }
+  if (publicExecute.macDinh.length > 0) {
+    viPham.push({ phep: "mặc định quyền hàm còn cấp PUBLIC (hàm tạo sau lại mở cho mọi vai)", danhSach: publicExecute.macDinh });
+  }
+  if ((publicExecute.thieuQuyen ?? []).length > 0) {
+    viPham.push({ phep: "hàm trong policy/view/default/domain/hàm khác thiếu EXECUTE cho vai gọi (truy vấn của vai đó lỗi 42501)", danhSach: publicExecute.thieuQuyen });
+  }
   return { dat: viPham.length === 0, viPham };
 }
 
@@ -200,9 +194,15 @@ function main(argv) {
     console.error(`❌ ${e.message}`);
     return 3;
   }
-  const denylist = JSON.parse(readFileSync(ACL_BASELINE, "utf8")).denylist ?? [];
+  const aclDoc = JSON.parse(readFileSync(ACL_BASELINE, "utf8"));
+  const denylist = aclDoc.denylist ?? [];
   if (denylist.length === 0) {
     console.error("❌ Denylist rỗng — check-definer-acl.mjs luôn có ≥4 cửa đã đóng; rỗng nghĩa là file baseline hỏng.");
+    return 3;
+  }
+  const blockedRoles = aclDoc.publicExecute?.blockedRoles;
+  if (!blockedRoles || Object.keys(blockedRoles).length === 0) {
+    console.error("❌ definer-acl-baseline.json thiếu publicExecute.blockedRoles — không kiểm được PUBLIC EXECUTE.");
     return 3;
   }
 
@@ -224,6 +224,10 @@ function main(argv) {
       stableLocks: hoiJson(dich, SQL_STABLE_FN_LOCKS),
       anonDefiner: hoiJson(dich, SQL_ANON_DEFINER).map((r) => r.sig),
       denylist,
+      // Miễn trừ đã xét áp như gate production; phép "mục miễn thừa" thì tắt: ACL bản dựng lại đến từ shim
+      // (baseline --no-acl), cửa đã đóng ở production có thể không tái hiện ở đây.
+      publicExecute: phanTichPublicExecute({ rows: hoiJson(dich, sqlPublicExecute(blockedRoles)), blockedRoles,
+        thieuMienTru: docThieuMienTru(aclDoc.publicExecute), kiemMienThua: false }),
     };
   } catch (e) {
     console.error(`❌ Không kiểm được: ${e.message}`);
@@ -233,7 +237,8 @@ function main(argv) {
   const { dat, viPham } = phanTichBaoMat(soLieu);
   console.log(
     `Kiểm bảo mật sau khôi phục — view: ${soLieu.views.length} · definer thiếu search_path: ${soLieu.definerThieuSearchPath.length} · ` +
-      `bảng thiếu RLS: ${soLieu.bangThieuRls.length} · stable-fn chạm khoá: ${soLieu.stableLocks.length} · denylist: ${denylist.length} cửa`,
+      `bảng thiếu RLS: ${soLieu.bangThieuRls.length} · stable-fn chạm khoá: ${soLieu.stableLocks.length} · denylist: ${denylist.length} cửa · ` +
+      `hàm cấp PUBLIC: ${soLieu.publicExecute.hamPublic.length} · vai bị chặn vượt quyền: ${soLieu.publicExecute.vuotQuyen.length}`,
   );
   if (!dat) {
     for (const v of viPham) {
@@ -243,7 +248,7 @@ function main(argv) {
     }
     return 1;
   }
-  console.log("✅ Bản dựng lại sạch: RLS đủ, view invoker đủ, search_path ghim đủ, không hàm đọc nào chạm khoá dòng, các cửa denylist vẫn đóng.");
+  console.log("✅ Bản dựng lại sạch: RLS đủ, view invoker đủ, search_path ghim đủ, không hàm đọc nào chạm khoá dòng, các cửa denylist vẫn đóng, không hàm ứng dụng nào cấp PUBLIC.");
   return 0;
 }
 

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const dueNoticeSchema = z.object({
-  contract_id: z.string().uuid(),
+  contract_id: z.string().guid(),
   contract_number: z.string().nullable(),
   building_name: z.string().nullable(),
   room_name: z.string().nullable(),

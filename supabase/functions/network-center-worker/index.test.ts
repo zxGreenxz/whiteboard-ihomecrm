@@ -47,6 +47,40 @@ const LEASE_TOKEN = "22222222-2222-4222-8222-222222222222";
 const DEVICE_ID = "33333333-3333-4333-8333-333333333333";
 const SNAPSHOT_ID = "44444444-4444-4444-8444-444444444444";
 
+function cameraPayload() {
+  return {
+    recorderId: DEVICE_ID, connectionId: COMMAND_ID, observedAt: "2026-10-22T10:00:00Z",
+    status: "ONLINE", channels: [{ channel: 1, name: "Entrance", state: "CONNECTED" }],
+    storage: [{ slot: 1, state: "NORMAL", totalBytes: 100, usedBytes: 100 }],
+    eventCoverage: "STATE_POLLING_ONLY", issues: [], events: [],
+  };
+}
+
+Deno.test("camera worker routes bind identity to the header and retain full overwrite disk as NORMAL", async () => {
+  const { handler, calls } = await createHarness();
+  const payload = cameraPayload();
+  assertEquals((await handler(post("/camera-ingest", { payload }))).status, 200);
+  assertEquals(calls[0].name, "network_center_worker_camera_ingest_v1");
+  assertEquals(calls[0].args.p_payload, payload);
+  assertEquals(typeof calls[0].args.p_credential_digest, "string");
+  assertEquals((await handler(post("/camera-connections", { limit: 100 }))).status, 200);
+  assertEquals(calls[1].name, "network_center_worker_camera_connections_v1");
+});
+
+Deno.test("camera ingest refuses scope spoofing, leaked credentials, invalid domains and duplicate channels before RPC", async () => {
+  for (const replacement of [
+    { organizationId: DEVICE_ID }, { password: "do-not-forward" }, { status: "HEALTHY" },
+    { channels: [{ channel: 0, state: "CONNECTED" }] },
+    { channels: [{ channel: 1, state: "CONNECTED" }, { channel: 1, state: "EMPTY" }] },
+    { storage: [{ slot: 1, state: "NORMAL", password: "secret" }] },
+    { events: [{ eventKey: "key", code: "ArbitraryDeviceText", action: "Start", observedAt: "2026-10-22T10:00:00Z" }] },
+  ]) {
+    const { handler, calls } = await createHarness();
+    assertEquals((await handler(post("/camera-ingest", { payload: { ...cameraPayload(), ...replacement } }))).status, 400);
+    assertEquals(calls.length, 0);
+  }
+});
+
 const workerModule = import("./index.ts").catch(() => null);
 
 async function loadWorkerModule(): Promise<WorkerModule> {

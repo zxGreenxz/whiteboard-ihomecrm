@@ -229,6 +229,12 @@ const RefundRow = memo(function RefundRow({
             Không phát sinh hoàn
           </span>
         )}
+        {r.posted_refund_count > 1 && (
+          <p role="alert" className="mt-1 text-xs font-medium text-amber-800">
+            Có {r.posted_refund_count} phiếu hoàn đã vào sổ — cần rà soát trùng trước khi chi thêm.
+            {r.posted_refund_codes.length > 0 && ` Phiếu: ${r.posted_refund_codes.join(", ")}.`}
+          </p>
+        )}
       </TableCell>
     </TableRow>
   );

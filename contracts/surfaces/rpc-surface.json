@@ -1,20 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2730,
-    "catalogFunctions": 1527,
+    "sourceCallSites": 3129,
+    "catalogFunctions": 1656,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 384,
+    "calledRpcs": 430,
     "byRisk": {
-      "normal": 284,
-      "financial": 100
+      "normal": 321,
+      "financial": 108,
+      "infrastructure": 1
     },
-    "securityDefiner": 364
+    "securityDefiner": 405
   },
   "missingOnServer": [],
   "rpcs": {
@@ -636,6 +637,27 @@
       ],
       "risk": "financial"
     },
+    "can_view_restricted_ie": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "boolean",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useProfitCommissionChecks.ts"
+      ],
+      "risk": "financial"
+    },
     "cancel_cashbook_closing_v1": {
       "definitions": [
         {
@@ -811,6 +833,44 @@
       ],
       "risk": "financial"
     },
+    "cashbook_cash_flow_profit_payout_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_year integer, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(organization_id uuid, building_id uuid, period text, shareholder_payout numeric, manager_payout numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashFlowProfitPayouts.ts"
+      ],
+      "risk": "normal"
+    },
+    "cashbook_cash_flow_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_year integer, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(organization_id uuid, building_id uuid, period text, income numeric, expense numeric, net numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashFlowReport.ts"
+      ],
+      "risk": "normal"
+    },
     "cashbook_close_confirmers_v1": {
       "definitions": [
         {
@@ -905,6 +965,25 @@
       ],
       "callers": [
         "src/hooks/useCashBook.ts"
+      ],
+      "risk": "financial"
+    },
+    "cashbook_reopening_state_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/cashbookReopening.ts"
       ],
       "risk": "financial"
     },
@@ -1987,12 +2066,12 @@
       ],
       "risk": "normal"
     },
-    "distribute_shareholder_profit_v1": {
+    "discard_contract_exit_settlement_draft_v1": {
       "definitions": [
         {
           "schema": "public",
-          "args": "p_shareholder_id uuid, p_amount numeric, p_account_id uuid, p_voucher_date date, p_note text, p_idempotency_key text",
-          "returns": "json",
+          "args": "p_organization_id uuid, p_case_id uuid, p_expected_version bigint",
+          "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=pg_catalog, public, app_private",
@@ -2002,9 +2081,9 @@
         }
       ],
       "callers": [
-        "src/hooks/income-expenses/specialized.ts"
+        "src/hooks/useContractExitSettlementDrafts.ts"
       ],
-      "risk": "financial"
+      "risk": "normal"
     },
     "door_access_action_logs_v1": {
       "definitions": [
@@ -2525,7 +2604,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -2571,6 +2649,25 @@
       ],
       "callers": [
         "src/hooks/useContractExitCases.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_contract_exit_settlement_draft_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_case_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractExitSettlementDrafts.ts"
       ],
       "risk": "normal"
     },
@@ -2699,7 +2796,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -2915,26 +3011,6 @@
       ],
       "risk": "normal"
     },
-    "get_my_assignments": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "",
-          "returns": "TABLE(user_id uuid, building_id uuid)",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMyBuildingScope.ts"
-      ],
-      "risk": "normal"
-    },
     "get_my_available_rooms": {
       "definitions": [
         {
@@ -3052,9 +3128,10 @@
         }
       ],
       "callers": [
-        "src/hooks/useMyPermissions.ts"
+        "src/hooks/useMyPermissions.ts",
+        "src/hooks/useProfitCommissionChecks.ts"
       ],
-      "risk": "normal"
+      "risk": "financial"
     },
     "get_my_push_log_v1": {
       "definitions": [
@@ -3321,10 +3398,9 @@
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public, app_private",
+          "searchPath": "search_path=pg_catalog, public, app_private",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
@@ -3491,6 +3567,140 @@
       ],
       "risk": "financial"
     },
+    "gps_checkin_device_revoke_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_device uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/gps-checkin/useGpsCheckin.ts"
+      ],
+      "risk": "normal"
+    },
+    "gps_checkin_member_set_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user uuid, p_applies boolean",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/gps-checkin/useGpsCheckin.ts"
+      ],
+      "risk": "normal"
+    },
+    "gps_checkin_my_status_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/gps-checkin/useGpsCheckin.ts"
+      ],
+      "risk": "normal"
+    },
+    "gps_checkin_pair_start_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/gps-checkin/useGpsCheckin.ts"
+      ],
+      "risk": "normal"
+    },
+    "gps_checkin_settings_get_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_org uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/gps-checkin/useGpsCheckin.ts"
+      ],
+      "risk": "normal"
+    },
+    "gps_checkin_settings_set_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_patch jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/gps-checkin/useGpsCheckin.ts"
+      ],
+      "risk": "normal"
+    },
+    "ie_category_suggest_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_items jsonb, p_type text DEFAULT 'expense'::text, p_include_restricted boolean DEFAULT false",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/quick-entry/useQuickEntryRefs.ts"
+      ],
+      "risk": "normal"
+    },
     "ie_compat_update_pending_v2": {
       "definitions": [
         {
@@ -3509,6 +3719,26 @@
         "src/hooks/useUploadPaymentReceipt.ts"
       ],
       "risk": "financial"
+    },
+    "ie_default_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_building_id uuid DEFAULT NULL::uuid, p_last_used uuid DEFAULT NULL::uuid",
+          "returns": "uuid",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/quick-entry/useQuickEntryRefs.ts"
+      ],
+      "risk": "normal"
     },
     "ie_form_buildings": {
       "definitions": [
@@ -3607,6 +3837,44 @@
         "src/hooks/useOrganizationAuthorization.ts"
       ],
       "risk": "normal"
+    },
+    "invoice_adjustment_build_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_id uuid, p_ops jsonb DEFAULT '{}'::jsonb",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "invoice_amount_parts_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_rows jsonb",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoiceAmountParts.ts"
+      ],
+      "risk": "financial"
     },
     "invoice_list_v1": {
       "definitions": [
@@ -3802,6 +4070,7 @@
         }
       ],
       "callers": [
+        "src/hooks/useProfitCommissionChecks.ts",
         "src/lib/contractCommissionFollowup.ts"
       ],
       "risk": "financial"
@@ -3841,6 +4110,25 @@
       ],
       "callers": [
         "src/hooks/useContractExitCases.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_contract_exit_settlement_drafts_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_case_ids uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractExitSettlementDrafts.ts"
       ],
       "risk": "normal"
     },
@@ -4915,6 +5203,122 @@
       ],
       "risk": "normal"
     },
+    "profit_ledger_marker_preview_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_subject_kind text, p_subject_id uuid, p_settled_through_month date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_ledger_payout_cancel_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid, p_reason text, p_idempotency_key text, p_expected_state text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_ledger_payout_detail_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_ledger_salary_resolve_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_line_id uuid, p_investment_amount numeric, p_advance_offset_amount numeric, p_reason text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_ledger_set_marker_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_subject_kind text, p_subject_id uuid, p_settled_through_month date, p_reason text, p_expected_marker_id uuid, p_acknowledge_advance_erase boolean, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_manager_ledger_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
     "profit_reset_checked_v2": {
       "definitions": [
         {
@@ -4952,6 +5356,26 @@
       ],
       "callers": [
         "src/hooks/useShareholderProfit.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_unlock_salary_impact_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_period_month date, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
       ],
       "risk": "normal"
     },
@@ -5338,6 +5762,25 @@
       ],
       "risk": "financial"
     },
+    "record_meter_readings_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_reading_date date, p_rows jsonb, p_replace boolean DEFAULT false, p_idempotency_key text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
+    },
     "record_payment_gps": {
       "definitions": [
         {
@@ -5509,6 +5952,25 @@
       ],
       "callers": [
         "src/lib/rentSupportSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "reopen_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid, p_reason text, p_expected_lock_date date, p_idempotency_key uuid, p_expected_revision text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/cashbookReopening.ts"
       ],
       "risk": "financial"
     },
@@ -5823,6 +6285,66 @@
       ],
       "risk": "financial"
     },
+    "salary_profit_inputs_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month date, p_staff_ids uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/profitLedger/salaryProfitApi.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_profit_payout_quote_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_staff_id uuid, p_period_month date, p_investment_selected numeric, p_offset_selected numeric, p_expected_voucher_amount numeric, p_payout_idempotency_key text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/profitLedger/salaryProfitApi.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_profit_settlement_freeze_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_staff_id uuid, p_period_month date, p_expected_investment numeric, p_max_offset numeric, p_expected_take_home numeric, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/profitLedger/salaryProfitApi.ts"
+      ],
+      "risk": "financial"
+    },
     "salary_recurring_create_v1": {
       "definitions": [
         {
@@ -5998,6 +6520,25 @@
       ],
       "callers": [
         "src/lib/contractDraftApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "save_contract_exit_settlement_draft_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_case_id uuid, p_expected_version bigint, p_payload jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractExitSettlementDrafts.ts"
       ],
       "risk": "normal"
     },
@@ -6229,10 +6770,11 @@
         }
       ],
       "callers": [
+        "src/hooks/network-center/useCameraQuality.ts",
         "src/hooks/useUiPreferences.ts",
         "src/lib/companyPreferenceRemote.ts"
       ],
-      "risk": "normal"
+      "risk": "infrastructure"
     },
     "set_notification_org_config_v2": {
       "definitions": [
@@ -6392,6 +6934,215 @@
       ],
       "risk": "normal"
     },
+    "shareholder_profit_advance_options_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_advance_preview_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_shareholder_id uuid, p_amount numeric, p_account_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_advance_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_shareholder_id uuid, p_amount numeric, p_account_id uuid, p_voucher_date date, p_note text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_ledger_entries_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_shareholder_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_ledger_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_my_ledger_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_my_position_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_positions_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_settle_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_shareholder_id uuid, p_through_month date, p_account_id uuid, p_voucher_date date, p_note text, p_expected_recognized numeric, p_expected_cash numeric, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_settlement_preview_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_shareholder_id uuid, p_through_month date, p_account_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_settlement_void_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_settlement_id uuid, p_reason text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
     "sign_and_checkin_contract_draft_v1": {
       "definitions": [
         {
@@ -6419,7 +7170,7 @@
           "returns": "void",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public",
+          "searchPath": "search_path=pg_catalog, public, app_private",
           "execRoles": [
             "authenticated",
             "service_role"
@@ -6448,6 +7199,139 @@
       ],
       "callers": [
         "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
+    "staff_day_calendar_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user uuid, p_month date DEFAULT NULL::date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/staff-day/useStaffDay.ts"
+      ],
+      "risk": "normal"
+    },
+    "staff_day_journey_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user uuid, p_date date DEFAULT NULL::date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/staff-day/useStaffDay.ts"
+      ],
+      "risk": "normal"
+    },
+    "staff_day_route_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/staff-day/useStaffDay.ts"
+      ],
+      "risk": "normal"
+    },
+    "staff_day_summary_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user uuid, p_date date DEFAULT NULL::date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/staff-day/useStaffDay.ts"
+      ],
+      "risk": "normal"
+    },
+    "staff_day_team_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_date date DEFAULT NULL::date, p_org uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/staff-day/useStaffDay.ts"
+      ],
+      "risk": "normal"
+    },
+    "staff_period_report_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_from date, p_to date, p_org uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/staff-day/useStaffDay.ts"
+      ],
+      "risk": "normal"
+    },
+    "staff_period_review_set_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user uuid, p_from date, p_to date, p_rating text, p_note text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/staff-day/useStaffDay.ts"
       ],
       "risk": "normal"
     },

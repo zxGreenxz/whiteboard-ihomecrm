@@ -1,38 +1,32 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Ghim định nghĩa migration 20260902042935: soft_delete_customer phải chặn khách
-// còn hợp đồng ACTIVE ở TẦNG DB (client có thể bị vòng qua). Migration là sổ
-// đóng băng sau khi apply — test này canh việc ai đó "dọn" guard khỏi bản sau.
+function liveDefinitionOf(name: string): string {
+  const dir = join(process.cwd(), "supabase/migrations");
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort().reverse()) {
+    const sql = readFileSync(join(dir, file), "utf8");
+    const start = sql.indexOf("CREATE OR REPLACE FUNCTION public." + name + "(");
+    if (start < 0) continue;
+    const body = sql.slice(start);
+    const tag = body.match(/AS\s+(\$\w*\$)/i)?.[1];
+    if (tag) return body.slice(0, body.indexOf(tag, body.indexOf(tag) + tag.length) + tag.length);
+  }
+  throw new Error("Missing live function " + name);
+}
+const sql = liveDefinitionOf("soft_delete_customer");
 
-const sql = readFileSync(
-  new URL(
-    "../../../supabase/migrations/20260902042935_soft_delete_customer_chan_khach_con_hop_dong.sql",
-    import.meta.url,
-  ),
-  "utf8",
-);
-
-describe("soft_delete_customer guard hợp đồng hiệu lực", () => {
-  it("giữ nguyên chữ ký + SECURITY DEFINER + search_path (CREATE OR REPLACE, không overload)", () => {
-    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.soft_delete_customer\(p_customer_id uuid\) RETURNS void/);
-    expect(sql).toMatch(/SECURITY DEFINER/);
-    expect(sql).toMatch(/SET search_path TO 'public'/);
-    expect(sql).not.toMatch(/DROP FUNCTION/);
+describe("soft_delete_customer: authorization precedes active-contract guard and mutation", () => {
+  it("locks the customer and authorizes the customer organization before inspecting links", () => {
+    expect(sql).toMatch(/SECURITY DEFINER/i);
+    expect(sql).toMatch(/search_path\s*=\s*pg_catalog,public,app_private/i);
+    expect(sql).toMatch(/FOR UPDATE/i);
+    expect(sql).toContain("auth.uid(),c.organization_id,'customers.delete'");
+    expect(sql.indexOf("authorize_tenant_action_v3")).toBeLessThan(sql.indexOf("contract_customers"));
   });
-
-  it("đếm HĐ ACTIVE chưa xoá qua contract_customers và RAISE trước UPDATE", () => {
-    const guard = sql.indexOf("CUSTOMER_HAS_ACTIVE_CONTRACT");
-    const update = sql.indexOf("UPDATE customers");
-    expect(guard).toBeGreaterThan(-1);
-    expect(update).toBeGreaterThan(guard);
-    expect(sql).toMatch(/JOIN public\.contracts c ON c\.id = cc\.contract_id/);
-    expect(sql).toMatch(/c\.status = 'ACTIVE'/);
-    expect(sql).toMatch(/c\.deleted_at IS NULL/);
-  });
-
-  it("giữ nguyên rào quyền cũ (chủ dữ liệu hoặc super admin) và nghiệm thu cuối file", () => {
-    expect(sql).toMatch(/user_id = auth\.uid\(\) OR public\.is_super_admin\(\)/);
-    expect(sql).toMatch(/prosrc LIKE '%CUSTOMER_HAS_ACTIVE_CONTRACT%'/);
+  it("rejects active, undeleted contracts before soft deletion", () => {
+    expect(sql).toMatch(/ct.status='ACTIVE' AND ct.deleted_at IS NULL/);
+    expect(sql).toContain("CUSTOMER_HAS_ACTIVE_CONTRACT");
+    expect(sql.indexOf("CUSTOMER_HAS_ACTIVE_CONTRACT")).toBeLessThan(sql.indexOf("UPDATE public.customers"));
   });
 });

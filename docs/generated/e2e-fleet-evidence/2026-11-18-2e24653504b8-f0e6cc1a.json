@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "kind": "e2e-fleet-local-receipt",
+  "suiteId": "e2e-fleet",
+  "status": "failed",
+  "commit": "2e24653504b881936ccf6fb9eb4bb63a95799cad",
+  "fleetTree": "059a551eba33786e53f7170cad20b8adfd30175a",
+  "environment": "TEST",
+  "target": {
+    "kind": "loopback",
+    "origin": "http://127.0.0.1:5197"
+  },
+  "targetSupabaseRef": "hzulujxgonszuleqticb",
+  "targetBuildSha": "2e24653504b881936ccf6fb9eb4bb63a95799cad",
+  "actor": {
+    "gitUser": "zxGreenxz",
+    "agent": "claude"
+  },
+  "reportSha256": "1e306933450751d84b175aded3df49fabf42828ef450c0b353a880181715e2f6",
+  "runner": {
+    "node": "v22.20.0",
+    "playwright": "1.61.1"
+  },
+  "runId": "f0e6cc1a-41fa-4b9e-b013-6aa5e049b0b8",
+  "startedAt": "2026-11-18T15:12:33.045Z",
+  "completedAt": "2026-11-18T15:14:54.841Z",
+  "specs": [
+    {
+      "file": ".e2e-fleet/specs/profit-ledger.spec.ts",
+      "tests": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "flaky": 0
+    }
+  ]
+}

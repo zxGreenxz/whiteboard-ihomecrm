@@ -17,6 +17,22 @@ const OPTIONS_PORT = `CREATE TABLE public.fixture_v6(kind text PRIMARY KEY,value
   CREATE FUNCTION public.hermes_connection_options_v6(p_org uuid) RETURNS jsonb LANGUAGE sql AS $$SELECT value FROM public.fixture_v6 WHERE kind='connection_options'$$;
   CREATE FUNCTION public.hermes_connection_context_v6(p_connection_id uuid) RETURNS jsonb LANGUAGE sql AS $$SELECT value FROM public.fixture_v6 WHERE kind='context'$$;
   CREATE FUNCTION app_private.hermes_customer_extend_options_v1(p_result jsonb,p_kind text) RETURNS jsonb LANGUAGE sql AS $$SELECT p_result$$;`;
+// Đợt 3 Hoá đơn (20261022051620): $requires$ đòi hai hàm web mà sáu hàm dùng chung gói A gọi lúc chạy. Fixture gói A dựng bản port
+// riêng ở before(); gói khác không dùng nên nhận bản thế chỗ ĐÓNG an toàn (không khoá trang nào, không hoá đơn nào quá hạn), chỉ khi thiếu.
+const RUNTIME_PORT = `DO $port$ BEGIN
+  IF to_regprocedure('public.can_do_on_building(text,text,uuid)') IS NULL THEN
+    CREATE FUNCTION public.can_do_on_building(_table text,_action text,_building_id uuid) RETURNS boolean LANGUAGE sql STABLE AS 'SELECT false';
+  END IF;
+  IF to_regprocedure('public.is_overdue(public.invoices)') IS NULL THEN
+    CREATE FUNCTION public.is_overdue(public.invoices) RETURNS boolean LANGUAGE sql STABLE AS 'SELECT false';
+  END IF;
+  -- Hoá đơn lượt 14 (20261024185815): hàm đọc thu theo hình thức đọc view dòng thu đang hiệu lực; gói khác nhận view rỗng.
+  IF to_regclass('public.active_payment_receipts') IS NULL THEN
+    CREATE VIEW public.active_payment_receipts AS SELECT NULL::uuid AS id,NULL::uuid AS organization_id,NULL::uuid AS invoice_id,NULL::text AS payment_method,
+      NULL::date AS payment_date,0::numeric AS collected_amount WHERE false;
+    GRANT SELECT ON public.active_payment_receipts TO authenticated;
+  END IF;
+END $port$;`;
 
 /** packages: gói đợt 2 cần nạp ('a'..'d','z'); before(db): trước migration đợt 2 (bảng mà hàm LANGUAGE sql
  * cần lúc tạo); seed(db): sau migration (dữ liệu tổng hợp của gói). */
@@ -25,6 +41,7 @@ export async function sharedW2({ reads = [...new Set([...FULL_READ_KEYS, ...REPO
   const { db } = shared;
   await db.exec(OPTIONS_PORT);
   if (before) await before(db);
+  await db.exec(RUNTIME_PORT);
   const paths = w2MigrationPaths({ packages });
   for (const path of paths) { const sql = readFileSync(path, 'utf8'); await db.exec(sql); await db.exec(sql); }
   if (seed) await seed(db);

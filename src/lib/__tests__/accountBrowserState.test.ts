@@ -54,6 +54,7 @@ describe("clearAccountBrowserState", () => {
       "ihome:financial-pending:v1:ns:user-a:org-1:key": "{}",
       "ihome:quick-entry:models:user-a": "{}",
       "ihomecrm.selectedOrganizationId:user-a": "{}",
+      "ihomecrm.camera-quality:user-a:playback": '{"quality":"hd"}',
       "pwa-install-hint-dismissed": "1",
     });
 
@@ -63,6 +64,7 @@ describe("clearAccountBrowserState", () => {
       "ihome:financial-pending:v1:ns:user-a:org-1:key",
       "ihome:pending-collection:v1:user-a:org-1:inv-1",
       "ihome:quick-entry:models:user-a",
+      "ihomecrm.camera-quality:user-a:playback",
       "ihomecrm.selectedOrganizationId:user-a",
       "pwa-install-hint-dismissed",
       "sb-tryymsxyyckgbrmmvozx-auth-token",
@@ -111,6 +113,10 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/lib/accountBrowserState.ts": "tai-khoan",
   "src/components/layout/useSidebarState.ts": "gan-nguoi-dung",
   "src/lib/companyPreference.ts": "gan-nguoi-dung",
+  // Chất lượng camera: khoá theo userId và loại xem/xuất, không sang tài khoản khác.
+  "src/hooks/network-center/useCameraQuality.ts": "gan-nguoi-dung",
+  // Mã tác vụ trích xuất theo tài khoản + đầu ghi; giữ để đúng chủ có thể khôi phục sau F5.
+  "src/hooks/network-center/useCameraExport.ts": "gan-nguoi-dung",
   "src/hooks/quick-entry/useQuickEntryFeed.ts": "gan-nguoi-dung",
   "src/lib/quickEntry/models.ts": "gan-nguoi-dung",
   "src/pages/quick-entry/QuickEntryPage.tsx": "gan-nguoi-dung",
@@ -118,6 +124,9 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/hooks/usePersonalTaskReminders.ts": "gan-nguoi-dung",
   // Máy cửa vừa chọn: khoá `door-access.last-device.v1:<công ty>:<người dùng>` — không sang tài khoản khác.
   "src/components/door-access/DoorAccessScreen.tsx": "gan-nguoi-dung",
+  // Bộ lọc nhà bảng "LN được chia Nhà × Tháng": khoá `ihome:ln-nha-thang:bo-loc:v1:<công ty>:<cổ đông>`;
+  // cổ đông gắn một tài khoản đăng nhập nên không sang tài khoản khác.
+  "src/hooks/useBuildingFilterState.ts": "gan-nguoi-dung",
   "src/hooks/personal-finance/usePersonalFinance.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/contractEditWorkflow.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/contractImportWorkflow.ts": "nhat-ky-chong-ghi-trung",
@@ -132,6 +141,8 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/lib/network-center/intentRegistry.ts": "nhat-ky-chong-ghi-trung",
   "src/integrations/supabase/client.ts": "phien-dang-nhap",
   "src/hooks/useAuth.ts": "phien-dang-nhap",
+  // Phiên link tên miền của chủ nhà (PIN) — khoá theo link, không gắn tài khoản CRM; Thoát trên trang link xoá.
+  "src/lib/landlordPortal.ts": "phien-dang-nhap",
   "src/lib/authSession.ts": "chi-chu-thich",
   "src/copilot/confirmationStore.ts": "chi-chu-thich",
   // Chỉ chú thích "mật khẩu tạm không ghi localStorage".

@@ -1,19 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useMyContext } from '@/hooks/useMyContext';
-import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionCheck';
+import type { ActionKey } from '@/lib/permissions';
 
-/**
- * Mirror logic của `staff_in_building(owner, building_id)` ở DB.
- *
- * Trả về:
- *   - canManageAll: caller là owner/admin/staff "tất cả tòa" → toàn quyền.
- *   - buildingIds: set các building_id staff được giao (chỉ có ý nghĩa khi
- *     canManageAll=false).
- *   - hasAnyScope: canManageAll || có ít nhất 1 building → quyết định ẩn
- *     nút "Thêm" (staff không tòa nào không tạo được gì).
- *   - canManageBuilding(b): helper per-row để ẩn nút Sửa/Xoá.
- */
 export interface MyBuildingScope {
   canManageAll: boolean;
   buildingIds: Set<string>;
@@ -24,70 +12,21 @@ export interface MyBuildingScope {
   error?: unknown;
 }
 
-const ALL: MyBuildingScope = {
-  canManageAll: true,
-  buildingIds: new Set(),
-  hasAnyScope: true,
-  canManageBuilding: () => true,
-  isLoading: false,
-};
-
-const NONE: MyBuildingScope = {
-  canManageAll: false,
-  buildingIds: new Set(),
-  hasAnyScope: false,
-  canManageBuilding: () => false,
-  isLoading: false,
-};
-
-export const useMyBuildingScope = (): MyBuildingScope => {
-  const contextQuery=useMyContext();
-  const { data: ctx, isLoading: ctxLoading } = contextQuery;
-  const adminQuery=useIsAdmin();
-  const { data: isAdmin, isLoading: adminLoading } = adminQuery;
-
-  const assignmentsQuery = useQuery({
-    queryKey: ['my-assignments'],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_my_assignments');
-      if (error) {
-        console.error('get_my_assignments error:', error);
-        throw error;
-      }
-      if(!Array.isArray(data)) throw new TypeError("Unconfirmed building assignments");
-      return data as Array<{ user_id: string; building_id: string | null }>;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const {data:rows,isLoading:assignmentsLoading}=assignmentsQuery;
-  const error=contextQuery.error ?? adminQuery.error ?? assignmentsQuery.error;
-  if (contextQuery.isError || adminQuery.isError || assignmentsQuery.isError) return {...NONE,isError:true,error};
-  const loading = ctxLoading || adminLoading || assignmentsLoading;
-
-  // Chờ đủ context trước khi quyết định — nếu mặc định ALL trong lúc loading
-  // thì nút action sẽ flash hiện rồi ẩn, không đẹp.
-  if (loading) return { ...NONE, isLoading: true };
-
-  // Owner / super admin / admin / không phải staff → toàn quyền.
-  if (!ctx) return NONE;
-  if (isAdmin || ctx.isSuper || !ctx.isStaff) return ALL;
-
-  const list = rows || [];
-  const canAll = list.some((r) => r.building_id === null);
-  if (canAll) return ALL;
-
-  const ids = new Set<string>();
-  for (const r of list) {
-    if (r.building_id) ids.add(r.building_id);
-  }
-  const hasAny = ids.size > 0;
-
+/** Phạm vi của đúng thao tác; phân công phụ trách không thay thế quyền nghiệp vụ. */
+export function useMyBuildingScope(module: string, action: ActionKey): MyBuildingScope {
+  const query = useMyPermissions();
+  const value = query.data?.[module]?.[action];
+  const ready = !!query.data && !query.isError && !query.isLoading;
+  const canManageAll = ready && (query.data?.__superadmin === true || value === true ||
+    (typeof value === 'object' && value.org_wide));
+  const buildingIds = new Set(ready && typeof value === 'object' ? value.building_ids : []);
   return {
-    canManageAll: false,
-    buildingIds: ids,
-    hasAnyScope: hasAny,
-    canManageBuilding: (bid) => !!bid && ids.has(bid),
-    isLoading: false,
+    canManageAll,
+    buildingIds,
+    hasAnyScope: ready && canUse(query.data, module, action),
+    canManageBuilding: buildingId => ready && !!buildingId && canUse(query.data, module, action, buildingId),
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
   };
-};
+}

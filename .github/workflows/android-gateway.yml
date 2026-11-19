@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s "$ANDROID_HOME/licenses/android-sdk-license"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-35;google_apis;x86_64' < /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-35;google_apis;x86_64' 'system-images;android-29;google_apis;x86_64' < /dev/null
           test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
       - name: Verify Android encrypted queue and setup screen on device

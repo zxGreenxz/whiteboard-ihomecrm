@@ -17,8 +17,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useContractLifecycle } from '@/hooks/useContractLifecycle';
+import { roomCashLifecycleQuery, useRoomCashLifecycle } from '@/hooks/useRoomCashLifecycle';
+import type { ContractMoney, LifecyclePayload } from '@/lib/roomLifecycle';
 
 const H = vi.hoisted(() => ({
+  /** Kết quả RPC phòng `get_room_cash_lifecycle_v1` (khối tiền một nguồn). */
+  phong: { data: null as unknown, error: null as unknown },
   /** label → dòng trả về, hoặc `null` để mô phỏng ĐỌC HỎNG. */
   bang: new Map<string, unknown[] | null>(),
   // Spy tên `goiRpc` chứ KHÔNG phải `rpc`: check-rpc-name-literal quét văn bản
@@ -100,10 +104,30 @@ const ARGS = {
   businessDate: '2026-09-22',
 };
 
-const bocLot = () => {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  return ({ children }: { children: ReactNode }) =>
+const bocLot = (qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })) =>
+  ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client: qc }, children);
+
+/** Payload RPC phòng; `money` vắng ⇒ hình RPC cũ (chưa áp migration). Số giả. */
+const phongTra = (money?: ContractMoney, originalEndDate?: string | null): LifecyclePayload => ({
+  room: { id: PHONG, name: '401', buildingId: 'b', buildingName: 'Toà giả' },
+  range: { from: null, to: null },
+  contracts: [{
+    id: HD, number: 'HĐ-GIA', status: 'TERMINATED', startDate: '2025-05-01', endDate: '2026-04-30',
+    actualEndDate: '2026-04-30', rentPrice: 3_300_000, totalDeposit: 3_300_000, tenantName: 'Khách Giả',
+    ...(money ? { money } : {}),
+    ...(originalEndDate !== undefined ? { originalEndDate } : {}),
+  }],
+  segments: [],
+  // Cọc gross KHÔNG được lấy từ đây dù số to cỡ nào.
+  events: [{ type: 'DEPOSIT_RECEIVED', date: '2026-07-06', contractId: HD, amount: 9_999_999, trusted: true, meta: { code: 'PT-GIA' } }],
+  vacancies: [],
+  generatedAt: '2026-09-22T00:00:00Z',
+});
+
+const tienHd = (o: { paidCash: number; debt: number; offset: number }): ContractMoney => {
+  const s = { issued: o.paidCash + o.offset + o.debt, overpaid: 0, invoiceCount: 3, roomCount: 1, depositOnInvoices: 0, ...o };
+  return { contract: s, room: s, refund: null };
 };
 
 /** Bộ dữ liệu đủ cho ca thật 401/32PVC. */
@@ -129,7 +153,9 @@ const napCaThat = () => {
   H.bang.set('lifecycle.accounts', [{ id: SO, organization_id: ORG, is_virtual: false }]);
   H.bang.set('lifecycle.postings', []);
   H.bang.set('lifecycle.invoices', []);
-  H.goiRpc.mockResolvedValue({ data: [DOAN], error: null });
+  H.phong = { data: phongTra(), error: null };
+  H.goiRpc.mockImplementation(async (ten: string) =>
+    (ten === 'get_room_cash_lifecycle_v1' ? H.phong : { data: [DOAN], error: null }));
 };
 
 beforeEach(() => {
@@ -314,10 +340,76 @@ describe('useContractLifecycle — nguồn và ranh giới', () => {
     for (const [ten] of H.goiRpc.mock.calls) expect(String(ten)).not.toMatch(/read_contract_settlement/);
   });
 
-  it('KHÔNG dùng get_room_cash_lifecycle_v1 làm nguồn cọc gross', async () => {
+  it('KHÔNG dùng get_room_cash_lifecycle_v1 làm nguồn cọc gross (chỉ lấy khối tiền thuê/phí)', async () => {
     napCaThat();
-    await chay();
-    for (const [ten] of H.goiRpc.mock.calls) expect(String(ten)).not.toBe('get_room_cash_lifecycle_v1');
+    H.phong = { data: phongTra(tienHd({ paidCash: 1, debt: 0, offset: 0 })), error: null };
+    const { result } = await chay();
+    expect(H.goiRpc).toHaveBeenCalledWith('get_room_cash_lifecycle_v1', { p_room_id: PHONG });
+    // DEPOSIT_RECEIVED 9.999.999 của RPC không lọt vào cọc dựng từ phiếu.
+    expect(result.current.data?.target?.deposit?.grossCollected).toBe(4_500_000);
+  });
+});
+
+describe('useContractLifecycle — tiền thuê/phí MỘT NGUỒN với ngăn kéo', () => {
+  const hoaDonTho = [{
+    id: 'inv-1', contract_id: HD, organization_id: ORG, status: 'PAID', deleted_at: null,
+    paid_amount: 54_000_000, total_amount: 54_000_000, remaining_amount: 0,
+  }];
+
+  it('đọc money.contract (tiền thật, nợ, cấn trừ) + hạn gốc; hoá đơn thô bị bỏ qua', async () => {
+    napCaThat();
+    H.bang.set('lifecycle.invoices', hoaDonTho);
+    H.phong = { data: phongTra(tienHd({ paidCash: 3_000_000, debt: 100_000, offset: 500_000 }), '2025-10-27'), error: null };
+    const { result } = await chay();
+    const dich = result.current.data?.target;
+    expect(dich?.invoice).toEqual({ paid: 3_000_000, debt: 100_000, offset: 500_000 });
+    expect(result.current.data?.status.rent.kind).toBe('sufficient');
+    expect(dich?.steps[2]).toMatchObject({ v: '3.000.000 đ', m2: 'Cấn trừ khi thanh lý 500.000 đ' });
+    expect(dich?.steps[0].m).toBe('Thời hạn: 28/10/2024 – 27/10/2025 · gia hạn tới 27/10/2026');
+  });
+
+  it('RPC cũ (trả về nhưng thiếu money) ⇒ cộng hoá đơn thô như trước, KHÔNG báo thiếu', async () => {
+    napCaThat();
+    H.bang.set('lifecycle.invoices', hoaDonTho);
+    const { result } = await chay();
+    expect(result.current.data?.target?.invoice).toEqual({ paid: 54_000_000, debt: 0 });
+    expect(result.current.data?.status.rent.kind).toBe('sufficient');
+    expect(result.current.data?.target?.steps[0].m).toBe('Thời hạn: 28/10/2024 – 27/10/2026');
+  });
+
+  it('RPC lỗi (42501 thiếu khoá theo toà) ⇒ đường cũ kèm "partial", lỗi giữ inline (không toast)', async () => {
+    napCaThat();
+    H.bang.set('lifecycle.invoices', hoaDonTho);
+    H.phong = { data: null, error: { code: '42501', message: 'permission denied' } };
+    // retry: 1 như QueryProvider của app: 42501 không được thử lại (một RPC, không chờ ~1 s).
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
+    const r = renderHook(() => useContractLifecycle(ARGS), { wrapper: bocLot(qc) });
+    await waitFor(() => expect(r.result.current.isLoading).toBe(false));
+    expect(r.result.current.isError).toBe(false);
+    expect(r.result.current.data?.target?.invoice).toEqual({ paid: 54_000_000, debt: 0 });
+    expect(r.result.current.data?.status.rent).toEqual({
+      kind: 'insufficient', reason: 'Số theo hoá đơn thô, chưa khử cấn trừ/nợ kéo',
+    });
+    const q = qc.getQueryCache().find({ queryKey: ['room-cash-lifecycle', PHONG] });
+    expect(q?.state.status).toBe('error');
+    expect(q?.meta?.feedback).toBe('inline');
+    expect(H.goiRpc.mock.calls.filter(([ten]) => ten === 'get_room_cash_lifecycle_v1')).toHaveLength(1);
+  });
+
+  it('roomCashLifecycleQuery: không thử lại 42501 / payload sai hình; lỗi khác (kể cả JWT hết hạn) thử lại một lần', () => {
+    const retry = roomCashLifecycleQuery(PHONG).retry;
+    expect([retry(0, { code: '42501' }), retry(0, new TypeError('Unconfirmed room lifecycle source')), retry(0, { code: 'PGRST301' }),
+      retry(0, new Error('mạng')), retry(1, { code: 'PGRST301' })]).toEqual([false, false, true, true, false]);
+  });
+
+  it('dùng CHUNG cache với useRoomCashLifecycle: một lần gọi RPC cho cả panel lẫn lane', async () => {
+    napCaThat();
+    H.phong = { data: phongTra(tienHd({ paidCash: 3_000_000, debt: 0, offset: 0 })), error: null };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const r = renderHook(() => ({ phong: useRoomCashLifecycle(PHONG), lane: useContractLifecycle(ARGS) }), { wrapper: bocLot(qc) });
+    await waitFor(() => expect(r.result.current.lane.isLoading || r.result.current.phong.isLoading).toBe(false));
+    expect(r.result.current.lane.data?.target?.invoice?.paid).toBe(3_000_000);
+    expect(H.goiRpc.mock.calls.filter(([ten]) => ten === 'get_room_cash_lifecycle_v1')).toHaveLength(1);
   });
 });
 
@@ -332,7 +424,7 @@ describe('useContractLifecycle — đọc hỏng KHÔNG thành số 0', () => {
 
   it('RPC segments lỗi ⇒ status lane lỗi, KHÔNG kết luận phòng trống', async () => {
     napCaThat();
-    H.goiRpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
+    H.goiRpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'permission denied' } });
     const { result } = await chay();
     expect(result.current.data?.status.lanes.kind).toBe('error');
     expect(result.current.data?.roomState.kind).toBe('insufficient');

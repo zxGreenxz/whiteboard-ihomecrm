@@ -25,9 +25,35 @@ const stateRow = {
   computed_profit: 1000000, adjusted_profit: 1000000, adjustment_amount: 0, adjustment_reason: null, management_salary: 0,
   distributable_profit: 1000000, shareholder_percent_total: 90, shareholder_allocated_amount: 900000, unallocated_profit: 100000,
   unallocated_disposition: 'LEGACY_RETAINED_UNALLOCATED', unallocated_disposition_reason: LEGACY_REASON,
-  source_revenue: 1500000, source_expense: 500000, source_hash: HASH, is_stale: false, stale_reason: null,
+  source_revenue: null, source_expense: null, source_hash: HASH, is_stale: true,
+  stale_reason: 'LEGACY_BASELINE: canonical accrual source totals unavailable',
   revision_number: 1, locked_at: '2026-06-02T03:04:05+00:00',
 };
+
+const statePayload = (patch: Record<string, unknown> = {}) => ({
+  organization_id: ORG, period_month: '2026-05-01', can_lock: true, can_unlock: true, state_hash: HASH,
+  snapshot_ids: [ROW_ID], snapshot_count: 1, locked_count: 1, draft_count: 0, real_building_count: 1,
+  active_real_snapshot_count: 1, has_out_of_scope_snapshots: false, rows: [{ ...stateRow, ...patch }],
+});
+
+describe('chi tiết nguồn của bản chốt', () => {
+  it.each(['source_revenue', 'source_expense'])('%s nhận NULL nhưng vẫn giữ số 0 và chuỗi số', field => {
+    for (const [input, expected] of [[null, null], [0, 0], ['1500000.25', 1500000.25]] as const) {
+      const result = readProfitState(statePayload({ [field]: input }), ORG, '2026-05-01');
+      expect(result.rows[0][field as 'source_revenue' | 'source_expense']).toBe(expected);
+    }
+  });
+
+  it.each(['source_revenue', 'source_expense'])('%s vẫn từ chối thiếu trường và giá trị sai kiểu', field => {
+    for (const input of [undefined, '', 'BAD', false, {}, Infinity]) {
+      expect(() => readProfitState(statePayload({ [field]: input }), ORG, '2026-05-01')).toThrow('Invalid profit read payload');
+    }
+  });
+
+  it('chi tiết nguồn NULL không cho phép thiếu lợi nhuận đã chốt', () => {
+    expect(() => readProfitState(statePayload({ computed_profit: null }), ORG, '2026-05-01')).toThrow('Invalid profit read payload');
+  });
+});
 
 describe('profitReadModels — chốt kiểu cũ LEGACY_RETAINED_UNALLOCATED (N-A3-01)', () => {
   it('readProfitMonthly đọc được dòng chốt kiểu cũ thay vì ném cả bảng', () => {
@@ -43,6 +69,9 @@ describe('profitReadModels — chốt kiểu cũ LEGACY_RETAINED_UNALLOCATED (N-
       active_real_snapshot_count: 1, has_out_of_scope_snapshots: false, rows: [stateRow],
     }, ORG, '2026-05-01');
     expect(state.rows[0].unallocated_disposition).toBe('LEGACY_RETAINED_UNALLOCATED');
+    expect(state.rows[0].source_revenue).toBeNull();
+    expect(state.rows[0].source_expense).toBeNull();
+    expect(state.rows[0].computed_profit).toBe(1000000);
   });
 
   it('readProfitPreview đọc được bản chụp hiện hành chốt kiểu cũ', () => {

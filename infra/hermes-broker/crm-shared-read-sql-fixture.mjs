@@ -8,6 +8,7 @@ import pg from 'pg';
 import { splitSqlStatements } from '../../scripts/network-center-function-bodies.mjs';
 import { splitHermesFunctionStatements } from '../../scripts/hermes-task-function-contract.mjs';
 import { candidateLocalPostgresBins, assertSupportedLocalPostgresVersion } from '../../scripts/network-center-disposable-db.mjs';
+import { drainOnEnd } from './pg-pool-drain.mjs';
 
 // Real local PostgreSQL role/JWT-claim/RLS fixture. No signed HTTP JWT or
 // PostgREST integration claim: this exercises the actual SQL under SET ROLE.
@@ -134,8 +135,12 @@ async function localCluster(t, { initdbArgs = [] } = {}) {
     const sockets = process.platform !== 'win32' ? " -k ''" : '';
     run(binary('pg_ctl'), ['-D', root, '-l', join(root, 'postgres.log'), '-o', `-p ${port} -h 127.0.0.1${sockets}`, '-w', 'start'], { stdio: 'ignore' });
     started = true;
-    const pool = new pg.Pool({ host: '127.0.0.1', port, user: 'postgres', database: 'postgres', max: 6,
-      connectionTimeoutMillis: 5000, options: '-c statement_timeout=10000' });
+    // jit=off: các fixture nhỏ này kiểm khoá/MVCC/kết quả, không kiểm biên dịch LLVM — trên runner Linux CI tải nặng, chi phí JIT ăn vào
+    // trần 10 s ⇒ 57014 đỏ giả (write-name-resolve-sql "every shared vector", CI main #2149/#2161 27/10). Giữ NGUYÊN trần 10 s như
+    // task-nghiem-thu-race-pg.test.mjs (ở đó SET jit = off từng kết nối).
+    // drainOnEnd: pool.end() resolves only when every socket is closed, so cleanup() never stops a cluster with live backends (57P01).
+    const pool = drainOnEnd(new pg.Pool({ host: '127.0.0.1', port, user: 'postgres', database: 'postgres', max: 6,
+      connectionTimeoutMillis: 5000, options: '-c statement_timeout=10000 -c jit=off' }));
     return { pool, cleanup };
   } catch (error) { cleanup(); throw error; }
 }

@@ -6,12 +6,23 @@ import { localCluster, jwt, id, ORG, FOREIGN, USER } from './crm-shared-read-sql
 // Hàm dùng chung web + Hermes của "Báo chi nhanh" (Đợt 2 Thu chi, THU-CHI-THAO-TAC-GHI.md mục 4.2–4.3) trên PostgreSQL 17 dùng
 // một lần, locale builtin C.UTF-8 (lower()/[[:alpha:]] theo Unicode như ICU en_US.UTF-8 của production — đã đọc TEST 22/10).
 // (1) public.ie_category_suggest_v1 == bộ vector VÀNG do suggestCategory (TypeScript) sinh — cùng {rule_key, lý do} trên mọi
-// câu (414 câu thật + ca dễ nhầm + cụm phí + mã khách hàng phí); vitest categorySuggestGolden.test.ts khoá TS == vàng.
-// (2) lọc công ty / hạn chế / ẩn; (3) public.ie_default_cashbook_v1 đúng thứ tự pickDefaultAccount; (4) đầu vào sai ⇒ 22023.
-const slug = 'ie_quick_entry_shared_rules_v1';
-const files = readdirSync('supabase/migrations').filter(name => new RegExp(`^\\d{14}_${slug}\\.sql$`).test(name));
-assert.equal(files.length, 1);
-const sql = readFileSync(`supabase/migrations/${files[0]}`, 'utf8').replaceAll('\r\n', '\n');
+// câu (414 câu thật + ca dễ nhầm + cụm phí + mã khách hàng phí). Mốc 6: web gọi hàm này, bản TypeScript đã xoá ⇒ bộ vàng là đặc tả
+// cố định (đổi luật = đổi hàm SQL bằng migration + sửa vàng).
+// (2) lọc công ty / hạn chế / ẩn; (3) public.ie_default_cashbook_v1 đúng thứ tự pickDefaultAccount cũ; (4) đầu vào sai ⇒ 22023;
+// (5) bảng đứng thay SQL của vitest (src/lib/quickEntry/__tests__/fixtures/goi-y-hang-muc-test.json) == hàm SQL.
+// Lượt 11 (nghiệm thu 24/10): ie_quick_entry_shared_rules_v2 thêm lớp (3b) từ vựng vật tư / sửa chữa / văn phòng phẩm, áp lên thân v1. Bộ
+// vàng đổi đúng 15 ca (đều từ không ra gì / gợi ý yếu ⇒ khoá cứng đúng hạng mục, đã soát tay) và thêm 37 câu chi thường gặp (vòi nước, ốc
+// vít, ổ cắm, dây điện, văn phòng phẩm…, cả ca phải ra null).
+const read = slug => {
+  const files = readdirSync('supabase/migrations').filter(name => new RegExp(`^\\d{14}_${slug}\\.sql$`).test(name));
+  assert.equal(files.length, 1, slug);
+  return readFileSync(`supabase/migrations/${files[0]}`, 'utf8').replaceAll('\r\n', '\n');
+};
+// Lượt 14 (nghiệm thu vòng 1, 24/10): ie_quick_entry_shared_rules_v3 thêm từ vựng nội thất / điện máy / ăn uống / bỏ rác, mở rộng dụng cụ / vật
+// tư điện nước, và "Chi khác" không bao giờ thắng trùng chữ tên; áp lên thân v2. Bộ vàng đổi đúng 32 ca (soát tay: không ra gì / trùng chữ sai ⇒
+// khoá cứng đúng hạng mục; "chi phí …" ⇒ không còn ra "Chi khác") và thêm 60 câu (nệm, giường, tủ, kệ, quạt, ấm đun, cơm, pizza … cả ca phải ra
+// null hoặc giữ nguyên: "mua nem", "sửa tủ", "vận chuyển giường", "giặt rèm", "mua bàn chải").
+const sql = read('ie_quick_entry_shared_rules_v1'), sql2 = read('ie_quick_entry_shared_rules_v2'), sql3 = read('ie_quick_entry_shared_rules_v3');
 const golden = JSON.parse(readFileSync('src/lib/quickEntry/__tests__/fixtures/goi-y-hang-muc-vang.json', 'utf8'));
 const spec = JSON.parse(readFileSync('supabase/migrations/20261003151608_danh_muc_chi_du_lieu.sql', 'utf8').split('$spec$')[1]);
 const lit = value => value === null || value === undefined ? 'NULL' : `'${String(value).replaceAll("'", "''")}'`;
@@ -56,11 +67,25 @@ async function schema(pool) {
       ('${USER}','${CB_BUILDING}',4),('${USER}','${CB_LAST}',5),('${USER}','${CB_DEFAULT}',6);`);
 }
 
-test('ie_quick_entry_shared_rules_v1: gợi ý hạng mục == vàng TS; lọc công ty/hạn chế; sổ mặc định; đầu vào sai; idempotent', { timeout: 240000 }, async t => {
+test('ie_quick_entry_shared_rules_v1 + v2 + v3: gợi ý hạng mục == vàng; lọc công ty/hạn chế; sổ mặc định; đầu vào sai; idempotent', { timeout: 240000 }, async t => {
   const { pool, cleanup } = await localCluster(t, { initdbArgs: ['--locale-provider=builtin', '--builtin-locale=C.UTF-8'] });
   t.after(async () => { await pool.end(); cleanup(); });
   await schema(pool);
   await pool.query(sql); await pool.query(sql); // Idempotent.
+  // v2 ghim md5 thân đang chạy (= thân v1) hoặc thân của chính nó: thân lạ ⇒ dừng, không thay.
+  await pool.query('BEGIN');
+  await pool.query(`CREATE OR REPLACE FUNCTION public.ie_category_suggest_v1(p_organization_id uuid,p_items jsonb,p_type text DEFAULT 'expense',
+    p_include_restricted boolean DEFAULT false) RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $f$ SELECT '[]'::jsonb $f$`);
+  await assert.rejects(pool.query(sql2), error => error.message === 'ie_quick_entry_rules_v2_body_drift');
+  await pool.query('ROLLBACK');
+  await pool.query(sql2); await pool.query(sql2); // Áp lên thân v1, rồi áp lại.
+  // v3 ghim md5 thân v2 hoặc thân của chính nó: thân lạ ⇒ dừng, không thay.
+  await pool.query('BEGIN');
+  await pool.query(`CREATE OR REPLACE FUNCTION public.ie_category_suggest_v1(p_organization_id uuid,p_items jsonb,p_type text DEFAULT 'expense',
+    p_include_restricted boolean DEFAULT false) RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $f$ SELECT '[]'::jsonb $f$`);
+  await assert.rejects(pool.query(sql3), error => error.message === 'ie_quick_entry_rules_v3_body_drift');
+  await pool.query('ROLLBACK');
+  await pool.query(sql3); await pool.query(sql3); // Áp lên thân v2, rồi áp lại.
   const suggest = (items, { org = ORG, type = 'expense', restricted = false } = {}) => jwt(pool, async c =>
     (await c.query('SELECT public.ie_category_suggest_v1($1::uuid,$2::jsonb,$3,$4) value', [org, JSON.stringify(items), type, restricted])).rows[0].value);
   const keyOf = new Map([...typeId].map(([key, value]) => [value, key]));
@@ -111,6 +136,25 @@ test('ie_quick_entry_shared_rules_v1: gợi ý hạng mục == vàng TS; lọc c
     assert.equal(await pick(null, null), CB_FIRST, 'sổ đầu theo thứ tự list_cashbooks_for_expense_v2, bỏ sổ ảo và sổ công ty khác');
     assert.equal(await pick(null, null, FOREIGN), CB_FOREIGN);
     assert.equal(await pick(null, null, id(999)), null);
+  });
+
+  await t.test('Mốc 6: bảng đứng thay SQL của vitest (goi-y-hang-muc-test.json) == hàm SQL trên đúng các danh sách hạng mục đó', async () => {
+    const stub = JSON.parse(readFileSync('src/lib/quickEntry/__tests__/fixtures/goi-y-hang-muc-test.json', 'utf8'));
+    const wrong = [];
+    for (const [r, rows] of stub.rowsets.entries()) {
+      const org = id(2000 + r), toDb = new Map(rows.map((row, j) => [row.id, id(3000 + r * 100 + j)])), fromDb = new Map([...toDb].map(([a, b]) => [b, a]));
+      if (rows.length) await pool.query(`INSERT INTO public.income_expense_types(id,organization_id,type,name,category,rule_key,keywords,fee_category,sort_order,
+          archived_at,system_only,manual_hidden,quick_entry_hidden,is_restricted) VALUES ${rows.map((row, j) => `(${lit(toDb.get(row.id))},${lit(org)},${lit(row.type)},
+          ${lit(row.name)},${lit(row.category)},${lit(row.rule_key)},ARRAY[${(row.keywords ?? []).map(lit).join(',')}]::text[],${lit(row.fee_category)},${j},
+          ${lit(row.archived_at)},${row.system_only === true},${row.manual_hidden === true},${row.quick_entry_hidden === true},${row.is_restricted === true})`).join(',')}`);
+      for (const c of stub.cases.filter(x => x.rowset === r)) {
+        const [got] = await suggest([{ text: c.text, feeCategory: c.fee }], { org, type: c.type, restricted: true });
+        const value = got === null ? null : { id: fromDb.get(got.typeId), reason: got.reason };
+        if (JSON.stringify(value) !== JSON.stringify(c.out)) wrong.push(`#${r} ${c.type} ${c.text} [${c.fee}] ⇒ ${JSON.stringify(value)} (bảng: ${JSON.stringify(c.out)})`);
+      }
+    }
+    assert.deepEqual(wrong, [], `${wrong.length}/${stub.cases.length} lệch`);
+    t.diagnostic(`${stub.cases.length} câu của bảng đứng thay khớp hàm SQL`);
   });
 
   await t.test('catalog: INVOKER, đúng độ biến động, anon không gọi được, search_path rỗng', async () => {

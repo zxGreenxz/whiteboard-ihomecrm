@@ -174,7 +174,7 @@ function ContractsDesktopPage() {
   );
 
   const { data: profile } = useProfile();
-  const { hasAnyScope: hasBuildingScope } = useMyBuildingScope();
+  const { hasAnyScope: hasBuildingScope } = useMyBuildingScope('contracts', 'create');
   const { data: perms } = useMyPermissions();
   // Tạo HĐ cần cả scope toà lẫn quyền contracts.create; nhập file đi theo create.
   const hasAnyScope = hasBuildingScope && canUse(perms, 'contracts', 'create');

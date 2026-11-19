@@ -112,6 +112,15 @@ test('real upstream runtime ledger recovery quarantines an ambiguous native deli
   });
 });
 
+test('real upstream cron preflight accepts the paired Zalo target; origin-less implicit targets need the home channel', upstreamRequired, async () => {
+  await withDeliveryFixture(async ({ probe, sent }) => {
+    assert.deepEqual(await probe('cron-preflight'), {
+      preflightAccepted: true, undeclaredBlocked: true, gatewayHomeVariableKept: true, originlessRoutesNeedHomeChannel: true,
+    });
+    assert.equal(sent.length, 0);
+  });
+});
+
 test('real upstream cron live-to-standalone fallback cannot duplicate short or transformed long output', upstreamRequired, async t => {
   for (const mode of ['cron', 'cron-long']) await t.test(mode, async () => {
     await withDeliveryFixture(async ({ probe, sent }) => {

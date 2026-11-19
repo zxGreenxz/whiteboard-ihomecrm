@@ -68,6 +68,15 @@ lúc drain trước khi nhả lease. Ngắt/lỗi stop không được tiếp t�
 thế. OOM, mất host, Docker daemon hoặc force-kill vẫn có thể cắt drain: không coi đó là
 thu hồi/ghi receipt thành công, không xóa journal hoặc đổi generation để gửi lại.
 
+Mất lease (database không tới được quá 30 giây, hoặc instance khác tiếp quản) thì worker
+dừng mọi phiên rồi thoát mã 1, và Docker dựng lại theo `--restart unless-stopped`; bản mới
+tự giành lại lease khi database thông. Khi đó drain không còn được chờ vô hạn: quá hạn chót
+shutdown 25 giây là process thoát dù provider chưa kết thúc, kể cả đang drain theo lệnh
+stop. Đó là cùng loại với force-kill ở trên, journal vẫn giữ `outcome_unknown`. Sidecar
+Hermes dùng chung network namespace của container worker nên phải restart sidecar sau
+**mỗi** lần worker tự dựng lại như vậy; host production có timer làm việc này, nơi khác
+vẫn phải làm theo runbook native.
+
 Chỉ chạy **1 instance** cho mọi nick (lease `zalo_worker_lease`). Đừng bật lại bản trên máy dev.
 
 ## Lưu ý

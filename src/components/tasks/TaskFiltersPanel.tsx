@@ -28,7 +28,8 @@ export function TaskFiltersPanel({
   onApply,
   onClear,
 }: TaskFiltersPanelProps) {
-  const { data: buildings } = useBuildings();
+  // Kèm toà ảo để lọc được việc ở Kho Văn Phòng Chung.
+  const { data: buildings } = useBuildings({ includeVirtual: true });
   const { data: rooms } = useRooms(filters.building_id ?? undefined);
   const { data: jobTypes } = useJobTypes();
   const { data: profiles } = useProfiles();

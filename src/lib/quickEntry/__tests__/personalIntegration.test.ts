@@ -4,8 +4,9 @@ import { toPersonalBatch,toCreateIncomeExpenseInput } from '../convert';
 import { parseAiResult } from '../aiSchema';
 import { deserializeCards,serializeCards } from '../feedStorage';
 import {inferTransactionType} from '../personalRefs';
+import { stubSuggest } from './sqlSuggestStub';
 const id='11111111-1111-4111-8111-111111111111';
-const context:ComposeContext={today:'2026-09-30',mode:'personal',refs:{buildings:[],rooms:[]},categories:[],personalWalletId:id,personalCategoryRefs:[{id:'income',name:'Lương',type:'INCOME',hidden:false},{id:'expense',name:'Ăn uống',type:'EXPENSE',hidden:false}],newId:()=>crypto.randomUUID(),defaultAccountFor:()=>null};
+const context:ComposeContext={today:'2026-09-30',mode:'personal',refs:{buildings:[],rooms:[]},categories:[],suggestCategory:stubSuggest([]),personalWalletId:id,personalCategoryRefs:[{id:'income',name:'Lương',type:'INCOME',hidden:false},{id:'expense',name:'Ăn uống',type:'EXPENSE',hidden:false}],newId:()=>crypto.randomUUID(),defaultAccountFor:()=>null};
 describe('real personal QuickEntry',()=>{
  it('distinguishes received salary from paying wages and medicine',()=>{
   expect(inferTransactionType('nhận lương 10 triệu')).toBe('INCOME');
@@ -45,10 +46,11 @@ const expenseCategory='33333333-3333-4333-8333-333333333333';
 const giftCategory='44444444-4444-4444-8444-444444444444';
 const aiResult=(value:unknown)=>{const parsed=parseAiResult(JSON.stringify(value),3);if(!parsed.ok)throw new Error('Invalid test AI');return parsed.value;};
 const mixedAi=aiResult({items:[{desc:'Lương',transactionType:'INCOME',amount_vnd:10_000_000,category:'c1'},{desc:'Ăn sáng',transactionType:'EXPENSE',amount_vnd:50_000,category:'c2'}]});
+const typedCategories:ComposeContext['categories']=[{id:incomeCategory,name:'Lương',type:'income',category:null},{id:expenseCategory,name:'Ăn uống',type:'expense',category:null},{id:giftCategory,name:'Quà',type:'income',category:null}];
 const typedContext=(mode:'personal'|'company'):ComposeContext=>({
  ...context,mode,
  personalCategoryRefs:[{id:incomeCategory,name:'Lương',type:'INCOME',hidden:false},{id:expenseCategory,name:'Ăn uống',type:'EXPENSE',hidden:false},{id:giftCategory,name:'Quà',type:'INCOME',hidden:false}],
- categories:[{id:incomeCategory,name:'Lương',type:'income',category:null},{id:expenseCategory,name:'Ăn uống',type:'expense',category:null},{id:giftCategory,name:'Quà',type:'income',category:null}],
+ categories:typedCategories,suggestCategory:stubSuggest(typedCategories),
 });
 describe.each(['personal','company'] as const)('review regressions: %s',mode=>{
  it.each(['touched','locked'] as const)('late mixed AI respects explicit %s direction through conversion',editKind=>{

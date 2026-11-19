@@ -77,7 +77,7 @@ export default function VehiclesMobilePage() {
     return buildingId !== 'all' ? all.filter((r) => r.building_id === buildingId) : [];
   }, [roomsData, buildingId]);
 
-  const { hasAnyScope } = useMyBuildingScope();
+  const { hasAnyScope } = useMyBuildingScope('vehicles', 'create');
   const { data: perms } = useMyPermissions();
   const canCreate = hasAnyScope && canUse(perms, 'vehicles', 'create');
   const canEdit = canUse(perms, 'vehicles', 'edit');

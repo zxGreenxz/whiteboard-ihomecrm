@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "kind": "e2e-fleet-local-receipt",
+  "suiteId": "e2e-fleet",
+  "status": "passed",
+  "commit": "3dab40e159b734fad948d88399ea230c947fb442",
+  "fleetTree": "bac2cd9f7ddb2a48c3951fadc0a136bfa290ca73",
+  "environment": "TEST",
+  "target": {
+    "kind": "loopback",
+    "origin": "http://127.0.0.1:5391"
+  },
+  "targetSupabaseRef": "hzulujxgonszuleqticb",
+  "targetBuildSha": "3dab40e159b734fad948d88399ea230c947fb442",
+  "actor": {
+    "gitUser": "zxGreenxz",
+    "agent": "claude"
+  },
+  "reportSha256": "ee3b86101a487182e43953b77731eaf7aa91bbbd7beb3d70e5fa4b0b09e71c36",
+  "runner": {
+    "node": "v22.20.0",
+    "playwright": "1.61.1"
+  },
+  "runId": "1c094ff0-5af2-4d7e-9117-092cdf8ad2e8",
+  "startedAt": "2026-10-30T13:03:09.982Z",
+  "completedAt": "2026-10-30T13:03:47.516Z",
+  "specs": [
+    {
+      "file": ".e2e-fleet/specs/contract-return-note.spec.ts",
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    }
+  ]
+}

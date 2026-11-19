@@ -9,6 +9,7 @@ vi.mock('@/hooks/useInvoices', () => ({
   useInvoice: () => ({ refetch: vi.fn() }),
 }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: {} }) }));
+vi.mock('../InvoiceMeterEvidence', () => ({ InvoiceMeterEvidence: () => null }));
 vi.mock('@/lib/storage', () => ({ createSignedUrlFromStored: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: vi.fn() } }));
 

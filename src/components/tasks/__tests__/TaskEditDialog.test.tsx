@@ -7,7 +7,11 @@ import TaskEditDialog from '../TaskEditDialog';
 const mocks = vi.hoisted(() => ({
   save: vi.fn(), upload: vi.fn(), deleteFile: vi.fn(), mobile: false,
 }));
-vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [] }) }));
+vi.mock('@/hooks/useBuildings', () => ({
+  useBuildings: (options?: { includeVirtual?: boolean }) => ({
+    data: options?.includeVirtual ? [{ id: 'kho-vp', name: 'Kho Văn Phòng Chung' }] : [],
+  }),
+}));
 vi.mock('@/hooks/useRooms', () => ({ useRooms: () => ({ data: [] }) }));
 vi.mock('@/hooks/useJobTypes', () => ({ useJobTypes: () => ({ data: [] }) }));
 vi.mock('@/hooks/useJobs', () => ({
@@ -46,6 +50,13 @@ beforeEach(() => {
   mocks.upload.mockResolvedValue(NEW_IMAGE);
 });
 afterEach(cleanup);
+
+describe('việc ở toà ảo', () => {
+  it('ô Tòa nhà hiện đúng Kho Văn Phòng Chung', () => {
+    render(<TaskEditDialog open job={{ ...job, building_id: 'kho-vp' }} onOpenChange={vi.fn()} onSuccess={vi.fn()} />);
+    expect(screen.getByText('Kho Văn Phòng Chung')).toBeTruthy();
+  });
+});
 
 describe('bổ sung ảnh khi sửa công việc', () => {
   it.each([false, true])('thêm ảnh vào phiếu chưa có ảnh (mobile=%s)', async mobile => {

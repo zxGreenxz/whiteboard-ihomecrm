@@ -4,7 +4,8 @@ import { CONTRACT_SETTLEMENT_INVALIDATION_RULES, SETTLEMENT_FACTS_INVALIDATION_R
 
 /** Descriptor keys in this group are flushed once per burst, not per table. */
 export const isSettlementQueryKey = (key: readonly unknown[]): boolean =>
-  key[0] === 'contract-settlement' || key[0] === 'termination-refund-facts' || key[0] === 'commission-voucher-facts';
+  key[0] === 'contract-settlement' || key[0] === 'termination-refund-facts'
+  || key[0] === 'commission-voucher-facts' || key[0] === 'room-cash-lifecycle';
 
 /**
  * Làm mới nhóm quyết toán cho MỘT cụm sự kiện xuyên bảng.
@@ -21,11 +22,13 @@ export function flushSettlementInvalidation(client: QueryClient, tables: Iterabl
     CONTRACT_SETTLEMENT_INVALIDATION_RULES[table]?.forEach((key) => subtypes.add(key));
     SETTLEMENT_FACTS_INVALIDATION_RULES[table]?.forEach((key) => facts.add(key));
   }
+  // Khoá gốc TRƯỚC: lane 'contract-settlement' đọc 'room-cash-lifecycle'
+  // qua fetchQuery — khoá đó phải đã bị đánh dấu cũ khi lane chạy lại.
+  for (const root of facts) client.invalidateQueries({ queryKey: [root] });
   if (subtypes.size > 0) {
     client.invalidateQueries({
       queryKey: ['contract-settlement'],
       predicate: (query) => subtypes.has(String(query.queryKey[1])),
     });
   }
-  for (const root of facts) client.invalidateQueries({ queryKey: [root] });
 }

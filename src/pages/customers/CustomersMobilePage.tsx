@@ -121,7 +121,7 @@ export default function CustomersMobilePage() {
   const { data: buildingsData } = buildingsQuery;
   const buildings = (Array.isArray(buildingsData) ? buildingsData : []) as unknown as BuildingWithRelations[];
 
-  const { hasAnyScope } = useMyBuildingScope();
+  const { hasAnyScope } = useMyBuildingScope('customers', 'create');
   const { data: perms } = useMyPermissions();
   const canCreate = hasAnyScope && canUse(perms, 'customers', 'create');
 

@@ -103,7 +103,7 @@ export async function assignCommissionManager(input: AssignCommissionManagerInpu
     expected_approval_version: input.expectedVersion ?? null,
     idempotency_key: `hhql-${input.voucherId.slice(0, 8)}-${crypto.randomUUID()}`,
   });
-  const parsed=z.object({voucher_id:z.string().uuid(),manager_id:z.string().uuid(),account_id:z.string().uuid(),approval_version:z.number().finite(),moved:z.boolean().optional(),lap_lai:z.boolean()}).passthrough().refine(row=>row.lap_lai||row.moved!==undefined).parse(data);
+  const parsed=z.object({voucher_id:z.string().guid(),manager_id:z.string().guid(),account_id:z.string().guid(),approval_version:z.number().finite(),moved:z.boolean().optional(),lap_lai:z.boolean()}).passthrough().refine(row=>row.lap_lai||row.moved!==undefined).parse(data);
   if(parsed.voucher_id!==input.voucherId||parsed.manager_id!==input.managerId)throw new TypeError("Chưa xác nhận được quản lý nhận hoa hồng của phiếu");
   return {voucher_id:parsed.voucher_id,manager_id:parsed.manager_id,account_id:parsed.account_id,approval_version:parsed.approval_version,moved:parsed.moved??false,lap_lai:parsed.lap_lai};
 }

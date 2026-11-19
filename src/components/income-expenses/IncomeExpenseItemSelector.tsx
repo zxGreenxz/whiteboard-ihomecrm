@@ -24,6 +24,8 @@ import { useCanManageIeTypes } from '@/hooks/useCanManageIeTypes';
 import { canUse } from '@/lib/permissionPages';
 import { pickableIeTypes, sortIeTypesForPicker } from '@/lib/ieTypeCatalog';
 import { groupIeTypesForPicker, ieTypeMatchesQuery } from '@/lib/ieTypeLookup';
+import type { AdvanceOptions } from '@/lib/profitLedger/positionReaders';
+import { ShareholderAdvanceOption } from './ShareholderAdvanceOption';
 import IncomeExpenseTypeForm from '@/components/income-expense-types/IncomeExpenseTypeForm';
 import EditIncomeExpenseTypeDialog from '@/components/income-expense-types/EditIncomeExpenseTypeDialog';
 import { LoadingState } from '@/components/loading/LoadingState';
@@ -34,6 +36,15 @@ interface IncomeExpenseItemSelectorProps {
   voucherType: 'INCOME' | 'EXPENSE';
   onSelect: (types: IncomeExpenseType[]) => void;
   selectedTypeIds: string[];
+  /**
+   * CHỈ form Thu chi đầy đủ, lúc TẠO MỚI, truyền: cho phép mục "Tạm Ứng" (tạm ứng lợi nhuận cổ đông) ở phiếu
+   * CHI. Mục đó không thuộc danh mục — chọn là chuyển form sang chế độ Tạm Ứng (một hạng mục, lệnh lập riêng).
+   * Form lô, tạo nhanh, Báo chi nhanh KHÔNG truyền ⇒ không bao giờ thấy mục này.
+   */
+  shareholderAdvance?: {
+    organizationId: string | null;
+    onPick: (options: AdvanceOptions) => void;
+  };
 }
 
 const IncomeExpenseItemSelector = ({
@@ -42,6 +53,7 @@ const IncomeExpenseItemSelector = ({
   voucherType,
   onSelect,
   selectedTypeIds,
+  shareholderAdvance,
 }: IncomeExpenseItemSelectorProps) => {
   const filterType = voucherType === 'INCOME' ? 'income' : 'expense';
   const { data: types = [], isLoading } = useIncomeExpenseTypes(filterType);
@@ -183,6 +195,18 @@ const IncomeExpenseItemSelector = ({
               </button>
             )}
           </div>
+
+          {/* Tạm ứng cổ đông: chỉ phiếu CHI tạo mới ở form đầy đủ, và chỉ khi máy chủ nói người này lập được. */}
+          {open && shareholderAdvance && voucherType === 'EXPENSE' && (
+            <ShareholderAdvanceOption
+              organizationId={shareholderAdvance.organizationId}
+              query={query}
+              onPick={(options) => {
+                shareholderAdvance.onPick(options);
+                onOpenChange(false);
+              }}
+            />
+          )}
 
           {/* Type list with checkboxes */}
           <div className="max-h-[300px] overflow-y-auto space-y-2">

@@ -4,6 +4,7 @@ import React from "react";
 import { SAL_ICONS } from "./salaryIcons";
 import { salFmt } from "./salaryFormat";
 import { commissionFlaggedNote, commissionItemNote, type SalManager, type SalAdjustment } from "@/lib/managerSalary";
+import { investmentPayState } from "@/lib/salaryProfit";
 
 const I = SAL_ICONS;
 
@@ -56,6 +57,7 @@ export function BonusPop({ m, periodText, locked, onClose, onAdjust, onRemove, o
 }
 
 export function InvestmentPop({ m, periodText }: { m: SalManager; periodText: string }) {
+  const payNote = investmentPayNote(m);
   if (!m.investmentLocked) {
     return (
       <>
@@ -79,10 +81,21 @@ export function InvestmentPop({ m, periodText }: { m: SalManager; periodText: st
         {m.investmentBy.length === 0
           ? <div style={{ padding: "18px 16px", textAlign: "center", fontSize: 13, color: "hsl(var(--muted-foreground))" }}>Chưa có phần đầu tư tháng này.</div>
           : m.investmentBy.map((r, i) => <PopRow key={i} icon="Building" label={r.b} amount={r.amount} />)}
+        {payNote && <div style={{ padding: "8px 16px", fontSize: 12, color: "hsl(var(--muted-foreground))" }}>{payNote}</div>}
       </div>
       <div className="sal-pop-foot"><span className="tl">Tổng</span><span className="tv">{salFmt(m.investment)}</span></div>
     </>
   );
+}
+
+/** Trạng thái trả phần đầu tư của cổ đông (sổ tổng) — null với nhân viên thường. */
+function investmentPayNote(m: SalManager): string | null {
+  const st = investmentPayState(m);
+  if (!st) return null;
+  if (st.kind === "MARKER") return `Đã trả theo mốc "đã trả đủ${st.through ? ` đến hết ${st.through.slice(5, 7)}/${st.through.slice(0, 4)}` : ""}" — không trả lại qua lương.`;
+  if (st.kind === "REVIEW") return `Cần chủ xem lại phần lợi nhuận ở phiếu ${st.codes.join(", ")}.`;
+  if (st.kind === "PAID" || st.kind === "PARTIAL") return `Đã trả ${salFmt(st.paid)} qua phiếu ${st.codes.join(", ")}.`;
+  return "Chưa trả qua phiếu lương nào.";
 }
 
 export function CommissionPop({ m }: { m: SalManager }) {
@@ -153,7 +166,8 @@ export function AdvancePop({ m, periodText }: { m: SalManager; periodText: strin
       </div>
       <div className="sal-pop-body">
         {m.advanceItems.length === 0 ? <div style={{ padding: "18px 16px", textAlign: "center", fontSize: 13, color: "hsl(var(--muted-foreground))" }}>Chưa có khoản ứng nào.</div> :
-          m.advanceItems.map((x, i) => <PopRow key={i} icon="Banknote" label={x.label} note={x.date} amount={x.amount} />)}
+          m.advanceItems.map((x, i) => <PopRow key={i} icon="Banknote" label={x.label}
+            note={x.kind === "PROFIT_ADVANCE" ? "trừ trong phần lợi nhuận đầu tư" : x.kind === "PROFIT_MARKER" ? "đã trả theo mốc — không chuyển lại" : x.date} amount={x.amount} />)}
       </div>
       <div className="sal-pop-foot"><span className="tl">Tổng đã ứng</span><span className="tv" style={{ color: "hsl(var(--status-danger-fg))" }}>{salFmt(m.advance)}</span></div>
     </>

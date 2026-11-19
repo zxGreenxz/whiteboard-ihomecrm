@@ -42,6 +42,7 @@ import RecordRefundDialog from '@/components/invoices/RecordRefundDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
 import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
 import InvoiceAdjustmentHistory from './InvoiceAdjustmentHistory';
+import { InvoiceMeterEvidence } from './InvoiceMeterEvidence';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 
 const InvoiceDetailMobile = lazy(() =>
@@ -167,12 +168,12 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   const restoreMutation = useRestoreInvoice();
   const { data: ctx } = useMyContext();
   const { data: perms } = useMyPermissions();
-  const canEditPerm = canUse(perms, 'invoices', 'edit');
-  const canRecordPaymentPerm = canUse(perms, 'invoices', 'record_payment');
+  const canEditPerm = !!invoice?.building_id && canUse(perms, 'invoices', 'edit', invoice.building_id);
+  const canRecordPaymentPerm = !!invoice?.building_id && canUse(perms, 'invoices', 'record_payment', invoice.building_id);
   // Gôm nút Xoá về nút Huỷ (09/2026): nhận cả quyền invoices.delete cũ trong
   // giai đoạn chuyển tiếp để role cũ không mất nút.
   const canCancelPerm =
-    canUse(perms, 'invoices', 'cancel') || canUse(perms, 'invoices', 'delete');
+    !!invoice?.building_id && (canUse(perms, 'invoices', 'cancel', invoice.building_id) || canUse(perms, 'invoices', 'delete', invoice.building_id));
 
   // Lấy danh sách phiếu thu/chi APPROVED gắn với hoá đơn (declared trước early
   // returns để giữ thứ tự hooks ổn định giữa các render). payment_id là mối nối
@@ -949,6 +950,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
         </section>
 
         {/* Lịch sử điều chỉnh (bản gốc bất biến + từng phiên bản) */}
+        <InvoiceMeterEvidence invoiceId={invoice.id} />
         <InvoiceAdjustmentHistory invoice={invoice} />
 
         {/* Ghi chú hoá đơn */}

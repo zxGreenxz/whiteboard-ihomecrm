@@ -19,7 +19,7 @@ const moneyInputSchema = z.object({
   depositRefund:moneySchema.optional(), penaltyFee:moneySchema.optional(), excessRent:moneySchema.optional(),
   outstandingDebt:moneySchema.optional(), notes:z.string().nullable().optional(),
   extraCharges:z.array(lineSchema).optional(), refundItems:z.array(lineSchema).optional(),
-  shortfallMode:z.enum(['PAID','DEBT']).optional(), receiptAccountId:z.string().uuid().nullable().optional(),
+  shortfallMode:z.enum(['PAID','DEBT']).optional(), receiptAccountId:z.string().guid().nullable().optional(),
 }).strict();
 const forfeitInputSchema = z.object({extraCharges:z.array(lineSchema).optional()}).strict();
 
@@ -47,8 +47,8 @@ export interface UpdateContractExitKindInput {
 export interface ContractExitCaseFilters { buildingId?:string; buildingIds?:string[]; contractId?:string; state?:ExitCaseState; limit?:number; offset?:number }
 
 const responseSchema = z.object({
-  id:z.string().uuid(), organization_id:z.string().uuid(), building_id:z.string().uuid(),
-  contract_id:z.string().uuid(), room_at_handover_id:z.string().uuid(), actual_move_out_on:dateSchema,
+  id:z.string().guid(), organization_id:z.string().guid(), building_id:z.string().guid(),
+  contract_id:z.string().guid(), room_at_handover_id:z.string().guid(), actual_move_out_on:dateSchema,
   initial_kind:kindSchema, current_kind:kindSchema, settlement_mode:z.enum(['DEFERRED','IMMEDIATE']),
   state:z.enum(['PENDING','FINALIZED']), version:z.number().int().positive(),
   created_at:z.string(),updated_at:z.string(),
@@ -56,7 +56,7 @@ const responseSchema = z.object({
   room_name:z.string().nullable().optional(),customer_name:z.string().nullable().optional(),
   return_note:z.string().nullable().default(null),
   settlement_result:z.custom<Json>(value=>value===null || (typeof value==='object' && !Array.isArray(value))),
-  kind_history:z.array(z.object({before_kind:kindSchema,after_kind:kindSchema,reason:z.string(),version:z.number().int().positive(),changed_at:z.string(),changed_by:z.string().uuid(),actor_name:z.string().nullable().optional()})),
+  kind_history:z.array(z.object({before_kind:kindSchema,after_kind:kindSchema,reason:z.string(),version:z.number().int().positive(),changed_at:z.string(),changed_by:z.string().guid(),actor_name:z.string().nullable().optional()})),
 });
 export type ContractExitCase = z.infer<typeof responseSchema>;
 export interface ContractExitCasePage {items:ContractExitCase[];total:number;limit:number;offset:number;server_today?:string;server_now?:string}
@@ -76,21 +76,21 @@ function settlementPayload(kind:ExitKind,input:ContractExitSettlementInput): Jso
     receipt_account_id:value.receiptAccountId??null,refund_items:value.refundItems??[]} as Json;
 }
 export function buildConfirmContractReturnArgs(input:ConfirmContractReturnInput,organizationId:string) {
-  const base=z.object({contractId:z.string().uuid(),expectedContractUpdatedAt:z.string().datetime({offset:true}),
+  const base=z.object({contractId:z.string().guid(),expectedContractUpdatedAt:z.string().datetime({offset:true}),
     idempotencyKey:keySchema,actualMoveOutOn:dateSchema,initialKind:kindSchema,
     returnNote:z.string().trim().min(1,'Vui lòng ghi nội dung thanh lý để đối chiếu'),
     settlementMode:z.enum(['DEFERRED','IMMEDIATE']),settlement:z.unknown().optional(),meterBoundary:z.unknown().optional()}).strict().parse(input);
   if(base.settlementMode==='DEFERRED' && base.settlement!==undefined) throw new Error('Trả phòng, quyết toán sau không nhận dữ liệu tiền');
   if(base.settlementMode==='IMMEDIATE' && (base.settlement===undefined || base.settlement===null)) throw new Error('Quyết toán ngay cần dữ liệu quyết toán');
-  return {p_organization_id:z.string().uuid().parse(organizationId),p_contract_id:base.contractId,p_expected_contract_updated_at:base.expectedContractUpdatedAt,
+  return {p_organization_id:z.string().guid().parse(organizationId),p_contract_id:base.contractId,p_expected_contract_updated_at:base.expectedContractUpdatedAt,
     p_idempotency_key:base.idempotencyKey,p_actual_move_out_on:base.actualMoveOutOn,p_initial_kind:base.initialKind,p_return_note:base.returnNote,
     p_settlement_mode:base.settlementMode,p_settlement:base.settlementMode==='IMMEDIATE'?settlementPayload(base.initialKind,input.settlement!):null,
     p_meter_boundary:base.meterBoundary===undefined?null:buildMeterBoundaryPayload(input.meterBoundary!)};
 }
 export function buildFinalizeContractExitCaseArgs(input:FinalizeContractExitCaseInput,organizationId:string) {
-  const value=z.object({caseId:z.string().uuid(),expectedVersion:z.number().int().positive(),idempotencyKey:keySchema,
-    currentKind:kindSchema,reason:z.string().nullable().optional(),settlement:z.unknown()}).strict().parse(input);
-  return {p_organization_id:z.string().uuid().parse(organizationId),p_case_id:value.caseId,p_expected_version:value.expectedVersion,p_idempotency_key:value.idempotencyKey,
+  const value=z.object({caseId:z.string().guid(),expectedVersion:z.number().int().positive(),idempotencyKey:keySchema,
+    currentKind:kindSchema,reason:z.string().nullable().optional(),settlement:z.unknown().optional()}).strict().parse(input);
+  return {p_organization_id:z.string().guid().parse(organizationId),p_case_id:value.caseId,p_expected_version:value.expectedVersion,p_idempotency_key:value.idempotencyKey,
     p_current_kind:value.currentKind,p_reason:value.reason??null,p_settlement:settlementPayload(value.currentKind,input.settlement)};
 }
 export function parseContractExitCase(value:unknown):ContractExitCase {return responseSchema.parse(value);}
@@ -104,15 +104,15 @@ export async function finalizeContractExitCase(invoke:ContractExitRpcInvoker,inp
   return parseContractExitCase(await call(invoke,'finalize_contract_exit_case_v1',buildFinalizeContractExitCaseArgs(input,organizationId)));
 }
 export async function updateContractExitKind(invoke:ContractExitRpcInvoker,input:UpdateContractExitKindInput,organizationId:string):Promise<ContractExitCase>{
-  const value=z.object({caseId:z.string().uuid(),expectedVersion:z.number().int().positive(),idempotencyKey:keySchema,kind:kindSchema,reason:z.string().trim().min(1)}).strict().parse(input);
-  return parseContractExitCase(await call(invoke,'update_contract_exit_case_kind_v1',{p_organization_id:z.string().uuid().parse(organizationId),p_case_id:value.caseId,p_expected_version:value.expectedVersion,p_kind:value.kind,p_reason:value.reason,p_idempotency_key:value.idempotencyKey}));
+  const value=z.object({caseId:z.string().guid(),expectedVersion:z.number().int().positive(),idempotencyKey:keySchema,kind:kindSchema,reason:z.string().trim().min(1)}).strict().parse(input);
+  return parseContractExitCase(await call(invoke,'update_contract_exit_case_kind_v1',{p_organization_id:z.string().guid().parse(organizationId),p_case_id:value.caseId,p_expected_version:value.expectedVersion,p_kind:value.kind,p_reason:value.reason,p_idempotency_key:value.idempotencyKey}));
 }
 export async function getContractExitCase(invoke:ContractExitRpcInvoker,caseId:string,organizationId:string):Promise<ContractExitCase>{
-  return parseContractExitCase(await call(invoke,'get_contract_exit_case_v1',{p_organization_id:z.string().uuid().parse(organizationId),p_case_id:z.string().uuid().parse(caseId)}));
+  return parseContractExitCase(await call(invoke,'get_contract_exit_case_v1',{p_organization_id:z.string().guid().parse(organizationId),p_case_id:z.string().guid().parse(caseId)}));
 }
 export async function listContractExitCases(invoke:ContractExitRpcInvoker,filters:ContractExitCaseFilters,organizationId:string):Promise<ContractExitCasePage>{
-  const value=z.object({buildingId:z.string().uuid().optional(),buildingIds:z.array(z.string().uuid()).optional(),contractId:z.string().uuid().optional(),state:z.enum(['PENDING','FINALIZED']).optional(),limit:z.number().int().min(1).max(100).default(50),offset:z.number().int().nonnegative().default(0)}).strict().parse(filters);
-  const result=z.object({items:z.array(responseSchema),total:z.number().int().nonnegative(),limit:z.number().int(),offset:z.number().int(),server_today:dateSchema.optional(),server_now:z.string().optional()}).parse(await call(invoke,'list_contract_exit_cases_v1',{p_organization_id:z.string().uuid().parse(organizationId),p_building_id:value.buildingId??null,p_building_ids:value.buildingIds?.length?value.buildingIds:null,p_contract_id:value.contractId??null,p_state:value.state??null,p_limit:value.limit,p_offset:value.offset}));
+  const value=z.object({buildingId:z.string().guid().optional(),buildingIds:z.array(z.string().guid()).optional(),contractId:z.string().guid().optional(),state:z.enum(['PENDING','FINALIZED']).optional(),limit:z.number().int().min(1).max(100).default(50),offset:z.number().int().nonnegative().default(0)}).strict().parse(filters);
+  const result=z.object({items:z.array(responseSchema),total:z.number().int().nonnegative(),limit:z.number().int(),offset:z.number().int(),server_today:dateSchema.optional(),server_now:z.string().optional()}).parse(await call(invoke,'list_contract_exit_cases_v1',{p_organization_id:z.string().guid().parse(organizationId),p_building_id:value.buildingId??null,p_building_ids:value.buildingIds?.length?value.buildingIds:null,p_contract_id:value.contractId??null,p_state:value.state??null,p_limit:value.limit,p_offset:value.offset}));
   return {items:result.items!,total:result.total!,limit:result.limit!,offset:result.offset!,server_today:result.server_today,server_now:result.server_now};
 }
 export function contractExitErrorMessage(error:unknown):string {

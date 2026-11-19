@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { isMainModule, runHermesCli } from './host-cli.mjs';
+import { createHermesHost } from './host-service.mjs';
+import { acquireHostOwnership } from './host-ownership.mjs';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -98,6 +102,55 @@ test('load/factory failure disposes originals and emitter errors cannot skip cle
   assert.equal(await f.run(), 1); assert.ok(f.events.includes('dispose')); assert.equal(f.signals.listenerCount('SIGTERM'), 0);
   const other = fixture({ load: () => Promise.reject(new Error('PRIVATE loader')) }); assert.equal(await other.run(), 1);
   assert.equal(other.events.includes('create'), false); assert.equal(JSON.stringify(other.events).includes('PRIVATE'), false);
+});
+
+// CLI + host service + the real lock module (only its boot source is injected; every other dependency is fake): what the
+// journal shows after a reboot and after a same-boot crash. Sự cố 06/11/2026 là nhánh thứ nhất khi chưa có khoá gắn boot.
+const BOOT = '5f0c3a1e-8b2d-4c6e-9a7f-1b3d5e7f9a0c', OLD_BOOT = '0d2e4f6a-1b3c-4d5e-8f7a-9b0c1d2e3f4a';
+async function lockedHost(t, lockBootId) {
+  const root = await fsp.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'host-cli-lock-'))), lock = path.join(root, '.hermes-host.lock');
+  fs.chmodSync(root, 0o700); t.after(() => { t.mock.restoreAll(); fs.rmSync(root, { recursive: true, force: true }); });
+  const text = JSON.stringify({ version: 2, lockId: '30000000-0000-4000-8000-000000000003', bootId: lockBootId }) + '\n';
+  fs.writeFileSync(lock, text, { mode: 0o600 });
+  // Windows cannot open a directory; native directory durability stays Linux-only (host-ownership.test.mjs).
+  if (process.platform === 'win32') {
+    const open = fsp.open.bind(fsp);
+    t.mock.method(fsp, 'open', async (name, flags, mode) => ((await fsp.lstat(name).catch(() => null))?.isDirectory()
+      ? { stat: options => fsp.lstat(name, options), sync: async () => {}, close: async () => {} } : open(name, flags, mode)));
+  }
+  const events = [], codes = [], signals = new EventEmitter(), ready = deferred(), server = createServer(() => {});
+  t.mock.method(console, 'info', line => { events.push(JSON.parse(line).event); });
+  const configuration = { mode: 'connector', listenPort: 0, paths: { stateRoot: root, handoffDirectory: path.join(root, 'handoff') },
+    supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: {}, http: {}, dispose() {} };
+  const factories = {
+    acquireHostOwnership: (options, ports) => acquireHostOwnership(options, { ...ports, readBootId: async () => BOOT }),
+    prepareState: async () => path.join(root, 'audit'), createHostAudit: () => ({ write: async () => {}, close: async () => {} }),
+    createConnectionHandoff: () => ({ stage: async () => {}, list: async () => [], close: async () => {} }),
+    createStorePool: () => ({ connect: async () => { throw Error('unexpected SQL'); }, end: async () => {} }),
+    createHermesBackend: () => ({ server, startWorkMemoryRetention() {}, close: async () => {} }),
+    createConnectorMaintenance: () => ({ start() {}, close: async () => {} }),
+    createHealthyRecord: () => ({ load: async () => [], save: async () => {} }) };
+  const run = runHermesCli(['--config', path.resolve('synthetic-private-config.json')], { signals, setExitCode: code => codes.push(code),
+    load: async () => configuration, createHost: value => createHermesHost(value, { factories }),
+    emit: event => { events.push(event); if (event === 'host_ready') ready.resolve(); } });
+  // A host that ends before host_ready fails with its events; a refused start (second test) simply never awaits this.
+  const started = Promise.race([ready.promise, run.then(code => assert.fail(`host ended early (${code}): ${events.join()}`))]);
+  void started.catch(() => {});
+  return { root, lock, text, events, codes, signals, started, run };
+}
+
+test('after a reboot the real lock is recovered between host_starting and host_ready and a clean stop exits 0', { timeout: 30_000 }, async t => {
+  const f = await lockedHost(t, OLD_BOOT); await f.started;
+  assert.deepEqual(f.events, ['host_starting', 'host_stale_lock_recovered', 'host_ready']);
+  assert.notEqual(fs.readFileSync(f.lock, 'utf8'), f.text); assert.equal(JSON.parse(fs.readFileSync(f.lock, 'utf8')).bootId, BOOT);
+  f.signals.emit('SIGTERM'); assert.equal(await f.run, 0); assert.deepEqual(f.codes, [0]);
+  assert.deepEqual(f.events.slice(3), ['host_stopping', 'host_stopped']); assert.deepEqual(fs.readdirSync(f.root), []);
+});
+
+test('a crash lock of this boot keeps the host_failed, host_stopped, exit 1 contract and stays in place for the runbook', { timeout: 30_000 }, async t => {
+  const f = await lockedHost(t, BOOT); assert.equal(await f.run, 1); assert.deepEqual(f.codes, [1]);
+  assert.deepEqual(f.events, ['host_starting', 'host_stale_lock_refused', 'host_failed', 'host_stopped']);
+  assert.equal(fs.readFileSync(f.lock, 'utf8'), f.text); assert.deepEqual(fs.readdirSync(f.root), ['.hermes-host.lock']);
 });
 
 test('actual CLI invalid-argument process emits only fixed lifecycle JSON and exits nonzero', () => {

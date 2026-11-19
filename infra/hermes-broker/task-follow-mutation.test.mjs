@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { setupFollow, followPath, u, ORG, USER, ASSIGNEE, OTHER, CONNECTION } from './task-follow-fixture.mjs';
+import { setupFollow, followPath, followBuildingPath, u, ORG, USER, ASSIGNEE, OTHER, CONNECTION } from './task-follow-fixture.mjs';
 import { reviewFixesSql } from './review-fixes-fixture.mjs';
 import { notifyRetryDigestSql } from './notify-retry-digest-fixture.mjs';
 
@@ -24,6 +24,16 @@ const mutateFixes = (from, to) => {
   const next = fixes.replace(from, to);
   assert.notEqual(next, fixes, `mutation anchor not found: ${from}`);
   return next;
+};
+// Định nghĩa SỐNG của grant từ Mốc 4 Công việc (20261022180351) = thân review-fix + điều kiện buildings.view. File đó ghim md5 thân của nó
+// nên không chạy lại được trên thân đột biến: ca đột biến dựng fixture như thường rồi chạy đúng câu lệnh hàm grant đã đột biến (patch).
+const buildingSql = readFileSync(followBuildingPath, 'utf8').replaceAll('\r\n', '\n');
+const grantStatement = buildingSql.slice(buildingSql.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_grant_v1('),
+  buildingSql.indexOf('END $fn$;') + 'END $fn$;'.length);
+const grantMutant = (from, to) => {
+  const next = grantStatement.replace(from, to);
+  assert.notEqual(next, grantStatement, `mutation anchor not found: ${from}`);
+  return { patch: next };
 };
 const retry = notifyRetryDigestSql();
 const mutateRetry = (from, to) => {
@@ -89,14 +99,19 @@ const probes = [
       throw new Error('hermes_task_denied: no reminder after revoke');
     } },
   { name: 'review fix P2-1: tick rechecks the Read tasks.view registry kill switch',
-    fixes: mutateFixes("  IF NOT EXISTS(SELECT 1 FROM app_private.hermes_capabilities h WHERE h.capability='tasks.view' AND h.mode='read' AND h.enabled)\n    THEN RETURN 'permission_lost'; END IF;\n", ''),
+    ...grantMutant("  IF NOT EXISTS(SELECT 1 FROM app_private.hermes_capabilities h WHERE h.capability='tasks.view' AND h.mode='read' AND h.enabled)\n    THEN RETURN 'permission_lost'; END IF;\n", ''),
     run: readRevokeProbe("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability='tasks.view'") },
   { name: 'review fix P2-1: tick rechecks the Read tasks.view company ceiling',
-    fixes: mutateFixes("  IF NOT('tasks.view'=ANY(policy.read_capabilities))\n    THEN RETURN 'permission_lost'; END IF;\n", ''),
+    ...grantMutant("  IF NOT('tasks.view'=ANY(policy.read_capabilities))\n    THEN RETURN 'permission_lost'; END IF;\n", ''),
     run: readRevokeProbe("UPDATE app_private.hermes_org_policies SET read_capabilities='{}'") },
   { name: 'review fix P2-1: tick rechecks the Read tasks.view connection overlay',
-    fixes: mutateFixes("\n      AND 'tasks.view'=ANY(hc.read_capabilities)", ''),
+    ...grantMutant("\n      AND 'tasks.view'=ANY(hc.read_capabilities)", ''),
     run: readRevokeProbe(`UPDATE app_private.hermes_connections SET read_capabilities='{}' WHERE id='${CONNECTION}'`) },
+  // Known-gap hermes-pham-vi-toa-chua-giao-web mục (3) (Công việc Mốc 4, 20261022180351).
+  { name: 'known-gap (3): tick rechecks buildings.view at the job building',
+    ...grantMutant("      'buildings.view',f.building_id,NULL) a),false)\n    THEN RETURN 'permission_lost'; END IF;",
+      "      'buildings.view',f.building_id,NULL) a),false) AND false\n    THEN RETURN 'permission_lost'; END IF;"),
+    run: readRevokeProbe(`DELETE FROM public.fixture_perm WHERE user_id='${USER}' AND permission='buildings.view'`) },
 ];
 
 for (const probe of probes) {
@@ -105,7 +120,9 @@ for (const probe of probes) {
       await assert.rejects(probe.run(await setupFollow(t)), /denied|loop|context_changed/);
     });
     await t.test('mutant lets the probe through (test is not vacuous)', async () => {
-      await probe.run(await setupFollow(t, { sql: probe.sql, fixes: probe.fixes, retry: probe.retry }));
+      const env = await setupFollow(t, { sql: probe.sql, fixes: probe.fixes, retry: probe.retry });
+      if (probe.patch) await env.db.exec(probe.patch);
+      await probe.run(env);
     });
   });
 }

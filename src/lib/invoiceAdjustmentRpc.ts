@@ -6,11 +6,11 @@ import type { AdjustmentRequest } from './invoiceAdjustmentEditor';
 export type AdjustInvoiceInput = AdjustmentRequest & { idempotencyKey: string };
 export type ReviewAdjustmentInput = { adjustmentId: string; expectedRevision: number };
 const adjustmentResult = z.object({
-  id: z.string().uuid(), organization_id: z.string().uuid(), invoice_id: z.string().uuid(),
+  id: z.string().guid(), organization_id: z.string().guid(), invoice_id: z.string().guid(),
   revision: z.number().int().positive(), idempotency_key: z.string(), reason: z.string(),
-  before_snapshot: z.record(z.unknown()), after_snapshot: z.record(z.unknown()),
+  before_snapshot: z.record(z.string(), z.unknown()), after_snapshot: z.record(z.string(), z.unknown()),
   before_total: z.number().finite(), after_total: z.number().finite(), delta: z.number().finite(),
-  adjusted_by: z.string().uuid(), adjusted_at: z.string().datetime({ offset: true }),
+  adjusted_by: z.string().guid(), adjusted_at: z.string().datetime({ offset: true }),
   review_status: z.enum(['PENDING', 'CHECKED']), checked_by: z.string().nullable(), checked_at: z.string().nullable(),
 });
 export class InvoiceAdjustmentError extends Error {

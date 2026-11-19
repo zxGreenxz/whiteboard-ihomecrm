@@ -4,7 +4,7 @@ import { mapPayloadToBuildings, parseRoomSalePayload } from '@/pages/phong-trong
 import type { Building, Room } from '@/pages/phong-trong/sampleData';
 import { salePolicyIsActive, saleRoomPolicySchema, type SaleRoomPolicy } from '@/lib/saleRoomPolicyTypes';
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const revision = z.string().regex(/^[a-f0-9]{32}$/);
 const imageRef = z.string().min(1).max(2048).refine(value => {
   const hasControl = Array.from(value).some(character => {

@@ -13,17 +13,22 @@ import { buildTransaction } from '../apply-reviewed-migration.mjs';
 // Always select the latest definition: a later forward migration must be able
 // to turn these tests red instead of leaving a frozen historical test green.
 const directory = fileURLToPath(new URL('../../supabase/migrations/', import.meta.url));
+const clean = sql => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
 // Migration chỉ NHẮC tên Hermes (chú thích, khoá sự kiện viết hoa 'HERMES_TASK') mà không khai, vá hay cấp quyền
 // hàm/bảng Hermes nào. Quét chúng sẽ bắt hợp đồng bảo mật Hermes phán xét GRANT/chữ ký của miền khác. Ca
 // 'incidental Hermes mentions …' ở cuối file chốt điều kiện đó để danh sách này không thành chỗ giấu thay đổi Hermes.
+// Lọc chú thích (clean) không đủ cho file dưới: chuỗi 'HERMES_TASK' nằm trong MÃ.
 const INCIDENTAL_HERMES_MENTIONS = new Set([
   // Pipeline thông báo (đã áp production 22/10): chú thích nhắc hermes_task_follow_notify_v1 + nhánh 'HERMES_TASK' → E4.
   '20261021171249_notify_pipeline_v2.sql',
 ]);
+// Chọn theo MÃ (đã bỏ chú thích `--`), không theo văn bản thô: một migration chỉ NHẮC
+// "hermes_" trong chú thích thì không định nghĩa/cấp quyền gì cho Hermes, nên không thuộc
+// phạm vi hợp đồng này. Đo 16/11/2026: đúng một file khác nhau giữa hai cách chọn
+// (20261115084108_so_tong_loi_nhuan_tao.sql, chú thích "không đụng hàm hermes_*").
 const sources = readdirSync(directory).filter(name => name.endsWith('.sql')).sort()
   .map(name => ({ name, sql: readFileSync(join(directory, name), 'utf8') }))
-  .filter(({ name, sql }) => /\bhermes_/i.test(sql) && !INCIDENTAL_HERMES_MENTIONS.has(name));
-const clean = sql => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
+  .filter(({ name, sql }) => /\bhermes_/i.test(clean(sql)) && !INCIDENTAL_HERMES_MENTIONS.has(name));
 const digest = sql => createHash('sha256').update(clean(sql)).digest('hex');
 const FORWARD_BY_NAME = new Map(FORWARD_FUNCTIONS.map(spec => [spec.name, spec]));
 const FORWARD_REVOKE_ROLES = new Map([
@@ -67,10 +72,13 @@ const fn = (name, registry = functions) => {
   return value;
 };
 const all = statements.join(';\n');
-const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'revoke_connection', 'acquire_refresh',
+const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'recover_connection', 'revoke_connection', 'acquire_refresh',
   'dispatch_refresh', 'stage_refresh', 'publish_refresh', 'reconnect_session', 'revoke_session', 'release_refresh',
   'claim_private_command', 'dispatch_private_command', 'finish_private_command', 'fail_private_command', 'prune_private_commands',
   'prune_work_memories', 'connection_settings'];
+// Học có kiểm duyệt (20261031041523): job nạp đề xuất trên host dùng vai NOLOGIN riêng hermes_learning_ingest (không phải kho
+// bền connector); vai này chỉ được USAGE app_private và EXECUTE đúng một hàm nạp.
+const LEARNING_INGEST = ['app_private.hermes_store_learning_ingest_v1(jsonb)'];
 const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[])',
   'hermes_prepare_connection_v1(uuid,text[],text[],uuid[])', 'hermes_my_connections_v1(uuid)',
   'hermes_connection_context_v1(uuid)', 'hermes_room_scope_map_v1(uuid,uuid[],uuid,text,bigint,bigint,uuid,bigint,bigint)',
@@ -127,7 +135,9 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_sale_actions_v1(jsonb,text,jsonb)', 'hermes_sale_capabilities_v1(uuid)',
   'hermes_org_policy_options_v8(uuid)', 'hermes_connection_options_v8(uuid)', 'hermes_connection_context_v8(uuid)',
   'hermes_sale_policy_actions_v1(jsonb,text,jsonb)', 'hermes_sale_policy_capabilities_v1(uuid)',
-  'hermes_org_policy_options_v9(uuid)', 'hermes_connection_options_v9(uuid)', 'hermes_connection_context_v9(uuid)'];
+  'hermes_org_policy_options_v9(uuid)', 'hermes_connection_options_v9(uuid)', 'hermes_connection_context_v9(uuid)',
+  // Học có kiểm duyệt (20261031041523): chủ/admin (users.edit) đọc và duyệt đề xuất bài học ghi CRM.
+  'hermes_learning_review_v1(jsonb)', 'hermes_learning_decide_v1(jsonb)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
@@ -143,7 +153,9 @@ const ZALO_ONESHOT_CALLER = ['public.zalo_hen_gui_phong_trong_v1(uuid[],text,tim
   'public.zalo_huy_hen_gui_phong_trong_v1(uuid)', 'public.zalo_ds_hen_gui_phong_trong_v1(uuid,integer)', 'public.zalo_dung_khan_cap(uuid)'];
 // The only reviewed table grant in a scanned file: the worker reads the one-shot
 // queue (RPC-only for callers). Exact statement; any other table grant still fails.
-const REVIEWED_TABLE_GRANTS = new Set(['GRANT SELECT ON public.zalo_automation_oneshots TO service_role']);
+const REVIEWED_TABLE_GRANTS = new Set(['GRANT SELECT ON public.zalo_automation_oneshots TO service_role',
+  // Login job nạp đề xuất (20261101064441): vai NOLOGIN, đúng một nhóm, không phải quyền bảng.
+  'GRANT hermes_learning_ingest TO hermes_store_learning']);
 const ZALO_ONESHOT_WORKER = ['public.zalo_worker_claim_oneshot_v1(uuid,uuid[])', 'public.zalo_worker_finish_oneshot_v1(uuid,uuid,boolean,jsonb)',
   'public.zalo_enqueue_broadcast_oneshot_v1(uuid,uuid,uuid,text,timestamptz,text,jsonb)'];
 // The package D SQL-standard invoker wrapper reaches exactly these three
@@ -461,6 +473,8 @@ const W2_CALLER = ['app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)', 'app
 // wrapper binds (name-resolution core, guard, probe step). Receipt begin/finish and the reason map stay owner-only.
 const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.hermes_room_key_v1(text)',
   'app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)', 'public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)',
+  // Lượt 11 Công việc (20261023185114): loại việc trùng tên toà — helper INVOKER thuần đọc dưới RLS, lõi giải tên và lõi task gọi.
+  'public.job_type_building_like_v1(uuid,text)',
   'app_private.hermes_action_guard_v1(jsonb,text)', 'app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
   'public.hermes_action_status_v1(jsonb,uuid)', 'public.hermes_action_capabilities_v1(uuid)',
   'public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
@@ -471,7 +485,48 @@ const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.her
   // Thu chi Mốc 3: name resolution _v2 (virtual buildings; wrapper binds the core OID) and the expense scope step the wrapper binds
   // (guard ∩ the web writer's own authorize_income_expense_on_building, 20261022044120 / 20261022044123).
   'app_private.hermes_write_name_resolve_core_v2(uuid,uuid[],jsonb,uuid[],boolean,boolean)', 'public.hermes_write_name_resolve_v2(uuid,uuid[],jsonb,boolean)',
-  'app_private.hermes_expense_scope_v1(jsonb,text)'];
+  'app_private.hermes_expense_scope_v1(jsonb,text)',
+  // Thu chi lượt 11 (20261023210634): chọn hạng mục INVOKER mà lõi giải tên (chạy dưới vai authenticated) gọi theo tên public.
+  'public.hermes_expense_category_pick_v1(uuid,text,text)',
+  // Thu chi lượt 13 (20261024094809): luồng hệ thống — sql IMMUTABLE thuần chữ (không đọc bảng) mà bộ chọn hạng mục (INVOKER, dưới vai
+  // authenticated) gọi theo tên public; bước ghi DEFINER cũng gọi.
+  'public.hermes_expense_system_flow_v1(text,text)',
+  // Đợt 3 Hoá đơn Mốc 3 (20261022075230): vỏ invoice.* gắn OID guard (đã có ở trên), tra cứu (INVOKER) và bước ghi (DEFINER; khoá hoá đơn
+  // NOWAIT dưới khoá công ty của guard, rồi quyền thu của v5); ánh xạ lý do chỉ bước ghi gọi (owner-only).
+  'app_private.hermes_invoice_lookup_core_v1(uuid,uuid[],text,jsonb)',
+  'app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)', 'public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  // Mốc 4 (20261022183445): vỏ chuyển invoice.meter_record sang tra cứu chỉ số (INVOKER) + bước ghi chỉ số (DEFINER); hàm số chỉ số owner-only.
+  'app_private.hermes_invoice_meter_lookup_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_meter_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
+  // Mốc 5 (20261023042723): vỏ chuyển điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục sang tra cứu (INVOKER) + bước ghi (DEFINER; hợp đồng →
+  // hoá đơn → điều chỉnh NOWAIT dưới khoá công ty của guard); ánh xạ lý do của nhánh này owner-only.
+  'app_private.hermes_invoice_edit_lookup_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_edit_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
+  // Lượt 8 (20261024041712): vỏ chuyển thu tiền sang tra cứu v2 (INVOKER) + bước ghi v2 (DEFINER; vẫn NOWAIT); tầng v1 giữ quyền, không còn được gọi.
+  'app_private.hermes_invoice_lookup_core_v2(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_action_step_v2(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
+  // Lượt 14 (20261024181440): vỏ chuyển thu tiền sang tra cứu v3 (INVOKER) + bước ghi v3 (DEFINER; vẫn NOWAIT), sửa/huỷ/khôi phục sang bước
+  // ghi v2 (DEFINER; hợp đồng → hoá đơn NOWAIT); tầng cũ giữ quyền, không còn được gọi.
+  'app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_action_step_v3(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
+  'app_private.hermes_invoice_edit_step_v2(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'];
+// Contract page write RPC (20261022022951): the caller executes the SQL-standard wrapper and the two functions it binds (the
+// RLS lookup, the DEFINER step); the Vietnamese date label and the page reason map stay owner-only.
+const CONTRACT_ACTION_CALLER = ['public.hermes_contract_action_lookup_v1(uuid,uuid)',
+  'app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)',
+  'public.hermes_contract_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  // Mốc 5 (20261022074815): tra khách INVOKER mà vỏ gọi dưới vai authenticated.
+  'public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb)',
+  // Mốc 6 (20261023030305): tra lô INVOKER + bước ghi lô DEFINER mà vỏ gắn OID.
+  'public.hermes_contract_batch_lookup_v1(uuid,uuid[],uuid,date)', 'app_private.hermes_contract_batch_step_v1(jsonb,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'];
+// Học có kiểm duyệt đợt 3 (20261105025453): the caller executes the learning page's SQL-standard wrapper and the one DEFINER step it binds;
+// the shared guard, receipts, the decision core and the reason map are reached only from that step (owner).
+const LEARNING_ACTION_CALLER = ['app_private.hermes_learning_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  'public.hermes_learning_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
+// Đợt 2b Công việc (20261022031548 task.create, 20261022031600 người nhận thấy việc của mình): the caller executes the page
+// wrapper, the two shared job helpers and the assignee rule, and only the app_private steps the wrapper binds (resolve core,
+// building managers, prepare/write/finish). Quota and the date-text helper stay owner-only.
+const TASK_ACTION_CALLER = ['public.job_deadline_v1(uuid,date,time)', 'public.job_open_duplicates_v1(uuid,uuid,uuid,uuid)',
+  'app_private.hermes_task_building_managers_v1(uuid,uuid)', 'app_private.hermes_task_resolve_core_v1(jsonb,text,jsonb)',
+  'app_private.hermes_task_action_prepare_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)', 'app_private.hermes_task_action_write_v1(jsonb)',
+  'app_private.hermes_task_action_finish_v1(jsonb,text,jsonb)', 'public.hermes_task_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  'public.job_visible_as_assignee_v1(uuid)'];
 
 function expandReviewedFunctionAcl(sql) {
   const declared = new Set();
@@ -796,10 +851,11 @@ function securityContract(sql = all, registry = functions) {
       // R2d (20261021063452): the fast reader's DEFINER count, reachable only through its bound OID (no app_private USAGE).
       'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])',
       // Shared write foundation: SQL-standard INVOKER wrappers bind these app_private OIDs at creation (no app_private USAGE).
-      ...WRITE_FOUNDATION_CALLER])],
+      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER, ...LEARNING_ACTION_CALLER])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
+    ['hermes_learning_ingest', new Set(LEARNING_INGEST)],
   ]);
   for (const statement of splitSqlStatements(sql).map(clean)) {
     const definition = /^CREATE (?:OR REPLACE )?FUNCTION ((?:app_private|public)\.\w+)\(([^)]*)\)/i.exec(statement);
@@ -807,13 +863,13 @@ function securityContract(sql = all, registry = functions) {
       const key = signature(definition[1], definition[2], true);
       if (!acl.has(key)) acl.set(key, new Set(['PUBLIC']));
     }
-    if (/^GRANT USAGE ON SCHEMA app_private TO hermes_store_executor$/i.test(statement)) continue;
+    if (/^GRANT USAGE ON SCHEMA app_private TO (?:hermes_store_executor|hermes_learning_ingest)$/i.test(statement)) continue;
     if (!/^(?:GRANT|REVOKE)\b/i.test(statement) || !/\bON FUNCTION\b/i.test(statement)) {
       if (/^GRANT\b/i.test(statement) && !REVIEWED_TABLE_GRANTS.has(statement)) assert.fail(`Unexpected grant: ${statement}`);
       continue;
     }
     if (/^GRANT\b/i.test(statement)) {
-      const parsed = /^GRANT EXECUTE ON FUNCTION (.+) TO (authenticated|hermes_store_executor|service_role)$/i.exec(statement);
+      const parsed = /^GRANT EXECUTE ON FUNCTION (.+) TO (authenticated|hermes_store_executor|service_role|hermes_learning_ingest)$/i.exec(statement);
       assert(parsed, 'grant has explicit function targets and one supported recipient');
       const names = aclTargets(parsed[1]), role = parsed[2];
       assert(allowed.has(role), 'only exact caller, store executor or worker ingress grants may receive execute');
@@ -839,18 +895,26 @@ function securityContract(sql = all, registry = functions) {
   }
   for (const names of allowed.values()) for (const name of names) assert(acl.has(name), `Missing allowed function ${name}`);
   assert.doesNotMatch(sql, /GRANT\s+(?:ALL|SELECT|INSERT|UPDATE|DELETE|CREATE)\b[^;\n]*\bTO\s+[^;\n]*hermes_store_executor/i);
+  assert.doesNotMatch(sql, /GRANT\s+(?:ALL|SELECT|INSERT|UPDATE|DELETE|CREATE|TRUNCATE|REFERENCES|TRIGGER)\b[^;\n]*\bTO\s+[^;\n]*hermes_learning_ingest/i);
+  assert.doesNotMatch(sql, /GRANT\s+(?:hermes_store_executor|hermes_learning_ingest|authenticated|service_role|postgres)\s+TO\s+[^;\n]*hermes_learning_ingest/i);
+  assert.match(sql, /CREATE ROLE hermes_learning_ingest NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT/i);
+  assert.match(sql, /pg_auth_members WHERE member='hermes_learning_ingest'::regrole/i);
   assert.doesNotMatch(sql, /ALTER TABLE app_private\.hermes_\w+ DISABLE ROW LEVEL SECURITY|DROP (?:TABLE|FUNCTION).*hermes_/i);
 }
 
+// Từ 20261104231450: đúng một membership ACTIVE của CHÍNH p_org là đủ — người thường ở nhiều công ty dùng được công ty mình là
+// thành viên (bên gọi luôn lọc theo p_org / công ty của kết nối); luật "một công ty" đã bỏ khỏi hàm này.
 function membershipContract(registry = functions) {
   const body = fn('hermes_member_v1', registry);
   for (const pattern of [/m\.revoked_at IS NULL/g, /m\.status='ACTIVE'/g, /o\.status='ACTIVE'/g,
     /m\.valid_to>v_now/g, /COALESCE\(m\.valid_from,'-infinity'::timestamptz\)<=v_now/g]) {
-    assert.equal([...body.matchAll(pattern)].length, 2, `selected and ordinary memberships require ${pattern}`);
+    assert.equal([...body.matchAll(pattern)].length, 1, `selected membership requires ${pattern}`);
   }
-  assert.match(body, /IF v_count<>1 THEN RAISE EXCEPTION/);
+  assert.match(body, /WHERE m\.user_id=p_user AND m\.organization_id=p_org AND o\.status='ACTIVE'/);
+  assert.match(body, /IF p_user IS NULL OR p_org IS NULL THEN RAISE EXCEPTION 'hermes_membership_required'/);
+  assert.match(body, /IF v_count<>1 THEN RAISE EXCEPTION 'hermes_membership_required'/);
   assert.match(body, /FROM public\.super_admins WHERE user_id=p_user/);
-  assert.match(body, /IF NOT v_super THEN .*count\(DISTINCT m\.organization_id\).*IF v_org_count<>1 THEN RAISE EXCEPTION/);
+  assert.doesNotMatch(body, /count\(DISTINCT m\.organization_id\)|hermes_ordinary_org_ambiguous/, 'không còn luật một công ty');
   assert.doesNotMatch(body, /auth\.uid\(\)|request\.jwt/, 'private principal must use bound identity, not forged GUC claims');
 }
 
@@ -957,21 +1021,57 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all twenty-three reviewed forward migrations and their 87 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all seventy-four reviewed forward migrations and their 151 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
   // R2d 20261021063452; the 20261019034254 capabilities v1 and metadata grant and the R2c
   // 20261021035022 v2 reader after the web building scope 20261021170452; that v2 body and
   // the R2d reader after the receivables effective outstanding 20261021185540, which keeps
-  // the 20261021170452 body and changes only its receivables branch): its statements are
+  // the 20261021170452 body and changes only its receivables branch; the contract page lookup and
+  // step of 20261022022951 after the contract return 20261022061813; that step and the 20261022022951 wrapper after the
+  // occupants + drafts 20261022074815): its statements are
   // then only superseded pins. 20261021172540 replaces the two task-input steps of
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 23);
-  assert.equal(FORWARD_FUNCTIONS.length, 87);
-  assert.equal(FORWARD_BY_NAME.size, 87, 'one live definition per reviewed name');
+  // C1 (#309 = #304 Công việc + #305 Thu chi lượt 11): 48 file / 130 hàm. Hợp đồng lượt 11 (#308): lõi giải tên v1 (dựng trên thân
+  // 185114) và v2 ở 20261024040001, bước ghi Hợp đồng ở 20261024040002 (+2 file; thân cũ thành ghim superseded). Hoá đơn lượt 8 (#312):
+  // tra cứu + bước ghi thu tiền _v2 và vỏ trang ở 20261024041712 (+1 file, +2 hàm; vỏ 042723 thành ghim superseded). Công việc lượt 12
+  // (#318): lõi giải tên + bước chuẩn bị của task dựng lại ở 20261024091500 (+1 file, cùng tên; thân 185116 thành ghim superseded).
+  // Thu chi lượt 13 (#319): luồng hệ thống 20261024094809 (+1 file, +2 tên: hàm phân loại luồng mới, kiểm lại hạng mục; chọn hạng mục +
+  // bước ghi dựng lại, thân 210634 thành ghim superseded). Thu chi lượt 14 (#319): chọn hạng mục + bước ghi + lõi giải tên dựng lại ở
+  // 20261024120211 (+1 file, cùng tên; thân 094809 / 210634 thành ghim superseded).
+  // Hợp đồng lượt 12: bước ghi Hợp đồng dựng lại ở 20261024160001, hàm đọc gói A ở 20261024160002 (+2 file, cùng tên; thân 040002 / 051620
+  // thành ghim superseded).
+  // Hoá đơn lượt 14: tra cứu + bước ghi thu tiền _v3, bước ghi sửa/huỷ/khôi phục _v2 và vỏ trang ở 20261024181440 (+1 file, +3 tên; vỏ 041712
+  // thành ghim superseded).
+  // Thu chi lượt 15: bộ đọc miền v2 dựng lại + bản đọc kết nối không khoá (MỚI) ở 20261024193001, bộ phân luồng thêm khoản THU ở
+  // 20261024193002 (+2 file, +1 tên; thân v2 185540 / bộ phân luồng 094809 thành ghim superseded).
+  // Thu chi lượt 16: lõi giải dựng lại ở 20261024210500 (+1 file, cùng tên; thân 120211 thành ghim superseded).
+  // Công việc lượt 16 (C3k): lõi giải task dựng lại ở 20261026014500 (+1 file, cùng tên; thân 003100 thành ghim superseded).
+  // Hoá đơn C07: bước ghi thu tiền _v3 dựng lại ở 20261026234255 (ép kiểm hoãn trong khối con; +1 file, cùng tên; thân 181440 thành ghim
+  // superseded).
+  // Thu chi lượt 19 (J06): lõi giải dựng lại ở 20261027074419 (+1 file, cùng tên; thân 210500 thành ghim superseded).
+  // Hoá đơn E03: bước ghi chỉ số dựng lại ở 20261027093517 (+1 file, cùng tên; thân 183445 thành ghim superseded).
+  // Hoá đơn H03 + F06: bảng báo cáo + hàm đọc gói A dựng lại ở 20261027131639 (+1 file, cùng tên; bảng 051620 / hàm đọc 160002 thành ghim
+  // superseded).
+  // Thu chi lượt 20 (G02): lõi giải dựng lại ở 20261027140949 (+1 file, cùng tên; thân 074419 thành ghim superseded).
+  // Học có kiểm duyệt (31/10): kho đề xuất bài học 20261031041523 (+1 file, +8 tên mới).
+  // Hoá đơn J06 (HĐn TC-J06): tra cứu + bước ghi thu tiền _v3 dựng lại ở 20261104165619 (tự chọn hoá đơn khi số tiền khớp đúng số còn nợ của
+  // một hoá đơn mở; +1 file, cùng tên; tra cứu 181440 / bước ghi 234255 thành ghim superseded).
+  // Học có kiểm duyệt đợt 3 (04/11): trang Bài học 20261105025453 (+1 file, +2 tên mới: bước DEFINER + vỏ INVOKER; guard bất biến dựng lại,
+  // thân 041523 thành ghim superseded).
+  // Zalo liên kết lại (10/11): RPC liên kết Zalo dựng lại ở 20261110072604 (confirm chọn lại kết nối khi trợ lý chưa có liên kết ACTIVE;
+  // +1 file, cùng tên; thân 20261019034850 thành ghim superseded).
+  // Khung giờ tin tối (11/11): bước của trang Bài học dựng lại ở 20261111015658 (lượt ghi của learning.digest chỉ nhận trong khung
+  // [20:55:00, 21:10:00) giờ Asia/Ho_Chi_Minh theo đồng hồ database; +1 file, +2 tên mới: phép so thuần + hàm đọc đồng hồ, chỉ chủ hàm
+  // chạy được; thân bước 025453 thành ghim superseded).
+  // Kết nối tự hồi (13/11): hàm gia hạn của kho dựng lại ở 20261113131751 (bỏ trần created_at + 30 ngày, dời mốc created_at của token; +1
+  // file, +1 tên mới: hàm hồi token hết hạn chưa quá 7 ngày, chỉ vai kho chạy được; thân gia hạn 20261019034754 thành ghim superseded).
+  assert.equal(paths.length, 74);
+  assert.equal(FORWARD_FUNCTIONS.length, 151);
+  assert.equal(FORWARD_BY_NAME.size, 151, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);
@@ -1048,6 +1148,8 @@ test('new caller/store ports and inherited CRM grants cannot be widened or dropp
     ['app_private.hermes_domain_read_rows_fast_v1(jsonb)', 'authenticated'],
     ['app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])', 'authenticated'],
     ...WRITE_FOUNDATION_CALLER.map(target => [target, 'authenticated']),
+    ...CONTRACT_ACTION_CALLER.map(target => [target, 'authenticated']),
+    ...TASK_ACTION_CALLER.map(target => [target, 'authenticated']),
     ['app_private.hermes_store_connection_settings_v1(jsonb)', 'hermes_store_executor'],
     ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => [`app_private.${name}(jsonb)`, 'hermes_store_executor']),
     ...INHERITED_CRM_ACL.map(spec => [spec.signature, 'authenticated']),
@@ -1059,7 +1161,8 @@ test('new caller/store ports and inherited CRM grants cannot be widened or dropp
   // Only DEFINER steps check bindings, write receipts and map reasons; the caller never reaches them (or the settle trigger) directly.
   for (const target of ['app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb)',
     'app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text)', 'app_private.hermes_action_reason_v1(text,text,text)',
-    'app_private.hermes_action_binding_v1(jsonb)', 'app_private.hermes_action_receipt_settled_v1()'])
+    'app_private.hermes_action_binding_v1(jsonb)', 'app_private.hermes_action_receipt_settled_v1()',
+    'app_private.hermes_contract_reason_v1(text,text,text)', 'app_private.hermes_contract_date_label_v1(date,date)'])
     assert.throws(() => securityContract(`${all}; GRANT EXECUTE ON FUNCTION ${target} TO authenticated`), /cannot execute/, target);
   for (const spec of INHERITED_CRM_ACL) {
     const grant = `GRANT EXECUTE ON FUNCTION ${spec.signature} TO authenticated`;
@@ -1319,7 +1422,7 @@ test('private ledger consumer remains executor-only, with no helper or table acc
   }
   assert.throws(() => securityContract(all + '; GRANT SELECT ON app_private.hermes_zalo_private_commands TO hermes_store_executor;'), /Unexpected grant/);
 });
-test('current membership is bounded by revocation/time and ordinary one-company rule', () => membershipContract());
+test('current membership is bounded by revocation/time and the selected company', () => membershipContract());
 test('stable assistant and session ownership are enforced by composite identity constraints', () => {
   assert.match(all, /UNIQUE\(organization_id,user_id\), UNIQUE\(id,organization_id,user_id\)/);
   assert.match(all, /provider_session_id uuid NOT NULL UNIQUE/);
@@ -1364,6 +1467,7 @@ test('private inputs have exact keys and JSON null cannot bypass envelope algori
   assert.match(fn('hermes_request_v1'), /count\(\*\) FROM jsonb_object_keys\(p\).*cardinality\(p_keys\) OR NOT \(p \?& p_keys\)/);
   assert.match(fn('hermes_envelope_v1'), /p->'v' IS DISTINCT FROM '1'::jsonb OR p->>'algorithm' IS DISTINCT FROM 'A256GCM'/);
   for (const operation of STORE) assert.match(fn(`hermes_store_${operation}_v1`), /hermes_request_v1\(p,ARRAY\[/);
+  for (const signature of LEARNING_INGEST) assert.match(fn(signature.split('(')[0].replace(/^app_private\./, '')), /hermes_request_v1\(p,ARRAY\[/);
 });
 test('every Hermes source fits the reviewed rollback wrapper, including double-run idempotency probe', () => {
   for (const { sql } of sources) {
@@ -1379,7 +1483,8 @@ test('every Hermes source fits the reviewed rollback wrapper, including double-r
 // They are deliberately not a simulated database/state machine.
 for (const [label, name, before, after, check] of [
   ['revoked membership', 'hermes_member_v1', 'm.revoked_at IS NULL', 'true', membershipContract],
-  ['ordinary multi-company', 'hermes_member_v1', 'v_org_count<>1', 'v_org_count<1', membershipContract],
+  ['membership of any company', 'hermes_member_v1', 'm.organization_id=p_org AND ', '', membershipContract],
+  ['membership status ignored', 'hermes_member_v1', "AND m.status='ACTIVE' ", 'AND ', membershipContract],
   ['activation payload mismatch', 'hermes_store_activate_v1', 'c.activation_hash<>v_hash', 'false', activationContract],
   ['ciphertext loses size bound', 'hermes_envelope_v1', "OR char_length(p->>'ciphertext') NOT BETWEEN 1 AND 87382", '', envelopeContract],
   ['staged session disclosure', 'hermes_store_read_connection_v1', "id=c.credential_ref AND state='ACTIVE'", "id=c.credential_ref AND state IN ('ACTIVE','STAGED')", readContract],

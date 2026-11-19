@@ -29,10 +29,16 @@ vi.mock("../useQuickEntrySave", () => ({
 import { needsAi, onlyCategoriesMissing, useQuickEntryFeed } from "../useQuickEntryFeed";
 import type { QuickEntryRefs } from "../useQuickEntryRefs";
 import { draftsKey } from "@/lib/quickEntry/feedStorage";
+import { stubLoadSuggestions } from "@/lib/quickEntry/__tests__/sqlSuggestStub";
 
 const ORG = "org-1";
 const USER = "user-1";
-const refs = (over: Partial<QuickEntryRefs> = {}): QuickEntryRefs => ({
+// Gợi ý hạng mục = hàm SQL ie_category_suggest_v1 trên đúng danh sách hạng mục của refs (sqlSuggestStub).
+const refs = (over: Partial<QuickEntryRefs> = {}): QuickEntryRefs => {
+  const base = refsBase(over);
+  return { ...base, suggestCategories: over.suggestCategories ?? stubLoadSuggestions(base.categories) };
+};
+const refsBase = (over: Partial<QuickEntryRefs>): Omit<QuickEntryRefs, "suggestCategories"> => ({
   orgId: ORG,
   loading: false,
   permissionsLoading:false, permissionsError:null, personalLoading:false, personalError:null, personalReady:true,
@@ -304,7 +310,7 @@ describe("useQuickEntryFeed — tin chữ", () => {
 
   it("thẻ đủ tiền + toà, chỉ thiếu hạng mục ⇒ câu lệnh RÚT GỌN theo mô tả từng dòng, kèm 'dùng cho'", async () => {
     h.readCategoriesWithAi.mockReset();
-    h.readCategoriesWithAi.mockResolvedValue({ ok: true, value: ["c1"], model: "9router:cx/gpt-5.6-terra(low)" });
+    h.readCategoriesWithAi.mockResolvedValue({ ok: true, value: ["c1"], model: "9router:cx/gpt-6.1-terra(low)" });
     const r = refs({
       categories: [
         { id: "t-vt", name: "Vật tư", category: "Bảo Trì", type: "expense", organization_id: ORG, description: "sơn, keo, ốc vít", keywords: ["sơn"] },
@@ -312,18 +318,18 @@ describe("useQuickEntryFeed — tin chữ", () => {
       ],
     });
     const { result } = renderHook(() =>
-      useQuickEntryFeed({ refs: r, userId: USER, today: "2026-10-01", models: { read: "cx/gpt-5.6-terra(low)" } }),
+      useQuickEntryFeed({ refs: r, userId: USER, today: "2026-10-01", models: { read: "cx/gpt-6.1-terra(low)" } }),
     );
     await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
     expect(h.readWithAi).not.toHaveBeenCalled();
     const call = h.readCategoriesWithAi.mock.calls[0][0];
-    expect(call).toMatchObject({ lineCount: 1, categoryCount: 2, model: "cx/gpt-5.6-terra(low)" });
+    expect(call).toMatchObject({ lineCount: 1, categoryCount: 2, model: "cx/gpt-6.1-terra(low)" });
     const sent = JSON.stringify(call.messages);
     expect(sent).toContain("1. 102LVT sơn");
     expect(sent).toContain("dùng cho: sơn, keo, ốc vít");
     const [c] = cardsOf(result);
     expect(c.state.draft.lines[0]).toMatchObject({ amount: 300_000, categoryId: "t-vt" });
-    expect(c.aiModel).toBe("9router:cx/gpt-5.6-terra(low)");
+    expect(c.aiModel).toBe("9router:cx/gpt-6.1-terra(low)");
   });
 
   it("câu lệnh rút gọn về sau khi người dùng đã thêm dòng ⇒ bỏ kết quả", async () => {
@@ -379,6 +385,8 @@ describe("useQuickEntryFeed — tin chữ", () => {
     act(() => {
       pending = result.current.submitText("102LVT sơn 300k", "company");
     });
+    // Thẻ hiện sau một lượt gọi hàm SQL gợi ý hạng mục (composeShared), trước khi AI trả.
+    await waitFor(() => expect(cardsOf(result)).toHaveLength(1));
     const [c] = cardsOf(result);
     act(() =>
       result.current.changeCard(c.id, {

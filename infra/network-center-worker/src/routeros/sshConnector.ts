@@ -18,6 +18,7 @@ import {
   type RouterInterfaceObservation,
   type RouterObservation,
 } from "../domain.js";
+import { discoverArubaFromLeases } from "../aruba/leaseDiscovery.js";
 import { bridgeAgeingSeconds, discoverH196aCandidates } from "../h196a/discovery.js";
 import type { ActionObservation, CommandIntent } from "../reconciliation.js";
 import type { RouterBackup, RouterConnector, RouterHealth } from "./connector.js";
@@ -983,6 +984,36 @@ export function parseArubaNeighbors(records: Record<string, string>[]): {
   return { valid: [...valid.values()], quarantined };
 }
 
+/**
+ * Every Aruba AP the router can evidence: the ones that announced themselves
+ * over LLDP first, then the ones only a DHCP lease shows (behind a switch that
+ * drops LLDP, see `../aruba/leaseDiscovery.ts`). A MAC the neighbour path
+ * already holds is excluded from the lease path, so one AP never becomes two
+ * rows.
+ */
+export function discoverAruba(input: {
+  neighbors: Record<string, string>[];
+  leases: Array<Record<string, string>>;
+  arp: Array<Record<string, string>> | null;
+  bridgeHosts: Array<Record<string, string>> | null;
+}): ReturnType<typeof parseArubaNeighbors> {
+  const announced = parseArubaNeighbors(input.neighbors);
+  const announcedMacs = new Set(
+    input.neighbors
+      .filter(isAruba)
+      .map((record) => normalizedHardwareMac(record["mac-address"]))
+      .filter((mac): mac is string => mac !== null),
+  );
+  const announcedKeys = new Set(announced.valid.map((item) => item.externalKey));
+  const fromLeases = discoverArubaFromLeases({
+    leases: input.leases,
+    arp: input.arp,
+    bridgeHosts: input.bridgeHosts,
+    announcedMacs,
+  }).filter((item) => !announcedKeys.has(item.externalKey));
+  return { valid: [...announced.valid, ...fromLeases], quarantined: announced.quarantined };
+}
+
 export class SshRouterConnector implements RouterConnector {
   readonly #connection: NetworkConnection;
   readonly #credential: RouterCredential;
@@ -1409,7 +1440,12 @@ export class SshRouterConnector implements RouterConnector {
     // away from discarding this batch and every other building's with it.
     const clients = collapseDuplicateLeaseClients(leaseClients, leaseRecords);
 
-    const arubaInventory = parseArubaNeighbors(parseRouterOsRecords(neighborOutput));
+    const arubaInventory = discoverAruba({
+      neighbors: parseRouterOsRecords(neighborOutput),
+      leases: leaseRecords,
+      arp: arpRecords,
+      bridgeHosts: bridgeHostRecords,
+    });
     const aruba = arubaInventory.valid;
 
     // Downstream routers that publish no LLDP, so `neighborOutput` above cannot

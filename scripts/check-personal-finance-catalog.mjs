@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { SQL_STABLE_FN_LOCKS } from './lib/stable-fn-locks-sql.mjs';
 import { credential, ketNoi, batBuocDichTest, psql, psqlJson } from './test-env/lib.mjs';
 const cred = credential(), { test } = await ketNoi(cred);
 await batBuocDichTest(cred, test);
@@ -12,7 +13,8 @@ function gateSql(path) {
  assert(literal, `gate SQL not found: ${path}`);
  return runInNewContext(literal[1], Object.freeze({}), { timeout: 1000 });
 }
-assert.deepEqual(psqlJson(test, gateSql('scripts/check-stable-fn-locks.mjs').trim().replace(/;$/, '')), []);
+// The stable-function gate keeps its SQL in a shared module (no `const sql` literal to extract).
+assert.deepEqual(psqlJson(test, SQL_STABLE_FN_LOCKS), []);
 console.log('PASS existing stable-function gate SQL on TEST');
 const views = psqlJson(test, gateSql('scripts/check-view-invoker.mjs').trim().replace(/;$/, ''));
 assert(views.length > 0); assert(views.every(v => v.relkind === 'v' && v.security_invoker === 'true'));

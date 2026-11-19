@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTION_PAGES, ATTACHMENTS_READY, canonicalJson, createActionCatalog, defineAction, param, validateActionParams } from './action-catalog.mjs';
+import { ACTION_PAGES, ATTACHMENTS_READY, canonicalJson, createActionCatalog, defineAction, param, previewFirst, validateActionParams } from './action-catalog.mjs';
 import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE, probeCatalog } from './action-probe-contract.mjs';
+import { consentRequired } from './consent-guard.mjs';
 
 // Sổ danh mục thao tác ghi dùng chung (NEN-CHUNG-THAO-TAC-GHI.md mục 5): kiểm khi nạp, kiểm params ở connector với gợi ý
 // TĨNH dựng từ khuôn (không nhắc lại giá trị mô hình gửi), JSON chuẩn hoá cho khoá binding xác nhận.
@@ -9,7 +10,8 @@ const base = { id: 'probe.sample', page: 'probe', key: PROBE_KEY, class: 'money'
 
 test('defineAction từ chối khai sai: mã, trang, lớp, khoá, tiêu đề, khuôn, lý do ngoài danh sách đóng, tham số ảnh khi chưa có luồng ảnh', () => {
   assert.ok(Object.isFrozen(defineAction(base)));
-  assert.deepEqual([...ACTION_PAGES], ['expense', 'invoice', 'contract', 'task', 'probe']);
+  // learning: đợt 3 học có kiểm duyệt (learning-action-contract.mjs), chỉ nạp khi host bật actionPages ["learning"].
+  assert.deepEqual([...ACTION_PAGES], ['expense', 'invoice', 'contract', 'task', 'learning', 'probe']);
   for (const bad of [{ id: 'Probe.x' }, { id: 'probe' }, { id: 'probe.x' }, { id: 'contract.sample' }, { page: 'payroll', id: 'payroll.sample' }, { class: 'cheap' }, { key: 'Bad Key' },
     { title: '' }, { title: 'a\nb' }, { params: { 'bad-name': param.bool() } }, { params: { ok: { kind: 'text' } } }, { reasons: ['nope'] },
     { reasons: ['state_changed', 'state_changed'] }, { extra: true }])
@@ -18,6 +20,24 @@ test('defineAction từ chối khai sai: mã, trang, lớp, khoá, tiêu đề, 
   assert.throws(() => defineAction({ ...base, params: { photos: param.attachments() } }), /invalid_action_catalog/, 'câu 11: luồng ảnh làm ở đợt Thu chi');
   for (const bad of [() => param.text(0, 5), () => param.text(5, 4), () => param.int(3, 1), () => param.vnd({ min: -1 }), () => param.oneOf([]),
     () => param.oneOf(['a', 'a']), () => param.name('planet'), () => param.attachments({ max: 11 })]) assert.throws(bad, /invalid_action_catalog/);
+});
+
+test("confirm: 'always' là sàn xác nhận trong mã cho thao tác reversible: chỉ nhận đúng giá trị đó, chỉ cho reversible; mục lục, previewFirst và rào đồng ý cùng một nguồn", () => {
+  // PS-K03: contract.room_lock (reversible, chính sách DB never) từng ghi ngay lượt 1. Khai confirm: 'always' ⇒ luôn phase preview, lượt
+  // xác nhận kèm consentText (consent-guard.mjs) — mục lục nói cả hai.
+  const floored = defineAction({ ...base, id: 'probe.floored', class: 'reversible', confirm: 'always' });
+  const plain = defineAction({ ...base, id: 'probe.plain', class: 'reversible' });
+  assert.equal(floored.confirm, 'always'); assert.ok(Object.isFrozen(floored));
+  assert.equal(Object.hasOwn(plain, 'confirm'), false, 'không khai ⇒ không có trường (khuôn thao tác cũ không đổi)');
+  assert.deepEqual([floored, plain, defineAction(base), defineAction({ ...base, class: 'irreversible' })].map(previewFirst), [true, false, true, true]);
+  // Không có giá trị nào NỚI được sàn: 'never' / 'if_required' / true / null bị từ chối; money / irreversible đã có sàn theo class, khai thêm là sai.
+  for (const bad of [{ class: 'reversible', confirm: 'never' }, { class: 'reversible', confirm: 'if_required' }, { class: 'reversible', confirm: true },
+    { class: 'reversible', confirm: null }, { class: 'money', confirm: 'always' }, { class: 'irreversible', confirm: 'always' }])
+    assert.throws(() => defineAction({ ...base, ...bad }), /invalid_action_catalog/, JSON.stringify(bad));
+  const listing = createActionCatalog([floored, plain], { keys: [PROBE_KEY] }).listing({ action: [PROBE_KEY] });
+  assert.deepEqual(listing.map(item => [item.action, item.confirm, Object.hasOwn(item, 'consentText')]),
+    [['probe.floored', 'always', true], ['probe.plain', 'if_required', false]]);
+  assert.deepEqual([floored, plain].map(consentRequired), [true, false]);
 });
 
 test('createActionCatalog: mã trùng hay khoá ngoài tập cho phép ⇒ lỗi nạp; mục lục chỉ thao tác kết nối giữ khoá', () => {
@@ -74,6 +94,39 @@ test('validateActionParams: chuẩn hoá snake_case, số dạng chuỗi chữ s
     { m: '2026-10', k: 'EARLY', b: true, n: 6.5 }]) assert.equal(validateActionParams(kinds, raw).ok, false, JSON.stringify(raw));
 });
 
+test('list overflow (Công việc lượt 13): a declared needs_input reason replaces invalid_params only when the list is LONGER than max', () => {
+  const item = param.record({ buildingName: param.name('building') });
+  const action = defineAction({ ...base, id: 'probe.over', reasons: ['batch_too_large'], params: { items: param.list(item, { max: 2, overflow: 'batch_too_large' }) } });
+  assert.deepEqual(validateActionParams(action, { items: [1, 2, 3].map(() => ({ buildingName: 'A' })) }),
+    { ok: false, overflow: { reason: 'batch_too_large', path: 'items', count: 3, max: 2 } });
+  assert.equal(validateActionParams(action, { items: [{ buildingName: 'A' }, { buildingName: 'B' }] }).ok, true);
+  assert.match(validateActionParams(action, { items: [] }).detail, /items \(danh sách 1–2 mục\)/, 'ngắn hơn min vẫn là invalid_params');
+  assert.match(validateActionParams(action, { items: [{ buildingName: 'A' }, {}] }).detail, /items#2\.buildingName/);
+  // Mảng có lỗ dài quá max vẫn là sai khuôn (không đếm như một lô hợp lệ).
+  const holey = [{ buildingName: 'A' }, , { buildingName: 'B' }]; // eslint-disable-line no-sparse-arrays
+  assert.match(validateActionParams(action, { items: holey }).detail, /items \(danh sách/);
+  // Khai sai: lý do lạ, lý do loại rejected, thao tác không khai lý do đó trong reasons.
+  for (const bad of [() => param.list(item, { max: 2, overflow: 'nope' }), () => param.list(item, { max: 2, overflow: 'crm_refused' }),
+    () => defineAction({ ...base, id: 'probe.over2', params: { items: param.list(item, { max: 2, overflow: 'batch_too_large' }) } })])
+    assert.throws(bad, /invalid_action_catalog/);
+});
+
+test('list unique (review #391, learning.decide "duyệt 1-3, 2"): phần tử vô hướng trùng bị khử, giữ thứ tự lần đầu; mặc định giữ nguyên', () => {
+  const unique = defineAction({ ...base, id: 'probe.unique', params: { numbers: param.list(param.int(1, 99), { max: 6, unique: true }),
+    codes: param.list(param.name('voucher'), { max: 4, optional: true, unique: true }) } });
+  assert.deepEqual(validateActionParams(unique, { numbers: [3, 1, 3, '2', 1, 2], codes: [' PC1 ', 'PC1', 'PC2'] }),
+    { ok: true, value: { numbers: [3, 1, 2], codes: ['PC1', 'PC2'] } }, 'khử SAU chuẩn hoá: "2" = 2, " PC1 " = "PC1"');
+  // Kiểm từng phần tử và độ dài trước khi khử (giữ đúng câu báo cũ).
+  assert.match(validateActionParams(unique, { numbers: [1, 0, 1] }).detail, /numbers#2 \(số nguyên 1–99\)/);
+  assert.match(validateActionParams(unique, { numbers: [1, 1, 1, 1, 1, 1, 1] }).detail, /numbers \(danh sách 1–6 mục\)/);
+  const plain = defineAction({ ...base, id: 'probe.plain', params: { numbers: param.list(param.int(1, 99), { max: 6 }) } });
+  assert.deepEqual(validateActionParams(plain, { numbers: [3, 1, 3] }), { ok: true, value: { numbers: [3, 1, 3] } }, 'không khai unique ⇒ như cũ');
+  assert.equal(Object.hasOwn(plain.params.numbers, 'unique'), false, 'khuôn cũ không đổi');
+  for (const bad of [() => param.list(param.record({ buildingName: param.name('building') }), { max: 2, unique: true }),
+    () => param.list(param.int(1, 9), { max: 2, unique: 'yes' })])
+    assert.throws(bad, /invalid_action_catalog/);
+});
+
 test('list/record (Đợt 2: lô Thu chi ≤ 5 khoản, Hợp đồng ≤ 20 HĐ): khai sai ⇒ lỗi nạp; kiểm từng phần tử với đường dẫn tĩnh', () => {
   const item = param.record({ buildingName: param.name('building'), amount: param.vnd(), note: param.text(1, 20, { optional: true }) });
   const batch = defineAction({ ...base, id: 'probe.batch', params: { items: param.list(item, { max: 3 }), codes: param.list(param.name('voucher'), { max: 2, optional: true }) } });
@@ -81,10 +134,24 @@ test('list/record (Đợt 2: lô Thu chi ≤ 5 khoản, Hợp đồng ≤ 20 HĐ
   for (const bad of [() => defineAction({ ...base, id: 'probe.rec', params: { r: item } }), () => param.list(param.list(param.bool(), { max: 2 }), { max: 2 }),
     () => param.list(param.attachments(), { max: 2 }), () => param.record({}), () => param.list(param.bool({ optional: true }), { max: 2 }),
     () => param.list(param.bool(), { max: 21 }), () => param.list(param.bool(), { min: 0, max: 2 }), () => param.list(param.bool(), { min: 3, max: 2 }),
-    () => param.record(Object.fromEntries(Array.from({ length: 13 }, (_, n) => [`f${n}`, param.bool()]))), () => param.record({ 'bad-name': param.bool() })])
+    () => param.record(Object.fromEntries(Array.from({ length: 13 }, (_, n) => [`f${n}`, param.bool()]))), () => param.record({ 'bad-name': param.bool() }),
+    // HDN7: trần riêng theo khuôn ≤ 60, không thấp hơn trần chung; max vẫn phải ≤ trần đã khai.
+    () => param.list(param.bool(), { max: 61, ceiling: 60 }), () => param.list(param.bool(), { max: 30, ceiling: 61 }),
+    () => param.list(param.bool(), { max: 5, ceiling: 10 }), () => param.list(param.bool(), { max: 30, ceiling: 25.5 })])
     assert.throws(bad, /invalid_action_catalog/);
+  assert.deepEqual([param.list(param.bool(), { max: 60, ceiling: 60 }).max, param.list(param.bool(), { max: 20 }).max], [60, 20]);
   assert.equal(param.name('category').hint, 'tên hạng mục như người dùng nói');
   assert.equal(param.name('cashbook').hint, 'tên sổ quỹ như người dùng nói');
+  // Lượt 14: câu gợi ý riêng (≤ 160 ký tự, không ký tự điều khiển) và tên phụ của tham số tên (không trùng tham số / tên phụ khác).
+  assert.equal(param.int(0, 9, { hint: 'chỉ số công tơ' }).hint, 'chỉ số công tơ');
+  for (const bad of [() => param.text(1, 2, { hint: 'x'.repeat(161) }), () => param.vnd({ hint: '' }), () => param.name('room', { hint: 'a\nb' }),
+    () => param.name('room', { alias: 'bad-alias' }), () => param.name('room', { alias: 7 })]) assert.throws(bad, /invalid_action_catalog/);
+  const aliased = { id: 'probe.alias', page: 'probe', key: PROBE_KEY, class: 'money', rpc: 'hermes_action_probe_v1', title: 'Tên phụ' };
+  assert.throws(() => defineAction({ ...aliased, params: { bookName: param.name('cashbook', { alias: 'book' }), book: param.text(1, 5) } }), /invalid_action_catalog/);
+  assert.throws(() => defineAction({ ...aliased, params: { a: param.name('cashbook', { alias: 'book' }), b: param.name('room', { alias: 'book' }) } }), /invalid_action_catalog/);
+  const withAlias = defineAction({ ...aliased, params: { bookName: param.name('cashbook', { optional: true, alias: 'book' }) } });
+  assert.deepEqual([validateActionParams(withAlias, { book: 'HKD' }).value, validateActionParams(withAlias, { book_name: 'HKD' }).value], [{ bookName: 'HKD' }, { bookName: 'HKD' }]);
+  assert.equal(validateActionParams(withAlias, { book: 'A', bookName: 'B' }).ok, false);
   assert.deepEqual(validateActionParams(batch, { items: [{ building_name: ' A ', amount: '350000' }, { buildingName: 'B', amount: 1, note: '' }] }),
     { ok: true, value: { items: [{ buildingName: 'A', amount: 350_000 }, { buildingName: 'B', amount: 1 }] } });
   assert.deepEqual(validateActionParams(batch, { items: [{ buildingName: 'A', amount: 1 }], codes: [' PC2610001 '] }).value.codes, ['PC2610001']);

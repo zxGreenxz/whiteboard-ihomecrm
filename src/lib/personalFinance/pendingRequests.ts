@@ -3,8 +3,8 @@ import { mutationSchema, normalizeMutation, type Mutation, type Receipt } from '
 import { PersonalFinanceError, mapFinanceError } from './service';
 
 const pendingSchema = z.object({
-  ownerId: z.string().uuid(),
-  requestKey: z.string().uuid(),
+  ownerId: z.string().guid(),
+  requestKey: z.string().guid(),
   payload: mutationSchema,
 });
 export type PendingRequest = z.infer<typeof pendingSchema>;

@@ -3,7 +3,14 @@ import { actionErrorMessage } from '@/lib/actionFeedback';
 import { QueryRegion } from '@/components/errors/QueryRegion';
 import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { useState } from 'react';
-import { useAdminUsers, useCreateAdminUser } from '@/hooks/useAdminUsers';
+import { useAdminUsers, useCreateAdminUser, type AdminUser } from '@/hooks/useAdminUsers';
+import { useAuth } from '@/hooks/useAuth';
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
+import { quyenDaXacNhan } from '@/lib/resetUserPassword';
+import {
+  ResetUserPasswordDialog,
+  type ResetUserPasswordTarget,
+} from '@/components/account/ResetUserPasswordDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,13 +22,21 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { UserPlus, ShieldCheck, Users } from 'lucide-react';
+import { KeyRound, UserPlus, ShieldCheck, Users } from 'lucide-react';
+
+const tenTaiKhoan = (u: Pick<AdminUser, 'full_name' | 'email'>) => u.full_name || u.email || 'Không tên';
 
 export default function AdminUsersPage() {
   const usersQuery = useAdminUsers();
   const { data: users = [], isLoading } = usersQuery;
   const createMutation = useCreateAdminUser();
   const [open, setOpen] = useState(false);
+  // Trang này mở cho cả vai Admin (AdminOnlyRoute dùng is_admin); đặt lại mật khẩu chỉ cho superadmin
+  // đã xác nhận, và không cho dòng của chính mình (chưa biết mình là ai thì ẩn cả cột).
+  const laSuperAdmin = quyenDaXacNhan(useIsSuperAdmin());
+  const toiId = useAuth().data?.id ?? null;
+  const coCotDatLai = laSuperAdmin && toiId !== null;
+  const [datLaiCho, setDatLaiCho] = useState<ResetUserPasswordTarget | null>(null);
   const [form, setForm] = useState({ email: '', password: '', full_name: '', phone: '' });
 
   const [errors, setErrors] = useState<Record<string,string>>({});
@@ -143,6 +158,7 @@ export default function AdminUsersPage() {
                   <TableHead>Vai trò</TableHead>
                   <TableHead>Toà nhà được giao</TableHead>
                   <TableHead>Tạo lúc</TableHead>
+                  {coCotDatLai && <TableHead className="text-right">Thao tác</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -166,6 +182,21 @@ export default function AdminUsersPage() {
                     <TableCell>
                       {new Date(u.created_at).toLocaleDateString('vi-VN')}
                     </TableCell>
+                    {coCotDatLai && (
+                      <TableCell className="text-right">
+                        {u.id !== toiId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Đặt lại mật khẩu cho ${tenTaiKhoan(u)}`}
+                            onClick={() => setDatLaiCho({ userId: u.id, name: tenTaiKhoan(u), login: u.email })}
+                          >
+                            <KeyRound className="mr-1.5 h-4 w-4" />
+                            Đặt lại mật khẩu
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -174,6 +205,13 @@ export default function AdminUsersPage() {
           </QueryRegion>
         </CardContent>
       </Card>
+
+      <ResetUserPasswordDialog
+        target={datLaiCho}
+        onOpenChange={(moHopThoai) => {
+          if (!moHopThoai) setDatLaiCho(null);
+        }}
+      />
     </div>
   );
 }

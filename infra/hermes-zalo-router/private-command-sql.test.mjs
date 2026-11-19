@@ -5,7 +5,8 @@ import { fixture, ORG, USER, ACCOUNT, ASSISTANT, CONNECTION, BINDING, FOREIGN } 
 const rejects = (work,code) => assert.rejects(work, error => error.code===code);
 
 test('durable private intake derives actor, enforces authority, and deduplicates without shared writes', async t => {
-  const {db,call,request,rollbackCase}=await fixture(t);
+  // Thân sống của hermes_member_v1 (20261104231450): người thường nhiều công ty được nhận ở công ty mình là thành viên ACTIVE.
+  const {db,call,request,rollbackCase}=await fixture(t,{migrations:['20261104231450_hermes_member_nhieu_cong_ty_v1']});
   let accepted;
   await t.test('persists one private command and returns only a scoped receipt',async()=>{
     accepted=await call();
@@ -48,7 +49,6 @@ test('durable private intake derives actor, enforces authority, and deduplicates
   ]) await t.test(`rejects ${label}`,()=>rejects(call({providerMessageId:`rejected-${label.replaceAll(' ','-')}`,...change}),code));
   for(const [label,statement,code] of [
     ['membership revoked',"UPDATE public.organization_memberships SET status='REVOKED'",'42501'],
-    ['ambiguous ordinary user',`INSERT INTO public.organization_memberships(id,user_id,organization_id,status) VALUES('${FOREIGN}','${USER}','${FOREIGN}','ACTIVE')`,'42501'],
     ['company disabled',"UPDATE public.organizations SET status='INACTIVE'",'42501'],
     ['policy disabled','UPDATE app_private.hermes_org_policies SET enabled=false','42501'],
     ['assistant disabled',"UPDATE app_private.hermes_assistants SET state='DISABLED'",'42501'],
@@ -64,6 +64,15 @@ test('durable private intake derives actor, enforces authority, and deduplicates
     ['login snapshot changed','UPDATE public.zalo_accounts SET login_requested_at=clock_timestamp()','PT409'],
   ]) await t.test(`rechecks ${label} even for duplicate input`,async()=>{
     await rollbackCase(async()=>{ await db.exec(statement); await rejects(call(),code); });
+  });
+  await t.test('ordinary user of two companies still sends a private command scoped to the bound company',async()=>{
+    await rollbackCase(async()=>{
+      await db.exec(`INSERT INTO public.organization_memberships(id,user_id,organization_id,status) VALUES('${FOREIGN}','${USER}','${FOREIGN}','ACTIVE')`);
+      const queued=await call({providerMessageId:'multi-org-1'});
+      assert.equal(queued.status,'queued'); assert.equal(queued.organizationId,ORG); assert.equal(queued.accountId,ACCOUNT);
+      const row=(await db.query("SELECT organization_id FROM app_private.hermes_zalo_private_commands WHERE provider_message_id='multi-org-1'")).rows[0];
+      assert.equal(row.organization_id,ORG);
+    });
   });
   await t.test('capacity blocks new commands but allows exact duplicate reconciliation',async()=>{
     for(let n=2;n<=64;n++) assert.equal((await call({providerMessageId:`live-${n}`})).status,'queued');

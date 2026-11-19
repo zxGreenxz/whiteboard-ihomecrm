@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { IncomeExpenseWithRelations } from "@/hooks/income-expenses/types";
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const nullableText = z.string().nullable();
 const amount = z
   .union([z.number(), z.string().regex(/^-?\d+(\.\d+)?$/)])

@@ -1,0 +1,354 @@
+{
+  "version": 1,
+  "decided": [
+    {
+      "id": "customer.view",
+      "scope": "company",
+      "keys": [
+        "customers.view"
+      ]
+    },
+    {
+      "id": "customer.manage",
+      "scope": "company",
+      "keys": [
+        "customers.create",
+        "customers.edit",
+        "customers.print"
+      ]
+    },
+    {
+      "id": "customer.bulk-export",
+      "scope": "company",
+      "keys": [
+        "customers.export"
+      ]
+    },
+    {
+      "id": "customer.delete",
+      "scope": "company",
+      "keys": [
+        "customers.delete"
+      ]
+    },
+    {
+      "id": "lead.manage",
+      "scope": "company",
+      "keys": [
+        "leads.view",
+        "leads.create",
+        "leads.edit",
+        "leads.convert"
+      ]
+    },
+    {
+      "id": "sale.view",
+      "scope": "company",
+      "keys": [
+        "sale_phong.view"
+      ]
+    },
+    {
+      "id": "sale.content",
+      "scope": "company",
+      "keys": [
+        "sale_phong.edit",
+        "sale_phong.manage_images",
+        "sale_phong.edit_floor_plan",
+        "sale_phong.manage_pass_listings"
+      ]
+    },
+    {
+      "id": "sale.settings",
+      "scope": "company",
+      "keys": [
+        "sale_phong.manage_settings",
+        "sale_phong.manage_tokens"
+      ]
+    },
+    {
+      "id": "deposit.manage",
+      "scope": "company",
+      "keys": [
+        "deposits.view",
+        "deposits.create",
+        "deposits.edit",
+        "deposits.print",
+        "deposits.convert",
+        "sale_phong.create_deposit"
+      ]
+    },
+    {
+      "id": "contract.view",
+      "scope": "company",
+      "keys": [
+        "contracts.view",
+        "contracts.print"
+      ]
+    },
+    {
+      "id": "contract.manage",
+      "scope": "company",
+      "keys": [
+        "contracts.create",
+        "contracts.edit"
+      ]
+    },
+    {
+      "id": "contract.lifecycle",
+      "scope": "company",
+      "keys": [
+        "contracts.renew",
+        "contracts.transfer",
+        "contracts.handover"
+      ]
+    },
+    {
+      "id": "contract.terminate",
+      "scope": "company",
+      "keys": [
+        "contracts.terminate"
+      ]
+    },
+    {
+      "id": "building.view",
+      "scope": "company",
+      "keys": [
+        "buildings.view",
+        "rooms.view",
+        "areas.view"
+      ]
+    },
+    {
+      "id": "building.edit",
+      "scope": "company",
+      "keys": [
+        "buildings.edit"
+      ]
+    },
+    {
+      "id": "room.manage",
+      "scope": "company",
+      "keys": [
+        "rooms.create",
+        "rooms.edit"
+      ]
+    },
+    {
+      "id": "vehicle.manage",
+      "scope": "company",
+      "keys": [
+        "vehicles.view",
+        "vehicles.create",
+        "vehicles.edit",
+        "vehicles.delete"
+      ]
+    },
+    {
+      "id": "task.manage",
+      "scope": "company",
+      "keys": [
+        "tasks.view",
+        "tasks.create",
+        "tasks.edit",
+        "tasks.complete"
+      ]
+    },
+    {
+      "id": "asset.manage",
+      "scope": "company",
+      "keys": [
+        "assets.view",
+        "assets.create",
+        "assets.edit",
+        "assets.maintain"
+      ]
+    },
+    {
+      "id": "asset.transfer",
+      "scope": "company",
+      "keys": [
+        "assets.move"
+      ]
+    },
+    {
+      "id": "meter.manage",
+      "scope": "company",
+      "keys": [
+        "meters.view",
+        "meters.create",
+        "meters.edit",
+        "meters.delete",
+        "meter_readings.view",
+        "meter_readings.create",
+        "meter_readings.edit",
+        "meter_readings.delete"
+      ]
+    },
+    {
+      "id": "catalog.manage",
+      "scope": "company",
+      "keys": [
+        "categories.view",
+        "categories.create",
+        "categories.edit",
+        "categories.delete",
+        "services.view",
+        "services.create",
+        "services.edit",
+        "services.delete",
+        "service_quotas.view",
+        "service_quotas.create",
+        "service_quotas.edit",
+        "service_quotas.delete",
+        "asset_types.view",
+        "asset_types.create",
+        "asset_types.edit",
+        "asset_types.delete",
+        "task_types.view",
+        "task_types.create",
+        "task_types.edit",
+        "task_types.delete",
+        "suppliers.view",
+        "suppliers.create",
+        "suppliers.edit",
+        "suppliers.delete",
+        "materials.view",
+        "materials.create",
+        "materials.edit",
+        "materials.delete",
+        "warehouses.view",
+        "warehouses.create",
+        "warehouses.edit",
+        "warehouses.delete"
+      ]
+    },
+    {
+      "id": "residence.documents",
+      "scope": "company",
+      "keys": [
+        "customers.print",
+        "buildings.edit",
+        "contracts.view"
+      ]
+    },
+    {
+      "id": "invoice.manage",
+      "scope": "company",
+      "keys": [
+        "invoices.view",
+        "invoices.create",
+        "invoices.edit",
+        "invoices.print"
+      ]
+    },
+    {
+      "id": "voucher.create",
+      "scope": "company",
+      "keys": [
+        "income_expenses.create",
+        "income_expenses.all_buildings"
+      ]
+    },
+    {
+      "id": "voucher.view",
+      "scope": "company",
+      "keys": [
+        "income_expenses.view",
+        "income_expenses.print"
+      ]
+    },
+    {
+      "id": "voucher.edit-draft",
+      "scope": "company",
+      "keys": [
+        "income_expenses.edit_draft"
+      ]
+    },
+    {
+      "id": "debt.manage",
+      "scope": "company",
+      "keys": [
+        "auto_debt.view",
+        "auto_debt.create",
+        "auto_debt.edit"
+      ]
+    },
+    {
+      "id": "report.operations",
+      "scope": "company",
+      "keys": [
+        "reports_real_estate.view",
+        "reports_real_estate.vacant_rooms",
+        "reports_real_estate.expiring",
+        "reports_real_estate.occupancy",
+        "reports_real_estate.new_leases",
+        "reports_real_estate.renewals_transfers",
+        "reports_real_estate.terminations"
+      ]
+    },
+    {
+      "id": "admin.devices",
+      "scope": "company",
+      "keys": [
+        "network_center.view",
+        "network_center.execute",
+        "door_access.view",
+        "door_access.temp_password",
+        "door_access.remote_unlock",
+        "door_access.manage_devices"
+      ]
+    },
+    {
+      "id": "cashbook.view",
+      "scope": "cashbook",
+      "keys": [
+        "cashbooks.view"
+      ]
+    },
+    {
+      "id": "cashbook.use",
+      "scope": "cashbook",
+      "keys": [
+        "cashbooks.post"
+      ]
+    },
+    {
+      "id": "cashbook.close",
+      "scope": "cashbook",
+      "keys": [
+        "cashbooks.close",
+        "cashbooks.close_confirm"
+      ]
+    },
+    {
+      "id": "salary.self",
+      "scope": "self",
+      "keys": [
+        "salary.view"
+      ]
+    }
+  ],
+  "unchanged": [
+    "admin.integrations",
+    "admin.roles",
+    "admin.settings",
+    "admin.users",
+    "asset.dispose",
+    "building.structure",
+    "cashbook.manage",
+    "debt.forgive",
+    "deposit.refund",
+    "expense.approve",
+    "expense.auto-approve",
+    "invoice.collect",
+    "invoice.reverse",
+    "report.export",
+    "report.finance",
+    "report.shareholder",
+    "room.delete",
+    "salary.others",
+    "voucher.restricted",
+    "voucher.reverse"
+  ]
+}

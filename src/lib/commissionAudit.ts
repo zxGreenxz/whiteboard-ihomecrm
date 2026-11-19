@@ -14,10 +14,10 @@ export function isCommissionReasonValid(reason: string | null | undefined): bool
   return length >= COMMISSION_REASON_MIN && length <= COMMISSION_REASON_MAX;
 }
 
-const snapshotSchema = z.record(z.unknown()).nullable();
+const snapshotSchema = z.record(z.string(), z.unknown()).nullable();
 export const commissionInterventionSchema = z.object({
-  id: z.string().uuid(), stage: z.string().min(1), reason: z.string().nullable(),
-  actor_id: z.string().uuid().nullable(), actor_name: z.string().nullable(), at: z.string().datetime({ offset: true }),
+  id: z.string().guid(), stage: z.string().min(1), reason: z.string().nullable(),
+  actor_id: z.string().guid().nullable(), actor_name: z.string().nullable(), at: z.string().datetime({ offset: true }),
   before: snapshotSchema, after: snapshotSchema, baseline: snapshotSchema,
 });
 export const commissionInterventionsSchema = z.array(commissionInterventionSchema);

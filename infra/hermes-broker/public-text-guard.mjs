@@ -34,9 +34,9 @@ export function splitConfirmToken(name, args) {
 export function createPublicTextGuard({ clock }) {
   if (typeof clock !== 'function') throw new TypeError('invalid_public_text_clock');
   const store = createConfirmStore({ clock });
+  // bindAllFields băm cả đầu vào: confirmBinding chuẩn hoá khoá ở mọi cấp (kể cả từng phần tử items[]), không tự sắp ở đây.
   const binding = (connectionId, name, spec, input) => confirmBinding([connectionId, name, input[spec.object],
-    spec.bindAllFields ? Object.keys(input).sort().map(field => [field, input[field]]) :
-      spec.fields.map(field => Object.hasOwn(input, field) ? [input[field]] : [])]);
+    spec.bindAllFields ? input : spec.fields.map(field => Object.hasOwn(input, field) ? [input[field]] : [])]);
   return Object.freeze({
     // input = đầu vào ĐÃ chuẩn hoá của tool. Trả { allow } | { confirmation } | { refused }.
     review(connectionId, name, input, confirmToken) {

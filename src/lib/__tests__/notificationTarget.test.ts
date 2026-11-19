@@ -20,6 +20,11 @@ describe("dichThongBao — mọi đích qua allow-list + kiểm quyền", () => 
     expect(dichThongBao({ type: "CONTRACT_EXPIRING", contract_id: CON }, CHI_HOP_DONG)).toBe(`/contracts/${CON}`);
   });
 
+  it("đơn xin nghỉ v5 không có url vẫn mở /my-day (nhãn v5 qua notificationRawUrl)", () => {
+    expect(dichThongBao({ type: "CUSTOM", metadata: { v5: "leave_request", date: "2026-11-18" } }, {})).toBe("/my-day");
+    expect(dichThongBao({ type: "CUSTOM", metadata: { v5: "leave_request", url: "//evil.tld" } }, ALL)).toBeNull();
+  });
+
   it("khoá ngoại méo không mở đường điều hướng lạ", () => {
     expect(dichThongBao({ type: "PAYMENT_REMINDER", invoice_id: "../../x" }, ALL)).toBeNull();
     expect(duongDanDuPhong({ type: "CUSTOM" })).toBeNull();

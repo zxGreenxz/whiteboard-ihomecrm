@@ -10,8 +10,14 @@ import { canUse } from '@/lib/permissionPages';
 import { noticeDueLabel } from '@/lib/moveOutNoticeQueue';
 import { NOTICE_QUEUE_PAGE_SIZE, useMoveOutNoticeQueue } from '@/hooks/contracts/useMoveOutNoticeQueue';
 import { MoveOutDialog } from './MoveOutDialog';
+import { ContractQueueSheetRow } from './ContractQueueSheetRow';
 
-export function MoveOutNoticeQueue({ buildingIds = [] }: { buildingIds?: string[] }) {
+export function MoveOutNoticeQueue({ buildingIds = [], layout = 'page' }: {
+  buildingIds?: string[];
+  /** "sheet": nằm trong bảng trượt của mobile, tiêu đề do bảng trượt vẽ. */
+  layout?: 'page' | 'sheet';
+}) {
+  const sheet = layout === 'sheet';
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string>();
   const { selectedOrganizationId } = useOrganization();
@@ -30,21 +36,32 @@ export function MoveOutNoticeQueue({ buildingIds = [] }: { buildingIds?: string[
     }
   }, [queue.data, page]);
 
-  if (queue.isPending) return null;
+  if (queue.isPending) return sheet ? <LoadingState label="hồ sơ hẹn trả phòng" variant="table" rows={3} /> : null;
   if (queue.isError) return (
     <div role="alert" className="rounded-lg border p-3 text-sm">
       Chưa tải được danh sách cần xác nhận ngày trả phòng.
       <Button variant="link" onClick={() => void queue.refetch()}>Thử lại</Button>
     </div>
   );
-  if (!queue.data || queue.data.total === 0) return null;
+  if (!queue.data || queue.data.total === 0) return sheet
+    ? <p className="p-8 text-center text-sm text-muted-foreground">Không còn hồ sơ cần xác nhận ngày trả phòng.</p>
+    : null;
   return (
-    <section aria-label="Cần xác nhận ngày trả phòng" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
-      <h2 className="flex items-center gap-2 font-semibold">
-        <CalendarClock className="h-4 w-4" /> Cần xác nhận ngày trả phòng ({queue.data.total})
-      </h2>
-      <p className="mt-1 text-muted-foreground">Đã đến ngày khách hẹn trả. Xác nhận thực tế, đổi ngày hoặc hủy báo trả nếu khách ở tiếp.</p>
-      <ul className="mt-3 divide-y divide-amber-200">
+    <section aria-label="Cần xác nhận ngày trả phòng" className={sheet ? 'cm-qlist' : 'rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm'}>
+      {!sheet && <>
+        <h2 className="flex items-center gap-2 font-semibold">
+          <CalendarClock className="h-4 w-4" /> Cần xác nhận ngày trả phòng ({queue.data.total})
+        </h2>
+        <p className="mt-1 text-muted-foreground">Đã đến ngày khách hẹn trả. Xác nhận thực tế, đổi ngày hoặc hủy báo trả nếu khách ở tiếp.</p>
+      </>}
+      {sheet && <div className="cm-qrows">{queue.data.items.map((item) => (
+        <ContractQueueSheetRow key={item.contract_id} contractId={item.contract_id} room={item.room_name} building={item.building_name}
+          tag={noticeDueLabel(item.expected_move_out_date, queue.data.today)}
+          detail={`Hẹn trả ${item.expected_move_out_date.split('-').reverse().join('/')}`}
+          code={item.contract_number}
+          actions={canManage && <Button variant="outline" className="cm-qbtn" onClick={() => setSelectedId(item.contract_id)}>Cập nhật ngày trả</Button>} />
+      ))}</div>}
+      {!sheet && <ul className="mt-3 divide-y divide-amber-200">
         {queue.data.items.map((item) => (
           <li key={item.contract_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
             <div>
@@ -56,7 +73,7 @@ export function MoveOutNoticeQueue({ buildingIds = [] }: { buildingIds?: string[
             {canManage && <Button size="sm" variant="outline" onClick={() => setSelectedId(item.contract_id)}>Cập nhật ngày trả</Button>}
           </li>
         ))}
-      </ul>
+      </ul>}
       {queue.data.total > NOTICE_QUEUE_PAGE_SIZE && (
         <div className="mt-2 flex items-center justify-end gap-2">
           <Button size="sm" variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>Trước</Button>

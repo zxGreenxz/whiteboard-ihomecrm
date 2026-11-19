@@ -100,6 +100,7 @@ export function useSettlementActions(rows: SettlementRow[]) {
   const permsLoaded = !!perms && !v2Routes.isLoading;
   const canApprove = canUse(perms, 'income_expenses', 'approve');
   const canEdit = canUse(perms, 'income_expenses', 'edit');
+  const canEditDraft = canEdit || canUse(perms, 'income_expenses', 'edit_draft');
 
   const lamMoi = useCallback(async () => {
     await Promise.all(
@@ -152,11 +153,11 @@ export function useSettlementActions(rows: SettlementRow[]) {
       cancel: canCancel && gate.canCancel,
       cancelReason: gate.canCancel ? null : gate.reason,
       // Trục tiền chỉ sửa được khi phiếu Chờ duyệt và chưa ghi sổ.
-      editRecipient: unapproved && !posted && canEdit,
+      editRecipient: unapproved && !posted && canEditDraft,
       requestSupplement: unapproved && canEdit && !row.supplementPending,
       markSupplementDone: unapproved && canEdit && row.supplementPending,
     };
-  }, [permsLoaded, canApprove, canEdit, canCancel, v2Routes, flexEligibility]);
+  }, [permsLoaded, canApprove, canEdit, canEditDraft, canCancel, v2Routes, flexEligibility]);
 
   // ── Lệnh ──────────────────────────────────────────────────────────────────
 

@@ -11,9 +11,9 @@ export const vehicleSchema = z.object({
   license_plate: z.string().min(1, 'Biển số xe không được để trống'),
   owner_name: z.string().min(1, 'Tên chủ xe không được để trống'),
   ticket_number: z.string().optional(),
-  building_id: z.string().uuid().optional(),
-  room_id: z.string().uuid().optional(),
-  customer_id: z.string().uuid().optional(),
+  building_id: z.string().guid().optional(),
+  room_id: z.string().guid().optional(),
+  customer_id: z.string().guid().optional(),
   image_url: z.string().url().optional().or(z.literal('')),
 });
 

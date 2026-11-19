@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const inputSchema = z.object({
   sourceMessageIds: z.array(uuid).min(1).max(12),
   conversationIds: z.array(uuid).min(1).max(100),

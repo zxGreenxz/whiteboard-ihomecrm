@@ -427,12 +427,12 @@ Deno.test("AI đọc đi 9ROUTER (không OpenRouter): chỉ chuyển khoá cho p
   assertEquals(r.status, 200);
   const out = (await r.json()) as { choices: Array<{ message: { content: string } }> };
   assertEquals(out.choices[0].message.content, '{"items":[]}');
-  assertEquals(r.headers.get("x-quick-entry-model"), "cx/gpt-5.6-terra(low)");
+  assertEquals(r.headers.get("x-quick-entry-model"), "cx/gpt-6.1-terra(low)");
   assertEquals(r.headers.get("x-quick-entry-index"), "0");
   assertEquals(upstreamUrls[0], "https://router.example/v1/chat/completions");
   const sent = upstreamBodies[0];
   assertEquals(Object.keys(sent).sort(), ["max_tokens", "messages", "model", "response_format", "stream"]);
-  assertEquals(sent.model, "cx/gpt-5.6-terra(low)");
+  assertEquals(sent.model, "cx/gpt-6.1-terra(low)");
   assertEquals(sent.max_tokens, 4000);
   assertEquals(sent.response_format, { type: "json_object" });
   assertEquals(logs[0].provider, "9router");
@@ -533,7 +533,7 @@ Deno.test("mô hình giọng nói NGOÀI danh sách (kể cả gpt-4o bịa ch�
 });
 
 Deno.test("chọn mô hình đọc + mức suy nghĩ hợp lệ ⇒ gọi đúng id đó trước; header báo đúng mô hình trả lời", async () => {
-  for (const model of ["cx/gpt-6.1-sol(high)", "cx/gpt-6-astra", "cx/gpt-6-luna(ultra)", "cx/gpt-5.6-luna(minimal)", "cx/gpt-5.6-terra(medium)"]) {
+  for (const model of ["cx/gpt-6.1-sol(high)", "cx/gpt-6-astra", "cx/gpt-6-luna(ultra)", "cx/gpt-5.6-luna(minimal)", "cx/gpt-6.1-terra(medium)"]) {
     const s = setup({ upstream: [{ status: 200, body: { choices: [{ message: { content: "{}" } }] } }] });
     const r = await xuLy(readReq({ model, messages }), s.deps);
     assertEquals(s.upstreamBodies[0].model, model);
@@ -542,17 +542,17 @@ Deno.test("chọn mô hình đọc + mức suy nghĩ hợp lệ ⇒ gọi đúng
 });
 
 Deno.test("mô hình đọc ngoài danh sách / tổ hợp không hỗ trợ (Astra + minimal) / mức lạ ⇒ chuỗi mặc định", async () => {
-  for (const model of ["cx/gpt-6-astra(minimal)", "cx/gpt-reserve", "cx/gpt-6-luna(turbo)", "ag/gemini-3.8-flash", "quick_entry:auto"]) {
+  for (const model of ["cx/gpt-6-astra(minimal)", "cx/gpt-5.6-terra(low)", "cx/gpt-reserve", "cx/gpt-6-luna(turbo)", "ag/gemini-3.8-flash", "quick_entry:auto"]) {
     const s = setup({ upstream: [{ status: 200, body: { choices: [{ message: { content: "{}" } }] } }] });
     await xuLy(readReq({ model, messages }), s.deps);
-    assertEquals(s.upstreamBodies[0].model, "cx/gpt-5.6-terra(low)", model);
+    assertEquals(s.upstreamBodies[0].model, "cx/gpt-6.1-terra(low)", model);
   }
 });
 
 Deno.test("đã chọn mô hình đọc + header thử lại ⇒ bỏ qua mô hình đã chọn, sang chuỗi mặc định", async () => {
   const s = setup({ upstream: [{ status: 200, body: { choices: [{ message: { content: "{}" } }] } }] });
   await xuLy(readReq({ model: "cx/gpt-6-sol(low)", messages }, { "x-quick-entry-skip": "1" }), s.deps);
-  assertEquals(s.upstreamBodies[0].model, "cx/gpt-5.6-terra(low)");
+  assertEquals(s.upstreamBodies[0].model, "cx/gpt-6.1-terra(low)");
 });
 
 Deno.test("đường đọc: một lần thử được tới 35 s (mức suy nghĩ cao, ảnh bill); đường giọng vẫn 25 s", () => {
@@ -578,7 +578,7 @@ Deno.test("QUICK_ENTRY_CHOICES=off ⇒ bỏ qua lựa chọn của người dùn
 Deno.test("danh sách lựa chọn: 5 mô hình giọng nói; mặc định nằm trong danh sách", () => {
   assertEquals(STT_CHOICES.length, 5);
   assert(STT_MODELS_MAC_DINH.every((m) => STT_CHOICES.includes(m)));
-  assert(READ_MODEL_CHOICES.includes("cx/gpt-6-luna") && READ_MODEL_CHOICES.includes("cx/gpt-5.6-terra") && READ_EFFORTS.includes("low"));
+  assert(READ_MODEL_CHOICES.includes("cx/gpt-6-luna") && READ_MODEL_CHOICES.includes("cx/gpt-6.1-terra") && READ_EFFORTS.includes("low"));
 });
 
 // ── Cụm từ ưu tiên cho chirp-3 ─────────────────────────────────────────────────────────────────────

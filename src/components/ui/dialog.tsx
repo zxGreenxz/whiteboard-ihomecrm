@@ -34,6 +34,18 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 export const DIALOG_CLOSE_RED =
   "bg-red-600 text-white opacity-100 hover:bg-red-700 hover:opacity-100 hover:text-white focus:ring-red-400";
 
+/**
+ * Hộp DÀI có hàng nút dính đáy — thân cuộn, nút luôn thấy, không phải cuộn mới bấm được — theo kiểu thanh nút form
+ * Thu chi trên điện thoại (viền trên, nền đặc, hai nút chia đôi trên màn hẹp: nút nhận `flex-1 sm:flex-none`).
+ *   DIALOG_SCROLL_BODY   cho DialogContent: giới hạn theo khung nhìn động + cuộn dọc; bỏ đệm đáy (thanh nút tự có đệm).
+ *   DIALOG_STICKY_FOOTER cho DialogFooter đặt CUỐI thân hộp; lề ngang âm khớp đệm p-6 để thanh nút phủ sát hai mép.
+ * Không dùng lề âm ở ĐÁY: phần tử dính không được ra khỏi khối chứa, lề âm làm thanh nút bị đẩy lên và lộ một dải nội
+ * dung chạy bên dưới.
+ */
+export const DIALOG_SCROLL_BODY = "max-h-[90dvh] overflow-y-auto pb-0";
+export const DIALOG_STICKY_FOOTER =
+  "sticky bottom-0 z-10 -mx-6 flex-row flex-wrap gap-2 border-t bg-background px-6 py-3 sm:justify-end sm:space-x-0";
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {

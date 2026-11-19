@@ -10,6 +10,11 @@ BEGIN
   RAISE EXCEPTION 'FORWARD_EXPECTED_DENIAL: %',p_label;
 END $$;
 CREATE OR REPLACE FUNCTION pg_temp.fid(p_key text) RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT current_setting('forward_test.'||p_key)::uuid $$;
+-- Từ 20261104173640 hàm tạm do postgres tạo không còn EXECUTE cho PUBLIC; ba helper này được gọi dưới
+-- authenticated và service_role.
+GRANT EXECUTE ON FUNCTION pg_temp.forward_assert(boolean, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION pg_temp.forward_denied(text, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION pg_temp.fid(text) TO authenticated, service_role;
 
 DO $fixtures$
 DECLARE oa uuid:='aaaa0000-0000-4000-8000-000000000001'; ob uuid:='dddd0000-0000-4000-8000-000000000001';

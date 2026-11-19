@@ -32,7 +32,7 @@ export default function CustomerListToolbar({
   viewMode,
   onViewModeChange,
 }: CustomerListToolbarProps) {
-  const { hasAnyScope } = useMyBuildingScope();
+  const { hasAnyScope } = useMyBuildingScope('customers', 'create');
   const { data: perms } = useMyPermissions();
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

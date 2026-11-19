@@ -4,7 +4,7 @@ import {VoucherPartialError,voucherFailureMessage,voucherOutcomeUnknown} from '@
 import {getBatchAccountIssue} from '@/hooks/income-expenses/batch';
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useVoucherWithBatch } from "@/hooks/useVoucherDetail";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ import type {
   IncomeExpenseWithRelations,
 } from '@/hooks/useIncomeExpenses';
 import { useUpdateBatchAccount } from '@/hooks/useIncomeExpenses';
+import { useVoucherCancelEligibility } from '@/hooks/income-expenses/useVoucherActions';
 import { useAccounts } from '@/hooks/useAccounts';
 import { format } from 'date-fns';
 import { formatPeriod } from '@/lib/monthPeriod';
@@ -102,6 +103,9 @@ function IncomeExpenseBatchDetailContent({
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [childVoucher, setChildVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
+  // Phiếu con không nằm trong trang danh sách ⇒ tự hỏi máy chủ phiếu này huỷ được không.
+  const childList = useMemo(() => (childVoucher ? [childVoucher] : []), [childVoucher]);
+  const childCancel = useVoucherCancelEligibility(childList);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
   const accountsQuery=useAccounts();
@@ -453,6 +457,8 @@ function IncomeExpenseBatchDetailContent({
         }}
         voucher={childVoucher}
         previewVoucher={childVoucher}
+        cancelEligibility={childCancel.cancelEligibility}
+        incomeCancelEligibility={childCancel.incomeCancelEligibility}
         onEdit={
           onEditVoucher
             ? (v) => {

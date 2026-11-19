@@ -1,12 +1,12 @@
 import { useId, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ChevronLeft, ChevronRight, RefreshCw, X } from 'lucide-react';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useBuildings } from '@/hooks/useBuildings';
+import { useThuTienBuildings } from '@/hooks/useThuTienBuildings';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useInvoiceRoundingReport } from '@/hooks/useInvoiceRoundingReport';
 import { canUse } from '@/lib/permissionPages';
@@ -16,8 +16,8 @@ import { LoadingState } from '@/components/loading/LoadingState';
 
 const filtersSchema = z.object({
   billingMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
-  collectorId: z.union([z.literal(''), z.string().uuid()]),
-  buildingId: z.union([z.literal(''), z.string().uuid()]),
+  collectorId: z.union([z.literal(''), z.string().guid()]),
+  buildingId: z.union([z.literal(''), z.string().guid()]),
 });
 interface FilterValues { billingMonth: string; collectorId: string; buildingId: string }
 const PAGE_SIZE = 50;
@@ -36,9 +36,9 @@ export default function InvoiceRoundingReportDialog({ open, onOpenChange, billin
   const id = useId();
   const { data: permissions } = useMyPermissions();
   const allowed = canUse(permissions, 'thu_tien', 'report');
-  const { data: buildings = [], isError: buildingsError } = useBuildings({ enabled: open && allowed });
+  const { data: buildings = [], isError: buildingsError } = useThuTienBuildings();
   const { control, watch } = useForm<FilterValues>({
-    resolver: zodResolver(filtersSchema),
+    resolver: zodResolver(filtersSchema) as Resolver<FilterValues>,
     defaultValues: { billingMonth: billingMonth?.slice(0, 7) || currentMonthVN(), collectorId: '', buildingId: buildingId || '' },
   });
   const filters = watch();
@@ -64,7 +64,7 @@ export default function InvoiceRoundingReportDialog({ open, onOpenChange, billin
             </label>
             <label htmlFor={`${id}-building`} className="grid gap-1 text-sm font-medium">Tòa
               <Controller name="buildingId" control={control} render={({ field }) => <select {...field} id={`${id}-building`} className="h-10 min-w-0 rounded-md border bg-background px-3" onChange={(event) => { field.onChange(event); setPage(0); }}>
-                <option value="">Tất cả tòa</option>
+                <option value="">Tất cả tòa được giao</option>
                 {buildings.map((building) => <option key={building.id} value={building.id}>{building.name}</option>)}
               </select>} />
             </label>

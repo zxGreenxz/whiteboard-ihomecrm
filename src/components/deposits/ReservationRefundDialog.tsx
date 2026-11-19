@@ -2,7 +2,7 @@ import { focusFirstError } from "@/lib/formErrors";
 import { reservationSettlementErrorMessage } from "@/lib/reservationSettlementRpc";
 import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ export function ReservationRefundDialog({ settlementId, amount, open, onOpenChan
   const accountsQuery = useCustodianCashbooksV2(open);
   const accounts = accountsQuery.data ?? [];
   const pay = usePayReservationRefund();
-  const form = useForm<ReservationRefundPaymentValues>({ shouldFocusError: false, resolver: zodResolver(reservationRefundPaymentSchema), defaultValues: { accountId: "", paidOn: vnTodayISO() } });
+  const form = useForm<ReservationRefundPaymentValues>({ shouldFocusError: false, resolver: zodResolver(reservationRefundPaymentSchema) as Resolver<ReservationRefundPaymentValues>, defaultValues: { accountId: "", paidOn: vnTodayISO() } });
   const accountId = form.watch("accountId");
   const [confirmedPaid, setConfirmedPaid] = useState(false);
   const formRoot = useRef<HTMLDivElement>(null);

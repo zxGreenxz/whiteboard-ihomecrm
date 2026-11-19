@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-10-07T16:18:18.580Z",
+  "checkedAt": "2026-11-04T17:11:04.828Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
     "githubRepoVisibility": {
@@ -27,7 +27,8 @@
       ],
       "requiredChecks": [],
       "classicProtection": "absent",
-      "note": "main: chặn xoá nhánh + force-push. Chưa có required status check — khoảng trống ở known-gap required-checks-khong-cuong-che-duoc. bypass_actors không đọc được với token này (cần quyền admin) — chưa xác minh ai được đi vòng."
+      "bypassActors": [],
+      "note": "main: chặn xoá nhánh + force-push. Chưa có required status check — khoảng trống ở known-gap required-checks-khong-cuong-che-duoc."
     },
     "githubBranchProduction": {
       "status": "present",
@@ -41,7 +42,8 @@
       ],
       "requiredChecks": [],
       "classicProtection": "absent",
-      "note": "production: chặn xoá nhánh + force-push. Chưa có required status check — khoảng trống ở known-gap required-checks-khong-cuong-che-duoc. bypass_actors không đọc được với token này (cần quyền admin) — chưa xác minh ai được đi vòng."
+      "bypassActors": [],
+      "note": "production: chặn xoá nhánh + force-push. Chưa có required status check — khoảng trống ở known-gap required-checks-khong-cuong-che-duoc."
     },
     "vercelProductionBranch": {
       "status": "checked",
@@ -83,6 +85,16 @@
       "status": "checked",
       "envVarNames": [
         {
+          "key": "HERMES_CRM_ORIGIN",
+          "target": "production",
+          "type": "encrypted"
+        },
+        {
+          "key": "HERMES_UPSTREAM_ORIGIN",
+          "target": "production",
+          "type": "encrypted"
+        },
+        {
           "key": "VITE_APP_ENV",
           "target": "preview",
           "type": "plain"
@@ -119,12 +131,12 @@
         }
       ],
       "productionDeployment": {
-        "sha": "1c616829e50bcbf96f9cff958cf714760d35bf5b",
+        "sha": "f2473ba4a3258acd3ec27db6b073954073bf7c1f",
         "ref": "production",
         "state": "READY",
         "ancestorOfMain": true
       },
-      "note": "7 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 1c616829e50b từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
+      "note": "9 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy f2473ba4a325 từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
     },
     "productionBranchExists": {
       "status": "present",
@@ -132,8 +144,8 @@
     }
   },
   "localHead": {
-    "head": "d1d07690de9fc17a94cd69e1fb4b784d1015b92e",
-    "branch": "chore/public-repo-controls",
+    "head": "f2473ba4a3258acd3ec27db6b073954073bf7c1f",
+    "branch": "claude/external-controls-snapshot-0511",
     "hasProductionBranch": true
   }
 }

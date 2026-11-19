@@ -2,14 +2,26 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ADJUSTMENT_REASON_SYSTEM_MESSAGE,
+  CLOSE_NOTE_SYSTEM_MESSAGE,
+  RECLOSE_REASON_SYSTEM_MESSAGE,
+  RESET_REASON_SYSTEM_MESSAGE,
+  UNALLOCATED_REASON_SYSTEM_MESSAGE,
+  UNLOCK_REASON_SYSTEM_MESSAGE,
   buildProfitCloseAdjustments,
+  defaultUnallocatedDispositionReason,
   hasUnallocatedProfitResidual,
+  isSystemMessageReason,
   mergeProfitCloseDrafts,
+  normalizeReasonText,
   normalizeUnallocatedDisposition,
+  reasonProblem,
   resolveProfitCloseOrganizationId,
   validateProfitCloseDrafts,
   type ProfitCloseDraft,
   type ProfitCloseDraftMap,
+  buildProfitPreviewAdjustments as previewAdjustmentsOf,
+  parseSignedAdjustment as parseAdjustmentInput,
 } from "@/lib/profitClose";
 
 describe("profit close draft initialization", () => {
@@ -24,10 +36,24 @@ describe("profit close draft initialization", () => {
       b1: {
         adjustmentAmount: 0,
         adjustmentReason: "",
-        unallocatedDisposition: null,
+        unallocatedDisposition: "RETAINED_EARNINGS",
         unallocatedDispositionReason: "",
       },
     });
+  });
+
+  it("chưa chọn hoặc chốt kiểu cũ ⇒ nháp mặc định giữ lại; câu lý do mặc định nạp lại thành ô trống", () => {
+    const drafts = mergeProfitCloseDrafts(
+      [
+        { buildingId: "cu", locked: true, unallocatedDisposition: "LEGACY_RETAINED_UNALLOCATED", unallocatedDispositionReason: "Chốt trước V3" },
+        { buildingId: "macdinh", locked: true, unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: defaultUnallocatedDispositionReason("CARRY_FORWARD") },
+      ],
+      {},
+      new Set(),
+    );
+    // Lý do backfill của chốt kiểu cũ không đi theo quyết định mới.
+    expect(drafts.cu).toMatchObject({ unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "" });
+    expect(drafts.macdinh).toMatchObject({ unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "" });
   });
 
   it("reuses only the signed snapshot adjustment, never a stale absolute adjusted value", () => {
@@ -202,6 +228,43 @@ describe("profit close adjustment validation", () => {
     ).toBe(true);
   });
 
+  it("lý do xử lý phần chưa phân bổ không bắt buộc; đã ghi thì vẫn phải 8–500 ký tự", () => {
+    const draftOf = (reason: string): ProfitCloseDraftMap => ({
+      b1: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: reason },
+    });
+    const options = { reclose: false, overallReason: "", unallocatedProfitByBuilding: { b1: 25_000 } };
+    expect(validateProfitCloseDrafts(["b1"], draftOf(""), options).valid).toBe(true);
+    expect(validateProfitCloseDrafts(["b1"], draftOf("   "), options).valid).toBe(true);
+    expect(validateProfitCloseDrafts(["b1"], draftOf("ngắn"), options).rowErrors.b1).toBe(
+      "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự",
+    );
+  });
+
+  it("ô lý do để trống ⇒ gửi câu mặc định đủ 8–500 ký tự theo cách xử lý; nháp thiếu cách xử lý ⇒ giữ lại", () => {
+    const payload = buildProfitCloseAdjustments(
+      ["b1", "b2", "b3", "b4"],
+      {
+        b1: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "  " },
+        b2: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "" },
+        b3: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: null, unallocatedDispositionReason: "" },
+        // nháp gieo sẵn mặc định nhưng nhà KHÔNG còn phần dư ⇒ không gửi cách xử lý
+        b4: { adjustmentAmount: 0, adjustmentReason: "", unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "ghi thừa lý do" },
+      },
+      { b1: 25_000, b2: -40, b3: 10, b4: 0.009 },
+    );
+    expect(payload.map((row) => [row.unallocated_disposition, row.unallocated_disposition_reason])).toEqual([
+      ["RETAINED_EARNINGS", "Giữ lại lợi nhuận — không ghi lý do"],
+      ["CARRY_FORWARD", "Chuyển kỳ sau — không ghi lý do"],
+      ["RETAINED_EARNINGS", "Giữ lại lợi nhuận — không ghi lý do"],
+      [null, null],
+    ]);
+    for (const row of payload.slice(0, 3)) {
+      const reason = row.unallocated_disposition_reason ?? "";
+      expect(reason.length).toBeGreaterThanOrEqual(8);
+      expect(isSystemMessageReason(reason)).toBe(false);
+    }
+  });
+
   it("uses the exact residual threshold and rejects unknown dispositions", () => {
     expect(hasUnallocatedProfitResidual(0.009)).toBe(false);
     expect(hasUnallocatedProfitResidual(-0.01)).toBe(true);
@@ -223,6 +286,100 @@ describe("profit close organization scope", () => {
   it("preserves a valid explicit selection and clears an invalid one", () => {
     expect(resolveProfitCloseOrganizationId(organizations, "org-b")).toBe("org-b");
     expect(resolveProfitCloseOrganizationId(organizations, "org-missing")).toBe("");
+  });
+});
+
+describe("lý do chép nguyên câu báo lỗi (rà 21/10 F60)", () => {
+  const residual = { b1: 100_000 };
+  const draft = (patch: Partial<ProfitCloseDraft>): ProfitCloseDraftMap => ({
+    b1: {
+      adjustmentAmount: 0,
+      adjustmentReason: "",
+      unallocatedDisposition: "RETAINED_EARNINGS",
+      unallocatedDispositionReason: "Giữ lại để bù chi sửa chữa",
+      ...patch,
+    },
+  });
+
+  it("đúng câu lỗi cũ làm lý do giữ lại (dữ liệu T7) bị từ chối, kể cả khác gạch/hoa/dấu chấm", () => {
+    for (const copied of [
+      "Lý do xử lý phải có 8–500 ký tự",
+      "  lý do xử lý phải có 8 - 500 ký tự.  ",
+      "Lý do xử lý phần chưa phân bổ phải có 8—500 ký tự",
+    ]) {
+      expect(isSystemMessageReason(copied)).toBe(true);
+      const result = validateProfitCloseDrafts(["b1"], draft({ unallocatedDispositionReason: copied }), {
+        reclose: false,
+        overallReason: "",
+        unallocatedProfitByBuilding: residual,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.rowErrors.b1).toBe(UNALLOCATED_REASON_SYSTEM_MESSAGE);
+      // màn chốt định vị ô theo chữ: có "chưa phân bổ", không có "chọn" ⇒ ô lý do
+      expect(result.rowErrors.b1).toContain("chưa phân bổ");
+      expect(result.rowErrors.b1).not.toContain("chọn");
+    }
+  });
+
+  it("lý do thật vẫn qua — kể cả có nhắc số ký tự giữa câu", () => {
+    for (const real of [
+      "Giữ lại để bù chi sửa chữa",
+      "Giữ lại theo biên bản họp, phải có 8 người ký",
+      "Chuyển kỳ sau vì khoá cửa mới phải có 8-500 ký tự mật mã",
+    ]) {
+      expect(isSystemMessageReason(real)).toBe(false);
+    }
+    expect(
+      validateProfitCloseDrafts(["b1"], draft({}), {
+        reclose: false,
+        overallReason: "",
+        unallocatedProfitByBuilding: residual,
+      }).valid,
+    ).toBe(true);
+  });
+
+  it("lý do điều chỉnh, lý do chốt lại và ghi chú lần chốt cũng bị chặn", () => {
+    const adj = validateProfitCloseDrafts(
+      ["b1"],
+      draft({ adjustmentAmount: -5, adjustmentReason: "Lý do điều chỉnh phải có 8–500 ký tự" }),
+      { reclose: false, overallReason: "", unallocatedProfitByBuilding: residual },
+    );
+    expect(adj.rowErrors.b1).toBe(ADJUSTMENT_REASON_SYSTEM_MESSAGE);
+    expect(adj.rowErrors.b1?.startsWith("Số điều chỉnh")).toBe(false);
+
+    const reclose = validateProfitCloseDrafts(["b1"], draft({}), {
+      reclose: true,
+      overallReason: "Lý do chốt lại phải có 8–1000 ký tự",
+      unallocatedProfitByBuilding: residual,
+    });
+    expect(reclose.overallReasonError).toBe(RECLOSE_REASON_SYSTEM_MESSAGE);
+
+    const note = validateProfitCloseDrafts(["b1"], draft({}), {
+      reclose: false,
+      overallReason: "Không bắt buộc cho lần chốt đầu",
+      unallocatedProfitByBuilding: residual,
+    });
+    expect(note.overallReasonError).toBe(CLOSE_NOTE_SYSTEM_MESSAGE);
+    // ghi chú lần đầu để trống vẫn được
+    expect(
+      validateProfitCloseDrafts(["b1"], draft({}), { reclose: false, overallReason: "", unallocatedProfitByBuilding: residual })
+        .overallReasonError,
+    ).toBeNull();
+  });
+
+  it("dán lại chính câu từ chối mới cũng bị chặn; mở khoá / đặt lại dùng chung luật", () => {
+    for (const message of [
+      UNALLOCATED_REASON_SYSTEM_MESSAGE,
+      UNLOCK_REASON_SYSTEM_MESSAGE,
+      RESET_REASON_SYSTEM_MESSAGE,
+      "Nhập lý do mở khoá từ 8 đến 1000 ký tự.",
+      "reason must contain 8..1000 characters",
+    ]) {
+      expect(reasonProblem(message, 8, 1000)).toBe("SYSTEM_MESSAGE");
+    }
+    expect(reasonProblem("   1234567   ", 8, 1000)).toBe("LENGTH");
+    expect(reasonProblem("Sửa phiếu nhập sai số tiền", 8, 1000)).toBeNull();
+    expect(normalizeReasonText("Mở khóa – “Lý do”.")).toBe("mở khoá-“lý do");
   });
 });
 
@@ -344,5 +501,56 @@ describe("profit close V2 boundaries", () => {
     expect(guardMigrationSource).toMatch(
       /REVOKE ALL ON FUNCTION public\.profit_reset_v2[\s\S]*authenticated/,
     );
+  });
+});
+
+describe("buildProfitPreviewAdjustments — preview chỉ nhận số tiền (chống giật 14/11)", () => {
+  const draft = (amount: number, extra: Partial<{ adjustmentReason: string; unallocatedDisposition: "RETAINED_EARNINGS" | "CARRY_FORWARD" | null; unallocatedDispositionReason: string }> = {}) => ({
+    adjustmentAmount: amount,
+    adjustmentReason: extra.adjustmentReason ?? "",
+    unallocatedDisposition: extra.unallocatedDisposition ?? null,
+    unallocatedDispositionReason: extra.unallocatedDispositionReason ?? "",
+  });
+
+  it("bỏ toà = 0, bỏ lý do và cách xử lý, sắp theo building_id", () => {
+    expect(previewAdjustmentsOf({
+      b2: draft(-50, { adjustmentReason: "giảm do hoàn cọc", unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "chuyển sang kỳ sau" }),
+      b1: draft(0, { unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "giữ lại lợi nhuận" }),
+      b3: draft(1200.5),
+    })).toEqual([
+      { building_id: "b2", adjustment_amount: -50, adjustment_reason: null, unallocated_disposition: null, unallocated_disposition_reason: null },
+      { building_id: "b3", adjustment_amount: 1200.5, adjustment_reason: null, unallocated_disposition: null, unallocated_disposition_reason: null },
+    ]);
+  });
+
+  it("đổi lý do / cách xử lý không đổi payload; đổi số thì đổi", () => {
+    const a = JSON.stringify(previewAdjustmentsOf({ b1: draft(10) }));
+    const b = JSON.stringify(previewAdjustmentsOf({ b1: draft(10, { adjustmentReason: "lý do mới dài", unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "x".repeat(20) }) }));
+    expect(b).toBe(a);
+    expect(JSON.stringify(previewAdjustmentsOf({ b1: draft(11) }))).not.toBe(a);
+  });
+
+  it("số chưa hợp lệ (NaN, quá 2 chữ số lẻ, vượt numeric(15,2)) không gửi preview — SQL sẽ ném lỗi", () => {
+    expect(previewAdjustmentsOf({ b1: draft(Number.NaN), b2: draft(1.234), b3: draft(10_000_000_000_000), b4: draft(5) }))
+      .toEqual([{ building_id: "b4", adjustment_amount: 5, adjustment_reason: null, unallocated_disposition: null, unallocated_disposition_reason: null }]);
+  });
+});
+
+describe("parseSignedAdjustment — ô điều chỉnh có dấu", () => {
+  it.each([
+    ["", 0],
+    ["1000000", 1_000_000],
+    ["1.000.000", 1_000_000],
+    ["-1.250.000", -1_250_000],
+    ["1.000.000,5", 1_000_000.5],
+    ["12,5", 12.5],
+    ["12.5", 12.5],
+    ["-250000", -250_000],
+    [" 1 000 ", 1000],
+  ])("%j ⇒ %d", (raw, expected) => {
+    expect(parseAdjustmentInput(raw)).toBe(expected);
+  });
+  it.each(["abc", "-", "1,234", "1.2.3", "1.00.000", "12.345,678", "0.500", "-0.250"])("%j ⇒ NaN", (raw) => {
+    expect(Number.isNaN(parseAdjustmentInput(raw))).toBe(true);
   });
 });

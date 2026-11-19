@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "kind": "e2e-fleet-local-receipt",
+  "suiteId": "e2e-fleet",
+  "status": "passed",
+  "commit": "583726a3fe8d2e61a716efd34742aa9a64da43c3",
+  "fleetTree": "313ba942aeb321583513086024516ebf7982e02d",
+  "environment": "TEST",
+  "target": {
+    "kind": "loopback",
+    "origin": "http://127.0.0.1:5197"
+  },
+  "targetSupabaseRef": "hzulujxgonszuleqticb",
+  "targetBuildSha": "583726a3fe8d2e61a716efd34742aa9a64da43c3",
+  "actor": {
+    "gitUser": "zxGreenxz",
+    "agent": "claude"
+  },
+  "reportSha256": "89a073312de2eb3befa79fdad4afc31ed1032b68c971b8b3cf1144d8adff2fd1",
+  "runner": {
+    "node": "v22.20.0",
+    "playwright": "1.61.1"
+  },
+  "runId": "7fc45784-8118-4557-85c1-7f910b4ae6ef",
+  "startedAt": "2026-11-01T06:49:26.403Z",
+  "completedAt": "2026-11-01T06:49:47.432Z",
+  "specs": [
+    {
+      "file": ".e2e-fleet/specs/contract-workflow-smoke.spec.ts",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    }
+  ]
+}

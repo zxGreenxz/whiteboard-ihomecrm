@@ -23,13 +23,18 @@ function tieuDe(key) {
   return key.startsWith("sb_") ? { apikey: key } : { apikey: key, Authorization: `Bearer ${key}` };
 }
 
+// Gói Free của TEST giới hạn mỗi file 50 MiB cho cả project; bucket production đặt cao hơn (meter-capture-media 100 MiB, 28/10)
+// thì Storage TEST từ chối dựng (413 EntityTooLarge). TEST không chép byte file nên kẹp về trần TEST là đủ; vân tay so cùng trần đó.
+export const TRAN_FILE_TEST = 52428800;
+
 export async function dungBucket(testUrl, testKey, buckets) {
   const h = { ...tieuDe(testKey), "Content-Type": "application/json" };
   const r = await fetch(`${testUrl}/storage/v1/bucket`, { headers: h });
   if (!r.ok) throw new Error(`Liệt kê bucket TEST lỗi ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const coSan = new Set((await r.json()).map((b) => b.id));
   for (const b of buckets) {
-    const than = { id: b.id, name: b.name, public: b.public, file_size_limit: b.file_size_limit, allowed_mime_types: b.allowed_mime_types };
+    const tran = b.file_size_limit == null ? b.file_size_limit : Math.min(Number(b.file_size_limit), TRAN_FILE_TEST);
+    const than = { id: b.id, name: b.name, public: b.public, file_size_limit: tran, allowed_mime_types: b.allowed_mime_types };
     const res = coSan.has(b.id)
       ? await fetch(`${testUrl}/storage/v1/bucket/${encodeURIComponent(b.id)}`, { method: "PUT", headers: h, body: JSON.stringify(than) })
       : await fetch(`${testUrl}/storage/v1/bucket`, { method: "POST", headers: h, body: JSON.stringify(than) });

@@ -213,6 +213,8 @@ export interface InvoiceTotals {
 
 /** Form data shape for react-hook-form (create/edit invoice) */
 export interface InvoiceFormData {
+  /** Internal retry identity for invoices linked to approved meter readings. */
+  meter_capture_request_id?: string;
   rent_support_context?: import('@/lib/invoiceRentSupport').InvoiceRentSupportContext;
   building_id: string;
   room_id: string;
@@ -239,6 +241,8 @@ export interface InvoiceFormData {
 
 /** Single item within the invoice form */
 export interface InvoiceFormItem {
+  /** Internal source only; never serialized into public invoice payloads. */
+  meter_source?: import('@/lib/meter-capture/types').MeterSourceReference;
   service_id?: string | null;
   type: InvoiceItemType;
   accounting_class?: 'REVENUE' | 'DEPOSIT' | 'NON_PNL';

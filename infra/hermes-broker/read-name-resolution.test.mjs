@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { BrokerError } from './broker.mjs';
 import { createBoundUserOperationService } from './bound-user-operation.mjs';
 import { createReadNameResolver, matchBuildings, ROOM_MATCH_LIMIT, ROOM_FILTER_PAGE_LIMIT, ROOM_FILTER_MAX_PAGES, DIRECTORY_RPCS } from './read-name-resolution.mjs';
@@ -117,6 +118,32 @@ test('splitReadNames: names leave the arguments before the validator; blanks are
   }
   assert.deepEqual(DIRECTORY_RPCS, ['hermes_building_directory_v1', 'hermes_room_directory_v1', 'hermes_organization_name_v1', 'hermes_user_display_name_v1',
     'hermes_building_directory_v2']);
+});
+
+// Lượt 11 (nghiệm thu 24/10): "45 Hoa Mai" phải ra "45/3 Hoa Mai" ở cả đường đọc — cùng bộ vector với lõi giải tên SQL (ca read=true,
+// infra/hermes-broker/name-match-vectors.json). Danh bạ đọc chỉ có toà trong phạm vi (không xoá, không ảo) ⇒ ngoài phạm vi = không khớp.
+test('buildingName: house-number tokens after exact/contains, same vectors as the SQL write resolver; ambiguity still refuses', async () => {
+  const vectors = JSON.parse(readFileSync(new URL('./name-match-vectors.json', import.meta.url), 'utf8'));
+  const directory = vectors.buildings.filter(row => row.inScope && !row.deleted && !row.virtual).map(row => ({ id: row.key, name: row.name, code: row.code }));
+  const cases = vectors.cases.filter(row => row.read);
+  assert.ok(cases.length >= 9 && cases.some(row => row.tokens));
+  const keyOf = name => vectors.buildings.find(row => row.name === name).key;
+  for (const row of cases) {
+    const expected = row.expect ? [row.expect] : row.why === 'ambiguous' ? row.candidates.map(keyOf) : [];
+    assert.deepEqual(matchBuildings(directory, row.wanted).map(entry => entry.id), expected, JSON.stringify(row));
+  }
+  // Bằng / chứa vẫn đứng trước: toà tên đúng "45 Hoa Mai" thắng; chuỗi chỉ có số không đi bậc token lỏng.
+  assert.deepEqual(matchBuildings([...directory, { id: 'exact', name: '45 Hoa Mai', code: null }], '45 Hoa Mai').map(entry => entry.id), ['exact']);
+  assert.deepEqual(matchBuildings(directory, '45 3').map(entry => entry.id), []);
+  const towers = [{ id: A, name: '45/3 Hoa Mai', code: null }, { id: B, name: '12/5 Hoa Sứ', code: null }, { id: C, name: '12/7 Hoa Sứ', code: null }];
+  const resolver = createReadNameResolver({ rpc: async (name, _token, args) => {
+    assert.equal(name, 'hermes_building_directory_v1');
+    return { buildings: towers.filter(row => args.p_building_ids.includes(row.id)) };
+  } });
+  const resolveName = wanted => resolver.resolve({ operation: 'customers', input: domainInput('customers', { query: '' }), names: { buildingName: wanted },
+    lane: 'legacy', accessToken: 'bearer-fixture', identity: identityOf(KEYS), tokenDigest: DIGEST, signal });
+  assert.equal((await resolveName('45 Hoa Mai')).input.buildingId, A);
+  await assert.rejects(resolveName('12 Hoa Sứ'), unresolved(/^Nhiều toà khớp '12 Hoa Sứ': 12\/5 Hoa Sứ, 12\/7 Hoa Sứ — nêu rõ\.$/));
 });
 
 test('buildingName: exact name/code first (case-insensitive), then contains; 0 ⇒ detail; ≥2 ⇒ detail lists the names in scope; buildingId must agree', async () => {

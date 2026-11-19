@@ -115,7 +115,8 @@ union all
 select 'ext:' || e.extname, n.nspname from pg_extension e join pg_namespace n on n.oid = e.extnamespace
  where e.extname in ('vector', 'pg_trgm', 'btree_gist', 'pg_cron', 'pgcrypto', 'uuid-ossp')
 union all
-select 'bucket:' || b.id, md5(b.public || '|' || coalesce(b.file_size_limit::text, '') || '|' || coalesce(array_to_string(b.allowed_mime_types, ','), ''))
+-- trần file so ở mức TEST (52428800 = TRAN_FILE_TEST của tep.mjs): TEST gói Free không dựng được bucket trần cao hơn
+select 'bucket:' || b.id, md5(b.public || '|' || coalesce(least(b.file_size_limit, 52428800)::text, '') || '|' || coalesce(array_to_string(b.allowed_mime_types, ','), ''))
   from storage.buckets b
 `;
 }

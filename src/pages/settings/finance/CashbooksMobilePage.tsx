@@ -2,13 +2,15 @@ import { QueryRegion } from '@/components/errors/QueryRegion';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Wallet, Lock, X, Pencil, ArrowLeftRight, ReceiptText, FileText, Settings2 } from "lucide-react";
+import { ArrowLeft, Plus, Wallet, Lock, X, Pencil, ArrowLeftRight, ReceiptText, FileText, Settings2, History } from "lucide-react";
 import "@/styles/mobileApp.css";
 import "@/styles/financeMobile.css";
 import "@/styles/estateMobile.css";
 import { useAccountsWithBalance, type AccountWithBalance } from "@/hooks/useAccounts";
 import CashbookForm from "@/components/cashbooks/CashbookForm";
 import CloseCashbookDialog from "@/components/cashbooks/CloseCashbookDialog";
+import ReopenCashbookDialog from "@/components/cashbooks/ReopenCashbookDialog";
+import CashbookReopenAction from "@/components/cashbooks/CashbookReopenAction";
 import CashbookClosingInbox, { closureRecordPath } from "@/components/cashbooks/CashbookClosingInbox";
 import ReceivingCashbookSettings from "@/components/cashbooks/ReceivingCashbookSettings";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -61,6 +63,7 @@ export default function CashbooksMobilePage() {
   // Đợt 6 — đề nghị chốt & bàn giao (thay cho khoá/mở khoá tay).
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeTarget, setCloseTarget] = useState<AccountWithBalance | null>(null);
+  const [reopenTarget, setReopenTarget] = useState<AccountWithBalance | null>(null);
   // Sổ nhận tiền (đợt 1 sửa phiếu) — chỉ chủ công ty / super admin thấy lối vào.
   // Trang này là nhánh điện thoại của CashbooksPage, nên thiếu lối vào ở đây là
   // chủ dùng điện thoại không tới được màn cài (cùng bẫy hộp thư chốt sổ đợt 6).
@@ -136,7 +139,7 @@ export default function CashbooksMobilePage() {
     <div className="cm-stage">
       {/*
         Hộp thoại chốt sổ dài hơn màn hình điện thoại (3 bước, có bảng số liệu
-        + cảnh báo khoá vĩnh viễn). DialogContent gốc không có max-height nên
+        + cảnh báo khóa kỳ). DialogContent gốc không có max-height nên
         phần cuối — kể cả nút bấm — bị cắt khỏi viewport và người dùng KHÔNG
         cuộn tới được. Chặn ngưỡng ngay tại trang app điện thoại thay vì sửa
         DialogContent dùng chung.
@@ -368,9 +371,15 @@ export default function CashbooksMobilePage() {
                   </button>
                 </div>
 
-                {/* Nghi thức chốt sổ đứng RIÊNG một hàng, dưới các thao tác
-                    thường ngày: nó là hành động một chiều, không nên nằm cạnh
-                    "Sửa sổ" để ngón tay bấm nhầm. */}
+                <div className="sheet-acts" style={{ marginTop: 8 }}>
+                  <button className="ghost" onClick={() => { setReopenTarget(detail); setDetail(null); }}>
+                    <History />Lịch sử mở khóa
+                  </button>
+                </div>
+                <CashbookReopenAction cashbookId={detail.id} locked={!!detail.lock_date}
+                  onClick={() => { setReopenTarget(detail); setDetail(null); }} />
+
+                {/* Chốt sổ đứng riêng một hàng, dưới các thao tác thường ngày. */}
                 {detailCanClose && (
                   <div className="sheet-acts" style={{ marginTop: 8 }}>
                     <button
@@ -391,7 +400,7 @@ export default function CashbooksMobilePage() {
                 {!!detail.lock_date && (
                   <p style={{ margin: "10px 2px 0", fontSize: 12, color: "#8d8678", display: "flex", gap: 6 }}>
                     <FileText size={14} />
-                    Sổ đã chốt tới {detail.lock_date} — kỳ đó khoá vĩnh viễn, không mở lại được.
+                    Sổ đã chốt tới {detail.lock_date}. Chỉ chủ tổ chức được mở khóa và phải ghi lý do.
                   </p>
                 )}
               </div>
@@ -436,6 +445,13 @@ export default function CashbooksMobilePage() {
           )}
         </div>
       </div>
+
+      <ReopenCashbookDialog
+        open={!!reopenTarget}
+        onOpenChange={(open) => { if (!open) setReopenTarget(null); }}
+        cashbookId={reopenTarget?.id ?? null}
+        cashbookName={reopenTarget?.name}
+      />
 
       {/* Thêm / sửa sổ quỹ — dùng lại dialog desktop */}
       <CashbookForm

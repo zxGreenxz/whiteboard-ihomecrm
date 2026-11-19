@@ -149,6 +149,28 @@ export const W2C_REPORTS = Object.freeze({
     params: ['buildingId', 'fromId', 'toId'], required: ['buildingId', 'fromId', 'toId'],
     title: 'So hai bản sao lưu cấu hình (đã che bí mật) của một toà: chỉ các dòng thêm/bớt. fromId/toId lấy từ network_backups.',
     fields: { line: count, buildingId: id, kind: code, text: text(500) }, summary: { changeCount: metric } }),
+  // Công việc Mốc 4 (20261022180402; CONG-VIEC-THAO-TAC-GHI.md mục 4, 21): bảng việc như /tasks dưới RLS jobs của người hỏi (phạm vi
+  // rls_buildings: toà công ty ∩ phạm vi kết nối; RLS quyết từng việc, kể cả việc giao cho chính người hỏi ở toà ngoài khoá — Q35).
+  // Câu đầu tiêu đề ≤ 60 ký tự mang ý chính (danh sách tool_search). Tóm tắt trên CẢ tập khớp: mô hình đọc số ở summary.
+  tasks_board: w2Report({ permission: 'tasks.view', source: 'crm.jobs_board_v1', scope: 'rls_buildings', private: true,
+    title: 'Bảng việc: lọc trạng thái, quá hạn, ngày xong/tạo/hạn, người nhận. status=COMPLETED+kind=completed+fromDate/toDate = việc xong ' +
+      'trong khoảng; status=OVERDUE = quá hạn; query tìm mã/tiêu đề/tên người nhận. summary: total, overdue, byAssignee (≤20), byBuilding (≤50).',
+    params: ['query', 'status', 'kind', 'fromDate', 'toDate', 'buildingId', 'roomId', 'staffId'],
+    statuses: ['IN_PROGRESS', 'COMPLETED', 'OVERDUE'], kinds: ['deadline', 'created', 'completed'],
+    fields: { id, code: text(60), title: text(200), jobType: text(100), buildingId: nullable(id), buildingName: text(200), roomId: nullable(id),
+      roomName: text(100), assigneeId: nullable(id), assigneeName: text(200), assignerName: text(200), status: code, deadline: text(16),
+      overdueDays: nullable(count), progress: text(300), createdOn: nullable(date), completedOn: nullable(date), link: text(80) },
+    summary: { total: count, overdue: count, byAssignee: list(20, { assigneeName: text(200), count, overdue: count }),
+      byBuilding: list(50, { buildingId: nullable(id), buildingName: text(200), count, overdue: count }) } }),
+  // Công việc Mốc 5 (20261023042450; CONG-VIEC-THAO-TAC-GHI.md mục 4, 22): việc định kỳ dưới RLS job_recurrence_rules của người hỏi
+  // (rls_buildings như tasks_board). Lịch dạng chữ + lần sinh kế tiếp do SQL tính; summary trên CẢ tập khớp.
+  task_recurrences: w2Report({ permission: 'tasks.view', source: 'crm.job_recurrences_list_v1', scope: 'rls_buildings', private: true,
+    title: 'Việc định kỳ: mã DK, nội dung, toà/phòng, người nhận, lịch, lần sinh kế tiếp; status ACTIVE/PAUSED/ENDED; query mã/nội dung/tên người nhận.',
+    params: ['query', 'status', 'buildingId'], statuses: ['ACTIVE', 'PAUSED', 'ENDED'],
+    fields: { id, code: text(20), title: text(200), jobType: text(100), buildingId: id, buildingName: text(200), roomId: nullable(id), roomName: text(100),
+      assigneeName: text(200), schedule: text(200), startDate: date, endDate: nullable(date), dueDays: count, status: code, pausedReason: nullable(code),
+      nextDate: nullable(date) },
+    summary: { total: count, active: count, paused: count, ended: count } }),
 });
 
 // Chuông Hermes ↔ web: mục w2c-* trong infra/hermes-broker/web-parity.json (marker // hermes-parity:begin/end w2c-*

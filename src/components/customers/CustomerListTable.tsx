@@ -15,7 +15,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { Customer } from '@/types/customer';
-import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionCheck';
 import { LoadingState } from '@/components/loading/LoadingState';
 
 interface CustomerListTableProps {
@@ -70,18 +71,14 @@ export default function CustomerListTable({
   onDelete,
   isLoading,
 }: CustomerListTableProps) {
-  const { canManageBuilding, canManageAll } = useMyBuildingScope();
+  const { data: perms } = useMyPermissions();
   const residence=useCustomerResidenceSummaries(customers.map(customer=>customer.id));
   const residenceMap=new Map(residence.data?.map(row=>[row.customer_id,row]));
   const [historyCustomer,setHistoryCustomer]=useState<Customer|null>(null);
   // Customer "thuộc scope" khi: caller quản tất cả, customer chưa có hợp đồng
   // (current_building_id null = chưa thuê), hoặc tòa hiện tại thuộc scope.
-  const canManageCustomer = (customer: Customer) => {
-    if (canManageAll) return true;
-    const bid = (customer as any).current_building_id as string | null | undefined;
-    if (!bid) return true;
-    return canManageBuilding(bid);
-  };
+  const canManageCustomer = (row: Customer, action: 'edit' | 'delete') =>
+    canUse(perms, 'customers', action, (row as Customer & { current_building_id?: string | null }).current_building_id ?? undefined);
 
   if (isLoading) {
     return <LoadingState label="danh sách khách hàng" variant="table" rows={8} />;
@@ -172,7 +169,7 @@ export default function CustomerListTable({
                   >
                     <Eye className="h-4 w-4" />
                   </Button>
-                  {canManageCustomer(customer) && (
+                  {canManageCustomer(customer, 'edit') && (
                     <Button
                       size="icon"
                       variant="ghost"
@@ -182,7 +179,7 @@ export default function CustomerListTable({
                       <Pencil className="h-4 w-4" />
                     </Button>
                   )}
-                  {canManageCustomer(customer) && (
+                  {canManageCustomer(customer, 'delete') && (
                     <Button
                       size="icon"
                       variant="ghost"

@@ -77,10 +77,10 @@ export function HermesZaloBotSettings({ userId, organizationId, currentScope, on
         { ...bot, enabled: result.enabled, version: result.version } : bot),
       message: enabled ? 'Đã bật nick phụ làm bot Hermes. Người dùng có thể tạo liên kết Zalo mới.' : 'Đã tắt bot Hermes và ngắt các liên kết đang dùng bot này.' }));
   }
-  return <section aria-label="Quản trị bot Zalo của công ty" className="space-y-4 rounded-xl border bg-card p-4">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Bot Zalo của công ty</h2>
+  return <section aria-label="Quản trị bot Zalo của công ty" className="space-y-3 rounded-lg border p-3">
+    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">Chọn bot Zalo của công ty</h3>
       <Button variant="outline" disabled={state.busy} onClick={state.opened ? close : reload}>{state.opened ? 'Ẩn cấu hình bot' : 'Cấu hình bot của công ty'}</Button></div>
-    <p className="text-sm text-muted-foreground">Chọn nick Zalo phụ đã kết nối trong CRM để làm bot Hermes. Chỉ người được cấp quyền quản trị phù hợp mới thay đổi được cấu hình.</p>
+    <p className="text-sm text-muted-foreground">Chọn một nick Zalo phụ đã kết nối trong CRM làm bot. Nhân viên sẽ nhắn riêng cho nick này để dùng Hermes, nên chỉ dùng nick dành riêng cho Hermes.</p>
     {state.opened && <>
       <Button variant="outline" disabled={state.busy} onClick={reload}>Tải lại cấu hình bot</Button>
       {state.busy && <p role="status" className="text-sm">Đang kiểm tra cấu hình bot…</p>}

@@ -30,6 +30,7 @@ import CashbookList from "@/components/cashbooks/CashbookList";
 import CashbookListMobile from "@/components/cashbooks/CashbookListMobile";
 import CashbookForm from "@/components/cashbooks/CashbookForm";
 import CloseCashbookDialog from "@/components/cashbooks/CloseCashbookDialog";
+import ReopenCashbookDialog from "@/components/cashbooks/ReopenCashbookDialog";
 import ConfirmCashbookClosingDialog from "@/components/cashbooks/ConfirmCashbookClosingDialog";
 import CashbookClosingInbox from "@/components/cashbooks/CashbookClosingInbox";
 import {
@@ -67,6 +68,7 @@ const CashbooksDesktop = () => {
   // Đợt 6 — nghi thức chốt & bàn giao thay cho khoá/mở khoá tay.
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeTarget, setCloseTarget] = useState<AccountWithBalance | null>(null);
+  const [reopenTarget, setReopenTarget] = useState<AccountWithBalance | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [detailAcc, setDetailAcc] = useState<AccountWithBalance | null>(null);
 
@@ -179,6 +181,7 @@ const CashbooksDesktop = () => {
         onEdit={handleEdit}
         onDelete={(id) => setDeleteId(id)}
         onClose={handleClose}
+        onReopen={setReopenTarget}
       />
       </QueryRegion>
     </div>
@@ -219,6 +222,7 @@ const CashbooksDesktop = () => {
             onEdit={handleEdit}
             onDelete={(id) => setDeleteId(id)}
             onClose={handleClose}
+            onReopen={setReopenTarget}
           />
           </QueryRegion>
 
@@ -272,6 +276,14 @@ const CashbooksDesktop = () => {
         account={detailAcc}
         onEdit={handleEdit}
         onDelete={(id) => setDeleteId(id)}
+        onReopenHistory={setReopenTarget}
+      />
+
+      <ReopenCashbookDialog
+        open={!!reopenTarget}
+        onOpenChange={(open) => { if (!open) setReopenTarget(null); }}
+        cashbookId={reopenTarget?.id ?? null}
+        cashbookName={reopenTarget?.name}
       />
 
       <CashbookForm

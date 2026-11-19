@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -38,7 +38,7 @@ export default function MaterialFormDialog({ open, onOpenChange, editing }: Prop
   const [blocked,setBlocked]=useState(false);const busy=useRef(false);const draftKey=useRef<string|null>(null);
 
   const form = useForm<MaterialFormValues>({
-    resolver: zodResolver(materialFormSchema),
+    resolver: zodResolver(materialFormSchema) as Resolver<MaterialFormValues>,
     defaultValues: {
       code: '',
       name: '',
