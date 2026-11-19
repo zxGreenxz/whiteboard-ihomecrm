@@ -69,7 +69,7 @@ không gắn với `git push`.
 | Chỉ số | Giá trị |
 |---|---|
 | Bảng được publish | 29 |
-| Hub nghiệp vụ lắng nghe | 17 |
+| Hub nghiệp vụ lắng nghe | 19 |
 | **Hub nghe mà KHÔNG publish** (subscribe câm) | **0** |
 | `REPLICA IDENTITY = DEFAULT` | 28/29 |
 

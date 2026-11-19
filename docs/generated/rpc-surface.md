@@ -17,21 +17,21 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 428 |
+| RPC được gọi từ mã nguồn | 430 |
 | Hàm trong catalog (public + api) | 1656 |
-| File mã nguồn đã quét | 3059 |
-| SECURITY DEFINER | 403 |
+| File mã nguồn đã quét | 3129 |
+| SECURITY DEFINER | 405 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 317 | còn lại |
-| tiền | 110 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| thường | 321 | còn lại |
+| tiền | 108 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | hạ tầng | 1 | nơi gọi thuộc Network Center |
 
-## 110 RPC chạm TIỀN
+## 108 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -97,8 +97,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `log_income_expense_action` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `manager_salary_payout_v1` | ✔ | hooks/income-expenses/specialized.ts |
 | `mark_overdue_invoices_v1` | ✔ | hooks/useInvoices.ts |
-| `notify_claim_push_batch_v1` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
-| `notify_settle_push_batch_v1` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `personal_finance_bootstrap` | ✔ | hooks/personal-finance/usePersonalFinance.ts |
 | `personal_finance_mutate` | ✔ | hooks/personal-finance/usePersonalFinance.ts |
 | `personal_finance_snapshot` |  | hooks/personal-finance/usePersonalFinance.ts |

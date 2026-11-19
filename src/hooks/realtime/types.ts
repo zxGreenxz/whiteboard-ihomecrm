@@ -11,7 +11,12 @@ export type BusinessPerformanceSubtype =
   | "snapshot"
   | "occupancy-snapshot"
   | "upcoming-vacancy"
-  | "occupancy-trend-12m";
+  | "occupancy-trend-12m"
+  // 21/10/2026 (RT-HUB-11): bốn khối của GatedData chỉ có staleTime, không poll.
+  | "break-even"
+  | "invoice-cohort"
+  | "cash-received"
+  | "category-breakdown";
 
 export type BusinessPerformanceInvalidationRule =
   | {

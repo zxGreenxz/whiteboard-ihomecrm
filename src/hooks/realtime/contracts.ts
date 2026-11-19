@@ -19,6 +19,17 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["dashboard-summary"],
       ["business-performance"],
       ["occupancy-dashboard"],
+      // 21/10/2026 (RT-HUB-3): màn phòng/toà đọc HĐ đang hiệu lực. Tạo, thanh lý
+      // hay chuyển HĐ ở máy khác ⇒ trước đây Sơ đồ toà vẫn hiện phòng trống.
+      ["rooms"],
+      ["rooms-with-contracts"],
+      ["room-detail-contracts"],
+      ["room-detail-tenants"],
+      ["building-detail-contracts"],
+      ["room-active-contract"],
+      ["customer-contracts"], // chi tiết khách: danh sách HĐ (REC_FIX RT-HUB-3)
+      // RT-HUB-11: báo cáo HĐ (sắp hết hạn, ký mới, thanh lý…) — ["reports",…].
+      ["reports"],
     ],
     domain: "contracts",
   },

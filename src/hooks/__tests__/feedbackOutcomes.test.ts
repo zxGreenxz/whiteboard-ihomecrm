@@ -7,7 +7,7 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: m.rpc, auth:
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
 vi.mock('sonner', () => ({ toast: { success: m.success, warning: m.warning, info: m.info, error: m.error } }));
 import { useBroadcast, useEmergencyStop } from '../useZaloChat';
-import { NOTIFICATION_EVENT_KEYS, useSetMyNotificationPreferences, useSetNotificationOrgConfig, useMyNotificationPreferences, useNotificationOrgConfig } from '../useNotificationSettings';
+import { LEGACY_NOTIFICATION_EVENT_KEYS, useSetMyNotificationPreference, useSetNotificationOrgConfig, useMyNotificationPreferences, useNotificationOrgConfig } from '../useNotificationSettings';
 
 describe('phản hồi không xác nhận kết quả chưa xảy ra', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -26,7 +26,7 @@ describe('phản hồi không xác nhận kết quả chưa xảy ra', () => {
   it.each(['org', 'personal'])('lỗi đọc %s không trở thành cấu hình mặc định hợp lệ', async (kind) => {
     const failure = { code: '42501', message: 'permission denied for function private_fn' };
     m.rpc.mockResolvedValue({ data: null, error: failure });
-    const query = (kind === 'org' ? useNotificationOrgConfig() : useMyNotificationPreferences('org-a')) as unknown as { queryFn: () => Promise<unknown> };
+    const query = (kind === 'org' ? useNotificationOrgConfig('org-a') : useMyNotificationPreferences('org-a')) as unknown as { queryFn: () => Promise<unknown> };
     await expect(query.queryFn()).rejects.toBe(failure);
   });
 });
@@ -42,10 +42,10 @@ it('dừng lịch có payload thiếu không được coi đã tắt mọi công
  await expect(config.mutationFn()).rejects.toBeTruthy();
 });
 
-const prefsPayload = () => ({organization_id:'org-a',user_id:'user-a',preferences:Object.fromEntries(NOTIFICATION_EVENT_KEYS.map(key=>[key,{in_app:true,push:false,cadence:'IMMEDIATE'}]))});
+const prefsPayload = () => ({organization_id:'org-a',user_id:'user-a',preferences:Object.fromEntries(LEGACY_NOTIFICATION_EVENT_KEYS.map(key=>[key,{in_app:true,push:false,cadence:'IMMEDIATE'}]))});
 it.each(['org','personal'])('malformed read %s không dựng cấu hình mặc định',async kind=>{
  m.rpc.mockResolvedValue({data:null,error:null});
- const query=(kind==='org'?useNotificationOrgConfig():useMyNotificationPreferences('org-a')) as unknown as {queryFn:()=>Promise<unknown>};
+ const query=(kind==='org'?useNotificationOrgConfig('org-a'):useMyNotificationPreferences('org-a')) as unknown as {queryFn:()=>Promise<unknown>};
  await expect(query.queryFn()).rejects.toBeTruthy();
 });
 it('sở thích trả sai tổ chức không được dùng cho tổ chức đang chọn',async()=>{
@@ -55,8 +55,8 @@ it('sở thích trả sai tổ chức không được dùng cho tổ chức đan
 });
 it.each(['org','personal'])('malformed save %s không đi đến onSuccess',async kind=>{
  m.rpc.mockResolvedValue({data:null,error:null});
- const save=(kind==='org'?useSetNotificationOrgConfig():useSetMyNotificationPreferences('org-a')) as unknown as {mutationFn:(v:unknown)=>Promise<unknown>};
- await expect(save.mutationFn(kind==='org'?{events:{},quiet_start:21,quiet_end:7}:Object.fromEntries(NOTIFICATION_EVENT_KEYS.map(key=>[key,{event_key:key,in_app:true,push:false,cadence:'IMMEDIATE'}])))).rejects.toBeTruthy();
+ const save=(kind==='org'?useSetNotificationOrgConfig('org-a'):useSetMyNotificationPreference('org-a')) as unknown as {mutationFn:(v:unknown)=>Promise<unknown>};
+ await expect(save.mutationFn(kind==='org'?{events:{},quietStart:21,quietEnd:7,expectedUpdatedAt:null}:{key:'E1',field:'push',value:false})).rejects.toBeTruthy();
 });
 it('sở thích hợp lệ trả đủ trạng thái từng công tắc',async()=>{
  m.rpc.mockResolvedValue({data:prefsPayload(),error:null});

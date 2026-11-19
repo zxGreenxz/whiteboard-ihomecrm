@@ -185,12 +185,40 @@ export const useLogin = () => {
 // Logout
 // =============================================
 
+/** Trần chờ dọn push trước khi đăng xuất (kể cả lúc tải module push). */
+export const LOGOUT_PUSH_DEADLINE_MS = 3000;
+
+/**
+ * Gỡ đăng ký push của máy này, best-effort, tối đa LOGOUT_PUSH_DEADLINE_MS và
+ * không bao giờ ném. Phải chạy TRƯỚC signOut: xoá dòng push_subscriptions của
+ * chính mình cần phiên còn sống. Module push nạp lười (như main.tsx) để không
+ * kéo nó vào chunk vào app; chính lần nạp đó cũng nằm trong trần chờ.
+ */
+async function goDangKyPushTruocKhiThoat(): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      import('@/lib/push').then((push) => push.disablePushForLogout(LOGOUT_PUSH_DEADLINE_MS)),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, LOGOUT_PUSH_DEADLINE_MS);
+      }),
+    ]);
+  } catch (error) {
+    console.warn('[logout] chưa gỡ được đăng ký push (bỏ qua, vẫn đăng xuất):', error);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export const useLogout = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationKey: ['auth', 'logout'],
     mutationFn: async () => {
+      // Máy dùng chung: không để push của tài khoản vừa thoát tiếp tục hiện trên
+      // màn khoá (xem disablePushForLogout trong src/lib/push.ts).
+      await goDangKyPushTruocKhiThoat();
       // scope 'local': chỉ đăng xuất thiết bị này. Mặc định 'global' thu hồi
       // session ở MỌI thiết bị — 1 phiên (tab khác / máy khác / phiên test)
       // đăng xuất là các phiên còn lại chết theo, lần đăng xuất sau dính

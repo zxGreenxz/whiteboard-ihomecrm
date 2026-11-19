@@ -25,7 +25,6 @@ import { formatCurrency } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
-import { useScheduledNotifications } from '@/hooks/useScheduledNotifications';
 import OnboardingWizard, { useOnboardingState } from '@/components/onboarding/OnboardingWizard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -60,8 +59,9 @@ const Dashboard = () => {
   );
   const { data: vacantRooms, isLoading: vacantLoading } = vacantQuery;
 
-  // Run scheduled notification checks
-  useScheduledNotifications();
+  // Bộ nhắc hoá đơn/HĐ/cọc chạy ở TRÌNH DUYỆT (useScheduledNotifications) đã gỡ
+  // 21/10/2026: nhắc giờ do máy chủ sinh (lane lifecycle, plan realtime + thông báo
+  // mục B5) — người nhận theo quyền, có push, chịu cài đặt và giờ yên.
 
   // Onboarding wizard state
   const { isCompleted: onboardingCompleted, isLoading: onboardingLoading } = useOnboardingState();

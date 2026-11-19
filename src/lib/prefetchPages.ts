@@ -281,6 +281,55 @@ export function prefetchDomain(qc: QueryClient, domain: PrefetchDomain) {
   }
 }
 
+type PermsLike = Parameters<typeof canUse>[0];
+
+/** Module quyền của từng domain — cùng cổng `RequirePermission` của route. */
+const MODULE_CUA_DOMAIN: Record<PrefetchDomain, string> = {
+  invoices: "invoices",
+  "income-expenses": "income_expenses",
+  contracts: "contracts",
+  jobs: "tasks",
+};
+
+export function duocXemDomain(perms: PermsLike, domain: PrefetchDomain): boolean {
+  return canUse(perms, MODULE_CUA_DOMAIN[domain], "view");
+}
+
+/**
+ * Bảng quyền đang hiệu lực, đọc từ cache react-query (query ['my-permissions',
+ * <org>] do useMyPermissions nạp).
+ *
+ * Hub realtime mount ở AppProviders, NGOÀI OrganizationProvider, nên không gọi
+ * được useMyPermissions. Cache là nguồn chung: lấy query đang có observer (công
+ * ty đang chọn), mới nhất trước; không có thì lấy bản mới nhất bất kỳ.
+ */
+export function quyenTrongCache(qc: QueryClient): PermsLike | undefined {
+  const queries = qc
+    .getQueryCache()
+    .findAll({ queryKey: ["my-permissions"] })
+    .filter((query) => query.state.data !== undefined)
+    .sort((a, b) =>
+      (b.getObserversCount() > 0 ? 1 : 0) - (a.getObserversCount() > 0 ? 1 : 0)
+      || b.state.dataUpdatedAt - a.state.dataUpdatedAt,
+    );
+  return queries[0]?.state.data as PermsLike | undefined;
+}
+
+/**
+ * Lượt prefetch do HUB REALTIME kích hoạt (RT-HUB-13, 21/10/2026).
+ *
+ * Trước đây hub gọi thẳng prefetchDomain: người không có quyền xem hoá đơn, thu
+ * chi, HĐ hay công việc vẫn bị nạp danh sách + thống kê của các trang đó mỗi
+ * khi có event — RPC trả lỗi quyền hoặc rỗng, tốn một lượt server vô ích.
+ *
+ * FAIL-CLOSED khi chưa biết quyền: bỏ lượt hâm cache thì trang vẫn tự tải lúc
+ * mở (mất phần tiết kiệm), còn đoán bừa là có quyền thì lại đúng lỗi vừa sửa.
+ */
+export function prefetchDomainTuHub(qc: QueryClient, domain: PrefetchDomain) {
+  if (!duocXemDomain(quyenTrongCache(qc), domain)) return;
+  prefetchDomain(qc, domain);
+}
+
 /** Prefetch mọi domain user có quyền xem (gate = cùng RequirePermission của
  *  route: canUse(module, 'view')). Gọi từ màn chính lúc rảnh.
  *
@@ -291,13 +340,11 @@ export function prefetchDomain(qc: QueryClient, domain: PrefetchDomain) {
  *  nhịp khựng ngắn và rơi vào lúc màn đứng yên (mắt không thấy). */
 export function prefetchHeavyPages(
   qc: QueryClient,
-  perms: Parameters<typeof canUse>[0],
+  perms: PermsLike,
 ) {
-  const domains: PrefetchDomain[] = [];
-  if (canUse(perms, "invoices", "view")) domains.push("invoices");
-  if (canUse(perms, "income_expenses", "view")) domains.push("income-expenses");
-  if (canUse(perms, "contracts", "view")) domains.push("contracts");
-  if (canUse(perms, "tasks", "view")) domains.push("jobs");
+  const domains = (Object.keys(MODULE_CUA_DOMAIN) as PrefetchDomain[]).filter((domain) =>
+    duocXemDomain(perms, domain),
+  );
 
   const gapMs = isPhoneViewport() ? 900 : 0;
   domains.forEach((d, i) => {

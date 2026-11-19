@@ -26,8 +26,9 @@ import {
   useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
   useZaloAccounts, useRequestConnect, useDisconnectAccount, useZaloWorkerStatus,
   useReactMessage, useRecallMessage, useLoadHistory,
-  useZaloLabels, useBroadcast,
+  useZaloLabels, useBroadcast, useZaloOrgId,
 } from '@/hooks/useZaloChat';
+import { useActiveConversation } from '@/hooks/chat-zalo/useActiveConversation';
 import { useSendZaloMedia, useSendZaloSticker, type StickerItem } from '@/hooks/chat-zalo/useZaloMedia';
 import { useForwardZaloMedia } from '@/hooks/chat-zalo/useForwardZaloMedia';
 import { useSetConversationFlags, useStartChatByPhone, useDeleteMessageForMe, useThreadPresence } from '@/hooks/chat-zalo/useZaloConversationActions';
@@ -71,7 +72,9 @@ export default function ChatZaloPage() {
   const deleteForMeMut = useDeleteMessageForMe();
   const { sendSeen, sendTyping } = useThreadPresence();
 
-  const [activeId, setActiveId] = useState<string>('');
+  // Chốt hội thoại mặc định + bỏ chọn khi đổi công ty (RT-OTHER-M2/7) — xem hook.
+  const zaloOrgId = useZaloOrgId();
+  const [activeId, setActiveId] = useActiveConversation(conversations, zaloOrgId);
   const [rightTab, setRightTab] = useState<RightTab>('info');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
@@ -112,6 +115,8 @@ export default function ChatZaloPage() {
 
   const selIds = selectedIds ?? accounts.map((a) => a.id);
 
+  // Vế sau chỉ phủ đúng một khung hình trước khi useActiveConversation chốt
+  // cùng id đó — không còn trôi theo thứ tự danh sách.
   const effectiveId = activeId || conversations[0]?.id || '';
   const draft = drafts[effectiveId] ?? '';
   const setDraft = (value:string) => setDrafts(previous=>({...previous,[effectiveId]:value}));

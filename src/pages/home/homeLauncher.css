@@ -73,7 +73,7 @@
 .hl-app .hh-icbtn { position: relative; width: 38px; height: 38px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); display: grid; place-items: center; cursor: pointer; transition: .14s; }
 .hl-app .hh-icbtn:active { background: var(--line-2); transform: scale(.94); }
 .hl-app .hh-icbtn svg { width: 19px; height: 19px; }
-.hl-app .hh-icbtn .nt { position: absolute; top: 7px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--c-unpaid); border: 2px solid var(--surface-2); }
+.hl-app .hh-icbtn .nt { position: absolute; top: -6px; right: -6px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; background: var(--c-unpaid); color: #fff; font-family: var(--mono); font-size: 10.5px; font-weight: 700; line-height: 1; display: grid; place-items: center; border: 2px solid var(--surface); }
 .hl-app .hh-avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px; cursor: pointer; flex-shrink: 0; }
 
 /* search pill */

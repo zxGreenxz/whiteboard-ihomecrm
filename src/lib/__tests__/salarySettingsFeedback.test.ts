@@ -17,3 +17,9 @@ it('lễ nạp một phần giữ các ngày đã lưu và báo đúng số, kh�
 });
 
 it('tác vụ thiếu số xác nhận không thành success và số 0 là không có thay đổi',()=>{expect(()=>salaryJobFeedback({ok:true,ran:[{job:'tier',result:{}}]})).toThrow();expect(salaryJobFeedback({ok:true,ran:[{job:'tier',result:{expired_sessions:0}}]}).kind).toBe('info');expect(()=>salaryJobFeedback({ok:true,ran:[{job:'push_drain',batches:-1,settled:-1,outcomes:{}}]})).toThrow();expect(salaryJobFeedback({ok:true,ran:[{job:'push_drain',batches:2,settled:1,outcomes:{SENT:2}}]}).kind).toBe('warning');});
+
+it('drain: NO_DEVICE và DEFERRED không phải lỗi lượt chạy, lỗi khác vẫn cảnh báo',()=>{
+ const ok=salaryJobFeedback({ok:true,ran:[{job:'push_drain',batches:2,settled:2,outcomes:{NO_DEVICE:1,DEFERRED:1}}]});
+ expect(ok.kind).not.toBe('warning');
+ expect(salaryJobFeedback({ok:true,ran:[{job:'push_drain',batches:2,settled:2,outcomes:{NO_DEVICE:1,PROVIDER_ERROR:1}}]}).kind).toBe('warning');
+});

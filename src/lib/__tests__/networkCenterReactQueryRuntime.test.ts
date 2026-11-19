@@ -10,6 +10,9 @@ const runtimeSpies = vi.hoisted(() => {
     queryOptions: [] as Array<{
       enabled?: boolean;
       queryFn?: () => unknown;
+      queryKey?: readonly unknown[];
+      refetchInterval?: unknown;
+      refetchIntervalInBackground?: boolean;
     }>,
     queryErrors: [] as unknown[],
     invalidateQueries: vi.fn(async () => undefined),
@@ -169,7 +172,7 @@ import {
   resolveNetworkCenterRealtimeTarget,
   selectNetworkCenterRepository,
 } from "@/lib/network-center/runtime";
-import { useNetworkCenter } from "@/hooks/network-center/useNetworkCenter";
+import { NHIP_LAM_TUOI_DO_TUOI_MS, useNetworkCenter } from "@/hooks/network-center/useNetworkCenter";
 
 describe("Network Center React Query runtime", () => {
   beforeEach(() => {
@@ -214,17 +217,38 @@ describe("Network Center React Query runtime", () => {
     expect(runtimeSpies.listFleet).not.toHaveBeenCalled();
   });
 
-  it("subscribes only to the five sanitized Realtime projections", () => {
+  it("làm tươi hạm đội + toà 60 s CHỈ khi tab hiện để nhãn độ tươi không đứng yên (RT-CLIENT-6)", () => {
+    useNetworkCenter("building-a");
+    const byKey = (match: (key: readonly unknown[]) => boolean) =>
+      runtimeSpies.queryOptions.find((options) => options.queryKey && match(options.queryKey));
+    const fleet = byKey((key) => key[2] === "fleet");
+    const building = byKey((key) => key.length === 5 && key[3] === "building");
+    expect(fleet, "không thấy query hạm đội — phép đo hỏng").toBeDefined();
+    expect(building, "không thấy query toà — phép đo hỏng").toBeDefined();
+    for (const options of [fleet!, building!]) {
+      expect(options.refetchInterval).toBe(NHIP_LAM_TUOI_DO_TUOI_MS);
+      expect(options.refetchIntervalInBackground).toBe(false);
+    }
+    // Phân trang Aruba/H196A không cần nhịp này (không mang nhãn độ tươi).
+    const phanTrang = runtimeSpies.queryOptions.filter((options) =>
+      options.queryKey && (options.queryKey.at(-1) === "aruba" || options.queryKey.at(-1) === "h196a"));
+    expect(phanTrang).toHaveLength(2);
+    expect(phanTrang.every((options) => options.refetchInterval === undefined)).toBe(true);
+  });
+
+  it("subscribes only to the four sanitized Realtime projections", () => {
     expect(NETWORK_CENTER_REALTIME_TABLES).toEqual([
       "network_device_current",
       "network_interface_current",
       "network_incidents",
       "network_command_events",
-      "network_worker_building_status",
     ]);
     expect(NETWORK_CENTER_REALTIME_TABLES).not.toContain("network_commands");
     expect(NETWORK_CENTER_REALTIME_TABLES).not.toContain("network_device_samples");
     expect(NETWORK_CENTER_REALTIME_TABLES).not.toContain("network_worker_heartbeats");
+    // 21/10/2026 (RT-OTHER-1): nhịp tim ~30 s, không màn/RPC nào đọc — mỗi nhịp
+    // làm tab NC (kể cả tab ẩn) gọi lại ~21 RPC ra dữ liệu y hệt.
+    expect(NETWORK_CENTER_REALTIME_TABLES).not.toContain("network_worker_building_status");
   });
 
   it("targets building invalidation without trusting payloads as cached domain state", () => {
@@ -241,8 +265,8 @@ describe("Network Center React Query runtime", () => {
     )).toEqual({ invalidateFleet: true, buildingIds: ["building-selected"] });
 
     expect(resolveNetworkCenterRealtimeTarget(
-      "network_worker_building_status",
-      { new: { building_id: "BUILDING-A", status: "ONLINE" } },
+      "network_incidents",
+      { new: { building_id: "BUILDING-A", status: "OPEN" } },
       undefined,
     )).toEqual({ invalidateFleet: true, buildingIds: ["building-a"] });
   });

@@ -1327,12 +1327,12 @@
     {
       "id": "w2c-notifications",
       "kind": "mirrored",
-      "description": "Hộp thông báo /notifications: thông báo IN_APP của chính người hỏi, mới trước, trần 200, chưa đọc = status PENDING (crm_read_report report=notifications).",
+      "description": "Hộp thông báo /notifications: thông báo IN_APP của chính người hỏi, mới trước, trần 200, loại status CANCELLED (việc đã xong, server tự đóng — 21/10/2026), chưa đọc = status PENDING (crm_read_report report=notifications). Phân trang \"Xem thêm\" của web nằm NGOÀI vùng (useNotificationPages.ts), không thuộc bản đồ.",
       "web": [
         {
           "path": "src/hooks/useNotifications.ts",
           "region": "w2c-notifications",
-          "sha256": "42485b73c28bb9ceaf647f4914f1cb62d90cc72e356f8675d76e9fadb5eedd5c"
+          "sha256": "5ea79f2efc8613cd9423be4fd97e96964287c6eec5e4ff41de0870331c003f55"
         }
       ],
       "hermes": [

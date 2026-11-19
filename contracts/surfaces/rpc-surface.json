@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3059,
+    "sourceCallSites": 3129,
     "catalogFunctions": 1656,
     "schemas": [
       "public",
@@ -9,13 +9,13 @@
     ]
   },
   "counts": {
-    "calledRpcs": 428,
+    "calledRpcs": 430,
     "byRisk": {
-      "normal": 317,
-      "financial": 110,
+      "normal": 321,
+      "financial": 108,
       "infrastructure": 1
     },
-    "securityDefiner": 403
+    "securityDefiner": 405
   },
   "missingOnServer": [],
   "rpcs": {
@@ -3071,6 +3071,25 @@
       ],
       "risk": "normal"
     },
+    "get_my_notification_quiet_hours_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/notifications/settingsRpc.ts"
+      ],
+      "risk": "normal"
+    },
     "get_my_permissions": {
       "definitions": [
         {
@@ -3114,6 +3133,25 @@
       ],
       "risk": "financial"
     },
+    "get_my_push_log_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_limit integer DEFAULT 10",
+          "returns": "TABLE(created_at timestamp with time zone, outcome text, sent integer)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/notifications/settingsRpc.ts"
+      ],
+      "risk": "normal"
+    },
     "get_my_share_buildings": {
       "definitions": [
         {
@@ -3134,11 +3172,11 @@
       ],
       "risk": "normal"
     },
-    "get_notification_org_config_v1": {
+    "get_notification_delivery_health_v1": {
       "definitions": [
         {
           "schema": "public",
-          "args": "",
+          "args": "p_organization_id uuid",
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
@@ -3149,7 +3187,26 @@
         }
       ],
       "callers": [
-        "src/hooks/useNotificationSettings.ts"
+        "src/lib/notifications/settingsRpc.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_notification_org_config_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/notifications/settingsRpc.ts"
       ],
       "risk": "normal"
     },
@@ -4128,8 +4185,7 @@
         }
       ],
       "callers": [
-        "src/hooks/useAccountingStandard.ts",
-        "src/hooks/useNotificationSettings.ts"
+        "src/hooks/useAccountingStandard.ts"
       ],
       "risk": "normal"
     },
@@ -4685,48 +4741,9 @@
       ],
       "callers": [
         "src/hooks/useIncomeExpenseTypes.ts",
-        "src/hooks/useNotificationSettings.ts",
         "src/hooks/useSpendEngine.ts"
       ],
       "risk": "normal"
-    },
-    "notify_claim_push_batch_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_limit integer DEFAULT 100",
-          "returns": "TABLE(notification_ids uuid[], user_id uuid, idem_key text, title text, body text, url text, tag text)",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
-          "execRoles": [
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "supabase/functions/salary-v5-jobs/index.ts"
-      ],
-      "risk": "financial"
-    },
-    "notify_settle_push_batch_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_results jsonb",
-          "returns": "integer",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
-          "execRoles": [
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "supabase/functions/salary-v5-jobs/index.ts"
-      ],
-      "risk": "financial"
     },
     "occupancy_snapshot_v2": {
       "definitions": [
@@ -6718,6 +6735,25 @@
       ],
       "risk": "normal"
     },
+    "set_my_notification_quiet_hours_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_enabled boolean, p_quiet_start integer, p_quiet_end integer",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/notifications/settingsRpc.ts"
+      ],
+      "risk": "normal"
+    },
     "set_my_ui_preference": {
       "definitions": [
         {
@@ -6740,11 +6776,11 @@
       ],
       "risk": "infrastructure"
     },
-    "set_notification_org_config_v1": {
+    "set_notification_org_config_v2": {
       "definitions": [
         {
           "schema": "public",
-          "args": "p_events jsonb DEFAULT NULL::jsonb, p_quiet_start integer DEFAULT NULL::integer, p_quiet_end integer DEFAULT NULL::integer",
+          "args": "p_organization_id uuid, p_events jsonb, p_quiet_start integer, p_quiet_end integer, p_expected_updated_at timestamp with time zone",
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
@@ -6755,7 +6791,7 @@
         }
       ],
       "callers": [
-        "src/hooks/useNotificationSettings.ts"
+        "src/lib/notifications/settingsRpc.ts"
       ],
       "risk": "normal"
     },
