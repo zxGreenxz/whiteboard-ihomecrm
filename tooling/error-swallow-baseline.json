@@ -1,15 +1,14 @@
 {
   "$comment": "Ratchet chống nuốt lỗi (plan §9). TẬP FINGERPRINT chứ không phải số đếm — với số đếm thì xoá một chỗ ở màn cài đặt rồi thêm một chỗ ở màn thu tiền là hoà, và repo đã có đúng án lệ đó ở ratchet any-cast. Fingerprint là file#mẫu#thứ-tự, cố ý KHÔNG dùng số dòng: thêm một dòng ở đầu file sẽ đổi mọi fingerprint bên dưới và biến một commit vô hại thành đỏ toàn bộ. Chốt mức mới: npm run gate:error-swallow -- --write",
   "$mauKhoi": "Mẫu `if-error-khoi-tra-rong` thêm 15/09/2026 (plan C), quét src/hooks + src/lib. 48 chỗ nó tìm ra lúc lập mốc: 42 đã đổi sang throw trong cùng commit; 6 chỗ còn trong danh sách dưới đây là QUYẾT ĐỊNH CÓ CHỦ Ý, không phải nợ — financeV2Mutations ×2 (null = tri-state 'KHÔNG rõ', caller fail-open giữ list cũ), supabaseFetchAll (null = hợp đồng fail-closed của chính hàm, caller bắt buộc kiểm), salaryBonusNotify (header ghi rõ KHÔNG throw để không chặn UI hoàn thành việc), customerExcelHelpers (tải ảnh tuỳ chọn), useRooms.ts#useRoom (thuộc plan D đợt này, chưa đụng).",
-  "updatedAt": "2026-11-15",
-  "total": 19,
+  "updatedAt": "2026-11-19",
+  "total": 18,
   "money": 2,
   "sites": [
     "src/components/tasks/BonusToast.tsx#catch-arrow-rong#0",
     "src/components/tasks/JobCaptureCamera.tsx#catch-arrow-rong#0",
     "src/copilot/createAgent.ts#catch-tra-rong#0",
     "src/hooks/usePrefetchHeavyPages.ts#catch-arrow-rong#0",
-    "src/hooks/useRealtimeDataSync.ts#catch-arrow-rong#0",
     "src/lib/customerExcelHelpers.ts#catch-tra-rong#0",
     "src/lib/customerExcelHelpers.ts#if-error-khoi-tra-rong#0",
     "src/lib/invoiceHelpers.ts#catch-tra-rong#0",

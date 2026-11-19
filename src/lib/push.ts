@@ -539,13 +539,14 @@ async function ketQuaTuLoiHttp(error: unknown): Promise<SendTestPushResult | nul
   if (typeof status !== 'number' || typeof json !== 'function') return null;
   const allowed = OUTCOME_THEO_HTTP[status];
   if (!allowed) return null;
-  let body: unknown;
-  try {
-    body = await (json as () => Promise<unknown>).call(context);
-  } catch {
-    return null;
-  }
-  const result = docKetQuaGuiThu(body);
+  // Body không đọc được (không phải JSON) ⇒ không phải "kết quả gửi" có cấu trúc: trả null để
+  // sendTestPush ném lại NGUYÊN lỗi HTTP gốc — không nuốt lỗi, chỉ không đổi nó thành kết quả.
+  const doc = await (json as () => Promise<unknown>).call(context).then(
+    (value) => ({ docDuoc: true as const, value }),
+    () => ({ docDuoc: false as const }),
+  );
+  if (!doc.docDuoc) return null;
+  const result = docKetQuaGuiThu(doc.value);
   return result && allowed.includes(result.outcome) ? result : null;
 }
 

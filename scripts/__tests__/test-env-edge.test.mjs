@@ -65,8 +65,13 @@ describe('test-env edge: secret cấm trên TEST', () => {
     await expect(main(argv('meter-capture-worker'), phuThuoc)).resolves.toBe(0);
     expect(deploy).toHaveLength(1);
     expect(deploy[0].url).toBe(`https://api.supabase.com/v1/projects/${REF}/functions/deploy?slug=meter-capture-worker`);
-    expect(JSON.parse(deploy[0].init.body.get('metadata'))).toEqual({ name:'meter-capture-worker', entrypoint_path:'index.ts', verify_jwt:false, import_map_path:'deno.json' });
-    expect(deploy[0].init.body.getAll('file').map(f=>f.name).sort()).toEqual(['deno.json','deno.lock','index.ts']);
+    // Gói deploy dùng chung (dungGoiDeploy, PR #275): tên file tính từ gốc repo để import ../_shared giải đúng;
+    // deno.lock vẫn phải đi kèm — đó là ý "bundle khoá" của ca này.
+    const goc = 'supabase/functions/meter-capture-worker';
+    expect(JSON.parse(deploy[0].init.body.get('metadata'))).toEqual({ name:'meter-capture-worker', entrypoint_path:`${goc}/index.ts`, verify_jwt:false, import_map_path:`${goc}/deno.json` });
+    const tenFile = deploy[0].init.body.getAll('file').map(f=>f.name).sort();
+    expect(tenFile).toEqual(tepFunction('meter-capture-worker').map((f) => f.path));
+    expect(tenFile).toEqual(expect.arrayContaining([`${goc}/deno.json`,`${goc}/deno.lock`,`${goc}/index.ts`]));
     expect(thuTu.some(call=>call.startsWith('POST '))).toBe(false);
   });
 

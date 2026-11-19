@@ -25,7 +25,8 @@ const INCIDENTAL_HERMES_MENTIONS = new Set([
 // Chọn theo MÃ (đã bỏ chú thích `--`), không theo văn bản thô: một migration chỉ NHẮC
 // "hermes_" trong chú thích thì không định nghĩa/cấp quyền gì cho Hermes, nên không thuộc
 // phạm vi hợp đồng này. Đo 16/11/2026: đúng một file khác nhau giữa hai cách chọn
-// (20261115084108_so_tong_loi_nhuan_tao.sql, chú thích "không đụng hàm hermes_*").
+// (20261115084108_so_tong_loi_nhuan_tao.sql, chú thích "không đụng hàm hermes_*"); đo lại 19/11/2026: thêm
+// 20261116015253_rpc_cas_tra_409_thay_40001.sql (cũng chỉ nhắc trong chú thích).
 const sources = readdirSync(directory).filter(name => name.endsWith('.sql')).sort()
   .map(name => ({ name, sql: readFileSync(join(directory, name), 'utf8') }))
   .filter(({ name, sql }) => /\bhermes_/i.test(clean(sql)) && !INCIDENTAL_HERMES_MENTIONS.has(name));
