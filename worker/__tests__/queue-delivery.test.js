@@ -54,13 +54,14 @@ vi.mock('../lib/ctx.js', () => ({
   },
 }));
 vi.mock('../lib/lease.js', () => ({ INSTANCE_ID: 'instance' }));
-vi.mock('../lib/inbound.js', () => ({ upsertMessagesForThread: vi.fn(), emojiToZca: value => value }));
+vi.mock('../lib/inbound.js', () => ({ syncAccountGroups: vi.fn(async api => (await api.getAllGroups()).length), upsertMessagesForThread: vi.fn(), emojiToZca: value => value }));
 vi.mock('../lib/scope-guard.js', () => ({
-  validateZaloCommandScope: async () => ({ ok: true, account: { status: state.status }, conv: { thread_id: 'thread', thread_type: state.threadType } }),
+  validateZaloCommandScope: async () => ({ ok: true, account: { status: state.status, user_id: 'owner' }, conv: { thread_id: 'thread', thread_type: state.threadType } }),
   formatScopeRejection: value => value.reason, logScopeRejection: vi.fn(), clampHistoryCount: value => value,
 }));
 vi.mock('../lib/automation-delivery.js', () => ({ validateAutomationDelivery: async () => state.autoAllowed
   ? { ok: true } : { ok: false, reason: 'CANCELLED_AUTOMATION' } }));
+import { syncAccountGroups } from '../lib/inbound.js';
 import { processJob, recoverInterruptedJobs } from '../lib/queue.js';
 
 const makeJob = payload => ({ id: 'job', account_id: 'account', organization_id: 'org', conversation_id: 'conv', message_id: 'message', payload: { body: 'hello', ...payload } });
@@ -80,6 +81,15 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('queue admission and delivery outcomes', () => {
+  it('refreshes groups through the selected session without sending any message', async () => {
+    const api = connect();
+    api.getAllGroups = vi.fn(async () => ['g1', 'g2']);
+    await processJob({ id: 'job', account_id: 'account', organization_id: 'org', user_id: 'staff', payload: { action: 'sync_groups' } });
+    expect(syncAccountGroups).toHaveBeenCalledWith(expect.anything(), 'account', 'owner', 'org');
+    expect(api.getAllGroups).toHaveBeenCalledOnce();
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(state.writes).toContainEqual(expect.objectContaining({ table: 'zalo_send_queue', patch: expect.objectContaining({ status: 'sent', result: { group_count: 2 } }) }));
+  });
   it('routes a forward-media job through the same provider fence and retains unknown send receipts', async () => {
     const api = connect(); state.persistError = { message: 'finalize unavailable' };
     state.forwardSource = { id: 'source', account_id: 'source-account', organization_id: 'org', conversation_id: 'source-conv', msg_type: 'file',

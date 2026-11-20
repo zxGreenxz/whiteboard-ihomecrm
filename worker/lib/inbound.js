@@ -363,6 +363,48 @@ async function upsertConvRows(rows) {
   }
 }
 
+// Login also warms the member cache. A manual refresh only needs the directory.
+export async function syncAccountGroups(api, accountId, ownerId, orgId, loadMembers = false) {
+  const result = await api.getAllGroups();
+  if (!result?.gridVerMap || typeof result.gridVerMap !== 'object' || Array.isArray(result.gridVerMap)) {
+    throw new Error('Zalo chưa trả về danh sách nhóm');
+  }
+  const allIds = Object.keys(result.gridVerMap);
+  let saved = 0;
+  let batchError;
+  for (const ids of chunk(allIds, 50)) {
+    try {
+      const info = await api.getGroupInfo(ids);
+      const rows = ids.flatMap(id => {
+        const group = info?.gridInfoMap?.[id];
+        return group ? [{
+          user_id: ownerId, organization_id: orgId, account_id: accountId,
+          thread_id: id, thread_type: 'group', peer_name: group.name || 'Nhóm Zalo',
+          peer_avatar_url: group.fullAvt || group.avt || null,
+        }] : [];
+      });
+      if (!rows.length) continue;
+      const { data, error } = await sb.from('zalo_conversations')
+        .upsert(rows, { onConflict: 'account_id,thread_id' }).select('id,thread_id');
+      if (error) throw new Error('Không lưu được danh sách nhóm: ' + error.message);
+      saved += data.length;
+      if (loadMembers) {
+        for (const conv of data) {
+          await refreshGroupMembers(api, accountId, conv.id, { group: info.gridInfoMap[conv.thread_id], includeHistory: true });
+        }
+      }
+    } catch (error) {
+      batchError = error;
+      log('sync group batch', accountId, error.message);
+    }
+  }
+  if (saved !== allIds.length) {
+    const detail = batchError ? ' ' + batchError.message : '';
+    throw new Error(`Đã đồng bộ ${saved}/${allIds.length} nhóm. Hãy đồng bộ lại để lấy các nhóm còn thiếu.${detail}`);
+  }
+  return saved;
+}
+
 export async function syncContacts(api, accountId, ownerId) {
   const orgId = orgOf(accountId);
   // Bạn bè
@@ -376,28 +418,9 @@ export async function syncContacts(api, accountId, ownerId) {
   }));
   if (friendRows.length) await upsertConvRows(friendRows);
 
-  // Nhóm: getAllGroups trả map id→version; chi tiết qua getGroupInfo
-  let gids = [];
-  try { const g = await api.getAllGroups(); gids = Object.keys(g?.gridVerMap || {}); } catch (e) { log('getAllGroups', e?.message || e); }
   let groupCount = 0;
-  for (const ids of chunk(gids, 50)) {
-    try {
-      const info = await api.getGroupInfo(ids);
-      const map = info?.gridInfoMap || {};
-      const rows = Object.values(map).filter((g) => g && g.groupId).map((g) => ({
-        user_id: ownerId, organization_id: orgId,
-        account_id: accountId, thread_id: String(g.groupId), thread_type: 'group',
-        peer_name: g.name || 'Nhóm Zalo', peer_avatar_url: g.fullAvt || g.avt || null,
-      }));
-      if (rows.length) { await upsertConvRows(rows); groupCount += rows.length; }
-      for (const g of Object.values(map).filter(g => g?.groupId)) {
-        const { data: conv, error } = await sb.from('zalo_conversations').select('id')
-          .eq('account_id', accountId).eq('organization_id', orgId).eq('thread_id', String(g.groupId)).eq('thread_type', 'group').maybeSingle();
-        if (error) throw error;
-        if (conv) await refreshGroupMembers(api, accountId, conv.id, { group: g, includeHistory: true });
-      }
-    } catch (e) { log('getGroupInfo', e?.message || e); }
-  }
+  try { groupCount = await syncAccountGroups(api, accountId, ownerId, orgId, true); }
+  catch (e) { log('sync groups error', e?.message || e); }
   log('synced', friendRows.length, 'bạn,', groupCount, 'nhóm →', accountId);
 
   // Gắn hội thoại ↔ hồ sơ CRM theo SĐT vừa đổ về từ danh bạ (matcher nằm trọn

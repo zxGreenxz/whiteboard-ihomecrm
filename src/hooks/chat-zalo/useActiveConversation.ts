@@ -1,3 +1,4 @@
+import type { ZaloMessage } from '@/components/chat-zalo/types';
 import { useEffect, useRef, useState } from 'react';
 
 /**
@@ -34,9 +35,20 @@ export function useActiveConversation(
 
   const dauDanhSach = conversations[0]?.id ?? '';
   useEffect(() => {
-    if (activeId || !dauDanhSach) return;
+    if (!dauDanhSach || conversations.some(c => c.id === activeId)) return;
     setActiveId(dauDanhSach);
-  }, [activeId, dauDanhSach]);
+  }, [activeId, dauDanhSach, conversations]);
 
   return [activeId, setActiveId] as const;
+}
+
+// The inbox can switch threads when the selected account changes, without a row click.
+export function useConversationReply(conversationId: string) {
+  const [quote, setQuote] = useState<{ conversationId: string; message: ZaloMessage } | null>(null);
+  const message = quote?.conversationId === conversationId ? quote.message : null;
+  return {
+    message,
+    select: (next: ZaloMessage | null) => setQuote(next ? { conversationId, message: next } : null),
+    clearSent: () => setQuote(current => current === quote ? null : current),
+  };
 }

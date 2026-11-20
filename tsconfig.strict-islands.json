@@ -257,6 +257,7 @@
     "src/components/chat-zalo/ConnectZaloDialog.tsx",
     "src/components/chat-zalo/ConversationList.tsx",
     "src/components/chat-zalo/ConversationRow.tsx",
+    "src/components/chat-zalo/SyncGroupsButton.tsx",
     "src/components/chat-zalo/GroupSaleButton.tsx",
     "src/components/chat-zalo/ImageMessage.tsx",
     "src/components/chat-zalo/InfoPanel.tsx",

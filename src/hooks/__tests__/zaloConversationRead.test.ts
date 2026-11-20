@@ -8,15 +8,20 @@ vi.mock('@/integrations/supabase/client', () => {
     const sort: string[] = [];
     let after = '';
     let scope = '';
+    const filters: ((row: Record<string, unknown>) => boolean)[] = [];
     const q = {
       select: (columns: string) => { mock.select(columns); return q; },
-      eq: () => q,
+      eq: (key: string, value: string) => {
+        filters.push(row => key === 'organization_id' ? (row[key] ?? 'org-a') === value : row[key] === value);
+        return q;
+      },
+      in: (key: string, values: string[]) => { filters.push(row => values.includes(String(row[key]))); return q; },
       order: (key: string) => { sort.push(key); return q; },
       gt: (_key: string, id: string) => { after = id; return q; },
       or: (expression: string) => { scope = expression; return q; },
       range: (start: number, end: number) => {
         const limitId = scope.match(/id\.lte\.([^,)]+)/)?.[1];
-        const sorted = mock.rows.filter(row => String(row.id) > after && (!limitId || row.last_message_at || String(row.id) <= limitId)).sort((a, b) => {
+        const sorted = mock.rows.filter(row => filters.every(matches => matches(row)) && String(row.id) > after && (!limitId || row.last_message_at || String(row.id) <= limitId)).sort((a, b) => {
           const time = sort[0] === 'last_message_at' ? String(b.last_message_at ?? '').localeCompare(String(a.last_message_at ?? '')) : 0;
           return time || String(a.id).localeCompare(String(b.id));
         });
@@ -30,7 +35,7 @@ vi.mock('@/integrations/supabase/client', () => {
   };
   return { supabase: { from } };
 });
-import { useZaloConversations, useZaloLabels } from '../useZaloChat';
+import { useZaloConversations, useZaloGroupDirectory, useZaloLabels } from '../useZaloChat';
 
 it('keeps equal label IDs from separate accounts instead of deduplicating them together', async () => {
   mock.rows = [{ account_id: 'account-a', label_id: 7, name: 'Sale A' }, { account_id: 'account-b', label_id: 7, name: 'Sale B' }];
@@ -95,4 +100,17 @@ it('keeps the newest threads when activity moves another contact across the 5000
   expect(rows).toHaveLength(5000);
   expect(rows.slice(0, 2).map(row => row.id)).toEqual(['05000', '04999']);
   expect(rows.at(-1)?.id).toBe('04997');
+});
+
+it('paginates the selected account directory including silent groups beyond the inbox limit', async () => {
+  mock.rows = Array.from({ length: 5005 }, (_, i) => ({
+    id: String(i).padStart(5, '0'), thread_type: 'group', account_id: 'nick-a',
+  }));
+  mock.rows.push({ id: 'other-account', account_id: 'nick-b', thread_type: 'group' },
+    { id: 'contact', account_id: 'nick-a', thread_type: 'user' },
+    { id: 'other-company', organization_id: 'org-b', account_id: 'nick-a', thread_type: 'group' });
+  const query = useZaloGroupDirectory(['nick-a'], true) as unknown as { queryFn: () => Promise<ZaloConversation[]> };
+  const groups = await query.queryFn();
+  expect(groups).toHaveLength(5005);
+  expect(groups.at(-1)).toMatchObject({ id: '05004', isGroup: true, hasMessages: false });
 });

@@ -2,7 +2,9 @@
 // Chốt hội thoại mặc định + bỏ chọn khi đổi công ty (A8 — RT-OTHER-M2, RT-OTHER-7).
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { useActiveConversation } from "@/hooks/chat-zalo/useActiveConversation";
+import { useActiveConversation, useConversationReply } from "@/hooks/chat-zalo/useActiveConversation";
+
+import type { ZaloMessage } from "@/components/chat-zalo/types";
 
 type Props = { list: { id: string }[]; org: string | null };
 
@@ -34,6 +36,14 @@ describe("useActiveConversation", () => {
     expect(result.current[0]).toBe("b");
   });
 
+  it("đổi nick trong cùng công ty chọn ngay một hội thoại của nick mới", () => {
+    const { result, rerender } = renderHook(({ list, org }: Props) => useActiveConversation(list, org), {
+      initialProps: { list: [{ id: "conversation-a" }], org: "org-1" },
+    });
+    rerender({ list: [{ id: "conversation-b" }], org: "org-1" });
+    expect(result.current[0]).toBe("conversation-b");
+  });
+
   it("đổi công ty: bỏ hội thoại của công ty cũ, chốt hội thoại đầu của công ty mới", () => {
     const { result, rerender } = renderHook(({ list, org }: Props) => useActiveConversation(list, org), {
       initialProps: { list: [{ id: "a" }, { id: "b" }], org: "org-1" },
@@ -44,4 +54,17 @@ describe("useActiveConversation", () => {
     rerender({ list: [{ id: "z" }], org: "org-2" });
     expect(result.current[0]).toBe("z");
   });
+});
+
+it("không mang trích dẫn sang nick khác và lượt gửi cũ không xoá trích dẫn mới", () => {
+  const { result, rerender } = renderHook(({ id }) => useConversationReply(id), { initialProps: { id: "group-a" } });
+  const quote = { id: "msg-a", text: "tin nhắn riêng" } as ZaloMessage;
+  act(() => result.current.select(quote));
+  const finishOldSend = result.current.clearSent;
+  rerender({ id: "group-b" });
+  expect(result.current.message).toBeNull();
+  const next = { id: "msg-b" } as ZaloMessage;
+  act(() => result.current.select(next));
+  act(finishOldSend);
+  expect(result.current.message).toBe(next);
 });

@@ -102,6 +102,14 @@ describe('validateZaloCommandScope', () => {
     expect(recallOthers.reason).toMatch(/chính mình/);
   });
 
+  it('only admits a directory sync for the selected account without a thread or message', async () => {
+    const sync = { action: 'sync_groups' };
+    expect((await validateZaloCommandScope(jobA({ payload: sync }), db())).ok).toBe(true);
+    for (const extra of [{ conversation_id: 'conv-g' }, { message_id: 'm-out' }, { payload: { ...sync, kind: 'forward_media' } }]) {
+      expect((await validateZaloCommandScope(jobA({ payload: sync, ...extra }), db())).ok).toBe(false);
+    }
+  });
+
   it('job không đụng thread (find_user, sticker_list) chỉ cần account hợp lệ', async () => {
     const r = await validateZaloCommandScope(jobA({ payload: { action: 'find_user', phone: '0900' } }), db());
     expect(r.ok).toBe(true);

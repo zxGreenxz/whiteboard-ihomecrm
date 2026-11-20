@@ -62,10 +62,10 @@ export default function SchedulePlanner({ value, onChange }: Props) {
       {/* Giờ gửi */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Clock size={15} style={{ color: CHU_MO, flex: 'none' }} />
-        <label htmlFor="lich-gio" style={{ fontSize: 12.5, fontWeight: 600 }}>Giờ gửi hằng ngày</label>
+        <label htmlFor="lich-gio" style={{ fontSize: 12.5, fontWeight: 600 }}>Giờ gửi chung của công ty</label>
         <GioInput id="lich-gio" value={v.time} macDinh="08:30" onChange={(t) => onChange({ ...v, time: t })} />
         <span style={{ fontSize: 11, color: CHU_MO }}>
-          Giờ máy chủ. Lượt gửi vẫn phải nằm trong khung giờ cho phép ở khối Chống spam.
+          Giờ Việt Nam. Lượt gửi vẫn phải nằm trong khung giờ cho phép ở khối Chống spam.
         </span>
       </div>
 

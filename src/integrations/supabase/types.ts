@@ -31588,6 +31588,17 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      zalo_save_account_recipients_v1: {
+        Args: {
+          p_account_id: string
+          p_add: string[]
+          p_changes: Json
+          p_expected: Json
+          p_organization_id: string
+          p_remove: string[]
+        }
+        Returns: Json
+      }
       zalo_save_template: {
         Args: {
           p_body: string
@@ -31774,6 +31785,10 @@ export type Database = {
       zalo_sticker_search: {
         Args: { p_account_id: string; p_keyword: string }
         Returns: Json
+      }
+      zalo_sync_account_groups_v1: {
+        Args: { p_account_id: string; p_organization_id: string }
+        Returns: string
       }
       zalo_toggle_automation: {
         Args: { p_enabled: boolean; p_kind: string; p_organization_id?: string }

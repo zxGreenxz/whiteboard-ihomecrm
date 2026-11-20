@@ -36,9 +36,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useZaloAutomationConfigs, useSaveAutomation, useZaloAutomationRuns } from '@/hooks/useZaloChat';
 import { chuanHoaBroadcast, chuanHoaAutoReply } from '../automationConfig';
 import type { CauHinhBroadcast, CauHinhAutoReply } from '../automationConfig';
-import type { ZaloConversation, ZaloLabel } from '@/components/chat-zalo/types';
+import type { ZaloConversation, ZaloLabel, ZaloAccount } from '@/components/chat-zalo/types';
 import type { GroupSaleAction } from '../GroupSaleButton';
 import RecipientPicker from './RecipientPicker';
+import SyncGroupsButton from '../SyncGroupsButton';
 import SchedulePlanner from './SchedulePlanner';
 import TemplateBuilder from './TemplateBuilder';
 import AntiSpamFields from './AntiSpamFields';
@@ -50,6 +51,7 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   conversations: ZaloConversation[];
+  account?: ZaloAccount;
   /** Nhãn "Phân loại" đã gắn tên nick — để lọc người nhận theo phân loại. */
   labels?: ZaloLabel[];
   saleAction?: GroupSaleAction;
@@ -60,7 +62,7 @@ type Tab = 'broadcast' | 'reply' | 'nhatky';
 const NHAN_TAB = 'min-w-0 whitespace-normal px-2 text-center text-xs leading-tight sm:px-3 sm:text-sm';
 const ICON_TAB = 'mr-2 hidden h-4 w-4 shrink-0 sm:inline-block';
 
-export default function AutomationSettingsDialog({ open, onOpenChange, conversations, labels, saleAction }: Props) {
+export default function AutomationSettingsDialog({ open, onOpenChange, account, conversations, labels, saleAction }: Props) {
   const configQuery = useZaloAutomationConfigs(open);
   const { data, isLoading } = configQuery;
   // Nhật ký chỉ nạp khi dialog mở — cùng lý do với cấu hình: đây là màn người
@@ -82,6 +84,11 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
   // cơ chế đúng/sai, nên so bằng JSON là đủ.
   const [banDau, setBanDau] = useState<{ bc: string; ar: string }>({ bc: '', ar: '' });
   const daNap = useRef(false);
+  const savedBroadcast = useRef({ enabled: false, config: {} as Record<string, unknown> });
+  const accountConversations = useMemo(() => conversations.filter(c => account && c.accountId === account.id), [account, conversations]);
+  const accountLabels = useMemo(() => labels?.filter(l => l.accountId === account?.id), [account, labels]);
+  const accountIds = useMemo(() => new Set(accountConversations.map(c => c.id)), [accountConversations]);
+  const visibleRecipients = bc.recipients.filter(id => accountIds.has(id));
 
   useEffect(() => {
     // Đóng dialog → quên đi, lần mở sau nạp lại từ server.
@@ -93,6 +100,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
     const bcMoi = chuanHoaBroadcast(rowBc?.config);
     const arMoi = chuanHoaAutoReply(rowAr?.config);
 
+    savedBroadcast.current = { enabled: !!rowBc?.enabled, config: (rowBc?.config ?? {}) as Record<string, unknown> };
     setBcBat(!!rowBc?.enabled);
     setBc(bcMoi);
     setArBat(!!rowAr?.enabled);
@@ -112,7 +120,8 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
     if(configQuery.isError || !daNap.current) return;
     const fields:Record<string,string>={};
     if(tab==='broadcast' && bcBat){
-      if(!bc.recipients.length) fields.recipients='Chọn ít nhất một người nhận trước khi bật lịch gửi.';
+      if(!account) fields.recipients='Chọn nick Zalo để quản lý nhóm nhận tin.';
+      else if(!savedBroadcast.current.enabled && !bc.recipients.length) fields.recipients='Chọn ít nhất một người nhận để bật lịch gửi.';
       if(!bc.template.blocks.length) fields.template='Chọn ít nhất một khối nội dung trước khi bật lịch gửi.';
     }
     if(tab==='reply' && arBat && !ar.keywords.length) fields.keywords='Thêm từ khóa kích hoạt trước khi bật tự động trả lời.';
@@ -120,19 +129,33 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
     if(Object.keys(fields).length){void focusFirstError(fields,{order:['recipients','template','keywords']});return;}
 
     if (tab === 'broadcast') {
-      const sach = chuanHoaBroadcast(bc);
-      luu.mutate(
-        { kind: 'broadcast_vacant', enabled: bcBat, config: sach },
-        {
-          onError: error => setServerError(actionErrorMessage(error,"Chưa lưu được cài đặt tự động hóa Zalo")),
-          onSuccess: () => {
-            // Ghi lại đúng thứ vừa gửi đi: giá trị có thể đã bị kẹp lúc chuẩn
-            // hoá, nếu không đồng bộ thì form vẫn hiện số cũ và báo "chưa lưu".
-            setBc(sach);
-            setBanDau((s) => ({ ...s, bc: JSON.stringify([bcBat, sach]) }));
-          },
+      if (!account) return;
+      const previous = savedBroadcast.current;
+      const original = chuanHoaBroadcast(previous.config);
+      const next = chuanHoaBroadcast(bc);
+      const changes: Record<string, unknown> = {};
+      for (const key of ['schedule', 'template', 'antiSpam', 'eventDriven'] as const) {
+        if (JSON.stringify(original[key]) !== JSON.stringify(next[key])) changes[key] = next[key];
+      }
+      if (previous.enabled !== bcBat) changes.enabled = bcBat;
+      luu.mutate({
+        kind: 'broadcast_vacant', accountId: account.id,
+        add: next.recipients.filter(id => !original.recipients.includes(id)),
+        remove: original.recipients.filter(id => !next.recipients.includes(id)),
+        changes, expected: Object.fromEntries(Object.keys(changes).map(key => [
+          key, key === 'enabled' ? previous.enabled : previous.config[key],
+        ])),
+      }, {
+        onError: error => setServerError(actionErrorMessage(error, 'Chưa lưu được lịch gửi')),
+        onSuccess: saved => {
+          if (!saved) return;
+          savedBroadcast.current = saved;
+          const updated = chuanHoaBroadcast(saved.config);
+          setBc(updated);
+          setBcBat(saved.enabled);
+          setBanDau(s => ({ ...s, bc: JSON.stringify([saved.enabled, updated]) }));
         },
-      );
+      });
     } else {
       const sach = chuanHoaAutoReply(ar);
       luu.mutate(
@@ -162,7 +185,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
         <DialogHeader>
           <DialogTitle>Cài đặt tự động hoá Zalo</DialogTitle>
           <DialogDescription>
-            Hai tính năng chạy độc lập và lưu riêng — nút Lưu chỉ ghi tab đang mở.
+            Lịch gửi và tự động trả lời áp dụng cho cả công ty. Danh sách người nhận được chọn riêng cho từng nick Zalo.
           </DialogDescription>
         </DialogHeader>
 
@@ -216,16 +239,19 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
 
                 <KhoiCaiDat
                   icon={<Users size={15} />}
-                  tieuDe="Người nhận"
+                  tieuDe={account ? `Người nhận · ${account.name}` : 'Người nhận'}
                   moTa="Tích ô để chọn người nhận định kỳ, rồi lưu lịch. Nút đánh dấu sale lưu ngay và cho phép gửi phòng trống một lần vào nhóm."
                 >
                   <div data-field-name="recipients" tabIndex={-1} aria-invalid={!!errors.recipients} className="rounded aria-[invalid=true]:border aria-[invalid=true]:border-destructive">
+                  {account && <SyncGroupsButton account={account} />}
                   <RecipientPicker
-                    conversations={conversations}
-                    labels={labels}
+                    conversations={accountConversations}
+                    labels={accountLabels}
                     saleAction={saleAction}
-                    value={bc.recipients}
-                    onChange={(ids) => setBc({ ...bc, recipients: ids })}
+                    value={visibleRecipients}
+                    onChange={ids => setBc(current => ({
+                      ...current, recipients: [...current.recipients.filter(id => !accountIds.has(id)), ...ids],
+                    }))}
                   />
                   {errors.recipients && <p role="alert" className="text-sm text-destructive">{errors.recipients}</p>}</div>
                 </KhoiCaiDat>
@@ -316,7 +342,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
               Đóng
             </Button>
             {tab !== 'nhatky' && (
-              <Button onClick={luuTab} disabled={luu.isPending || isLoading || configQuery.isError}>
+              <Button onClick={luuTab} disabled={luu.isPending || isLoading || configQuery.isError || !coDoi || (tab === 'broadcast' && !account)}>
                 {luu.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {tab === 'broadcast' ? 'Lưu lịch gửi' : 'Lưu tự động trả lời'}
               </Button>

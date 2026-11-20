@@ -536,7 +536,7 @@
         {
           "path": "src/pages/chat-zalo/ChatZaloPage.tsx",
           "region": "zalo-conversations",
-          "sha256": "bbba1393f5afc4dce8efb8737f97039bfdd776443866f8865c1fcd1869691832"
+          "sha256": "bb35dbdb62e7cc58080ba93a27980d14fe8f1507c22bb2bdea652236b6cc2bb0"
         }
       ],
       "hermes": [
@@ -552,7 +552,7 @@
           "contains": "crm.zalo_conversations"
         }
       ],
-      "notes": "Đã biết 17/10: web ẩn hội thoại chưa có tin ở danh sách mặc định, hiện chúng khi lọc nhãn hoặc nhóm sale, tìm cả tên phòng, không bỏ dấu; Hermes hiện mọi hội thoại, bỏ dấu, không tìm tên phòng."
+      "notes": "Web hiện nhóm của nick đang xem kể cả khi chưa có tin. Liên hệ cá nhân chưa có tin hiện trong Danh bạ hoặc khi tìm kiếm, lọc nhãn. Web tìm cả tên phòng, không bỏ dấu; Hermes hiện mọi hội thoại, bỏ dấu, không tìm tên phòng."
     },
     {
       "id": "pnl-pending",

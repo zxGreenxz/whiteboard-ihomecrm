@@ -164,10 +164,15 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
             <span style={{ width: 28, height: 28, borderRadius: 8, background: EMERALD, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><ImageIcon size={15} /></span>
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 700 }}>Gửi ảnh phòng trống định kỳ</div>
-              <div style={{ fontSize: 11, color: 'hsl(152 50% 35%)', fontWeight: 600 }}>{trangThaiBatTat(automations.broadcastOn)}</div>
+              <div style={{ fontSize: 11, color: 'hsl(152 50% 35%)', fontWeight: 600 }}>{daBietBatTat && automations.broadcastOn && rowBc && !bc.recipients.length ? 'Chờ chọn người nhận' : trangThaiBatTat(automations.broadcastOn)}</div>
             </div>
           </div>
-          <Toggle on={automations.broadcastOn} disabled={!daBietBatTat || !canManage} onClick={() => onToggle('broadcastOn')} />
+          <Toggle on={automations.broadcastOn}
+              disabled={!daBietBatTat || !canManage || (!automations.broadcastOn && (dangTaiCfg || loiCfg))}
+              onClick={() => {
+                if (!automations.broadcastOn && !bc.recipients.length) onOpenSettings();
+                else onToggle('broadcastOn');
+              }} />
         </div>
 
         <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12.5 }}>
@@ -181,7 +186,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
           ) : (
             <>
               <Row label="Giờ gửi"><span style={{ fontWeight: 600, ...mono() }}>{bc.schedule.time}</span></Row>
-              <Row label="Người nhận">
+              <Row label="Người nhận toàn công ty">
                 <span style={{ fontWeight: 600 }}>
                   {bc.recipients.length ? `${bc.recipients.length} hội thoại` : 'chưa chọn ai'}
                 </span>
@@ -353,7 +358,7 @@ function NutDungKhanCap({ dangBat }: { dangBat: boolean }) {
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Dừng toàn bộ tin tự động?</AlertDialogTitle>
+          <AlertDialogTitle>Dừng tin tự động của cả công ty?</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div style={{ fontSize: 13, lineHeight: 1.6 }}>
               Huỷ mọi tin tự động <b>đang chờ gửi</b> và tắt cả hai công tắc.
