@@ -216,6 +216,18 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('hộp chốt Chi lợi nhuận cổ đông (chủ)', () => {
+  it('chốt khoản phải trả của kỳ chỉ có phân bổ quỹ chung qua luồng chi hiện hành', async () => {
+    m.months = [{ month: '2026-08-01', allocated: 600, unpaid_through: 600, selectable: true }];
+    m.advanceOutstanding = 0;
+    render(dialog());
+    expect(optionsOf('throughMonth')).toEqual(['2026-08-01']);
+    expect(text('profit-settle-cash')).toMatch(/600/);
+    pickAccount();
+    fireEvent.click(settleButton());
+    await waitFor(() => expect(m.settle).toHaveBeenCalledWith(expect.objectContaining({
+      shareholderId: 's', throughMonth: '2026-08-01', expectedRecognized: 600, expectedCash: 600,
+    })));
+  });
   const dialog = (extra: Record<string, unknown> = {}) => <ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" {...extra} />;
 
   it('trống thì focus cổ đông, không gọi lệnh chốt', async () => {

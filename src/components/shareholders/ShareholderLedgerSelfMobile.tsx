@@ -17,7 +17,7 @@ import { formatISODateVN } from '@/lib/vnDate';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
 import ProfitSelfAdvanceDialog from './ProfitSelfAdvanceDialog';
 import type { ShareholderSelfAccess } from './ShareholderLedgerSelfView';
-import { MyPositionError, MySettlementsMobile } from './ShareholderSelfPosition';
+import { MyFundBreakdown, MyPositionError, MySettlementsMobile } from './ShareholderSelfPosition';
 import { BuildingMatrix, CARD, fmtShort, MonthBars, uniformPercent, YearMonthRow } from './profitMobileShared';
 import { colorAt } from './shareholderUtils';
 
@@ -99,6 +99,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
         </div>
       </div>
       <MyPositionError view={positionView} />
+      <MyFundBreakdown view={positionView} />
       {position && isUnpaidNegative(position) && (
         <p role="note" className="m-0 text-[11.5px] font-semibold leading-snug text-[#8d8678]">{UNPAID_NEGATIVE_NOTE}</p>
       )}
@@ -119,7 +120,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
 
       <div className="grid grid-cols-2 gap-2.5">
         <div className={`${CARD} !rounded-2xl px-3 py-3`}>
-          <span className={KPI_LABEL}>Được chia</span>
+          <span className={KPI_LABEL}>Được chia từ tòa</span>
           <div className={`${KPI_VAL} text-[#0e7a47]`}>{fmtShort(ledger.allocated)}</div>
           <div className={KPI_SUB}>{marker ? `Sau mốc hết ${marker}` : 'Luỹ kế đã chốt'}</div>
         </div>
@@ -136,7 +137,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
           </div>
         )}
         <div className={`${CARD} !rounded-2xl px-3 py-3`}>
-          <span className={KPI_LABEL}>Được chia năm {year}</span>
+          <span className={KPI_LABEL}>Từ các tòa năm {year}</span>
           <div className={`${KPI_VAL} text-[#1b1813]`}>{fmtShort(yearTotal)}</div>
           <div className={KPI_SUB}>{yearMonths.length > 0 ? `${yearMonths.length} tháng đã chốt` : 'Chưa có dữ liệu'}</div>
         </div>
@@ -146,7 +147,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
 
       <div className={`${CARD} !rounded-2xl px-[15px] py-3.5`}>
         <div className="flex items-baseline gap-1.5">
-          <span className={TITLE}>Được chia theo tháng</span>
+          <span className={TITLE}>Lợi nhuận từ các tòa theo tháng</span>
           <span className={SUB}>năm {year}</span>
           <span className="ml-auto font-mono text-[12px] font-bold text-[#0e7a47]">{fmtShort(yearTotal)}</span>
         </div>

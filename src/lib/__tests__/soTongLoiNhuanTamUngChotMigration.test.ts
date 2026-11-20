@@ -180,6 +180,7 @@ const E6_HUY_CHE = dinhNghiaTrong(E6, TEN_HUY_CHE);
 /** Migration dọn dẹp 20261118171708: thu quyền E4 / E5 của authenticated, E6 bỏ vế "đăng nhập lúc lập", R4 che DETAIL của DRIFT. */
 const FILE_DON_DEP = "supabase/migrations/20261118171708_so_tong_loi_nhuan_don_dep_sau_tam_ung.sql";
 const TEN_DON_DEP = FILE_DON_DEP.slice(DIR.length + 1);
+const TEN_SO_QUY = "20261120040424_so_du_dau_ky_va_phan_phoi_quy_co_dong.sql";
 const DON_DEP = readFileSync(FILE_DON_DEP, "utf8");
 const THAN_DON_DEP = DON_DEP.replace(/^BEGIN;\s*$/m, "").replace(/^COMMIT;\s*$/m, "").replace(/^NOTIFY pgrst, 'reload schema';\s*$/m, "");
 const R4 = "public.shareholder_profit_advance_preview_v1";
@@ -817,8 +818,17 @@ describe("khung thử: nền Đợt 1 thật và hai lượt migration", () => {
     const ten = [...new Set([...MIGRATION.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-z_]+\.[a-z0-9_]+)\s*\(/gi)].map((m) => m[1].toLowerCase()))];
     expect(ten.sort()).toEqual([...RPC, ...NOI_BO].map(([h]) => h.slice(0, h.indexOf("("))).sort());
     const file = FILE.slice(FILE.lastIndexOf("/") + 1);
-    // Sau file này chỉ migration dọn dẹp 20261118171708 định nghĩa lại một hàm của nó: R4 (bọc lời gọi vị thế).
-    for (const t of ten) expect((DINH_NGHIA.get(t) ?? []).map((d) => d.file), t).toEqual(t === R4 ? [file, TEN_DON_DEP] : [file]);
+    // Ghim toàn bộ chuỗi của từng hàm. Dọn dẹp bọc R4; sổ quỹ tích hợp quyền lợi vào vị thế và tháng chốt.
+    const keTiep: Record<string, string> = {
+      [R4]: TEN_DON_DEP,
+      "app_private.profit_ledger_position_v1": TEN_SO_QUY,
+      "app_private.profit_ledger_chot_months_v1": TEN_SO_QUY,
+      "app_private.profit_ledger_unpaid_through_v1": TEN_SO_QUY,
+    };
+    for (const t of ten) {
+      const files = (DINH_NGHIA.get(t) ?? []).map((definition) => definition.file);
+      expect(files, t).toEqual(keTiep[t] ? [file, keTiep[t]] : [file]);
+    }
     // Không lệnh DDL nào chạm đối tượng cũ ngoài hai ngoại lệ đã khai ở đầu file: CHECK maker_kind của dòng sổ phiếu chi, và MỘT
     // trigger mới trên bảng mốc (DROP … IF EXISTS của chính trigger đó để chạy lại được).
     expect(MIGRATION.match(/^\s*(ALTER TABLE|DROP (?!TRIGGER IF EXISTS a00_profit_ledger_payout_settlements)\w+|ALTER FUNCTION)[^\n]*/gim)?.map((x) => x.trim()))
@@ -1964,6 +1974,26 @@ describe("20261118171708 — E6: số dư chỉ cho người có quyền chi ho�
 });
 
 describe("20261118171708 — R4: lỗi lệch bất biến không mang số của cổ đông cho người không được thấy số", () => {
+  const position = dinhNghiaCuoi("app_private.profit_ledger_position_v1");
+  // Hai migration quỹ bổ sung nguồn dữ liệu cho vị thế. Chỉ áp trong giao dịch của ca
+  // kiểm lớp che lỗi R4; các ca phát lại migration lịch sử vẫn chạy trên nền của chính chúng.
+  async function napViTheHienHanh() {
+    await db.exec("ALTER TABLE public.organization_memberships ADD COLUMN member_type text NOT NULL DEFAULT 'STAFF'");
+    for (const file of [
+      "20261120040328_phan_phoi_quy_chung.sql", TEN_SO_QUY,
+    ]) {
+      const sql = readFileSync(`${DIR}/${file}`, "utf8").replace(/^BEGIN;\s*$/m, "").replace(/^COMMIT;\s*$/m, "");
+      await db.exec(sql);
+    }
+    // Nếu một forward-fix thay vị thế/R4, thực thi định nghĩa cuối rồi đo chính hàm đã nạp.
+    for (const [signature, def] of [
+      ["app_private.profit_ledger_position_v1(uuid,uuid)", position],
+      ["public.shareholder_profit_advance_preview_v1(uuid,numeric,uuid)", dinhNghiaCuoi(R4)],
+    ] as const) {
+      await db.exec(def.stmt);
+      expect(await md5Ham(signature)).toBe(md5(def.body));
+    }
+  }
   /** Ép lệch bất biến: chủ chốt chi hết tháng 9 của CD1 (phiếu tiền 100 chờ duyệt), rồi sửa thẳng bản ghi chốt (tắt chốt
    *  của bảng trong giao dịch thử) ⇒ tiền chốt chờ duyệt 107 > phiếu chi chờ duyệt 100 ⇒ profit_ledger_position_v1 ném DRIFT. */
   async function epLech() {
@@ -1982,6 +2012,7 @@ describe("20261118171708 — R4: lỗi lệch bất biến không mang số củ
   }
   it("ép lệch bất biến: người giữ sổ lập hộ, thành viên không giữ sổ, người chỉ quản lý cổ đông, cổ đông khác ⇒ XX000 PROFIT_LEDGER_POSITION_DRIFT cùng câu, KHÔNG DETAIL; người có quyền chi lợi nhuận và chính người nhận có quyền tạm ứng ⇒ nguyên lỗi, có DETAIL", async () => {
     await giaoDich(async () => {
+      await napViTheHienHanh();
       const goc = await epLech();
       const khongThay: [string, string | null][] = [[GIU_SO, SO_GIU], [GIU_SO, null], [TU_UNG, SO_TU], [KHONG_GIU, null], [QUAN_LY, null],
         [U_CD2, null], [U_XEM, null]];
@@ -1998,11 +2029,11 @@ describe("20261118171708 — R4: lỗi lệch bất biến không mang số củ
   });
   it("lỗi khác lúc đọc vị thế ném nguyên (cả DETAIL / HINT) cho mọi người gọi: XX000 câu khác, mã khác cùng câu DRIFT; chỉ đúng XX000 + câu mở đầu 'PROFIT_LEDGER_POSITION_DRIFT:' mới bị bỏ DETAIL với người không được thấy số", async () => {
     await giaoDich(async () => {
+      await napViTheHienHanh();
       await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
-      // Thay tạm hàm vị thế (giao dịch thử) bằng bản chỉ ném một lỗi cho trước.
-      const thay = (ma: string, cau: string) => db.exec(`CREATE OR REPLACE FUNCTION app_private.profit_ledger_position_v1(p_org uuid, p_shareholder uuid)
-        RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'pg_catalog', 'app_private', 'public'
-        AS $x$ BEGIN RAISE EXCEPTION '${cau}' USING ERRCODE = '${ma}', DETAIL = '{"so_cua_co_dong": 123}', HINT = 'báo kỹ thuật'; END $x$`);
+      // Giữ chữ ký/quyền/cấu hình hàm thật. Chỉ thay thân để ép các mã lỗi không phát sinh từ dữ liệu hợp lệ.
+      const thay = (ma: string, cau: string) => db.exec(position.stmt.replace(position.body, () =>
+        ` BEGIN RAISE EXCEPTION '${cau}' USING ERRCODE = '${ma}', DETAIL = '{"so_cua_co_dong": 123}', HINT = 'báo kỹ thuật'; END `));
       const nguyen = (ma: string, cau: string) => ({ code: ma, message: cau, detail: '{"so_cua_co_dong": 123}', hint: "báo kỹ thuật" });
       for (const [ma, cau] of [["XX000", "LOI_KHAC: thử lỗi nội bộ khác"], ["P0001", "PROFIT_LEDGER_POSITION_DRIFT: cùng câu nhưng mã khác"],
         ["XX000", "PROFIT_LEDGER_POSITION_DRIFTX: gần giống"], ["XX000", "Lỗi: PROFIT_LEDGER_POSITION_DRIFT: không ở đầu câu"]]) {

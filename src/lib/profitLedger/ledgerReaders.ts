@@ -85,7 +85,9 @@ export function readShareholderLedger(value: unknown, organizationId: string): S
 
 /* ─────────────────────────── E2 shareholder_profit_ledger_entries_v1 ─────────────────────────── */
 
-export const LEDGER_ENTRY_KINDS = ['ALLOCATION', 'PAYOUT', 'SALARY', 'SALARY_OFFSET', 'SALARY_REVIEW'] as const;
+export const LEDGER_ENTRY_KINDS = [
+  'ALLOCATION', 'PAYOUT', 'SALARY', 'SALARY_OFFSET', 'SALARY_REVIEW', 'SHARED_FUND', 'OPENING_ADVANCE',
+] as const;
 export type LedgerEntryKind = (typeof LEDGER_ENTRY_KINDS)[number];
 
 export interface ShareholderLedgerEntry {
@@ -96,7 +98,7 @@ export interface ShareholderLedgerEntry {
   period_month: string | null;
   building_id: string | null;
   building_name: string | null;
-  /** Số có dấu: +phân bổ, −phiếu chi, −Y_i, +D_i, 0 (SALARY_REVIEW). */
+  /** Số có dấu trên sổ, gồm cả phần được chia từ quỹ và tạm ứng đầu kỳ. */
   amount: number;
   /** Chỉ SALARY_REVIEW: phần đầu tư máy gợi ý. */
   suggested: number | null;

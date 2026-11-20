@@ -35,6 +35,9 @@ export interface ShareholderPositionComponents {
   payouts_approved: number;
   salary_investment: number;
   salary_advance_offset: number;
+  shared_fund_payable?: number;
+  shared_fund_offset?: number;
+  opening_advance?: number;
   unpaid_profit_raw: number;
   advance_outstanding_raw: number;
   /** Phần tạm ứng bị khấu trừ / trừ lương nhiều hơn tạm ứng đang có — đã gấp vào "lợi nhuận chưa chi". */
@@ -63,7 +66,14 @@ export interface ShareholderPosition {
 
 function readComponents(value: unknown, path: string): ShareholderPositionComponents {
   const row = obj(value, path);
+  // Ba trường được bổ sung cùng nhau khi bật sổ quỹ chung.
+  const fund = 'shared_fund_payable' in row || 'shared_fund_offset' in row || 'opening_advance' in row ? {
+    shared_fund_payable: nonNegative(money(row.shared_fund_payable, `${path}.shared_fund_payable`), `${path}.shared_fund_payable`),
+    shared_fund_offset: nonNegative(money(row.shared_fund_offset, `${path}.shared_fund_offset`), `${path}.shared_fund_offset`),
+    opening_advance: nonNegative(money(row.opening_advance, `${path}.opening_advance`), `${path}.opening_advance`),
+  } : {};
   return {
+    ...fund,
     allocated: money(row.allocated, `${path}.allocated`),
     payouts_pending: money(row.payouts_pending, `${path}.payouts_pending`),
     payouts_approved: money(row.payouts_approved, `${path}.payouts_approved`),

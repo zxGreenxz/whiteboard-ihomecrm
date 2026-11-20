@@ -126,6 +126,8 @@ export const LEDGER_ENTRY_KIND_LABEL: Readonly<Record<LedgerEntryKind, string>> 
   SALARY: 'Trả qua lương',
   SALARY_OFFSET: 'Lương bù tạm ứng',
   SALARY_REVIEW: 'Phiếu lương cần xem lại',
+  SHARED_FUND: 'Được chia từ quỹ chung',
+  OPENING_ADVANCE: 'Tạm ứng đầu kỳ đã đối soát',
 };
 
 /** 'YYYY-MM' của tháng liền trước (mặc định ô chọn tháng mốc). */
