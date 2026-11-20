@@ -110,6 +110,23 @@ describe('tư vấn từ đúng trang Sale Phòng', () => {
       'Điện 3k75/kWh · Nước 88k/người · PDV 135k/phòng',
     );
   });
+  it('dùng giá điện của tòa và tách phí dịch vụ có dấu ngay sau nước', () => {
+    const changed = structuredClone(page);
+    changed.buildings[0].elec_rate = 3950;
+    changed.sale_policy = [
+      'Điện: 3800k/kw với nhà thang máy.',
+      'Các tòa khác điện 4100/kw',
+      '3500k/kw với nhà thang bộ.',
+      'Nước: 90k/người, Phí dịch vụ: 120k/phòng',
+      'Tối đa 3 người, không nhận xe điện',
+    ].join('\n');
+    const text = answer('Phòng 202', null, changed).messages[0].text;
+    expect(text).toContain('Điện 3k95/kWh · Nước 90k/người · PDV 120k/phòng');
+    expect(text).toContain('không nhận xe điện');
+    expect(text).not.toMatch(/3800k|4100\/kw|3500k|cần xác nhận/);
+    changed.rooms[1].sale_note_base = 'Điện 3.500đ/kWh';
+    expect(answer('Phòng 202', null, changed).messages[0].text).toContain('Điện 3k5/kWh');
+  });
   it('không tạo ưu đãi rỗng; báo thiếu phí và giữ điều kiện công bố', () => {
     const changed = structuredClone(page);
     changed.sale_policy = 'Điện 4k/kWh cho nhà thang máy';

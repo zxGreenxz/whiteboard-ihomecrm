@@ -74,7 +74,9 @@ function shortTariff(value) {
     });
 }
 function feeParts(policy) {
-  const clauses = String(policy || '').split(/[\n;|·]+|,\s*(?=(?:giá |tiền )?(?:điện|nước|phí dịch vụ|pdv)\b)/iu);
+  const clauses = String(policy || '').split(
+    /[\n;|·]+|,\s*(?=(?:giá |tiền )?(?:điện|nước|phí dịch vụ|pdv)(?![\p{L}\d]))/iu,
+  );
   const rest = [];
   const amounts = feeNames.map(() => []);
   for (const clause of clauses.map((value) => value.trim()).filter(Boolean)) {
@@ -101,14 +103,22 @@ function feeParts(policy) {
 function fees(room, building) {
   const own = feeParts([room.baseNote, room.status === 'pass' && room.passSalePolicy].filter(Boolean).join('\n'));
   const common = feeParts(building.salePolicy);
-  const rest = [...own.rest, ...common.rest];
+  const buildingRate = Number.isFinite(building.elecRate) && building.elecRate > 0;
+  // Public policy can include a multi-line tariff schedule for other addresses.
+  // A published room or building rate resolves that schedule for this answer.
+  const commonNotes =
+    own.amounts[0].length || buildingRate
+      ? common.rest.filter((clause) => !/\d[\d.,]*\s*(?:k|d|vnd)?\s*\/\s*(?:kwh?|so)\b/.test(fold(clause)))
+      : common.rest;
+  const rest = [...own.rest, ...commonNotes];
   const line = feeNames
     .map(([label, pattern], i) => {
+      if (i === 0 && !own.amounts[i].length && buildingRate)
+        return label + ' ' + shortTariff(String(building.elecRate)) + '/kWh';
       const values = own.amounts[i].length ? own.amounts[i] : common.amounts[i];
       if (values.length) return label + ' ' + [...new Set(values.map(shortTariff))].join(' / ');
       if (rest.some((clause) => pattern.test(fold(clause)))) return label + ' cần xác nhận';
-      if (i === 0 && Number.isFinite(building.elecRate) && building.elecRate > 0)
-        return label + ' ' + shortTariff(String(building.elecRate)) + '/kWh';
+
       return label + ' chưa cập nhật';
     })
     .join(' · ');
