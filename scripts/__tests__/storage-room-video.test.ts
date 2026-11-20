@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import deployment from '../../vercel.json';
 import worker, { type Env } from '../../infra/cloudflare-worker/src/index';
 
 const put = vi.fn();
@@ -23,6 +24,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const key = 'room-sale-images/actor/tour.mp4';
+it('permits playback from the room album path in the deployed browser policy', () => {
+  const policy = deployment.headers.flatMap(rule => rule.headers).find(header => header.key === 'Content-Security-Policy');
+  const media = policy?.value.split(';').map(part => part.trim().split(/\s+/)).find(([name]) => name === 'media-src');
+  expect(media).toContain('https://img.chillhome.io.vn/room-sale-images/');
+});
 it('stores an MP4 larger than the previous photo limit', async () => {
   const bytes = new Uint8Array(9 * 1024 * 1024);
   bytes.set([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109]);
