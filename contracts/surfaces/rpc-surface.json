@@ -5129,7 +5129,7 @@
           "schema": "public",
           "args": "p_org uuid, p_contract_id uuid, p_new_room_id uuid, p_transfer_date date, p_new_rent_price numeric DEFAULT NULL::numeric, p_new_deposit numeric DEFAULT NULL::numeric",
           "returns": "jsonb",
-          "volatility": "STABLE",
+          "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=pg_catalog",
           "execRoles": [
