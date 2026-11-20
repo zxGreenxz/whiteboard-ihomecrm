@@ -8,10 +8,12 @@ interface CurrencyInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
  value?:number|null;onChange?:(value:number)=>void;suffix?:boolean;className?:string;
  /** Only set where the existing business rule permits signed amounts. */
  allowNegative?:boolean;
+ /** Optional amounts can distinguish clearing the field from entering zero. */
+ onClear?:()=>void;
 }
 function display(value?:number|null){return value!=null&&Number.isFinite(value)&&value!==0?value.toLocaleString('vi-VN'):'';}
 export const CurrencyInput=React.forwardRef<HTMLInputElement,CurrencyInputProps>(function CurrencyInput(
- {value,onChange,onBlur,suffix=true,className,placeholder,allowNegative=false,...rest},ref){
+ {value,onChange,onClear,onBlur,suffix=true,className,placeholder,allowNegative=false,...rest},ref){
  const [text,setText]=React.useState(()=>display(value));const [error,setError]=React.useState<string>();
  const [focused,setFocused]=React.useState(false);const lastEmitted=React.useRef<number|undefined>();
  const inputRef=React.useRef<HTMLInputElement|null>(null);const errorId=React.useId()+'-currency-error';
@@ -24,6 +26,7 @@ export const CurrencyInput=React.forwardRef<HTMLInputElement,CurrencyInputProps>
  const handleChange=(e:React.ChangeEvent<HTMLInputElement>)=>{
   const raw=e.target.value;const parsed=parseCurrencyAmount(typedAmountText(text,e,{allowNegative}),{allowNegative,emptyAsZero:true});
   setText(parsed.value==null?raw:raw.trim()===''?'':parsed.value.toLocaleString('vi-VN'));setError(parsed.error);
+  if(onClear && !raw.trim()){lastEmitted.current=undefined;onClear();return;}
   const next=parsed.value??Number.NaN;lastEmitted.current=next;onChange?.(next);
  };
  const describedBy=[rest['aria-describedby'],error?errorId:undefined].filter(Boolean).join(' ')||undefined;

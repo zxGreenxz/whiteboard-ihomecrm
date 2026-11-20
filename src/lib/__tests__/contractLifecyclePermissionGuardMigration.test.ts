@@ -9,13 +9,13 @@
 // SET LOCAL ROLE authenticated; writer SECURITY DEFINER chạy dưới chủ hàm như production. Hàm tiền cũ
 // (_impl) là stub ghi một hồ sơ COMPLETED — ranh giới tiền ngoài phạm vi vá.
 import { readFileSync } from 'node:fs';
+import { bangDinhNghiaCuoi } from '../../../scripts/check-migration-test-liveness.mjs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const PATCH = 'supabase/migrations/20261021180057_contract_lifecycle_permission_guard_v1.sql';
 const EXIT_SOURCE = 'supabase/migrations/20260928015559_contract_exit_case_workflow.sql';
 const EXIT_NOTE_SOURCE = 'supabase/migrations/20260929123356_contract_exit_return_note.sql';
-const NOTICE_ADAPTER_SOURCE = 'supabase/migrations/20260928035250_contract_notice_action_adapters.sql';
 const COMMISSION_REASON_SOURCE = 'supabase/migrations/20261011074456_commission_reason_audit_flow.sql';
 const MARK = '-- [q26] kiểm quyền máy chủ khớp web';
 
@@ -45,6 +45,13 @@ function sliceFunction(path: string, header: string, end: string): string {
 }
 
 const patchSql = readFileSync(PATCH, 'utf8');
+const latestFunctionSources = bangDinhNghiaCuoi();
+
+function loadNoticeAdapter(name: string): string {
+  const source = latestFunctionSources.get(name);
+  if (!source) throw new Error(`Không tìm thấy định nghĩa hiện hành của ${name}`);
+  return sliceFunction(`supabase/migrations/${source}`, `CREATE OR REPLACE FUNCTION ${name}(`, 'END $fn$;');
+}
 
 /**
  * Các khối CREATE OR REPLACE chép nguyên từ pg_get_functiondef (dòng 2 là " RETURNS …", thân bọc
@@ -167,8 +174,8 @@ ${physical('p_move_out_date')}
   await db.exec(readFileSync(EXIT_NOTE_SOURCE, 'utf8'));
   await db.exec(sliceFunction(COMMISSION_REASON_SOURCE, 'CREATE OR REPLACE FUNCTION app_private.begin_commission_reason_v1', 'END $$;'));
   await db.exec(sliceFunction(COMMISSION_REASON_SOURCE, 'CREATE OR REPLACE FUNCTION public.renew_contract(', 'END $$;'));
-  await db.exec(sliceFunction(NOTICE_ADAPTER_SOURCE, 'CREATE OR REPLACE FUNCTION app_private.apply_contract_notice_transition_v1', 'END $fn$;'));
-  await db.exec(sliceFunction(NOTICE_ADAPTER_SOURCE, 'CREATE OR REPLACE FUNCTION public.renew_contract_with_notice_v1', 'END $fn$;'));
+  await db.exec(loadNoticeAdapter('app_private.apply_contract_notice_transition_v1'));
+  await db.exec(loadNoticeAdapter('public.renew_contract_with_notice_v1'));
   // Thân production của 8 hàm sẽ vá (đúng bytes production — xem test md5 bên dưới).
   for (const block of patchedBlocks()) await db.exec(prodBlock(block));
   await db.exec('RESET check_function_bodies');

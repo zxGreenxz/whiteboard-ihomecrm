@@ -48,6 +48,7 @@ import {
 } from '@/types/contract';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { canTransferRoom } from '@/lib/contract-lifecycle/canTransferRoom';
 import { copyContractQrToClipboard } from '@/lib/contractQrImage';
 import { toast } from '@/hooks/use-toast';
 
@@ -524,7 +525,7 @@ function ActionButtons({
       icon: ArrowRightLeft,
       onClick: () => onTransferRoom(contract),
       disabled: actions.transferRoomDisabled,
-      hidden: !buildingId || !canUse(perms, 'contracts', 'transfer', buildingId),
+      hidden: !canTransferRoom(perms, buildingId),
       bg: 'bg-orange-500 hover:bg-orange-600',
     },
     {

@@ -37,3 +37,30 @@ it.each(['renew','transfer'] as const)('B16 %s cannot accept a current contract 
 it.each(['renew','transfer'] as const)('B16 %s cannot accept a mismatched requested field',async action=>{
  h.rpc.mockResolvedValue({data:id(2),error:null});h.responses=[()=>({data:{...core(action),...(action==='renew'?{end_date:'2026-12-31'}:{room_id:id(7)})},error:null}),()=>({data:event(action),error:null})];await expect(useNoticeOptions(action).mutationFn(input(action))).rejects.toMatchObject({outcome:'partial'});
 });
+
+it.each([
+  [{code:'42501', message:'Phòng mới thuộc toà khác — chuyển phòng chỉ trong cùng một toà. Muốn đổi toà thì thanh lý hợp đồng rồi tạo hợp đồng mới.'}, /thanh lý/i],
+  [{code:'42501', message:'Không có quyền thao tác hợp đồng tại tòa nhà này'}, /không đủ quyền/i],
+  [{code:'P0001', message:'Phòng mới đã có hợp đồng đang hiệu lực'}, /chọn phòng khác/i],
+  [{code:'55000', message:'Phòng mới không còn trống'}, /chọn phòng khác/i],
+  [{code:'PT409', message:'Hợp đồng đã thay đổi; vui lòng tải lại trước khi tiếp tục'}, /hợp đồng đã thay đổi/i],
+  [{code:'22023', message:'Ngày chuyển phải sau lần chuyển phòng gần nhất'}, /sau lần chuyển gần nhất/i],
+] as const)('chuyển phòng phản hồi đúng nguyên nhân máy chủ trả về (%#)', async (error, expected) => {
+  h.rpc.mockResolvedValue({data:null,error});
+  const hook = useNoticeOptions('transfer');
+  await expect(hook.mutationFn(transfer)).rejects.toEqual(error);
+  hook.onError(error);
+  expect(h.toast.error.mock.calls.flat().join(' ')).toMatch(expected);
+  expect(h.toast.success).not.toHaveBeenCalled();
+});
+
+it('báo cần đối chiếu khi đã có mã hợp đồng nhưng chưa đọc được biên nhận', async () => {
+  const hook = useNoticeOptions('transfer');
+  h.rpc.mockResolvedValue({data:id(2),error:null});
+  h.responses = [() => ({data:null,error:{code:'42501',message:'denied'}})];
+  const error = await hook.mutationFn(transfer).catch(cause => cause);
+  expect(error).toMatchObject({outcome:'partial'});
+  hook.onError(error);
+  expect(h.toast.error).toHaveBeenCalledWith(expect.stringMatching(/đối chiếu/i));
+  expect(h.toast.error.mock.calls[0][0]).not.toMatch(/^Chưa chuyển phòng/);
+});

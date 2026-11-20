@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { canUse } from '@/lib/permissionPages';
+import { canTransferRoom } from '@/lib/contract-lifecycle/canTransferRoom';
 import { isContractInEffect, type ContractWithRelations } from '@/types/contract';
 import { useDragScroll } from './useDragScroll';
 
@@ -44,7 +45,7 @@ export function ContractMobileActions({
     { show: canUse(perms, 'contracts', 'print'), label: 'In HĐ', icon: Printer, onClick: h.onPrint },
     { show: status !== 'TERMINATED' && status !== 'DRAFT', label: 'Mã QR', icon: QrCode, onClick: h.onShowQR },
     { show: isActive && canUse(perms, 'contracts', 'renew'), label: 'Gia hạn', icon: RefreshCw, onClick: h.onRenew },
-    { show: isActive && canUse(perms, 'contracts', 'transfer'), label: 'Chuyển phòng', icon: ArrowRightLeft, onClick: h.onTransferRoom },
+    { show: isActive && canTransferRoom(perms, contract.room?.building_id ?? contract.room?.building?.id), label: 'Chuyển phòng', icon: ArrowRightLeft, onClick: h.onTransferRoom },
     { show: isActive && canUse(perms, 'contracts', 'transfer'), label: 'Nhượng HĐ', icon: Users, onClick: h.onTransferContract },
     { show: isActive && canUse(perms, 'contracts', 'terminate'), label: 'Chuyển đi', icon: LogOut, onClick: h.onMoveOut },
     { show: isActive && canUse(perms, 'contracts', 'terminate'), label: 'Thanh lý', icon: Ban, onClick: h.onTerminate, danger: true },

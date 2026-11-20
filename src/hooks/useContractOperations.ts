@@ -11,6 +11,7 @@ import type { ExtraChargeItem, RefundItem } from "@/lib/contractValidation";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { friendlyError } from '@/lib/friendlyError';
+import { isTransferRoomUnavailable, transferRoomFeedback } from '@/lib/contract-lifecycle/transferRoomFeedback';
 import { buildRenewNoticeArgs,buildTransferRoomNoticeArgs,type RenewNoticeInput,type TransferRoomNoticeInput } from '@/lib/contract-lifecycle/noticeTransitions';
 import {
   buildForfeitWithCreditRpcArgs,
@@ -99,12 +100,20 @@ export const useTransferRoom = () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["contract-history"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-residence"] });
+      queryClient.invalidateQueries({ queryKey: ["room-cash-lifecycle"] });
+      queryClient.invalidateQueries({ queryKey: ["commission-prefill", receipt.contractId] });
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       toast.success(`Đã chuyển hợp đồng ${receipt.contractNumber} sang phòng ${receipt.roomName}.`);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       console.error("Error transferring room:", error);
-      if(error?.code==='PT409') queryClient.invalidateQueries({queryKey:['contracts']});
-      toast.error(workflowErrorMessage(error,'chuyển phòng'));
+      const feedback = transferRoomFeedback(error);
+      if (feedback.code === 'PT409') queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      if (isTransferRoomUnavailable(error)) queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      toast.error(feedback.outcome === 'partial' || feedback.outcome === 'unknown'
+        ? feedback.description
+        : `${feedback.title} ${feedback.description}`);
     },
   });
 };

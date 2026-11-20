@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-20T05:31:50.246Z",
+  "generatedAt": "2026-11-20T08:55:03.801Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 967,
     "unknown": 80,
-    "catalog-proven": 206,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -14514,6 +14514,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-20T05:31:24.927Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120083952_chuyen_phong_quyen_va_trang_thai.sql",
+      "version": "20261120083952",
+      "name": "chuyen_phong_quyen_va_trang_thai",
+      "scheme": "timestamp14",
+      "sha256": "00b6529b4cec67c77e7214b34c06b618fd5bdbdbb35f1d3f37250b4febdf0b7f",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.commission_reason_transfer_room_before_v1",
+        "catalog:function:app_private.apply_contract_notice_transition_v1"
       ]
     },
     {
