@@ -245,6 +245,10 @@
     "20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql": {
       "sha256": "9a189a63933ecde73e15e815814cd454896bb60672d51b853ed9b22a10141a94",
       "ketQua": "chay-lai-duoc"
+    },
+    "20261120083952_chuyen_phong_quyen_va_trang_thai.sql": {
+      "sha256": "00b6529b4cec67c77e7214b34c06b618fd5bdbdbb35f1d3f37250b4febdf0b7f",
+      "ketQua": "chay-lai-duoc"
     }
   }
 }

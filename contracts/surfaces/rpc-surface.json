@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3140,
-    "catalogFunctions": 1660,
+    "sourceCallSites": 3153,
+    "catalogFunctions": 1663,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 430,
+    "calledRpcs": 432,
     "byRisk": {
-      "normal": 321,
-      "financial": 108,
+      "normal": 322,
+      "financial": 109,
       "infrastructure": 1
     },
-    "securityDefiner": 405
+    "securityDefiner": 407
   },
   "missingOnServer": [],
   "rpcs": {
@@ -5123,6 +5123,25 @@
       ],
       "risk": "normal"
     },
+    "preview_room_transfer_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_org uuid, p_contract_id uuid, p_new_room_id uuid, p_transfer_date date, p_new_rent_price numeric DEFAULT NULL::numeric, p_new_deposit numeric DEFAULT NULL::numeric",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/contract-lifecycle/roomTransferQuote.ts"
+      ],
+      "risk": "normal"
+    },
     "preview_special_fees_v1": {
       "definitions": [
         {
@@ -6185,6 +6204,25 @@
         "src/hooks/useOrganizationAuthorization.ts"
       ],
       "risk": "normal"
+    },
+    "room_transfer_invoice_rents_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_billing_month text",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/invoices/useRoomTransferInvoiceRents.ts"
+      ],
+      "risk": "financial"
     },
     "salary_can_edit_amounts_v1": {
       "definitions": [
@@ -7355,22 +7393,22 @@
       ],
       "risk": "normal"
     },
-    "transfer_room_with_notice_v1": {
+    "transfer_room_with_notice_v2": {
       "definitions": [
         {
           "schema": "public",
-          "args": "p_organization_id uuid, p_contract_id uuid, p_expected_updated_at timestamp with time zone, p_new_room_id uuid, p_transfer_date date, p_request_id uuid, p_new_rent_price numeric DEFAULT NULL::numeric, p_notes text DEFAULT NULL::text, p_notice_reason text DEFAULT NULL::text",
+          "args": "p_organization_id uuid, p_contract_id uuid, p_expected_updated_at timestamp with time zone, p_new_room_id uuid, p_transfer_date date, p_request_id uuid, p_new_rent_price numeric DEFAULT NULL::numeric, p_notes text DEFAULT NULL::text, p_notice_reason text DEFAULT NULL::text, p_new_deposit numeric DEFAULT NULL::numeric, p_quote_key text DEFAULT NULL::text",
           "returns": "uuid",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
+          "searchPath": "search_path=pg_catalog",
           "execRoles": [
             "authenticated"
           ]
         }
       ],
       "callers": [
-        "src/hooks/useContractOperations.ts"
+        "src/lib/contract-lifecycle/roomTransferQuote.ts"
       ],
       "risk": "normal"
     },

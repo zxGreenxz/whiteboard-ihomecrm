@@ -42,8 +42,7 @@ const GIAO_KEO: Record<string, string[]> = {
     'useBuildings({ enabled: open })',
   ],
   'src/components/contracts/TransferRoomDialog.tsx': [
-    'useBuildings({ enabled: open })',
-    'useRooms(undefined, { enabled: open })',
+    'useRooms(buildingId, { enabled: open && !!buildingId })',
   ],
   'src/components/deposits/CreateDepositDialog.tsx': [
     'useRooms(undefined, { enabled: open })',

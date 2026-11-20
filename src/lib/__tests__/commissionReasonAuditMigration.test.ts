@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { splitSqlStatements } from '../../../scripts/network-center-function-bodies.mjs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { differenceInMonths, parseISO } from 'date-fns';
@@ -15,6 +16,17 @@ if(mutation&&(!['skip_reason','skip_read_scope','skip_support_basis'].includes(m
 // unchanged migration; no source or deployment artifact is edited by this probe.
 const sql=!mutation?originalSql:originalSql.replace(anchor,mutation!=='skip_read_scope'?"IF false THEN":"IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Không có quyền xem lịch sử hoa hồng'");
 const db=new PGlite();
+function liveDefinitionOf(name: string): string {
+ const directory='supabase/migrations';
+ const head=new RegExp(`^CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${name.replace('.', '\\.')}\\s*\\(`, 'i');
+ for (const file of readdirSync(directory).filter(f=>f.endsWith('.sql')).sort().reverse()) {
+  const sql=readFileSync(`${directory}/${file}`,'utf8');
+  if (!sql.toLowerCase().includes(name)) continue;
+  const statement=splitSqlStatements(sql).reverse().find((part: string)=>head.test(part.replace(/^(?:\s|--[^\n]*\n|\/\*[\s\S]*?\*\/)+/,'')));
+  if (statement) return statement;
+ }
+ throw new Error(`Missing migration definition for ${name}`);
+}
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const org=id(1),actor=id(2),building=id(3),room=id(4),contract=id(5),type=id(6),other=id(7);
 const reason='Điều chỉnh theo thỏa thuận đã xác nhận';
@@ -93,7 +105,15 @@ beforeAll(async()=>{
  CREATE FUNCTION public.ie_compat_cancel_v2(p_ids uuid[],p_reason text DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$BEGIN UPDATE income_expenses SET approval_status='CANCELLED' WHERE id=ANY(p_ids);RETURN '{}'::jsonb;END$$;
  CREATE FUNCTION public.reverse_posted_income_expense_v2(p_voucher uuid,p_cashbook uuid,p_posted_on date,p_reason text,p_idempotency_key text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$BEGIN UPDATE income_expenses SET posting_status='REVERSED' WHERE id=p_voucher;RETURN '{}'::jsonb;END$$;
  CREATE FUNCTION public.renew_contract(p_contract_id uuid,p_new_end_date date,p_new_rent_price numeric DEFAULT NULL,p_new_deposit numeric DEFAULT NULL,p_notes text DEFAULT NULL) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER AS $$BEGIN UPDATE contracts SET end_date=p_new_end_date WHERE id=p_contract_id;RETURN p_contract_id;END$$;
- CREATE FUNCTION public.transfer_room(p_contract_id uuid,p_new_room_id uuid,p_new_rent_price numeric DEFAULT NULL,p_transfer_date date DEFAULT CURRENT_DATE,p_notes text DEFAULT NULL) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER AS $$BEGIN UPDATE contracts SET room_id=p_new_room_id,rent_price=COALESCE(p_new_rent_price,rent_price) WHERE id=p_contract_id;RETURN p_contract_id;END$$;
+ -- Only the room mutation and finance side effects are fixture boundaries. The
+ -- public entry point, finance coordinator, commission context and trigger run real SQL.
+ CREATE FUNCTION app_private.commission_reason_transfer_room_before_v1(uuid,uuid,numeric,date,text) RETURNS uuid LANGUAGE plpgsql AS $$BEGIN UPDATE public.contracts SET room_id=$2,rent_price=COALESCE($3,rent_price) WHERE id=$1;RETURN $1;END$$;
+ CREATE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql AS $$SELECT ARRAY['${org}'::uuid]$$;
+ CREATE FUNCTION app_private.lock_org_for_decision_v1(uuid) RETURNS void LANGUAGE sql AS $$SELECT$$;
+ CREATE FUNCTION public.preview_room_transfer_v1(uuid,uuid,uuid,date,numeric,numeric) RETURNS jsonb LANGUAGE sql AS $$SELECT '{}'::jsonb$$;
+ CREATE FUNCTION app_private.apply_room_transfer_deposit_v1(uuid,uuid,numeric) RETURNS void LANGUAGE sql AS $$SELECT$$;
+ CREATE FUNCTION app_private.record_room_transfer_rent_v1(uuid,uuid,date,uuid,uuid,numeric,numeric,jsonb) RETURNS void LANGUAGE sql AS $$SELECT$$;
+ CREATE FUNCTION app_private.settle_room_transfer_invoice_v1(jsonb,uuid,date) RETURNS void LANGUAGE sql AS $$SELECT$$;
  CREATE FUNCTION public.record_contract_commission_event_v1(p_organization_id uuid,p_contract_id uuid,p_kind text,p_action text,p_request_id uuid,p_amount numeric DEFAULT NULL,p_reason text DEFAULT NULL) RETURNS jsonb LANGUAGE sql AS $$SELECT jsonb_build_object('reason',p_reason)$$;
  CREATE FUNCTION public.assign_commission_manager_v1(p_voucher_id uuid,p_manager_id uuid,p_expected_approval_version bigint,p_idempotency_key text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$BEGIN INSERT INTO app_private.commission_manager_links VALUES(p_voucher_id,'${org}',p_manager_id,p_idempotency_key,auth.uid()) ON CONFLICT(voucher_id) DO UPDATE SET manager_id=p_manager_id,request_key=p_idempotency_key;RETURN jsonb_build_object('voucher_id',p_voucher_id);END$$;
  CREATE FUNCTION public.annotate_income_expense_v1(p_voucher uuid,p_add_attachments jsonb DEFAULT NULL,p_remove_attachments jsonb DEFAULT NULL,p_notes text DEFAULT NULL,p_note_mode text DEFAULT 'REPLACE',p_idempotency_key text DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$BEGIN UPDATE income_expenses SET notes=p_notes WHERE id=p_voucher;RETURN jsonb_build_object('id',p_voucher,'changed',true);END$$;
@@ -129,6 +149,8 @@ beforeAll(async()=>{
  // Dependency writers above model only their API boundaries. The entire new
  // migration, triggers, role ACLs, snapshots and adapters execute unmodified twice.
  await db.exec(sql);await db.exec(sql);
+ await db.exec(liveDefinitionOf('app_private.transfer_room_finance_v1'));
+ await db.exec(liveDefinitionOf('public.transfer_room'));
  // Execute the real canonical posting, ledger/evidence and idempotency writers.
  // Only unrelated actor/period services are small deterministic boundaries.
  await db.exec(`
@@ -383,8 +405,11 @@ describe('server-enforced commission explanations and evidence',()=>{
   await db.query("UPDATE accounts SET name='Tên mới về sau' WHERE id=$1",[id(70)]);
   expect((await history(v.id)).find(e=>e.stage==='EDIT_PENDING')?.after?.account_name).toBe('Sổ quỹ tại thời điểm đổi');
   await db.query('INSERT INTO rooms(id,organization_id,building_id,name) VALUES($1,$2,$3,$4)',[id(71),org,building,'Phòng nhận']);
-  await db.query('UPDATE contracts SET room_id=$1,commission_change_reason=$2 WHERE id=$3',[id(71),reason,contract]);
+  const move=(notes:string|null)=>db.query('SELECT public.transfer_room($1,$2,NULL,$3,$4)',[contract,id(71),'2026-02-15',notes]);
+  await denied(()=>move(null));
+  await move(reason);
   const event=(await history(v.id)).find(e=>e.stage==='CONTRACT_CHANGED');
+  expect(event).toMatchObject({reason,actor_id:actor});
   expect(event?.before).toMatchObject({room_name:'Phòng kiểm tra',building_name:'Tòa nhà kiểm tra',contract_number:'HĐ kiểm tra'});
   expect(event?.after).toMatchObject({room_name:'Phòng nhận',building_name:'Tòa nhà kiểm tra'});
  }));

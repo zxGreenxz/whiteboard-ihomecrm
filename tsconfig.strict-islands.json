@@ -1292,8 +1292,10 @@
     "src/lib/collectionRecovery.ts",
     "src/lib/collectionSettlement.ts",
     "src/lib/companyLogo.ts",
+    "src/lib/contract-lifecycle/canTransferRoom.ts",
     "src/lib/contract-lifecycle/noticeTransitions.ts",
     "src/lib/contract-lifecycle/reminders.ts",
+    "src/lib/contract-lifecycle/transferRoomFeedback.ts",
     "src/lib/contract-lifecycle/transfers.ts",
     "src/lib/contract-lifecycle/turnover.ts",
     "src/lib/contractBillingBounds.ts",
@@ -1975,7 +1977,11 @@
     "src/components/income-expenses/ShareholderAdvanceVoucherPanel.tsx",
     "src/hooks/income-expenses/deferredPostingEvidence.ts",
     "src/hooks/profit-ledger/useOwnerPayoutPosting.ts",
-    "src/components/shareholders/OwnerPayoutPostingSection.tsx"
+    "src/components/shareholders/OwnerPayoutPostingSection.tsx",
+    "src/hooks/invoices/useRoomTransferInvoiceRents.ts",
+    "src/hooks/useRoomTransferQuote.ts",
+    "src/lib/contract-lifecycle/roomTransferQuote.ts",
+    "src/lib/roomTransferInvoiceRent.ts"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }

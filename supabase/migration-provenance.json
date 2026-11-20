@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-20T05:31:50.246Z",
+  "generatedAt": "2026-11-20T11:00:54.970Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 967,
+    "ledger-applied": 973,
     "unknown": 80,
     "catalog-proven": 206,
     "superseded": 15
@@ -14514,6 +14514,72 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-20T05:31:24.927Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120083952_chuyen_phong_quyen_va_trang_thai.sql",
+      "version": "20261120083952",
+      "name": "chuyen_phong_quyen_va_trang_thai",
+      "scheme": "timestamp14",
+      "sha256": "00b6529b4cec67c77e7214b34c06b618fd5bdbdbb35f1d3f37250b4febdf0b7f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T10:31:04.437Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120093546_chuyen_phong_tien_coc.sql",
+      "version": "20261120093546",
+      "name": "chuyen_phong_tien_coc",
+      "scheme": "timestamp14",
+      "sha256": "e40729b6c427cb2937080f80dc0847e514b4b0502c41fea75b3ff80e801d66e8",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T10:33:13.486Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120093620_tien_thue_ky_chuyen_phong.sql",
+      "version": "20261120093620",
+      "name": "tien_thue_ky_chuyen_phong",
+      "scheme": "timestamp14",
+      "sha256": "aa7aa0638428c62bdb8a1db03c8be2a893c92d0b26327b8ba40c0fc3f64b8318",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T10:35:30.731Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120093840_quyet_toan_khi_chuyen_phong.sql",
+      "version": "20261120093840",
+      "name": "quyet_toan_khi_chuyen_phong",
+      "scheme": "timestamp14",
+      "sha256": "9dd68a0d4d48982b08bff91a91a9cead5b28a5822e8a6acc2c101af6f7341dee",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T10:40:44.663Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120094154_tien_phong_ky_chuyen_khi_lap_hoa_don.sql",
+      "version": "20261120094154",
+      "name": "tien_phong_ky_chuyen_khi_lap_hoa_don",
+      "scheme": "timestamp14",
+      "sha256": "c54f7aacd1ae4028c8e51c8e8e579216e9be8ad05d82ca766baba86810b1af1a",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T10:37:40.646Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120105505_xem_truoc_chuyen_phong_khoa_quyen.sql",
+      "version": "20261120105505",
+      "name": "xem_truoc_chuyen_phong_khoa_quyen",
+      "scheme": "timestamp14",
+      "sha256": "f91de77322a496fc93038e36c7c4ec8a3d50c2d11b7d7e2f069b90ce22ff5f13",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T11:00:28.340Z|bien-nhan-backup"
       ]
     },
     {

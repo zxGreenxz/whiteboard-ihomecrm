@@ -23,6 +23,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { ContractWithRelations } from '@/hooks/useContracts';
 import { canUse } from '@/lib/permissionPages';
+import { canTransferRoom } from '@/lib/contract-lifecycle/canTransferRoom';
 import { formatAmount } from '@/components/contracts/detail/formatCurrency';
 import { chipTrangThai, nhanThoiHan, tienDoHopDong } from './contractHeaderStats';
 import { SkeletonBar } from '@/components/loading/LoadingState';
@@ -233,7 +234,7 @@ export function ContractTopBar({
               {canUse(perms, 'contracts', 'renew') && (
                 <NutHeader icon={RefreshCw} nhan="Gia hạn" onClick={onRenew} />
               )}
-              {canUse(perms, 'contracts', 'transfer') && (
+              {canTransferRoom(perms, contract.room?.building_id ?? contract.room?.building?.id) && (
                 <NutHeader icon={ArrowRightLeft} nhan="Chuyển phòng" onClick={onTransferRoom} />
               )}
               {canUse(perms, 'contracts', 'transfer') && (

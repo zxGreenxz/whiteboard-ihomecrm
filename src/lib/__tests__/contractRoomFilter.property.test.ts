@@ -2,19 +2,6 @@ import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import { locPhongChuyenDuoc, type PhongCoTheChuyen } from '../contractRoomFilter';
 
-/**
- * Test này TRƯỚC ĐÂY tự định nghĩa `getAvailableRoomsForTransfer` ngay trong file,
- * kèm chú thích "Replicates the exact logic from TransferRoomDialog.tsx".
- * Nó KHÔNG replicate đúng — hai bản lệch nhau ở hai điểm:
- *   - bản chép LOẠI phòng hiện tại; bản thật không loại
- *   - bản chép coi lọc toà là TUỲ CHỌN; bản thật trả [] khi chưa chọn toà
- * Nên suốt thời gian đó test chứng minh bản chép tự nhất quán, và khẳng định một
- * bảo đảm ("không bao giờ trả phòng hiện tại") mà màn hình thật không hề có.
- *
- * Nay import hàm THẬT mà TransferRoomDialog dùng. Property test chỉ có giá trị khi
- * nó chạy đúng đoạn mã người dùng bấm vào.
- */
-
 const phongArb: fc.Arbitrary<PhongCoTheChuyen> = fc.record({
   id: fc.uuid(),
   status: fc.constantFrom('AVAILABLE', 'OCCUPIED', 'RESERVED', 'MAINTENANCE'),
@@ -90,16 +77,12 @@ describe('locPhongChuyenDuoc — tính chất', () => {
     );
   });
 
-  it('KHÔNG lọc riêng phòng hiện tại — trạng thái mới là thứ loại nó', () => {
-    // Khoá lại đúng điểm mà bản chép cũ nói sai. Hợp đồng hiệu lực làm phòng thành
-    // OCCUPIED nên nó đã bị loại bởi điều kiện AVAILABLE. Nếu một ngày phòng hiện
-    // tại lại AVAILABLE thì dữ liệu đã sai ở chỗ khác, và hàm này KHÔNG được giấu
-    // đi — giấu thì mất luôn dấu hiệu duy nhất.
+  it('loại phòng hiện tại ngay cả khi dữ liệu phòng đang ghi AVAILABLE', () => {
     const phongHienTai: PhongCoTheChuyen = {
       id: 'phong-dang-o',
       status: 'AVAILABLE',
       building_id: 'toa-A',
     };
-    expect(locPhongChuyenDuoc([phongHienTai], 'toa-A')).toEqual([phongHienTai]);
+    expect(locPhongChuyenDuoc([phongHienTai], 'toa-A', phongHienTai.id)).toEqual([]);
   });
 });

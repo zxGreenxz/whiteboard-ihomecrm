@@ -18,6 +18,6 @@ export async function readContractNoticeOperationReceipt(organizationId:string,r
  if('newEndDate' in input&&core.end_date!==input.newEndDate)throw new TypeError('Unconfirmed contract renewal date');
  if('newRoomId' in input&&core.room_id!==input.newRoomId)throw new TypeError('Unconfirmed contract transfer room');
  if(input.newRentPrice!==undefined&&!matchesContractMoneyReceipt(core.rent_price,input.newRentPrice))throw new TypeError('Unconfirmed contract operation rent');
- if('newDeposit' in input&&input.newDeposit!==undefined&&!matchesContractMoneyReceipt(core.total_deposit,input.newDeposit))throw new TypeError('Unconfirmed contract renewal deposit');
+ if('newDeposit' in input&&input.newDeposit!==undefined&&!matchesContractMoneyReceipt(core.total_deposit,input.newDeposit))throw new TypeError('Unconfirmed contract operation deposit');
  return {contractId:core.id,contractNumber:core.contract_number||core.id,endDate:core.end_date,roomId:core.room_id,roomName:core.room.name,eventId:event.id,operation};
 }

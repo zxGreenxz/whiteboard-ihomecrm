@@ -47,6 +47,10 @@ vi.mock('@/integrations/supabase/client', async () => {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: { fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname === '/rest/v1/rpc/room_transfer_invoice_rents_v1') {
+        expect(init?.method).toBe('POST');
+        return new Response('{}', { status: 200 });
+      }
       expect(init?.method ?? 'GET').toBe('GET');
       if (url.pathname === '/rest/v1/contracts') {
         api.urls.push(url);

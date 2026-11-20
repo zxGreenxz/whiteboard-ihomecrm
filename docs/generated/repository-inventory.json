@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1925,
-  "soFileDocBangFs": 496,
-  "tongLoiGoi": 1358,
-  "khongPhanLoaiDuoc": 604,
+  "tongSoFileTest": 1933,
+  "soFileDocBangFs": 499,
+  "tongLoiGoi": 1362,
+  "khongPhanLoaiDuoc": 605,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 67,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 210,
+      "soFile": 213,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -397,6 +397,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/commissionReasonAuditMigration.test.ts",
+      "soGoi": 7,
+      "loai": {
+        "sql": 6
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/contractTerminationSecondRefundGuardMigration.test.ts",
       "soGoi": 7,
       "loai": {
@@ -485,14 +493,6 @@
     },
     {
       "file": "src/lib/__tests__/accountingRolloutSafety.test.ts",
-      "soGoi": 6,
-      "loai": {
-        "sql": 6
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/commissionReasonAuditMigration.test.ts",
       "soGoi": 6,
       "loai": {
         "sql": 6
@@ -2579,6 +2579,22 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/contract-room-transfer-finance-rpc.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/contract-room-transfer-rent.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/copilot-g1-guard.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -2707,6 +2723,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/room-transfer-deposit.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/run-related-vitest.test.mjs",
