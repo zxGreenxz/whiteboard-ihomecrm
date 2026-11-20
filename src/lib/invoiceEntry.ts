@@ -160,12 +160,13 @@ export function calcProratedDaysOf(v: InvoiceEntryValues): number {
  * Tổng tiền hiển thị. `baseline` (hoá đơn đang sửa) làm số hiển thị trùng đúng
  * số tiền đã lưu ở ô chưa đụng — cùng luật với buildStructuredLines.
  */
-export function computeEntryTotals(v: InvoiceEntryValues, baseline?: EntryBaselineAmounts): EntryTotals {
+export function computeEntryTotals(v: InvoiceEntryValues, baseline?: EntryBaselineAmounts, transferPeriodRent?: number): EntryTotals {
   const days = calcProratedDaysOf(v);
   const isProrated = days > 0;
   const keep = (field: 'rent_price' | 'water_amount' | 'pdv_amount') =>
     !!baseline && baseline.days === days && baseline[field] === v[field];
-  const rent = keep('rent_price') ? baseline!.rentAmount : isProrated ? prorateAmount(v.rent_price, days) : v.rent_price;
+  const rent = transferPeriodRent ?? (keep('rent_price') ? baseline!.rentAmount
+    : isProrated && !baseline?.serviceOnlyPeriod ? prorateAmount(v.rent_price, days) : v.rent_price);
   const water = keep('water_amount') ? baseline!.waterAmount : isProrated ? prorateAmount(v.water_amount, days) : v.water_amount;
   const pdv = keep('pdv_amount') ? baseline!.pdvAmount : isProrated ? prorateAmount(v.pdv_amount, days) : v.pdv_amount;
   const electric = v.electric_amount || 0;
@@ -212,6 +213,7 @@ export function firstEntryError(errors: unknown): string | null {
 
 /** Số tiền đã lưu của hoá đơn đang sửa — để không làm lệch tiền khi không đụng ô. */
 export interface EntryBaselineAmounts {
+  serviceOnlyPeriod?: boolean;
   rent_price: number;
   water_amount: number;
   pdv_amount: number;
@@ -222,6 +224,7 @@ export interface EntryBaselineAmounts {
 }
 
 export interface BuildItemsContext {
+  transferPeriodRent?: number;
   elecServiceId: string | null;
   waterServiceId: string | null;
   pdvServiceId: string | null;
@@ -272,7 +275,9 @@ export function buildStructuredLines(
   const keep = (field: keyof Pick<EntryBaselineAmounts, 'rent_price' | 'water_amount' | 'pdv_amount'>) =>
     !!b && b.days === days && b[field] === v[field];
 
-  const rentAmount = keep('rent_price') ? b!.rentAmount : useProrate ? prorateAmount(v.rent_price, days) : v.rent_price;
+  const serviceOnlyPeriod = ctx.transferPeriodRent !== undefined || b?.serviceOnlyPeriod;
+  const rentAmount = ctx.transferPeriodRent ?? (keep('rent_price') ? b!.rentAmount
+    : useProrate && !serviceOnlyPeriod ? prorateAmount(v.rent_price, days) : v.rent_price);
   const waterAmount = keep('water_amount') ? b!.waterAmount : useProrate ? prorateAmount(v.water_amount, days) : v.water_amount;
   const pdvAmount = keep('pdv_amount') ? b!.pdvAmount : useProrate ? prorateAmount(v.pdv_amount, days) : v.pdv_amount;
 
@@ -282,11 +287,11 @@ export function buildStructuredLines(
   lines.push({ role: 'rent', item: {
     type: 'RENT',
     accounting_class: 'REVENUE',
-    description: stripProrateLabel(ctx.rentDescription || 'Tiền thuê') + label,
+    description: stripProrateLabel(ctx.rentDescription || 'Tiền thuê') + (serviceOnlyPeriod ? '' : label),
     unit_price: rentAmount,
     quantity: 1,
     coefficient: 1,
-    ...periodFields,
+    ...(serviceOnlyPeriod ? {} : periodFields),
     sort_order: 0,
   } });
 
@@ -466,8 +471,19 @@ export function decomposeInvoice(invoice: InvoiceWithRelations): DecomposedInvoi
     });
   }
 
+  // A full-period RENT line may coexist with a shorter common water/service
+  // interval. Keep that interval when the draft is reopened or edited.
+  const services = [sources.water, sources.pdv].filter((item): item is InvoiceSourceItem => !!item);
+  const firstService = services[0];
+  const serviceOnlyPeriod = !!sources.rent && !periodStart && !periodEnd
+    && !!firstService?.from_date && !!firstService.to_date
+    && services.every(item => item.from_date === firstService.from_date && item.to_date === firstService.to_date);
+  if (serviceOnlyPeriod) {
+    periodStart = firstService.from_date;
+    periodEnd = firstService.to_date;
+  }
   const days = calcProratedDays(periodStart, periodEnd);
-  const rentPrice = fullFromProrated(rentAmount, days);
+  const rentPrice = serviceOnlyPeriod ? rentAmount : fullFromProrated(rentAmount, days);
   const waterFull = fullFromProrated(waterAmount, days);
   const pdvFull = fullFromProrated(pdvAmount, days);
 
@@ -499,6 +515,7 @@ export function decomposeInvoice(invoice: InvoiceWithRelations): DecomposedInvoi
   return {
     values,
     baseline: {
+      ...(serviceOnlyPeriod ? { serviceOnlyPeriod: true } : {}),
       rent_price: rentPrice,
       water_amount: waterFull,
       pdv_amount: pdvFull,

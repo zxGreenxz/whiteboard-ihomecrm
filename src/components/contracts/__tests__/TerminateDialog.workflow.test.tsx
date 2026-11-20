@@ -43,6 +43,18 @@ beforeEach(() => { vi.clearAllMocks(); meterValidity.valid=true; transfers.data=
 afterEach(cleanup);
 
 describe('thanh lý tách bước trả phòng', () => {
+  it('cho đối chiếu và chọn cả phần cọc dư giữ lại sau chuyển phòng', async () => {
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={{ ...contract, total_deposit: 2_000_000, deposit_paid: 4_000_000 }} />);
+    fireEvent.click(screen.getByLabelText('Hết hạn hợp đồng'));
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng nội dung mẫu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tiếp tục quyết toán ngay' }));
+    const field = await screen.findByLabelText('Tiền cọc hoàn trả');
+    expect(screen.getByText(/Sổ cọc ghi nhận cao hơn mức thỏa thuận/)).toBeTruthy();
+    expect((field as HTMLInputElement).value).toBe('2.000.000');
+    fireEvent.change(field,{target:{value:'4000000'}});
+    expect((field as HTMLInputElement).value).toBe('4.000.000');
+  });
+
   it('không mở quyết toán tiền khi truy vấn công nợ hoặc credit lỗi', () => {
     finance.invoiceError = true;
     finance.creditError = true;

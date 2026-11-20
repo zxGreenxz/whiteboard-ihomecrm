@@ -12,7 +12,7 @@ import {useRenewContract,useTransferRoom} from '../useContractOperations';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import {financialPending} from '@/lib/financialPending';
 const renew={contractId:id(2),expectedUpdatedAt:'2026-09-28T00:00:00Z',requestId:id(3),newEndDate:'2027-12-31',newRentPrice:100,newDeposit:200,noticeChoice:'KEEP' as const};
-const transfer={contractId:id(2),expectedUpdatedAt:'2026-09-28T00:00:00Z',requestId:id(3),newRoomId:id(4),transferDate:'2026-10-01',newRentPrice:100};
+const transfer={contractId:id(2),expectedUpdatedAt:'2026-09-28T00:00:00Z',requestId:id(3),newRoomId:id(4),transferDate:'2026-10-01',newRentPrice:100,newDeposit:200,quoteKey:'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'};
 const useNoticeOptions=(action:'renew'|'transfer')=>{const renewOptions=useRenewContract();const transferOptions=useTransferRoom();return (action==='renew'?renewOptions:transferOptions) as unknown as {mutationFn:(input:unknown)=>Promise<unknown>;onSuccess:(result:unknown,input:unknown)=>void;onError:(error:unknown)=>void};};
 const input=(action:'renew'|'transfer')=>action==='renew'?renew:transfer;
 const core=(action:'renew'|'transfer')=>({id:id(2),organization_id:id(1),contract_number:'HĐ26-009',status:'ACTIVE',end_date:'2027-12-31',rent_price:100,total_deposit:200,room_id:id(4),room:{id:id(4),name:'P203'},expected_move_out_date:action==='renew'?'2026-11-01':null});
@@ -36,4 +36,51 @@ it.each(['renew','transfer'] as const)('B16 %s cannot accept a current contract 
 });
 it.each(['renew','transfer'] as const)('B16 %s cannot accept a mismatched requested field',async action=>{
  h.rpc.mockResolvedValue({data:id(2),error:null});h.responses=[()=>({data:{...core(action),...(action==='renew'?{end_date:'2026-12-31'}:{room_id:id(7)})},error:null}),()=>({data:event(action),error:null})];await expect(useNoticeOptions(action).mutationFn(input(action))).rejects.toMatchObject({outcome:'partial'});
+});
+
+it.each([
+  [{code:'42501', message:'Phòng mới thuộc toà khác — chuyển phòng chỉ trong cùng một toà. Muốn đổi toà thì thanh lý hợp đồng rồi tạo hợp đồng mới.'}, /thanh lý/i],
+  [{code:'42501', message:'Không có quyền thao tác hợp đồng tại tòa nhà này'}, /không đủ quyền/i],
+  [{code:'P0001', message:'Phòng mới đã có hợp đồng đang hiệu lực'}, /chọn phòng khác/i],
+  [{code:'55000', message:'Phòng mới không còn trống'}, /chọn phòng khác/i],
+  [{code:'PT409', message:'Hợp đồng đã thay đổi; vui lòng tải lại trước khi tiếp tục'}, /hợp đồng đã thay đổi/i],
+  [{code:'22023', message:'Ngày chuyển phải sau lần chuyển phòng gần nhất'}, /sau lần chuyển gần nhất/i],
+] as const)('chuyển phòng phản hồi đúng nguyên nhân máy chủ trả về (%#)', async (error, expected) => {
+  h.rpc.mockResolvedValue({data:null,error});
+  const hook = useNoticeOptions('transfer');
+  await expect(hook.mutationFn(transfer)).rejects.toEqual(error);
+  hook.onError(error);
+  expect(h.toast.error.mock.calls.flat().join(' ')).toMatch(expected);
+  expect(h.toast.success).not.toHaveBeenCalled();
+});
+
+it('báo cần đối chiếu khi đã có mã hợp đồng nhưng chưa đọc được biên nhận', async () => {
+  const hook = useNoticeOptions('transfer');
+  h.rpc.mockResolvedValue({data:id(2),error:null});
+  h.responses = [() => ({data:null,error:{code:'42501',message:'denied'}})];
+  const error = await hook.mutationFn(transfer).catch(cause => cause);
+  expect(error).toMatchObject({outcome:'partial'});
+  hook.onError(error);
+  expect(h.toast.error).toHaveBeenCalledWith(expect.stringMatching(/đối chiếu/i));
+  expect(h.toast.error.mock.calls[0][0]).not.toMatch(/^Chưa chuyển phòng/);
+});
+
+it('chỉ đọc lại biên nhận sau lỗi xác nhận và giữ request id, không gửi writer lần hai', async () => {
+  const hook = useNoticeOptions('transfer');
+  h.rpc.mockResolvedValue({data:id(2),error:null});
+  h.responses = [() => ({data:null,error:{code:'42501',message:'denied'}})];
+  await expect(hook.mutationFn(transfer)).rejects.toMatchObject({outcome:'partial'});
+  h.responses = [() => ({data:core('transfer'),error:null}),() => ({data:event('transfer'),error:null})];
+  await expect(hook.mutationFn({...transfer,reconcileOnly:true})).resolves.toMatchObject({contractId:id(2)});
+  expect(h.rpc).toHaveBeenCalledTimes(1);
+  expect(h.rpc.mock.calls[0][0]).toBe('transfer_room_with_notice_v2');
+  expect(h.rpc.mock.calls[0][1]).toMatchObject({p_new_deposit:200,p_quote_key:'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'});
+  expect(financialPending.read({namespace:'contract-notice-transition',userId:'actor',organizationId:'actor-scope',businessKey:id(2)})).toBeNull();
+});
+
+it('không báo thành công nếu giá trị cọc thực đọc của hợp đồng chưa khớp', async () => {
+  const hook = useNoticeOptions('transfer');
+  h.rpc.mockResolvedValue({data:id(2),error:null});
+  h.responses = [() => ({data:{ ...core('transfer'), total_deposit: 0 },error:null}),() => ({data:event('transfer'),error:null})];
+  await expect(hook.mutationFn(transfer)).rejects.toMatchObject({outcome:'partial'});
 });

@@ -92,6 +92,30 @@ describe('computeEntryTotals', () => {
 });
 
 describe('buildInvoiceItems', () => {
+  it.each([1_650_000, 0])('uses the transferred rent %i for its full billing period and the custom dates for services', transferPeriodRent => {
+    const v = values({ period_start_date: '2026-09-01', period_end_date: '2026-09-15' });
+    expect(computeEntryTotals(v, undefined, transferPeriodRent)).toMatchObject({
+      rent: transferPeriodRent, water: 100_000, pdv: 75_000,
+    });
+    const [rent, , water, pdv] = buildInvoiceItems(v, { ...SERVICE_IDS, transferPeriodRent });
+    expect(rent.unit_price).toBe(transferPeriodRent);
+    expect(rent.from_date).toBeUndefined();
+    expect(rent.to_date).toBeUndefined();
+    expect(rent.description).not.toContain('15/30');
+    expect(water.unit_price * water.quantity).toBe(100_000);
+    expect(pdv.unit_price * pdv.quantity).toBe(75_000);
+    for (const service of [water, pdv]) expect(service).toMatchObject({ from_date: '2026-09-01', to_date: '2026-09-15' });
+    const draft = {
+      billing_month: '2026-09', invoice_items: [rent, water, pdv].map((item, i) => ({
+        ...item, id: String(i), amount: item.quantity * item.unit_price,
+      })),
+    } as unknown as InvoiceWithRelations;
+    const reopened = decomposeInvoice(draft);
+    expect(reopened.values).toMatchObject({ rent_price: transferPeriodRent, period_start_date: '2026-09-01', period_end_date: '2026-09-15' });
+    const saved = buildInvoiceItems(reopened.values, { ...SERVICE_IDS, baseline: reopened.baseline });
+    expect(saved.map(item => [item.unit_price * item.quantity, item.from_date, item.to_date]))
+      .toEqual([rent, water, pdv].map(item => [item.unit_price * item.quantity, item.from_date, item.to_date]));
+  });
   it('emits rent, electricity with readings, water per occupant, PDV and extras in order', () => {
     const items = buildInvoiceItems(values({
       custom_items: [

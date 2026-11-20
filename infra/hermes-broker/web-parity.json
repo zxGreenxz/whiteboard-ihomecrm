@@ -523,12 +523,12 @@
         {
           "path": "src/hooks/useZaloChat.ts",
           "region": "zalo-conversations",
-          "sha256": "93a2aa554701859d5097c7f40f47887f02fc7d7b780b8a493dd01c47f8402d27"
+          "sha256": "12fa48857f32ff75cb98cad804822f59a38504689923691617eefde54c36fd75"
         },
         {
           "path": "src/pages/chat-zalo/ChatZaloPage.tsx",
           "region": "zalo-conversations",
-          "sha256": "43f57cc7d45ac705e702e325056de392d435a9fb6b81165c41aec90a610553da"
+          "sha256": "bbba1393f5afc4dce8efb8737f97039bfdd776443866f8865c1fcd1869691832"
         }
       ],
       "hermes": [
@@ -544,7 +544,7 @@
           "contains": "crm.zalo_conversations"
         }
       ],
-      "notes": "Đã biết 17/10: web ẩn hội thoại chưa có tin khi không tìm, tìm cả tên phòng, không bỏ dấu; Hermes hiện mọi hội thoại, bỏ dấu, không tìm tên phòng."
+      "notes": "Đã biết 17/10: web ẩn hội thoại chưa có tin ở danh sách mặc định, hiện chúng khi lọc nhãn hoặc nhóm sale, tìm cả tên phòng, không bỏ dấu; Hermes hiện mọi hội thoại, bỏ dấu, không tìm tên phòng."
     },
     {
       "id": "pnl-pending",

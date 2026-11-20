@@ -21,6 +21,7 @@ vi.mock('@/hooks/useInvoices', () => ({
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [] }) }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
   const state = { isError: false, isLoading: false, isPending: false, refetch: vi.fn() };
+  if (queryKey[0] === 'room-transfer-invoice-rents') return { ...state, data: {} };
   if (queryKey[0] === 'compute-previous-debt') return { ...state, data: boundary.debt };
   if (queryKey[0] === 'invoice-support-plan' && support.enabled) return { ...state, isPending: support.pending, data: support.pending ? undefined : { revision: 2, schedule: { version: 2, start_billing_month: '2026-09', segments: [{ month_count: 3, monthly_amount: '300000' }, { month_count: 9, monthly_amount: '100000' }] } } };
   if (queryKey[0] === 'invoice-support-quote' && support.enabled) return { ...state, isPending: support.pending, data: support.pending ? undefined : { fingerprint: JSON.stringify(queryKey.slice(1)), value: { state: 'READY', invoice_support: queryKey[4] === '2026-12' ? '100000' : '300000', plan_revision: 2, billing_month: queryKey[4] } } };

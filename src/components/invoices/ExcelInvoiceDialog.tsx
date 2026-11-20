@@ -16,7 +16,7 @@ import {
   reresolveRowPricing,
   requoteExcelRowSupport,
   resolveBuildingDefaults,
-  type ExcelRowData as RowData,
+  type ExcelRowData,
   type SubmitContext,
 } from '@/lib/excelInvoiceRows';
 import {
@@ -52,13 +52,18 @@ import { useToast } from '@/hooks/use-toast';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { useExcelInvoiceSupportQuotes } from '@/hooks/invoices/useExcelInvoiceSupportQuotes';
+import { useRoomTransferInvoiceRents } from '@/hooks/invoices/useRoomTransferInvoiceRents';
+import { transferRentMismatch, transferRentPeriodNote } from '@/lib/roomTransferInvoiceRent';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-// RowData = ExcelRowData (lib/excelInvoiceRows) — shape giữ nguyên bản cũ.
+interface RowData extends ExcelRowData {
+  contractRent: number;
+  manualRent?: { month: string; amount: number };
+}
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('vi-VN').format(Math.round(n || 0));
@@ -74,7 +79,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const [billingMonth, setBillingMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [issueDate, setIssueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dueDate, setDueDate] = useState(format(addMonths(new Date(), 1), 'yyyy-MM-dd'));
-  const [rows, setRows] = useState<RowData[]>([]);
+  const [draftRows, setRows] = useState<RowData[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitResult,setSubmitResult]=useState<Awaited<ReturnType<typeof submitExcel.submit>>|null>(null);
@@ -104,6 +109,16 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const periodStart = BILLING_MONTH_PATTERN.test(billingMonth) ? startOfMonth(parse(billingMonth + '-01', 'yyyy-MM-dd', new Date())) : null;
   const submitContext: SubmitContext | null = periodStart && isValid(periodStart) ? { buildingId, billingMonth, issueDate, dueDate, periodStart,
     fromDate: format(periodStart, 'yyyy-MM-dd'), toDate: format(endOfMonth(periodStart), 'yyyy-MM-dd') } : null;
+  const transferRents = useRoomTransferInvoiceRents(buildingId, billingMonth, open && loaded);
+  const rentUnavailable = transferRents.data === undefined || transferRents.isError || transferRents.isFetching;
+  const rows = useMemo(() => draftRows.map(row => {
+    const expected = transferRents.data?.[row.contract_id];
+    const rent = row.manualRent?.month === billingMonth ? row.manualRent.amount : expected ?? row.contractRent;
+    if (rent === row.rent_price && row.transferPeriodRent === expected) return row;
+    const quoted = { ...row, rent_price: rent, transferPeriodRent: expected };
+    return { ...quoted, ...requoteExcelRowSupport(quoted, billingMonth) };
+  }), [draftRows, transferRents.data, billingMonth]);
+  const invalidSelectedRent = rows.some(row => row.selected && transferRentMismatch(transferRents.data?.[row.contract_id], row.rent_price));
   const supportQuotes = useExcelInvoiceSupportQuotes(rows, submitContext);
 
   // Load rooms + active contracts + meters + last reading for the building.
@@ -122,7 +137,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           description: `Phòng ${src.dupRoomNames.join(', ')} đang có 2 hợp đồng hiệu lực — đã chọn HĐ mới nhất để lập hoá đơn. Vui lòng thanh lý hợp đồng cũ.`,
         });
       }
-      setRows(lockRows(buildExcelRows({ ...src, defaults, billingMonth }), billingMonth));
+      const rooms = buildExcelRows({ ...src, defaults, billingMonth });
+      setRows(lockRows(rooms.map(row => ({ ...row, contractRent: row.rent_price })), billingMonth));
       setSubmitError(null);
       setLoaded(true);
     } catch (err) {
@@ -143,7 +159,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     if (!loaded) return;
     setRows((prev) => prev.map((r) => {
       const repriced = reresolveRowPricing(r, defaults);
-      return submitContext ? requoteExcelRowSupport(repriced, billingMonth) : repriced;
+      return { ...r, ...(submitContext ? requoteExcelRowSupport(repriced, billingMonth) : repriced) };
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaults.elec, defaults.water, defaults.pdv]);
@@ -151,7 +167,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const updateRow = (idx: number, patch: Partial<RowData>) => {
     setRows((prev) => {
       const next = [...prev];
-      const row = { ...next[idx], ...patch };
+      const row = { ...rows[idx], ...patch };
+      if (patch.rent_price !== undefined) row.manualRent = { month: billingMonth, amount: patch.rent_price };
       // Auto-recompute electric_amount unless user manually overrode it.
       if (
         ('current_reading' in patch || 'prev_reading' in patch) &&
@@ -170,7 +187,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           ? (Number(row.occupants) || 0) * row.water_rate
           : 0;
       }
-      next[idx] = submitContext ? requoteExcelRowSupport(row, billingMonth) : row;
+      next[idx] = submitContext ? { ...row, ...requoteExcelRowSupport(row, billingMonth) } : row;
       return next;
     });
   };
@@ -222,7 +239,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const requestClose = () => { if (!submitting) handleClose(); };
 
   const handleSubmit = async () => {
-    if (sourcesBlocked || !submitContext || !supportQuotes.ready) return;
+    if (sourcesBlocked || rentUnavailable || invalidSelectedRent || !submitContext || !supportQuotes.ready) return;
     const selected = rows.filter((r) => r.selected);
     if (selected.some(row => row.support_error)) {
       toast({ variant: 'destructive', title: 'Cần kiểm tra hỗ trợ', description: 'Sửa các dòng báo lỗi trước khi tạo hóa đơn.' }); return;
@@ -275,6 +292,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         <QueryRegion label="danh mục lập hoá đơn" queries={sourceQueries} skeleton="none"><span /></QueryRegion>
+        {loaded && submitContext && <QueryRegion label="tiền thuê của kỳ chuyển phòng" queries={[transferRents]} skeleton="inline">{null}</QueryRegion>}
         <div className="grid grid-cols-5 gap-3 py-2">
           <div className="space-y-1 col-span-2">
             <Label>Toà nhà *</Label>
@@ -306,7 +324,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                 // manual discounts and the existing recovery flow for an unknown write.
                 // Lỗi lần tạo của kỳ cũ bỏ đi; dòng khoá ở kỳ mới nhận lại lý do của kỳ đó.
                 if (rows.some(row => row.meter_id || row.meter_billing?.length)) invalidateRows();
-                else if (loaded && BILLING_MONTH_PATTERN.test(month)) setRows(previous => lockRows(previous.map(row => ({ ...requoteExcelRowSupport(row, month), submit_error: undefined })), month));
+                else if (loaded && BILLING_MONTH_PATTERN.test(month)) setRows(previous => lockRows(previous.map(row => ({ ...row, ...requoteExcelRowSupport(row, month), submit_error: undefined })), month));
               }}
             />
             {!submitContext && <p role="alert" className="text-xs text-red-700">Kỳ thanh toán không hợp lệ. Vui lòng chọn tháng.</p>}
@@ -375,6 +393,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                 </tr>
               )}
               {rows.map((r, i) => {
+                const transferPrice = transferRents.data?.[r.contract_id];
+                const rentError = transferRentMismatch(transferPrice, r.rent_price);
                 const total = computeRowTotal(r);
                 const rowDays = calcProratedDays(r.period_start_date, r.period_end_date);
                 return (
@@ -394,6 +414,10 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                         value={r.rent_price}
                         onChange={(v) => updateRow(i, { rent_price: v })}
                       />
+                      {rentError && <div className="text-xs text-destructive" role="alert">{rentError}
+                        <button type="button" className="underline" onClick={() => updateRow(i, { rent_price: transferPrice })}>Dùng mức đã tính</button>
+                      </div>}
+                      {transferPrice !== undefined && !rentError && <span className="text-xs text-muted-foreground">Đã chia theo ngày chuyển phòng</span>}
                     </td>
                     <td className="p-1 border">
                       <NumberInput
@@ -573,7 +597,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                         </div>
                         <button
                           type="button"
-                          title="Prorate theo ngày bắt đầu/kết thúc"
+                          title={transferPrice !== undefined ? transferRentPeriodNote : 'Prorate theo ngày bắt đầu/kết thúc'}
                           className={`p-0.5 rounded hover:bg-amber-100 ${
                             rowDays > 0
                               ? 'text-emerald-600'
@@ -619,7 +643,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={submitting || totals.count === 0 || sourcesBlocked || !supportQuotes.ready}
+            disabled={submitting || totals.count === 0 || sourcesBlocked || rentUnavailable || invalidSelectedRent || !supportQuotes.ready}
             className="bg-indigo-600 hover:bg-indigo-700"
           >
             {submitting ? (
@@ -677,7 +701,7 @@ function ProrateRowDialog({ row, onClose, onApply, onClear }: ProrateRowDialogPr
 
   const days = calcProratedDays(start, end);
   const open = row != null;
-  const previewRent = row && days > 0 ? prorateAmount(row.rent_price, days) : row?.rent_price ?? 0;
+  const previewRent = row?.transferPeriodRent ?? (row && days > 0 ? prorateAmount(row.rent_price, days) : row?.rent_price ?? 0);
   const previewWater = row && days > 0 ? prorateAmount(row.water_amount, days) : row?.water_amount ?? 0;
   const previewPDV = row && days > 0 ? prorateAmount(row.pdv_amount, days) : row?.pdv_amount ?? 0;
   const previewTotal =
@@ -691,7 +715,7 @@ function ProrateRowDialog({ row, onClose, onApply, onClear }: ProrateRowDialogPr
             Prorate phòng {row?.room_name || ''}
           </DialogTitle>
           <DialogDescription>
-            Điền ngày bắt đầu và kết thúc thực tế → tiền phòng + nước + PDV sẽ chia tỉ lệ <code>/30 × số ngày</code>.
+            {row?.transferPeriodRent !== undefined ? transferRentPeriodNote : <>Điền ngày bắt đầu và kết thúc thực tế → tiền phòng + nước + PDV sẽ chia tỉ lệ <code>/30 × số ngày</code>.</>}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">

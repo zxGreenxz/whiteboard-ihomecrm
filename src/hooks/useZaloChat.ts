@@ -171,16 +171,38 @@ export function useZaloConversations() {
     retry: 1,
     queryFn: async (): Promise<ZaloConversation[]> => {
       // hermes-parity:begin zalo-conversations — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
-      const { data, error } = await db
-        .from('zalo_conversations')
-        .select(CONV_COLS)
+      const pageSize = 1000;
+      // Bound the same 5,000 most recent threads before walking by immutable id.
+      // A live message can change last_message_at between two network requests.
+      const boundary = await db.from('zalo_conversations').select('id,last_message_at')
         .eq('organization_id', orgId)
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-        .limit(CONV_LIMIT);
-      if (error) throw error;
-      const list = (data || []).map(mapConv);
-      // ghim lên đầu — sort client-side, không đổi query
-      return list.sort((a: ZaloConversation, b: ZaloConversation) => Number(b.pinned) - Number(a.pinned));
+        .order('last_message_at', { ascending: false, nullsFirst: false }).order('id')
+        .range(CONV_LIMIT - 1, CONV_LIMIT - 1);
+      if (boundary.error && boundary.error.code !== 'PGRST103') throw boundary.error;
+      const cutoff = boundary.data?.[0];
+      const rows: { conversation: ZaloConversation; time: number }[] = [];
+      let after = '';
+      for (;;) {
+        let page = db.from('zalo_conversations').select(CONV_COLS)
+          .eq('organization_id', orgId).order('id');
+        if (cutoff?.last_message_at) {
+          const time = cutoff.last_message_at;
+          page = page.or(`last_message_at.gt.${time},and(last_message_at.eq.${time},id.lte.${cutoff.id})`);
+        } else if (cutoff) {
+          page = page.or(`last_message_at.not.is.null,id.lte.${cutoff.id}`);
+        }
+        if (after) page = page.gt('id', after);
+        const { data, error } = await page.range(0, pageSize - 1);
+        if (error) throw error;
+        for (const row of data ?? []) {
+          rows.push({ conversation: mapConv(row), time: row.last_message_at ? Date.parse(row.last_message_at) : 0 });
+        }
+        if (!data || data.length < pageSize) break;
+        after = data[data.length - 1].id;
+      }
+      // Equal timestamps retain the deterministic id order of the underlying pages.
+      return rows.sort((a, b) => b.time - a.time).slice(0, CONV_LIMIT)
+        .map(row => row.conversation).sort((a, b) => Number(b.pinned) - Number(a.pinned));
       // hermes-parity:end zalo-conversations
     },
   });
@@ -558,14 +580,17 @@ export function useMarkSalePartner() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (v: { conversationId: string; isSale: boolean }) => {
-      const { error } = await db.rpc('zalo_danh_dau_sale', {
+      const { data, error } = await db.rpc('zalo_danh_dau_sale', {
         p_conversation_id: v.conversationId, p_is_sale: v.isSale,
       });
       if (error) throw error;
+      if (data?.id !== v.conversationId || data.is_sale_partner !== v.isSale) {
+        throw new Error('Chưa xác nhận được trạng thái sale của hội thoại');
+      }
     },
     onSuccess: (_d, v) => {
       toast.success(v.isSale ? 'Đã đánh dấu là sale/môi giới' : 'Đã bỏ đánh dấu sale');
-      qc.invalidateQueries({ queryKey: QK.conversations });
+      return qc.invalidateQueries({ queryKey: QK.conversations });
     },
     onError: (e: Error) => notifyActionError(e, 'Không đổi được đánh dấu'),
   });

@@ -16,21 +16,21 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 431 |
+| RPC được gọi từ mã nguồn | 433 |
 | Hàm trong catalog (public + api) | 1663 |
-| File mã nguồn đã quét | 3145 |
-| SECURITY DEFINER | 405 |
+| File mã nguồn đã quét | 3155 |
+| SECURITY DEFINER | 407 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 322 | còn lại |
-| tiền | 108 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| thường | 323 | còn lại |
+| tiền | 109 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | hạ tầng | 1 | nơi gọi thuộc Network Center |
 
-## 108 RPC chạm TIỀN
+## 109 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -112,6 +112,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `reverse_posted_income_expense_v2` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `review_invoice_adjustment_v2` | ✔ | lib/invoiceAdjustmentRpc.ts |
 | `revise_pending_income_expense_v1` | ✔ | hooks/income-expenses/revisions.ts |
+| `room_transfer_invoice_rents_v1` | ✔ | hooks/invoices/useRoomTransferInvoiceRents.ts |
 | `salary_can_edit_amounts_v1` | ✔ | hooks/useSalaryExtras.ts |
 | `salary_commission_meta_v1` | ✔ | hooks/useManagerSalary.ts |
 | `salary_line_override_list_v1` | ✔ | hooks/useSalaryExtras.ts |

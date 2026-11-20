@@ -8,7 +8,7 @@ vi.mock('@/components/ui/select', async original => {
   return { ...actual, SelectContent: (props: React.ComponentProps<typeof actual.SelectContent>) => <actual.SelectContent {...props} position="item-aligned" /> };
 });
 
-const api = vi.hoisted(() => ({ create: vi.fn(), plan: vi.fn(), quote: vi.fn(), read: vi.fn(), sourceBlocked: false }));
+const api = vi.hoisted(() => ({ create: vi.fn(), plan: vi.fn(), quote: vi.fn(), read: vi.fn(), rents: vi.fn(), sourceBlocked: false }));
 vi.mock('@/hooks/useInvoices', () => ({ useCreateInvoice: () => ({ mutate: api.create, mutateAsync: api.create, isPending: false }), useExcessAmount: () => ({ data: 50000 }) }));
 vi.mock('@/lib/invoiceRentSupport', async original => ({ ...await original<typeof import('@/lib/invoiceRentSupport')>(), readInvoiceRentSupportPlan: api.plan, quoteInvoiceRentSupport: api.quote, readSavedInvoiceSupportRequest: api.read }));
 vi.mock('@/hooks/useContracts', () => ({ useContracts: () => ({ data: [{ id: 'c1', status: 'ACTIVE', discounts: { version: 2 }, rent_price: 1000000, room: { id: 'r1', name: 'Room', building_id: 'b1' } }] }) }));
@@ -19,10 +19,11 @@ vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ da
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org1' }) }));
 vi.mock('@/lib/invoiceHelpers', () => ({ computePreviousDebt: async () => ({ total: 0, sources: [] }), getContractDiscountSlot: async (_: string, { billingMonth }: { billingMonth: string }) => ({ supportRevision: 2, billingMonth, amountPerMonth: billingMonth === '2026-12' ? 100000 : 300000, applicable: true, label: 'Hỗ trợ' }) }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ is: () => ({ neq: () => ({ eq: () => ({ limit: () => ({ maybeSingle: async () => ({ data: null }) }) }) }) }) }) }) }) }) } }));
-vi.mock('./invoice-entry/InvoiceEntryShell', () => ({ InvoiceEntryShell: ({ ctl, onSubmit, submit, validationError, selectors }: React.ComponentProps<typeof import('./invoice-entry/InvoiceEntryShell').InvoiceEntryShell>) => <form onSubmit={onSubmit}>{selectors('desktop').contract}<input aria-label="Tháng" value={ctl.v.billing_month} onChange={e => ctl.set.billingMonth(e.target.value)} /><input aria-label="Giảm trừ" value={ctl.v.discount_amount} onChange={e => ctl.set.discount(Number(e.target.value))} /><input aria-label="Giá thuê" value={ctl.v.rent_price} onChange={e => ctl.set.rent(Number(e.target.value))} /><div>{validationError}</div><button type="submit" disabled={submit.disabled}>Tạo</button></form> }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: api.rents, from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ is: () => ({ neq: () => ({ eq: () => ({ limit: () => ({ maybeSingle: async () => ({ data: null }) }) }) }) }) }) }) }) }) } }));
+vi.mock('./invoice-entry/InvoiceEntryShell', () => ({ InvoiceEntryShell: ({ ctl, onSubmit, submit, validationError, selectors, notice }: React.ComponentProps<typeof import('./invoice-entry/InvoiceEntryShell').InvoiceEntryShell>) => <form onSubmit={onSubmit}>{selectors('desktop').contract}<input aria-label="Tháng" value={ctl.v.billing_month} onChange={e => ctl.set.billingMonth(e.target.value)} /><input aria-label="Giảm trừ" value={ctl.v.discount_amount} onChange={e => ctl.set.discount(Number(e.target.value))} /><input aria-label="Giá thuê" value={ctl.v.rent_price} onChange={e => ctl.set.rent(Number(e.target.value))} /><input aria-label="Ngày thuê từ" value={ctl.v.period_start_date ?? ''} onChange={e => ctl.set.periodStart(e.target.value)} /><div>{validationError}</div>{notice}<button type="submit" disabled={submit.disabled}>Tạo</button></form> }));
 afterEach(cleanup);
 beforeEach(() => {
+  api.rents.mockReset().mockResolvedValue({ data: {}, error: null });
   vi.stubGlobal('PointerEvent', MouseEvent);
   HTMLElement.prototype.scrollIntoView = vi.fn(); HTMLElement.prototype.hasPointerCapture = vi.fn(() => false); HTMLElement.prototype.releasePointerCapture = vi.fn();
   api.sourceBlocked = false;
@@ -35,7 +36,48 @@ function open() {
   render(<QueryClientProvider client={query}><GenerateInvoiceDialog open onOpenChange={() => {}} /></QueryClientProvider>);
   fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' });
   fireEvent.keyDown(screen.getByRole('option', { name: 'c1 - Room' }), { key: 'Enter' });
+  return query;
 }
+it('loads the combined rent for the selected month and keeps a manual edit on refetch', async () => {
+  api.rents.mockImplementation(async (_name, args) => ({ data: args.p_billing_month === '2026-11' ? { c1: 1700000 } : {}, error: null }));
+  const client = open();
+  const rent = screen.getByLabelText('Giá thuê') as HTMLInputElement;
+  fireEvent.change(screen.getByLabelText('Tháng'), { target: { value: '2026-11' } });
+  await waitFor(() => expect(rent.value).toBe('1700000'));
+  expect((screen.getByLabelText('Ngày thuê từ') as HTMLInputElement).disabled).toBe(false);
+  fireEvent.change(rent, { target: { value: '1650000' } });
+  api.rents.mockResolvedValueOnce({ data: { c1: 1800000 }, error: null });
+  await client.invalidateQueries({ queryKey: ['room-transfer-invoice-rents', 'b1', '2026-11'] });
+  await waitFor(() => expect(rent.value).toBe('1650000'));
+  fireEvent.change(screen.getByLabelText('Tháng'), { target: { value: '2026-12' } });
+  await waitFor(() => expect(rent.value).toBe('1000000'));
+  expect((screen.getByLabelText('Ngày thuê từ') as HTMLInputElement).disabled).toBe(false);
+  expect(api.rents).toHaveBeenCalledWith('room_transfer_invoice_rents_v1', { p_building_id: 'b1', p_billing_month: '2026-12' });
+});
+it('blocks submit for missing/bad rent data and preserves a price typed while loading', async () => {
+  let resolve!: (value: unknown) => void;
+  api.rents.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  const client = open();
+  const submit = screen.getByRole('button', { name: 'Tạo' }) as HTMLButtonElement;
+  const rent = screen.getByLabelText('Giá thuê') as HTMLInputElement;
+  expect(submit.disabled).toBe(true);
+  fireEvent.change(rent, { target: { value: '990000' } });
+  fireEvent.change(screen.getByLabelText('Ngày thuê từ'), { target: { value: '2026-11-01' } });
+  resolve({ data: { c1: '900000' }, error: null });
+  await waitFor(() => expect(client.getQueryCache().find({ queryKey: ['room-transfer-invoice-rents', 'b1'], exact: false })?.state.status).toBe('error'));
+  expect(submit.disabled).toBe(true);
+  api.rents.mockResolvedValue({ data: { c1: 800000 }, error: null });
+  await client.invalidateQueries({ queryKey: ['room-transfer-invoice-rents'] });
+  await screen.findByText(/Tiền thuê kỳ chuyển phòng phải bằng 800.000 đ/);
+  expect(submit.disabled).toBe(true);
+  expect(rent.value).toBe('990000');
+  expect((screen.getByLabelText('Ngày thuê từ') as HTMLInputElement).value).toBe('2026-11-01');
+  fireEvent.click(screen.getByRole('button', { name: 'Dùng mức thuê đã tính' }));
+  await waitFor(() => expect(submit.disabled).toBe(false));
+  fireEvent.click(submit);
+  await waitFor(() => expect(api.create).toHaveBeenCalledTimes(1));
+  expect(api.create.mock.calls[0][0].items).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'RENT', unit_price: 800000 })]));
+});
 it('preserves manual discount and credit when November changes to December', async () => {
   open();
   // Only one available contract is auto-selected by the existing dialog.
@@ -44,6 +86,7 @@ it('preserves manual discount and credit when November changes to December', asy
   fireEvent.change(screen.getByLabelText('Giảm trừ'), { target: { value: '370000' } });
   fireEvent.change(screen.getByLabelText('Tháng'), { target: { value: '2026-12' } });
   await waitFor(() => expect((screen.getByLabelText('Giảm trừ') as HTMLInputElement).value).toBe('170000'));
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo' }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
   await waitFor(() => expect(api.create).toHaveBeenCalled());
   expect(api.create.mock.calls[0][0]).toMatchObject({ discount_amount: 170000, applied_credit: 50000, rent_support_context: { version: 1, manual_discount_amount: '20000', expected_plan_revision: 2 } });
@@ -52,6 +95,7 @@ it('retains the request UUID across an unchanged failed attempt and reads its sa
   api.create.mockRejectedValue(new Error('definitive rejection'));
   open();
   await waitFor(() => expect((screen.getByLabelText('Giảm trừ') as HTMLInputElement).value).toBe('350000'));
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo' }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
   await waitFor(() => expect(api.create).toHaveBeenCalledTimes(1));
   fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));

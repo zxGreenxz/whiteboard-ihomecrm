@@ -8,22 +8,26 @@ interface CurrencyInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
  value?:number|null;onChange?:(value:number)=>void;suffix?:boolean;className?:string;
  /** Only set where the existing business rule permits signed amounts. */
  allowNegative?:boolean;
+ /** Optional amounts can distinguish clearing the field from entering zero. */
+ onClear?:()=>void;
+ showZero?:boolean;
 }
-function display(value?:number|null){return value!=null&&Number.isFinite(value)&&value!==0?value.toLocaleString('vi-VN'):'';}
+function display(value?:number|null,showZero=false){return value!=null&&Number.isFinite(value)&&(showZero||value!==0)?value.toLocaleString('vi-VN'):'';}
 export const CurrencyInput=React.forwardRef<HTMLInputElement,CurrencyInputProps>(function CurrencyInput(
- {value,onChange,onBlur,suffix=true,className,placeholder,allowNegative=false,...rest},ref){
- const [text,setText]=React.useState(()=>display(value));const [error,setError]=React.useState<string>();
+ {value,onChange,onClear,onBlur,suffix=true,className,placeholder,allowNegative=false,showZero=false,...rest},ref){
+ const [text,setText]=React.useState(()=>display(value,showZero));const [error,setError]=React.useState<string>();
  const [focused,setFocused]=React.useState(false);const lastEmitted=React.useRef<number|undefined>();
  const inputRef=React.useRef<HTMLInputElement|null>(null);const errorId=React.useId()+'-currency-error';
  const setRef=React.useCallback((node:HTMLInputElement|null)=>{inputRef.current=node;if(typeof ref==='function')ref(node);else if(ref)ref.current=node;},[ref]);
  useInputDraftGuard(inputRef,error);
  React.useEffect(()=>{
   if(Object.is(value,lastEmitted.current)||focused||Number.isNaN(value)||error)return;
-  setText(display(value));setError(undefined);
- },[value,focused]);
+  setText(display(value,showZero));setError(undefined);
+ },[value,focused,showZero]);
  const handleChange=(e:React.ChangeEvent<HTMLInputElement>)=>{
   const raw=e.target.value;const parsed=parseCurrencyAmount(typedAmountText(text,e,{allowNegative}),{allowNegative,emptyAsZero:true});
   setText(parsed.value==null?raw:raw.trim()===''?'':parsed.value.toLocaleString('vi-VN'));setError(parsed.error);
+  if(onClear && !raw.trim()){lastEmitted.current=undefined;onClear();return;}
   const next=parsed.value??Number.NaN;lastEmitted.current=next;onChange?.(next);
  };
  const describedBy=[rest['aria-describedby'],error?errorId:undefined].filter(Boolean).join(' ')||undefined;

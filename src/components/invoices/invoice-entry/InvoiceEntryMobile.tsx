@@ -1,3 +1,4 @@
+import { transferRentPeriodNote } from '@/lib/roomTransferInvoiceRent';
 import {EntryFieldError} from './EntryFieldError';
 import { ArrowLeft, Loader2, RotateCcw } from 'lucide-react';
 import '@/styles/mobileApp.css';
@@ -245,7 +246,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
 
             <div className="ien-card">
               <div className="ien-h-row">
-                <span className="ien-h">Ngày thuê thực tế</span>
+                <span className="ien-h">Ngày thuê thực tế</span>{ctl.rentPeriodFixed && <span className="text-xs text-muted-foreground">{transferRentPeriodNote}</span>}
                 {totals.isProrated && <span className="ien-pill ok" style={{ marginLeft: 'auto' }}>Prorate {totals.days}/30</span>}
               </div>
               <div className="ien-grid2">

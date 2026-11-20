@@ -5,7 +5,7 @@ export type ToneKey = 'emerald' | 'blue' | 'purple' | 'orange' | 'rose' | 'slate
 export type TagKey = 'success' | 'info' | 'debt' | 'danger' | 'warning' | 'purple' | 'neutral';
 export type ProfileKind = 'tenant' | 'lead' | 'broker' | 'unknown';
 export type MsgTick = 'seen' | 'sent' | 'pending' | 'failed';
-export type FilterKey = 'all' | 'unread' | 'tenant' | 'lead' | 'contacts';
+export type FilterKey = 'all' | 'unread' | 'tenant' | 'lead' | 'contacts' | 'saleGroups';
 export type RightTab = 'info' | 'auto';
 
 export interface ZaloTag {

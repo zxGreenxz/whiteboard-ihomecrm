@@ -20,6 +20,7 @@ import { isCaptureBackedSource, meterSourceReference, type MeterBillingSource } 
 
 // ── Kiểu dữ liệu ─────────────────────────────────────────────────────────────
 export interface ExcelRowData {
+  transferPeriodRent?: number;
   meter_billing?: MeterBillingSource[];
   meter_billing_error?: string;
   support_schedule?: SupportCustomerSchedule;
@@ -387,7 +388,7 @@ export function reresolveRowPricing(
 // ── 9. Tổng tiền preview 1 dòng (prorate nếu có period) ──────────────────────
 export function computeExcelRowTotal(r: ExcelRowData): number {
   const days = calcProratedDays(r.period_start_date, r.period_end_date);
-  const rent = days > 0 ? prorateAmount(r.rent_price, days) : r.rent_price;
+  const rent = r.transferPeriodRent ?? (days > 0 ? prorateAmount(r.rent_price, days) : r.rent_price);
   const water = days > 0 ? prorateAmount(r.water_amount, days) : r.water_amount;
   const pdv = days > 0 ? prorateAmount(r.pdv_amount, days) : r.pdv_amount;
   return rent + r.electric_amount + water + pdv - r.discount + (r.previous_debt || 0);
@@ -428,7 +429,7 @@ export function buildInvoiceItems(
   const itemToDate = useProrate ? row.period_end_date! : ctx.toDate;
   const prorateLabel = useProrate ? ` (${itemDays}/30 ngày)` : "";
 
-  const rentAmount = useProrate ? prorateAmount(row.rent_price, itemDays) : row.rent_price;
+  const rentAmount = row.transferPeriodRent ?? (useProrate ? prorateAmount(row.rent_price, itemDays) : row.rent_price);
   const waterAmount = useProrate ? prorateAmount(row.water_amount, itemDays) : row.water_amount;
   const pdvAmount = useProrate ? prorateAmount(row.pdv_amount, itemDays) : row.pdv_amount;
 
@@ -437,12 +438,12 @@ export function buildInvoiceItems(
   items.push({
     type: "RENT",
     description:
-      `Tiền thuê phòng ${row.room_name} (${format(ctx.periodStart, "MM/yyyy")})` + prorateLabel,
+      `Tiền thuê phòng ${row.room_name} (${format(ctx.periodStart, "MM/yyyy")})` + (row.transferPeriodRent === undefined ? prorateLabel : ''),
     unit_price: rentAmount,
     quantity: 1,
     coefficient: 1,
-    from_date: useProrate ? itemFromDate : undefined,
-    to_date: useProrate ? itemToDate : undefined,
+    from_date: useProrate && row.transferPeriodRent === undefined ? itemFromDate : undefined,
+    to_date: useProrate && row.transferPeriodRent === undefined ? itemToDate : undefined,
     sort_order: order++,
   });
   if (row.meter_billing?.some(source => source.end)) {

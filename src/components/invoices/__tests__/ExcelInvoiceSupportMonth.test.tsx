@@ -5,6 +5,7 @@ import { useState } from 'react';
 import ExcelInvoiceDialog from '../ExcelInvoiceDialog';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const source = vi.hoisted(() => ({ load: vi.fn(), submit: vi.fn() }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: async () => ({ data: {}, error: null }) } }));
 vi.mock('@/hooks/invoices/useExcelInvoiceData', () => ({ fetchExcelInvoiceSource: source.load, fetchPreviousDebtForContract: vi.fn(), useSubmitExcelInvoices: () => ({ submit: source.submit, isPending: false }) }));
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [{ id: 'b1', name: 'Building' }] }) }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [], isLoading: false, isError: false }) }));
@@ -127,6 +128,7 @@ it('keeps batch receipts with their rows and explains locked rooms across batche
   fireEvent.click(all); expect(create(0).disabled).toBe(true);
   fireEvent.click(all); expect(boxes()).toEqual(['false khoá', 'false khoá', 'true', 'false khoá']);
   source.submit.mockResolvedValueOnce({ ok: 1, fail: 0, readingFails: [], recovered: [], errors: [], rows: [{ contractId: 'c3', roomName: 'P103', invoiceId: 'i3', readingSaved: false }] });
+  await waitFor(() => expect(create(1).disabled).toBe(false));
   fireEvent.click(create(1));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(source.submit.mock.lastCall?.[0].map((selected: { contract_id: string }) => selected.contract_id)).toEqual(['c3']);
@@ -134,5 +136,5 @@ it('keeps batch receipts with their rows and explains locked rooms across batche
   fireEvent.click(screen.getByRole('button', { name: 'Mở lại' }));
   fireEvent.change(month(), { target: { value: '2026-12' } });
   await load();
-  expect(create(4).disabled).toBe(false);
+  await waitFor(() => expect(create(4).disabled).toBe(false));
 }, 30000);

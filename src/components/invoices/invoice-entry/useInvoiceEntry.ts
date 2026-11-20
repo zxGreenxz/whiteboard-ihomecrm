@@ -52,6 +52,7 @@ export interface ExtraRow {
 }
 
 export interface InvoiceEntryController {
+  rentPeriodFixed?: boolean;
   v: InvoiceEntryValues;
   totals: EntryTotals;
   diff: EntryDiff;
@@ -66,6 +67,7 @@ export interface InvoiceEntryController {
 }
 
 interface Options {
+  transferPeriodRent?: number;
   /** Giá trị gốc để đánh dấu ô đã đổi. */
   baseline: InvoiceEntryValues;
   /** Số tiền đã lưu (hoá đơn đang sửa) để tổng hiển thị khớp đúng số đã lưu. */
@@ -81,7 +83,7 @@ interface Options {
  */
 export function useInvoiceEntry<T extends InvoiceEntryValues>(
   form: UseFormReturn<T>,
-  { baseline, baselineAmounts, pricing, active = true }: Options,
+  { baseline, baselineAmounts, pricing, active = true, transferPeriodRent }: Options,
 ): InvoiceEntryController {
   const f = form as unknown as UseFormReturn<InvoiceEntryValues>;
   const { setValue, watch, control } = f;
@@ -113,7 +115,7 @@ export function useInvoiceEntry<T extends InvoiceEntryValues>(
     if (next !== waterAmount) setValue('water_amount', next);
   }, [active, occupants, pricing.water, pricing.waterApplicable, waterOverridden, waterAmount, setValue]);
 
-  const totals = useMemo(() => computeEntryTotals(v, baselineAmounts), [v, baselineAmounts]);
+  const totals = useMemo(() => computeEntryTotals(v, baselineAmounts, transferPeriodRent), [v, baselineAmounts, transferPeriodRent]);
   const diff = useMemo(() => diffEntryValues(v, baseline), [v, baseline]);
   const depositIndex = findDepositIndex(items);
   const deposit = depositIndex >= 0 ? items[depositIndex] : null;
@@ -203,7 +205,7 @@ export function useInvoiceEntry<T extends InvoiceEntryValues>(
     return {name,'aria-invalid':!!error,'aria-describedby':error?`invoice-entry-error-${name}`:undefined};
   };
   return {
-    errors, submitCount:form.formState.submitCount, field,
+    errors, submitCount:form.formState.submitCount, field, rentPeriodFixed: transferPeriodRent !== undefined || baselineAmounts?.serviceOnlyPeriod,
     v,
     totals,
     diff,
