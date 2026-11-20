@@ -17,6 +17,7 @@ import { chuHienThi, docThe, linkMediaAnToan } from '@/lib/zaloContent';
 import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import type { Json } from '@/integrations/supabase/types';
 import { supabase } from '@/integrations/supabase/client';
 import { createBurstScheduler } from '@/lib/realtime/burstScheduler';
 import { subscribeResilient } from '@/lib/realtime/subscribeResilient';
@@ -33,7 +34,7 @@ const db = supabase as any;
 const PROFILE_FIELDS = ['kind', 'room', 'roomSub', 'price', 'contractCode', 'contractTerm', 'contractStatus', 'debt', 'issue', 'stage', 'source', 'company', 'phone', 'rooms', 'stats', 'isGroup', 'members', 'desc', 'staff', 'tags'] as const satisfies readonly (keyof ZaloProfile)[];
 export const CONV_COLS = 'id, account_id, peer_zalo_uid, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id, is_sale_partner,' + PROFILE_FIELDS.map(key => `profile_${key}:profile->${key}`).join(',');
 const MSG_COLS = 'id, sender_uid:zalo_raw->>uidFrom, sender_name:zalo_raw->>senderName, msg_type, body, direction, media_label, media_url, media_tone, media_meta, created_at, status, reaction_emoji, reply_to, cli_msg_id';
-const CONV_LIMIT = 5000;
+export const CONV_LIMIT = 5000;
 const MSG_LIMIT = 1000;
 
 // ── format giờ/ngày hiển thị ──
@@ -204,6 +205,58 @@ export function useZaloConversations() {
       return rows.sort((a, b) => b.time - a.time).slice(0, CONV_LIMIT)
         .map(row => row.conversation).sort((a, b) => Number(b.pinned) - Number(a.pinned));
       // hermes-parity:end zalo-conversations
+    },
+  });
+}
+
+export function useSyncZaloGroups(account: ZaloAccount) {
+  const org = useZaloOrgId();
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!org) throw new Error('Chưa chọn công ty');
+      const { data: jobId, error } = await supabase.rpc('zalo_sync_account_groups_v1', {
+        p_organization_id: org, p_account_id: account.id,
+      });
+      if (error) throw error;
+      for (let attempt = 0; attempt < 60; attempt++) {
+        const { data: job, error: readError } = await supabase.from('zalo_send_queue')
+          .select('status,result,last_error').eq('id', jobId).eq('organization_id', org).eq('account_id', account.id).single();
+        if (readError) throw readError;
+        if (job.status === 'failed') throw new Error(job.last_error || 'Không đồng bộ được nhóm');
+        if (job.status === 'sent') {
+          if (job.result && typeof job.result === 'object' && 'group_count' in job.result && typeof job.result.group_count === 'number') return job.result.group_count;
+          throw new Error('Chưa xác nhận được số nhóm đã đồng bộ');
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      throw new Error('CRM đang chờ kết quả. Bấm đồng bộ lại để kiểm tra lượt đang chạy.');
+    },
+    onSuccess: count => toast.success(`Đã đồng bộ ${count} nhóm của ${account.name}`),
+    onError: error => notifyActionError(error, 'Chưa đồng bộ được danh sách nhóm'),
+    onSettled: () => cache.invalidateQueries({ queryKey: [...QK.conversations, org] }),
+  });
+}
+
+// Fill the account directory when newer conversations occupy the entire inbox window.
+export function useZaloGroupDirectory(accountIds: string[], needed: boolean) {
+  const org = useZaloOrgId();
+  return useQuery({
+    queryKey: [...QK.conversations, org, 'groups', [...accountIds].sort()],
+    enabled: !!org && needed && accountIds.length > 0,
+    queryFn: async (): Promise<ZaloConversation[]> => {
+      const groups: ZaloConversation[] = [];
+      let after = '';
+      for (;;) {
+        let query = db.from('zalo_conversations').select(CONV_COLS)
+          .eq('organization_id', org).eq('thread_type', 'group').in('account_id', accountIds).order('id');
+        if (after) query = query.gt('id', after);
+        const { data, error } = await query.range(0, 999);
+        if (error) throw error;
+        groups.push(...(data ?? []).map(mapConv));
+        if (!data || data.length < 1000) return groups;
+        after = data[data.length - 1].id;
+      }
     },
   });
 }
@@ -462,14 +515,29 @@ export function useSaveAutomation() {
   const qc = useQueryClient();
   const orgId = useZaloOrgId();
   return useMutation({
-    mutationFn: async (v: { kind: 'broadcast_vacant' | 'auto_reply'; enabled: boolean; config?: unknown }) => {
+    mutationFn: async (v:
+      | { kind: 'auto_reply'; enabled: boolean; config: unknown }
+      | { kind: 'broadcast_vacant'; accountId: string; add: string[]; remove: string[];
+          expected: Record<string, unknown>; changes: Record<string, unknown> }
+    ): Promise<{ enabled: boolean; config: Record<string, unknown> } | null> => {
+      if (!orgId) throw new Error('Chưa chọn công ty');
+      if (v.kind === 'broadcast_vacant') {
+        const { data, error } = await supabase.rpc('zalo_save_account_recipients_v1', {
+          p_organization_id: orgId, p_account_id: v.accountId, p_add: v.add, p_remove: v.remove,
+          p_expected: v.expected as Json, p_changes: v.changes as Json,
+        });
+        if (error) throw error;
+        if (!data || typeof data !== 'object' || Array.isArray(data) || typeof data.enabled !== 'boolean'
+            || !data.config || typeof data.config !== 'object' || Array.isArray(data.config)) {
+          throw new Error('CRM chưa xác nhận cấu hình đã lưu');
+        }
+        return { enabled: data.enabled, config: data.config };
+      }
       const { error } = await db.rpc('zalo_luu_tu_dong_hoa', {
-        p_kind: v.kind,
-        p_enabled: v.enabled,
-        p_config: v.config === undefined ? null : v.config,
-        p_organization_id: orgId,
+        p_kind: v.kind, p_enabled: v.enabled, p_config: v.config, p_organization_id: orgId,
       });
       if (error) throw error;
+      return null;
     },
     onSuccess: () => {
       toast.success('Đã lưu cài đặt tự động hoá');

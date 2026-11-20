@@ -49,11 +49,18 @@ export async function validateZaloCommandScope(job, db = sb) {
   if (!job?.account_id) return bad('job thiếu account_id');
 
   const { data: account, error: accErr } = await db.from('zalo_accounts')
-    .select('id, organization_id, status').eq('id', job.account_id).maybeSingle();
+    .select('id, user_id, organization_id, status').eq('id', job.account_id).maybeSingle();
   if (accErr) return bad('không đọc được account', accErr.message);
   if (!account) return bad('account không tồn tại', job.account_id);
   if (!job.organization_id || account.organization_id !== job.organization_id) {
     return bad('account khác org với job', { account: account.organization_id, job: job.organization_id });
+  }
+
+  if (action === 'sync_groups') {
+    if (job.conversation_id || job.message_id || Object.keys(p).some(k => k !== 'action')) {
+      return bad('đồng bộ nhóm chỉ dùng tài khoản');
+    }
+    return { ok: true, conv: null, account };
   }
 
   let conv = null;

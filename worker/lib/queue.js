@@ -18,7 +18,7 @@
 // =============================================================
 import { ThreadType } from 'zca-js';
 import { sb, log, sessions, orgOf } from './ctx.js';
-import { upsertMessagesForThread, emojiToZca } from './inbound.js';
+import { syncAccountGroups, upsertMessagesForThread, emojiToZca } from './inbound.js';
 import { sendMediaJob } from './media.js';
 import { sendForwardMediaJob } from './forward-media.js';
 import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clampHistoryCount } from './scope-guard.js';
@@ -288,6 +288,9 @@ export async function processJob(job) {
     } else if (p.action === 'typing') {
       await s.api.sendTypingEvent(threadId, type);
       await jobDone(job.id);
+    } else if (p.action === 'sync_groups') {
+      const groupCount = await syncAccountGroups(s.api, job.account_id, scope.account.user_id, job.organization_id);
+      await jobDone(job.id, { result: { group_count: groupCount } });
     } else if (p.action === 'find_user') {
       await findUserJob(s, job, p);
     } else if (p.action === 'sticker_list') {
@@ -301,8 +304,9 @@ export async function processJob(job) {
     }
   } catch (e) {
     log('job error', job.id, e?.message || e);
-    if (claimed) await jobFail(job, `${delivery.started ? 'UNKNOWN_EFFECT: cần đối soát, không tự gửi lại. ' : ''}${e?.message || e}`, {
-      claimed, unknown: delivery.started, receiptIds: delivery.receiptIds,
+    const unknown = delivery.started && job.payload?.action !== 'sync_groups';
+    if (claimed) await jobFail(job, `${unknown ? 'UNKNOWN_EFFECT: cần đối soát, không tự gửi lại. ' : ''}${e?.message || e}`, {
+      claimed, unknown, receiptIds: delivery.receiptIds,
     });
   }
 }

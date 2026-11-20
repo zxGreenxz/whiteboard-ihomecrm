@@ -2,7 +2,7 @@ import { QueryRegion } from '@/components/errors/QueryRegion';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { isZaloActionUnconfirmed, zaloActionErrorMessage, ZaloActionUnknownError } from '@/lib/zaloActionFeedback';
 import { actionErrorMessage } from '@/lib/actionFeedback';
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { withMessageSenders } from '@/components/chat-zalo/messageSenders';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
@@ -19,16 +19,17 @@ import ForwardMediaDialog from '@/components/chat-zalo/ForwardMediaDialog';
 import ComposeNewDialog from '@/components/chat-zalo/ComposeNewDialog';
 import LinkCustomerDialog from '@/components/chat-zalo/LinkCustomerDialog';
 import TemplateManagerDialog from '@/components/chat-zalo/TemplateManagerDialog';
+import SyncGroupsButton from '@/components/chat-zalo/SyncGroupsButton';
 import AutomationSettingsDialog from '@/components/chat-zalo/automation/AutomationSettingsDialog';
 import type { FilterKey, RightTab, ZaloConversation, ZaloMessage } from '@/components/chat-zalo/types';
 import {
-  useZaloConversations, useZaloMessages, useZaloGroupMembers, useSendZaloMessage, useMarkConversationRead,
+  CONV_LIMIT, useZaloGroupDirectory, useZaloConversations, useZaloMessages, useZaloGroupMembers, useSendZaloMessage, useMarkConversationRead,
   useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
   useZaloAccounts, useRequestConnect, useDisconnectAccount, useZaloWorkerStatus,
   useReactMessage, useRecallMessage, useLoadHistory,
   useMarkSalePartner, useZaloLabels, useBroadcast, useZaloOrgId,
 } from '@/hooks/useZaloChat';
-import { useActiveConversation } from '@/hooks/chat-zalo/useActiveConversation';
+import { useActiveConversation, useConversationReply } from '@/hooks/chat-zalo/useActiveConversation';
 import { useSendZaloMedia, useSendZaloSticker, type StickerItem } from '@/hooks/chat-zalo/useZaloMedia';
 import { useForwardZaloMedia } from '@/hooks/chat-zalo/useForwardZaloMedia';
 import { useSetConversationFlags, useStartChatByPhone, useDeleteMessageForMe, useThreadPresence } from '@/hooks/chat-zalo/useZaloConversationActions';
@@ -41,6 +42,11 @@ import { conversationHasLabel, isTenantConversation, zaloLabelKey } from '@/comp
  * gửi qua RPC; media/voice/sticker qua bucket zalo-media + worker.
  */
 export default function ChatZaloPage() {
+  const orgId = useZaloOrgId();
+  return <ChatZaloWorkspace key={orgId} />;
+}
+
+function ChatZaloWorkspace() {
   const convQuery = useZaloConversations();
   const conversations = convQuery.data ?? [];
   const { data: automations = { broadcastOn: false, autoReplyOn: false } } = useZaloAutomations();
@@ -79,7 +85,7 @@ export default function ChatZaloPage() {
 
   // Chốt hội thoại mặc định + bỏ chọn khi đổi công ty (RT-OTHER-M2/7) — xem hook.
   const zaloOrgId = useZaloOrgId();
-  const [activeId, setActiveId] = useActiveConversation(conversations, zaloOrgId);
+
   const [rightTab, setRightTab] = useState<RightTab>('info');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
@@ -88,7 +94,7 @@ export default function ChatZaloPage() {
   const [mobileView, setMobileView] = useState<'list' | 'thread'>('list');
   const [infoOpen, setInfoOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
-  const seenAccounts = useRef<Set<string>>(new Set());
+
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectFailure,setConnectFailure] = useState<unknown>(null);
   const [recallNotices,setRecallNotices] = useState<Record<string,string>>({});
@@ -106,30 +112,31 @@ export default function ChatZaloPage() {
   // InfoPanel được render hai lần (cột phải desktop + sheet mobile), để dialog
   // bên trong nó thì sẽ có hai bản cùng lúc, hai bộ state, hai lần nạp cấu hình.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [replyTarget, setReplyTarget] = useState<ZaloMessage | null>(null);
   // Số tin chưa đọc CHỐT tại lúc mở thread — vẽ divider "Tin nhắn chưa đọc"
   const [unreadAtOpen, setUnreadAtOpen] = useState<Record<string, number>>({});
 
-  useEffect(() => {
-    const newIds = accounts.map((a) => a.id).filter((id) => !seenAccounts.current.has(id));
-    if (newIds.length) {
-      newIds.forEach((id) => seenAccounts.current.add(id));
-      setSelectedIds((prev) => (prev === null ? accounts.map((a) => a.id) : [...prev, ...newIds]));
-    }
-  }, [accounts]);
-
-  const selIds = selectedIds ?? accounts.map((a) => a.id);
-
-  // Vế sau chỉ phủ đúng một khung hình trước khi useActiveConversation chốt
-  // cùng id đó — không còn trôi theo thứ tự danh sách.
-  const effectiveId = activeId || conversations[0]?.id || '';
+  const selIds = useMemo(() => selectedIds ?? accounts.map(a => a.id), [selectedIds, accounts]);
+  const selectedAccounts = useMemo(() => accounts.filter(a => selIds.includes(a.id)), [accounts, selIds]);
+  const directory = useZaloGroupDirectory(selIds, conversations.length >= CONV_LIMIT);
+  const accountConversations = useMemo(() => {
+    const selected = new Set(selIds);
+    const rows = conversations.filter(c => c.accountId ? selected.has(c.accountId) : selectedIds === null);
+    const recentIds = new Set(rows.map(c => c.id));
+    return rows.concat((directory.data ?? []).filter(c => !recentIds.has(c.id)));
+  }, [conversations, selIds, selectedIds, directory.data]);
+  const sendableConversations = useMemo(() => accountConversations.filter(c => c.accountId), [accountConversations]);
+  const accountLabels = useMemo(() => labels.filter(l => selIds.includes(l.accountId)), [labels, selIds]);
+  const [activeId, setActiveId] = useActiveConversation(accountConversations, zaloOrgId);
+  const effectiveId = accountConversations.find(c => c.id === activeId)?.id ?? accountConversations[0]?.id ?? '';
+  const { message: replyTarget, select: setReplyTarget, clearSent: clearSentReply } = useConversationReply(effectiveId);
   const draft = drafts[effectiveId] ?? '';
   const setDraft = (value:string) => setDrafts(previous=>({...previous,[effectiveId]:value}));
   useZaloRealtime(effectiveId || undefined);
   const msgQuery = useZaloMessages(effectiveId || undefined);
   const messages = msgQuery.data ?? [];
 
-  const base = conversations.find((c) => c.id === effectiveId);
+  const base = accountConversations.find(c => c.id === effectiveId);
+  const recipientAccount = selectedAccounts.length === 1 ? selectedAccounts[0] : selectedAccounts.find(a => a.id === base?.accountId);
   const memberQuery = useZaloGroupMembers(base);
   const active = useMemo(() => base ? {
     ...base, messages: withMessageSenders(messages, base, conversations, accounts.find(account => account.id === base.accountId), memberQuery.data),
@@ -146,15 +153,12 @@ export default function ChatZaloPage() {
   // hermes-parity:begin zalo-conversations — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const selSet = new Set(selIds);
-    const allSelected = accounts.every(account => selSet.has(account.id));
-    return conversations.filter((c) => {
-      if (!allSelected && c.accountId && !selSet.has(c.accountId)) return false;
+    return accountConversations.filter((c) => {
       if (!conversationHasLabel(c, labelKey)) return false;
-      // 'Danh bạ' = đã sync từ bạn bè nhưng CHƯA từng có tin nhắn; các chip khác ẩn nhóm này
-      if (filter === 'contacts') { if (c.hasMessages) return false; }
+      // Nhóm vừa đồng bộ hiện ở danh sách mặc định, kể cả khi chưa có tin.
+      if (filter === 'contacts') { if (c.hasMessages || c.isGroup) return false; }
       else if (filter === 'saleGroups') { if (!c.isGroup || !c.isSalePartner) return false; }
-      else if (!c.hasMessages && !q && !labelKey) return false;
+      else if (!c.hasMessages && !(filter === 'all' && c.isGroup) && !q && !labelKey) return false;
       if (filter === 'unread' && c.unread <= 0 && !c.markedUnread) return false;
       if (filter === 'tenant' && !isTenantConversation(c)) return false;
       if (filter === 'lead' && !c.leadId) return false;
@@ -166,7 +170,7 @@ export default function ChatZaloPage() {
         (c.profile.room || '').toLowerCase().includes(q)
       );
     });
-  }, [conversations, filter, search, selIds, accounts, labelKey]);
+  }, [accountConversations, filter, search, labelKey]);
   // hermes-parity:end zalo-conversations
 
   const connectingAccount = connectingId ? accounts.find((a) => a.id === connectingId) || null : null;
@@ -189,19 +193,19 @@ export default function ChatZaloPage() {
   const automationActive = (automations.broadcastOn ? 1 : 0) + (automations.autoReplyOn ? 1 : 0);
 
   const select = useCallback((id: string) => {
-    const conv = conversations.find((c) => c.id === id);
+    const conv = accountConversations.find((c) => c.id === id);
     setUnreadAtOpen((prev) => ({ ...prev, [id]: conv?.unread || 0 }));
     setActiveId(id);
     setMobileView('thread');
     setReplyTarget(null);
     markRead.mutate(id);
-    sendSeen(id); // báo "đã xem" sang Zalo (best-effort)
+    if (conv?.accountId) sendSeen(id); // báo "đã xem" sang Zalo (best-effort)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversations]);
+  }, [accountConversations]);
 
   const send = () => {
     const text = draft.trim();
-    if (!text || !active || sendErrors[active.id] || !canSend) return;
+    if (!text || !active?.accountId || sendErrors[active.id] || !canSend) return;
     const reply = replyTarget && replyTarget.id
       ? {
           replyToMessageId: replyTarget.id,
@@ -215,7 +219,7 @@ export default function ChatZaloPage() {
     sendMut.mutate({ conversationId, body: text, ...reply }, {
       onSuccess: () => {
         setDrafts(previous => previous[conversationId]?.trim() === text ? {...previous,[conversationId]:''} : previous);
-        setReplyTarget(previous => previous === replyTarget ? null : previous);
+        clearSentReply();
       },
       onError: error => setSendErrors(previous=>({...previous,[conversationId]:actionErrorMessage(error,'Chưa xác nhận được kết quả tiếp nhận tin nhắn. Bản soạn được giữ; kiểm tra cuộc trò chuyện trước khi gửi thêm.')})),
     });
@@ -288,13 +292,18 @@ export default function ChatZaloPage() {
         if (activeLabel?.accountId !== id) setSelectedLabel(null);
         setSelectedIds([id]);
       }}
-      onAll={() => setSelectedIds(accounts.map((a) => a.id))}
+      onAll={() => setSelectedIds(null)}
       onConnectNew={onConnectNew}
       onReconnect={onReconnect}
       onDisconnect={(id) => disconnect.mutate(id)}
       workerOffline={workerStatus ? !workerStatus.online : false}
     />
-    <ZaloWorkerBanner status={workerStatus} accounts={accounts} onReconnect={(id) => { void onReconnect(id); }} />
+    {selectedAccounts.length === 1 && selectedAccounts[0] && (canSend || canManageAutomation) &&
+      <div className="flex items-center justify-between px-3 pb-1">
+        <SyncGroupsButton key={selectedAccounts[0].id} account={selectedAccounts[0]} />
+        {!active && canManageAutomation && <button type="button" className="px-2 py-1 text-xs text-emerald-700" onClick={() => setSettingsOpen(true)}>Cài đặt chi tiết</button>}
+      </div>}
+    <ZaloWorkerBanner status={workerStatus} accounts={selectedAccounts} onReconnect={(id) => { void onReconnect(id); }} />
     </QueryRegion>
   );
 
@@ -304,7 +313,7 @@ export default function ChatZaloPage() {
         <ConversationList
           className={cn('w-full lg:w-[322px] lg:flex', mobileView === 'list' ? 'flex' : 'hidden')}
           conversations={filtered}
-          totalCount={conversations.length}
+          totalCount={accountConversations.length}
           loading={convQuery.isLoading}
           activeId={effectiveId}
           filter={filter}
@@ -314,7 +323,7 @@ export default function ChatZaloPage() {
           onSearch={setSearch}
           onSelect={select}
           topSlot={switcher}
-          labels={labels}
+          labels={accountLabels}
           selectedLabel={labelKey}
           saleAction={saleAction}
           onSelectLabel={selectLabel}
@@ -326,7 +335,7 @@ export default function ChatZaloPage() {
           onLinkCrm={setLinkConv}
           errorBanner={convQuery.isError
             ? errorBanner(convQuery.data ? 'Mất kết nối — danh sách có thể cũ' : 'Không tải được hội thoại', () => convQuery.refetch())
-            : undefined}
+            : directory.isError ? errorBanner('Không tải được đầy đủ danh sách nhóm', () => directory.refetch()) : undefined}
         />
 
         {active ? (
@@ -334,7 +343,7 @@ export default function ChatZaloPage() {
             className={cn('lg:flex', mobileView === 'thread' ? 'flex' : 'hidden')}
             conv={active}
             messagesQuery={msgQuery}
-            canSend={canSend}
+            canSend={canSend && !!active.accountId}
             draft={draft}
             templates={templates}
             onDraft={setDraft}
@@ -346,7 +355,7 @@ export default function ChatZaloPage() {
             onPickTemplate={(body) => setDraft(body)}
             onBack={() => setMobileView('list')}
             onOpenInfo={() => setInfoOpen(true)}
-            canLoadHistory={active.isGroup}
+            canLoadHistory={active.isGroup && !!active.accountId}
             loadingHistory={loadHistoryMut.isPending}
             onLoadHistory={() => loadHistoryMut.mutate({ conversationId: active.id })}
             onReact={(id, emoji) => reactMut.mutate({ messageId: id, emoji, conversationId: active.id })}
@@ -453,8 +462,8 @@ export default function ChatZaloPage() {
         open={forwardOpen && canSend}
         onOpenChange={setForwardOpen}
         messages={forwardMessages}
-        conversations={conversations}
-        labels={labels}
+        conversations={sendableConversations}
+        labels={accountLabels}
         accountNames={Object.fromEntries(accounts.map(account => [account.id, account.name]))}
         sending={forwardMediaMut.isPending}
         onSend={(ids, requestId) => forwardMediaMut.mutateAsync({
@@ -467,8 +476,8 @@ export default function ChatZaloPage() {
       <BroadcastDialog
         open={broadcastOpen}
         onOpenChange={setBroadcastOpen}
-        conversations={conversations}
-        labels={labels}
+        conversations={sendableConversations}
+        labels={accountLabels}
         initialMessage={broadcastInitial}
         sending={broadcastMut.isPending}
         onSend={(ids, body) => broadcastMut.mutateAsync({ conversationIds: ids, body })}
@@ -477,8 +486,8 @@ export default function ChatZaloPage() {
       <ComposeNewDialog
         open={composeOpen}
         onOpenChange={setComposeOpen}
-        accounts={accounts}
-        conversations={conversations}
+        accounts={selectedAccounts}
+        conversations={sendableConversations}
         finding={startChatMut.isPending}
         error={startChatMut.error}
         onReadPending={startChatMut.error instanceof ZaloActionUnknownError && startChatMut.error.jobId ? () => {
@@ -496,11 +505,13 @@ export default function ChatZaloPage() {
       {/* Cấu hình tự động hoá theo TỔ CHỨC — không phụ thuộc hội thoại đang mở,
           nên render ở cấp trang và không nằm trong nhánh `active &&`. */}
       <AutomationSettingsDialog
+        key={zaloOrgId + ":" + (recipientAccount?.id ?? '')}
+        account={recipientAccount}
         open={settingsOpen && canManageAutomation}
         saleAction={saleAction}
         onOpenChange={setSettingsOpen}
-        conversations={conversations}
-        labels={labels}
+        conversations={sendableConversations}
+        labels={accountLabels}
       />
 
       {canManageTemplates && (
