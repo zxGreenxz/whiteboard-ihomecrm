@@ -30106,6 +30106,35 @@ export type Database = {
       }
       settle_reservation_deposit_v1: { Args: { p_input: Json }; Returns: Json }
       shared_account_ids: { Args: never; Returns: string[] }
+      shared_fund_distribute_v1: {
+        Args: {
+          p_effective_date: string
+          p_evidence: string
+          p_expected_available: number
+          p_idempotency_key: string
+          p_lines: Json
+          p_organization_id: string
+          p_reference: string
+        }
+        Returns: Json
+      }
+      shared_fund_record_source_v1: {
+        Args: {
+          p_amount: number
+          p_effective_date: string
+          p_evidence: string
+          p_expected_available: number
+          p_idempotency_key: string
+          p_kind: string
+          p_organization_id: string
+          p_reference: string
+        }
+        Returns: Json
+      }
+      shared_fund_state_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       shareholder_profit_advance_options_v1: {
         Args: { p_organization_id: string }
         Returns: Json
@@ -30155,6 +30184,20 @@ export type Database = {
       }
       shareholder_profit_my_position_v1: {
         Args: { p_organization_id: string }
+        Returns: Json
+      }
+      shareholder_profit_opening_advance_v1: {
+        Args: {
+          p_advance_amount: number
+          p_as_of_date: string
+          p_evidence: string
+          p_expected_approved?: number
+          p_expected_unpaid: number
+          p_idempotency_key: string
+          p_organization_id: string
+          p_shareholder_id: string
+          p_through_month: string
+        }
         Returns: Json
       }
       shareholder_profit_payout_preview_v1: {

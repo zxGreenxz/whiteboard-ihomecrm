@@ -986,50 +986,6 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
-    },
-    "supabase/migrations/20261120040328_phan_phoi_quy_chung.sql": {
-      "sha256": "0b51bc7e41fc145c99e10921c29603ed45977f3972922031ef116e18b9787ebb",
-      "missingObjects": [
-        "table:app_private.shared_fund_entries",
-        "table:app_private.shared_fund_distribution_lines",
-        "function:app_private.shared_fund_owner_v1",
-        "function:app_private.shared_fund_receipt_v1",
-        "function:public.shared_fund_state_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Chủ công ty ghi nguồn và phân phối quỹ trong một giao dịch. Catalog production chưa có các bảng và RPC mới. Nhánh này chờ review và phát hành qua forward lane.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261120040328_phan_phoi_quy_chung.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.shared_fund_entries ("
-        },
-        {
-          "duong_dan": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
-          "trich_doan": "từ chối phân bổ vượt số dư, quá số ứng hay sai cổ đông và không ghi dở"
-        }
-      ]
-    },
-    "supabase/migrations/20261120040424_so_du_dau_ky_va_phan_phoi_quy_co_dong.sql": {
-      "sha256": "8fc6a9911acab182649064c543e298c0c611c38a71e77b9a6510fe954cb8a920",
-      "missingObjects": [
-        "table:app_private.shareholder_profit_openings",
-        "function:app_private.guard_shareholder_opening_voucher_v1",
-        "function:app_private.profit_ledger_shared_fund_components_v1",
-        "function:app_private.profit_ledger_check_shared_fund_marker_v1",
-        "function:app_private.guard_shared_fund_profit_marker_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Mở số dư, ghi nhận phần cấn và đưa khoản còn phải trả vào sổ cổ đông. Catalog production chưa có các object của đợt mở rộng. Migration này phụ thuộc migration quỹ đứng trước.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261120040424_so_du_dau_ky_va_phan_phoi_quy_co_dong.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.shareholder_profit_openings ("
-        },
-        {
-          "duong_dan": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
-          "trich_doan": "chuyển số dư đã đối chiếu khi một phần ứng có phiếu CRM và một phần ở sổ ngoài"
-        }
-      ]
     }
   }
 }
