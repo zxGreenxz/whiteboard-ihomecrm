@@ -1,6 +1,6 @@
 // Minimum selected files to justify each level of runner parallelism.
 export const SHARD_THRESHOLDS = Object.freeze({
-  'node-native': { 2: 64 },
+  'node-native': { 2: 64, 4: 256 },
   'app-unit': { 2: 256, 4: 1024 },
 });
 
