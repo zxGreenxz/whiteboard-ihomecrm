@@ -449,7 +449,7 @@ body {
 }
 .sh-statbadge .bd { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-.specs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; margin-bottom: 16px; }
+.specs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 9px; margin-bottom: 16px; }
 .spec {
   background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r);
   padding: 11px 12px; text-align: left;
