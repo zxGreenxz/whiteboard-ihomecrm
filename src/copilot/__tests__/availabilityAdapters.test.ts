@@ -91,7 +91,7 @@ describe('Copilot availability adapters', () => {
       states: { 'page:rooms.list': 'enabled' as const },
     };
     const ctx = { ...CTX_NEN, perms: SUPER, organizationId: ORG, availability: snapshot };
-    expect(toLlmTools(buildRegistryDefinitions(), ctx).huong_dan).toBeDefined();
+    expect(toLlmTools(buildRegistryDefinitions(), ctx).ban_do_he_thong).toBeDefined();
     expect(toLlmTools(buildRegistryDefinitions(), ctx).phong_trong).toBeDefined();
   });
 

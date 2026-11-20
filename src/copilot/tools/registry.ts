@@ -7,7 +7,6 @@
 //     điều hướng, chat trả link markdown để user tự click).
 import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
-import { CAPABILITIES } from '@/app/capabilities/registry';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey, PermissionsMap } from '@/lib/permissions';
 import { formatVND } from '@/lib/utils';
@@ -18,7 +17,6 @@ import {
   PILOT_UI_CONTROL_ROUTES,
   ROUTE_DIEU_HUONG,
 } from '../pageScope';
-import { USER_DOC_MODULES } from './guideCorpus.generated';
 import { TOOL_GHI_HANH_DONG, taoPhieuThuChiNhap } from './writeTools';
 import { TOOL_KE_HOACH } from './planTools';
 import { TOOL_NGHIEP_VU } from './nghiepVuTools';
@@ -224,204 +222,6 @@ const MO_TRANG_THEO_KHOA = new Map(ROUTE_DIEU_HUONG.map((m) => [m.key, m]));
 
 /** Khoá đích, dạng tuple để `z.enum` nhận — KHÔNG khai lại bằng tay. */
 const MO_TRANG_KEYS = ROUTE_DIEU_HUONG.map((m) => m.key) as [string, ...string[]];
-
-// ── Docs hướng dẫn (lazy ?raw — không vào bundle chính) ──
-//
-// Glob CHỈ để nạp nội dung; file nào được Copilot đọc thì do
-// docs/he-thong/manifest.json quyết định. Trước đây glob này là allowlist luôn,
-// nghĩa là mọi .md ai đó thả vào thư mục đều lập tức thành nguồn tư vấn nghiệp
-// vụ cho người dùng thật — kể cả writeup hiệu năng nội bộ hay bản đồ realtime
-// dành cho lập trình viên. Gate: scripts/check-copilot-docs-manifest.mjs.
-const DOC_MODULES = import.meta.glob('/docs/he-thong/*.md', {
-  query: '?raw',
-  import: 'default',
-}) as Record<string, () => Promise<string>>;
-
-// ── Hướng dẫn NGƯỜI DÙNG CUỐI (docs/huong-dan-su-dung/**/index.md) ──
-//
-// Đường nạp corpus thứ hai. Bất biến mà `check-copilot-docs-manifest` khẳng định
-// là bất biến cấu trúc: đường nạp `.md` và phép lọc allowlist phải cùng suy từ
-// MỘT nguồn, để không tồn tại lối nạp tài liệu nào đi vòng qua allowlist. Thêm
-// một `import.meta.glob('/docs/huong-dan-su-dung/…')` ở `docs/docSearch.ts` — hay
-// ở bất kỳ file nào khác — sẽ mở đúng lối vòng đó, và gate bắt cứng.
-//
-// VÌ SAO GLOB KHÔNG CÒN NẰM Ở ĐÂY (án lệ I5 — 03/09/2026)
-//   `import.meta.glob('/docs/huong-dan-su-dung/**/index.md')` là chỉ thị BUILD:
-//   Vite gom NỘI DUNG mọi file khớp vào chunk JS công khai trên CDN. Đo được 104
-//   file khớp trong khi allowlist chỉ nhận 25 — tức `05-cai-dat/admin-users`,
-//   `05-cai-dat/phan-quyen` và cả roadmap `08-ke-hoach-phat-trien/**` được PHÂN
-//   PHỐI cho bất kỳ ai tải bundle, không cần đăng nhập, trong khi docs-site vốn
-//   gác mật khẩu fail-closed.
-//
-//   Phép lọc dưới đây chặn TÌM, không chặn PHÂN PHỐI: nó lọc thứ đã nằm sẵn
-//   trong bundle. Nên danh sách literal chuyển sang `guideCorpus.generated.ts` —
-//   file MÁY SINH từ chính `CAPABILITIES`, có `--check` canh không cho trôi
-//   (scripts/generate-copilot-guide-corpus.mjs). Literal là bắt buộc: Vite phân
-//   tích glob tĩnh và không nhận biến.
-//
-// VÌ SAO ALLOWLIST LÀ `CAPABILITIES`, KHÔNG PHẢI MỘT MANIFEST THỨ HAI
-//   `docs/he-thong` cần manifest riêng vì thư mục đó chứa cả writeup nội bộ lẫn
-//   tài liệu nghiệp vụ, và không có gì trong repo phân biệt được hai loại. Thư
-//   mục hướng dẫn thì khác: mỗi trang ĐÃ được một capability nhận, kèm sẵn
-//   `visibility` và `permission` của bề mặt nó mô tả. Dựng thêm một file
-//   allowlist ở đây là tạo nguồn thứ hai cho một quyết định đã có nguồn — và hai
-//   nguồn thì bản nào lệch cũng hỏng theo kiểu không ai thấy.
-//
-//   Hệ quả có răng: trang hướng dẫn của một capability `internal` (vd
-//   network-center — nhưng nó khai `userDoc: null` nên không có trang) hoặc một
-//   file `index.md` ai đó thả vào thư mục mà không capability nào trỏ tới thì
-//   KHÔNG vào index — và từ nay cũng KHÔNG vào bundle.
-
-const DOC_MANIFESTS = import.meta.glob('/docs/he-thong/manifest.json', {
-  eager: true,
-  import: 'default',
-}) as Record<string, DocsManifest>;
-
-interface DocsManifestEntry {
-  file: string;
-  copilotIngest: boolean;
-  reviewed?: string | null;
-  requiredPermission?: { module: string; action: ActionKey };
-  why?: string;
-}
-interface DocsManifest {
-  schemaVersion: number;
-  staleAfterDays?: number;
-  entries: DocsManifestEntry[];
-}
-
-const DOCS_MANIFEST: DocsManifest =
-  DOC_MANIFESTS['/docs/he-thong/manifest.json'] ?? { schemaVersion: 0, entries: [] };
-
-export interface DocTopic {
-  key: string;
-  path: string;
-  requiredPermission?: { module: string; action: ActionKey };
-}
-
-/**
- * Nạp nội dung một tài liệu theo đường dẫn glob. Trả `null` nếu đường dẫn không
- * thuộc glob.
- *
- * Đây là ĐƯỜNG NẠP DUY NHẤT, và nó cố ý nằm cùng file với phép lọc manifest ở
- * `listDocTopics`. Người gọi (hiện là `docs/docSearch.ts`) phải tự lọc trước
- * bằng `listDocTopics`; hàm này không tự kiểm quyền vì nó không biết quyền —
- * gộp hai trách nhiệm vào một chỗ sẽ khiến cả hai khó kiểm hơn.
- *
- * Vì sao không để mỗi nơi tự `import.meta.glob`: có hai đường nạp thì tồn tại
- * khả năng một đường đi vòng qua allowlist, và cửa chặn không còn chứng minh
- * được điều gì.
- */
-export async function napTaiLieu(path: string): Promise<string | null> {
-  const nap = DOC_MODULES[path] ?? USER_DOC_MODULES[path];
-  return nap ? await nap() : null;
-}
-
-/**
- * Tiền tố docKey của trang hướng dẫn người dùng.
- *
- * Nó là thứ phân biệt hai corpus trong CÙNG một index BM25, và cả hai nơi cần
- * biết điều đó (`liet_ke_chu_de` để kể ra, `dinhDangChoModel` để dán nhãn nguồn
- * đúng kiểu) đều đọc hằng này thay vì tự đoán bằng dấu `/`.
- */
-export const TIEN_TO_HUONG_DAN = 'huong-dan-su-dung/';
-
-/** `/docs/huong-dan-su-dung/03-.../hoa-don/index.md` → `huong-dan-su-dung/03-.../hoa-don`. */
-export function khoaTrangHuongDan(path: string): string {
-  return path.replace(/^\/?docs\//, '').replace(/\/index\.md$/, '');
-}
-
-/**
- * Trang hướng dẫn được phép index, suy TỪ `CAPABILITIES` — không có danh sách
- * viết tay nào ở đây.
- *
- * Chỉ nhận capability `visibility: 'public'`: `internal` là bề mặt quản trị/hạ
- * tầng, và một trang hướng dẫn cho bề mặt người dùng cuối không mở được là một
- * lời hứa hụt, đúng lý do `userDocMienTruVi` tồn tại.
- *
- * Quyền gác trang = quyền gác chính capability đó. Đây là điểm hẹp nhất còn
- * đúng: hướng dẫn màn Bảng lương mô tả từng cột của bảng lương, nên ai không
- * được xem bảng lương thì cũng không nên đọc mô tả ấy qua Copilot.
- */
-export function trangHuongDanChoPhep(): DocTopic[] {
-  const ra: DocTopic[] = [];
-  for (const cap of CAPABILITIES) {
-    const doc = cap.docs.userDoc;
-    if (!doc || cap.docs.visibility !== 'public' || cap.superAdminOnly) continue;
-    const path = doc.startsWith('/') ? doc : `/${doc}`;
-    if (!USER_DOC_MODULES[path]) continue; // trang đã khai nhưng file không còn
-    ra.push({
-      key: khoaTrangHuongDan(path),
-      path,
-      requiredPermission: { module: cap.permission.module, action: cap.permission.action },
-    });
-  }
-  // Hai capability trỏ chung một trang là chuyện có thể xảy ra; index không được
-  // nạp trang đó hai lần (chunk trùng id sẽ làm lệch `df` của BM25).
-  return [...new Map(ra.map((t) => [t.key, t])).values()].sort((a, b) => a.key.localeCompare(b.key));
-}
-
-/**
- * Dấu review còn hiệu lực không?
- *
- * `reviewed` KHÔNG khai ⇒ coi là còn dùng được. Đây là lựa chọn có chủ đích, không
- * phải lỗ hổng: 12 trong 25 tài liệu Copilot đang đọc chưa từng ghi ngày review
- * (đo 11/08/2026), và loại hết chúng ở runtime sẽ cắt hơn một nửa kiến thức của
- * Copilot trong im lặng. Món nợ đó được khai tường minh ở `unreviewedDebt` trong
- * manifest và có gate canh cho nó chỉ được teo đi.
- *
- * Ngày KHÔNG parse được cũng coi là còn hiệu lực: một chuỗi hỏng là lỗi dữ liệu,
- * và biến lỗi dữ liệu thành "im lặng bỏ tài liệu" là kiểu hỏng khó thấy nhất.
- * Gate manifest bắt chuỗi hỏng, đó mới là chỗ của nó.
- */
-export function dauReviewConHieuLuc(
-  reviewed: string | null | undefined,
-  staleAfterDays: number | undefined,
-  now: number,
-): boolean {
-  if (!reviewed || !staleAfterDays) return true;
-  const moc = new Date(reviewed).getTime();
-  if (Number.isNaN(moc)) return true;
-  return (now - moc) / 86_400_000 <= staleAfterDays;
-}
-
-/**
- * Chủ đề tài liệu Copilot được phép đọc, đã lọc theo manifest VÀ quyền của phiên.
- *
- * `perms === undefined` (chưa load) ⇒ chỉ trả tài liệu không gắn quyền — fail
- * closed, giống assertPerm.
- *
- * Lọc thêm theo dấu review QUÁ HẠN. Đây là chỗ luật đó có răng thật: gate CI chỉ
- * cảnh báo (cố ý — xem chú thích trong check-copilot-docs-manifest.mjs: một gate
- * đỏ vì ngày tháng sẽ bị bump cho xong), còn ở đây tài liệu quá hạn thôi được nạp
- * và người dùng thấy Copilot mất kiến thức đó. Phản hồi ấy khó lờ hơn một dòng
- * cảnh báo trong log CI.
- *
- * Đo 11/08/2026: 0 tài liệu quá hạn, nên bật luật này KHÔNG đổi hành vi hôm nay —
- * nó chỉ chặn từ nay về sau.
- */
-export function listDocTopics(perms?: PermissionsMap, now: number = Date.now()): DocTopic[] {
-  const allowed = new Map(
-    DOCS_MANIFEST.entries
-      .filter((e) => e.copilotIngest)
-      .filter((e) => dauReviewConHieuLuc(e.reviewed, DOCS_MANIFEST.staleAfterDays, now))
-      .map((e) => [e.file, e]),
-  );
-  const heThong: DocTopic[] = Object.keys(DOC_MODULES)
-    .map((path) => ({ path, file: path.replace(/^.*\//, '') }))
-    .filter(({ file }) => allowed.has(file))
-    .map(({ path, file }) => {
-      const entry = allowed.get(file)!;
-      return { key: file.replace(/\.md$/, ''), path, requiredPermission: entry.requiredPermission };
-    });
-  // Hướng dẫn người dùng đi qua ĐÚNG phép lọc quyền bên dưới, không có nhánh
-  // riêng: hai corpus khác nhau về nguồn allowlist, giống nhau về ranh giới.
-  return [...heThong, ...trangHuongDanChoPhep()].filter((t) => {
-    if (!t.requiredPermission) return true;
-    const { module, action } = t.requiredPermission;
-    return Boolean(perms && canUse(perms, module, action));
-  });
-}
 
 // ── Trích dữ liệu từ chuỗi quan hệ khách ↔ hợp đồng ──────────────────────────
 //
@@ -1512,30 +1312,6 @@ export function buildRegistryDefinitions(): DomainTool[] {
     }),
 
     dt({
-      name: 'huong_dan',
-      description:
-        'Tra cứu tài liệu nghiệp vụ hệ thống VÀ hướng dẫn sử dụng từng màn hình (hợp đồng, hoá đơn, thu chi, cọc, thanh lý, công tơ, lương…). Dùng cho cả câu hỏi "quy định thế nào" lẫn "làm ở đâu, bấm nút nào". Trả về các MỤC liên quan nhất kèm nguồn. Hỏi bằng câu tự nhiên, không cần đoán tên file.',
-      inputSchema: z.object({
-        chu_de: z.string().min(2).describe('Câu hỏi hoặc chủ đề, vd "làm sao lấy lại tiền cọc"'),
-        tai_lieu: z
-          .string()
-          .optional()
-          .describe('Chỉ tìm trong một tài liệu (mã lấy từ liet_ke_chu_de), vd "16-thanh-ly-hop-dong" hoặc "huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don"'),
-      }),
-      rolloutExempt: true,
-      rolloutExemptionReason: 'knowledge retrieval is governed by document manifest and permission filters',
-      execute: async (args, ctx) => {
-        // Trước 12/08/2026 tool này so khớp trên TÊN FILE rồi nạp nguyên tài
-        // liệu, cắt 8000 ký tự ĐẦU. Với corpus 823KB / 25 file mà 20 file lớn
-        // hơn 8KB, nghĩa là Copilot chỉ thấy phần mở đầu — và chỉ khi người
-        // dùng gõ trúng slug tên file. Nay chunk theo heading và xếp hạng BM25.
-        const { timTaiLieu, dinhDangChoModel } = await import('../docs/docSearch');
-        const kq = await timTaiLieu(args.chu_de, ctx.perms, { chiTrongTaiLieu: args.tai_lieu });
-        return dinhDangChoModel(kq);
-      },
-    }),
-
-    dt({
       name: 'ban_do_he_thong',
       description:
         'Tra xem một việc làm ở TRANG nào trong hệ thống, cần quyền gì, và người dùng có làm được không. Dùng khi họ hỏi "tôi làm X ở đâu", "ai được phép Y", hoặc khi cần chỉ đường tới đúng màn hình. Bỏ trống chu_de để xem toàn bộ bản đồ.',
@@ -1557,40 +1333,6 @@ export function buildRegistryDefinitions(): DomainTool[] {
             : `Không thấy trang nào bạn dùng được khớp "${args.chu_de}". Gọi lại không kèm chu_de để xem toàn bộ bản đồ.`;
         }
         return moTaTrangKhop(khop);
-      },
-    }),
-
-    dt({
-      name: 'liet_ke_chu_de',
-      description:
-        'Liệt kê các tài liệu hiện có: tài liệu nghiệp vụ hệ thống và trang hướng dẫn sử dụng. Dùng khi huong_dan không tìm thấy, hoặc khi cần biết hệ thống có tài liệu về gì.',
-      inputSchema: z.object({}),
-      rolloutExempt: true,
-      rolloutExemptionReason: 'document topic listing is governed by document manifest and permission filters',
-      execute: async (_args, ctx) => {
-        const topics = listDocTopics(ctx.perms);
-        if (!topics.length) {
-          return ctx.perms === undefined
-            ? 'Đang tải quyền truy cập, chưa liệt kê được. Thử lại sau vài giây.'
-            : 'Không có tài liệu nào bạn được phép đọc.';
-        }
-        // Tách hai nhóm khi kể ra: một danh sách 51 mã trộn lẫn thì mô hình
-        // (và người đọc) không phân biệt được "quy định nghiệp vụ" với "hướng
-        // dẫn bấm nút" — hai thứ trả lời hai loại câu hỏi khác nhau.
-        const huongDan = topics.filter((t) => t.key.startsWith(TIEN_TO_HUONG_DAN));
-        const heThong = topics.filter((t) => !t.key.startsWith(TIEN_TO_HUONG_DAN));
-        const khoi: string[] = [];
-        if (heThong.length) {
-          khoi.push(
-            `Tài liệu nghiệp vụ hệ thống (${heThong.length}):\n${heThong.map((t) => `- ${t.key}`).join('\n')}`,
-          );
-        }
-        if (huongDan.length) {
-          khoi.push(
-            `Hướng dẫn sử dụng theo màn hình (${huongDan.length}):\n${huongDan.map((t) => `- ${t.key}`).join('\n')}`,
-          );
-        }
-        return `Có ${topics.length} tài liệu.\n\n${khoi.join('\n\n')}`;
       },
     }),
 

@@ -4,7 +4,6 @@ source_paths:
   - src/app/capabilities/registry.ts
   - contracts/surfaces/edge-function-surface.json
   - contracts/surfaces/realtime-surface.json
-copilot_ingest: false
 risk: normal
 ---
 

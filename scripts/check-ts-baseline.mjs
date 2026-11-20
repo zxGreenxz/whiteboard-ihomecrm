@@ -55,7 +55,7 @@ const bin = useJsEntry
   ? process.execPath
   : path.join(repoRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc');
 const coBan = [
-  '--noEmit', '--pretty', 'false',
+  '--noEmit', '--pretty', 'false', '--listFiles',
   '--incremental', '--tsBuildInfoFile', buildInfo,
   '-p', 'tsconfig.app.json',
 ];
@@ -65,7 +65,15 @@ const res = spawnSync(
   args,
   { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, shell: false }
 );
-const out = (res.stdout || '') + '\n' + (res.stderr || '');
+// --listFiles in các đường dẫn tuyệt đối và vẫn kiểm kiểu. Lấy cả độ phủ và
+// diagnostic từ cùng một chương trình, kể cả khi tsc dùng cache incremental.
+const files = [];
+const diagnostics = [];
+for (const line of (res.stdout ?? '').split(/\r?\n/)) {
+  if (path.isAbsolute(line) && existsSync(line)) files.push(line);
+  else diagnostics.push(line);
+}
+const out = diagnostics.join('\n') + '\n' + (res.stderr ?? '');
 
 // 2) PROVE TSC RAN — ENOENT / không thấy summary và output không nhận dạng được.
 const foundMatch = out.match(/Found (\d+) errors?/);
@@ -98,13 +106,11 @@ if (!foundMatch && !looksLikeRun && !cleanRun) {
 // một mình nó chưa giấu được lỗi. Phép kiểm này nhắm cái nguy hiểm hơn — phạm
 // vi teo dần rồi được chốt lại bằng --write.)
 const covPath = path.join(repoRoot, 'tooling', 'ts-coverage-baseline.json');
-const listArgs = useJsEntry
-  ? [tscJs, '--listFilesOnly', '-p', 'tsconfig.app.json']
-  : ['--listFilesOnly', '-p', 'tsconfig.app.json'];
-const listRes = spawnSync(bin, listArgs, {
-  cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, shell: false,
-});
-const soFile = ((listRes.stdout || '').match(/[/\\]src[/\\]/g) || []).length;
+if (!files.length) {
+  console.error('❌ tsc không liệt kê file nào; không đo được độ phủ.');
+  process.exit(2);
+}
+const soFile = (files.join('\n').match(/[/\\]src[/\\]/g) ?? []).length;
 
 if (WRITE) {
   writeFileSync(

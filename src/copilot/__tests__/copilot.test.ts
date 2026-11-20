@@ -9,7 +9,6 @@ import {
   buildRegistryDefinitions,
   toLlmTools,
   toPageAgentTools,
-  listDocTopics,
 } from '../tools/registry';
 import { PILOT_UI_CONTROL_ROUTES, ROUTE_DIEU_HUONG } from '../pageScope';
 import { KHOA_ROLLOUT_DIEU_HUONG } from '../featureFlags';
@@ -153,7 +152,7 @@ describe('registry + adapters', () => {
     const tools = toLlmTools(reg, { ...CTX_NEN, perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST, availability: AVAILABILITY });
     expect(tools.phong_trong).toBeDefined();       // rooms.view có
     expect(tools.doanh_thu_thang).toBeUndefined(); // reports_finance.analysis không
-    expect(tools.huong_dan).toBeDefined();         // không cần quyền
+    expect(tools.ban_do_he_thong).toBeDefined();   // kiểm quyền theo từng trang
   });
 
   it('mo_trang: route CANONICAL /apartments (không /rooms) + gọi navigate', async () => {
@@ -247,61 +246,6 @@ describe('registry + adapters', () => {
     await expect(
       moTrang.execute({ trang: 'invoices.list' }, { ...CTX_NEN, perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST, navigate: () => {} }),
     ).rejects.toThrow(/quyền/);
-  });
-});
-
-describe('huong_dan — allowlist tài liệu + gác quyền', () => {
-  // Trước manifest, tool này glob mù docs/he-thong/*.md: mọi file thả vào thư
-  // mục đều thành nguồn tư vấn cho người dùng thật, và ai cũng đọc được tài
-  // liệu lương/lợi nhuận.
-  const keys = (perms?: PermissionsMap) => listDocTopics(perms).map((t) => t.key);
-
-  it('KHÔNG đọc file ngoài allowlist (perf writeup, bản đồ realtime, mục lục)', () => {
-    const all = keys(SUPER);
-    expect(all).not.toContain('perf-2026-06-30-toi-uu-hieu-nang');
-    expect(all).not.toContain('realtime-sync');
-    expect(all).not.toContain('README');
-    expect(all).toContain('07-hoa-don-thanh-toan');
-  });
-
-  it('tài liệu nhạy cảm bị loại khi thiếu quyền, hiện ra khi có quyền', () => {
-    const staff = keys(STAFF_ROOMS_ONLY);
-    expect(staff).not.toContain('17-luong-thuong');
-    expect(staff).not.toContain('12-co-dong-loi-nhuan');
-    expect(staff).toContain('05-hop-dong'); // không gắn quyền -> vẫn đọc được
-
-    const withSalary = keys({ ...STAFF_ROOMS_ONLY, salary: { view: true } });
-    expect(withSalary).toContain('17-luong-thuong');
-  });
-
-  it('fail closed khi perms chưa load', () => {
-    const none = keys(undefined);
-    expect(none).not.toContain('17-luong-thuong');
-    expect(none).not.toContain('20-phe-duyet-tai-chinh');
-    expect(none).toContain('00-tong-quan');
-  });
-
-  it('huong_dan: không tìm thấy thì nói thẳng, không kể tên tài liệu ngoài quyền', async () => {
-    // Câu tra cũ ở đây là 'khong-co-chu-de-nay-dau'. Nó từng "không tìm thấy"
-    // vì bản cũ so khớp trên TÊN FILE. Với tìm kiếm theo nội dung thì nó KHÔNG
-    // còn vô nghĩa — nó chứa cụm "chủ đề", một từ có thật. Đổi sang câu vô
-    // nghĩa hẳn để test kiểm đúng thứ nó định kiểm.
-    const reg = buildRegistryDefinitions();
-    const tool = reg.find((t) => t.name === 'huong_dan')!;
-    const out = await tool.execute({ chu_de: 'xyzzy plugh frobnicate' }, { ...CTX_NEN, perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST });
-    expect(out).toContain('Không tìm thấy');
-    expect(out).not.toContain('(nguồn: 17-luong-thuong');
-  });
-
-  it('liet_ke_chu_de: chỉ kể tài liệu trong quyền', async () => {
-    const reg = buildRegistryDefinitions();
-    const tool = reg.find((t) => t.name === 'liet_ke_chu_de')!;
-    const out = await tool.execute({}, { ...CTX_NEN, perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST });
-    expect(out).toContain('05-hop-dong');
-    expect(out).not.toContain('17-luong-thuong');
-    // perms chưa tải: nói rõ là đang tải, KHÔNG nói "không có tài liệu nào"
-    const chuaTai = await tool.execute({}, { ...CTX_NEN, perms: undefined, organizationId: ORG_TEST });
-    expect(chuaTai).not.toContain('17-luong-thuong');
   });
 });
 

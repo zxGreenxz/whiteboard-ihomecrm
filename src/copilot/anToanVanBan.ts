@@ -66,3 +66,12 @@ export function boKyTuDieuKhien(s: string): string {
   }
   return ra.replace(/\s+/g, ' ').trim();
 }
+
+/** Chuẩn hoá chữ hoa, dấu tổ hợp và chữ đ để tìm kiếm tiếng Việt. */
+export function boDau(s: string): string {
+  return s
+    .normalize('NFD')
+    .toLowerCase()
+    .replace(/\p{Mn}/gu, '')
+    .replace(/đ/g, 'd');
+}

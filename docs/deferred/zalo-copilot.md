@@ -25,8 +25,8 @@ cho phần CRM dự kiến tái sử dụng. Đây chưa phải triển khai Her
 
 - Test core tools, phạm vi quyền, kế hoạch, xác nhận và bộ nhớ chạy lại bằng runner
   trong `tooling/test-matrix.json`; test worker Zalo tiếp tục hoạt động.
-- Khôi phục các gate static: `check-copilot-docs-manifest`, `check-copilot-tool-inventory`,
-  `check-copilot-forbidden-actions` và `generate-copilot-guide-corpus --check`.
+- Kiểm kê tool và kiểm thao tác cấm tiếp tục bằng `check-copilot-tool-inventory` và
+  `check-copilot-forbidden-actions`.
   Khối inventory trong [README Copilot](../ai-copilot/README.md) được sinh lại từ source.
 - Inventory Hermes dùng `generate-hermes-crm-inventory --check`; snapshot chỉ mô tả
   mã nguồn và đề xuất chuyển đổi, không cấp quyền hoặc xác nhận catalog database.
@@ -52,20 +52,10 @@ git show c33ec48ccb17b55cd3e63cc2295e3636d558d6ea:tooling/known-gaps.yaml
 Snapshot `risk-map.json` giữ tier Copilot và gate corpus cũ để đối chiếu khi mở lại.
 Không phục hồi toàn bộ manifest đè lên các thay đổi mới hơn.
 
-- [Chương 18](../he-thong/18-zalo-chat.md) mô tả Zalo. [Chương 21](../he-thong/21-ai-copilot.md) hướng dẫn kết nối Hermes và ghi lại việc gỡ chat Copilot. [Manifest lưu trữ](../he-thong/manifest.json) liệt kê tài liệu của bộ tra cứu Copilot cũ.
+- [Chương 18](../he-thong/18-zalo-chat.md) mô tả Zalo. [Chương 21](../he-thong/21-ai-copilot.md) hướng dẫn kết nối Hermes và ghi lại việc gỡ chat Copilot. Sổ tay tra cứu trong chat Copilot đã được gỡ cùng manifest và các phép kiểm riêng.
 - [Runbook worker Zalo](../zalo/ZALO-WORKER-SETUP.md), `worker/`, `src/copilot/`,
   `supabase/functions/llm-proxy/`: đọc theo đúng phần được giao khi mở lại.
 - Plan, audit và evidence cũ giữ làm hồ sơ; không tự thi công lại checklist chưa đóng.
-
-## Quy tắc corpus chuyển từ Contract §8b
-
-[manifest.json](../he-thong/manifest.json) sở hữu `copilotIngest` và `reviewed`;
-frontmatter không lặp hai khoá này. File mới phải khai manifest; file bị loại phải có `why`.
-`requiredPermission` áp dụng cả kết quả và gợi ý; khi chưa load quyền, chỉ trả tài liệu không gắn quyền.
-Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
-
-Đoạn trên áp dụng cho corpus/core đã mở lại. Phạm vi ngoài đó vẫn theo danh sách hoãn,
-không tự mở các lane live khi làm công việc khác.
 
 ## Gap chuyên biệt tạm ngưng
 

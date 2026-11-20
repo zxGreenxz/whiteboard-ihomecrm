@@ -49,9 +49,9 @@ test('catalog captures retired actions, sensitive approval and external effects'
 test('capability relationships are only source evidence, never a grant', () => {
   const room = inventory.tools.find((tool) => tool.id === 'phong_trong');
   assert.deepEqual(room.relatedCapabilities, [{ id: 'rooms', match: 'same_permission_only' }]);
-  const knowledge = inventory.tools.find((tool) => tool.id === 'huong_dan');
-  assert.equal(knowledge.permission, null);
-  assert.equal(knowledge.permissionEvidence, 'unresolved_or_absent_review_required');
+  const directory = inventory.tools.find((tool) => tool.id === 'ban_do_he_thong');
+  assert.equal(directory.permission, null);
+  assert.equal(directory.permissionEvidence, 'unresolved_or_absent_review_required');
   assert.ok(inventory.capabilities.every((capability) => capability.disposition === 'retain_ui'));
 });
 

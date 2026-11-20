@@ -7,6 +7,7 @@ import { createGatePlan, planFromGit, isCosmeticChange } from "../lib/gate-plan.
 import { GATE_REGISTRY, getGate, isOfflineBrowserSelection } from "../lib/gate-registry.mjs";
 
 import { executeGateJob } from '../lib/ci-gate-execution.mjs';
+import { aggregateGateEvidence } from '../lib/gate-evidence.mjs';
 import { selectedVitestFiles } from '../lib/selected-vitest.mjs';
 
 const snapshot = { base: "base", head: "head", tree: "tree", source: "fixture" };
@@ -40,7 +41,8 @@ describe("scope is a conservative proof, never a filename shortcut", () => {
     for (const environment of ["ci", "local"]) {
       const p = plan(changes, { testFiles, environment, localFeedback: environment === "local" });
       expect(p.gateIds.filter(id => id === "check-ts-baseline")).toEqual(["check-ts-baseline"]);
-      expect(p.requiredJobs).toContain("quality-gates");
+      expect(p.requiredJobs).toContain("strict-islands-gate");
+      expect(getGate("check-ts-baseline", p).job).toBe("strict-islands-gate");
       expect(p.suiteSelections.find(s => s.id === "node-native")?.files).toEqual([smoke]);
     }
   });
@@ -76,6 +78,36 @@ describe("scope is a conservative proof, never a filename shortcut", () => {
     for (const p of [small, local]) expect(p.gateIds.some(id => id.endsWith('-shard-2'))).toBe(false);
   });
 
+
+  it('requires every shard receipt for a large app suite and covers its files exactly once', () => {
+    const files = Array.from({ length: 1025 }, (_, i) => `src/lib/sample-${i}.test.ts`);
+    const build = n => plan([], { full: true, environment: 'ci', testFiles: files.slice(0, n) });
+    expect(build(1023).suiteSelections.find(s => s.id === 'app-unit')?.shards).toBe(2);
+    expect(build(1024).suiteSelections.find(s => s.id === 'app-unit')?.shards).toBe(4);
+    const p = build(files.length);
+    const jobId = 'vitest-tests';
+    const gateIds = p.gateIds.filter(id => getGate(id, p).job === jobId);
+    expect(gateIds).toEqual(['suite:app-unit', 'suite:app-unit-shard-2', 'suite:app-unit-shard-3', 'suite:app-unit-shard-4']);
+    const seen = [];
+    const receipts = gateIds.flatMap((id, i) => {
+      const shard = i + 1;
+      return executeGateJob({ plan: p, jobId, shard, getGate, runId: 'fixture:1', execute(gate) {
+        expect(gate.id).toBe(id);
+        const selected = selectedVitestFiles(p, gate.args.at(-1), shard);
+        expect(selected.length).toBe(shard === 1 ? 257 : 256);
+        seen.push(...selected);
+        return { status: 0 };
+      } }).receipts;
+    });
+    expect(seen.sort()).toEqual([...files].sort());
+    // The executed command binds the exact shard's file digest.
+    const registry = Object.fromEntries(gateIds.map(id => [id, getGate(id, p)]));
+    const evidence = { plan: { ...p, gateIds, requiredJobs: [jobId], unavailable: [] },
+      jobs: { [jobId]: 'success' }, registry, runId: 'fixture:1' };
+    expect(aggregateGateEvidence({ ...evidence, receipts }).status).toBe('passed');
+    expect(aggregateGateEvidence({ ...evidence, receipts: receipts.slice(0, -1) }).failures)
+      .toContain('suite:app-unit-shard-4: expected one receipt, got 0');
+  });
 
   it("keeps direct, sibling and source-mapped files locally and leaves profile-wide or fallback files to CI", () => {
     const matrix = JSON.parse(readFileSync(new URL("../../tooling/test-matrix.json", import.meta.url), "utf8"));
