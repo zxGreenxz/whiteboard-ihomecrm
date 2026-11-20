@@ -317,7 +317,7 @@ export function DetailSheet({
   return (
     <>
       <div className={"sheet-scrim" + (show ? " show" : "")} onClick={onClose} />
-      <div className={"sheet" + (show ? " show" : "")}>
+      <div className={"phong-trong-sheet" + (show ? " show" : "")}>
         <button className="sheet-close" onClick={onClose} aria-label="Đóng" title="Đóng"><Icon.Close /></button>
         <div className="sheet-grab" onClick={onClose} />
         <div className="sheet-scroll">
