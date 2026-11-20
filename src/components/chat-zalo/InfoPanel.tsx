@@ -38,7 +38,7 @@ interface Props {
  *  RecipientPicker chỉ liệt kê nhóm và hội thoại đã bật cờ này, còn auto-reply
  *  chỉ trả lời những hội thoại đã bật. Khách đang thuê phòng không bao giờ nhận
  *  bản tin rao phòng, và đó là do cái công tắc này. */
-function HangSale({ conv }: { conv: ZaloConversation }) {
+function HangSale({ conv, canManage }: { conv: ZaloConversation; canManage: boolean }) {
   const danhDau = useMarkSalePartner();
   const bat = conv.isSalePartner;
   return (
@@ -52,13 +52,13 @@ function HangSale({ conv }: { conv: ZaloConversation }) {
         </div>
         <Switch
           checked={bat}
-          disabled={danhDau.isPending}
+          disabled={!canManage || danhDau.isPending}
           onCheckedChange={(v) => danhDau.mutate({ conversationId: conv.id, isSale: v })}
           aria-label="Đánh dấu hội thoại là sale/môi giới"
         />
       </div>
       <p style={{ fontSize: 11.5, color: 'hsl(210 10% 50%)', margin: '6px 0 0', lineHeight: 1.5 }}>
-        Bật để hội thoại này nhận tin phòng trống định kỳ và được tự động trả lời.
+        Đánh dấu sale để dùng tự động trả lời và gửi phòng trống một lần vào nhóm. Người nhận định kỳ được chọn riêng trong cài đặt.
       </p>
     </div>
   );
@@ -106,7 +106,7 @@ export default function InfoPanel({ conv, tab, onTab, automations, onToggle, tem
           {/* Đặt ngay dưới đầu trang, TRƯỚC mọi nhánh hồ sơ: cờ sale áp dụng cho
               mọi loại hội thoại (nhóm, danh bạ, khách đã gắn CRM), nên nó không
               được nằm trong một nhánh mà nhánh khác lại không có. */}
-          <HangSale conv={conv} />
+          <HangSale conv={conv} canManage={canManageAutomation} />
           {linkedCrm ? (
             <CrmInfoCard conv={conv} onLinkCrm={onLinkCrm} />
           ) : p.kind === 'broker' ? (

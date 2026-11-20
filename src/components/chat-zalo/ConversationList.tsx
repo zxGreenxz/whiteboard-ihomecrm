@@ -4,11 +4,13 @@ import { cn } from '@/lib/utils';
 import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { EMERALD } from './zaloTheme';
 import ConversationRow from './ConversationRow';
+import type { GroupSaleAction } from './GroupSaleButton';
 import LabelFilter from './LabelFilter';
 import type { ZaloConversation, FilterKey, ZaloLabel } from './types';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Tất cả' },
+  { key: 'saleGroups', label: 'Nhóm sale' },
   { key: 'unread', label: 'Chưa đọc' },
   { key: 'tenant', label: 'Khách trọ' },
   { key: 'lead', label: 'Lead' },
@@ -18,6 +20,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 interface Props {
   conversations: ZaloConversation[];
   totalCount: number;
+  saleAction?: GroupSaleAction;
   activeId: string;
   filter: FilterKey;
   search: string;
@@ -47,7 +50,7 @@ interface Props {
 
 /** Cột 1: danh sách hội thoại + tìm + lọc + footer tự động hoá. */
 export default function ConversationList({
-  conversations, totalCount, activeId, filter, search, automationActive, automationRuns,
+  conversations, totalCount, saleAction, activeId, filter, search, automationActive, automationRuns,
   onFilter, onSearch, onSelect, className, topSlot,
   labels = [], selectedLabel = null, onSelectLabel, onBroadcast,
   onComposeNew, onTogglePin, onToggleMute, onToggleUnread, onLinkCrm, errorBanner, loading = false,
@@ -85,7 +88,7 @@ export default function ConversationList({
             style={{ flex: 1, border: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 13, color: 'hsl(160 30% 14%)' }}
           />
         </div>
-        <div className="wz-scroll" style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 2 }}>
+        <div className="wz-scroll" style={{ display: 'flex', gap: 7, flexWrap: 'wrap', paddingBottom: 2 }}>
           {FILTERS.map((f) => {
             const on = f.key === filter;
             return (
@@ -120,7 +123,7 @@ export default function ConversationList({
           <>
             {conversations.slice(0, 300).map((c) => (
               <ConversationRow
-                key={c.id} conv={c} active={c.id === activeId} onSelect={onSelect}
+                key={c.id} conv={c} saleAction={saleAction} active={c.id === activeId} onSelect={onSelect}
                 onTogglePin={onTogglePin} onToggleMute={onToggleMute} onToggleUnread={onToggleUnread} onLinkCrm={onLinkCrm}
               />
             ))}

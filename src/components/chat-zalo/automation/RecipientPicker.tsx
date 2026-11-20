@@ -20,6 +20,7 @@ import { Search, Users, BadgeCheck, Info } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { tagStyle, avatarStyle } from '../zaloTheme';
+import GroupSaleButton, { type GroupSaleAction } from '../GroupSaleButton';
 import LabelFilter from '../LabelFilter';
 import { conversationHasLabel, zaloLabelKey } from '../conversationState';
 import type { ZaloConversation, ZaloLabel } from '@/components/chat-zalo/types';
@@ -29,6 +30,7 @@ interface Props {
   conversations: ZaloConversation[];
   /** Nhãn "Phân loại" của tổ chức, đã gắn `accountName` (tên nick). */
   labels?: ZaloLabel[];
+  saleAction?: GroupSaleAction;
   value: string[];
   onChange: (ids: string[]) => void;
 }
@@ -62,7 +64,7 @@ const boDau = (s: string) =>
     })
     .join('');
 
-export default function RecipientPicker({ conversations, labels = KHONG_NHAN, value, onChange }: Props) {
+export default function RecipientPicker({ conversations, labels = KHONG_NHAN, saleAction, value, onChange }: Props) {
   const [tim, setTim] = useState('');
   const [nhan, setNhan] = useState<string | null>(null);
 
@@ -186,7 +188,7 @@ export default function RecipientPicker({ conversations, labels = KHONG_NHAN, va
         {loc.map((c, i) => {
           const on = daChon.has(c.id);
           return (
-            <label
+            <div
               key={c.id}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '8px 11px', cursor: 'pointer',
@@ -194,29 +196,32 @@ export default function RecipientPicker({ conversations, labels = KHONG_NHAN, va
                 background: on ? 'hsl(152 40% 97%)' : 'transparent',
               }}
             >
-              <Checkbox checked={on} onCheckedChange={(v) => bat(c.id, v === true)} />
-              <span style={avatarStyle(c.tone, 30, 11)}>{c.initials}</span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {c.name}
-                </span>
-                <span style={{ display: 'block', fontSize: 10.5, color: CHU_MO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {c.headerSub || c.sub || c.phone || ''}
-                </span>
-              </span>
-              <span style={{ display: 'flex', gap: 4, flex: 'none' }}>
-                {c.isGroup && (
-                  <span style={tagStyle('info', { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10 })}>
-                    <Users size={10} />NHÓM
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                <Checkbox aria-label={`Chọn ${c.name} nhận tin định kỳ`} checked={on} onCheckedChange={(v) => bat(c.id, v === true)} />
+                <span style={avatarStyle(c.tone, 30, 11)}>{c.initials}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.name}
                   </span>
-                )}
-                {c.isSalePartner && (
-                  <span style={tagStyle('success', { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10 })}>
-                    <BadgeCheck size={10} />SALE
+                  <span style={{ display: 'block', fontSize: 10.5, color: CHU_MO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.headerSub || c.sub || c.phone || ''}
                   </span>
-                )}
-              </span>
-            </label>
+                </span>
+                <span style={{ display: 'flex', gap: 4, flex: 'none' }}>
+                  {c.isGroup && (
+                    <span style={tagStyle('info', { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10 })}>
+                      <Users size={10} />NHÓM
+                    </span>
+                  )}
+                  {c.isSalePartner && !c.isGroup && (
+                    <span style={tagStyle('success', { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10 })}>
+                      <BadgeCheck size={10} />SALE
+                    </span>
+                  )}
+                </span>
+              </label>
+              <GroupSaleButton conv={c} action={saleAction} />
+            </div>
           );
         })}
       </div>

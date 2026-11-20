@@ -1,3 +1,4 @@
+import GroupSaleButton, { type GroupSaleAction } from './GroupSaleButton';
 import { useState } from 'react';
 import { Pin, BellOff, MailPlus, MailCheck, Link2 } from 'lucide-react';
 import {
@@ -9,6 +10,7 @@ import type { ZaloConversation } from './types';
 
 interface Props {
   conv: ZaloConversation;
+  saleAction?: GroupSaleAction;
   active: boolean;
   onSelect: (id: string) => void;
   /** menu chuột phải: ghim / tắt thông báo / đánh dấu chưa đọc / gắn hồ sơ */
@@ -25,7 +27,7 @@ interface Props {
  * Radix coi click trái vào trigger là lệnh mở menu (bug đã gặp trên production:
  * bấm tin nhắn ra menu thay vì mở chat).
  */
-export default function ConversationRow({ conv, active, onSelect, onTogglePin, onToggleMute, onToggleUnread, onLinkCrm }: Props) {
+export default function ConversationRow({ conv, saleAction, active, onSelect, onTogglePin, onToggleMute, onToggleUnread, onLinkCrm }: Props) {
   const subColor = conv.subTone ? toneOf(conv.subTone).fg : 'hsl(210 10% 50%)';
   const hasMenu = !!(onTogglePin || onToggleMute || onToggleUnread || onLinkCrm);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -64,6 +66,7 @@ export default function ConversationRow({ conv, active, onSelect, onTogglePin, o
           <div style={{ fontSize: 11.5, color: subColor, fontWeight: conv.subTone ? 600 : 400, margin: '1px 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.sub}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 12.5, color: 'hsl(210 10% 45%)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.preview}</span>
+            <GroupSaleButton conv={conv} action={saleAction} />
             {conv.unread > 0 && (
               <span style={{ marginLeft: 'auto', background: EMERALD, color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{conv.unread}</span>
             )}

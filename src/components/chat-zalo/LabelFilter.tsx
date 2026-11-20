@@ -29,7 +29,7 @@ export default function LabelFilter({ labels, selectedLabel, onSelect, modal = f
       <PopoverTrigger asChild>
         <button
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', maxWidth: '100%', minWidth: 0,
+            display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, whiteSpace: 'nowrap', maxWidth: '100%', minWidth: 0,
             background: on ? EMERALD : '#fff', border: on ? 'none' : '1px solid hsl(210 20% 88%)',
             color: on ? '#fff' : 'hsl(160 20% 30%)', fontSize: 12, fontWeight: on ? 600 : 500,
             padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',

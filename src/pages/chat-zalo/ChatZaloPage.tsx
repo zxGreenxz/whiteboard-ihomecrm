@@ -6,7 +6,7 @@ import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { withMessageSenders } from '@/components/chat-zalo/messageSenders';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import ConversationList from '@/components/chat-zalo/ConversationList';
 import ChatThread from '@/components/chat-zalo/ChatThread';
@@ -26,14 +26,14 @@ import {
   useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
   useZaloAccounts, useRequestConnect, useDisconnectAccount, useZaloWorkerStatus,
   useReactMessage, useRecallMessage, useLoadHistory,
-  useZaloLabels, useBroadcast, useZaloOrgId,
+  useMarkSalePartner, useZaloLabels, useBroadcast, useZaloOrgId,
 } from '@/hooks/useZaloChat';
 import { useActiveConversation } from '@/hooks/chat-zalo/useActiveConversation';
 import { useSendZaloMedia, useSendZaloSticker, type StickerItem } from '@/hooks/chat-zalo/useZaloMedia';
 import { useForwardZaloMedia } from '@/hooks/chat-zalo/useForwardZaloMedia';
 import { useSetConversationFlags, useStartChatByPhone, useDeleteMessageForMe, useThreadPresence } from '@/hooks/chat-zalo/useZaloConversationActions';
 import { useMyPermissions, can } from '@/hooks/useMyPermissions';
-import { conversationHasLabel, isTenantConversation } from '@/components/chat-zalo/conversationState';
+import { conversationHasLabel, isTenantConversation, zaloLabelKey } from '@/components/chat-zalo/conversationState';
 
 /**
  * Trang Chat Zalo — workspace 3 cột (danh sách · khung chat · panel thông tin).
@@ -55,6 +55,11 @@ export default function ChatZaloPage() {
   const canSend = can(perms, 'chat_zalo', 'send');
   const canManageAutomation = can(perms, 'chat_zalo', 'manage_automation');
   const canManageTemplates = can(perms, 'chat_zalo', 'manage_templates');
+  const markSale = useMarkSalePartner();
+  const saleAction = canManageAutomation ? {
+    toggle: (c: ZaloConversation) => markSale.mutate({ conversationId: c.id, isSale: !c.isSalePartner }),
+    pending: markSale.isPending,
+  } : undefined;
   const broadcastMut = useBroadcast();
   const forwardMediaMut = useForwardZaloMedia();
   const sendMut = useSendZaloMessage();
@@ -130,7 +135,13 @@ export default function ChatZaloPage() {
     ...base, messages: withMessageSenders(messages, base, conversations, accounts.find(account => account.id === base.accountId), memberQuery.data),
   } : undefined, [base, messages, conversations, accounts, memberQuery.data]);
 
-  const activeLabel = labels.find(label => `${label.accountId}:${label.labelId}` === selectedLabel);
+  const activeLabel = labels.find(label => zaloLabelKey(label) === selectedLabel && selIds.includes(label.accountId));
+  const labelKey = activeLabel ? zaloLabelKey(activeLabel) : null;
+  const selectLabel = (key: string | null) => {
+    const label = labels.find(item => zaloLabelKey(item) === key);
+    if (label && !selIds.includes(label.accountId)) setSelectedIds([label.accountId]);
+    setSelectedLabel(key);
+  };
 
   // hermes-parity:begin zalo-conversations — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const filtered = useMemo(() => {
@@ -139,10 +150,11 @@ export default function ChatZaloPage() {
     const allSelected = accounts.every(account => selSet.has(account.id));
     return conversations.filter((c) => {
       if (!allSelected && c.accountId && !selSet.has(c.accountId)) return false;
-      if (!conversationHasLabel(c, selectedLabel)) return false;
+      if (!conversationHasLabel(c, labelKey)) return false;
       // 'Danh bạ' = đã sync từ bạn bè nhưng CHƯA từng có tin nhắn; các chip khác ẩn nhóm này
       if (filter === 'contacts') { if (c.hasMessages) return false; }
-      else if (!c.hasMessages && !q) return false;
+      else if (filter === 'saleGroups') { if (!c.isGroup || !c.isSalePartner) return false; }
+      else if (!c.hasMessages && !q && !labelKey) return false;
       if (filter === 'unread' && c.unread <= 0 && !c.markedUnread) return false;
       if (filter === 'tenant' && !isTenantConversation(c)) return false;
       if (filter === 'lead' && !c.leadId) return false;
@@ -154,7 +166,7 @@ export default function ChatZaloPage() {
         (c.profile.room || '').toLowerCase().includes(q)
       );
     });
-  }, [conversations, filter, search, selIds, accounts, selectedLabel]);
+  }, [conversations, filter, search, selIds, accounts, labelKey]);
   // hermes-parity:end zalo-conversations
 
   const connectingAccount = connectingId ? accounts.find((a) => a.id === connectingId) || null : null;
@@ -265,13 +277,17 @@ export default function ChatZaloPage() {
     <AccountSwitcher
       accounts={accounts}
       selectedIds={selIds}
-      onToggle={(id) =>
+      onToggle={(id) => {
+        if (activeLabel?.accountId === id && selIds.includes(id)) setSelectedLabel(null);
         setSelectedIds((prev) => {
           const base2 = prev ?? accounts.map((a) => a.id);
           return base2.includes(id) ? base2.filter((x) => x !== id) : [...base2, id];
-        })
-      }
-      onOnly={(id) => setSelectedIds([id])}
+        });
+      }}
+      onOnly={(id) => {
+        if (activeLabel?.accountId !== id) setSelectedLabel(null);
+        setSelectedIds([id]);
+      }}
       onAll={() => setSelectedIds(accounts.map((a) => a.id))}
       onConnectNew={onConnectNew}
       onReconnect={onReconnect}
@@ -299,8 +315,9 @@ export default function ChatZaloPage() {
           onSelect={select}
           topSlot={switcher}
           labels={labels}
-          selectedLabel={selectedLabel}
-          onSelectLabel={setSelectedLabel}
+          selectedLabel={labelKey}
+          saleAction={saleAction}
+          onSelectLabel={selectLabel}
           onBroadcast={canSend ? () => { setBroadcastInitial(''); setBroadcastOpen(true); } : undefined}
           onComposeNew={canSend ? () => setComposeOpen(true) : undefined}
           onTogglePin={(c) => flagsMut.mutate({ conversationId: c.id, pinned: !c.pinned })}
@@ -395,7 +412,8 @@ export default function ChatZaloPage() {
               onManageTemplates={canManageTemplates ? () => setTemplateManagerOpen(true) : undefined}
             />
             <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
-              <SheetContent side="right" className="p-0 w-[330px] max-w-[90vw]">
+              <SheetContent side="right" className="p-0 w-[330px] max-w-[90vw]" aria-describedby={undefined}>
+                <SheetTitle className="sr-only">Thông tin và tự động hoá hội thoại</SheetTitle>
                 <div className="h-full">
                   <InfoPanel
                     className="flex w-full h-full"
@@ -479,6 +497,7 @@ export default function ChatZaloPage() {
           nên render ở cấp trang và không nằm trong nhánh `active &&`. */}
       <AutomationSettingsDialog
         open={settingsOpen && canManageAutomation}
+        saleAction={saleAction}
         onOpenChange={setSettingsOpen}
         conversations={conversations}
         labels={labels}
