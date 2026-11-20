@@ -124,7 +124,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, account, 
       else if(!savedBroadcast.current.enabled && !bc.recipients.length) fields.recipients='Chọn ít nhất một người nhận để bật lịch gửi.';
       if(!bc.template.blocks.length) fields.template='Chọn ít nhất một khối nội dung trước khi bật lịch gửi.';
     }
-    if(tab==='reply' && arBat && !ar.keywords.length) fields.keywords='Thêm từ khóa kích hoạt trước khi bật tự động trả lời.';
+    if(tab==='reply' && arBat && !ar.saleAdvisor && !ar.keywords.length) fields.keywords='Thêm từ khóa kích hoạt trước khi bật tự động trả lời.';
     setErrors(fields);setServerError('');
     if(Object.keys(fields).length){void focusFirstError(fields,{order:['recipients','template','keywords']});return;}
 
@@ -174,7 +174,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, account, 
   const khongNguoiNhan = bc.recipients.length === 0;
   const khongKhoiNaoBat = bc.template.blocks.length === 0;
   const khongNgayNao = Object.values(bc.schedule.days).every((x) => x === 'off');
-  const khongTuKhoa = ar.keywords.length === 0;
+  const khongTuKhoa = !ar.saleAdvisor && ar.keywords.length === 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -296,7 +296,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, account, 
                   bat={arBat}
                   onBat={setArBat}
                   ten="Bật tự động trả lời"
-                  moTa="Chỉ áp dụng cho hội thoại đã đánh dấu là sale/môi giới."
+                  moTa={ar.saleAdvisor ? "Hermes dùng link Sale Phòng đã cấu hình trong bản tin phòng trống." : "Áp dụng cho hội thoại đã đánh dấu Sale / Môi giới."}
                 />
 
                 {arBat && khongTuKhoa && (

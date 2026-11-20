@@ -95,7 +95,7 @@ export async function xuLyTinDen({ accountId, conv, body, zaloMsgId }) {
       .select('id, config, enabled')
       .eq('organization_id', orgId).eq('kind', 'auto_reply').maybeSingle();
     if (configError) throw new Error(configError.message);
-    if (!auto?.enabled) return;
+    if (!auto?.enabled || auto.config?.saleAdvisor === true) return;
 
     const cfg = chuanHoaAutoReply(auto.config);
 

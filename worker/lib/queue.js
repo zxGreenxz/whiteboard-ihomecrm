@@ -25,6 +25,7 @@ import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clam
 import { INSTANCE_ID } from './lease.js';
 import { validateAutomationDelivery } from './automation-delivery.js';
 import { finalizeSend, sendReceipt } from './send-finalization.js';
+import { deliverSaleAdvice } from './sale-advice-channel.js';
 
 async function jobDone(jobId, extra = {}) {
   const { data, error } = await sb.from('zalo_send_queue')
@@ -256,7 +257,10 @@ export async function processJob(job) {
     const ttype = scope.conv ? scope.conv.thread_type : (p.thread_type || null);
     const type = ttype === 'group' ? ThreadType.Group : ThreadType.User;
 
-    if (p.kind === 'forward_media') {
+    if (p.action === 'hermes_sale_advice') {
+      await deliverSaleAdvice(job, session.hermesIngress?.privateReplySource(), (...args) => s.api.sendMessage(...args));
+      await jobDone(job.id);
+    } else if (p.kind === 'forward_media') {
       if (!threadId) throw new Error('Không tìm thấy hội thoại chuyển tiếp');
       await sendForwardMediaJob(s, job, threadId, type);
     } else if (p.action === 'react') {

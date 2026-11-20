@@ -125,11 +125,16 @@ export default function AutoReplyFields({ value, onChange }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+      <HangCongTac nhan="Hermes tư vấn từ trang Sale Phòng"
+        moTa="Trả lời người nhắn riêng cho bot và nhóm đã đánh dấu Sale bằng phòng, ảnh và giá trên link của bản tin.">
+        <Switch aria-label="Hermes tư vấn từ trang Sale Phòng" checked={!!v.saleAdvisor}
+          onCheckedChange={(checked) => onChange({ ...v, saleAdvisor: checked })} />
+      </HangCongTac>
+      {!v.saleAdvisor && <>
       <p style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 11.5, color: CHU_MO, lineHeight: 1.55, margin: 0, background: NEN_MO, padding: '9px 11px', borderRadius: 9 }}>
         <Info size={14} style={{ flex: 'none', marginTop: 2 }} />
         <span>
-          Máy <b>chỉ</b> trả lời những hội thoại đã được đánh dấu là <b>sale/môi giới</b>. Tin của khách thuê,
-          của nhóm, hay của người lạ đều không bao giờ được trả lời tự động — dù có khớp từ khoá.
+          Máy trả lời theo từ khoá trong hội thoại riêng và nhóm đã đánh dấu <b>Sale / Môi giới</b>.
         </span>
       </p>
 
@@ -156,6 +161,7 @@ export default function AutoReplyFields({ value, onChange }: Props) {
 
       <div style={{ height: 1, background: VIEN_NHAT }} />
 
+      </>}
       {/* Từ khoá chặn */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
@@ -171,9 +177,7 @@ export default function AutoReplyFields({ value, onChange }: Props) {
         </div>
         {oThem('blockedKeywords', themChan, setThemChan, 'vd: đặt cọc')}
         <GhiChu>
-          Tin chạm một trong những từ này thì máy <b>KHÔNG</b> trả lời, dù có khớp từ khoá kích hoạt. Đây là ràng buộc
-          an toàn, không phải tuỳ chọn cho vui: một câu sai về cọc, hợp đồng hay thanh toán là chuyện pháp lý,
-          và người hứng hậu quả là chủ nhà chứ không phải phần mềm.
+          Khi tin nhắn có từ khoá chặn, nhân viên sẽ trực tiếp xử lý.
         </GhiChu>
         {v.blockedKeywords.length === 0 && (
           <div style={{ marginTop: 8 }}>
@@ -187,6 +191,7 @@ export default function AutoReplyFields({ value, onChange }: Props) {
 
       <div style={{ height: 1, background: VIEN_NHAT }} />
 
+      {!v.saleAdvisor && <>
       {/* Lời chào */}
       <TruongNhap
         nhan="Lời chào trước danh sách"
@@ -211,9 +216,10 @@ export default function AutoReplyFields({ value, onChange }: Props) {
         </HangCongTac>
       </div>
 
+      </>}
       {/* Nhịp + trần */}
       <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap' }}>
-        <TruongNhap
+        {!v.saleAdvisor && <TruongNhap
           nhan="Nghỉ giữa hai lần trả lời cùng một người"
           id="ar-cooldown"
           ghiChu="Trong khoảng này, người đó nhắn thêm bao nhiêu tin cũng không được trả lời tự động lần nữa."
@@ -227,10 +233,10 @@ export default function AutoReplyFields({ value, onChange }: Props) {
             macDinh={30}
             donVi="phút"
           />
-        </TruongNhap>
+        </TruongNhap>}
 
         <TruongNhap
-          nhan="Trần tin trả lời mỗi ngày"
+          nhan={v.saleAdvisor ? "Số câu hỏi tối đa mỗi ngày" : "Trần tin trả lời mỗi ngày"}
           id="ar-cap"
           ghiChu="Tính riêng cho auto-reply. Chạm trần thì phần còn lại của ngày để người thật trả lời."
         >
@@ -241,7 +247,7 @@ export default function AutoReplyFields({ value, onChange }: Props) {
             min={1}
             max={1000}
             macDinh={50}
-            donVi="tin/ngày"
+            donVi={v.saleAdvisor ? "câu/ngày" : "tin/ngày"}
             rong={104}
           />
         </TruongNhap>

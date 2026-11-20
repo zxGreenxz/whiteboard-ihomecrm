@@ -22,7 +22,7 @@ function safeFilename(name, fallbackExt) {
   return n;
 }
 
-async function downloadAttachment(a) {
+export async function downloadAttachment(a) {
   const bucket = a.bucket || 'zalo-media';
   if (!a.path) throw new Error('Attachment thiếu path storage');
   const { data, error } = await sb.storage.from(bucket).download(a.path);

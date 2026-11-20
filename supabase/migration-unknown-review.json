@@ -986,6 +986,28 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
+    },
+    "supabase/migrations/20261120155631_hermes_sale_advice.sql": {
+      "sha256": "2c83bd44d047e4396c63192c813bbd3669bdf9c70e47723bac7d91c444cdee95",
+      "missingObjects": [
+        "table:app_private.hermes_sale_questions",
+        "function:app_private.hermes_sale_channel_v1",
+        "function:public.zalo_sale_advice_intake_v1",
+        "function:public.zalo_sale_advice_delivery_v1",
+        "index:app_private.hermes_sale_question_context"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới của luồng tư vấn phòng qua Zalo đang chờ review. Hàng đợi cần bảng câu hỏi riêng và hai RPC dành cho worker. Các phép kiểm cục bộ chạy trên PostgreSQL nhúng.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261120155631_hermes_sale_advice.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.hermes_sale_questions ("
+        },
+        {
+          "duong_dan": "worker/__tests__/sale-advice-db.test.js",
+          "trich_doan": "await expect(read()).rejects.toThrow('sale_advice_inactive');"
+        }
+      ]
     }
   }
 }
