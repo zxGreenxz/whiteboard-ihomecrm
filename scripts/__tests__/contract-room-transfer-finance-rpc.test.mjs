@@ -2,7 +2,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import { id, org, actor, building, oldRoom, newRoom, contract, request, notice, snapshot, reason,
-  installRoomTransferFixture, installStatements, migration } from '../lib/room-transfer-test-fixture.mjs';
+  installRoomTransferAuthorization, installRoomTransferFixture, installStatements, migration } from '../lib/room-transfer-test-fixture.mjs';
 
 const db = new PGlite();
 const day = '2026-02-15';
@@ -124,11 +124,13 @@ beforeAll(async () => {
     'CREATE OR REPLACE FUNCTION public.invoice_adjustment_build_v1(',
   ]);
   const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
+  await installRoomTransferAuthorization(db, baseline);
   const rounding = baseline.match(/^CREATE FUNCTION app_private\.round_invoice_total_v1\([\s\S]*?^\$\$;/m);
   expect(rounding, 'production invoice rounding').not.toBeNull();
   await db.exec(rounding[0]);
   for (const name of ['20261120093546_chuyen_phong_tien_coc','20261120093620_tien_thue_ky_chuyen_phong',
-    '20261120093840_quyet_toan_khi_chuyen_phong','20261120094154_tien_phong_ky_chuyen_khi_lap_hoa_don']) {
+    '20261120093840_quyet_toan_khi_chuyen_phong','20261120094154_tien_phong_ky_chuyen_khi_lap_hoa_don',
+    '20261120105505_xem_truoc_chuyen_phong_khoa_quyen']) {
     await db.exec(migration(name));
   }
 }, 30000);
@@ -143,6 +145,20 @@ async function row(sql, params = []) {
 async function preview({ price=nextRent, deposit=null } = {}) {
   return (await row('SELECT public.preview_room_transfer_v1($1,$2,$3,$4,$5,$6) AS quote', [org,contract,newRoom,day,price,deposit])).quote;
 }
+
+it('previews as authenticated with the transaction mode PostgREST selects for this POST RPC', async () => {
+  const { provolatile } = await row(`SELECT provolatile FROM pg_proc
+    WHERE oid='public.preview_room_transfer_v1(uuid,uuid,uuid,date,numeric,numeric)'::regprocedure`);
+  // PostgreSQL must refuse the authority's row lock in the mode used for a STABLE RPC.
+  await db.exec('ROLLBACK; BEGIN READ ONLY; SET LOCAL ROLE authenticated');
+  await rejects(preview,'25006');
+  const mode = provolatile === 'v' ? 'READ WRITE' : 'READ ONLY';
+  await db.exec(`ROLLBACK; BEGIN ${mode}; SET LOCAL ROLE authenticated`);
+  await expect(preview()).resolves.toMatchObject({period_rent:4_200_000,deposit_shortfall:1_200_000});
+  expect(provolatile).toBe('v');
+  await db.exec('RESET ROLE');
+  expect(await state()).toMatchObject({room_id:oldRoom,transfers:0,receipts:0,rents:0});
+});
 async function move(quote, { price=nextRent, deposit=null } = {}) {
   return (await row('SELECT public.transfer_room_with_notice_v2($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10) AS id',
     [org,contract,snapshot,newRoom,day,request,price,reason,deposit,quote.quote_key])).id;

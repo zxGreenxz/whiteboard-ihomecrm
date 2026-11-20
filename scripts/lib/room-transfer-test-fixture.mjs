@@ -21,6 +21,40 @@ export async function installStatements(db, name, prefixes) {
   }
 }
 
+// The production authority locks an active organization and resolves actual membership scope.
+// Use the baseline DDL for its witness tables so the preview test exercises both decisions.
+export async function installRoomTransferAuthorization(db, baseline) {
+  const tables = ['public.permission_definitions', 'public.organization_memberships', 'public.authorization_scopes',
+    'public.member_permission_overrides', 'public.member_override_scopes', 'public.organization_roles',
+    'public.role_permissions', 'public.role_bindings', 'public.role_binding_scopes', 'public.area_buildings',
+    'public.cashbook_possession_bindings', 'app_private.tenant_emergency_denies'];
+  for (const name of tables) {
+    const ddl = baseline.match(new RegExp('^CREATE TABLE ' + name.replace('.', '\\.') + ' \\([\\s\\S]*?^\\);', 'm'));
+    assert.ok(ddl, name);
+    await db.exec(ddl[0]);
+  }
+  await db.exec(`
+    CREATE TABLE public.accounts(id uuid, organization_id uuid, deleted_at timestamptz);
+    ALTER TABLE public.organizations ADD COLUMN status text DEFAULT 'ACTIVE', ADD COLUMN authorization_version bigint DEFAULT 1;
+    INSERT INTO public.permission_definitions(key,resource,action,sensitivity,scope_kinds,required_dimensions)
+      VALUES ('contracts.edit','contracts','edit','MANAGE','{BUILDING}','{BUILDING}');
+    INSERT INTO public.organization_memberships(id,organization_id,user_id,member_type)
+      VALUES ('${id(91)}','${org}','${actor}','STAFF');
+    INSERT INTO public.authorization_scopes(id,organization_id,scope_type,building_id)
+      VALUES ('${id(92)}','${org}','BUILDING','${building}');
+    INSERT INTO public.member_permission_overrides(id,organization_id,membership_id,permission_key,effect,scope_mode)
+      VALUES ('${id(93)}','${org}','${id(91)}','contracts.edit','ALLOW','SCOPED');
+    INSERT INTO public.member_override_scopes VALUES ('${org}','${id(93)}','${id(92)}');
+    DROP FUNCTION app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid);
+    DROP FUNCTION app_private.lock_org_for_decision_v1(uuid);
+  `);
+  for (const name of ['raise_malformed_override', 'lock_org_for_decision_v1', 'authorize_tenant_action_v3']) {
+    const ddl = baseline.match(new RegExp('^CREATE FUNCTION app_private\\.' + name + '\\([\\s\\S]*?^\\$\\$;', 'm'));
+    assert.ok(ddl, name);
+    await db.exec(ddl[0]);
+  }
+}
+
 export async function installRoomTransferFixture(db) {
   // The actor's membership and building grants are fixture data. Writers, permission guard,
   // notice cancellation, transfer history and commission audit execute their repository SQL.
