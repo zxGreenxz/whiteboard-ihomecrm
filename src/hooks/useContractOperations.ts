@@ -4,6 +4,7 @@ import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadNumber} from '@/lib/financialReadValidation';
 import {readContractNoticeOperationReceipt} from '@/lib/contractNoticeOperationReceipt';
+import { submitRoomTransfer } from '@/lib/contract-lifecycle/roomTransferQuote';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -81,12 +82,13 @@ export const useTransferRoom = () => {
   return useMutation({
     retry:false,
     meta:{handlesFeedback:true},
-    mutationFn: async (params: TransferRoomNoticeInput) => {
+    mutationFn: async ({reconcileOnly, ...params}: TransferRoomNoticeInput & {reconcileOnly?: boolean}) => {
       if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức');
       const args=buildTransferRoomNoticeArgs(params,selectedOrganizationId);
       if(params.newRentPrice!==undefined)financialReadNumber(params.newRentPrice);
       return workflow.current.run(params.contractId,"chuyển phòng",async progress=>{
-        const {data,error}=await supabase.rpc("transfer_room_with_notice_v1",{...args,p_request_id:progress.requestKey});
+        if(reconcileOnly) throw {code:'22023',message:'Không tìm thấy yêu cầu chuyển phòng đang chờ đối chiếu.'};
+        const {data,error}=await submitRoomTransfer({...args,p_request_id:progress.requestKey});
         if(error)throw error;
         const parsedId=z.string().guid().safeParse(data);
         if(parsedId.success)progress.completed.push({id:parsedId.data,label:`Hợp đồng cần đối chiếu: ${parsedId.data}`});
@@ -94,7 +96,9 @@ export const useTransferRoom = () => {
         const receipt=await readContractNoticeOperationReceipt(selectedOrganizationId,progress.requestKey,params,'TRANSFER_ROOM');
         progress.completed.push({id:receipt.eventId,label:'Đã xác nhận sự kiện gia hạn/chuyển phòng'});
         return receipt;
-      });
+      }, async pending => reconcileOnly ? {
+        result: await readContractNoticeOperationReceipt(selectedOrganizationId, pending.requestKey ?? pending.attemptId, params, 'TRANSFER_ROOM'),
+      } : null);
     },
     onSuccess: (receipt) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
@@ -104,12 +108,21 @@ export const useTransferRoom = () => {
       queryClient.invalidateQueries({ queryKey: ["room-cash-lifecycle"] });
       queryClient.invalidateQueries({ queryKey: ["commission-prefill", receipt.contractId] });
       queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
+      for (const key of [
+        'room-transfer-preview', 'room-transfer-invoice-rents', 'invoices', 'invoices-legacy', 'invoice', 'invoice-history',
+        'invoice-statistics', 'unpaid-invoices', 'income-expenses', 'pending-approvals', 'deposit-dashboard',
+      ]) {
+        void queryClient.invalidateQueries({ queryKey: [key] });
+      }
       toast.success(`Đã chuyển hợp đồng ${receipt.contractNumber} sang phòng ${receipt.roomName}.`);
     },
     onError: (error: unknown) => {
       console.error("Error transferring room:", error);
       const feedback = transferRoomFeedback(error);
-      if (feedback.code === 'PT409') queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      if (feedback.code === 'PT409') {
+        void queryClient.invalidateQueries({ queryKey: ['contracts'] });
+        void queryClient.invalidateQueries({ queryKey: ['room-transfer-preview'] });
+      }
       if (isTransferRoomUnavailable(error)) queryClient.invalidateQueries({ queryKey: ['rooms'] });
       toast.error(feedback.outcome === 'partial' || feedback.outcome === 'unknown'
         ? feedback.description

@@ -1061,6 +1061,10 @@ function StepMoveOut({
                     Cọc theo HĐ: {formatVND(totalDeposit)}đ · Đã thu:{" "}
                     {formatVND(depositPaid)}đ
                   </p>
+                  {depositPaid > totalDeposit && <p className="text-xs text-muted-foreground">
+                    Sổ cọc ghi nhận cao hơn mức thỏa thuận {formatVND(depositPaid - totalDeposit)}đ.
+                    Đối chiếu phiếu thu rồi nhập số cọc thực giữ cần hoàn hoặc cấn.
+                  </p>}
                   {Number(field.value || 0) > depositPaid && (
                     <p className="text-[11px] text-amber-700">
                       Vượt cọc đã thu — hệ thống chỉ hoàn tối đa{" "}

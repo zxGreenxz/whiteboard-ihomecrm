@@ -19,6 +19,11 @@ export function transferRoomFeedback(error: unknown) {
     financial: true,
     rules: [
       ...unavailableRules,
+      { code: '55000', message: /^Hóa đơn còn thu cọc vượt số thiếu theo mức cọc mới/, description: 'Hóa đơn còn thu cọc vượt số thiếu theo mức cọc mới. Hãy điều chỉnh hóa đơn trước khi chuyển phòng.' },
+      { code: 'PT409', message: /^Số cọc hoặc hóa đơn đã thay đổi/, description: 'Số cọc hoặc hóa đơn vừa thay đổi. Kiểm tra lại bản tính mới trước khi xác nhận.' },
+      { code: '55000', message: /^(Giá thuê đổi giữa hai lần chuyển|Thiếu giá thuê lịch sử)/, description: 'Cần đối chiếu giá thuê của các lần chuyển trước trong kỳ hóa đơn này.' },
+      { code: '55000', message: /^(Hóa đơn kỳ chuyển thiếu|Kỳ tiền phòng trên hóa đơn|Nhiều dòng tiền phòng|Ngày chuyển nằm ngoài kỳ tiền thuê|Cần đối chiếu dòng tiền thuê|Cần đối chiếu nguồn nợ)/, description: 'Kiểm tra kỳ tính, dòng tiền thuê và công nợ trên hóa đơn của hợp đồng trước khi chuyển phòng.' },
+      { code: '22023', message: 'Ngày chuyển và giá thuê phải hợp lệ', description: 'Kiểm tra ngày chuyển và giá thuê mới.' },
       { code: '42501', message: /^Phòng mới thuộc toà khác/, description: 'Chuyển phòng chỉ áp dụng trong cùng tòa. Nếu đổi tòa, hãy thanh lý hợp đồng cũ rồi lập hợp đồng mới.' },
       { code: 'PT409', message: /^Hợp đồng đã thay đổi/, description: 'Hợp đồng đã thay đổi. Hãy mở lại biểu mẫu và kiểm tra thông tin mới trước khi chuyển phòng.' },
       { code: 'P0001', message: 'Chỉ chuyển phòng được khi hợp đồng đang hiệu lực', description: 'Hợp đồng đã hết hiệu lực chuyển phòng. Hãy kiểm tra lại trạng thái hợp đồng.' },

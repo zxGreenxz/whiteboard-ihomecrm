@@ -2,7 +2,7 @@ import {QueryRegion} from '@/components/errors/QueryRegion';
 import { InlineSkeleton } from '@/components/loading/LoadingState';
 import {InvoicePartialError,invoiceFailureMessage,invoiceLabel} from '@/lib/invoiceFeedback';
 import {voucherOutcomeUnknown} from '@/lib/voucherFeedback';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, type Path, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
@@ -27,6 +27,8 @@ import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { computePreviousDebt, getContractDiscountSlot } from '@/lib/invoiceHelpers';
 import { useInvoiceRentSupport } from '@/hooks/invoices/useInvoiceRentSupport';
+import { useRoomTransferInvoiceRents } from '@/hooks/invoices/useRoomTransferInvoiceRents';
+import { transferRentMismatch } from '@/lib/roomTransferInvoiceRent';
 import { format, addMonths } from 'date-fns';
 import { resolveInvoicePricing, type ContractServiceInput } from '@/lib/contractServicePricing';
 import { todayISO } from '@/lib/collect';
@@ -164,6 +166,23 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
   const selectedContract = contracts?.find((c) => c.id === watchedContractId);
   const buildingIdOfContract = selectedContract?.room?.building_id || '';
+  const transferRents = useRoomTransferInvoiceRents(buildingIdOfContract, watchedBillingMonth, open && !!selectedContract);
+  const rentContext = JSON.stringify([open, watchedContractId, watchedBillingMonth]);
+  const editedRent = useRef(false);
+  const transferPrice = transferRents.data?.[watchedContractId];
+  const rentError = transferRentMismatch(transferPrice, watch('rent_price'));
+  const quotedRent = transferRents.data && selectedContract
+    ? transferRents.data[selectedContract.id] ?? Number(selectedContract.rent_price ?? 0)
+    : undefined;
+  useEffect(() => {
+    editedRent.current = false;
+    seed({ rent_price: 0 });
+  }, [rentContext, seed]);
+  useEffect(() => {
+    if (quotedRent === undefined) return;
+    if (editedRent.current) setBaseline(previous => ({ ...previous, rent_price: quotedRent }));
+    else seed({ rent_price: quotedRent });
+  }, [rentContext, quotedRent, seed]);
   const servicesQuery=useBuildingServices(buildingIdOfContract);
   const {data:bldSvc}=servicesQuery;
   // Chỉ fetch xe của HĐ đã chọn — trước đây khi chưa chọn HĐ fetch TOÀN BỘ xe
@@ -191,12 +210,11 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     [selectedContract, defaults],
   );
 
-  // Khi chọn HĐ: load rent_price, occupants, meter prev_reading; prefill nước+PDV.
+  // Khi chọn HĐ, nạp số người, chỉ số điện và dịch vụ.
   useEffect(() => {
     if (!selectedContract) return;
     const occ = selectedContract.contract_customers?.length || 1;
     seed({
-      rent_price: Number(selectedContract.rent_price) || 0,
       occupants: occ,
       current_reading: null,
       prev_reading_overridden: false,
@@ -362,8 +380,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   });
 
   const {data:discountSlot}=discountQuery;
-  const sources=[contractsQuery,buildingsQuery,roomsQuery,...(watchedContractId?[servicesQuery,vehiclesQuery,existingQuery,debtQuery,creditQuery,discountQuery]:[])];
-  const sourcesUnavailable=sources.some(query=>query.isError||query.isLoading||query.data===undefined)||meterLoading||!!meterError;
+  const sources=[contractsQuery,buildingsQuery,roomsQuery,...(watchedContractId?[servicesQuery,vehiclesQuery,existingQuery,debtQuery,creditQuery,discountQuery,transferRents]:[])];
+  const sourcesUnavailable=sources.some(query=>query.isError||query.isLoading||query.data===undefined)||transferRents.isFetching||!!rentError||meterLoading||!!meterError;
 
   useEffect(() => {
     if (!watchedContractId) return;
@@ -383,11 +401,15 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchedContractId, watchedBillingMonth, creditBalance, discountSlot?.applicable, discountSlot?.amountPerMonth, discountSlot?.supportRevision, selectedContract?.discounts?.version]);
 
-  const ctl = useInvoiceEntry(form, { baseline, pricing, active: !!selectedContract });
+  const entry = useInvoiceEntry(form, { baseline, pricing, active: !!selectedContract, transferPeriodRent: transferPrice });
+  const ctl = { ...entry, set: { ...entry.set, rent: (amount: number) => {
+    editedRent.current = true;
+    entry.set.rent(amount);
+  } } };
   const support = useInvoiceRentSupport(form, {
     organizationId: selectedOrganizationId, contractId: watchedContractId,
     enabled: open && selectedContract?.discounts?.version === 2,
-    items: buildInvoiceItems(ctl.v, { elecServiceId: pricing.elecServiceId, waterServiceId: pricing.waterServiceId, pdvServiceId: pricing.pdvServiceId,
+    items: buildInvoiceItems(ctl.v, { transferPeriodRent: transferPrice, elecServiceId: pricing.elecServiceId, waterServiceId: pricing.waterServiceId, pdvServiceId: pricing.pdvServiceId,
       rentDescription: `Tiền thuê căn hộ ${selectedContract?.room?.name || ''}`.trim() }),
     credit: creditBalance,
   });
@@ -420,7 +442,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     }
     const discountAmount = data.discount_amount || 0;
     const appliedCredit = Math.min(Math.max(0, data.applied_credit || 0), Math.max(0, discountAmount));
-    const items = buildInvoiceItems(data, { elecServiceId: pricing.elecServiceId, waterServiceId: pricing.waterServiceId,
+    const items = buildInvoiceItems(data, { transferPeriodRent: transferPrice, elecServiceId: pricing.elecServiceId, waterServiceId: pricing.waterServiceId,
       pdvServiceId: pricing.pdvServiceId, rentDescription: `Tiền thuê căn hộ ${roomData?.name || ''}`.trim() });
     const invoiceFormData: InvoiceFormData = {
       building_id: buildingId, room_id: roomId, contract_id: data.contract_id,
@@ -642,9 +664,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       creditBalance={watchedContractId ? creditBalance : 0}
       defaultDepositAmount={Number(selectedContract?.total_deposit) || 0}
       ready={!!selectedContract}
-      validationError={(support.checking ? null : support.error) || firstEntryError(errors)}
-      notice={<><QueryRegion label="dữ liệu lập hoá đơn" queries={sources} skeleton="none">{null}</QueryRegion>{support.checking&&<InlineSkeleton label="hỗ trợ của tháng và các khoản thu" width="14rem" />}{meterError&&<p role="alert" className="text-destructive">{meterError}</p>}{submitError&&<p role="alert" className="text-destructive">{submitError}</p>}{completedInvoiceId&&<a className="underline" href={`/invoices/${completedInvoiceId}`}>Mở hoá đơn đã lưu</a>}</>}
-      onResetAll={() => { support.resetParts(); reset({ ...baseline, contract_id: watchedContractId }); }}
+      validationError={rentError || (support.checking ? null : support.error) || firstEntryError(errors)}
+      notice={<><QueryRegion label="dữ liệu lập hoá đơn" queries={sources} skeleton="none">{null}</QueryRegion>{rentError && transferPrice !== undefined && <button type="button" className="text-sm underline" onClick={() => { editedRent.current = false; seed({ rent_price: transferPrice }); }}>Dùng mức thuê đã tính</button>}{support.checking&&<InlineSkeleton label="hỗ trợ của tháng và các khoản thu" width="14rem" />}{meterError&&<p role="alert" className="text-destructive">{meterError}</p>}{submitError&&<p role="alert" className="text-destructive">{submitError}</p>}{completedInvoiceId&&<a className="underline" href={`/invoices/${completedInvoiceId}`}>Mở hoá đơn đã lưu</a>}</>}
+      onResetAll={() => { editedRent.current = false; support.resetParts(); reset({ ...baseline, contract_id: watchedContractId }); }}
       onCancel={handleClose}
       footNote={isSupportSummary(selectedContract?.discounts?.version === 2, support)}
       submit={{

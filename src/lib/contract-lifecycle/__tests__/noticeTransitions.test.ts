@@ -62,5 +62,5 @@ it('current core failure rolls cancellation and audit back; adapter introduces n
 });
 it('builders require snapshot/decision/retry identity while preserving original money parameters',()=>{
   expect(buildRenewNoticeArgs({contractId:contract,expectedUpdatedAt:at,newEndDate:'2027-12-31',noticeChoice:'CANCEL',requestId:id(20),newRentPrice:100,newDeposit:200,notes:'Note'},org)).toMatchObject({p_notice_choice:'CANCEL',p_new_rent_price:100,p_new_deposit:200,p_expected_updated_at:at});
-  expect(buildTransferRoomNoticeArgs({contractId:contract,expectedUpdatedAt:at,newRoomId:newRoom,transferDate:'2026-10-01',requestId:id(20),notes:'Note'},org)).toMatchObject({p_new_room_id:newRoom,p_notes:'Note'});
+  expect(buildTransferRoomNoticeArgs({contractId:contract,expectedUpdatedAt:at,newRoomId:newRoom,transferDate:'2026-10-01',newDeposit:200,quoteKey:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',requestId:id(20),notes:'Note'},org)).toMatchObject({p_new_room_id:newRoom,p_new_deposit:200,p_quote_key:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',p_notes:'Note'});
 });

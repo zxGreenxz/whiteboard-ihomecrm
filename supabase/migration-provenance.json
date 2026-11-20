@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-20T08:55:03.801Z",
+  "generatedAt": "2026-11-20T10:16:14.004Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 967,
-    "unknown": 80,
+    "unknown": 84,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14526,6 +14526,67 @@
       "evidence": [
         "catalog:function:app_private.commission_reason_transfer_room_before_v1",
         "catalog:function:app_private.apply_contract_notice_transition_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120093546_chuyen_phong_tien_coc.sql",
+      "version": "20261120093546",
+      "name": "chuyen_phong_tien_coc",
+      "scheme": "timestamp14",
+      "sha256": "e40729b6c427cb2937080f80dc0847e514b4b0502c41fea75b3ff80e801d66e8",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.quote_room_transfer_deposit_v1",
+        "function:app_private.apply_room_transfer_deposit_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120093620_tien_thue_ky_chuyen_phong.sql",
+      "version": "20261120093620",
+      "name": "tien_thue_ky_chuyen_phong",
+      "scheme": "timestamp14",
+      "sha256": "aa7aa0638428c62bdb8a1db03c8be2a893c92d0b26327b8ba40c0fc3f64b8318",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.room_transfer_rent_events",
+        "function:app_private.record_room_transfer_rent_v1",
+        "function:app_private.room_transfer_first_month_v1",
+        "function:app_private.room_transfer_billing_period_v1",
+        "function:app_private.room_transfer_rent_amount_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120093840_quyet_toan_khi_chuyen_phong.sql",
+      "version": "20261120093840",
+      "name": "quyet_toan_khi_chuyen_phong",
+      "scheme": "timestamp14",
+      "sha256": "9dd68a0d4d48982b08bff91a91a9cead5b28a5822e8a6acc2c101af6f7341dee",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.room_transfer_invoice_balance_v1",
+        "function:public.preview_room_transfer_v1",
+        "function:app_private.settle_room_transfer_invoice_v1",
+        "function:app_private.transfer_room_finance_v1",
+        "function:public.transfer_room_with_notice_v2"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120094154_tien_phong_ky_chuyen_khi_lap_hoa_don.sql",
+      "version": "20261120094154",
+      "name": "tien_phong_ky_chuyen_khi_lap_hoa_don",
+      "scheme": "timestamp14",
+      "sha256": "c54f7aacd1ae4028c8e51c8e8e579216e9be8ad05d82ca766baba86810b1af1a",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.room_transfer_invoice_rent_v1",
+        "function:public.room_transfer_invoice_rents_v1",
+        "function:app_private.lock_invoice_contract_for_room_transfer_v1",
+        "function:app_private.check_new_invoice_transfer_rent_v1",
+        "trigger:public.invoices.room_transfer_lock_monthly_invoice"
       ]
     },
     {

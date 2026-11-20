@@ -986,6 +986,91 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
+    },
+    "supabase/migrations/20261120093546_chuyen_phong_tien_coc.sql": {
+      "sha256": "e40729b6c427cb2937080f80dc0847e514b4b0502c41fea75b3ff80e801d66e8",
+      "missingObjects": [
+        "function:app_private.quote_room_transfer_deposit_v1",
+        "function:app_private.apply_room_transfer_deposit_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Hai hàm tính cọc và cập nhật mức cọc được bổ sung cho lần chuyển cùng tòa. Bản này đang ở nhánh chờ phát hành. Đã kiểm với dữ liệu giả các trường hợp cọc thiếu, dư và phần đang thu qua hóa đơn.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261120093546_chuyen_phong_tien_coc.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.quote_room_transfer_deposit_v1("
+        },
+        {
+          "duong_dan": "scripts/__tests__/room-transfer-deposit.test.mjs",
+          "trich_doan": "uses a zero room deposit and falls back only for a missing room deposit"
+        }
+      ]
+    },
+    "supabase/migrations/20261120093620_tien_thue_ky_chuyen_phong.sql": {
+      "sha256": "aa7aa0638428c62bdb8a1db03c8be2a893c92d0b26327b8ba40c0fc3f64b8318",
+      "missingObjects": [
+        "table:app_private.room_transfer_rent_events",
+        "function:app_private.record_room_transfer_rent_v1",
+        "function:app_private.room_transfer_first_month_v1",
+        "function:app_private.room_transfer_billing_period_v1",
+        "function:app_private.room_transfer_rent_amount_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Lịch sử giá thuê và các hàm chia tiền theo ngày là đối tượng mới. Đã kiểm kỳ ngắn, kỳ qua hai tháng, nhiều lần chuyển và số tiền đã ghi trên hóa đơn bằng dữ liệu thử. Chưa áp dụng migration trên production.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261120093620_tien_thue_ky_chuyen_phong.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.room_transfer_rent_events ("
+        },
+        {
+          "duong_dan": "scripts/__tests__/room-transfer-invoice-rents.test.mjs",
+          "trich_doan": "bills a first period spanning two months only in its accounting month"
+        }
+      ]
+    },
+    "supabase/migrations/20261120093840_quyet_toan_khi_chuyen_phong.sql": {
+      "sha256": "9dd68a0d4d48982b08bff91a91a9cead5b28a5822e8a6acc2c101af6f7341dee",
+      "missingObjects": [
+        "function:app_private.room_transfer_invoice_balance_v1",
+        "function:public.preview_room_transfer_v1",
+        "function:app_private.settle_room_transfer_invoice_v1",
+        "function:app_private.transfer_room_finance_v1",
+        "function:public.transfer_room_with_notice_v2"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Các hàm xem trước và quyết toán khi chuyển phòng đang chờ phát hành. Đã kiểm quyền xem hóa đơn, chống ghi trùng và hoàn tác khi phiếu không đối chiếu được bằng dữ liệu thử.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261120093840_quyet_toan_khi_chuyen_phong.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.preview_room_transfer_v1("
+        },
+        {
+          "duong_dan": "scripts/__tests__/contract-room-transfer-finance-rpc.test.mjs",
+          "trich_doan": "requires invoice view before showing or applying an existing bill"
+        }
+      ]
+    },
+    "supabase/migrations/20261120094154_tien_phong_ky_chuyen_khi_lap_hoa_don.sql": {
+      "sha256": "c54f7aacd1ae4028c8e51c8e8e579216e9be8ad05d82ca766baba86810b1af1a",
+      "missingObjects": [
+        "function:app_private.room_transfer_invoice_rent_v1",
+        "function:public.room_transfer_invoice_rents_v1",
+        "function:app_private.lock_invoice_contract_for_room_transfer_v1",
+        "function:app_private.check_new_invoice_transfer_rent_v1",
+        "trigger:public.invoices.room_transfer_lock_monthly_invoice"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Hàm đọc tiền thuê theo kỳ và hai trigger cho hóa đơn mới đang chờ phát hành cùng luồng chuyển phòng. Đã kiểm giá trên cả biểu mẫu và đường lập hóa đơn theo tòa, bao gồm trường hợp phải tải lại giá.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261120094154_tien_phong_ky_chuyen_khi_lap_hoa_don.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.room_transfer_invoice_rents_v1("
+        },
+        {
+          "duong_dan": "scripts/__tests__/room-transfer-invoice-rents.test.mjs",
+          "trich_doan": "rejects a stale whole-month rent submitted by a legacy/manual invoice writer"
+        }
+      ]
     }
   }
 }

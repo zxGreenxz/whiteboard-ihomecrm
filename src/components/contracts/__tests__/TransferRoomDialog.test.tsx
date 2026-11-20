@@ -5,21 +5,22 @@ import type { ContractWithRelations } from '@/types/contract';
 import { TransferRoomDialog } from '../TransferRoomDialog';
 
 const h = vi.hoisted(() => ({
-  rooms: vi.fn(), mutate: vi.fn(), refetch: vi.fn(), close: vi.fn(), pending: false,
+  rooms: vi.fn(), quote: vi.fn(), mutate: vi.fn(), refetch: vi.fn(), close: vi.fn(), pending: false,
 }));
 vi.mock('@/hooks/useContractOperations', () => ({
   useTransferRoom: () => ({ mutate: h.mutate, isPending: h.pending }),
 }));
+vi.mock('@/hooks/useRoomTransferQuote', () => ({ useRoomTransferQuote: h.quote }));
 vi.mock('@/hooks/useRooms', () => ({ useRooms: h.rooms }));
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const contract = {
   id: id(1), updated_at: '2026-10-02T03:00:00Z', status: 'ACTIVE',
   room_id: id(2), room: { id: id(2), building_id: id(3), name: 'Phòng nguồn', building: { id: id(3), name: 'Tòa A' } },
-  expected_move_out_date: '2026-10-29', rent_price: 100,
+  expected_move_out_date: '2026-10-29', rent_price: 100, total_deposit: 90,
 } as ContractWithRelations;
 const rooms = [
-  { id: id(4), building_id: id(3), name: 'Phòng đích', status: 'AVAILABLE' },
+  { id: id(4), building_id: id(3), name: 'Phòng đích', status: 'AVAILABLE', deposit_amount: 130 },
   { id: id(2), building_id: id(3), name: 'Phòng nguồn', status: 'AVAILABLE' },
   { id: id(5), building_id: id(9), name: 'Phòng khác tòa', status: 'AVAILABLE' },
   { id: id(6), building_id: id(3), name: 'Phòng bảo trì', status: 'MAINTENANCE' },
@@ -33,7 +34,13 @@ const chooseRoom = () => fireEvent.change(screen.getByRole('combobox', { name: /
 const reason = 'Khách cần thêm diện tích';
 const enterReason = () => fireEvent.change(screen.getByLabelText(/Lý do chuyển phòng/), { target: { value: reason } });
 
-beforeEach(() => { vi.clearAllMocks(); h.pending = false; loadRooms(); });
+const quote = { period_start: '2026-10-01', period_end: '2026-10-31', old_days: 14, new_days: 17,
+  required_deposit: 130, held_deposit: 90, deposit_shortfall: 40, deposit_surplus: 0,
+  period_rent: 230, billed_rent: 250, rent_delta: -20, invoice_id: id(25), invoice_status: 'APPROVED', quote_key: 'cccccccccccccccccccccccccccccccc' };
+beforeEach(() => {
+  vi.clearAllMocks(); h.pending = false; loadRooms();
+  h.quote.mockImplementation(input => ({ data: input ? quote : undefined, isError: false, refetch: h.refetch }));
+});
 afterEach(cleanup);
 
 it('chỉ đọc khi mở, chỉ cho chọn phòng trống khác trong tòa của hợp đồng', () => {
@@ -63,7 +70,7 @@ it.each([
   await waitFor(() => expect(h.mutate).toHaveBeenCalledTimes(1));
   expect(h.mutate.mock.calls[0][0]).toMatchObject({
     contractId: contract.id, expectedUpdatedAt: contract.updated_at, newRoomId: id(4),
-    newRentPrice: expected, transferDate: '2026-10-15', notes: reason, noticeReason: reason,
+    newRentPrice: expected, newDeposit: 130, quoteKey: 'cccccccccccccccccccccccccccccccc', transferDate: '2026-10-15', notes: reason, noticeReason: reason,
   });
   expect(h.close).not.toHaveBeenCalled();
   h.mutate.mock.calls[0][1].onSuccess();
@@ -76,7 +83,7 @@ it('chặn ngày trống, ngày sai và lý do quá ngắn', async () => {
   const date = screen.getByLabelText(/Ngày chuyển/);
   fireEvent.change(date, { target: { value: '' } });
   fireEvent.click(submit());
-  await screen.findByText('Ngày chuyển không được để trống');
+  expect(submit().disabled).toBe(true);
   fireEvent.change(date, { target: { value: '31022026' } });
   fireEvent.click(submit());
   expect(screen.getByText(/Nhập ngày hợp lệ/)).toBeTruthy();
@@ -159,4 +166,59 @@ it('loại phòng máy chủ báo vừa có hợp đồng dù danh sách vẫn c
   fireEvent.click(submit());
   await waitFor(() => expect(h.mutate).toHaveBeenCalledTimes(2));
   expect(h.mutate.mock.calls[1][0]).toMatchObject({ newRoomId: nextRoom.id, newRentPrice: 250, transferDate: '2026-10-15', notes: reason });
+});
+
+it('điền cọc theo từng phòng, dùng cọc HĐ khi phòng không có cấu hình và chấp nhận mức cọc bằng 0', () => {
+  const fallback = { ...rooms[0], id: id(8), name: 'Chưa có giá cọc', deposit_amount: undefined };
+  const noDeposit = { ...rooms[0], id: id(9), name: 'Miễn cọc', deposit_amount: 0 };
+  loadRooms([...rooms, fallback, noDeposit]);
+  render(dialog());
+  chooseRoom();
+  const deposit = screen.getByLabelText<HTMLInputElement>('Tiền cọc yêu cầu ở phòng mới');
+  expect(deposit.value).toBe('130');
+  fireEvent.change(deposit, { target: { value: '150' } });
+  expect(h.quote).toHaveBeenLastCalledWith(expect.objectContaining({ newDeposit: 150 }));
+  fireEvent.change(deposit, { target: { value: '' } });
+  expect(submit().disabled).toBe(true);
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: fallback.id } });
+  expect(deposit.value).toBe('90');
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: noDeposit.id } });
+  expect(deposit.value).toBe('0');
+  expect(h.quote).toHaveBeenLastCalledWith(expect.objectContaining({ newDeposit: 0 }));
+});
+
+it('chỉ gửi sau khi có báo giá mới, cho tải lại khi lỗi và hiển thị số âm theo chiều giảm', () => {
+  h.quote.mockReturnValue({ isError: false });
+  const ui = render(dialog());
+  chooseRoom();
+  expect(screen.getByText(/Đang tính cọc/)).toBeTruthy();
+  expect(submit().disabled).toBe(true);
+  h.quote.mockReturnValue({ isError: true, error: new Error('offline'), refetch: h.refetch });
+  ui.rerender(dialog());
+  fireEvent.click(screen.getByRole('button', { name: 'Tải lại số liệu' }));
+  expect(h.refetch).toHaveBeenCalled();
+  expect(submit().disabled).toBe(true);
+  h.quote.mockReturnValue({ data: { ...quote, deposit_shortfall: 0, deposit_surplus: 10 } });
+  ui.rerender(dialog());
+  expect(screen.getByText('Cọc dư tiếp tục giữ')).toBeTruthy();
+  expect(screen.getByText('Điều chỉnh giảm')).toBeTruthy();
+  expect(screen.getByText('20 đ')).toBeTruthy();
+  expect(submit().disabled).toBe(false);
+});
+
+it('kỳ chưa lập hóa đơn chỉ báo tiền thuê sẽ dùng khi lập hóa đơn', () => {
+  h.quote.mockReturnValue({ data: { ...quote, invoice_id: null, invoice_status: null, billed_rent: 0, rent_delta: 230 } });
+  render(dialog());
+  chooseRoom();
+  expect(screen.getByText(/Kỳ này chưa có hóa đơn/)).toBeTruthy();
+  expect(screen.queryByText('Điều chỉnh tăng')).toBeNull();
+});
+
+it('giải thích phần điều chỉnh đã có trên hóa đơn trong tổng tiền thuê cả kỳ', () => {
+  h.quote.mockReturnValue({ data: { ...quote, scheduled_rent: 260, rent_override: -30 } });
+  render(dialog());
+  chooseRoom();
+  expect(screen.getByText('Tiền thuê theo số ngày ở từng phòng').nextElementSibling?.textContent).toBe('260 đ');
+  expect(screen.getByText('Điều chỉnh đã có trên hóa đơn').nextElementSibling?.textContent).toBe('−30 đ');
+  expect(screen.getByText('Tiền thuê cả kỳ').nextElementSibling?.textContent).toBe('230 đ');
 });

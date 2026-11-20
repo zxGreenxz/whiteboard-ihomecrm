@@ -268,6 +268,18 @@ describe("computeExcelRowTotal", () => {
 });
 
 describe("buildInvoiceItems — thứ tự + công thức cũ", () => {
+  it.each([1_650_000, 0])('keeps transferred rent %i and prorates only water and service fees in the selected range', transferPeriodRent => {
+    const row = baseRow({ transferPeriodRent, period_start_date: '2026-07-03', period_end_date: '2026-07-17' });
+    expect(computeExcelRowTotal(row)).toBe(transferPeriodRent + 175_000 + 100_000 + 75_000);
+    const [rent, , water, pdv] = buildInvoiceFormData(row, CTX).items;
+    expect(rent.unit_price).toBe(transferPeriodRent);
+    expect(rent.from_date).toBeUndefined();
+    expect(rent.to_date).toBeUndefined();
+    expect(rent.description).not.toContain('15/30');
+    expect(water.unit_price * water.quantity).toBe(100_000);
+    expect(pdv.unit_price * pdv.quantity).toBe(75_000);
+    for (const service of [water, pdv]) expect(service).toMatchObject({ from_date: '2026-07-03', to_date: '2026-07-17' });
+  });
   it("đủ 4 items đúng thứ tự RENT→điện→nước→PDV; điện unit_price = amount/consumption", () => {
     const items = buildInvoiceItems(baseRow(), CTX);
     expect(items.map((i) => i.type)).toEqual(["RENT", "SERVICE", "SERVICE", "SERVICE"]);

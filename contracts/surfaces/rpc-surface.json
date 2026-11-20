@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3145,
+    "sourceCallSites": 3153,
     "catalogFunctions": 1660,
     "schemas": [
       "public",
@@ -9,15 +9,34 @@
     ]
   },
   "counts": {
-    "calledRpcs": 430,
+    "calledRpcs": 429,
     "byRisk": {
-      "normal": 321,
+      "normal": 320,
       "financial": 108,
       "infrastructure": 1
     },
-    "securityDefiner": 405
+    "securityDefiner": 404
   },
-  "missingOnServer": [],
+  "missingOnServer": [
+    {
+      "name": "preview_room_transfer_v1",
+      "callers": [
+        "src/lib/contract-lifecycle/roomTransferQuote.ts"
+      ]
+    },
+    {
+      "name": "room_transfer_invoice_rents_v1",
+      "callers": [
+        "src/hooks/invoices/useRoomTransferInvoiceRents.ts"
+      ]
+    },
+    {
+      "name": "transfer_room_with_notice_v2",
+      "callers": [
+        "src/lib/contract-lifecycle/roomTransferQuote.ts"
+      ]
+    }
+  ],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -7347,25 +7366,6 @@
           "execRoles": [
             "authenticated",
             "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useContractOperations.ts"
-      ],
-      "risk": "normal"
-    },
-    "transfer_room_with_notice_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_contract_id uuid, p_expected_updated_at timestamp with time zone, p_new_room_id uuid, p_transfer_date date, p_request_id uuid, p_new_rent_price numeric DEFAULT NULL::numeric, p_notes text DEFAULT NULL::text, p_notice_reason text DEFAULT NULL::text",
-          "returns": "uuid",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
           ]
         }
       ],

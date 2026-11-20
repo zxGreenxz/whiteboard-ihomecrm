@@ -1,3 +1,4 @@
+import { transferRentPeriodNote } from '@/lib/roomTransferInvoiceRent';
 import {EntryFieldError} from './EntryFieldError';
 import type { ReactNode } from 'react';
 import { Loader2, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
@@ -405,7 +406,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
           <div className="mx-[18px] mt-2.5 rounded-[9px] border border-dashed border-[hsl(210_20%_82%)] bg-slate-50 px-[11px] py-2.5">
             <div className="flex flex-wrap items-center gap-[9px]">
               <span className="text-[12.5px] font-semibold">Ngày thuê thực tế</span>
-              <span className="text-[11.5px] text-[hsl(210_10%_48%)]">prorate giá phòng + nước + PDV</span>
+              <span className="text-[11.5px] text-[hsl(210_10%_48%)]">{ctl.rentPeriodFixed ? transferRentPeriodNote : 'prorate giá phòng + nước + PDV'}</span>
               <div className="flex-1" />
               {totals.isProrated && (
                 <span className="rounded-[5px] bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">

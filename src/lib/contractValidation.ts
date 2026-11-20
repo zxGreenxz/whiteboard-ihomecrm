@@ -66,6 +66,7 @@ export const renewFormSchema = z.object({
 
 export const transferRoomFormSchema = z.object({
   new_room_id: z.string().guid('Vui lòng chọn phòng mới'),
+  new_required_deposit: z.number().int().nonnegative(),
   new_rent_price: z.number().min(0).optional(),
   transfer_date: z.string().min(1, 'Ngày chuyển không được để trống'),
   notes: z.string().optional(),
