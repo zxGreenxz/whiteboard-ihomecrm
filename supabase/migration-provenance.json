@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-20T04:21:04.390Z",
+  "generatedAt": "2026-11-20T05:31:50.246Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 965,
-    "unknown": 82,
+    "ledger-applied": 967,
+    "unknown": 80,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -14500,14 +14500,9 @@
       "name": "phan_phoi_quy_chung",
       "scheme": "timestamp14",
       "sha256": "0b51bc7e41fc145c99e10921c29603ed45977f3972922031ef116e18b9787ebb",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.shared_fund_entries",
-        "table:app_private.shared_fund_distribution_lines",
-        "function:app_private.shared_fund_owner_v1",
-        "function:app_private.shared_fund_receipt_v1",
-        "function:public.shared_fund_state_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T05:28:12.757Z|bien-nhan-backup"
       ]
     },
     {
@@ -14516,14 +14511,9 @@
       "name": "so_du_dau_ky_va_phan_phoi_quy_co_dong",
       "scheme": "timestamp14",
       "sha256": "8fc6a9911acab182649064c543e298c0c611c38a71e77b9a6510fe954cb8a920",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.shareholder_profit_openings",
-        "function:app_private.guard_shareholder_opening_voucher_v1",
-        "function:app_private.profit_ledger_shared_fund_components_v1",
-        "function:app_private.profit_ledger_check_shared_fund_marker_v1",
-        "function:app_private.guard_shared_fund_profit_marker_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T05:31:24.927Z|bien-nhan-backup"
       ]
     },
     {
