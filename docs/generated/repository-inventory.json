@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1925,
+  "tongSoFileTest": 1926,
   "soFileDocBangFs": 496,
-  "tongLoiGoi": 1358,
+  "tongLoiGoi": 1360,
   "khongPhanLoaiDuoc": 604,
   "theoLoai": {
     "ma-nguon": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 210,
+      "soFile": 211,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -328,6 +328,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/wave2-d.test.mjs",
+      "soGoi": 8,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 7
+    },
+    {
       "file": "infra/hermes-log-keeper/log-keeper.test.mjs",
       "soGoi": 8,
       "loai": {},
@@ -357,12 +365,6 @@
         "sql": 7
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/wave2-d.test.mjs",
-      "soGoi": 7,
-      "loai": {},
-      "khongPhanLoaiDuoc": 7
     },
     {
       "file": "infra/hermes-zalo-native/operator.test.mjs",
@@ -2025,6 +2027,14 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/contract-lifecycle/__tests__/transferMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/ocr/__tests__/runtime.test.ts",
@@ -3728,14 +3738,6 @@
     },
     {
       "file": "src/lib/contract-lifecycle/__tests__/reminders.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/contract-lifecycle/__tests__/transferMigration.test.ts",
       "soGoi": 1,
       "loai": {
         "sql": 1

@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {FinancialWorkflowError,isConfirmedFinancialRejection} from '@/lib/financialWorkflow';
 import {financialPending} from '@/lib/financialPending';
 import {getSessionUser} from '@/lib/authSession';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -51,9 +51,12 @@ export function useContractSigning(organizationId:string,draftId?:string) {
     },organizationId);
   },onSuccess:async signing=>{
     setPendingRequestId(null);queryClient.setQueryData(['contract-draft-signing',organizationId,signing.draft_id],(current:{server_today?:string}|undefined)=>({...current,signing}));
-    await Promise.all(['contract-drafts','contracts','rooms','my-available-rooms','room-reservations','contract-draft-signing','contract-commission-followups'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
+    await Promise.all(['contract-drafts','contracts','rooms','my-available-rooms','room-reservations','contract-draft-signing','contract-transfer-links','contract-commission-followups'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
     toast.success(`Đã ghi nhận ký và nhận phòng · ${signing.contract_number}`);
-  },onError:error=>toast.error(signingErrorMessage(error))});
+  },onError:(error,input)=>{
+    if(input && isConfirmedFinancialRejection(error))setPendingRequestId(null);
+    toast.error(signingErrorMessage(error));
+  }});
   return {...mutation,pendingRequestId,isPending:mutation.isPending||hydrating};
 }
 export function useSignedContractDocument(organizationId: string) {

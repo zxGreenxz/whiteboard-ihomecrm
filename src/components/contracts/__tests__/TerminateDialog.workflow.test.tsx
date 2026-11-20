@@ -67,6 +67,22 @@ describe('thanh lý tách bước trả phòng', () => {
     expect(spies.finalize).not.toHaveBeenCalled();
     expect(transfers.finalize).not.toHaveBeenCalled();
   });
+  it('quyết toán nhượng cọc cũ bằng 0 gửi một dòng phí 0 tới RPC nhượng', async () => {
+    const linkId = 'c1111111-1111-4111-8111-111111111111';
+    transfers.data = [{ id: linkId, state: 'LINKED', mode: 'BROKER', broker_fee: 0, deposit_base: 0, version: 2 }];
+    const exitCase = { id: 'd1111111-1111-4111-8111-111111111111', current_kind: 'EARLY_RETURN', initial_kind: 'EARLY_RETURN', actual_move_out_on: '2026-09-28', version: 1, state: 'PENDING', kind_history: [] } as import('@/lib/contractExitCases').ContractExitCase;
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={{ ...contract, total_deposit: 0, deposit_paid: 0 }} exitCase={exitCase} />);
+    fireEvent.click(screen.getByRole('button', { name: /Tiếp tục quyết toán/ }));
+    expect(screen.getByText(/không phát sinh hoa hồng môi giới/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Lập hoá đơn & thanh lý/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Xác nhận thanh lý' }));
+    await waitFor(() => expect(transfers.finalize).toHaveBeenCalledOnce());
+    expect(transfers.finalize.mock.calls[0][0]).toMatchObject({
+      linkId, expectedLinkVersion: 2, caseId: exitCase.id,
+      settlement: { depositRefund: 0, extraCharges: [{ kind: 'CUSTOM', description: `TRANSFER_BROKER_FEE:${linkId}`, amount: 0 }] },
+    });
+    expect(spies.finalize).not.toHaveBeenCalled();
+  });
   it('bước trả phòng không hỏi chỉ số: số điện cuối nhập một lần ở bước quyết toán', () => {
     render(<TerminateDialog open onOpenChange={vi.fn()} contract={contract} />);
     expect(screen.queryByText('Chỉ số điện, nước khi bàn giao')).toBeNull();

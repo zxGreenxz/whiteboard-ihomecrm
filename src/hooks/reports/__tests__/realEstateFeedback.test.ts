@@ -1,11 +1,14 @@
+// @vitest-environment jsdom
+import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ results: [] as unknown[], query: vi.fn(), user: vi.fn() }));
+const mocks = vi.hoisted(() => ({ results: [] as unknown[], query: vi.fn(), user: vi.fn(), rpc: vi.fn(), organization: "org-A" }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: (options: unknown) => options }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: mocks.organization }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: mocks.user }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (...args: unknown[]) => mocks.query(...args) } }));
-import { useVacantRoomsReport, useTerminationsReport, useExpenseRatioReport } from '../realEstateReports';
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: mocks.rpc, from: (...args: unknown[]) => mocks.query(...args) } }));
+import { useVacantRoomsReport, useTerminationsReport, useExpenseRatioReport, useRenewalsTransfersReport } from '../realEstateReports';
 beforeEach(() => {
-  mocks.results = []; mocks.user.mockResolvedValue({ id: 'user' });
+  mocks.results = []; mocks.organization = "org-A"; mocks.rpc.mockReset(); mocks.user.mockResolvedValue({ id: 'user' });
   mocks.query.mockImplementation(() => {
     const result = mocks.results.shift();
     const chain = new Proxy({}, { get: (_, name) => name === 'then' ? Promise.resolve(result).then.bind(Promise.resolve(result)) : () => chain });
@@ -14,6 +17,34 @@ beforeEach(() => {
 });
 const run = (query: unknown) => (query as { queryFn: () => Promise<unknown> }).queryFn();
 describe('required estate report sources', () => {
+  it('loads all pages of signed and legacy events with a stable order and organization-scoped cache', async () => {
+    const sample = { kind: 'TRANSFER', event_id: 'signed', event_date: '2026-11-20', customer_name: 'Khách mới', rent_price: 4200000 };
+    const pages = [[sample], [{ ...sample, event_id: 'legacy' }], []];
+    const order = vi.fn(), range = vi.fn();
+    mocks.rpc.mockImplementation(() => {
+      const builder = { order, range };
+      order.mockReturnValue(builder);
+      range.mockResolvedValue({ data: pages.shift(), error: null });
+      return builder;
+    });
+    const { result, rerender, unmount } = renderHook(() => useRenewalsTransfersReport('2026-11-01', '2026-11-30') as unknown as {
+      queryKey: unknown[]; queryFn: () => Promise<Array<{id: string; date: string; customer: string}>>;
+    });
+    const query = result.current;
+    expect(await query.queryFn()).toMatchObject([
+      {id:'TRANSFER-signed',date:'2026-11-20',customer:'Khách mới'}, {id:'TRANSFER-legacy'},
+    ]);
+    expect(mocks.rpc).toHaveBeenCalledWith('real_estate_renewals_transfers_v1', {
+      p_organization_id: 'org-A', p_building_ids: null, p_from: '2026-11-01', p_to: '2026-11-30',
+    });
+    expect(order.mock.calls.slice(0,4).map(call => call[0])).toEqual(['event_date','kind','contract_number','event_id']);
+    expect(range.mock.calls.map(call => call[0])).toEqual([0,1,2]);
+    mocks.organization = 'org-B';
+    rerender();
+    expect(result.current.queryKey).not.toEqual(query.queryKey);
+    unmount();
+  });
+
   it('rejects missing ended contracts instead of calculating vacancy with absent dates', async () => {
     const error = { code: 'XX000' };
     mocks.results = [{ data: [] }, { data: [] }, { data: null, error }];

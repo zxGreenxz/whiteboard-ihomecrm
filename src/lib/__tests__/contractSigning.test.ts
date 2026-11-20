@@ -86,6 +86,8 @@ describe('sign exact persisted draft, without automatic money',()=>{
     expect(signingErrorMessage({code:'42501'})).toMatch(/quyền/);
     expect(signingErrorMessage({code:'55P03'})).toMatch(/giữ/);
     expect(signingErrorMessage({code:'55000'})).toMatch(/nhận phòng/);
+    expect(signingErrorMessage({code:'55000',message:'Chưa hỗ trợ chuyển cọc giữa hai hợp đồng; lựa chọn đã lưu để đối soát.'})).toMatch(/hủy liên kết.*nộp cọc mới/);
+    expect(signingErrorMessage({code:'55000',message:'Nhượng qua môi giới cần khách mới nộp đủ cọc mới theo số cọc đã thu hiện hành'})).toMatch(/phiếu thu cọc của khách mới/);
     expect(signingErrorMessage({code:'55000',message:'Giữ chỗ mới có tên khách gợi nhớ, chưa gắn khách trong danh bạ. Gắn khách ở Quản lý cọc trước khi ký.'})).toMatch(/Gắn khách ở Quản lý cọc/);
   });
 });

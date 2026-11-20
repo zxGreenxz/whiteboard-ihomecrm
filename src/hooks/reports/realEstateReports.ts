@@ -1,4 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { rpcNullable } from "@/lib/rpcNullable";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
@@ -325,104 +328,36 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
   });
 }
 
-type EmbeddedRoom = { name: string | null; building_id: string | null; buildings: { name: string | null } | null } | null;
-type EmbeddedCustomers = Array<{ is_representative?: boolean; customers?: { full_name?: string } | null }> | null;
-type RenewalExtRow = { id: string; extension_date: string; new_rent_price: number | null; contracts: { contract_number: string | null; rent_price: number | null; deleted_at: string | null; rooms: EmbeddedRoom; contract_customers: EmbeddedCustomers } | null };
-type TransferContractRow = { id: string; contract_number: string | null; rent_price: number | null; updated_at: string; rooms: EmbeddedRoom; contract_customers: EmbeddedCustomers };
-
-/**
- * Báo cáo Gia hạn & Chuyển nhượng.
- * - Gia hạn (RENEWAL): từ bảng contract_extensions (sự kiện gia hạn đã hoàn tất) —
- *   KHÔNG còn dựa vào status='EXTENDED' (đã ngưng dùng).
- * - Chuyển nhượng (TRANSFER): HĐ status='TRANSFERRED'.
- */
-export function useRenewalsTransfersReport(
-  startDate?: string,
-  endDate?: string,
-  buildingId?: string
-) {
+/** Gia hạn và nhượng đã hoàn tất, dùng chung nguồn báo cáo với Hermes. */
+export function useRenewalsTransfersReport(startDate?: string, endDate?: string, buildingId?: string) {
+  const { selectedOrganizationId } = useOrganization();
   return useQuery({
+    enabled: !!selectedOrganizationId,
     meta: { errorDisplay: "inline", label: "báo cáo gia hạn và chuyển nhượng" },
-    queryKey: ["reports", "renewals-transfers", startDate, endDate, buildingId],
+    queryKey: ["reports", "renewals-transfers", selectedOrganizationId, startDate, endDate, buildingId],
     queryFn: async (): Promise<RenewalTransferRow[]> => {
-      // hermes-parity:begin w2d-re-renewals-transfers — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
-      const repName = (ccs: EmbeddedCustomers | undefined): string => {
-        const arr = ccs ?? [];
-        const rep = arr.find((x) => x.is_representative) ?? arr[0];
-        return rep?.customers?.full_name ?? "N/A";
-      };
-
-      // Renewals từ contract_extensions
-      let extQ = supabase
-        .from("contract_extensions")
-        .select(`
-          id, extension_date, new_rent_price, status,
-          contracts!contract_extensions_contract_id_fkey!inner (
-            contract_number, rent_price, deleted_at,
-            rooms ( name, building_id, buildings ( name ) ),
-            contract_customers ( is_representative, customers ( full_name ) )
-          )
-        `)
-        .in("status", ["APPROVED", "COMPLETED"]);
-      if (startDate) extQ = extQ.gte("extension_date", startDate);
-      if (endDate) extQ = extQ.lte("extension_date", endDate);
-      const { data: extData, error: extErr } = await extQ;
-      if (extErr) throw extErr;
-
-      // Transfers từ HĐ status TRANSFERRED
-      let trQ = supabase
-        .from("contracts")
-        .select(`
-          id, contract_number, rent_price, updated_at, start_date,
-          rooms ( name, building_id, buildings ( name ) ),
-          contract_customers ( is_representative, customers ( full_name ) )
-        `)
-        .eq("status", "TRANSFERRED")
-        .is("deleted_at", null);
-      if (startDate) trQ = trQ.gte("start_date", startDate);
-      if (endDate) trQ = trQ.lte("start_date", endDate);
-      const { data: trData, error: trErr } = await trQ;
-      if (trErr) throw trErr;
-
-      const renewals: RenewalTransferRow[] = ((extData as unknown[]) ?? [])
-        .map((e) => e as RenewalExtRow)
-        // Predicate CÓ KIỂU: `filter` với predicate boolean thường KHÔNG thu hẹp
-        // kiểu phần tử, nên năm dòng `e.contracts.x` phía dưới vẫn bị coi là có
-        // thể null dù đã lọc. Khai `e is …` để phép lọc nói được điều nó vừa làm.
-        .filter(
-          (e): e is RenewalExtRow & { contracts: NonNullable<RenewalExtRow["contracts"]> } =>
-            !!e.contracts && !e.contracts.deleted_at,
-        )
-        .map((e) => ({
-          id: `ext-${e.id}`,
-          type: "RENEWAL",
-          contract_number: e.contracts.contract_number ?? "N/A",
-          customer: repName(e.contracts.contract_customers),
-          building: e.contracts.rooms?.buildings?.name ?? "N/A",
-          building_id: e.contracts.rooms?.building_id ?? null,
-          room: e.contracts.rooms?.name ?? "N/A",
-          date: e.extension_date,
-          rent_price: e.new_rent_price ?? e.contracts.rent_price ?? 0,
-        }));
-
-      const transfers: RenewalTransferRow[] = ((trData as unknown[]) ?? [])
-        .map((c) => c as TransferContractRow)
-        .map((c) => ({
-          id: `tr-${c.id}`,
-          type: "TRANSFER",
-          contract_number: c.contract_number ?? "N/A",
-          customer: repName(c.contract_customers),
-          building: c.rooms?.buildings?.name ?? "N/A",
-          building_id: c.rooms?.building_id ?? null,
-          room: c.rooms?.name ?? "N/A",
-          date: c.updated_at,
-          rent_price: c.rent_price ?? 0,
-        }));
-
-      let results = [...renewals, ...transfers];
-      if (buildingId) results = results.filter((r) => r.building_id === buildingId);
-      results.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-      return results;
+      // hermes-parity:begin w2d-re-renewals-transfers
+      if (!selectedOrganizationId) throw new Error("Chưa chọn công ty để xem báo cáo");
+      type Event = Database["public"]["Functions"]["real_estate_renewals_transfers_v1"]["Returns"][number];
+      const rows = await fetchAllRows<Event>((from, to) =>
+        supabase.rpc("real_estate_renewals_transfers_v1", {
+          p_organization_id: selectedOrganizationId,
+          p_building_ids: rpcNullable(buildingId ? [buildingId] : null),
+          p_from: startDate,
+          p_to: endDate,
+        }).order("event_date", { ascending: false }).order("kind").order("contract_number").order("event_id").range(from, to),
+        { label: "gia hạn và chuyển nhượng" },
+      );
+      if (rows === null) throw new Error("Chưa tải được báo cáo gia hạn và chuyển nhượng");
+      return rows.map(row => {
+        if (row.kind !== "RENEWAL" && row.kind !== "TRANSFER") throw new Error("Loại giao dịch hợp đồng không hợp lệ");
+        return {
+          id: `${row.kind}-${row.event_id}`, type: row.kind,
+          contract_number: row.contract_number ?? "N/A", customer: row.customer_name ?? "N/A",
+          building: row.building_name ?? "N/A", building_id: row.building_id,
+          room: row.room_name ?? "N/A", date: row.event_date, rent_price: row.rent_price ?? 0,
+        };
+      });
       // hermes-parity:end w2d-re-renewals-transfers
     },
   });

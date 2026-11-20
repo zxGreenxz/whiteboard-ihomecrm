@@ -169,6 +169,8 @@ export function signingErrorMessage(error: unknown): string {
   if (code === '55P03') return 'Phòng đang có cọc hoặc giữ chỗ. Nhánh ký từ nháp chưa hỗ trợ chuyển nguồn giữ chỗ này.';
   if (code === '55000') {
     const message = typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
+    if (message.startsWith('Chưa hỗ trợ chuyển cọc giữa hai hợp đồng')) return 'Liên kết nhượng đang chờ cấn cọc cũ. Để ký với khoản cọc mới, hủy liên kết rồi lập lại với lựa chọn nộp cọc mới.';
+    if (message.startsWith('Nhượng qua môi giới cần khách mới nộp đủ cọc mới')) return 'Khách nhận nhượng qua môi giới cần nộp đủ cọc mới. Kiểm tra phiếu thu cọc của khách mới trước khi ký.';
     if (message.includes('RENT_SUPPORT_WRITERS_DISABLED')) return 'Chức năng lưu lịch hỗ trợ tiền thuê chưa được bật. Nội dung đang nhập vẫn được giữ; chưa ghi nhận ký.';
     // 20261010114500: giữ chỗ chỉ có tên gợi nhớ — nói đúng việc cần làm thay cho câu chung.
     if (message.includes('chưa gắn khách trong danh bạ')) return 'Phòng đang giữ chỗ bằng tên khách gợi nhớ, chưa gắn khách trong danh bạ. Gắn khách ở Quản lý cọc rồi ký lại.';

@@ -120,7 +120,7 @@ export function TerminateDialog({
   const transferQuery = useContractTransferLinks({ exitCaseId: exitCase?.id }, open && !!exitCase);
   const finalizeTransfer = useFinalizeContractTransferExit();
   const transfer = transferQuery.data?.find(link => link.state === 'LINKED');
-  const brokerFee = useMemo(() => transfer?.mode === 'BROKER' && transfer.broker_fee !== null && transfer.broker_fee > 0
+  const brokerFee = useMemo(() => transfer?.mode === 'BROKER' && transfer.broker_fee !== null && transfer.broker_fee >= 0
     ? transferBrokerFeeLine(transfer) : null, [transfer]);
   const brokerFeeUnavailable = transfer?.mode === 'BROKER' && !brokerFee;
   const transferUnavailable = !!exitCase && (transferQuery.isPending || transferQuery.isError || brokerFeeUnavailable);
@@ -1120,7 +1120,9 @@ function StepMoveOut({
         <div className="border-t pt-4">
           {brokerFee && <div className="mb-3 rounded border p-3 text-sm">
             <p>Phí nhượng qua môi giới · 50% cọc cũ: <strong>{formatVND(brokerFee.amount)} đ</strong></p>
-            <p className="text-xs text-muted-foreground">Đã cộng một lần vào khoản thu khi thanh lý. Các khoản khác xử lý như hiện tại.</p>
+            <p className="text-xs text-muted-foreground">{brokerFee.amount === 0
+              ? 'Cọc cũ bằng 0 đồng, không phát sinh hoa hồng môi giới.'
+              : 'Đã cộng một lần vào khoản thu khi thanh lý. Các khoản khác xử lý như hiện tại.'}</p>
           </div>}
           <TerminationExtraCharges
             contract={contract}

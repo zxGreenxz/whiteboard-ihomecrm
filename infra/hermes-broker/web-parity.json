@@ -629,26 +629,36 @@
     },
     {
       "id": "w2d-re-renewals-transfers",
-      "kind": "mirrored",
-      "description": "Báo cáo BĐS gia hạn và chuyển nhượng (useRenewalsTransfersReport): phụ lục gia hạn APPROVED/COMPLETED theo extension_date cộng HĐ TRANSFERRED theo start_date, khách đại diện (Hermes re_renewals_transfers).",
+      "kind": "rpc",
+      "description": "Báo cáo gia hạn và nhượng của web và Hermes cùng đọc chứng từ gia hạn, hợp đồng nhượng đã ký và giao dịch lịch sử.",
       "web": [
         {
           "path": "src/hooks/reports/realEstateReports.ts",
           "region": "w2d-re-renewals-transfers",
-          "sha256": "fc068ef172d8d5dd426de5a5ae865e34b80c432098ec849e588922cbbe6b7a7c"
+          "sha256": "59320d55ea3c46119d26dd3c621294479aa3f1031a9a0dfc8f41d801dc47dd04"
         }
       ],
       "hermes": [
         {
-          "sql": "public.real_estate_renewals_transfers_v1",
-          "note": "re_renewals_transfers"
+          "sql": "app_private.hermes_w2d_read_v1",
+          "calls": [
+            "public.real_estate_renewals_transfers_v1"
+          ]
         },
         {
           "path": "infra/hermes-broker/wave2-d-contract.mjs",
           "contains": "crm.real_estate_renewals_transfers_v1"
         }
       ],
-      "notes": "LỆCH ĐÃ BIẾT 18/10: ngày hiển thị của dòng chuyển nhượng web là updated_at nguyên (timestamp), Hermes đổi sang ngày theo giờ công ty."
+      "rpc": [
+        "real_estate_renewals_transfers_v1"
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/reports/realEstateReports.ts",
+          "rpc": "real_estate_renewals_transfers_v1"
+        }
+      ]
     },
     {
       "id": "w2d-re-promotions",

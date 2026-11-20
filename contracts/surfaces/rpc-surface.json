@@ -1,17 +1,17 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3140,
-    "catalogFunctions": 1660,
+    "sourceCallSites": 3145,
+    "catalogFunctions": 1663,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 430,
+    "calledRpcs": 431,
     "byRisk": {
-      "normal": 321,
+      "normal": 322,
       "financial": 108,
       "infrastructure": 1
     },
@@ -5721,6 +5721,25 @@
       ],
       "callers": [
         "src/hooks/rooms/useRoomTurnover.ts"
+      ],
+      "risk": "normal"
+    },
+    "real_estate_renewals_transfers_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_building_ids uuid[], p_from date DEFAULT NULL::date, p_to date DEFAULT NULL::date",
+          "returns": "TABLE(kind text, event_id uuid, contract_id uuid, contract_number text, event_date date, rent_price numeric, room_id uuid, room_name text, building_id uuid, building_name text, customer_id uuid, customer_name text, organization_id uuid)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/realEstateReports.ts"
       ],
       "risk": "normal"
     },

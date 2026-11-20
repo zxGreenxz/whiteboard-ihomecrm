@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { sharedW2d, D, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, USER, ORG, FOREIGN, CONTRACT_A, SERVICE } from './wave2-d-sql-fixture.mjs';
+import { sharedW2d, D, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, USER, ORG, FOREIGN, CONTRACT_A, CUSTOMER_A, SERVICE } from './wave2-d-sql-fixture.mjs';
 import { assertPackageParity, binding } from './wave2-sql-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2D_REPORTS } from './wave2-d-contract.mjs';
@@ -274,6 +274,83 @@ test('Phòng theo toà (rooms_occupancy): chỉ cần rooms.view; đang cho thu�
   assert.ok(occupancy.summary.rented > 0, 'fixture có phòng đang cho thuê');
 }));
 
+
+test('báo cáo CRM và Hermes cùng đếm một lần cho mỗi lượt nhượng đã ký, theo ngày nhận thực tế', () => inCase(async env => {
+  const { db } = env;
+  const [link, duplicate, historic, cancelled, unresolved] = [1,2,3,4,5].map(n => `12345678-0000-4000-8000-00000000000${n}`);
+  // Khoác cổng đọc hợp đồng lên fixture của Hermes. Mọi kết quả báo cáo bên dưới
+  // vẫn chạy RPC candidate bằng authenticated và vào qua cả hai lối web/Hermes.
+  await db.exec(`
+    CREATE TABLE public.contract_draft_signings(draft_id uuid,contract_id uuid,room_id uuid,building_id uuid,organization_id uuid,received_on date,terms jsonb);
+    CREATE TABLE public.contract_transfers(id uuid,contract_id uuid,organization_id uuid,transfer_date date,new_tenant_id uuid,new_room_id uuid,
+      new_rent_price numeric,transfer_type text,status text);
+    CREATE TABLE app_private.fixture_report_links(link jsonb);
+    ALTER TABLE public.contract_draft_signings ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY signing_scope ON public.contract_draft_signings FOR SELECT TO authenticated
+      USING(organization_id=ANY(public.my_org_ids()) AND public.can_access_building(building_id));
+    GRANT SELECT ON public.contract_draft_signings,public.contract_transfers TO authenticated;
+    CREATE FUNCTION public.read_contract_transfer_links_v1(uuid,uuid,uuid,uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $body$
+      SELECT COALESCE(jsonb_agg(link),'[]'::jsonb) FROM app_private.fixture_report_links
+      WHERE link->>'organization_id'=$1::text AND link->>'new_draft_id'=$3::text AND public.can_access_building((link->>'building_id')::uuid)
+    $body$;
+  `);
+  // Add the real scopeSets/scopes shape to the synthetic session used by the broker fixture.
+  // A platform admin flag must not give the actor report access without a tenant scope.
+  await db.exec(`
+    ALTER FUNCTION public.get_authorization_context_v1(uuid) RENAME TO fixture_original_report_context;
+    CREATE FUNCTION public.get_authorization_context_v1(p_org uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $context$
+      SELECT public.fixture_original_report_context(p_org) || jsonb_build_object(
+        'organizationId',CASE WHEN p_org=ANY(public.my_org_ids()) THEN p_org END,
+        'isPlatformAdmin',true,
+        'scopes',jsonb_build_object('reports_real_estate.renewals_transfers',0),
+        'scopeSets',COALESCE((SELECT jsonb_agg(jsonb_build_object('orgWide',org_wide,
+            'buildingIds',CASE WHEN org_wide THEN ARRAY[]::uuid[] ELSE building_ids END))
+          FROM app_private.authorized_scope_v3('reports_real_estate.renewals_transfers',p_org)),'[]'))
+    $context$;
+    GRANT EXECUTE ON FUNCTION public.get_authorization_context_v1(uuid) TO authenticated;
+  `);
+  const migration = readFileSync('supabase/migrations/20261120095231_bao_cao_hop_dong_nhuong_da_ky.sql','utf8');
+  await db.exec(migration);
+  await db.exec(migration);
+  const terms = { form: { rent_price: 4200000 }, customers: [{ id: CUSTOMER_A, is_representative: true }] };
+  const insertSigning = (org, building, room, draft, contract) => db.query(
+    "INSERT INTO public.contract_draft_signings VALUES($1,$2,$3,$4,$5,'2026-09-18',$6)", [draft,contract,room,building,org,terms]);
+  const insertLink = (item) => db.query('INSERT INTO app_private.fixture_report_links VALUES($1)', [item]);
+  const record = { id: link, old_contract_id: D.C_TRANSFER, new_contract_id: CONTRACT_A, new_draft_id: D.DRAFT_A,
+    room_id: ROOM, building_id: BUILDING, organization_id: ORG, state: 'LINKED' };
+  await insertSigning(ORG,BUILDING,ROOM,D.DRAFT_A,CONTRACT_A);
+  await insertLink(record);
+  await insertLink({ ...record, id: cancelled, state: 'CANCELLED' });
+  await insertLink({ ...record, id: unresolved, new_contract_id: null });
+  await insertSigning(ORG,OTHER_BUILDING,OTHER_ROOM,D.DRAFT_B,D.C_B2);
+  await insertLink({ ...record, id: historic, building_id: OTHER_BUILDING, room_id: OTHER_ROOM, new_draft_id: D.DRAFT_B, new_contract_id: D.C_B2 });
+  await db.query(`INSERT INTO public.contract_transfers VALUES
+    ($1,$3,$4,'2026-09-18',$5,NULL,4200000,'TENANT_CHANGE','COMPLETED'),
+    ($2,$3,$4,'2026-09-13',$5,NULL,3500000,'TENANT_CHANGE','COMPLETED')`, [duplicate,historic,D.C_TRANSFER,ORG,CUSTOMER_A]);
+  const query = 'SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY e.event_date,e.event_id),\'[]\') result FROM public.real_estate_renewals_transfers_v1($1,$2,$3,$4) e';
+  const read = (org, buildings, from = null, to = null) => env.call(query,[org,buildings,from,to],{role:'authenticated'});
+  await assert.rejects(read(ORG,null), code('42501'));
+  await assert.rejects(read(ORG,[],'2001-01-01','2001-01-02'), code('42501'));
+  await env.grant(['reports_real_estate.renewals_transfers']);
+  const rows = await read(ORG,[BUILDING]);
+  assert.deepEqual(rows.map(e => [e.kind,e.event_id,e.event_date]), [
+    ['TRANSFER',historic,'2026-09-13'], ['TRANSFER',link,'2026-09-18'], ['RENEWAL',D.EXT_A,'2026-09-20'] ]);
+  assert.equal(rows[1].contract_id, CONTRACT_A);
+  assert.equal(Number(rows[1].rent_price),4200000);
+  assert.deepEqual((await read(ORG,[BUILDING],'2026-09-18','2026-09-18')).map(e => e.event_id),[link]);
+  assert.deepEqual(await read(ORG,[]),[]);
+  await assert.rejects(read(FOREIGN,null), code('42501'));
+  // Cùng một người vẫn đọc HĐ của cả hai tòa, quyền riêng của báo cáo chỉ còn tòa A.
+  await db.query("UPDATE public.fixture_acl SET building_ids=ARRAY[$1::uuid] WHERE permission='reports_real_estate.renewals_transfers'",[BUILDING]);
+  assert.equal(await env.call('SELECT public.can_access_building($1) result',[OTHER_BUILDING],{role:'authenticated'}),true);
+  assert.deepEqual((await read(ORG,null)).map(e => e.event_id), rows.map(e => e.event_id));
+  assert.deepEqual(await read(ORG,[OTHER_BUILDING]),[]);
+  assert.deepEqual((await read(ORG,[BUILDING,OTHER_BUILDING])).map(e => e.event_id), rows.map(e => e.event_id));
+  const chatRows = await run(env,'re_renewals_transfers',{fromDate:'2026-09-18',toDate:'2026-09-18'});
+  assert.deepEqual(chatRows.items.map(row => [row.eventId,row.contractId,row.eventDate]),[[link,CONTRACT_A,'2026-09-18']]);
+  await db.query("UPDATE public.fixture_acl SET org_wide=true,building_ids=ARRAY[$1::uuid,$2::uuid] WHERE permission='reports_real_estate.renewals_transfers'",[BUILDING,OTHER_BUILDING]);
+  assert.ok((await read(ORG,null)).some(row => row.building_id===OTHER_BUILDING));
+}));
 test('BĐS gia hạn & chuyển nhượng; khuyến mại; HĐ mới; thanh lý — số như bộ lọc web', () => inCase(async env => {
   await env.grant(['reports_real_estate.renewals_transfers', 'reports_real_estate.promotions', 'reports_real_estate.new_leases', 'reports_real_estate.terminations']);
   let value = await run(env, 're_renewals_transfers');
