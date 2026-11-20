@@ -30,6 +30,7 @@ const m = vi.hoisted(() => ({
   advanceCalls: [] as { shareholderId: string | null; amount: number | null; accountId: string | null }[],
   access: [] as { cashbook_id: string; possession_kind: string }[],
   /** Xem trước tạm ứng: lý do khoá, có trả số của cổ đông không. */
+  ownerAdvance: false,
   advanceBlocked: null as string | null,
   hidePosition: false,
   // Xem trước đang tải lại (vẫn giữ số cũ) / lần tải lại lỗi (vẫn giữ số cũ).
@@ -77,7 +78,8 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerMutations', () => ({
   useVoidProfitSettlement: () => ({ mutateAsync: m.voidSettle, isPending: false }),
   useCancelProfitLedgerPayout: () => ({ mutateAsync: m.cancel, isPending: false }),
 }));
-vi.mock('@/hooks/profit-ledger/useOwnerPayoutPosting', () => ({
+vi.mock('@/hooks/profit-ledger/useOwnerPayoutPosting', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/hooks/profit-ledger/useOwnerPayoutPosting')>(),
   useOwnerPayoutPosting: () => ({
     evidence: {
       items: [], pendingUploads: [], localPreviews: {}, uploadStats: {}, fallbackCount: 0, readyCount: 1, failedCount: 0,
@@ -153,7 +155,7 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
     const blocked = m.route !== 'CANONICAL' ? 'ROUTE' : m.advanceBlocked;
     return {
       ...ok({
-        route: m.route, shareholder_id: input.shareholderId, maker_kind: 'CUSTODIAN_ADVANCE', payee_is_maker: true,
+        route: m.route, shareholder_id: input.shareholderId, maker_kind: m.ownerAdvance ? 'OWNER' : 'CUSTODIAN_ADVANCE', payee_is_maker: true,
         can_submit: !blocked && input.amount !== null && !!input.accountId, blocked_reason: blocked,
         warnings: input.amount === null ? [] : [
           { code: 'ADVANCE', advance_amount: input.amount },
@@ -203,7 +205,7 @@ const noteInput = () => document.querySelector('[name="note"]') as HTMLTextAreaE
 beforeEach(() => {
   m.route = 'CANONICAL'; m.months = MONTHS.map((x) => ({ ...x })); m.advanceOutstanding = 40_000; m.advancePending = 0; m.overoffset = 0;
   m.markerMonth = '2026-08-01'; m.settlements = []; m.reviewCount = 0; m.settleCalls = []; m.advanceCalls = []; m.access = [];
-  m.advanceBlocked = null; m.hidePosition = false; m.fetching = false; m.previewError = false;
+  m.ownerAdvance = false; m.advanceBlocked = null; m.hidePosition = false; m.fetching = false; m.previewError = false;
   m.secondShareholder = false; m.monthsBy = {}; m.hold = false; m.holdFetching = true; m.lastSettle = null; m.failMonth = null; m.failError = null;
   m.exceedsEstimate = false;
   m.custodian = true;
@@ -679,6 +681,51 @@ describe('hộp Chi tạm ứng cho tôi (cổ đông có quyền tạm ứng)',
       organizationId: 'org-a', shareholderId: 's', amount: 50_000, accountId: 'a2', voucherDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), note: null,
     });
     await waitFor(() => expect(vi.mocked(toast.success).mock.calls[0]![0]).toMatch(/phiếu PC2611888 tạm ứng 50\.000.*chờ chủ duyệt/));
+  });
+  it('chủ tự ứng từ sổ mình giữ: cần chứng từ và duyệt chi đúng phiếu vừa lập', async () => {
+    m.ownerAdvance = true;
+    m.advance.mockResolvedValue({ voucher_id: 'v-owner', maker_kind: 'OWNER', code: 'PC-OWNER', advance_amount: 50_000 });
+    render(dialog());
+    await fill('50000');
+    m.ensureReady.mockResolvedValueOnce('Thiếu chứng từ');
+    fireEvent.click(submitButton('Duyệt và Chi'));
+    await screen.findByText('Thiếu chứng từ');
+    expect(m.advance).not.toHaveBeenCalled();
+    fireEvent.click(submitButton('Duyệt và Chi'));
+    await waitFor(() => expect(m.complete).toHaveBeenCalledWith(expect.objectContaining({ voucherId: 'v-owner', step: 'APPROVE_AND_POST', accountId: 'a2' })));
+    expect(m.advance).toHaveBeenCalledTimes(1);
+  });
+  it('khôi phục biên nhận chủ: mở lại hộp là khoản mới, không gửi lại nội dung cũ', async () => {
+    m.ownerAdvance = true;
+    m.advance.mockRejectedValueOnce(new FinancialWorkflowError('Chưa có biên nhận', 'unknown', []))
+      .mockResolvedValue({ voucher_id: 'saved-owner', maker_kind: 'OWNER', code: 'PC-SAVED', advance_amount: 50_000 });
+    m.complete.mockRejectedValueOnce(new Error('Chưa ghi được chứng từ'));
+    const v = render(dialog());
+    await fill('50000');
+    fireEvent.click(submitButton('Duyệt và Chi'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Kiểm tra lại kết quả' }));
+    const resume = await screen.findByRole('button', { name: 'Làm tiếp trên phiếu đã lập' });
+    expect(Number(amountInput().value.replace(/\D/g, ''))).toBe(50000);
+    fireEvent.click(resume);
+    await waitFor(() => expect(m.complete).toHaveBeenCalledTimes(2));
+    expect(m.complete.mock.calls[1]?.[0]).toEqual(m.complete.mock.calls[0]?.[0]);
+    v.rerender(<ProfitSelfAdvanceDialog open={false} onOpenChange={ownerProps.onOpenChange} organizationId="org-a" me={me} />);
+    v.rerender(dialog());
+    expect(screen.queryByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeNull();
+    expect(m.advance).toHaveBeenCalledTimes(2);
+    expect(m.advance.mock.calls[1]?.[0]).toEqual(m.advance.mock.calls[0]?.[0]);
+  });
+  it('ghi chi lỗi có thể thử lại: chỉ làm tiếp phiếu đã lập', async () => {
+    m.ownerAdvance = true;
+    m.advance.mockResolvedValue({ voucher_id: 'saved-owner', maker_kind: 'OWNER', code: 'PC-SAVED', advance_amount: 50_000 });
+    m.complete.mockRejectedValueOnce(new Error('Chưa gắn được chứng từ'));
+    render(dialog());
+    await fill('50000');
+    fireEvent.click(submitButton('Duyệt và Chi'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Làm tiếp trên phiếu đã lập' }));
+    await waitFor(() => expect(m.complete).toHaveBeenCalledTimes(2));
+    expect(m.advance).toHaveBeenCalledTimes(1);
+    expect(m.complete.mock.calls[1]?.[0]).toEqual(m.complete.mock.calls[0]?.[0]);
   });
   it('ứng vượt lợi nhuận chưa chi ⇒ chỉ CẢNH BÁO, vẫn gửi được không cần lý do', async () => {
     render(dialog());

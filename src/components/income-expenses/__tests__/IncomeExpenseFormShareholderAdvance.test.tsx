@@ -110,6 +110,10 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
     return result;
   },
 }));
+vi.mock('@/hooks/profit-ledger/useOwnerPayoutPosting', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/hooks/profit-ledger/useOwnerPayoutPosting')>(),
+  useOwnerPayoutPosting: () => ({ stepFor: () => null }),
+}));
 vi.mock('@/hooks/profit-ledger/useProfitLedgerMutations', () => ({
   useCreateShareholderAdvance: () => ({ mutateAsync: h.advance, isPending: false }),
 }));

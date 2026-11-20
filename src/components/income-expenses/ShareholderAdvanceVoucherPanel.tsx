@@ -11,6 +11,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Trash2 } from 'lucide-react';
+import { OwnerPayoutPostingSection } from '@/components/shareholders/OwnerPayoutPostingSection';
+import { useOwnerAdvancePosting } from '@/hooks/profit-ledger/useOwnerAdvancePosting';
 import { toast } from 'sonner';
 import { ShareholderAdvancePreviewBox } from '@/components/shareholders/ShareholderAdvancePreviewBox';
 import { Button } from '@/components/ui/button';
@@ -83,6 +85,7 @@ export function ShareholderAdvanceVoucherPanel({
   });
   // Lần kiểm của ĐÚNG người nhận đang chọn (khoá query đã gồm người nhận + sổ quỹ).
   const preview = previewQuery.data && previewQuery.data.shareholder_id === shareholderId ? previewQuery.data : null;
+  const owner = useOwnerAdvancePosting(true, preview?.maker_kind === 'OWNER', accountId);
   const previewMatches = !!preview && debouncedAmount === amount;
   // Đủ để GỬI: còn phải tải xong — đang tải lại hay tải lại lỗi thì lần kiểm đang hiện có thể đã cũ.
   const previewCurrent = previewMatches && !previewQuery.isFetching && !previewQuery.isError;
@@ -94,7 +97,7 @@ export function ShareholderAdvanceVoucherPanel({
   const typeName = advanceTypeName(options);
   const payee = options.payees.find((row) => row.shareholder_id === shareholderId) ?? null;
   const locked = !organizationId || (!!preview && preview.blocked_reason !== null);
-  const pending = createMut.isPending;
+  const pending = createMut.isPending || owner.busy;
 
   // Báo form cha lúc đang lưu; thân này bị gỡ thì luôn báo "hết lưu" để form cha không kẹt khoá.
   useEffect(() => {
@@ -107,7 +110,7 @@ export function ShareholderAdvanceVoucherPanel({
     setFailure(null);
     form.clearErrors('root');
     // Chỉ gửi khi đã kiểm XONG cho ĐÚNG người nhận + số tiền + sổ đang nhập.
-    if (!saveBlocked && (!previewCurrent || preview?.can_submit !== true)) {
+    if (!owner.created && !saveBlocked && (!previewCurrent || preview?.can_submit !== true)) {
       form.setError('root.preview', {
         type: 'preview',
         message: previewQuery.isError
@@ -117,15 +120,23 @@ export function ShareholderAdvanceVoucherPanel({
       return;
     }
     try {
-      const result = await createMut.mutateAsync({
-        organizationId,
-        shareholderId: data.shareholderId,
-        amount: data.amount,
-        accountId: data.accountId,
-        voucherDate: data.voucherDate,
-        note: data.note.trim() || null,
-      });
-      setSaveBlocked(false);
+      const create = async () => {
+        const receipt = await createMut.mutateAsync({
+          organizationId,
+          shareholderId: data.shareholderId,
+          amount: data.amount,
+          accountId: data.accountId,
+          voucherDate: data.voucherDate,
+          note: data.note.trim() || null,
+        });
+        setSaveBlocked(false);
+        return receipt;
+      };
+      if (owner.active) {
+        if (await owner.save(create, organizationId, data.voucherDate)) { onSaved?.(data.amount); onClose(); }
+        return;
+      }
+      const result = await create();
       toast.success(
         `Đã lập ${result.code ? `phiếu ${result.code}` : 'phiếu'} tạm ứng ${formatVND(result.advance_amount)}${payee ? ` cho ${payee.name}` : ''}: chờ chủ duyệt, chưa chi tiền.`,
       );
@@ -150,11 +161,11 @@ export function ShareholderAdvanceVoucherPanel({
         data-testid="shareholder-advance-panel"
       >
         <p className="text-sm text-muted-foreground">
-          Phiếu <b>{typeName}</b> cho cổ đông: một hạng mục, chi từ sổ quỹ bạn đang giữ, <b>chờ chủ duyệt</b> rồi mới chi tiền.
+          Phiếu <b>{typeName}</b> cho cổ đông: một hạng mục, chi từ sổ quỹ bạn đang giữ, {owner.active ? 'chủ duyệt và chi kèm chứng từ.' : 'chờ chủ duyệt rồi mới chi tiền.'}
           Tên phiếu do hệ thống đặt theo người nhận.
         </p>
 
-        <fieldset disabled={saveBlocked || pending} className="space-y-4">
+        <fieldset disabled={saveBlocked || pending || !!owner.created} className="space-y-4">
           {/* Row 1: Tòa nhà (khoá) + Sổ quỹ — cùng lưới với form phiếu thường, bỏ ô Phòng. */}
           <div className="grid grid-cols-2 gap-3">
             <div className="min-w-0 space-y-2" data-field-name="building">
@@ -286,6 +297,7 @@ export function ShareholderAdvanceVoucherPanel({
         {/* Điện thoại: chừa khoảng dưới khối số để cuộn hết thân thì khối số nằm hẳn trên thanh nút dính đáy. */}
         {isMobile && <div aria-hidden="true" className="h-4" />}
 
+        {owner.active && <OwnerPayoutPostingSection {...owner.section} />}
         {rootPreviewError && <p role="alert" className="text-sm text-destructive">{rootPreviewError}</p>}
         {failure && <p role="alert" className="text-sm text-destructive" data-testid="shareholder-advance-failure">{failure.message}</p>}
 
@@ -306,8 +318,8 @@ export function ShareholderAdvanceVoucherPanel({
               Kiểm tra lại kết quả
             </Button>
           ) : (
-            <Button type="submit" className={isMobile ? 'flex-1' : ''} disabled={locked || pending} data-testid="shareholder-advance-save">
-              {pending ? 'Đang lưu...' : 'Lưu'}
+            <Button type="submit" className={isMobile ? 'flex-1' : ''} disabled={(!owner.created && locked) || pending || (owner.active && owner.disabled)} data-testid="shareholder-advance-save">
+              {pending ? 'Đang lưu...' : owner.active ? owner.label : 'Lưu'}
             </Button>
           )}
         </div>

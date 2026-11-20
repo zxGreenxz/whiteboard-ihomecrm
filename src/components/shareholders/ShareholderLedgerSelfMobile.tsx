@@ -2,6 +2,8 @@
 // liệu và cùng luật: chỉ tiền của chính mình; tỷ lệ % / số toà chỉ khi có quyền VÀ máy chủ gửi kèm.
 
 import { useMemo, useState } from 'react';
+import ShareholderPeriodStatement from './ShareholderPeriodStatement';
+import { postedCash } from '@/lib/profitLedger/periodStatement';
 import { HandCoins } from 'lucide-react';
 import { useMyPositionView } from '@/hooks/profit-ledger/useMyPositionView';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
@@ -89,7 +91,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
           </span>
         </div>
         <div className="text-right shrink-0" data-testid="self-mobile-balance">
-          <div className="text-[10px] font-bold tracking-wide text-white/75 uppercase">{POSITION_LABELS.unpaid}</div>
+          <div className="text-[10px] font-bold tracking-wide text-white/75 uppercase">Lợi nhuận chưa chốt chi</div>
           <div className="font-mono text-[18px] font-bold tracking-[-0.4px]">{position ? fmtShort(position.unpaid_profit) : positionMissing}</div>
           {cashPending && <div className="text-[10.5px] font-semibold text-white/80">{cashPending}</div>}
           <div className="mt-0.5 text-[10.5px] font-semibold text-white/85" data-testid="self-mobile-advance">
@@ -125,9 +127,9 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
           <div className={KPI_SUB}>{marker ? `Sau mốc hết ${marker}` : 'Luỹ kế đã chốt'}</div>
         </div>
         <div className={`${CARD} !rounded-2xl px-3 py-3`}>
-          <span className={KPI_LABEL}>Đã nhận</span>
-          <div className={`${KPI_VAL} text-[#c97a10]`}>{fmtShort(ledger.paid)}</div>
-          <div className={KPI_SUB}>{ledger.paid_pending > 0 ? `+ chờ duyệt ${fmtShort(ledger.paid_pending)}` : 'Đã duyệt chi'}</div>
+          <span className={KPI_LABEL}>Đã chi qua phiếu</span>
+          <div className={`${KPI_VAL} text-[#c97a10]`}>{fmtShort(postedCash(ledger.payouts))}</div>
+          <div className={KPI_SUB}>Gồm ứng và chi lợi nhuận đã ghi sổ</div>
         </div>
         {viaSalary !== null && (
           <div className={`${CARD} !rounded-2xl px-3 py-3`}>
@@ -144,6 +146,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
       </div>
 
       <YearMonthRow year={year} month={month} onYearShift={shiftYear} onMonthChange={setMonth} />
+      <ShareholderPeriodStatement ledger={ledger} view={positionView} year={year} month={monthNumber} />
 
       <div className={`${CARD} !rounded-2xl px-[15px] py-3.5`}>
         <div className="flex items-baseline gap-1.5">
@@ -205,7 +208,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
       <div className={`${CARD} !rounded-2xl overflow-hidden`}>
         <div className="flex items-center gap-2 px-[15px] py-3.5 border-b border-[#efece4]">
           <span className={TITLE}>Phiếu chi lợi nhuận và tạm ứng</span>
-          <span className="ml-auto font-mono text-[12px] font-bold text-[#c97a10]">đã nhận {fmtShort(ledger.paid)}</span>
+          <span className="ml-auto font-mono text-[12px] font-bold text-[#c97a10]">đã ghi chi {fmtShort(postedCash(ledger.payouts))}</span>
         </div>
         {payouts.length === 0 && <p className={EMPTY}>Chưa có phiếu chi lợi nhuận hay tạm ứng nào.</p>}
         {payouts.map((p) => {

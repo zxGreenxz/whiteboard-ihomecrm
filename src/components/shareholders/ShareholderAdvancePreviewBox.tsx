@@ -59,21 +59,21 @@ export function ShareholderAdvancePreviewBox({ loading, refreshing, error, onRet
           {isUnpaidNegative(position) && <p className="text-muted-foreground">{UNPAID_NEGATIVE_NOTE}</p>}
           {after && (
             <p data-testid="profit-advance-after">
-              Sau phiếu này: tạm ứng chờ duyệt <strong>{formatVND(after.advance_pending)}</strong>
+              {preview.maker_kind === 'OWNER' ? 'Khi lập phiếu, trước bước duyệt:' : 'Sau phiếu này:'} tạm ứng chờ duyệt <strong>{formatVND(after.advance_pending)}</strong>
               {' · '}tổng tạm ứng <strong>{formatVND(position.advance_outstanding + after.advance_pending)}</strong>
             </p>
           )}
           {over > 0 && (
             <p className="flex gap-1.5 text-amber-700 dark:text-amber-400" data-testid="profit-advance-over">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>Ứng vượt lợi nhuận chưa chi {formatVND(over)} — vẫn lập được, phiếu chờ chủ duyệt.</span>
+              <span>Ứng vượt lợi nhuận chưa chi {formatVND(over)} — vẫn lập được{preview.maker_kind === 'OWNER' ? '.' : ', phiếu chờ chủ duyệt.'}</span>
             </p>
           )}
         </>
       )}
       {blocked && <p role="alert" className="text-destructive" data-testid="profit-advance-blocked">{blocked}</p>}
       <p className="text-muted-foreground">
-        {preview.payee_is_maker
+        {preview.maker_kind === 'OWNER' ? 'Sau khi lập, chủ duyệt và ghi chi theo sổ quỹ đã chọn.' : preview.payee_is_maker
           ? 'Phiếu chờ chủ duyệt; tiền chưa ra khỏi sổ. Tạm ứng đã duyệt được khấu trừ khi chủ chốt chi lợi nhuận.'
           : 'Bạn lập hộ: phiếu chờ chủ duyệt (người duyệt khác người lập và người nhận); tiền chưa ra khỏi sổ.'}
       </p>

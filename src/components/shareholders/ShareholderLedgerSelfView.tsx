@@ -6,6 +6,8 @@
 // khỏi màn máy tính (chủ yêu cầu 16/11/2026); bảng Nhà × Tháng có bộ lọc nhà người xem tự tạo.
 
 import { useMemo, useState } from 'react';
+import ShareholderPeriodStatement from './ShareholderPeriodStatement';
+import { periodStatement, postedCash } from '@/lib/profitLedger/periodStatement';
 import { HandCoins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -78,8 +80,9 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
   // Bộ lọc nhà chỉ đổi cột được bày ở bảng Nhà × Tháng; KPI, biểu đồ và phiếu giữ nguyên toàn bộ.
   const shown = useMemo(() => applyBuildingFilter(columns, matrix, activeFilter?.keys ?? null), [columns, matrix, activeFilter]);
 
+  const periodStatus = useMemo(() => position ? periodStatement(ledger, position).periods : null, [ledger, position]);
+  const selection = activeFilter ? { name: activeFilter.name, amounts: new Map(shown.rows.map(r => [r.period, r.total])) } : undefined;
   const payouts = useMemo(() => newestFirst(ledger.payouts), [ledger.payouts]);
-  const counted = ledger.payouts.filter((p) => !p.excluded_by_marker);
   // Thẻ nhạy cảm: cần CẢ quyền của người xem LẪN khoá máy chủ gửi (thiếu một trong hai ⇒ không thẻ).
   const percentRows = access.canViewPercent ? ledger.percent_rows : undefined;
   const marker = ledger.marker ? periodLabel(ledger.marker.settled_through_month) : null;
@@ -104,10 +107,10 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
         </div>
         <div className="ph-kpi__div" />
         <div className="ph-kpi ph-kpi--flex" data-testid="self-kpi-paid">
-          <div className="ph-kpi__label">Đã nhận</div>
-          <div className="ph-kpi__value ph-kpi__value--gold">{formatCurrency(ledger.paid)}</div>
+          <div className="ph-kpi__label">Đã chi qua phiếu</div>
+          <div className="ph-kpi__value ph-kpi__value--gold">{formatCurrency(postedCash(ledger.payouts))}</div>
           <div className="ph-kpi__sub">
-            {ledger.paid_pending > 0 ? `+ chờ duyệt ${formatCurrency(ledger.paid_pending)}` : `${counted.length} phiếu chi`}
+            Gồm tiền ứng và chi lợi nhuận đã ghi sổ
           </div>
         </div>
         {viaSalary !== null && (
@@ -126,7 +129,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
         )}
         <div className="ph-kpi__div" />
         <div className="ph-kpi ph-kpi--flex" data-testid="self-kpi-unpaid" title={unpaidNegative ? UNPAID_NEGATIVE_NOTE : undefined}>
-          <div className="ph-kpi__label">{POSITION_LABELS.unpaid}</div>
+          <div className="ph-kpi__label">Lợi nhuận chưa chốt chi</div>
           <div className={`ph-kpi__value${unpaidNegative ? ' ph-kpi__value--peach' : ''}`}>
             {position ? formatCurrency(position.unpaid_profit) : positionView.pending ? <span className="ph-kpi__skel" aria-label="Đang tải lợi nhuận chưa chi" /> : '—'}
           </div>
@@ -179,6 +182,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
         <MyFundBreakdown view={positionView} />
         {unpaidNegative && <div className="ph-hint" role="note">{UNPAID_NEGATIVE_NOTE}</div>}
 
+        <ShareholderPeriodStatement ledger={ledger} view={positionView} year={year} month={monthNumber} selection={selection} />
         <div className="ph-grid-2">
           <div className="ph-card ph-card__pad">
             <div className="ph-card__title">Lợi nhuận từ các tòa theo tháng — {year}</div>
@@ -222,6 +226,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
                     <tr key={row.period} className={row.month === (highlightMonth ?? -1) + 1 ? 'is-current' : undefined}>
                       <td className="name">
                         T{row.month}
+                        {!row.excluded && periodStatus?.get(row.period) && <span className="ml-2 text-xs font-normal text-muted-foreground">{periodStatus.get(row.period)?.status}</span>}
                         {row.excluded && <span className="ph-inline ph-inline--soft" title="Nằm trong mốc đã trả đủ — không tính vào lợi nhuận chưa chi">đã trả đủ</span>}
                       </td>
                       {row.cells.map((v, i) => (
@@ -284,7 +289,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
           </div>
           {payouts.length > 0 && (
             <div className="ph-card__foot">
-              <b>Đã nhận {formatCurrency(ledger.paid)}{ledger.paid_pending > 0 ? ` · chờ duyệt ${formatCurrency(ledger.paid_pending)}` : ''}</b>
+              <b>Đã ghi chi {formatCurrency(postedCash(ledger.payouts))}</b>
             </div>
           )}
         </div>

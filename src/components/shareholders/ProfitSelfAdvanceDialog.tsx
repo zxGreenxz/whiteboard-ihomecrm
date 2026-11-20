@@ -11,6 +11,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Info, Loader2 } from 'lucide-react';
+import { OwnerPayoutPostingSection } from '@/components/shareholders/OwnerPayoutPostingSection';
+import { useOwnerAdvancePosting } from '@/hooks/profit-ledger/useOwnerAdvancePosting';
 import { toast } from 'sonner';
 import { QueryRegion, type RegionQuery } from '@/components/errors/QueryRegion';
 import { Button } from '@/components/ui/button';
@@ -67,8 +69,11 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
   const { reset } = form;
 
   // Mở lại hộp: làm mới form — TRỪ khi lần trước chưa rõ kết quả (giữ nguyên để đối chiếu đúng nội dung).
+  const previousOpen = useRef<{ shareholderId: string } | null>(null);
   useEffect(() => {
-    if (open && !saveBlocked) {
+    const entering = open && previousOpen.current?.shareholderId !== shareholderId;
+    previousOpen.current = open ? { shareholderId } : null;
+    if (entering && !saveBlocked) {
       reset(emptyValues(shareholderId));
       setFailure(null);
     }
@@ -86,6 +91,7 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
   });
   const preview = previewQuery.data ?? null;
   // Lần xem trước của ĐÚNG số tiền đang nhập (khoá query đã gồm sổ quỹ): đủ để HIỆN số sau phiếu này.
+  const owner = useOwnerAdvancePosting(open, preview?.maker_kind === 'OWNER', accountId);
   const previewMatches = !!preview && debouncedAmount === amount;
   // Đủ để GỬI: còn phải tải xong — đang tải lại hay tải lại lỗi thì số đang hiện có thể đã cũ.
   const previewCurrent = previewMatches && !previewQuery.isFetching && !previewQuery.isError;
@@ -113,7 +119,7 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
     setFailure(null);
     form.clearErrors('root');
     // Chỉ gửi khi đã kiểm XONG cho ĐÚNG số tiền + sổ đang nhập (không gửi theo lần kiểm cũ / đang tải lại).
-    if (!saveBlocked && (!previewCurrent || preview?.can_submit !== true)) {
+    if (!owner.created && !saveBlocked && (!previewCurrent || preview?.can_submit !== true)) {
       form.setError('root.preview', {
         type: 'preview',
         message: previewQuery.isError
@@ -123,15 +129,23 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
       return;
     }
     try {
-      const result = await createMut.mutateAsync({
-        organizationId,
-        shareholderId: data.shareholderId,
-        amount: data.amount,
-        accountId: data.accountId,
-        voucherDate: data.voucherDate,
-        note: data.note.trim() || null,
-      });
-      setSaveBlocked(false);
+      const create = async () => {
+        const receipt = await createMut.mutateAsync({
+          organizationId,
+          shareholderId: data.shareholderId,
+          amount: data.amount,
+          accountId: data.accountId,
+          voucherDate: data.voucherDate,
+          note: data.note.trim() || null,
+        });
+        setSaveBlocked(false);
+        return receipt;
+      };
+      if (owner.active) {
+        if (await owner.save(create, organizationId, data.voucherDate)) { onOpenChange(false); }
+        return;
+      }
+      const result = await create();
       toast.success(`Đã lập ${result.code ? `phiếu ${result.code}` : 'phiếu'} tạm ứng ${formatVND(result.advance_amount)}: chờ chủ duyệt, chưa chi tiền.`);
       onOpenChange(false);
     } catch (error) {
@@ -145,13 +159,13 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
   const rootPreviewError = form.formState.errors.root?.preview?.message;
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!createMut.isPending) onOpenChange(next); }}>
+    <Dialog open={open} onOpenChange={(next) => { if (!createMut.isPending && !owner.busy) onOpenChange(next); }}>
       {/* Khuôn hộp dài: giới hạn theo khung nhìn động + cuộn dọc, hàng nút dính đáy (điện thoại không mất tiêu đề / nút). */}
       <DialogContent ref={dialogRef} className={`sm:max-w-[520px] ${DIALOG_SCROLL_BODY}`}>
         <DialogHeader>
           <DialogTitle>Chi tạm ứng lợi nhuận cho tôi</DialogTitle>
           <DialogDescription>
-            Chỉ ứng cho chính bạn, từ sổ quỹ bạn đang giữ. Mọi khoản chờ chủ duyệt.
+            Chỉ ứng cho chính bạn, từ sổ quỹ bạn đang giữ. Quy trình duyệt hiển thị theo tài khoản lập phiếu.
           </DialogDescription>
         </DialogHeader>
 
@@ -163,7 +177,7 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
           )}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(submit, onInvalid)} className="space-y-4" noValidate>
-              <fieldset disabled={saveBlocked || createMut.isPending} className="space-y-4">
+              <fieldset disabled={saveBlocked || createMut.isPending || owner.busy || !!owner.created} className="space-y-4">
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Người nhận</p>
                   <p className="text-sm">{me?.name ?? '—'}</p>
@@ -233,20 +247,21 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
                 )} />
               </fieldset>
 
-              {rootPreviewError && <p role="alert" className="text-sm text-destructive">{rootPreviewError}</p>}
+              {owner.active && <OwnerPayoutPostingSection {...owner.section} />}
+        {rootPreviewError && <p role="alert" className="text-sm text-destructive">{rootPreviewError}</p>}
               {failure && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive" data-testid="profit-advance-failure">{failure.message}</p>}
 
               {/* Hàng nút dính đáy hộp: thân (số, cảnh báo, các ô) cuộn, nút luôn thấy. */}
               <DialogFooter className={DIALOG_STICKY_FOOTER}>
-                <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={createMut.isPending} onClick={() => onOpenChange(false)}>Đóng</Button>
+                <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={createMut.isPending || owner.busy} onClick={() => onOpenChange(false)}>Đóng</Button>
                 {saveBlocked ? (
                   // Đối chiếu: gửi lại ĐÚNG nội dung với khoá cũ — máy chủ trả biên nhận cũ nếu đã lập.
-                  <Button type="submit" variant="secondary" className="flex-1 sm:flex-none" disabled={createMut.isPending}>
+                  <Button type="submit" variant="secondary" className="flex-1 sm:flex-none" disabled={createMut.isPending || owner.busy}>
                     {createMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Kiểm tra lại kết quả
                   </Button>
                 ) : (
-                  <Button type="submit" className="flex-1 sm:flex-none" disabled={locked || createMut.isPending}>
-                    {createMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Lập phiếu chờ duyệt
+                  <Button type="submit" className="flex-1 sm:flex-none" disabled={(!owner.created && locked) || createMut.isPending || owner.busy || (owner.active && owner.disabled)}>
+                    {createMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{owner.active ? owner.label : 'Lập phiếu chờ duyệt'}
                   </Button>
                 )}
               </DialogFooter>

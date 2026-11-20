@@ -132,9 +132,9 @@ describe('ShareholderLedgerSelfView — tiền của chính mình', () => {
   it('KPI: được chia, đã nhận + chờ duyệt, qua lương (Y − D), và HAI số của vị thế — không còn "Còn được nhận"', () => {
     view(ledger());
     expect(within(kpis()).getByTestId('self-kpi-allocated').textContent).toMatch(/15\.450\.000/);
-    expect(within(kpis()).getByTestId('self-kpi-paid').textContent).toMatch(/Đã nhận3\.000\.000.*chờ duyệt 3\.000\.000/);
+    expect(within(kpis()).getByTestId('self-kpi-paid').textContent).toMatch(/Đã chi qua phiếu3\.000\.000/);
     expect(within(kpis()).getByTestId('self-kpi-salary').textContent).toMatch(/Qua lương800\.000.*trừ tạm ứng 400\.000/);
-    expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toMatch(/Lợi nhuận chưa chi9\.000\.000.*chờ chủ chốt chi/);
+    expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toMatch(/Lợi nhuận chưa chốt chi9\.000\.000.*chờ chủ chốt chi/);
     expect(within(kpis()).getByTestId('self-kpi-advance').textContent).toMatch(/Tạm ứng đang có350\.000.*khấu trừ khi chủ chốt chi/);
     expect(screen.queryByTestId('self-kpi-balance')).toBeNull();
     expect(kpis().textContent).not.toMatch(/Còn được nhận|Đang tạm ứng/);
@@ -150,7 +150,7 @@ describe('ShareholderLedgerSelfView — tiền của chính mình', () => {
     });
     view(ledger({ allocated: 0, months: [] }));
     expect(screen.getByTestId('self-kpi-allocated').textContent).toMatch(/Được chia từ tòa0/);
-    expect(screen.getByTestId('self-kpi-unpaid').textContent).toMatch(/Lợi nhuận chưa chi0/);
+    expect(screen.getByTestId('self-kpi-unpaid').textContent).toMatch(/Lợi nhuận chưa chốt chi0/);
     const amounts = screen.getByLabelText('Quỹ chung và tạm ứng đầu kỳ của bạn');
     expect(amounts.textContent).toMatch(/Được chia từ quỹ chung100\.000.*cấn tạm ứng40\.000.*khi chia quỹ60\.000.*đầu kỳ đã đối soát50\.000/);
   });
@@ -173,7 +173,7 @@ describe('ShareholderLedgerSelfView — tiền của chính mình', () => {
   it('vị thế đang tải ⇒ khung chờ, không hiện 0; lỗi ⇒ "—" + câu báo có nút tải lại, phần còn lại vẫn hiện', () => {
     h.position = 'pending';
     const pending = view(ledger());
-    expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toBe('Lợi nhuận chưa chi');
+    expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toBe('Lợi nhuận chưa chốt chi');
     expect(within(kpis()).getByLabelText('Đang tải tạm ứng đang có')).toBeTruthy();
     expect(screen.queryByTestId('self-settlements-card')).toBeNull();
     pending.unmount();
@@ -276,8 +276,8 @@ describe('ShareholderLedgerSelfView — bộ lọc nhà của bảng Nhà × Th�
     expect(headers()).toContain('Toà Một');
     expect(headers()).not.toContain('Toà Hai');
     expect(headers()).toContain('Tổng 1 nhà');
-    const row = screen.getByRole('cell', { name: 'T8' }).closest('tr') as HTMLElement;
-    expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual(['T8', expect.stringMatching(/^4\.000\.000/), expect.stringMatching(/^4\.000\.000/)]);
+    const row = screen.getByRole('cell', { name: /^T8/ }).closest('tr') as HTMLElement;
+    expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual([expect.stringMatching(/^T8/), expect.stringMatching(/^4\.000\.000/), expect.stringMatching(/^4\.000\.000/)]);
     expect(screen.getByRole('button', { name: 'Chỉ Toà Một' }).getAttribute('aria-pressed')).toBe('true');
     expect(kpis().textContent).toBe(kpiBefore);
     expect(screen.getAllByRole('button', { name: 'Huỷ yêu cầu' })).toHaveLength(1);
