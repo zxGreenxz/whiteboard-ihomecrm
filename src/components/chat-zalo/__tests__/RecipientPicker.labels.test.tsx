@@ -144,3 +144,12 @@ it('không có nhãn nào thì không hiện bộ lọc phân loại, UI cũ gi�
   fireEvent.change(screen.getByPlaceholderText('Tìm theo tên hội thoại…'), { target: { value: 'tam' } });
   expect(screen.getByRole('button', { name: 'Chọn tất cả (1 kết quả)' })).toBeTruthy();
 });
+
+it('đánh dấu nhóm độc lập với chọn người nhận lịch', () => {
+  const toggle = vi.fn();
+  const choose = vi.fn();
+  render(<RecipientPicker conversations={conversations} value={[]} onChange={choose} saleAction={{ toggle, pending: false }} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Đánh dấu nhóm sale: Hội thoại nhom-ihome-1' }));
+  expect(toggle).toHaveBeenCalledWith(conversations[0]);
+  expect(choose).not.toHaveBeenCalled();
+});

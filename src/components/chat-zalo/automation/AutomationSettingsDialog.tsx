@@ -37,6 +37,7 @@ import { useZaloAutomationConfigs, useSaveAutomation, useZaloAutomationRuns } fr
 import { chuanHoaBroadcast, chuanHoaAutoReply } from '../automationConfig';
 import type { CauHinhBroadcast, CauHinhAutoReply } from '../automationConfig';
 import type { ZaloConversation, ZaloLabel } from '@/components/chat-zalo/types';
+import type { GroupSaleAction } from '../GroupSaleButton';
 import RecipientPicker from './RecipientPicker';
 import SchedulePlanner from './SchedulePlanner';
 import TemplateBuilder from './TemplateBuilder';
@@ -51,6 +52,7 @@ interface Props {
   conversations: ZaloConversation[];
   /** Nhãn "Phân loại" đã gắn tên nick — để lọc người nhận theo phân loại. */
   labels?: ZaloLabel[];
+  saleAction?: GroupSaleAction;
 }
 
 type Tab = 'broadcast' | 'reply' | 'nhatky';
@@ -58,7 +60,7 @@ type Tab = 'broadcast' | 'reply' | 'nhatky';
 const NHAN_TAB = 'min-w-0 whitespace-normal px-2 text-center text-xs leading-tight sm:px-3 sm:text-sm';
 const ICON_TAB = 'mr-2 hidden h-4 w-4 shrink-0 sm:inline-block';
 
-export default function AutomationSettingsDialog({ open, onOpenChange, conversations, labels }: Props) {
+export default function AutomationSettingsDialog({ open, onOpenChange, conversations, labels, saleAction }: Props) {
   const configQuery = useZaloAutomationConfigs(open);
   const { data, isLoading } = configQuery;
   // Nhật ký chỉ nạp khi dialog mở — cùng lý do với cấu hình: đây là màn người
@@ -215,12 +217,13 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
                 <KhoiCaiDat
                   icon={<Users size={15} />}
                   tieuDe="Người nhận"
-                  moTa="Chỉ nhóm và hội thoại đã đánh dấu sale mới hiện ở đây — khách thuê không bao giờ nhận bản tin rao phòng."
+                  moTa="Tích ô để chọn người nhận định kỳ, rồi lưu lịch. Nút đánh dấu sale lưu ngay và cho phép gửi phòng trống một lần vào nhóm."
                 >
                   <div data-field-name="recipients" tabIndex={-1} aria-invalid={!!errors.recipients} className="rounded aria-[invalid=true]:border aria-[invalid=true]:border-destructive">
                   <RecipientPicker
                     conversations={conversations}
                     labels={labels}
+                    saleAction={saleAction}
                     value={bc.recipients}
                     onChange={(ids) => setBc({ ...bc, recipients: ids })}
                   />
