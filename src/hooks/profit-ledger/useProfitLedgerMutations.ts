@@ -50,6 +50,7 @@ export const PROFIT_LEDGER_INVALIDATE_KEYS = [
   ['profit-ledger-payout'],
   ['profit-ledger-marker-preview'],
   ['profit-positions'],
+  ['shared-fund'],
   ['my-profit-position'],
   ['profit-advance-options'],
   ['profit-advance-preview'],

@@ -141,6 +141,20 @@ describe('ShareholderLedgerSelfView — tiền của chính mình', () => {
     expect(h.positionOrgs.every((org) => org === 'org-a')).toBe(true);
   });
 
+  it('chia từ quỹ khi không có phân bổ tòa, hiển thị số ghi nhận ban đầu cả khi đã chốt chi', () => {
+    h.position = myPosition({
+      unpaid_profit: 0, advance_outstanding: 10_000, balance: -10_000,
+      components: { ...myPosition().components, unpaid_profit_raw: 0, advance_outstanding_raw: 10_000,
+        shared_fund_payable: 60_000, shared_fund_offset: 40_000, opening_advance: 50_000 },
+      settlements: [settlementRow({ recognized_amount: 60_000, advance_offset_amount: 0, cash_amount: 60_000 })],
+    });
+    view(ledger({ allocated: 0, months: [] }));
+    expect(screen.getByTestId('self-kpi-allocated').textContent).toMatch(/Được chia từ tòa0/);
+    expect(screen.getByTestId('self-kpi-unpaid').textContent).toMatch(/Lợi nhuận chưa chi0/);
+    const amounts = screen.getByLabelText('Quỹ chung và tạm ứng đầu kỳ của bạn');
+    expect(amounts.textContent).toMatch(/Được chia từ quỹ chung100\.000.*cấn tạm ứng40\.000.*khi chia quỹ60\.000.*đầu kỳ đã đối soát50\.000/);
+  });
+
   it('tạm ứng chờ duyệt / tiền chốt chờ chi hiện ở dòng phụ; mốc ⇒ "sau mốc đã trả đủ hết MM/YYYY"', () => {
     h.position = myPosition({ unpaid_profit: 4_000_000, advance_outstanding: 350_000, advance_pending: 650_000, settlement_cash_pending: 3_000_000, balance: 3_000_000 });
     view(ledger({ marker: { settled_through_month: '2026-08-01' } }));

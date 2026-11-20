@@ -42,6 +42,7 @@ import {
 import { profitLedgerRouteState } from "@/lib/profitLedger/route";
 import { ownerSelfAdvanceSubject, selfAdvanceBlockedNote } from "@/lib/profitLedger/selfView";
 import ProfitDistributeDialog from "./ProfitDistributeDialog";
+import { SharedFundEntry } from "./SharedFundEntry";
 import ProfitSelfAdvanceDialog from "./ProfitSelfAdvanceDialog";
 import { ManagerLedgerSection } from "./ManagerLedgerSection";
 import { ProfitLedgerMarkerDialog, type ProfitLedgerMarkerSubject } from "./ProfitLedgerMarkerDialog";
@@ -71,7 +72,7 @@ export default function ProfitOverviewMobile({
   onYearChange: (y: number) => void;
 }) {
   // Sổ tổng (E1/E10) theo công ty đang chọn; biểu đồ + ma trận vẫn đọc phân bổ như cũ.
-  const { selectedOrganizationId } = useOrganization();
+  const { selectedOrganizationId, organization } = useOrganization();
   const [month, setMonth] = useState<string>(ALL); // "all" | "1".."12"
   const [shId, setShId] = useState<string>(ALL);
   const [distOpen, setDistOpen] = useState(false);
@@ -366,6 +367,9 @@ export default function ProfitOverviewMobile({
         </div>
       </div>
       <ProfitLedgerRouteBanner route={ledger?.route} className="-mt-1 text-[11px]" />
+      {canDistribute && selectedOrganizationId && organization?.id === selectedOrganizationId && organization.memberType === "OWNER" && (
+        <SharedFundEntry key={selectedOrganizationId} organizationId={selectedOrganizationId} onSettle={id => { setDistShareholder(id); setDistOpen(true); }} />
+      )}
       {/* Chủ đồng thời là cổ đông có quyền tạm ứng: tự ứng cho mình (cùng hộp của màn tự xem). Sổ tổng chưa chạy thật
           thì nút khoá — dải báo ngay trên đã nói lý do. */}
       {selfAdvanceMe && (

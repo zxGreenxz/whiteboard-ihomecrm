@@ -652,8 +652,8 @@ async function e5Cu<T = KqUng>(user: string, sql: string): Promise<T> {
   await dangNhap(user);
   return (await db.query<{ v: T }>(sql)).rows[0].v;
 }
-const e9 = (cd: string, thang: string | null, cu: string | null) =>
-  `SELECT public.profit_ledger_set_marker_v1('${ORG_A}','SHAREHOLDER','${cd}', ${q(thang)}, 'Đã trả đủ theo sổ tay', ${q(cu)}, true, '${khoa("moc")}') AS v`;
+const e9 = (cd: string, thang: string | null, cu: string | null, xacNhan = true) =>
+  `SELECT public.profit_ledger_set_marker_v1('${ORG_A}','SHAREHOLDER','${cd}', ${q(thang)}, 'Đã trả đủ theo sổ tay', ${q(cu)}, ${xacNhan}, '${khoa("moc")}') AS v`;
 
 interface KqUng { voucher_id: string; approval_request_id: string; maker_kind: string; balance_before: number | null; warnings: { code: string }[];
   amount: number; within_amount: number; advance_amount: number; payout_kind: string; state: string }
@@ -1298,4 +1298,149 @@ describe("mã lỗi và thứ tự khoá", () => {
     expect(scope.vol).toBe("s");
     expect(scope.src).not.toMatch(/\bFOR\s+(SHARE|UPDATE|NO KEY UPDATE|KEY SHARE)\b/i);
   });
+});
+
+describe("Phân phối quỹ chung trên sổ cổ đông", () => {
+  const source = (kind: string, amount: number, available: number, ref: string, date = "2026-11-03") =>
+    `SELECT public.shared_fund_record_source_v1('${ORG_A}','${kind}','${date}',${amount},'${ref}','Biên bản đối chiếu quỹ',${available},'${khoa("source")}') AS v`;
+  const distribute = (lines: { shareholder_id: string; amount: number; advance_offset_amount: number }[],
+    available = 900, reference = "QC-01", date = "2026-11-04") =>
+    `SELECT public.shared_fund_distribute_v1('${ORG_A}','${date}','${reference}','Biên bản hai cổ đông','${JSON.stringify(lines)}'::jsonb,${available},'${khoa("distribution")}') AS v`;
+  const openAdvance = (amount: number, expectedUnpaid = 0, month = "2026-10-01", asOf = "2026-10-31") =>
+    `SELECT public.shareholder_profit_opening_advance_v1('${ORG_A}','${CD1}','${month}','${asOf}',${amount},${expectedUnpaid},'Đối chiếu số dư đến cuối tháng','${khoa("opening")}') AS v`;
+  const hand = { shareholder_id: CD1, amount: 400, advance_offset_amount: 400 };
+  const payable = { shareholder_id: CD2, amount: 400, advance_offset_amount: 0 };
+  const state = `SELECT public.shared_fund_state_v1('${ORG_A}') AS v`;
+
+  beforeAll(async () => {
+    // Cùng schema/role/các RPC thật của luồng duyệt và chi ở trên.
+    await db.exec("ALTER TABLE public.organization_memberships ADD COLUMN member_type text NOT NULL DEFAULT 'STAFF'");
+    await db.query("UPDATE public.organization_memberships SET member_type='OWNER' WHERE user_id IN ($1,$2,$3)", [CHU, CHU2, NGOAI]);
+    const migrations = readdirSync(DIR).filter(file =>
+      file.endsWith("_phan_phoi_quy_chung.sql") || file.endsWith("_so_du_dau_ky_va_phan_phoi_quy_co_dong.sql")).sort();
+    expect(migrations).toHaveLength(2);
+    for (let pass = 0; pass < 2; pass++) {
+      for (const file of migrations) await db.exec(readFileSync(`${DIR}/${file}`, "utf8"));
+    }
+  }, 180000);
+
+  it("chia từ số đã đối chiếu, cấn đúng một lần, chi khoản phải trả qua W2", () => giaoDich(async () => {
+    await chotThang("2026-10-01", TOA_1, { [CD1]: 120 });
+    const opening = openAdvance(500, 120);
+    await goi(CHU, opening);
+    await goi(CHU, opening);
+    expect(await viThe(CD1)).toMatchObject({ advance_outstanding: 500, unpaid_profit: 0 });
+    const initial = source("OPENING", 900, 0, "QUY-DA-CHOT");
+    await goi(CHU, initial);
+    await goi(CHU, initial);
+    const instruction = distribute([hand, payable]);
+    const first = await goi(CHU, instruction);
+    expect(first).toMatchObject({ amount: 800, advance_offset_amount: 400, payable_amount: 400, available_amount: 100 });
+    expect(await goi(CHU, instruction)).toEqual(first);
+    expect(await viThe(CD1)).toMatchObject({ advance_outstanding: 100, unpaid_profit: 0, balance: -100 });
+    expect(await viThe(CD2)).toMatchObject({ advance_outstanding: 0, unpaid_profit: 400, balance: 400 });
+    expect(await dem("public.income_expenses")).toBe(0);
+    expect(await goi(CHU, state)).toMatchObject({ available_amount: 100 });
+    const preview = await goi(CHU, r5(CD2, null));
+    expect(preview.months).toEqual([
+      expect.objectContaining({ month: "2026-11-01", unpaid_through: 400, selectable: true }),
+    ]);
+    // Một kỳ lợi nhuận mới chỉ được cấn số ứng thực còn lại.
+    await chotThang("2026-11-01", TOA_1, { [CD1]: 135 });
+    const net = await goi<KqChot>(CHU, w2({ cd: CD1, thang: "2026-11-01", so: SO_QUY, tien: 35, k: 100 }));
+    expect(net).toMatchObject({ recognized_amount: 135, advance_offset_amount: 100, cash_amount: 35 });
+    const paid = await goi<KqChot>(CHU, w2({ cd: CD2, thang: "2026-11-01", so: SO_QUY, tien: 400 }));
+    expect(paid.voucher_id).toBeTruthy();
+    expect(await duyetChi(paid.voucher_id!, CHU, SO_QUY)).toBeNull();
+    expect(await viThe(CD2)).toMatchObject({ unpaid_profit: 0, advance_outstanding: 0, balance: 0 });
+    expect(await goi(CHU, state)).toMatchObject({ available_amount: 100 });
+  }));
+
+  it("mốc sổ giữ kỳ đã đối chiếu và yêu cầu xác nhận cả khoản ứng bị che bởi số phải trả", () => giaoDich(async () => {
+    await goi(CHU, openAdvance(90, 0, "2026-09-01", "2026-09-30"));
+    const marker = await mocHieuLuc(CD1);
+    expect(marker).toBeTruthy();
+    expect(await loiGoi(CHU, e9(CD1, null, marker))).toMatchObject({ code: "22023" });
+    await goi(CHU, source("OPENING", 120, 0, "NGUON-DA-CHOT", "2026-10-01"));
+    await goi(CHU, distribute([{ ...hand, amount: 120, advance_offset_amount: 20 }], 120, "QC-01", "2026-10-02"));
+    expect(await viThe(CD1)).toMatchObject({ advance_outstanding: 70, unpaid_profit: 100, balance: 30 });
+    const markerPreview = `SELECT public.profit_ledger_marker_preview_v1('${ORG_A}', 'SHAREHOLDER', '${CD1}', '2026-10-01') AS v`;
+    const preview = await goi(CHU, markerPreview);
+    expect(preview).toMatchObject({ advance_erased: 70, requires_acknowledge: true });
+    expect(await loiGoi(CHU, e9(CD1, "2026-09-01", marker))).toMatchObject({ code: "22023" });
+    const nextMarker = e9(CD1, "2026-10-01", marker);
+    expect(await loiGoi(CHU, e9(CD1, "2026-10-01", marker, false))).toMatchObject({ code: "22023" });
+    expect(await viThe(CD1)).toMatchObject({ advance_outstanding: 70, unpaid_profit: 100 });
+    expect(await goi(CHU, nextMarker)).toMatchObject({ advance_erased: 70 });
+    expect(await viThe(CD1)).toMatchObject({ advance_outstanding: 0, unpaid_profit: 0 });
+  }));
+
+  it("chuyển số dư đã đối chiếu khi một phần ứng có phiếu CRM và một phần ở sổ ngoài", () => giaoDich(async () => {
+    const advance = await ungDaDuyet(30, { ngay: "2026-11-09", so: SO_QUY, nguoiLap: CHU });
+    expect(await ghiSo(advance.voucher_id, CHU, SO_QUY)).toBeNull();
+    expect(await viThe(CD1)).toMatchObject({ advance_outstanding: 30 });
+    // Kỳ lợi nhuận tháng 10 đã quyết toán bằng cả các khoản phát sinh trong tháng 11.
+    const migrate = (expected: number, asOfDate = "2026-11-12") =>
+      `SELECT public.shareholder_profit_opening_advance_v1('${ORG_A}', '${CD1}', '2026-10-01',
+        '${asOfDate}', 90, 0, 'Tổng đối chiếu đã gồm phiếu ứng CRM và ứng sổ ngoài', 'legacy-reconciled', ${expected}) AS v`;
+    expect(await loiGoi(CHU, migrate(30, "2026-11-11"))).toMatchObject({ code: "PT409" });
+    expect(await loiGoi(CHU, migrate(0))).toMatchObject({ code: "PT409" });
+    const receipt = await goi(CHU, migrate(30));
+    expect(await goi(CHU, migrate(30))).toEqual(receipt);
+    expect(await loiGoi(CHU, migrate(30).replace(CD1, CD2))).toMatchObject({ code: "PT409" });
+    expect(await viThe(CD1)).toMatchObject({ advance_outstanding: 90, unpaid_profit: 0 });
+    expect(await dem("public.income_expenses")).toBe(1);
+    expect(await huyPhieu(advance.voucher_id, CHU2, "POSTED")).toMatchObject({ code: "55000" });
+    expect(await phieu(advance.voucher_id)).toMatchObject({ approval_status: "APPROVED", posting_status: "POSTED" });
+  }));
+
+  it("khôi phục khoản phải trả đúng tháng quỹ khi phiếu ứng đã cấn bị hủy", () => giaoDich(async () => {
+    const advance = await ungDaDuyet(50, { ngay: "2026-11-09", so: SO_QUY, nguoiLap: CHU });
+    expect(await ghiSo(advance.voucher_id, CHU, SO_QUY)).toBeNull();
+    await goi(CHU, source("OPENING", 50, 0, "NGUON-50"));
+    const offset = [{ shareholder_id: CD1, amount: 50, advance_offset_amount: 50 }];
+    expect(await loiGoi(CHU, distribute(offset, 50, "PP-THU", "2026-11-05"))).toMatchObject({ code: "PT409" });
+    await goi(CHU, distribute(offset, 50, "PP-THAT", "2026-11-12"));
+    expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 0, advance_outstanding: 0 });
+    expect(await huyPhieu(advance.voucher_id, CHU2, "POSTED")).toBeNull();
+    expect(await viThe(CD1)).toMatchObject({ unpaid_profit: 50, advance_outstanding: 0 });
+    expect(await goi(CHU, r5(CD1))).toMatchObject({
+      months: [expect.objectContaining({ month: "2026-11-01", unpaid_through: 50, selectable: true })],
+    });
+    expect(await goi(CHU, w2({ cd: CD1, thang: "2026-11-01", tien: 50, ngay: "2026-11-13" })))
+      .toMatchObject({ cash_amount: 50, advance_offset_amount: 0 });
+    expect(await goi(CHU, state)).toMatchObject({ available_amount: 0 });
+  }));
+
+  it("từ chối phân bổ vượt số dư, quá số ứng hay sai cổ đông và không ghi dở", () => giaoDich(async () => {
+    await goi(CHU, source("OPENING", 900, 0, "DAU-KY"));
+    for (const row of [
+      { ...hand, amount: 1000, advance_offset_amount: 0 },
+      hand,
+      { ...payable, shareholder_id: CD_B },
+      { ...payable, amount: -1 },
+    ]) {
+      expect(await loiGoi(CHU, distribute([payable, row]))).not.toBeNull();
+    }
+    expect(await loiGoi(CHU, distribute([payable, payable]))).not.toBeNull();
+    await goi(CHU, distribute([payable]));
+    expect(await loiGoi(CHU, distribute([payable], 900, "QC-02"))).not.toBeNull();
+    expect(await loiGoi(CHU, distribute([payable], 500, "QC-01"))).not.toBeNull();
+    expect(await goi(CHU, state)).toMatchObject({ available_amount: 500 });
+    expect(await viThe(CD2)).toMatchObject({ unpaid_profit: 400 });
+  }));
+
+  it("kiểm quyền và nguồn đối soát cho từng công ty", () => giaoDich(async () => {
+    const open = source("OPENING", 900, 0, "DAU-KY");
+    for (const user of [NGOAI, U_XEM, null]) {
+      expect(await loiGoi(user, open)).toMatchObject({ code: "42501" });
+      expect(await loiGoi(user, state)).toMatchObject({ code: "42501" });
+    }
+    await goi(CHU, open);
+    expect(await loiGoi(CHU, source("OPENING", 1, 900, "DAU-LAN-2"))).not.toBeNull();
+    await goi(CHU, source("DEBIT", 100, 900, "CHI-01"));
+    expect(await loiGoi(CHU, source("DEBIT", 100, 800, "CHI-01"))).not.toBeNull();
+    await goi(CHU, source("CREDIT", 200, 800, "BO-SUNG"));
+    expect(await goi(CHU, state)).toMatchObject({ available_amount: 1000 });
+  }));
 });

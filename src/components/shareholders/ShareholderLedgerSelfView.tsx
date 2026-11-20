@@ -28,7 +28,7 @@ import { BuildingFilterBar } from './BuildingFilterBar';
 import { DonutBreakdown, MiniBars } from './profitCharts';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
 import ProfitSelfAdvanceDialog from './ProfitSelfAdvanceDialog';
-import { MyPositionError, MySettlementsCard } from './ShareholderSelfPosition';
+import { MyFundBreakdown, MyPositionError, MySettlementsCard } from './ShareholderSelfPosition';
 import { currentYear } from './shareholderUtils';
 
 const ALL = 'all';
@@ -93,11 +93,11 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
         <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Cổ đông</div>
           <div className="ph-kpi__value">{ledger.shareholder.name}</div>
-          <div className="ph-kpi__sub">{buildingsEver > 0 ? `${buildingsEver} nhà có phần chia` : 'chưa có phần chia'}</div>
+          <div className="ph-kpi__sub">{buildingsEver > 0 ? `${buildingsEver} nhà có phần chia` : 'chưa có phần chia từ tòa'}</div>
         </div>
         <div className="ph-kpi__div" />
         <div className="ph-kpi ph-kpi--flex" data-testid="self-kpi-allocated">
-          <div className="ph-kpi__label">Được chia</div>
+          <div className="ph-kpi__label">Được chia từ tòa</div>
           <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(ledger.allocated)}</div>
           <div className="ph-kpi__sub">{marker ? `sau mốc đã trả đủ hết ${marker}` : 'luỹ kế các tháng đã chốt'}</div>
           <div className="ph-kpi__sub ph-kpi__sub--mint">Năm {year}: {formatCurrency(yearTotal)}</div>
@@ -176,11 +176,12 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
         </div>
         {access.canAdvanceOwn && advanceNote && <div className="ph-hint" role="note">{advanceNote}</div>}
         <MyPositionError view={positionView} />
+        <MyFundBreakdown view={positionView} />
         {unpaidNegative && <div className="ph-hint" role="note">{UNPAID_NEGATIVE_NOTE}</div>}
 
         <div className="ph-grid-2">
           <div className="ph-card ph-card__pad">
-            <div className="ph-card__title">Lợi nhuận được chia theo tháng — {year}</div>
+            <div className="ph-card__title">Lợi nhuận từ các tòa theo tháng — {year}</div>
             <MiniBars data={monthlyChart} highlight={highlightMonth} footnote="Đơn vị: triệu ₫ · phần của bạn sau khi trừ lương điều hành" />
           </div>
           <div className="ph-card ph-card__pad">

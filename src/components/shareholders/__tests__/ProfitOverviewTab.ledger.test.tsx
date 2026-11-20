@@ -17,6 +17,7 @@ const m = vi.hoisted(() => ({
   dropPositions: [] as string[],
   positionCalls: [] as { org: string | null; enabled: boolean | undefined }[],
   perms: { shareholder_profit: { distribute: true, pay_manager: true } } as Record<string, unknown>,
+  memberType: 'OWNER',
   distProps: [] as Record<string, unknown>[],
   /** Dòng cổ đông của chính người đang xem (useMyShareholder); null = không phải cổ đông. */
   me: null as Record<string, unknown> | null,
@@ -24,7 +25,7 @@ const m = vi.hoisted(() => ({
 }));
 const ok = (data: unknown) => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, error: null, refetch: vi.fn() });
 
-vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a', organization: { id: 'org-a', memberType: m.memberType } }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: m.perms }) }));
 vi.mock('@/pages/reports/finance/ProfitHubShell', () => ({
   ProfitHubSlot: ({ children }: { children?: ReactNode }) => <div data-testid="kpis">{children}</div>,
@@ -113,6 +114,7 @@ const rowOf = (id: string) => screen.getByTestId(`ledger-row-${id}`);
 const chiOf = (id: string) => within(rowOf(id)).queryByRole('button', { name: 'Chi' }) as HTMLButtonElement | null;
 
 beforeEach(() => {
+  m.memberType = 'OWNER';
   m.route = 'LEGACY';
   m.ledgerError = null;
   m.positions = 'ok';
@@ -402,4 +404,12 @@ describe('Tổng quan chủ — "Chi tạm ứng cho tôi" khi chủ đồng th�
     expect(selfButton()).toBeNull();
     expect(m.selfAdvanceProps).toEqual([]);
   });
+});
+it('chỉ chủ công ty có quyền chi thấy lối vào quỹ chung', () => {
+  render(<ProfitOverviewTab />);
+  expect(screen.getByRole('button', { name: 'Quỹ chung' })).toBeTruthy();
+  cleanup();
+  m.memberType = 'STAFF';
+  render(<ProfitOverviewTab />);
+  expect(screen.queryByRole('button', { name: 'Quỹ chung' })).toBeNull();
 });

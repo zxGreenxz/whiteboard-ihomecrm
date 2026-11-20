@@ -23,6 +23,24 @@ export function MyPositionError({ view, className }: { view: MyPositionView; cla
 
 const MUTED = { color: 'var(--ph-ink-4)' } as const;
 
+export function MyFundBreakdown({ view }: { view: MyPositionView }) {
+  const parts = view.position?.components;
+  const payable = parts?.shared_fund_payable ?? 0;
+  const offset = parts?.shared_fund_offset ?? 0;
+  const opening = parts?.opening_advance ?? 0;
+  if (payable + offset + opening === 0) return null;
+  return (
+    <dl className="grid gap-2 rounded-xl border bg-card p-4 text-sm sm:grid-cols-2" aria-label="Quỹ chung và tạm ứng đầu kỳ của bạn">
+      {payable + offset > 0 && <>
+        <div><dt className="font-semibold">Được chia từ quỹ chung</dt><dd>{formatCurrency(payable + offset)}</dd></div>
+        <div><dt>Phần dùng để cấn tạm ứng</dt><dd>{formatCurrency(offset)}</dd></div>
+        <div><dt>Phần ghi vào lợi nhuận chưa chi khi chia quỹ</dt><dd>{formatCurrency(payable)}</dd></div>
+      </>}
+      {opening > 0 && <div><dt>Tạm ứng đầu kỳ đã đối soát</dt><dd>{formatCurrency(opening)}</dd></div>}
+    </dl>
+  );
+}
+
 const rowDim = (row: ProfitSettlementRow) => (row.excluded_by_marker ? { opacity: 0.6 } : undefined);
 
 /** Thẻ "Các lần chốt chi lợi nhuận" — máy tính. Không hiện khi chưa có số (khối lỗi đã nói ở trên). */

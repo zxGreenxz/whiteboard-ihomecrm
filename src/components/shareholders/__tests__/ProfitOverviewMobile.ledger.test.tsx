@@ -12,6 +12,7 @@ const m = vi.hoisted(() => ({
   /** Dòng R1 thêm mà E1 không liệt kê (cổ đông đã xoá còn số theo con số riêng của R1). */
   extraPositions: [] as Record<string, unknown>[],
   perms: { shareholder_profit: { distribute: true, pay_manager: true } } as Record<string, unknown>,
+  memberType: 'OWNER',
   sheet: [] as { open: boolean; compact?: boolean; shareholder: { name: string } | null }[],
   managerVariant: [] as string[],
   distProps: [] as Record<string, unknown>[],
@@ -20,7 +21,7 @@ const m = vi.hoisted(() => ({
 }));
 const ok = (data: unknown) => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, error: null, refetch: vi.fn() });
 
-vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a', organization: { id: 'org-a', memberType: m.memberType } }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: m.perms }) }));
 vi.mock('@/hooks/useShareholders', () => ({
   useShareholders: () => ok([{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }]),
@@ -94,6 +95,7 @@ const chiOf = (id: string) => within(cardOf(id)).queryByRole('button', { name: '
 const renderMobile = () => render(<ProfitOverviewMobile year={2026} onYearChange={vi.fn()} />);
 
 beforeEach(() => {
+  m.memberType = 'OWNER';
   m.route = 'LEGACY';
   m.positions = 'ok';
   m.extraPositions = [];
@@ -245,4 +247,12 @@ describe('Tổng quan chủ — điện thoại', () => {
     expect(screen.queryByRole('button', { name: /Chi tạm ứng cho tôi/ })).toBeNull();
     expect(m.selfAdvanceProps).toEqual([]);
   });
+});
+it('chỉ chủ công ty có quyền chi thấy lối vào quỹ chung', () => {
+  renderMobile();
+  expect(screen.getByRole('button', { name: 'Quỹ chung' })).toBeTruthy();
+  cleanup();
+  m.memberType = 'STAFF';
+  renderMobile();
+  expect(screen.queryByRole('button', { name: 'Quỹ chung' })).toBeNull();
 });

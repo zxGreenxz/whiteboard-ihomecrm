@@ -96,6 +96,13 @@ describe('R2 — cổ đông tự xem', () => {
     expect(got).toMatchObject({ shareholder: { id: SH, name: 'Cổ đông 1' }, unpaid_profit: 0, advance_pending: 5, settlement_cash_pending: 60 });
     expect(got.settlements).toEqual([expect.objectContaining({ id: 'st-1', through_month: '2026-10-01', recognized_amount: 100, advance_offset_amount: 40, cash_amount: 60, cash_voucher_id: 'v-cash' })]);
   });
+  it('đọc phần quỹ và ứng đầu kỳ của chính cổ đông, từ chối dữ liệu quỹ thiếu trường', () => {
+    const components = { ...r2().components, shared_fund_payable: 60, shared_fund_offset: 40, opening_advance: 90 };
+    expect(readMyShareholderPosition(r2({ components }), ORG).components).toMatchObject({
+      shared_fund_payable: 60, shared_fund_offset: 40, opening_advance: 90,
+    });
+    expect(() => readMyShareholderPosition(r2({ components: { ...components, shared_fund_offset: null } }), ORG)).toThrow(ProfitLedgerPayloadError);
+  });
   it('lần chốt không ra tiền: không có phiếu', () => {
     const got = readMyShareholderPosition(r2({ settlements: [settlement({ recognized_amount: 80, advance_offset_amount: 80, cash_amount: 0, cash_voucher_id: null, cash_voucher_status: null, cash_voucher_posting_status: null })] }), ORG);
     expect(got.settlements[0]).toMatchObject({ cash_amount: 0, cash_voucher_id: null });
