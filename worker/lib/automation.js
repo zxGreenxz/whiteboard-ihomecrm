@@ -88,10 +88,13 @@ export function soanTinPhong(room, mau, hotline) {
     gia: dinhDangTien(room.price),
     dien_tich: room.area > 0 ? `${room.area}m²` : '',
     loai_phong: room.type || '',
-    noi_that: room.amenities.join(', ') || room.description || '',
+    noi_that: room.amenities.join(', ') || (!mau.includes('{mo_ta}') ? room.description : '') || '',
+    mo_ta: room.description?.trim() || '',
     tinh_trang: tinhTrang,
     khuyen_mai: room.saleNote?.trim() || (room.status === 'pass' ? room.passSalePolicy?.trim() : '') || '',
-    hotline: hotline || '',
+    hotline: room.status === 'pass' && !room.passContactManager && room.passContactPhone?.trim()
+      ? [room.passContactPhone.trim(), room.passContactName?.trim()].filter(Boolean).join(' · ')
+      : hotline || '',
   }).replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -132,7 +135,7 @@ async function xepMotTin({ conv, khiNao, body, anh, requestKey, oneshotId, conte
 }
 
 const refAnh = anh => ({ bucket: anh.bucket, path: anh.path, url: anh.url, filename: anh.filename,
-  width: anh.width, height: anh.height, mime: anh.mime, size: anh.size });
+  width: anh.width, height: anh.height, mime: anh.mime, size: anh.size, ...(anh.duration_ms ? { duration_ms: anh.duration_ms } : {}) });
 
 /* ------------------------------------------------------------ ghi nhật ký */
 
@@ -156,7 +159,7 @@ async function luuSo(autoId, stats) {
  * Xếp hàng một lô tin cho toàn bộ người nhận.
  * @returns {Promise<{soTin:number, soNguoiNhan:number}>}
  */
-async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId, contentGuard }) {
+async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId, contentGuard, chiTietBiCat = false }) {
   const gapNguoi = config.antiSpam.gapBetweenRecipientsSec;
   const gapTin = config.antiSpam.gapBetweenRoomMsgsSec;
   const bayGio = Date.now();
@@ -176,6 +179,7 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
     // "một con bot" dưới mắt hệ thống chống spam.
     let offset = i * gapNguoi;
     let daGuiChoNguoiNay = false;
+    const batDauNguoiNhan = soTin;
     const xep = async (logicalKey, content) => {
       const khiNao = new Date(bayGio + offset * 1000);
       // Identity follows the content's purpose, never its current display
@@ -199,7 +203,12 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
       if (soTin >= tranConLai) break;
 
       if (k === 'link' && vanBanMoDau) {
-        await xep('link', { body: vanBanMoDau });
+        // A final @all line opts this group into a native mention, only on a complete batch.
+        const expectedBeforeLink = duKien / convs.length - 1;
+        const dayDu = khoi.at(-1) === 'link' && khoi.includes('table_image')
+          && soTin - batDauNguoiNhan === expectedBeforeLink && !tinPhong.some(t => t.loiAnh);
+        const body = dayDu && !chiTietBiCat && conv.thread_type === 'group' ? vanBanMoDau : vanBanMoDau.replace(/(?:^|\n)@all\s*$/, '').trim();
+        if (body) await xep('link', { body });
       } else if (k === 'table_image') {
         if (anhBang) await xep('table_image', { anh: anhBang });
         else soKhongXepDuoc++;
@@ -500,6 +509,7 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
 
   const ketQua = await xepLo({
     convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId,
+    chiTietBiCat: khoi.includes('room_details') && tinPhong.length < phong.rooms.length,
     contentGuard: saleContentGuard(phong, config.template),
   });
 

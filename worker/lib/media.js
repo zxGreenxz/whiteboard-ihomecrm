@@ -34,6 +34,59 @@ async function downloadAttachment(a) {
   return { data: buf, filename: safeFilename(a.filename || a.path.split('/').pop()), metadata: meta };
 }
 
+// The photo API accepts a native image album. The SDK's generic mixed upload
+// posts MP4 as a downloadable file. Send playable videos immediately after the
+// single photo album, while this room still owns the current queue job.
+async function sendRoomMedia(s, job, attachments, dbIds, threadId, type) {
+  if (attachments.length !== dbIds.length) throw new Error('Số media phòng và số tin đã xếp không khớp');
+  const photos = [], videos = [];
+  attachments.forEach((media, index) => {
+    (media.mime === 'video/mp4' ? videos : photos).push({ media, id: dbIds[index] });
+  });
+  // Canonical rows in older enqueue RPCs start as image. Correct the media type
+  // before any provider call so CRM also renders the original MP4 as video.
+  const { data, error } = await sb.from('zalo_messages').update({ msg_type: 'video' })
+    .eq('organization_id', job.organization_id).eq('account_id', job.account_id)
+    .eq('conversation_id', job.conversation_id).eq('status', 'pending')
+    .in('id', videos.map(v => v.id)).select('id');
+  if (error || data?.length !== videos.length) throw new Error('Chưa xác nhận được các tin video của phòng');
+  const sources = [];
+  for (const { media } of photos) sources.push(await downloadAttachment(media));
+  let cover = sources[0];
+  if (!cover) {
+    const { createCanvas } = await import('@napi-rs/canvas');
+    const canvas = createCanvas(320, 180);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#28323a'; ctx.fillRect(0, 0, 320, 180);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(145, 63); ctx.lineTo(145, 117); ctx.lineTo(185, 90); ctx.fill();
+    const data = canvas.toBuffer('image/png');
+    cover = { data, filename: 'video.png', metadata: { totalSize: data.length, width: 320, height: 180 } };
+  }
+  const uploaded = await s.api.uploadAttachment(cover, threadId, type);
+  const thumb = Array.isArray(uploaded) ? uploaded[0] : uploaded;
+  const thumbnailUrl = thumb?.normalUrl || thumb?.hdUrl || thumb?.thumbUrl;
+  if (!thumbnailUrl) throw new Error('Zalo chưa xác nhận ảnh xem trước của video');
+  const prepared = [];
+  for (const video of videos) {
+    const source = await downloadAttachment(video.media);
+    const result = await s.api.uploadAttachment(source, threadId, type);
+    const videoUrl = (Array.isArray(result) ? result[0] : result)?.fileUrl;
+    if (!videoUrl) throw new Error('Zalo chưa xác nhận video gốc của phòng');
+    prepared.push({ id: video.id, videoUrl, media: video.media });
+  }
+  const receipts = [];
+  if (photos.length) {
+    const res = await s.api.sendMessage({ msg: '', attachments: sources }, threadId, type);
+    if (res?.attachment?.length !== photos.length) throw new Error('PROVIDER_RECEIPT_MISMATCH: thiếu biên nhận album phòng');
+    photos.forEach((photo, index) => receipts.push(sendReceipt(photo.id, res.attachment[index])));
+  }
+  for (const { id, videoUrl, media } of prepared) {
+    const result = await s.api.sendVideo({ videoUrl, thumbnailUrl, duration: media.duration_ms, width: media.width, height: media.height }, threadId, type);
+    receipts.push(sendReceipt(id, result));
+  }
+  await finalizeSend(job, receipts);
+}
+
 // p = payload job: {type: image|file|voice|sticker, body, attachments[], sticker, message_ids[]}
 export async function sendMediaJob(s, job, p, threadId, type) {
   const dbIds = [...new Set([job.message_id, ...(Array.isArray(p.message_ids) ? p.message_ids : [])].filter(Boolean))];
@@ -45,6 +98,11 @@ export async function sendMediaJob(s, job, p, threadId, type) {
     await finalizeSend(job, dbIds.map((id, index) => sendReceipt(id, index === 0 ? res : null)));
     log('sticker sent', job.id);
     return;
+  }
+
+  if (p.tu_dong === true && p.automation_request_key?.endsWith(':album')
+      && p.attachments?.some(a => a.mime === 'video/mp4')) {
+    return sendRoomMedia(s, job, p.attachments, dbIds, threadId, type);
   }
 
   const sources = [];

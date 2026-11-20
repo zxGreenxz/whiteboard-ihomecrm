@@ -222,9 +222,17 @@
       ],
       "hermes": [
         {
+          "sql": "app_private.public_sale_rooms_payload_v1",
+          "calls": [
+            "get_public_available_rooms",
+            "public_room_link_grants_v1"
+          ],
+          "note": "Danh sách chung của các link đang công khai và từng phòng đã bật."
+        },
+        {
           "sql": "app_private.hermes_sale_listing_payload_v1",
           "calls": [
-            "get_public_available_rooms"
+            "public_sale_rooms_payload_v1"
           ],
           "note": "đọc trang của từng chủ có link"
         },
@@ -2556,7 +2564,7 @@
       "sql": [
         {
           "function": "public.get_public_available_rooms",
-          "sha256": "55795120cf012c02c483e7420001026d13577f8623a49b7f8150b61005f04ca4"
+          "sha256": "105333eac0bfc204c0e286dd25f209f35f62914dec3b2d5040ca47a7e28de1d8"
         }
       ],
       "hermes": [
@@ -2565,7 +2573,8 @@
           "calls": [
             "room_sale_workflow_fact_v1",
             "hermes_room_page_admission_v1",
-            "room_sale_policy_active_text_v1"
+            "room_sale_policy_active_text_v1",
+            "public_room_link_grants_v1"
           ],
           "note": "trang phòng đã lọc; không gọi get_public_available_rooms"
         },

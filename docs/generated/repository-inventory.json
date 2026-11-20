@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1934,
   "soFileDocBangFs": 499,
-  "tongLoiGoi": 1364,
+  "tongLoiGoi": 1365,
   "khongPhanLoaiDuoc": 605,
   "theoLoai": {
     "ma-nguon": {
@@ -502,6 +502,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/roomSaleMigration.test.ts",
+      "soGoi": 6,
+      "loai": {
+        "sql": 5
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/voucherDetailReadMigration.test.ts",
       "soGoi": 6,
       "loai": {
@@ -651,14 +659,6 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "src/lib/__tests__/roomSaleMigration.test.ts",
-      "soGoi": 5,
-      "loai": {
-        "sql": 4
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/soTongLoiNhuanChanMigration.test.ts",

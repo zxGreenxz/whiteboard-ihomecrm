@@ -24,6 +24,14 @@ describe('automation room photo goes through guarded existing media storage', ()
     expect(f.fetchImpl.mock.calls[0][1].headers).toBeUndefined();
     expect(await f.run()).toEqual([photo]); // retry keeps the content-addressed storage key
   });
+  it('allows the room uploader video limit while keeping the bounded image limit', async () => {
+    for (const [ext, message] of [['mp4','MP4'],['png','25MB']]) {
+      const f = fixture('https://images.example.test/room-sale-images/u/test.' + ext);
+      f.fetchImpl.mockImplementation(async () => new Response(png(), { headers: { 'content-length': String(26 * 1024 * 1024) } }));
+      await expect(f.run()).rejects.toThrow(new RegExp(message,'i'));
+      expect(f.storage.upload).not.toHaveBeenCalled();
+    }
+  });
   it('does not substitute building photos or fetch anything when the room has no photo', async () => {
     const f = fixture(null); expect(await f.run()).toEqual([]);
     expect(f.fetchImpl).not.toHaveBeenCalled(); expect(f.storage.upload).not.toHaveBeenCalled();

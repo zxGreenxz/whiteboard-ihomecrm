@@ -51,7 +51,7 @@ const MO_TA_KHOI: Record<KhoiTin, { ten: string; icon: ReactNode; moTa: string; 
 const BIEN_INTRO = ['{ngay}', '{so_phong}', '{link}', '{hotline}'];
 const BIEN_PHONG = [
   '{ma_phong}', '{dia_chi}', '{toa}', '{gia}', '{dien_tich}',
-  '{loai_phong}', '{noi_that}', '{tinh_trang}', '{khuyen_mai}', '{hotline}',
+  '{loai_phong}', '{noi_that}', '{mo_ta}', '{tinh_trang}', '{khuyen_mai}', '{hotline}',
 ];
 
 export default function TemplateBuilder({ value, onChange, eventDriven, onEventDrivenChange }: Props) {

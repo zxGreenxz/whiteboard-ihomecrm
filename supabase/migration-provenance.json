@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-20T12:14:10.368Z",
+  "generatedAt": "2026-11-20T12:29:55.937Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 975,
+    "ledger-applied": 976,
     "unknown": 80,
-    "catalog-proven": 206,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -14602,6 +14602,30 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-20T11:00:28.340Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120115628_public_room_link_ready_room_v1.sql",
+      "version": "20261120115628",
+      "name": "public_room_link_ready_room_v1",
+      "scheme": "timestamp14",
+      "sha256": "7ebc9b18b948368896ec8bc08a989242e06bab137623362a5fd9a8917072ddf7",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.public_room_link_ready_rooms",
+        "catalog:function:public.set_public_room_link_ready_room_v1",
+        "catalog:function:public.get_public_available_rooms"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120122616_room_video_storage_limit.sql",
+      "version": "20261120122616",
+      "name": "room_video_storage_limit",
+      "scheme": "timestamp14",
+      "sha256": "5fce33f57238bc2b8679dff61a1512baaca5c71e0313b78afa0ce8f44955437b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T12:29:42.686Z|bien-nhan-backup"
       ]
     },
     {

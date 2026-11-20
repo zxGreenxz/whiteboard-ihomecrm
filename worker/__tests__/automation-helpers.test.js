@@ -34,6 +34,12 @@ describe('chính sách pass trong tin chi tiết', () => {
     price: 3, area: 20, type: 'Studio', amenities: [], status: 'pass',
     saleNote: '', passSalePolicy: 'Ưu đãi khách pass', saleBonus: 'Thưởng nội bộ',
   };
+  it('in đúng liên hệ pass được công khai, giữ số admin khi khách chọn quản lý', () => {
+    const r={...room, amenities:['Giường'], description:'Sân phơi chung', passContactName:'Khách pass', passContactPhone:'0901234567'};
+    expect(soanTinPhong(r,'{hotline}\n{mo_ta}','admin')).toBe('0901234567 · Khách pass\nSân phơi chung');
+    expect(soanTinPhong({...r,amenities:[]},'{mo_ta}','admin')).toBe('Sân phơi chung');
+    expect(soanTinPhong({...r,passContactManager:true},'{hotline}','admin')).toBe('admin');
+  });
   it('giữ chính sách pass khi phòng không có chính sách riêng', () => {
     expect(soanTinPhong(room, 'Khuyến mãi: {khuyen_mai}', '')).toBe('Khuyến mãi: Ưu đãi khách pass');
   });

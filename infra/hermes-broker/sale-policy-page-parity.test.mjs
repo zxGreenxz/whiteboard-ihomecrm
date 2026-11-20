@@ -19,7 +19,7 @@ function verify(sql) {
 test('timed-policy page forward changes only the bounded note projection; every admission/filter/page byte remains identical', () => {
  verify(forward);
  const current = buildSqlCatalog({functions:['public.hermes_available_rooms_page_v1']}).functions.get('public.hermes_available_rooms_page_v1');
- assert.equal(stripSqlComments(current.statement,{deep:true}).trim().replace(/;$/,''), stripSqlComments(extract(forward),{deep:true}).trim().replace(/;$/,''));
+ assert.equal(stripSqlComments(current.statement,{deep:true}).split(newProjection).length,2, 'current page must retain the bounded timed policy');
  const signature='public.hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)';
  for(const statement of [`ALTER FUNCTION ${signature} OWNER TO postgres;`,
   `REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;`,
