@@ -11,6 +11,25 @@ if (!target || !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(target).hos
 }
 const shim = readFileSync(new URL('../supabase/baseline/platform-shim.sql', import.meta.url), 'utf8');
 
+test('migrates an existing private Zalo room-media bucket from 25 to 32 MiB on replay', () => {
+  const migration = readFileSync(new URL('../supabase/migrations/20261120122616_room_video_storage_limit.sql', import.meta.url), 'utf8');
+  const result = goiPsql(['-d', target, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', '-'], {
+    encoding: 'utf8', timeout: 30000,
+    input: `BEGIN;
+${shim}
+INSERT INTO storage.buckets(id,name,public,file_size_limit) VALUES ('zalo-media','zalo-media',false,26214400);
+${migration}
+${migration}
+DO $test$ BEGIN
+  IF NOT EXISTS (SELECT FROM storage.buckets WHERE id='zalo-media' AND public=false AND file_size_limit=33554432) THEN
+    RAISE EXCEPTION 'Expected a private 32 MiB Zalo bucket after replay';
+  END IF;
+END $test$;
+ROLLBACK;`,
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message || result.stdout);
+});
+
 test('platform shim supports private MIME bucket upserts, storage row types, FK and replay without opening RLS', () => {
   const result = goiPsql(['-d', target, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', '-'], {
     encoding: 'utf8', timeout: 30000,
