@@ -30,7 +30,7 @@ export async function captureSaleQuestion(event, source, db = sb) {
     (event.type === 0 && (event.threadId !== d.uidFrom || d.idTo !== source.ownUid))
   )
     return false;
-  const kind = saleQuestionKind(d.content);
+  const kind = saleQuestionKind(d.content, event.type === 1);
   if (!kind) return false;
   const { data, error } = await db.rpc('zalo_sale_advice_intake_v1', {
     p: {

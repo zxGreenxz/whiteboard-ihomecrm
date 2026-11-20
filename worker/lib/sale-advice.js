@@ -12,7 +12,7 @@ const contains = (text, phrase) => (' ' + text + ' ').includes(' ' + phrase + ' 
 const vnMoney = (value) => Math.round(value).toLocaleString('vi-VN');
 const smallNumbers = ['nhat', 'hai', 'ba'];
 
-export function saleQuestionKind(text) {
+export function saleQuestionKind(text, group = false) {
   const s = words(text);
   if (
     !s ||
@@ -23,9 +23,23 @@ export function saleQuestionKind(text) {
     )
   )
     return null;
+  // In groups require a request or a short lookup. Ordinary progress updates
+  // often contain "xem phòng 101" as well; they should stay in the conversation.
+  if (group && !/[?？]/.test(text)) {
+    const request =
+      /\b(cho (?:em|minh|xin)|hoi|tim|xin|giup|tu van|can (?:thue|tim|phong)|con (?:phong|can)|bao nhieu|the nao|co khong|nao|kiem tra)\b/.test(
+        s,
+      );
+    const lookup =
+      /^(?:(?:gui|xem|tra|kiem|bao gia|gia|anh|thong tin|chinh sach|khuyen mai|uu dai|pdv|dien nuoc|tien dien|tien nuoc|phi dich vu|bang|danh sach|toa)\b|(?:phong|can|p) ?[a-z]?\d+[a-z]?$|(?:phong|can) (?:thu|so|nay|do|khac)|re hon|(?:phong trong|phong pass|studio|chung cu mini)$|\d)/.test(
+        s,
+      );
+    const criteria = /\b(duoi|ngan sach|tam|gia tu)\b.*\d/.test(s);
+    if (!request && !lookup && !criteria && !/\b(khong|chua)(?: a| nhi)?$/.test(s)) return null;
+  }
   if (/^(?:p\.?\s*)?\d+[a-z]?$/i.test(s) || /^toa\s+\S/.test(s)) return 'followup';
   if (
-    /\b(bang phong|danh sach phong|bang hom nay|gui bang|anh bang|phong trong|phong pass|phong sap trong|tim phong|tu van phong|tu van can|tim can|kiem phong|can thue|can phong|con phong|con can|xem phong|phong nao|can nao|gia phong|anh phong|thong tin (phong|can)|phong [a-z]?\d+|studio|chung cu mini)\b/.test(
+    /\b(bang phong|danh sach phong|bang hom nay|gui bang|anh bang|phong trong|phong pass|phong sap trong|tim phong|tu van phong|tu van can|tim can|kiem phong|can thue|can phong|con phong|con can|co phong|xem phong|phong nao|can nao|gia phong|anh phong|thong tin (phong|can)|(?:phong|can) [a-z]?\d+|studio|chung cu mini)\b/.test(
       s,
     ) ||
     (/\b\d+(?:tr|trieu|k)\d*\b/.test(s.replace(/(\d) (trieu|tr|k)\b/g, '$1$2')) &&
@@ -140,22 +154,36 @@ function roomCard(room, building, link, viewingPhone) {
     .join('\n');
 }
 
-function budget(text) {
-  const values = [...fold(text).matchAll(/(\d+(?:[.,]\d+)?)\s*(tr(?:ieu)?|k)(\d*)/g)].map(
+function readBudget(text) {
+  // "4-5 triệu" and "từ 4 đến 5 triệu" share the unit written on the right.
+  const expanded = fold(text).replace(
+    /(\d+(?:[.,]\d+)?)\s*(-|–|den|toi)\s*(\d+(?:[.,]\d+)?)\s*(tr(?:ieu)?|k)(\d*)\b/g,
+    '$1$4 $2 $3$4$5',
+  );
+  const amount = /(\d+(?:[.,]\d+)?)\s*(tr(?:ieu)?|k)(\d*)\b/g;
+  const remainder = expanded.replace(amount, ' ');
+  const values = [...expanded.matchAll(amount)].map(
     (m) =>
       Number(m[1].replace(',', '.')) * (m[2] === 'k' ? 1000 : 1e6) +
       (m[3] ? Number('0.' + m[3]) * (m[2] === 'k' ? 1000 : 1e6) : 0),
   );
-  if (!values.length) return {};
-  if (values.length > 1) return { min: Math.min(...values), max: Math.max(...values) };
-  return /\b(tu|it nhat|tren)\s+\d/.test(fold(text))
-    ? { min: values[0] }
-    : { max: values[0], exclusive: /\bduoi\b/.test(words(text)) };
+  let money = {};
+  if (values.length > 1) money = { min: Math.min(...values), max: Math.max(...values) };
+  else if (values.length)
+    money = /\b(tu|it nhat|tren)\s+\d/.test(expanded)
+      ? { min: values[0] }
+      : { max: values[0], exclusive: /\bduoi\b/.test(expanded) };
+  return { money, remainder };
 }
 
 function moveIn(text, today) {
   const s = fold(text);
-  if (/\b(vao ngay|o ngay|trong ngay|hom nay)\b/.test(s)) return today;
+  const m = s.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{4}))?\b/);
+  if (m) {
+    const iso = [m[3] || today.slice(0, 4), m[2].padStart(2, '0'), m[1].padStart(2, '0')].join('-');
+    const date = new Date(iso + 'T00:00:00Z');
+    return Number.isFinite(+date) && date.toISOString().startsWith(iso) ? iso : 'invalid';
+  }
   const d = new Date(today + 'T00:00:00Z');
   if (/\b(thang sau|thang toi)\b/.test(s))
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
@@ -163,11 +191,7 @@ function moveIn(text, today) {
     d.setUTCDate(d.getUTCDate() + (s.includes('ngay mai') ? 1 : 8 - (d.getUTCDay() || 7)));
     return d.toISOString().slice(0, 10);
   }
-  const m = s.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{4}))?\b/);
-  if (!m) return null;
-  const iso = [m[3] || today.slice(0, 4), m[2].padStart(2, '0'), m[1].padStart(2, '0')].join('-');
-  const date = new Date(iso + 'T00:00:00Z');
-  return Number.isFinite(+date) && date.toISOString().startsWith(iso) ? iso : 'invalid';
+  return /\b(vao ngay|o ngay|trong ngay|hom nay)\b/.test(s) ? today : null;
 }
 
 export function adviseSale({ question, previous, buildings, link, today, viewingPhone }) {
@@ -178,7 +202,8 @@ export function adviseSale({ question, previous, buildings, link, today, viewing
   if (/\b(bang phong|bang hom nay|gui bang|anh bang|danh sach day du)\b/.test(s))
     return { messages: [{ text: 'Bảng phòng trống hiện tại: ' + link, table: true }], memory: previous || {} };
   const old = previous || {};
-  const explicitCode = s.match(/\b(?:phong|can|p)\s*([a-z]?\d+[a-z]?)\b/)?.[1];
+  const { money, remainder } = readBudget(question);
+  const explicitCode = words(remainder).match(/\b(?:phong|can|p)\s*([a-z]?\d+[a-z]?)\b/)?.[1];
   const ordinal = s.match(/\b(?:can|phong|cai)\s+(?:thu|so)\s+(nhat|hai|ba|mot|[123])\b/)?.[1];
   const index =
     ordinal && (ordinal === 'mot' ? 0 : Number(ordinal) ? Number(ordinal) - 1 : smallNumbers.indexOf(ordinal));
@@ -197,14 +222,13 @@ export function adviseSale({ question, previous, buildings, link, today, viewing
   }
   const follow = saleQuestionKind(question) === 'followup' || /\b(re hon|khac)\b/.test(s);
   const criteria = follow ? { ...old.criteria } : {};
-  const money = budget(question);
   if (Object.keys(money).length) {
     delete criteria.min;
     delete criteria.max;
     delete criteria.exclusive;
     Object.assign(criteria, money);
   }
-  const date = moveIn(question, today);
+  const date = moveIn(remainder, today);
   if (date === 'invalid') return reply('Sale cho mình ngày vào ở theo dạng ngày/tháng nhé.');
   if (date) criteria.date = date;
   if (contains(s, 'phong pass') || contains(s, 'can pass')) criteria.status = 'pass';
@@ -259,9 +283,15 @@ export function adviseSale({ question, previous, buildings, link, today, viewing
       (!(r.passDate || r.saleFact.availableOn) || (r.passDate || r.saleFact.availableOn) > criteria.date)
     )
       return false;
-    const facts = words([r.type, ...r.amenities, r.description, b.liftLabel].filter(Boolean).join(' '));
+    const facts = [r.type, ...r.amenities, r.description, b.liftLabel].filter(Boolean).map(words);
     return (criteria.amenities || []).every((key) =>
-      amenities.find((group) => group[0] === key)?.some((x) => contains(facts, x)),
+      amenities
+        .find((group) => group[0] === key)
+        ?.some((x) =>
+          facts.some((fact) =>
+            contains(fact.replace(new RegExp('\\b(?:khong|chua)(?: (?:co|trang bi))? ' + x + '\\b', 'g'), ''), x),
+          ),
+        ),
     );
   });
   if (!picked && /\b(re hon|khac)\b/.test(s)) {

@@ -16,8 +16,9 @@ CREATE TABLE IF NOT EXISTS app_private.hermes_sale_questions (
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   UNIQUE(account_id,provider_id)
 );
+ALTER TABLE app_private.hermes_sale_questions OWNER TO postgres;
 ALTER TABLE app_private.hermes_sale_questions ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON app_private.hermes_sale_questions FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON app_private.hermes_sale_questions FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 CREATE INDEX IF NOT EXISTS hermes_sale_question_context ON app_private.hermes_sale_questions
   (organization_id,account_id,thread_id,sender_uid,created_at DESC);
 CREATE INDEX IF NOT EXISTS hermes_sale_question_expiry ON app_private.hermes_sale_questions(created_at);
@@ -38,7 +39,8 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,
   ) AND EXISTS (SELECT 1 FROM public.zalo_automations a WHERE a.organization_id=p_org
     AND a.kind='auto_reply' AND a.enabled AND a.config->'saleAdvisor'='true'::jsonb)
 $$;
-REVOKE ALL ON FUNCTION app_private.hermes_sale_channel_v1(uuid,uuid,uuid,uuid,text,text) FROM PUBLIC,anon,authenticated,service_role;
+ALTER FUNCTION app_private.hermes_sale_channel_v1(uuid,uuid,uuid,uuid,text,text) OWNER TO postgres;
+REVOKE ALL ON FUNCTION app_private.hermes_sale_channel_v1(uuid,uuid,uuid,uuid,text,text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 
 CREATE OR REPLACE FUNCTION public.zalo_sale_advice_intake_v1(p jsonb)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
@@ -84,7 +86,7 @@ CREATE OR REPLACE FUNCTION public.zalo_sale_advice_delivery_v1(p_job uuid,p_inst
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
 DECLARE
   s app_private.hermes_sale_questions; link text; token_value text; page jsonb;
-  signature text; previous jsonb; cfg jsonb; viewing_phone text;
+  signature text; previous jsonb; cfg jsonb; viewing_phone text; page_owner uuid; published_phone text;
 BEGIN
   SELECT h.* INTO s FROM app_private.hermes_sale_questions h JOIN public.zalo_send_queue q ON q.id=h.job_id
     WHERE h.job_id=p_job AND h.generation=p_generation AND q.processing_instance_id=p_instance AND q.status='processing'
@@ -96,17 +98,33 @@ BEGIN
   SELECT trim(config#>>'{template,shareUrl}') INTO link FROM public.zalo_automations
     WHERE organization_id=s.organization_id AND kind='broadcast_vacant';
   token_value:=substring(link FROM '^https://[A-Za-z0-9.-]+/r/([A-Za-z0-9_-]+)/?$');
-  IF EXISTS (SELECT 1 FROM public.public_room_share_tokens t WHERE t.token=token_value AND t.organization_id=s.organization_id AND NOT t.revoked) THEN
+  SELECT t.owner_id INTO page_owner FROM public.public_room_share_tokens t
+    WHERE t.token=token_value AND t.organization_id=s.organization_id AND NOT t.revoked;
+  IF page_owner IS NOT NULL THEN
     page:=public.get_public_available_rooms(token_value);
   END IF;
+  SELECT page#>>'{contact,phone}' INTO published_phone WHERE EXISTS (
+    SELECT 1 FROM public.hotlines h WHERE h.organization_id=s.organization_id AND h.user_id=page_owner
+      AND h.phone_number=page#>>'{contact,phone}' AND coalesce(h.is_active,true));
   -- The agreed iHome viewing number belongs only to that organization.
   -- Other organizations use the contact published on their own Sale page.
   viewing_phone:=CASE WHEN s.organization_id='aaaa0000-0000-4000-8000-000000000001'::uuid
-    THEN '0923.889.880' ELSE NULLIF(trim(page#>>'{contact,phone}'),'') END;
+    THEN '0923.889.880' ELSE NULLIF(trim(published_phone),'') END;
   IF page IS NOT NULL THEN
-    page:=jsonb_build_object('sale_policy',page->'sale_policy','areas',page->'areas',
-      'buildings',(SELECT coalesce(jsonb_agg(b-'floor_layouts' ORDER BY b->>'id'),'[]') FROM jsonb_array_elements(page->'buildings') b),
-      'rooms',(SELECT coalesce(jsonb_agg(r ORDER BY r->>'id'),'[]') FROM jsonb_array_elements(page->'rooms') r WHERE r->>'status_public' IN ('free','soon','pass')));
+    -- The public page is owner-scoped. Intersect its published IDs with this
+    -- organization; the catalog is used for membership only, never for copy.
+    page:=jsonb_build_object(
+      'sale_policy',CASE WHEN EXISTS(SELECT 1 FROM public.public_room_settings t
+        WHERE t.owner_id=page_owner AND t.organization_id=s.organization_id) THEN page->'sale_policy' END,
+      'contact',jsonb_build_object('phone',published_phone),
+      'areas',(SELECT coalesce(jsonb_agg(a ORDER BY a->>'id'),'[]') FROM jsonb_array_elements(page->'areas') a
+        JOIN public.areas own ON own.id=(a->>'id')::uuid AND own.organization_id=s.organization_id),
+      'buildings',(SELECT coalesce(jsonb_agg(b-'floor_layouts' ORDER BY b->>'id'),'[]') FROM jsonb_array_elements(page->'buildings') b
+        JOIN public.buildings own ON own.id=(b->>'id')::uuid AND own.organization_id=s.organization_id),
+      'rooms',(SELECT coalesce(jsonb_agg(r ORDER BY r->>'id'),'[]') FROM jsonb_array_elements(page->'rooms') r
+        JOIN public.rooms own ON own.id=(r->>'id')::uuid AND own.organization_id=s.organization_id
+        JOIN public.buildings b ON b.id=own.building_id AND b.id=(r->>'building_id')::uuid AND b.organization_id=s.organization_id
+        WHERE r->>'status_public' IN ('free','soon','pass')));
   ELSE link:=NULL; END IF;
   signature:=md5(jsonb_build_array(page,link,viewing_phone,cfg->'blockedKeywords')::text);
   IF p_signature IS NOT NULL THEN
@@ -125,6 +143,8 @@ BEGIN
   RETURN jsonb_build_object('question',s.question,'previous',previous,'page',page,'link',link,
     'signature',signature,'viewingPhone',viewing_phone,'blockedKeywords',cfg->'blockedKeywords');
 END $$;
-REVOKE ALL ON FUNCTION public.zalo_sale_advice_intake_v1(jsonb),public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb) FROM PUBLIC,anon,authenticated;
+ALTER FUNCTION public.zalo_sale_advice_intake_v1(jsonb) OWNER TO postgres;
+ALTER FUNCTION public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.zalo_sale_advice_intake_v1(jsonb),public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 GRANT EXECUTE ON FUNCTION public.zalo_sale_advice_intake_v1(jsonb),public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb) TO service_role;
 COMMIT;

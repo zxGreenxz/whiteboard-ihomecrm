@@ -141,6 +141,7 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_learning_review_v1(jsonb)', 'hermes_learning_decide_v1(jsonb)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
+  'public.zalo_sale_advice_intake_v1(jsonb)', 'public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
   'public.hermes_room_schedule_due_v1(uuid,uuid[])', 'public.hermes_room_schedule_run_v1(uuid,bigint,uuid)',
   // Package C schedule health worker ports (20261015100000).
@@ -1407,6 +1408,9 @@ test('Zalo worker can execute only link ingress and private intake, while linkin
   for (const [role, target] of [
     ['authenticated', 'public.hermes_zalo_ingress_v1(jsonb)'],
     ['hermes_store_executor', 'public.hermes_zalo_ingress_v1(jsonb)'],
+    ['authenticated', 'public.zalo_sale_advice_intake_v1(jsonb)'],
+    ['hermes_store_executor', 'public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb)'],
+    ['service_role', 'app_private.hermes_sale_channel_v1(uuid,uuid,uuid,uuid,text,text)'],
     ['authenticated', 'public.hermes_zalo_private_command_v1(jsonb)'],
     ['hermes_store_executor', 'public.hermes_zalo_private_command_v1(jsonb)'],
     ['authenticated', 'public.hermes_zalo_private_reply_v1(jsonb)'],

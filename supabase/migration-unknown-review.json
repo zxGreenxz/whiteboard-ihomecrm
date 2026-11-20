@@ -988,7 +988,7 @@
       ]
     },
     "supabase/migrations/20261120155631_hermes_sale_advice.sql": {
-      "sha256": "2c83bd44d047e4396c63192c813bbd3669bdf9c70e47723bac7d91c444cdee95",
+      "sha256": "751afe552c786a3ef7129cad8bf57f86b03dab8dcbddf1f843ab8a6fbfc12a88",
       "missingObjects": [
         "table:app_private.hermes_sale_questions",
         "function:app_private.hermes_sale_channel_v1",

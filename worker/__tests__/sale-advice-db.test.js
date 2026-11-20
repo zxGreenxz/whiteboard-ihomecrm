@@ -10,10 +10,11 @@ const migration = readFileSync(
 it('xếp tin theo phiên bot, nhóm môi giới, trang Sale và người vừa hỏi', async () => {
   const db = new PGlite();
   const [org, other, account, owner, instance, generation] = Array.from({ length: 6 }, () => randomUUID());
+  const [b1, b2, room1, room2, hidden] = Array.from({ length: 5 }, () => randomUUID());
   const one = async (q, p = []) => Object.values((await db.query(q, p)).rows[0])[0];
   try {
     await db.exec(`
-      CREATE SCHEMA app_private; CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+      CREATE SCHEMA app_private; CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE ROLE hermes_store_executor;
       CREATE TABLE organizations(id uuid PRIMARY KEY);
       CREATE TABLE zalo_accounts(id uuid PRIMARY KEY, organization_id uuid, user_id uuid, kind text, status text, zalo_uid text,login_requested_at timestamptz);
       CREATE TABLE app_private.hermes_zalo_bots(account_id uuid, organization_id uuid,enabled boolean);
@@ -22,7 +23,12 @@ it('xếp tin theo phiên bot, nhóm môi giới, trang Sale và người vừa 
       CREATE TABLE zalo_conversations(organization_id uuid,account_id uuid,thread_type text,thread_id text,is_sale_partner boolean);
       CREATE TABLE zalo_automations(organization_id uuid,kind text,enabled boolean,config jsonb);
       CREATE TABLE zalo_send_queue(id uuid PRIMARY KEY,user_id uuid,organization_id uuid,account_id uuid,channel text,payload jsonb,status text,processing_instance_id uuid);
-      CREATE TABLE public_room_share_tokens(token text,organization_id uuid,revoked boolean);
+      CREATE TABLE public_room_share_tokens(token text,organization_id uuid,revoked boolean,owner_id uuid);
+      CREATE TABLE public_room_settings(owner_id uuid,organization_id uuid);
+      CREATE TABLE hotlines(user_id uuid,organization_id uuid,phone_number text,is_active boolean);
+      CREATE TABLE areas(id uuid,organization_id uuid);
+      CREATE TABLE buildings(id uuid,organization_id uuid,user_id uuid);
+      CREATE TABLE rooms(id uuid,building_id uuid,organization_id uuid);
       CREATE TABLE test_page(value jsonb);
       CREATE FUNCTION get_public_available_rooms(text) RETURNS jsonb LANGUAGE sql AS 'SELECT value FROM test_page';
       CREATE FUNCTION app_private.zalo_config_int_v1(jsonb,int,int) RETURNS int LANGUAGE sql AS 'SELECT coalesce(($1#>>''{}'')::int,$2)';
@@ -57,13 +63,28 @@ it('xếp tin theo phiên bot, nhóm môi giới, trang Sale và người vừa 
       "INSERT INTO zalo_automations VALUES($1,'auto_reply',true,$2),($1,'broadcast_vacant',true,$3)",
       [org, { saleAdvisor: true }, { template: { shareUrl: 'https://example.test/r/published' } }],
     );
-    await db.query("INSERT INTO public_room_share_tokens VALUES('published',$1,false)", [org]);
+    await db.query("INSERT INTO public_room_share_tokens VALUES('published',$1,false,$2)", [org, owner]);
+    await db.query("INSERT INTO hotlines VALUES($1,$2,'0900000000',true)", [owner, org]);
+    await db.query('INSERT INTO public_room_settings VALUES($1,$2)', [owner, org]);
+    await db.query('INSERT INTO buildings VALUES($1,$2,$5),($3,$4,$5)', [b1, org, b2, other, owner]);
+    await db.query('INSERT INTO rooms VALUES($1,$2,$3),($4,$5,$6),($7,$2,$3)', [
+      room1,
+      b1,
+      org,
+      room2,
+      b2,
+      other,
+      hidden,
+    ]);
     await db.query('INSERT INTO test_page VALUES($1)', [
       {
-        buildings: [{ id: 'b', floor_layouts: {} }],
+        contact: { phone: '0900000000', name: 'Sale' },
+        sale_policy: 'Chính sách từ trang',
+        buildings: [{ id: b1, floor_layouts: {} }, { id: b2 }],
         rooms: [
-          { id: 'p', status_public: 'free' },
-          { id: 'hidden', status_public: 'rented' },
+          { id: room1, building_id: b1, status_public: 'free' },
+          { id: room2, building_id: b2, status_public: 'free' },
+          { id: hidden, building_id: b1, status_public: 'rented' },
         ],
       },
     ]);
@@ -96,7 +117,10 @@ it('xếp tin theo phiên bot, nhóm môi giới, trang Sale và người vừa 
     const read = (sig = null, memory = null) =>
       one('select public.zalo_sale_advice_delivery_v1($1,$2,$3,$4,$5)', [job, instance, generation, sig, memory]);
     const snapshot = await read();
-    expect(snapshot.page.rooms.map((x) => x.id)).toEqual(['p']);
+    expect(snapshot.page.rooms.map((x) => x.id)).toEqual([room1]);
+    expect(snapshot.page.buildings.map((x) => x.id)).toEqual([b1]);
+    expect(snapshot.page.contact).toEqual({ phone: '0900000000' });
+    expect(snapshot.page.sale_policy).toBe('Chính sách từ trang');
     expect(snapshot.page.buildings[0]).not.toHaveProperty('floor_layouts');
     expect(await read(snapshot.signature, { ids: ['p'] })).toMatchObject({ authorized: true, threadId: '300' });
     await db.query("UPDATE zalo_send_queue SET status='sent' WHERE id=$1", [job]);

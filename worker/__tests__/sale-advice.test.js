@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { adviseSale, saleQuestionKind } from '../lib/sale-advice.js';
 import { salePageBuildings, captureSaleQuestion, deliverSaleAdvice } from '../lib/sale-advice-channel.js';
 
+vi.mock('../lib/ctx.js', () => ({ sb: {}, log: vi.fn(), SUPABASE_URL: 'https://example.test' }));
+
 const link = 'https://example.test/r/example';
 const page = {
   sale_policy: 'Điện 4k/số · Nước 90k/người · PDV 120k/phòng\nXe miễn phí',
@@ -66,6 +68,23 @@ describe('tư vấn từ đúng trang Sale Phòng', () => {
     expect(answer('Phòng dưới 3tr5').memory.ids).toEqual([]);
     expect(answer('Còn căn nào trống ngay?').memory.ids).toEqual(['r']);
   });
+  it('tách khoảng ngân sách khỏi mã phòng và ngày vào', () => {
+    expect(answer('Còn phòng 4 triệu không?').memory.ids).toEqual(['p']);
+    for (const question of ['Cần phòng từ 4 đến 5 triệu', 'Tìm phòng 4-5 triệu']) {
+      const result = answer(question);
+      expect(result.memory.ids).toEqual(['r']);
+      expect(result.memory.criteria).toMatchObject({ min: 4000000, max: 5000000 });
+      expect(result.memory.criteria).not.toHaveProperty('date');
+    }
+    const dated = answer('Tìm phòng 4-5 triệu vào ngày 22/11');
+    expect(dated.memory.criteria.date).toBe('2026-11-22');
+  });
+  it('lọc tiện nghi theo mô tả khẳng định', () => {
+    const p = structuredClone(page);
+    p.rooms[0].description = 'Không có ban công';
+    p.rooms[1].amenities.push('Ban công');
+    expect(answer('Tìm phòng có ban công', null, p).memory.ids).toEqual(['r']);
+  });
   it('phòng pass dùng giá pass, điều kiện, phí, ưu đãi và đúng số khách cuối tin', () => {
     const body = answer('Thông tin phòng 201').messages[0].text;
     for (const part of [
@@ -112,6 +131,9 @@ describe('tư vấn từ đúng trang Sale Phòng', () => {
     for (const text of ['ok cảm ơn', 'Sửa giá phòng 201', 'Kiểm tra hóa đơn phòng 201'])
       expect(saleQuestionKind(text)).toBe(null);
     expect(saleQuestionKind('gửi ảnh căn thứ hai')).toBe('followup');
+    expect(saleQuestionKind('Phòng 101 khách đang xem rồi', true)).toBe(null);
+    expect(saleQuestionKind('Căn 201', true)).toBe('question');
+    expect(saleQuestionKind('Phòng 101 còn trống không?', true)).toBe('question');
   });
   it('chỉ nhận tin live với đúng đích và chuyển người hỏi của nhóm vào intake', async () => {
     const db = { rpc: vi.fn(async () => ({ data: 'queued' })) };
@@ -119,6 +141,13 @@ describe('tư vấn từ đúng trang Sale Phòng', () => {
     expect(await captureSaleQuestion({ ...live, threadId: '789' }, source, db)).toBe(false);
     expect(db.rpc).not.toHaveBeenCalled();
     expect(await captureSaleQuestion(live, source, db)).toBe(true);
+    expect(
+      await captureSaleQuestion(
+        { ...live, type: 1, threadId: '789', data: { ...live.data, content: 'Em đang dẫn khách xem phòng 101' } },
+        source,
+        db,
+      ),
+    ).toBe(false);
     expect(await captureSaleQuestion({ ...live, type: 1, threadId: '789' }, source, db)).toBe(true);
     expect(db.rpc.mock.lastCall[1].p).toMatchObject({ threadType: 'group', threadId: '789', senderUid: '456' });
   });
