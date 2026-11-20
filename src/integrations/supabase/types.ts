@@ -31588,6 +31588,17 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      zalo_sale_advice_delivery_v1: {
+        Args: {
+          p_generation: string
+          p_instance: string
+          p_job: string
+          p_memory?: Json
+          p_signature?: string
+        }
+        Returns: Json
+      }
+      zalo_sale_advice_intake_v1: { Args: { p: Json }; Returns: string }
       zalo_save_account_recipients_v1: {
         Args: {
           p_account_id: string
