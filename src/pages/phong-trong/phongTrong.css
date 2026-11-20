@@ -395,6 +395,7 @@ body {
   scroll-snap-align: center; background: var(--surface-2);  /* placeholder khi ảnh đang tải */
 }
 .gimg:first-child { margin-left: 0; }
+.gimg video { width: 100%; height: 100%; object-fit: contain; display: block; background: black; }
 .gimg img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .gimg { cursor: zoom-in; }
 
@@ -413,6 +414,7 @@ body {
 /* Ảnh neo lên đầu (không center dọc) để nút X nằm sát ngay trên-phải tấm ảnh.
    Chừa đáy ~74px cho nút "Lưu ảnh này" khỏi đè lên ảnh. */
 .lb-slide { flex: 0 0 100%; height: 100%; scroll-snap-align: center; display: flex; align-items: flex-start; justify-content: center; padding: 58px 14px 74px; }
+.lb-slide video { max-width: 100%; max-height: 100%; }
 .lb-slide img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; pointer-events: none; }
 .lb-close {
   position: absolute; top: 14px; right: 14px; z-index: 2; width: 38px; height: 38px; border-radius: 50%;

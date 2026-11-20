@@ -18,6 +18,7 @@ interface ImageUploadZoneProps {
   accept?: string;
   maxSizeMB?: number;
   bucket?: string;
+  allowRoomVideo?: boolean;
   imagePolicy?: UploadImagePolicy;
   /** Cho phép chọn / kéo thả / dán nhiều ảnh cùng lúc. */
   multiple?: boolean;
@@ -40,6 +41,7 @@ export default function ImageUploadZone({
   maxSizeMB = 10,
   bucket = 'customer-images',
   imagePolicy,
+  allowRoomVideo = false,
   multiple = false,
   onAddMany,
   disabled = false,
@@ -59,6 +61,10 @@ export default function ImageUploadZone({
 
   const validateFile = useCallback(
     (file: File): string | null => {
+      if (allowRoomVideo && bucket === 'room-sale-images' && file.type === 'video/mp4') {
+        if (!/\.mp4$/i.test(file.name)) return 'Video phải có đuôi .mp4';
+        return file.size > 0 && file.size <= 32 * 1024 * 1024 ? null : 'Video MP4 tối đa 32 MB';
+      }
       const result = imageValidation.validate(file);
       if (!result.valid) return result.error || 'File không hợp lệ';
       if (maxSizeMB !== 10 && file.size > maxSizeMB * 1024 * 1024) {
@@ -66,7 +72,7 @@ export default function ImageUploadZone({
       }
       return null;
     },
-    [maxSizeMB]
+    [maxSizeMB, allowRoomVideo, bucket]
   );
 
   const handleUpload = useCallback(
@@ -210,7 +216,7 @@ export default function ImageUploadZone({
               <ImageIcon className="h-6 w-6" />
               <span className="text-xs text-center px-2">
                 {multiple
-                  ? 'Kéo thả, click hoặc Ctrl+V để tải nhiều ảnh'
+                  ? (allowRoomVideo ? 'Chọn ảnh hoặc video MP4 (tối đa 32 MB/video)' : 'Kéo thả, click hoặc Ctrl+V để tải nhiều ảnh')
                   : 'Kéo thả, click hoặc Ctrl+V để tải ảnh'}
               </span>
             </div>
