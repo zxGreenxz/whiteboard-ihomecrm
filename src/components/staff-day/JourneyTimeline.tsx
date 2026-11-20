@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { StaffThumb } from "@/components/staff-day/StaffThumb";
+import { StaffPhotoGallery } from "@/components/staff-day/StaffThumb";
 import type { TimelineRow } from "@/lib/staffDay";
 
 const DOT: Record<TimelineRow["tone"], string> = {
@@ -19,8 +19,6 @@ export function JourneyTimeline({ rows }: { rows: readonly TimelineRow[] }) {
     <ol className="list-none">
       {rows.map((row) => {
         const photos = row.photos ?? [];
-        const shown = photos.slice(0, 3);
-        const more = photos.length - shown.length;
         return (
           <li key={row.key} className="flex items-stretch gap-2.5">
             <div className={cn("w-[42px] shrink-0 pt-2.5 font-mono text-xs font-semibold", row.tone === "warn" && "text-orange-700")}>{row.time}</div>
@@ -38,22 +36,7 @@ export function JourneyTimeline({ rows }: { rows: readonly TimelineRow[] }) {
                   row.badge.tone === "success" ? "bg-emerald-50 text-emerald-800" : "bg-orange-50 text-orange-700",
                 )}>{row.badge.text}</span>
               ) : null}
-              {photos.length > 0 ? (
-                <div className="mt-1.5 flex gap-1">
-                  {shown.map((photo) => (
-                    <StaffThumb
-                      key={photo.path}
-                      path={photo.path}
-                      label={photo.label ?? photo.slot}
-                      outOfRange={photo.geofence_status === "out_of_range"}
-                      className="h-[50px]"
-                    />
-                  ))}
-                  {more > 0 ? (
-                    <div className="flex h-[50px] min-w-0 flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-100 text-[11px] font-semibold text-muted-foreground">+{more}</div>
-                  ) : null}
-                </div>
-              ) : null}
+              <StaffPhotoGallery photos={photos} limit={3} className="mt-1.5 h-[50px]" />
             </div>
           </li>
         );

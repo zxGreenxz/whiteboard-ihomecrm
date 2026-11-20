@@ -9,7 +9,7 @@
 //     hoặc Dialog) mà không vướng stacking context của cha.
 // =============================================================================
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { StorageImage } from '@/components/ui/storage-image';
@@ -38,6 +38,7 @@ export function AttachmentLightbox({
   const url = index !== null ? attachments[index] ?? null : null;
   const signedUrl = useSignedUrl(url);
   const hasMultiple = attachments.length > 1;
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   const close = () => onIndexChange(null);
   const goPrev = () =>
@@ -83,6 +84,24 @@ export function AttachmentLightbox({
     <div
       className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-6 pointer-events-auto"
       onClick={close}
+      onTouchStart={(e) => {
+        const touch = e.touches[0];
+        touchStart.current = hasMultiple && !isPdf(url) && e.touches.length === 1 && touch &&
+          (window.visualViewport?.scale ?? 1) <= 1 && !(e.target as Element).closest('button')
+          ? { x: touch.clientX, y: touch.clientY } : null;
+      }}
+      onTouchCancel={() => { touchStart.current = null; }}
+      onTouchEnd={(e) => {
+        const start = touchStart.current;
+        touchStart.current = null;
+        const touch = e.changedTouches[0];
+        if (!start || !touch || e.touches.length) return;
+        const dx = touch.clientX - start.x;
+        if (Math.abs(dx) < 48 || Math.abs(dx) <= Math.abs(touch.clientY - start.y)) return;
+        e.preventDefault();
+        if (dx < 0) goNext();
+        else goPrev();
+      }}
       role="dialog"
       aria-modal="true"
       aria-label="Ảnh đính kèm"

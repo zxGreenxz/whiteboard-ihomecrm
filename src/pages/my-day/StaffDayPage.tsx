@@ -7,7 +7,7 @@ import { Card, CardTitle, PersonAvatar, StaffHeader, StaffShell, StatusPill } fr
 import { PersonPicker } from "@/components/staff-day/PersonPicker";
 import { LeaveApprovalCard } from "@/components/staff-day/LeaveApprovalCard";
 import { SlotLegend, SlotStrip } from "@/components/staff-day/SlotStrip";
-import { StaffThumb } from "@/components/staff-day/StaffThumb";
+import { StaffPhotoGallery } from "@/components/staff-day/StaffThumb";
 import { useStaffDayRoute, useStaffDaySummary } from "@/hooks/staff-day/useStaffDay";
 import {
   dayTitle, eventRow, formatDistance, gpsReasonLabel, minutesBetween, photoCounts, tickSourceLabel, vnDateOf, vnTime,
@@ -40,8 +40,6 @@ function DayCard({ summary }: { summary: StaffSummary }) {
 
 function NowCard({ now }: { now: NonNullable<StaffSummary["now"]> }) {
   const counts = photoCounts(now.photos);
-  const shown = now.photos.slice(0, 4);
-  const more = now.photos.length - shown.length;
   return (
     <Card label="Đang làm bây giờ" className="border-emerald-200">
       <CardTitle
@@ -68,14 +66,7 @@ function NowCard({ now }: { now: NonNullable<StaffSummary["now"]> }) {
           {counts.denied > 0 ? <StatusPill tone="neutral">{counts.denied} ảnh thiếu GPS</StatusPill> : null}
         </div>
       ) : null}
-      {shown.length > 0 ? (
-        <div className="flex gap-1" aria-label="Ảnh đã chụp trong phiên">
-          {shown.map((photo) => (
-            <StaffThumb key={photo.path} path={photo.path} label={photo.label ?? photo.slot} outOfRange={photo.geofence_status === "out_of_range"} />
-          ))}
-          {more > 0 ? <div className="flex h-14 min-w-0 flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-100 text-[11px] font-semibold text-muted-foreground">+{more}</div> : null}
-        </div>
-      ) : null}
+      <StaffPhotoGallery key={now.session_id} photos={now.photos} limit={4} />
     </Card>
   );
 }
