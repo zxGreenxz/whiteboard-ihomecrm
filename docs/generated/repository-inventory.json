@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1924,
-  "soFileDocBangFs": 495,
-  "tongLoiGoi": 1356,
+  "tongSoFileTest": 1925,
+  "soFileDocBangFs": 496,
+  "tongLoiGoi": 1358,
   "khongPhanLoaiDuoc": 604,
   "theoLoai": {
     "ma-nguon": {
@@ -15,7 +15,7 @@
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 18,
+      "soFile": 19,
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
@@ -2041,6 +2041,14 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/pages/phong-trong/__tests__/sheetStyles.test.tsx",
+      "soGoi": 2,
+      "loai": {
+        "tai-lieu": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
