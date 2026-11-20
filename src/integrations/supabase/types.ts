@@ -30021,6 +30021,10 @@ export type Database = {
         Args: { p_account_id: string; p_membership_id: string }
         Returns: Json
       }
+      set_public_room_link_ready_room_v1: {
+        Args: { p_enabled: boolean; p_room_id: string; p_token: string }
+        Returns: boolean
+      }
       set_reservation_hold_deadline_v1: {
         Args: { p_hold_until?: string; p_income_expense_id: string }
         Returns: Json
