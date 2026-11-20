@@ -846,7 +846,13 @@ function securityContract(sql = all, registry = functions) {
   // historical GRANT to contain the entire future surface (or unioning grants
   // that a later REVOKE actually removed). CREATE OR REPLACE keeps its old ACL.
   const acl = new Map();
+  // The room-link forward migration also replaces the existing guest sale page
+  // and worker reader. Their grants do not make any Hermes RPC public.
+  const guestPage = 'public.get_public_available_rooms(text)';
+  const readyRoomWriter = 'public.set_public_room_link_ready_room_v1(text,uuid,boolean)';
+  const stockWorker = 'public.zalo_phong_trong_cho_worker_v1(uuid)';
   const allowed = new Map([
+    ['anon', new Set([guestPage])],
     ['authenticated', new Set([...PUBLIC.map(name => `public.${name}`), ...TASK_FUNCTIONS.filter(spec => spec.authenticated).map(spec => spec.signature),
       ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target), ...TASK_FOLLOW_STEPS,
       ...ZALO_ONESHOT_CALLER, ...W2_CALLER, ...INHERITED_CRM_ACL.map(spec => spec.signature),
@@ -856,10 +862,10 @@ function securityContract(sql = all, registry = functions) {
       // R2d (20261021063452): the fast reader's DEFINER count, reachable only through its bound OID (no app_private USAGE).
       'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])',
       // Shared write foundation: SQL-standard INVOKER wrappers bind these app_private OIDs at creation (no app_private USAGE).
-      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER, ...LEARNING_ACTION_CALLER])],
+      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER, ...LEARNING_ACTION_CALLER, guestPage, readyRoomWriter])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
-    ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
+    ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER, guestPage, stockWorker])],
     ['hermes_learning_ingest', new Set(LEARNING_INGEST)],
   ]);
   for (const statement of expandedStatements) {
@@ -871,6 +877,11 @@ function securityContract(sql = all, registry = functions) {
     if (/^GRANT USAGE ON SCHEMA app_private TO (?:hermes_store_executor|hermes_learning_ingest)$/i.test(statement)) continue;
     if (!/^(?:GRANT|REVOKE)\b/i.test(statement) || !/\bON FUNCTION\b/i.test(statement)) {
       if (/^GRANT\b/i.test(statement) && !REVIEWED_TABLE_GRANTS.has(statement)) assert.fail(`Unexpected grant: ${statement}`);
+      continue;
+    }
+    if (statement === 'GRANT EXECUTE ON FUNCTION ' + guestPage + ' TO anon, authenticated, service_role') {
+      assert(acl.has(guestPage), 'guest page grant refers to the existing reader');
+      for (const role of ['anon','authenticated','service_role']) acl.get(guestPage).add(role);
       continue;
     }
     if (/^GRANT\b/i.test(statement)) {
@@ -1752,4 +1763,14 @@ test('incidental Hermes mentions stay incidental: no Hermes declaration, patch, 
     assert.doesNotMatch(body, /\bhermes_[a-z0-9_]/, `${name}: định danh hermes_* ngoài chú thích ⇒ phải vào phép quét`);
     assert.doesNotMatch(body, /\b(?:public|app_private)\.hermes/i, `${name}: tham chiếu đối tượng Hermes`);
   }
+});
+
+test('the explicit public room selection does not widen guest, worker or Hermes access', () => {
+  for (const signature of ['public.set_public_room_link_ready_room_v1(text,uuid,boolean)',
+    'app_private.public_room_link_grants_v1(uuid)', 'app_private.public_sale_rooms_payload_v1(uuid)']) {
+    for (const role of ['anon','service_role','hermes_store_executor']) {
+      assert.throws(() => securityContract(all + '; GRANT EXECUTE ON FUNCTION ' + signature + ' TO ' + role), /cannot execute|supported recipient/);
+    }
+  }
+  assert.throws(() => securityContract(all + '; REVOKE EXECUTE ON FUNCTION public.get_public_available_rooms(text) FROM anon'), /effective execute ACL/);
 });
