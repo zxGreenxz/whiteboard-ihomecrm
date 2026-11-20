@@ -104,7 +104,7 @@ jobs:
           retention-days: 2
 
   node-native-tests:
-    name: ${{ matrix.shard == 1 && 'node-native-tests' || 'node-native-tests (2)' }}
+    name: ${{ matrix.shard == 1 && 'node-native-tests' || format('node-native-tests ({0})', matrix.shard) }}
     strategy:
       fail-fast: false
       matrix:
