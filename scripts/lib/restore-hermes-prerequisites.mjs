@@ -10,6 +10,7 @@ export const HERMES_RESTORE_BEFORE = '20261012061447_hermes_assistant_identity_p
 export const HERMES_RESTORE_SOURCES = Object.freeze({
   '20260813110000_zalo_gui_media_va_idempotency.sql': '95d9a6ed4bc075d76e63bb8f024330d183e96e43d00bb18cf870b6d32aefe8c4',
   '20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql': '2b3c8502062e033c1c28c2b5120f346fe87056fd4adb033cddfa883fa556cc26',
+  '20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql': 'bd9b2750983fa3285ec582cc19b6b8841bf76222dc9cfb684cf8d9e0966204bd',
 });
 const BODY_SHA = '2310b70ca4b48ba39cbda53f5baba9df5995f8c3eb028965f52dbd55f12a9402';
 const SIGNATURE = 'public.zalo_worker_begin_provider_v1(uuid,uuid)';
@@ -49,6 +50,7 @@ export function buildHermesRestoreFixture(sources) {
     /^GRANT SELECT, INSERT, UPDATE, DELETE ON public\.zalo_worker_lease TO service_role$/,
   ].map(pattern => exactlyOne(statements[0], pattern));
   const result = exactlyOne(statements[0], /^ALTER TABLE public\.zalo_send_queue ADD COLUMN IF NOT EXISTS result jsonb$/);
+  const groupFlag = exactlyOne(statements[2], /^ALTER TABLE public\.zalo_conversations\s+ADD COLUMN IF NOT EXISTS is_sale_partner boolean NOT NULL DEFAULT false$/);
   const provider = exactlyOne(statements[1], /^CREATE OR REPLACE FUNCTION public\.zalo_worker_begin_provider_v1\(/);
   if (extractFunctionDefinitions(provider)[0]?.bodyDigest !== BODY_SHA) throw Error('Hermes restore provider body mismatch');
   // The original grants share a statement with claim/recover functions. Select
@@ -68,12 +70,13 @@ DO $before$ BEGIN
   IF current_user <> 'postgres' OR to_regclass('public.zalo_worker_lease') IS NOT NULL
     OR to_regprocedure('${SIGNATURE}') IS NOT NULL
     OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_send_queue'::regclass AND attname='result' AND NOT attisdropped)
+    OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_conversations'::regclass AND attname='is_sale_partner' AND NOT attisdropped)
     OR to_regclass('public.zalo_automation_runs') IS NOT NULL
     OR to_regprocedure('public.zalo_authorized_org_ids(text)') IS NOT NULL THEN
     RAISE EXCEPTION 'Hermes restore before catalog drift';
   END IF;
 END $before$;
-${[result, ...lease, provider, ...acl].join(';\n')};
+${[result, groupFlag, ...lease, provider, ...acl].join(';\n')};
 ${hermesRestoreWitnessSql()}
 COMMIT;`;
 }
@@ -117,6 +120,11 @@ export function hermesRestoreWitnessSql() {
     WHERE a.attrelid='public.zalo_send_queue'::regclass AND a.attname='result' AND NOT a.attisdropped
       AND a.atttypid='jsonb'::regtype AND NOT a.attnotnull AND a.attgenerated='' AND d.oid IS NULL) THEN
     RAISE EXCEPTION 'Hermes restore result column witness drift';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pg_attribute a JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+    WHERE a.attrelid='public.zalo_conversations'::regclass AND a.attname='is_sale_partner' AND NOT a.attisdropped
+      AND a.atttypid='boolean'::regtype AND a.attnotnull AND a.attgenerated='' AND pg_get_expr(d.adbin,d.adrelid)='false') THEN
+    RAISE EXCEPTION 'Hermes restore group flag witness drift';
   END IF;
 END $witness$;`;
 }

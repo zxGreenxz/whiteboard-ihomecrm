@@ -13,6 +13,7 @@
 import { ThreadType } from 'zca-js';
 import { sb, log, chunk, orgOf, notifyPush, sessions } from './ctx.js';
 import { xuLyTinDen } from './auto-reply.js';
+import { captureSaleQuestion } from './sale-advice-channel.js';
 import { laChuoiMay, phanLoaiTinThe } from './message-card.js';
 import { createGroupMemberSync } from './group-members.js';
 import { createHermesIngress, isHermesLinkMessage, redactHermesLinkMessage } from './hermes-link.js';
@@ -563,6 +564,15 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
   try {
     api.listener.on('message', async (m) => {
       if (!active()) return;
+      let saleHandled = false;
+      try {
+        saleHandled = await captureSaleQuestion(m, session.hermesIngress?.privateCommandSource());
+      } catch {
+        // An intake may already have committed. Never dispatch the same DM twice.
+        saleHandled = true;
+        log('sale advice intake unavailable');
+      }
+      if (!active() || (saleHandled && m.type === ThreadType.User)) return;
       if (await session.hermesNative?.capture(m)) return;
       if (!active()) return;
       const ingress = session.hermesIngress;

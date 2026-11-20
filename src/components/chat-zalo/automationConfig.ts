@@ -83,6 +83,7 @@ export interface CauHinhBroadcast {
 }
 
 export interface CauHinhAutoReply {
+  saleAdvisor?: boolean;
   keywords: string[];
   blockedKeywords: string[];
   replyIntro: string;
@@ -256,6 +257,7 @@ export function chuanHoaAutoReply(raw: unknown): CauHinhAutoReply {
   return {
     // Không từ khoá nào = auto-reply không kích hoạt bao giờ. Đó là trạng thái
     // hợp lệ (tắt mềm), không phải lý do để nhét lại danh sách mặc định.
+    ...(c.saleAdvisor === true ? { saleAdvisor: true } : {}),
     keywords: [...new Set(kw)],
     // Danh sách chặn thì NGƯỢC LẠI: rỗng thì lấy lại mặc định. Người dùng xoá
     // sạch nó không có nghĩa là họ muốn máy tự trả lời về cọc và hợp đồng.

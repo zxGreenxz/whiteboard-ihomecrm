@@ -8,7 +8,7 @@ import { HERMES_RESTORE_BEFORE, HERMES_RESTORE_SOURCES, assertHermesRestoreStops
 const sources = Object.fromEntries(Object.keys(HERMES_RESTORE_SOURCES).map(file =>
   [file, readFileSync(new URL(`../../supabase/migrations/${file}`, import.meta.url), 'utf8')]));
 const expectations = JSON.parse(readFileSync(new URL('../../supabase/baseline/forward-lane-expectations.json', import.meta.url), 'utf8')).expectations;
-const stopFiles = [...Object.keys(sources), '20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql'].sort();
+const stopFiles = Object.keys(sources).sort();
 const results = () => stopFiles.map(ten => ({ ten, ok: false, stderr: `ERROR: ${expectations[ten].thongDiep}` }));
 const sql = buildHermesRestoreFixture(sources);
 
@@ -88,6 +88,7 @@ test('catalog witnesses detect body, ACL, owner, volatility, search path, RLS an
     'CREATE POLICY unexpected ON public.zalo_worker_lease USING (true)',
     'ALTER TABLE public.zalo_worker_lease ALTER COLUMN instance_id DROP NOT NULL',
     'ALTER TABLE public.zalo_worker_lease DROP CONSTRAINT zalo_worker_lease_id_check',
+    'ALTER TABLE public.zalo_conversations ALTER COLUMN is_sale_partner SET DEFAULT true',
     'ALTER TABLE public.zalo_send_queue ALTER COLUMN result SET NOT NULL',
     "ALTER TABLE public.zalo_send_queue ALTER COLUMN result SET DEFAULT '{}'::jsonb",
     "INSERT INTO public.zalo_worker_lease(instance_id) VALUES ('00000000-0000-0000-0000-000000000001')",
