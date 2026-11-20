@@ -27,6 +27,12 @@ function urlAnh(pathOrUrl) {
   return `${SUPABASE_URL}/storage/v1/object/public/${IMAGES_BUCKET}/${s.replace(/^\/+/, '')}`;
 }
 
+function publicRoomType(value, hasArea) {
+  if (hasArea) return (value || '').trim();
+  return (value || '').replace(/(?:phòng\s+)?\d+(?:[.,]\d+)?\s*m(?:²|2|\^2)(?![\p{L}\d])/giu, '')
+    .replace(/^\s*[,·|–-]+|[,·|–-]+\s*$/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 function dsAnh(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.map((x) => urlAnh(x)).filter(Boolean);
@@ -95,7 +101,7 @@ export function mapPayloadSangToa(payload) {
         buildingArea: quan,
         buildingAddr: diaChi,
         floor: rr.floor ?? 1,
-        type: (rr.room_type || '').trim(),
+        type: publicRoomType(rr.room_type, (rr.area ?? 0) > 0),
         // Phòng khách pass: giá của khách đè giá thuê gốc (khớp supabaseData.ts).
         price: ((status === 'pass' && rr.pass_price != null ? rr.pass_price : rr.rent_price) ?? 0) / 1_000_000,
         area: Math.round(rr.area ?? 0),
@@ -103,7 +109,7 @@ export function mapPayloadSangToa(payload) {
         amenities: dsTienNghi(rr.amenities),
         availDate: status === 'soon' ? ngayNgan(saleFact.availableOn) : null,
         saleFact,
-        images: dsAnh(rr.images).filter(url => !/\.mp4$/i.test(url.split(/[?#]/, 1)[0])),
+        images: dsAnh(rr.images),
         description: rr.description || null,
         saleNote: rr.sale_note || null,
         passContactName: rr.pass_contact_name || null,

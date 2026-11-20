@@ -103,12 +103,14 @@ function fencedSession(session, job, delivery) {
             throw new Error('SESSION_CHANGED: phiên Hermes đã dừng hoặc thay thế');
           }
         }
+        const album = job.payload?.tu_dong === true && job.payload?.automation_request_key?.endsWith(':album');
+        const timeoutMs = album && ['sendMessage', 'uploadAttachment'].includes(key) ? 180_000 : 60_000;
         let deadline;
         let result;
         try {
           result = await Promise.race([
             method.apply(target, args),
-            new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('PROVIDER_TIMEOUT: chưa xác nhận kết quả sau 60 giây')), 60_000); }),
+            new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('PROVIDER_TIMEOUT: chưa xác nhận kết quả sau ' + timeoutMs / 1000 + ' giây')), timeoutMs); }),
           ]);
         } finally { clearTimeout(deadline); }
         const ids = [result?.msgId, result?.message?.msgId, ...(Array.isArray(result?.attachment) ? result.attachment.map(row => row?.msgId) : [])].filter(Boolean).map(String);
@@ -142,6 +144,20 @@ async function sendText(s, job, p, threadId, type) {
     content.mentions = p.mentions
       .filter((m) => m && m.uid)
       .map((m) => ({ pos: Number(m.pos) || 0, uid: String(m.uid), len: Number(m.len) || 0 }));
+  }
+  if (p.tu_dong === true && type === ThreadType.Group && p.automation_request_key?.endsWith(':link')
+      && /(?:^|\n)@all$/.test(content.msg)) {
+    const prefix = p.automation_request_key.slice(0, -4);
+    const { data: prior, error } = await sb.from('zalo_send_queue').select('status,payload->>automation_request_key')
+      .eq('organization_id', job.organization_id).eq('account_id', job.account_id)
+      .eq('conversation_id', job.conversation_id).like('payload->>automation_request_key', prefix + '%').neq('id', job.id);
+    if (error) throw new Error('Chưa kiểm được kết quả gửi của lượt phòng trống');
+    if (prior?.some(row => row.automation_request_key === prefix + 'table_image')
+        && prior.every(row => row.status === 'sent')) {
+      content.mentions = [{ pos: content.msg.length - 4, uid: '-1', len: 4 }];
+    } else {
+      content.msg = content.msg.slice(0, -4).trimEnd();
+    }
   }
   const quote = buildQuote(p);
   const res = await s.api.sendMessage(quote ? { ...content, quote } : content, threadId, type);

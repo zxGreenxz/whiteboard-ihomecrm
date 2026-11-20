@@ -3,7 +3,7 @@ vi.mock('zca-js', () => ({ ThreadType: { User: 0, Group: 1 } }));
 const state = vi.hoisted(() => ({
   sessions: new Map(), writes: [], calls: [], status: 'connected', persistError: null,
   claimAllowed: true, fenceAllowed: true, autoAllowed: true,
-  echoFirst: false, queueExists: true,
+  echoFirst: false, queueExists: true, footerRows: [],
   forwardSource: null, beforeAdmissionReturns: null, threadType: 'user',
 }));
 vi.mock('../lib/ctx.js', () => ({
@@ -28,6 +28,7 @@ vi.mock('../lib/ctx.js', () => ({
       const result = () => {
         // Model the real FK ON DELETE CASCADE: deleting the pending canonical
         // also destroys the queue receipt and its unique request key.
+        if (filters.some(([key]) => key === 'payload->>automation_request_key')) return { data: state.footerRows, error: null };
         if (deleting && table === 'zalo_messages' && filters.some(([key, value]) => key === 'id' && value === 'message')) state.queueExists = false;
         return { data: state.queueExists ? [{ id: 'job' }] : [], count: 1, error: table === 'zalo_messages' && patch?.status === 'sent' ? state.persistError : null };
       };
@@ -35,6 +36,8 @@ vi.mock('../lib/ctx.js', () => ({
         update: value => { patch = value; state.writes.push({ table, patch, filters }); return q; },
         delete: () => { deleting = true; return q; }, select: () => q,
         eq: (column, value) => { filters.push([column, value]); return q; },
+        like: (column, value) => { filters.push([column, value]); return q; },
+        neq: (column, value) => { filters.push([column, value]); return q; },
         in: (column, value) => { filters.push([column, value]); return q; },
         maybeSingle: async () => {
           if (state.forwardSource) {
@@ -67,6 +70,7 @@ const connect = () => {
   return api;
 };
 beforeEach(() => {
+  state.footerRows = [];
   state.sessions.clear(); state.writes.length = 0; state.calls.length = 0;
   state.status = 'connected'; state.persistError = null;
   state.claimAllowed = true; state.fenceAllowed = true; state.autoAllowed = true;
@@ -111,6 +115,31 @@ describe('queue admission and delivery outcomes', () => {
       ] },
     }]);
     expect(state.writes).toEqual([]);
+  });
+  it('keeps all original photos together and a playable video adjacent, with receipts bound to their sources', async () => {
+    const api = connect();
+    api.uploadAttachment = vi.fn().mockResolvedValueOnce([{ normalUrl: 'cover' }]).mockResolvedValueOnce([{ fileUrl: 'clip' }]);
+    api.sendMessage.mockResolvedValue({ attachment: [{ msgId: 'pic-1' }, { msgId: 'pic-2' }] });
+    api.sendVideo = vi.fn().mockResolvedValue({ msgId: 'video-id' });
+    await processJob(makeJob({ type: 'image', tu_dong: true, automation_request_key: 'oneshot:shot:conv:room:203:album',
+      message_ids: ['message','pic-a','pic-b'], attachments: [
+        { path: 'a.mp4', mime: 'video/mp4', duration_ms: 12300, width: 480, height: 854 }, { path: 'b.jpg' }, { path: 'c.jpg' },
+      ] }));
+    expect(api.sendMessage).toHaveBeenCalledOnce();
+    expect(api.sendMessage.mock.calls[0][0].attachments.map(a => a.filename)).toEqual(['b.jpg','c.jpg']);
+    expect(api.sendVideo).toHaveBeenCalledWith({ videoUrl:'clip', thumbnailUrl:'cover', duration:12300, width:480, height:854 }, 'thread', 0);
+    expect(api.sendMessage.mock.invocationCallOrder[0]).toBeLessThan(api.sendVideo.mock.invocationCallOrder[0]);
+    expect(state.calls.find(c=>c.name==='zalo_worker_finalize_send_v1').args.p_receipts.map(r=>[r.message_id,r.zalo_msg_id]))
+      .toEqual([['pic-a','pic-1'],['pic-b','pic-2'],['message','video-id']]);
+  });
+  it.each(['failed','sent'])('mentions the group only when delivery of its summary and all prior jobs succeeded: %s', async status => {
+    state.threadType = 'group';
+    state.footerRows = [{status:'sent',automation_request_key:'scheduled:day:conv:table_image'},{status,automation_request_key:'scheduled:day:conv:room:203:album'}];
+    const api=connect(), text='Link danh sách\n@all';
+    await processJob(makeJob({tu_dong:true, automation_request_key:'scheduled:day:conv:link', body:text}));
+    const content=api.sendMessage.mock.calls[0][0];
+    if (status==='sent') expect(content.mentions).toEqual([{pos:text.length-4,uid:'-1',len:4}]);
+    else expect(content).toEqual({msg:'Link danh sách'});
   });
   it('defers boot-time queued messages while login is still pending', async () => {
     await processJob(makeJob());

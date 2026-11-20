@@ -131,6 +131,12 @@ export function parseRoomSalePayload(value: unknown): RpcPayload {
 }
 
 /* ---- helpers ---- */
+function publicRoomType(value: string | null | undefined, hasArea: boolean) {
+  if (hasArea) return (value || '').trim();
+  return (value || '').replace(/(?:phòng\s+)?\d+(?:[.,]\d+)?\s*m(?:²|2|\^2)(?![\p{L}\d])/giu, '')
+    .replace(/^\s*[,·|–-]+|[,·|–-]+\s*$/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 function imageUrl(pathOrUrl: string): string {
   if (!pathOrUrl) return "";
   // URL đầy đủ -> dùng thẳng; storage path -> getPublicUrl (đổi IMAGES_BUCKET nếu cần).
@@ -217,7 +223,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         buildingArea: district,
         buildingAddr: address,
         floor: rr.floor ?? 1,
-        type: rr.room_type?.trim() || "",   // chưa có loại phòng -> để trống
+        type: publicRoomType(rr.room_type, (rr.area ?? 0) > 0),   // chưa có loại phòng -> để trống
         // Phòng pass: ưu tiên giá khách đặt (pass_price) nếu có.
         price: (roomSaleListedPrice(status, rr.rent_price, rr.pass_price) ?? 0) / 1_000_000,
         area: Math.round(rr.area ?? 0),
