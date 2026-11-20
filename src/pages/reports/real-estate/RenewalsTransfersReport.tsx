@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { vi } from "date-fns/locale";
 import { usePersistedState } from "@/hooks/usePersistedState";
 
@@ -66,7 +66,7 @@ export default function RenewalsTransfersReport() {
     "Toà nhà": c.building,
     "Căn hộ": c.room,
     "Loại": c.type === "RENEWAL" ? "Gia hạn" : "Chuyển nhượng",
-    "Ngày": format(new Date(c.date), "dd/MM/yyyy", { locale: vi }),
+    "Ngày": format(parseISO(c.date), "dd/MM/yyyy", { locale: vi }),
     "Giá thuê mới": c.rent_price,
   })) || [];
 
@@ -158,7 +158,7 @@ export default function RenewalsTransfersReport() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {format(new Date(c.date), "dd/MM/yyyy", { locale: vi })}
+                          {format(parseISO(c.date), "dd/MM/yyyy", { locale: vi })}
                         </TableCell>
                         <TableCell>{formatCurrency(c.rent_price)}</TableCell>
                       </TableRow>

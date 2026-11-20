@@ -205,7 +205,8 @@ test('cấu trúc: v3 = bản 20261017033630 + hai dòng định tuyến; file s
 
 test('hàng rào gói (P2-4): file dải gói chỉ tạo hermes_w2<gói>_* hoặc hàm public.<miền>_*_v<n> MỚI; hàm nền chỉ sống ở dải nền/Z', () => {
   assert.deepEqual(w2FenceViolations(w2AllMigrations()), [], 'repo hiện tại');
-  for (const name of ['20261019034254_hermes_metadata_read_snapshot_v1.sql', '20261019040948_hermes_copied_text_parity_v1.sql']) {
+  for (const name of ['20261019034254_hermes_metadata_read_snapshot_v1.sql', '20261019040948_hermes_copied_text_parity_v1.sql',
+    '20261120095231_bao_cao_hop_dong_nhuong_da_ky.sql']) {
     const original = w2AllMigrations();
     assert(original.some(file => file.name === name));
     for (const change of [file => ({ ...file, sql: file.sql + '\n-- changed source\n' }),

@@ -9,7 +9,7 @@ import {useContractSigning} from '../contracts/useContractSigning';import {signi
 const id='11111111-1111-4111-8111-111111111111';
 const input:ContractSigningInput={source:{draftId:id,revision:1,documentId:id,documentSha256:'a'.repeat(64)},requestId:id,receivedOn:'2026-09-28',roomReady:true,termsConfirmed:true,boundary:{state:'VERIFIED',readings:[]},creationOptions:{}};
 const row={id,organization_id:id,building_id:id,room_id:id,draft_id:id,revision:1,document_id:id,document_sha256:'a'.repeat(64),template_sha256:'b'.repeat(64),template_path:'template',template_snapshot:{id,name:'Mẫu',updated_at:'2026-09-28'},document_data:{},terms:{},party_snapshot:[],creation_options:{},received_on:'2026-09-28',contract_id:id,contract_number:'HD-01',request_id:id,signed_by:id,signed_at:'2026-09-28',official_document_path:'signed',official_document_sha256:null};
-type Mutation={mutationFn:(input?:ContractSigningInput)=>Promise<unknown>;pendingRequestId?:string|null};
+type Mutation={mutationFn:(input?:ContractSigningInput)=>Promise<unknown>;pendingRequestId?:string|null;onError:(error:unknown,input?:ContractSigningInput)=>void};
 const hook=()=>renderHook(()=>useContractSigning(id,id) as unknown as Mutation);
 beforeEach(()=>{localStorage.clear();h.selected=id;localStorage.setItem('ihomecrm.selectedOrganizationId',id);vi.clearAllMocks();h.read.mockResolvedValue({server_today:'2026-09-28',signing:null});});afterEach(cleanup);
 it('signing unknown remount + input đổi không ghi lại, read null không proof rollback',async()=>{h.sign.mockRejectedValueOnce(new TypeError('Failed to fetch'));const first=hook();await expect(first.result.current.mutationFn(input)).rejects.toThrow();first.unmount();const reopened=hook();await expect(reopened.result.current.mutationFn({...input,source:{...input.source,revision:2}})).rejects.toThrow(/đối chiếu/);expect(h.sign).toHaveBeenCalledOnce();expect(h.read).toHaveBeenCalled();});
@@ -18,5 +18,24 @@ it('readonly exact requestKey signing clears after reload without sign RPC again
 it('readonly wrong requestKey or wrong draft cannot clear/replay',async()=>{h.sign.mockRejectedValueOnce(new TypeError('Failed to fetch'));await expect(hook().result.current.mutationFn(input)).rejects.toThrow();h.read.mockResolvedValue({server_today:'2026-09-28',signing:row});await expect(hook().result.current.mutationFn()).rejects.toThrow();expect(h.sign).toHaveBeenCalledOnce();});
 it('wrong source receipt giữ contract ID partial và không sign lại',async()=>{h.sign.mockResolvedValue({...row,draft_id:'22222222-2222-4222-8222-222222222222'});await expect(hook().result.current.mutationFn(input)).rejects.toMatchObject({completed:[expect.objectContaining({id})]});await expect(hook().result.current.mutationFn(input)).rejects.toThrow();expect(h.sign).toHaveBeenCalledOnce();});
 it('raw technical Error và network message không hiện cho người dùng/không mời gửi lại mù',()=>{expect(signingErrorMessage(new Error('private sql relation canonical.atomic'))).not.toMatch(/private|canonical|atomic|thử lại/i);expect(signingErrorMessage(new TypeError('Failed to fetch'))).toMatch(/đối chiếu|kiểm tra/);});
+
+it('mở lại bước ký sau khi máy chủ từ chối thiếu cọc, giữ đối chiếu nếu mất kết nối', async () => {
+  const run = hook();
+  const refused = { code: '55000', message: 'Nhượng qua môi giới cần khách mới nộp đủ cọc mới' };
+  h.sign.mockRejectedValueOnce(refused);
+  await act(async () => {
+    await expect(run.result.current.mutationFn(input)).rejects.toEqual(refused);
+    run.result.current.onError(refused, input);
+  });
+  expect(run.result.current.pendingRequestId).toBeNull();
+
+  h.sign.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  await act(async () => {
+    const error = await run.result.current.mutationFn(input).catch((cause: unknown) => cause);
+    run.result.current.onError(error, input);
+  });
+  expect(run.result.current.pendingRequestId).toBeTruthy();
+  expect(h.sign).toHaveBeenCalledTimes(2);
+});
 
 it('positive same-intent signing may return the prior request ID exactly as SQL already-signed replay does',async()=>{h.sign.mockResolvedValue(row);await expect(hook().result.current.mutationFn(input)).resolves.toMatchObject({request_id:id,contract_id:id});expect(h.sign.mock.calls[0][1].requestId).not.toBe(id);expect(Array.from({length:localStorage.length},(_,i)=>localStorage.key(i)!).filter(key=>key.includes('financial-pending'))).toEqual([]);});

@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-20T11:00:54.970Z",
+  "generatedAt": "2026-11-20T12:14:10.368Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 973,
+    "ledger-applied": 975,
     "unknown": 80,
     "catalog-proven": 206,
     "superseded": 15
@@ -14569,6 +14569,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-20T10:37:40.646Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120094936_sua_nhuong_ky_hop_dong_va_hoa_hong.sql",
+      "version": "20261120094936",
+      "name": "sua_nhuong_ky_hop_dong_va_hoa_hong",
+      "scheme": "timestamp14",
+      "sha256": "e3018f4ac7b0467565037ec929e5a67de219e2bad0d17beb316537ddc161b355",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T12:11:25.752Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261120095231_bao_cao_hop_dong_nhuong_da_ky.sql",
+      "version": "20261120095231",
+      "name": "bao_cao_hop_dong_nhuong_da_ky",
+      "scheme": "timestamp14",
+      "sha256": "e8935aa2bbab7c9a0cfdb5ad35566edc503370b85a99d9c986274fb26963751b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-20T12:13:43.252Z|bien-nhan-backup"
       ]
     },
     {

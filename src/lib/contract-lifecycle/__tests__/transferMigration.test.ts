@@ -5,6 +5,7 @@ const db=new PGlite();
 const id=(n:number)=>`00000000-0000-4000-8000-${n.toString().padStart(12,'0')}`;
 const [org,actor,building,room,old,newContract,exit,draft,customer,oldCustomer]=[1,2,3,4,5,6,7,8,9,10].map(id);
 const path='supabase/migrations/20260928032349_contract_transfer_links.sql';
+const repairSql=readFileSync('supabase/migrations/20261120094936_sua_nhuong_ky_hop_dong_va_hoa_hong.sql','utf8');
 beforeAll(async()=>{
   await db.exec(`CREATE ROLE authenticated;CREATE ROLE anon;CREATE ROLE service_role;CREATE SCHEMA auth;CREATE SCHEMA app_private;
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT '${actor}'::uuid$$;
@@ -34,7 +35,21 @@ beforeAll(async()=>{
     CREATE FUNCTION public.create_contract_v2(jsonb,text) RETURNS jsonb LANGUAGE sql AS $$SELECT '{}'::jsonb$$;
     CREATE FUNCTION public.sign_and_checkin_contract_draft_v1(p_organization_id uuid,p_draft_id uuid,p_expected_revision integer,p_document_id uuid,p_document_sha256 text,p_request_id uuid,p_received_on date,p_room_ready boolean,p_terms_confirmed boolean,p_boundary jsonb,p_creation_options jsonb,p_reservation_id uuid DEFAULT null,p_reservation_revision bigint DEFAULT null,p_source_voucher_ids uuid[] DEFAULT null) RETURNS jsonb LANGUAGE plpgsql AS $$DECLARE d contract_drafts%ROWTYPE;c contracts%ROWTYPE;v_result jsonb;v_payload jsonb:='{}';BEGIN SELECT * INTO d FROM contract_drafts WHERE id=p_draft_id;v_result:=public.create_contract_v2(v_payload,'draft-sign:'||d.id::text);SELECT * INTO c FROM contracts WHERE id='${newContract}';UPDATE public.contract_drafts SET status='SIGNED',converted_contract_id=c.id WHERE id=d.id;RETURN '{}';END$$;
   `);
+  // A later migration replaced the public signing writer and lost the two transfer checks.
+  const writerBeforeTransfer=(await db.query<{body:string}>(
+    "SELECT pg_get_functiondef(oid) body FROM pg_proc WHERE proname='sign_and_checkin_contract_draft_v1'"
+  )).rows[0].body;
   const sql=readFileSync(path,'utf8');await db.exec(sql);await db.exec(sql);
+  await db.exec(writerBeforeTransfer);
+  await db.exec(`
+    CREATE TABLE public.contract_draft_signings(draft_id uuid UNIQUE, contract_id uuid UNIQUE,
+      organization_id uuid, building_id uuid, room_id uuid, revision integer, signed_at timestamptz,
+      signed_by uuid, received_on date, terms jsonb);
+    CREATE TABLE app_private.canonical_write_operations(organization_id uuid,operation text,
+      actor_id uuid,subject_id uuid,subject_scope text,idempotency_key text,completed_at timestamptz,response_payload jsonb);
+  `);
+  await db.exec(repairSql);
+  await db.exec(repairSql);
 },30000);
 afterAll(()=>db.close());beforeEach(()=>db.exec('BEGIN'));afterEach(()=>db.exec('ROLLBACK'));
 const create=async(mode='SELF_FOUND',deposit='NEW_PAYMENT',request=id(20))=>(await db.query<{result:Record<string,unknown>}>(`SELECT public.create_contract_transfer_link_v1($1,$2,$3,1,1,$4,$5,'KEEP_OLD_END_DATE',$6,'Reason',$7) result`,[org,exit,draft,mode,deposit,mode==='BROKER'?'Broker':null,request])).rows[0].result;
@@ -113,4 +128,89 @@ it('uses contracted old base and existing paid-deposit semantics without imposin
   const fee={kind:'CUSTOM',description:`TRANSFER_BROKER_FEE:${link.id}`,amount:2_000_000};
   await db.query(`SELECT public.finalize_contract_exit_case_v1($1,$2,1,'settle-123','EARLY_RETURN',null,$3)`,[org,exit,{extra_charges:[fee],deposit_refund:4_000_000}]);
   expect((await db.query('SELECT * FROM canonical_calls')).rows).toHaveLength(1);
+});
+
+const signSql = `SELECT public.sign_and_checkin_contract_draft_v1($1,$2,1,$3,$4,$5,'2026-10-01',true,true,'{}','{}')`;
+const signArgs = [org,draft,id(50),'a'.repeat(64),id(51)];
+async function readLink(contractId:string) {
+  const result=await db.query<{links:Record<string,unknown>[]}>(
+    'SELECT public.read_contract_transfer_links_v1($1,$2,null,null) links',[org,contractId]
+  );
+  return result.rows[0].links;
+}
+
+it('ký qua RPC công khai nối đúng hợp đồng mới và ghi một mốc lịch sử',async()=>{
+  await create('BROKER');
+  await db.query(signSql,signArgs);
+  expect(await readLink(newContract)).toMatchObject([{new_contract_id:newContract,version:2,signed_needs_review:false}]);
+  const {rows}=await db.query("SELECT event FROM app_private.contract_transfer_events ORDER BY version");
+  expect(rows).toEqual([{event:'CREATED'},{event:'NEW_SIGNED'}]);
+});
+
+it.each([
+  {mode:'SELF_FOUND',deposit:'OLD_DEPOSIT_OFFSET',paid:4_000_000},
+  {mode:'BROKER',deposit:'NEW_PAYMENT',paid:3_999_999},
+])('ký bị chặn và nháp còn nguyên khi $mode, $deposit, đã thu $paid',async({mode,deposit,paid})=>{
+  await create(mode,deposit);
+  await db.query('UPDATE contracts SET deposit_paid=$1 WHERE id=$2',[paid,newContract]);
+  await rejects(signSql,signArgs,'55000');
+  expect((await db.query('SELECT status,converted_contract_id FROM contract_drafts')).rows)
+    .toEqual([{status:'EDITABLE',converted_contract_id:null}]);
+  expect(await readLink(newContract)).toEqual([]);
+});
+
+it('quyết toán phí môi giới bằng 0 và gửi lại yêu cầu hoa hồng không tạo phiếu',async()=>{
+  await db.query('UPDATE contracts SET total_deposit=0 WHERE id=$1',[old]);
+  const link=await create('BROKER');
+  expect(link).toMatchObject({money_state:'FEE_PENDING',no_commission_due:false});
+  await db.query(signSql,signArgs);
+  const fee={kind:'CUSTOM',description:`TRANSFER_BROKER_FEE:${link.id}`,amount:0};
+  await db.query("SELECT public.finalize_contract_exit_case_v1($1,$2,1,'settle-zero','EARLY_RETURN',null,$3)",
+    [org,exit,{extra_charges:[fee],deposit_refund:0}]);
+  for (let attempt=0;attempt<2;attempt++){
+    const result=await db.query<{link:Record<string,unknown>}>(
+      'SELECT public.create_contract_transfer_commission_v1($1,$2,3,$3) link',[org,link.id,id(52)]
+    );
+    expect(result.rows[0].link).toMatchObject({money_state:'COMMISSION_PENDING',no_commission_due:true,commission_voucher_id:null,version:3});
+  }
+  expect((await db.query("SELECT * FROM canonical_calls WHERE kind='commission'")).rows).toEqual([]);
+});
+
+async function seedHistoricalSigning(paidAtSigning:number){
+  await db.query("UPDATE contract_drafts SET status='SIGNED',converted_contract_id=$1 WHERE id=$2",[newContract,draft]);
+  await db.query(`INSERT INTO public.contract_draft_signings
+    SELECT id,converted_contract_id,organization_id,building_id,room_id,revision,clock_timestamp(),
+      $1,(payload->'form'->>'start_date')::date,payload FROM public.contract_drafts WHERE id=$2`,[actor,draft]);
+  await db.query(`INSERT INTO app_private.canonical_write_operations
+    SELECT organization_id,'contract.create.v2',signed_by,contract_id,room_id::text||'|'||received_on::text,
+      'draft-sign:'||draft_id::text,clock_timestamp(),jsonb_build_object('contract',jsonb_build_object('id',contract_id),
+        'deposit_paid',$1::numeric,'deposit_shortfall',4000000-$1::numeric)
+    FROM public.contract_draft_signings`,[paidAtSigning]);
+}
+
+it('khôi phục đúng bản ký cũ có bằng chứng đủ cọc khi ký, chạy lại không nhân đôi',async()=>{
+  await create('BROKER');
+  await seedHistoricalSigning(4_000_000);
+  // The current balance may already have been refunded.
+  await db.query('UPDATE contracts SET deposit_paid=0 WHERE id=$1',[newContract]);
+  await db.exec(repairSql);
+  await db.exec(repairSql);
+  expect(await readLink(newContract)).toMatchObject([{new_contract_id:newContract,version:2,signed_needs_review:false}]);
+  const {rows}=await db.query("SELECT actor_id,event FROM app_private.contract_transfer_events WHERE event='NEW_SIGNED'");
+  expect(rows).toEqual([{actor_id:actor,event:'NEW_SIGNED'}]);
+  expect((await db.query('SELECT * FROM canonical_calls')).rows).toEqual([]);
+});
+
+it.each([
+  {mode:'BROKER',deposit:'NEW_PAYMENT',paidAtSigning:0,missingReceipt:false},
+  {mode:'BROKER',deposit:'NEW_PAYMENT',paidAtSigning:4_000_000,missingReceipt:true},
+  {mode:'SELF_FOUND',deposit:'OLD_DEPOSIT_OFFSET',paidAtSigning:4_000_000,missingReceipt:false},
+])('giữ hồ sơ đã ký cần đối soát với $mode, $deposit, cọc lúc ký $paidAtSigning, thiếu chứng cứ $missingReceipt',async({mode,deposit,paidAtSigning,missingReceipt})=>{
+  const link=await create(mode,deposit);
+  await seedHistoricalSigning(paidAtSigning);
+  if (missingReceipt) await db.exec('DELETE FROM app_private.canonical_write_operations');
+  await db.exec(repairSql);
+  expect(await readLink(old)).toMatchObject([{new_contract_id:null,money_state:'NEEDS_REVIEW',signed_needs_review:true,no_commission_due:false}]);
+  await rejects('SELECT public.cancel_contract_transfer_link_v1($1,$2,1,$3,$4)',[org,link.id,'Đổi nháp',id(53)],'55000');
+  expect((await db.query('SELECT * FROM canonical_calls')).rows).toEqual([]);
 });

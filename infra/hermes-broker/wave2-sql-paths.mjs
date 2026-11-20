@@ -92,6 +92,10 @@ const REVIEWED_SUCCESSORS = new Map([
     sha256: 'e312db13dbf0d6c91d824190310165e4b669b9fb1ef57d310e92920a2009da56',
     functions: ['public.notifications_inbox_v1'],
   }],
+  ['20261120095231_bao_cao_hop_dong_nhuong_da_ky.sql', {
+    sha256: 'e8935aa2bbab7c9a0cfdb5ad35566edc503370b85a99d9c986274fb26963751b',
+    functions: ['public.real_estate_renewals_transfers_v1'],
+  }],
 ]);
 
 /** Hàng rào gói (P2-4, review PR #195; mở rộng sau review cổng INVOKER). files: [{name, sql}] mọi migration theo

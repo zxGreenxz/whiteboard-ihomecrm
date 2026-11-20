@@ -19,7 +19,9 @@ const linkSchema=z.object({id:uuid,organization_id:uuid,building_id:uuid,room_id
   starts_on:z.string(),ends_on:z.string(),broker_name:z.string().nullable(),
   deposit_base:z.number().nonnegative().nullable(),broker_fee:z.number().nonnegative().nullable(),
   fee_state:z.enum(['NOT_REQUIRED','PENDING','APPLIED']),commission_voucher_id:uuid.nullable(),commission_code:z.string().nullable(),commission_approval_status:z.string().nullable(),
-  state:z.enum(['LINKED','CANCELLED']),version:z.number().int().positive(),money_state:z.enum(['INDEPENDENT','NEEDS_REVIEW','FEE_PENDING','COMMISSION_PENDING','COMMISSION_LINKED']),
+  state:z.enum(['LINKED','CANCELLED']),version:z.number().int().positive(),
+  signed_needs_review:z.boolean().optional(),no_commission_due:z.boolean().optional(),
+  money_state:z.enum(['INDEPENDENT','NEEDS_REVIEW','FEE_PENDING','COMMISSION_PENDING','COMMISSION_LINKED']),
   created_at:z.string(),reason:z.string(),history:z.array(z.object({event:z.string(),version:z.number().int().positive(),reason:z.string(),actor_id:uuid,actor_name:z.string().nullable(),created_at:z.string()}))});
 export type ContractTransferLink=z.infer<typeof linkSchema>;
 export type TransferRpcName='create_contract_transfer_link_v1'|'read_contract_transfer_links_v1'|'cancel_contract_transfer_link_v1'|'finalize_contract_transfer_exit_v1'|'create_contract_transfer_commission_v1';
