@@ -6,6 +6,8 @@ import { corsFetchUrl } from "@/lib/storage/r2Config";
 import { isUnavailableTestMedia, TEST_MEDIA_MESSAGE, testMediaSource } from '@/lib/storage/testMedia';
 import { saleLockRemaining } from "@/lib/roomSaleLockRpc";
 
+import { isRoomVideo, roomAlbum } from '@/lib/roomMedia';
+
 const SM = STATUS_META;
 const stColor = (s: string) => `var(--st-${s})`;
 
@@ -14,7 +16,7 @@ function useDragScroll(ref: React.RefObject<HTMLDivElement>) {
     const el = ref.current;
     if (!el) return;
     let down = false, sx = 0, ss = 0, moved = false;
-    const d = (e: MouseEvent) => { down = true; moved = false; sx = e.pageX; ss = el.scrollLeft; el.classList.add("dragging"); };
+    const d = (e: MouseEvent) => { moved = false; if (e.target instanceof HTMLVideoElement) return; down = true; sx = e.pageX; ss = el.scrollLeft; el.classList.add("dragging"); };
     const m = (e: MouseEvent) => { if (!down) return; const dx = e.pageX - sx; if (Math.abs(dx) > 4) moved = true; el.scrollLeft = ss - dx; };
     const u = () => { down = false; el.classList.remove("dragging"); };
     const c = (e: MouseEvent) => { if (moved) { e.preventDefault(); e.stopPropagation(); } };
@@ -37,10 +39,10 @@ function Gallery({ images, onZoom }: { images: string[]; onZoom: (i: number) => 
   return (
     <div className="gallery" ref={ref}>
       {images.map((src, i) => (
-        <div className="gimg" key={i} onClick={() => onZoom(i)}>
+        <div className="gimg" key={src} onClick={() => { if (!isRoomVideo(src)) onZoom(i); }}>
           {/* Chỉ ảnh đầu tải ngay; còn lại lazy để không kéo 14 ảnh cùng lúc trên mobile. */}
-          <img src={testMediaSource(src)} alt={"Anh " + (i + 1)} draggable={false}
-               loading={i === 0 ? "eager" : "lazy"} decoding="async" />
+          {isRoomVideo(src) ? <video src={testMediaSource(src)} controls playsInline preload="metadata" aria-label={`Video phòng ${i + 1}`} /> : <img src={testMediaSource(src)} alt={"Ảnh " + (i + 1)} draggable={false}
+               loading={i === 0 ? "eager" : "lazy"} decoding="async" />}
         </div>
       ))}
     </div>
@@ -68,7 +70,7 @@ function Lightbox({ images, index, onClose, onSaveAll }: {
         {/* Chỉ render ảnh KHI mở lightbox (opacity:0 vẫn tải) — tránh preload trùng cả bộ ảnh. */}
         {index != null && images.map((src, i) => (
           <div className="lb-slide" key={i}>
-            <img src={testMediaSource(src)} alt={"Anh " + (i + 1)} loading={i === index ? "eager" : "lazy"} decoding="async" />
+            {isRoomVideo(src) ? <video src={testMediaSource(src)} controls playsInline preload="none" aria-label={`Video phòng ${i + 1}`} /> : <img src={testMediaSource(src)} alt={"Ảnh " + (i + 1)} loading={i === index ? "eager" : "lazy"} decoding="async" />}
           </div>
         ))}
       </div>
@@ -118,7 +120,7 @@ type ShareNav = Navigator & {
 };
 
 function roomImages(r: Room): string[] {
-  return r.images ?? [];
+  return (r.images ?? []).filter(url => !isRoomVideo(url));
 }
 
 // Tải TOÀN BỘ ảnh phòng thành File[] (tên theo Tòa-Phòng-STT) để chia sẻ / tải về.
@@ -187,7 +189,7 @@ export function DetailSheet({
   if (!room) return null;
   const r = room;
   const isSaved = saved.includes(r.id);
-  const images = roomImages(r);
+  const images = roomAlbum(r.images ?? []);
 
   // Phong cung toa (con trong) de chuyen nhanh truoc/sau
   const building = buildings.find((b) => b.id === r.buildingId);
@@ -315,11 +317,11 @@ export function DetailSheet({
   return (
     <>
       <div className={"sheet-scrim" + (show ? " show" : "")} onClick={onClose} />
-      <div className={"sheet" + (show ? " show" : "")}>
+      <div className={"phong-trong-sheet" + (show ? " show" : "")}>
         <button className="sheet-close" onClick={onClose} aria-label="Đóng" title="Đóng"><Icon.Close /></button>
         <div className="sheet-grab" onClick={onClose} />
         <div className="sheet-scroll">
-          {images.length ? <Gallery images={images} onZoom={(i) => { trackRoom("image_view", { index: i }); setLb(i); }} /> : <div className="empty">Chưa có ảnh phòng</div>}
+          {images.length ? show && <Gallery key={r.id} images={images} onZoom={(i) => { trackRoom("image_view", { index: i }); setLb(i); }} /> : <div className="empty">Chưa có ảnh phòng</div>}
 
           <div className="sheet-body">
             <div className="sh-head">
@@ -422,7 +424,7 @@ export function DetailSheet({
           </div>
 
           <div className="sh-actions2">
-            <button className="act2" onClick={doDownload} disabled={!images.length}><Icon.Download />Tải ảnh</button>
+            <button className="act2" onClick={doDownload} disabled={!roomImages(r).length}><Icon.Download />Tải ảnh</button>
             <button className="act2" onClick={doRoute}><Icon.Route />Chỉ đường</button>
             <button className="act2" onClick={doShare}><Icon.Share />Chia sẻ</button>
           </div>
@@ -442,7 +444,7 @@ export function DetailSheet({
           </button>
         </div>
       </div>
-      <Lightbox images={images} index={lb} onClose={() => setLb(null)} onSaveAll={doDownload} />
+      <Lightbox images={images} index={show ? lb : null} onClose={() => setLb(null)} onSaveAll={roomImages(r).length ? doDownload : undefined} />
     </>
   );
 }

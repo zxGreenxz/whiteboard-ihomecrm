@@ -103,7 +103,7 @@ export function mapPayloadSangToa(payload) {
         amenities: dsTienNghi(rr.amenities),
         availDate: status === 'soon' ? ngayNgan(saleFact.availableOn) : null,
         saleFact,
-        images: dsAnh(rr.images),
+        images: dsAnh(rr.images).filter(url => !/\.mp4$/i.test(url.split(/[?#]/, 1)[0])),
         description: rr.description || null,
         saleNote: rr.sale_note || null,
         passContactName: rr.pass_contact_name || null,

@@ -1517,6 +1517,7 @@
     "src/lib/reverseGeocode.ts",
     "src/lib/roomCodeSearch.ts",
     "src/lib/roomContractYear.ts",
+    "src/lib/roomMedia.ts",
     "src/lib/roomPrice.ts",
     "src/lib/roomSaleFacts.ts",
     "src/lib/roomSort.ts",

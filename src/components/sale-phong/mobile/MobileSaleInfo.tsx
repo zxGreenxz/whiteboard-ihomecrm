@@ -1,3 +1,4 @@
+import { roomPhotoCount } from '@/lib/roomMedia';
 import { friendlyError } from "@/lib/friendlyError";
 import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -220,7 +221,7 @@ export default function MobileSaleInfo({ onBusyChange }: { onBusyChange?: (busy:
 
               <div className="sp-card">
                 <div className="sp-card-t" style={{ marginBottom: 11 }}>Ảnh phòng</div>
-                <MobileImageGrid value={rImages} onChange={setRImages} disabled={savingRoom || updateBuilding.isPending} onUploadingChange={setUploading} />
+                <MobileImageGrid allowRoomVideo value={rImages} onChange={setRImages} disabled={savingRoom || updateBuilding.isPending} onUploadingChange={setUploading} />
                 <button className="sp-rowcard" style={{ margin: "12px 0 0", borderRadius: 12, borderStyle: "dashed", padding: "11px 13px" }} onClick={() => setSimilarSheet(true)}>
                   <span className="ic brand"><Images size={18} /></span>
                   <span style={{ flex: 1, minWidth: 0 }}>
@@ -276,7 +277,7 @@ export default function MobileSaleInfo({ onBusyChange }: { onBusyChange?: (busy:
               disabled={busy} onClick={() => { if (r.id !== roomId && !confirmSaleInfoSwitch(roomGuard.dirty)) return; setRoomId(r.id); setRoomSheet(false); }}>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span className="nm" style={{ fontFamily: "var(--mono)", fontSize: 13.5 }}>{r.name}{r.code && r.code !== r.name ? ` · ${r.code}` : ""}</span>
-                <span className="sub">Tầng {r.floor}{toStrArr(r.images).length > 0 ? " · có ảnh" : ""}</span>
+                <span className="sub">Tầng {r.floor}{roomPhotoCount(toStrArr(r.images)) > 0 ? " · có ảnh" : ""}</span>
               </span>
               {r.id === roomId && <Check size={19} stroke="var(--brand)" />}
             </button>
@@ -296,7 +297,7 @@ export default function MobileSaleInfo({ onBusyChange }: { onBusyChange?: (busy:
               <button key={r.id} className="sp-pickitem" style={{ padding: "11px 13px" }} onClick={() => addSimilar(r.id)}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span className="nm" style={{ fontFamily: "var(--mono)", fontSize: 13.5 }}>{r.name}{r.code && r.code !== r.name ? ` · ${r.code}` : ""}</span>
-                  <span className="sub">Tầng {r.floor}{toStrArr(r.images).length > 0 ? " · có ảnh" : ""}</span>
+                  <span className="sub">Tầng {r.floor}{roomPhotoCount(toStrArr(r.images)) > 0 ? " · có ảnh" : ""}</span>
                 </span>
                 <span className="tag" style={{ width: 30, height: 30, borderRadius: 9, background: "var(--brand-50)" }}><Plus size={17} /></span>
               </button>
