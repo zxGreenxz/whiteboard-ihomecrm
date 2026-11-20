@@ -240,6 +240,12 @@
       "kyVong": "dung-vi-thu-tu-ap",
       "thongDiep": "cần công thức nợ chung 20261021183549_invoice_effective_outstanding_v1",
       "why": "Đo trực tiếp Restore Drill run 39736296628 (job 119682652747, head 78278e880, PR #275): file dừng ở khối $requires$ đầu file vì đòi public.invoice_effective_outstanding_v1 — công thức nợ chung do 20261021183549 (#267) tạo, để nhắc hoá đơn server đếm nợ cùng một định nghĩa với mọi màn khác. Diễn tập phát lại forward lane theo THỨ TỰ TÊN nên 171251 chạy trước 183549; production áp 183549 (#267) trước rồi mới áp 171251 qua lane ngày 22/10 (provenance ledger-applied, sha256 fe3daf87…). Dừng là đúng chốt của migration: không được tự dựng lại công thức nợ cũ cho khớp bản dựng lại. File đã áp production nên bất biến (không đổi tên/thân được). Hệ quả trên DB diễn tập: không có lane nhắc việc server (4 họ INVOICE_DUE/INVOICE_OVERDUE/CONTRACT_EXPIRING/DEPOSIT_SHORTFALL, lifecycle_gate_v2, lifecycle_reminder_sweep_state); cùng run đó 171252/171253 và 183549…190406 chạy sạch nên không có entry cascade."
+    },
+    "20261120122616_room_video_storage_limit.sql": {
+      "kyVong": "cascade",
+      "tu": "20260813110000_zalo_gui_media_va_idempotency.sql",
+      "thongDiep": "Expected the existing zalo-media bucket to support 32 MiB room videos",
+      "why": "Restore Drill 44742760619 dừng đúng thông báo này. Giao dịch 20260813110000 tạo bucket rồi cuộn lại ở bước tạo policy vì thiếu helper, nên bản diễn tập rỗng không có dòng zalo-media. Migration dung lượng chỉ cập nhật bucket hiện hữu. Kiểm PostgreSQL riêng trong test-platform-storage-shim phát lại cùng SQL trên bucket private 25 MiB và kiểm giới hạn 32 MiB sau hai lượt."
     }
   }
 }
