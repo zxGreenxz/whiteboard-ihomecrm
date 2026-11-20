@@ -37,7 +37,8 @@ test('gate chạy tsc thật: chấp nhận file sạch và báo đúng diagnost
     include: ['src'],
   }));
   writeFileSync(join(root, 'ts-baseline.json'), '[]');
-  writeFileSync(join(root, 'tooling', 'ts-coverage-baseline.json'), '{"files":1}');
+  const coverage = join(root, 'tooling', 'ts-coverage-baseline.json');
+  writeFileSync(coverage, '{"files":1}');
 
   const source = join(root, 'src', 'example.ts');
   const run = () => spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
@@ -47,6 +48,19 @@ test('gate chạy tsc thật: chấp nhận file sạch và báo đúng diagnost
   assert.match(clean.stdout, /Tập lỗi TS khớp baseline \(0 fingerprint/);
   assert.equal(clean.stderr, '');
 
+  // Một lượt compiler dùng cache vẫn phải đo cùng độ phủ với --listFilesOnly.
+  const listed = spawnSync(process.execPath, [join(typescript, 'bin', 'tsc'), '--listFilesOnly', '-p', 'tsconfig.app.json'], {
+    cwd: root, encoding: 'utf8',
+  });
+  assert.equal(listed.status, 0, listed.stderr);
+  const fileCount = (listed.stdout.match(/[/\\]src[/\\]/g) ?? []).length;
+  assert.ok(fileCount > 0);
+  writeFileSync(coverage, JSON.stringify({ files: fileCount + 1 }));
+  const reduced = run();
+  assert.equal(reduced.status, 1, `stdout:\n${reduced.stdout}\nstderr:\n${reduced.stderr}`);
+  assert.ok(reduced.stderr.includes(`${fileCount} file trong src/ (sàn ${fileCount + 1})`), reduced.stderr);
+
+  writeFileSync(coverage, '{"files":1}');
   writeFileSync(source, 'export const answer: number = "wrong";');
   const invalid = run();
   assert.equal(invalid.status, 1, `stdout:\n${invalid.stdout}\nstderr:\n${invalid.stderr}`);

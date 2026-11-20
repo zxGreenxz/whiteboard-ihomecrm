@@ -40,7 +40,7 @@ describe('prompt KHÔNG được nhắc tool không tồn tại', () => {
   });
 
   it('few-shot nhắc ĐỦ các tool nó cần và không nhắc respond', () => {
-    for (const ten of ['phong_trong', 'doanh_thu_thang', 'huong_dan', 'tao_phieu_thu_chi_nhap']) {
+    for (const ten of ['phong_trong', 'doanh_thu_thang', 'ban_do_he_thong', 'tao_phieu_thu_chi_nhap']) {
       expect(VI_DU_MAU, ten).toContain(ten);
     }
     expect(VI_DU_MAU).not.toContain('respond');
@@ -72,7 +72,7 @@ describe('từ điển nghiệp vụ — nghĩa RIÊNG của sản phẩm này',
 });
 
 describe('luật trích nguồn', () => {
-  it('CHAT_SYSTEM_PROMPT bắt giữ nguyên "(nguồn: …)" và nêu tool + kỳ cho số liệu', () => {
+  it('CHAT_SYSTEM_PROMPT nêu nguồn và kỳ cho số liệu', () => {
     expect(CHAT_SYSTEM_PROMPT).toContain('(nguồn:');
     expect(CHAT_SYSTEM_PROMPT).toMatch(/TR[ÍI]CH NGU[ỒO]N/);
     expect(CHAT_SYSTEM_PROMPT).toMatch(/kỳ nào/);

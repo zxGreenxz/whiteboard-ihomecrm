@@ -265,8 +265,6 @@ describe('không bỏ sót tool nào', () => {
     // Sàn chống bỏ quên: thêm một tool đọc sổ mới mà quên chốt công ty thì con số
     // nó trả về là union nhiều công ty — sai âm thầm.
     const CHO_PHEP_KHONG_THEO_CONG_TY = new Set([
-      'huong_dan',           // tra tài liệu, lọc theo quyền từng kết quả
-      'liet_ke_chu_de',      // liệt kê tài liệu
       'ban_do_he_thong',     // bản đồ trang, không đọc dữ liệu nghiệp vụ
       'mo_trang',            // điều hướng
       'tao_phieu_thu_chi_nhap', // tool GHI — chốt công ty ở Phase B (nonce server)

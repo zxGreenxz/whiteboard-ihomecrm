@@ -20,8 +20,7 @@ import {requireReadRows,readString,readDate,readNumber,readRecord} from '@/lib/a
 //   Một chỉ thị có sức thuyết phục cần chỗ để giải thích; ba cái trần này không
 //   cho nó chỗ nào.
 import { supabase } from '@/integrations/supabase/client';
-import { boKyTuDieuKhien, coKyTuDieuKhien } from './anToanVanBan';
-import { boDau } from './docs/tokenize';
+import { boDau, boKyTuDieuKhien, coKyTuDieuKhien } from './anToanVanBan';
 
 export interface GhiNho {
   khoa: string;

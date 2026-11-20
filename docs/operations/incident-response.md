@@ -22,7 +22,6 @@ source_paths:
   - .github/workflows/supabase-migrate.yml
   - vercel.json
   - docs/engineering/PROJECT_CONTRACT.md
-copilot_ingest: false
 risk: infrastructure
 ---
 
@@ -32,8 +31,6 @@ Luật phát hành và luật ghi production nằm ở
 [`docs/engineering/PROJECT_CONTRACT.md`](../engineering/PROJECT_CONTRACT.md) §3 và §4 — **đọc trước**.
 Trang này chỉ nói phần Contract không nói: lúc đã hỏng rồi thì làm gì, theo thứ tự nào, và **cái gì
 đã được diễn tập thật, cái gì chưa**.
-(`copilot_ingest: false` vì Copilot chỉ đọc allowlist `docs/he-thong/manifest.json` —
-`scripts/check-copilot-docs-manifest.mjs`; file này nằm ngoài, khai `true` là lời khai sai.)
 
 ---
 

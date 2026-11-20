@@ -25,7 +25,7 @@ const MAU = {
       execute: async () => 'x',
     }),
     dt({
-      name: 'liet_ke_chu_de',
+      name: 'ban_do_he_thong',
       execute: async () => 'y',
     }),
     dt({
@@ -47,7 +47,7 @@ test('bóc đúng tên, cờ và quyền của từng tool', () => {
   assert.deepEqual(
     ra.map((t) => [t.ten, phanLoai(t), t.quyen]),
     [
-      ['liet_ke_chu_de', 'read', null],
+      ['ban_do_he_thong', 'read', null],
       ['mo_trang', 'navigate', null],
       ['phong_trong', 'read', 'rooms.view'],
       ['tao_phieu_thu_chi_nhap', 'write', 'income_expenses.create'],
@@ -56,13 +56,13 @@ test('bóc đúng tên, cờ và quyền của từng tool', () => {
 });
 
 test('ĐỘT BIẾN: cờ của tool SAU không được lấn sang tool TRƯỚC', () => {
-  // Bản đầu đọc một cửa sổ 1200 ký tự cố định nên `liet_ke_chu_de` ăn nhầm
+  // Bản đầu đọc một cửa sổ 1200 ký tự cố định nên `ban_do_he_thong` ăn nhầm
   // `uiControlOnly: true` của `mo_trang` nằm ngay bên dưới, và bảng in ra
   // "2 điều hướng" trong khi registry chỉ có 1.
   const ra = docTool(MAU);
-  const liet = ra.find((t) => t.ten === 'liet_ke_chu_de');
-  assert.equal(liet.uiControlOnly, false);
-  assert.equal(phanLoai(liet), 'read');
+  const directory = ra.find((t) => t.ten === 'ban_do_he_thong');
+  assert.equal(directory.uiControlOnly, false);
+  assert.equal(phanLoai(directory), 'read');
 });
 
 test('ĐỘT BIẾN: tool chỉ-mở-trang MỞ CHO CHAT vẫn phải là "điều hướng"', () => {
@@ -87,7 +87,7 @@ test('khối sinh ra có mốc, có số đếm theo loại và một dòng mỗ
   assert.ok(khoi.startsWith(MOC_DAU));
   assert.ok(khoi.endsWith(MOC_CUOI));
   assert.match(khoi, /\*\*4 tool\*\*: 2 đọc · 1 ghi · 1 điều hướng/);
-  for (const ten of ['phong_trong', 'liet_ke_chu_de', 'mo_trang', 'tao_phieu_thu_chi_nhap']) {
+  for (const ten of ['phong_trong', 'ban_do_he_thong', 'mo_trang', 'tao_phieu_thu_chi_nhap']) {
     assert.ok(khoi.includes(`\`${ten}\``), `thiếu dòng cho ${ten}`);
   }
 });

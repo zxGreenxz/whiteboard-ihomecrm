@@ -35,12 +35,11 @@ const coreTests = [
 ];
 const verifierTests = [
   'scripts/__tests__/check-copilot-tool-inventory.test.mjs',
-  'scripts/__tests__/check-copilot-docs-manifest.test.mjs',
   'scripts/__tests__/check-copilot-forbidden-actions.test.mjs',
 ];
 const staticGates = [
-  'check-copilot-tool-inventory', 'check-copilot-docs-manifest',
-  'check-copilot-forbidden-actions', 'generate-copilot-guide-corpus',
+  'check-copilot-tool-inventory',
+  'check-copilot-forbidden-actions',
 ];
 const p2NativeTests = [
   'scripts/__tests__/hermes-refresh-auth.test.mjs',
@@ -211,9 +210,6 @@ describe('P0 shared CRM foundation routing', () => {
       expect(plan.gateIds).toContain(id);
       expect(getGate(id, plan).evidenceClass).toBe('static');
     }
-    expect(getGate('generate-copilot-guide-corpus', plan).args).toEqual([
-      'scripts/generate-copilot-guide-corpus.mjs', '--check',
-    ]);
   });
 
   it('routes Zalo inbound and delivery changes to real offline worker tests', () => {
@@ -568,15 +564,14 @@ describe('P0 shared CRM foundation routing', () => {
   });
 
   it.each([
-    ['docs/he-thong/manifest.json', 'check-copilot-docs-manifest'],
-    ['docs/he-thong/25-bien-dong-so-du.md', 'check-copilot-docs-manifest'],
-    ['docs/ai-copilot/README.md', 'check-copilot-tool-inventory'],
-    ['docs/huong-dan-su-dung/01-tong-quan/index.md', 'generate-copilot-guide-corpus'],
-  ])('routes corpus documentation %s to its verifier once', (source, expectedGate) => {
+    ['docs/he-thong/25-bien-dong-so-du.md', []],
+    ['docs/ai-copilot/README.md', ['check-copilot-tool-inventory']],
+    ['docs/huong-dan-su-dung/01-tong-quan/index.md', []],
+  ])('runs only the verifiers that consume %s', (source, expectedGates) => {
     const plan = planFor(source);
     expect(plan.fullFallback).toBe(false);
     expect(plan.profiles).toEqual(['docs-only']);
-    expect(plan.gateIds.filter(id => staticGates.includes(id))).toEqual([expectedGate]);
+    expect(plan.gateIds.filter(id => staticGates.includes(id))).toEqual(expectedGates);
     expect(plan.suiteSelections).toEqual([]);
     if (source.startsWith('docs/huong-dan-su-dung/')) expect(plan.gateIds).toContain('docs-build');
     expect(plan.gateIds).not.toContain('app-build');
@@ -749,25 +744,21 @@ describe('P0 shared CRM foundation routing', () => {
     expect(getGate('measure-org-leak', plan).evidenceClass).toBe('live');
   });
 
-  it('a public-to-internal capability change selects corpus checks as well as inventory', () => {
+  it('a capability visibility change checks the Hermes inventory', () => {
     const plan = createGatePlan({ snapshot, testFiles, testMatrix: matrix, changes: [{
       path: 'src/app/capabilities/registry.ts', status: 'M',
       before: 'export const page = { visibility: "public" };',
       after: 'export const page = { visibility: "internal" };',
     }] });
     expect(plan.fullFallback).toBe(false);
-    expect(plan.gateIds).toEqual(expect.arrayContaining([
-      'check-copilot-docs-manifest', 'generate-copilot-guide-corpus',
-      'check-copilot-tool-inventory', 'generate-hermes-crm-inventory',
-    ]));
+    expect(plan.gateIds).toContain('generate-hermes-crm-inventory');
+    expect(plan.gateIds).not.toContain('check-copilot-tool-inventory');
   });
 
-  it('keeps ordinary documentation outside corpus routing even when it mentions Copilot', () => {
+  it('keeps ordinary documentation outside tool inventory routing', () => {
     for (const source of ['docs/README.md', 'docs/plans/hermes-crm/PLAN.md', 'infra/network-center-worker/README.md']) {
       const plan = planFor(source);
       expect(plan.fullFallback).toBe(false);
-      expect(plan.gateIds).not.toContain('check-copilot-docs-manifest');
-      expect(plan.gateIds).not.toContain('generate-copilot-guide-corpus');
       expect(plan.gateIds).not.toContain('check-copilot-tool-inventory');
       expect(plan.suiteSelections).toEqual([]);
     }

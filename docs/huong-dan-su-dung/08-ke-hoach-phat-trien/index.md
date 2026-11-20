@@ -25,7 +25,6 @@ Một phần các kế hoạch dưới đây **đã thành tính năng thật**.
 | Kế hoạch | Ghi nhận ở commit `81c5a3cd` | Trang hướng dẫn |
 |---|---|---|
 | Quy trình thu chi | Bốn trục trạng thái phiếu; **Duyệt** tách **Duyệt và Thu/Chi**; chi bắt buộc sổ quỹ + ngày + chứng từ; báo cáo lợi nhuận tính cả phiếu chờ duyệt; máy chủ chặn chốt lợi nhuận khi tháng còn phiếu chờ duyệt; Người giữ sổ / Người biết sổ; luật chi theo hạng mục (**Cam kết chi**); **danh mục chi chuẩn**; **Báo chi nhanh**. | [Thu chi](/03-quan-ly-van-hanh/thu-chi/) · [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) · [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) · [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) · [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
-| AI Copilot | Bản tháng 10 có chat Copilot trong ứng dụng. Giao diện này đã được gỡ sau đó. | [Kết nối Hermes hiện nay](/05-cai-dat/tro-ly-ai/) |
 
 Chi tiết từng mục nằm ở khung *Trạng thái triển khai* đầu mỗi trang kế hoạch.
 :::
@@ -36,7 +35,6 @@ Chi tiết từng mục nằm ở khung *Trạng thái triển khai* đầu mỗ
   <p class="plan-lead">Nơi mở một kế hoạch để thuyết trình ngay hoặc in thành báo cáo: mục tiêu kinh doanh, quy trình tương lai, kiến trúc hệ thống, lộ trình triển khai, rủi ro và tiêu chí nghiệm thu.</p>
   <div class="plan-actions">
     <a class="plan-action plan-action-primary" href="/08-ke-hoach-phat-trien/quy-trinh-chi-phi/">Xem quy trình thu chi</a>
-    <a class="plan-action" href="/08-ke-hoach-phat-trien/ai-copilot/">Xem kế hoạch Copilot đã lưu trữ</a>
   </div>
 </div>
 
@@ -68,12 +66,6 @@ Chi tiết từng mục nằm ở khung *Trạng thái triển khai* đầu mỗ
     <h3>Duyệt đúng quyền, ghi sổ đúng tiền thật</h3>
     <p>Vẽ rõ Duyệt/Chi, khoản Đã Duyệt - Chưa Chi, điều kiện chốt kỳ và phạm vi Người giữ sổ/Người biết sổ.</p>
     <span class="plan-link-label">Mở artifact nghiệp vụ →</span>
-  </a>
-  <a class="plan-card plan-card-link" href="/08-ke-hoach-phat-trien/ai-copilot/">
-    <div class="plan-audience-label">AI · VẬN HÀNH · TÀI CHÍNH</div>
-    <h3>Kế hoạch Copilot (lưu trữ)</h3>
-    <p>Đề xuất tháng 7/2026 về việc tra cứu dữ liệu, chuẩn bị hồ sơ và tạo bản nháp trong phạm vi quyền của người dùng.</p>
-    <span class="plan-link-label">Mở bản trình bày →</span>
   </a>
   <a class="plan-card plan-card-link" href="/08-ke-hoach-phat-trien/mau-plan/">
     <div class="plan-audience-label">MẪU TÁI SỬ DỤNG</div>

@@ -11,7 +11,6 @@ import {
   GATE_NANG,
   GATE_NHANH,
   GATE_TAM_HOAN,
-  TU_CHUA,
   chayGioiHan,
   credentialLive,
   danhGiaLock,
@@ -131,15 +130,14 @@ describe("quyetDinhDoRoOrg", () => {
 
 describe("danh sách gate", () => {
   it("mở core offline có chọn lọc, giữ live deferred và kiểm tiền, quyền, migration", () => {
-    for (const gate of ["check-copilot-tool-inventory", "check-copilot-docs-manifest", "check-copilot-forbidden-actions", "generate-copilot-guide-corpus"]) {
+    for (const gate of ["check-copilot-tool-inventory", "check-copilot-forbidden-actions"]) {
       expect(GATE_TAM_HOAN).not.toContain(gate);
       expect(GATE_NHANH).toContain(gate);
     }
-    for (const gate of ["check-doc-freshness", "check-copilot-golden-eval", "check-copilot-negative-proofs"]) {
+    for (const gate of ["check-copilot-golden-eval", "check-copilot-negative-proofs"]) {
       expect(GATE_TAM_HOAN).toContain(gate);
       expect(GATE_NHANH).not.toContain(gate);
     }
-    expect(TU_CHUA.some(([, args]) => args[0] === "scripts/generate-copilot-guide-corpus.mjs")).toBe(false);
     for (const gate of ["check-money-table-dml", "check-route-permission-drift", "check-migration-provenance", "check-test-matrix"]) {
       expect(GATE_NHANH).toContain(gate);
     }

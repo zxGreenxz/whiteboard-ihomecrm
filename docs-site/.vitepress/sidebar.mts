@@ -198,7 +198,6 @@ export const sidebar: DefaultTheme.Sidebar = [
     items: [
       { text: 'Phòng trình bày kế hoạch', link: '/08-ke-hoach-phat-trien/' },
       { text: 'Thu chi: duyệt, chi & quyền sổ', link: '/08-ke-hoach-phat-trien/quy-trinh-chi-phi/' },
-      { text: 'Kế hoạch Copilot (lưu trữ)', link: '/08-ke-hoach-phat-trien/ai-copilot/' },
       { text: 'Mẫu kế hoạch dự án mới', link: '/08-ke-hoach-phat-trien/mau-plan/' },
     ],
   },

@@ -2,7 +2,7 @@
 
 Hermes là trợ lý hiện hành. Người dùng thiết lập tại **Kết nối Hermes** (`/settings/hermes`) và nhắn bot trên Zalo. Giao diện chat Copilot đã được gỡ ngày 15/10/2026. [Hồ sơ chuyển đổi](../plans/hermes-crm/P11-COPILOT-RETIREMENT.md)
 
-Mã Copilot còn phục vụ kiểm kê và kiểm tra offline cho registry, quyền, kế hoạch, xác nhận, bộ nhớ và tài liệu. Phạm vi từng bộ kiểm nằm trong [test matrix](../../tooling/test-matrix.json) và [danh sách hoãn](../../tooling/deferred-modules.json). Công cụ Hermes hiện hành được mô tả trong [hợp đồng của connector](../../infra/hermes-broker/CONNECTOR.md).
+Mã Copilot còn phục vụ kiểm kê và kiểm tra offline cho registry, quyền, kế hoạch, xác nhận và bộ nhớ. Phạm vi từng bộ kiểm nằm trong [test matrix](../../tooling/test-matrix.json) và [danh sách hoãn](../../tooling/deferred-modules.json). Công cụ Hermes hiện hành được mô tả trong [hợp đồng của connector](../../infra/hermes-broker/CONNECTOR.md).
 
 ## Kiểm kê từ mã nguồn
 
@@ -13,7 +13,7 @@ Khối dưới được sinh bằng `node scripts/check-copilot-tool-inventory.m
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**67 tool**: 55 đọc · 11 ghi · 1 điều hướng (chỉ mở trang / trả link).
+**65 tool**: 53 đọc · 11 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |
@@ -62,9 +62,7 @@ Khối dưới được sinh bằng `node scripts/check-copilot-tool-inventory.m
 | `hoi_thoai_zalo` | read | `chat_zalo.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `hop_cho_duyet` | read | `income_expenses.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `hop_dong_sap_het_han` | read | `reports_real_estate.expiring` | `src/copilot/tools/registry.ts` |
-| `huong_dan` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
 | `lap_ke_hoach` | write | `ai_copilot.view` | `src/copilot/tools/planTools.ts` |
-| `liet_ke_chu_de` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
 | `loi_nhuan_co_dong` | read | `shareholder_profit.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `mo_trang` | navigate | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
 | `phong_trong` | read | `rooms.view` | `src/copilot/tools/registry.ts` |

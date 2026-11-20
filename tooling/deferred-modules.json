@@ -27,7 +27,6 @@
         "scripts/__tests__/copilot-*.test.mjs",
         "scripts/__tests__/run-copilot-golden-eval.test.mjs",
         "scripts/__tests__/check-golden-eval-report.test.mjs",
-        "scripts/__tests__/check-doc-freshness.test.mjs",
         ".e2e-fleet/specs/copilot-*.spec.ts",
         ".e2e-fleet/controlled/copilot-*.test.mjs",
         ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
@@ -35,7 +34,6 @@
       ],
       "gates": [
         "check-copilot-routes",
-        "check-doc-freshness",
         "check-copilot-page-contracts",
         "check-copilot-safe-control-markers",
         "check-copilot-provider-policy",

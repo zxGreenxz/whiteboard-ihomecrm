@@ -24,8 +24,7 @@ import {
 } from '@/lib/permissionPages';
 import type { PermissionsMap } from '@/lib/permissions';
 import { ROUTE_DIEU_HUONG, type MucDieuHuong } from './pageScope';
-import { boDau } from './docs/tokenize';
-import { coKyTuDieuKhien } from './anToanVanBan';
+import { boDau, coKyTuDieuKhien } from './anToanVanBan';
 import { copilotPageByRoute } from '@/app/capabilities/registry';
 import { isContextEntityId, type ActivePageContext } from './activePageContext';
 
@@ -39,18 +38,12 @@ export interface TrangKhopBanDo {
 
 /** Trang chỉ hiện ra khi phiên xem được ÍT NHẤT một chức năng của nó. */
 function chucNangDungDuoc(page: PermissionPage, perms: PermissionsMap | undefined): PageFeature[] {
-  if (!perms) return []; // fail closed, đồng bộ với assertPerm và listDocTopics
+  if (!perms) return []; // Quyền chưa tải.
   return page.features.filter((f) => canUse(perms, f.module, f.action));
 }
 
 /**
  * Chấm điểm khớp giữa câu hỏi và một trang.
- *
- * Cố ý KHÔNG dùng BM25 như bên tài liệu: ở đây "corpus" là 42 mục ngắn, độ dài
- * gần như bằng nhau, nên phần chuẩn hoá độ dài của BM25 không mua được gì mà
- * lại kéo theo một index phải dựng. Dùng chung BỘ TÁCH TỪ (bỏ dấu, gấp thường)
- * để hành vi không dấu nhất quán giữa hai bề mặt, còn cách chấm thì khác nhau
- * một cách có chủ đích.
  */
 function chamDiemTrang(page: PermissionPage, chucNang: PageFeature[], tuKhoa: string[]): number {
   if (!tuKhoa.length) return 0;

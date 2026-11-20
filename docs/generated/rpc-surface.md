@@ -2,7 +2,6 @@
 status: current
 source_paths:
   - contracts/surfaces/rpc-surface.json
-copilot_ingest: false
 risk: normal
 ---
 

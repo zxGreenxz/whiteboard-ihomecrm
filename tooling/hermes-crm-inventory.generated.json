@@ -64,7 +64,7 @@
     },
     {
       "path": "src/copilot/memoryClient.ts",
-      "sha256": "f38ea4a4baebd36327e6a9b00bb7568975eb4caa0c91ac27111b975b7c08844a"
+      "sha256": "bedd645d7aeaf64bcdc15f52f223e0db2216b43db730729c230742a02c9d5bea"
     },
     {
       "path": "src/copilot/pageAgentCompatibility.ts",
@@ -99,10 +99,6 @@
       "sha256": "232908994218edc03886d1beb60c529ffc7a34e674eed54cec35864b0780f6af"
     },
     {
-      "path": "src/copilot/tools/guideCorpus.generated.ts",
-      "sha256": "e83465fc2d121fd11b2ec6230f04cc8d8f355fd7b12da1bc4c98582c07ee1c41"
-    },
-    {
       "path": "src/copilot/tools/memoryTools.ts",
       "sha256": "9f54012cc24c2083d01aedb177e04431ad129791f072d5b4d7cb15f19c52d397"
     },
@@ -116,7 +112,7 @@
     },
     {
       "path": "src/copilot/tools/registry.ts",
-      "sha256": "e33929d0e465a257968b03ac6c07bb67f0579a10ddb4e55ab6bf7819d2c25bf9"
+      "sha256": "e1069a5f6a7e0b1897745bae891ab4f8d8f5c6764c915f640f91a61318a1b260"
     },
     {
       "path": "src/copilot/tools/writeTools.ts",
@@ -144,17 +140,17 @@
     }
   ],
   "summary": {
-    "toolCount": 67,
+    "toolCount": 65,
     "toolsByLegacyCategory": {
       "navigate": 1,
-      "read": 55,
+      "read": 53,
       "write": 11
     },
     "toolsBySemanticCategory": {
       "memory_mutation": 2,
       "navigation": 1,
       "plan_orchestration": 2,
-      "read": 55,
+      "read": 53,
       "write_proposal": 7
     },
     "actionCount": 32,
@@ -166,7 +162,7 @@
     },
     "capabilityCount": 30,
     "toolDispositions": {
-      "migrate_to_gateway": 65,
+      "migrate_to_gateway": 63,
       "retain_backend_executor": 1,
       "retain_ui": 1
     },
@@ -199,7 +195,7 @@
       "id": "ban_do_he_thong",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1539
+        "line": 1315
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -239,7 +235,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1542
+            "line": 1318
           },
           "expression": "z.object({\n        chu_de: z\n          .string()\n          .optional()\n          .describe('Việc cần làm, vd \"tạo hợp đồng\", \"duyệt phiếu chi\". Bỏ trống = liệt kê toàn bộ.'),\n      })"
         },
@@ -249,7 +245,7 @@
             "name": "chu_de",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1543
+              "line": 1319
             },
             "expression": "z\n          .string()\n          .optional()\n          .describe('Việc cần làm, vd \"tạo hợp đồng\", \"duyệt phiếu chi\". Bỏ trống = liệt kê toàn bộ.')"
           }
@@ -262,28 +258,28 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1550
+            "line": 1326
           },
           "calls": [],
           "returnExpressions": [
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1552
+                "line": 1328
               },
               "expression": "banDoGon(ctx.perms)"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1555
+                "line": 1331
               },
               "expression": "ctx.perms === undefined\n            ? 'Đang tải quyền truy cập, chưa tra được. Thử lại sau vài giây.'\n            : `Không thấy trang nào bạn dùng được khớp \"${args.chu_de}\". Gọi lại không kèm chu_de để xem toàn bộ bản đồ.`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1559
+                "line": 1335
               },
               "expression": "moTaTrangKhop(khop)"
             }
@@ -3858,7 +3854,7 @@
       "id": "danh_sach_bao_tri_tai_san",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1284
+        "line": 1084
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -3900,7 +3896,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1294
+              "line": 1094
             }
           }
         ],
@@ -3912,7 +3908,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1287
+            "line": 1087
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên hoặc mã tài sản'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số bản ghi tối đa'),\n      })"
         },
@@ -3922,7 +3918,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1288
+              "line": 1088
             },
             "expression": "z.string().max(100).optional().describe('Tên hoặc mã tài sản')"
           },
@@ -3930,7 +3926,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1289
+              "line": 1089
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số bản ghi tối đa')"
           }
@@ -3943,7 +3939,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1293
+            "line": 1093
           },
           "calls": [
             {
@@ -3951,7 +3947,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1294
+                "line": 1094
               }
             }
           ],
@@ -3959,14 +3955,14 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1305
+                "line": 1105
               },
               "expression": "'Không có lịch sử bảo trì tài sản nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1314
+                "line": 1114
               },
               "expression": "'Có ' + rows.length + ' bản ghi bảo trì (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\\n' + lines.join('\\n') + '\\n[link: /assets]'"
             }
@@ -4017,14 +4013,14 @@
           "name": "copilot_asset_maintenance_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1295
+            "line": 1095
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -4034,7 +4030,7 @@
       "id": "danh_sach_cong_to",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 813
+        "line": 613
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -4071,7 +4067,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 824
+              "line": 624
             }
           }
         ],
@@ -4083,7 +4079,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 816
+            "line": 616
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Mã, tên công tơ, phòng hoặc toà nhà'),\n        loai: z.enum(['dien', 'nuoc', 'gas', 'khac']).optional().describe('Lọc theo loại công tơ'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số công tơ tối đa'),\n      })"
         },
@@ -4093,7 +4089,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 817
+              "line": 617
             },
             "expression": "z.string().max(100).optional().describe('Mã, tên công tơ, phòng hoặc toà nhà')"
           },
@@ -4101,7 +4097,7 @@
             "name": "loai",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 818
+              "line": 618
             },
             "expression": "z.enum(['dien', 'nuoc', 'gas', 'khac']).optional().describe('Lọc theo loại công tơ')"
           },
@@ -4109,7 +4105,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 819
+              "line": 619
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số công tơ tối đa')"
           }
@@ -4122,7 +4118,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 823
+            "line": 623
           },
           "calls": [
             {
@@ -4130,7 +4126,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 824
+                "line": 624
               }
             }
           ],
@@ -4138,21 +4134,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 836
+                "line": 636
               },
               "expression": "'Hiện không có công tơ nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 849
+                "line": 649
               },
               "expression": "`- ${meter.ma}${ten} — ${loai}, ${trangThai}${viTri ? ` — ${viTri}` : ''}${chiSo}`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 851
+                "line": 651
               },
               "expression": "`${rows.length} công tơ (tối đa ${data?.gioi_han ?? args.so_luong} dòng mỗi lần hỏi):\\n${lines.join('\\n')}\\n[link: /settings/meters]`"
             }
@@ -4203,14 +4199,14 @@
           "name": "copilot_meter_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 825
+            "line": 625
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -4403,7 +4399,7 @@
       "id": "danh_sach_dinh_muc_dich_vu",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1167
+        "line": 967
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -4440,7 +4436,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1177
+              "line": 977
             }
           }
         ],
@@ -4452,7 +4448,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1170
+            "line": 970
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên định mức dịch vụ'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số định mức tối đa'),\n      })"
         },
@@ -4462,7 +4458,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1171
+              "line": 971
             },
             "expression": "z.string().max(100).optional().describe('Tên định mức dịch vụ')"
           },
@@ -4470,7 +4466,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1172
+              "line": 972
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số định mức tối đa')"
           }
@@ -4483,7 +4479,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1176
+            "line": 976
           },
           "calls": [
             {
@@ -4491,7 +4487,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1177
+                "line": 977
               }
             }
           ],
@@ -4499,28 +4495,28 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1188
+                "line": 988
               },
               "expression": "'Không có định mức dịch vụ nào trong công ty đang chọn.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1194
+                "line": 994
               },
               "expression": "'bậc ' + tier.so_bac + ': ' + range + ' · ' + new Intl.NumberFormat('vi-VN').format(tier.don_gia)"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1197
+                "line": 997
               },
               "expression": "'- ' + quota.ma + ' — ' + quota.ten + ' · ' + tierText"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1199
+                "line": 999
               },
               "expression": "'Có ' + rows.length + ' định mức dịch vụ (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\\n' + lines.join('\\n') + '\\n[link: /settings/categories/service-quotas]'"
             }
@@ -4571,14 +4567,14 @@
           "name": "copilot_service_quota_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1178
+            "line": 978
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -4588,7 +4584,7 @@
       "id": "danh_sach_hotline",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1137
+        "line": 937
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -4625,7 +4621,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1147
+              "line": 947
             }
           }
         ],
@@ -4637,7 +4633,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1140
+            "line": 940
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên hoặc số điện thoại hotline'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số hotline tối đa'),\n      })"
         },
@@ -4647,7 +4643,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1141
+              "line": 941
             },
             "expression": "z.string().max(100).optional().describe('Tên hoặc số điện thoại hotline')"
           },
@@ -4655,7 +4651,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1142
+              "line": 942
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số hotline tối đa')"
           }
@@ -4668,7 +4664,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1146
+            "line": 946
           },
           "calls": [
             {
@@ -4676,7 +4672,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1147
+                "line": 947
               }
             }
           ],
@@ -4684,14 +4680,14 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1158
+                "line": 958
               },
               "expression": "'Không có hotline nào trong công ty đang chọn.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1162
+                "line": 962
               },
               "expression": "'Có ' + rows.length + ' hotline (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\\n' + lines.join('\\n') + '\\n[link: /settings/categories/hotlines]'"
             }
@@ -4742,14 +4738,14 @@
           "name": "copilot_hotline_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1148
+            "line": 948
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -4759,7 +4755,7 @@
       "id": "danh_sach_kho_tai_san",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 987
+        "line": 787
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -4796,7 +4792,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 997
+              "line": 797
             }
           }
         ],
@@ -4808,7 +4804,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 990
+            "line": 790
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên kho, vị trí hoặc tên toà nhà'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số kho tối đa'),\n      })"
         },
@@ -4818,7 +4814,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 991
+              "line": 791
             },
             "expression": "z.string().max(100).optional().describe('Tên kho, vị trí hoặc tên toà nhà')"
           },
@@ -4826,7 +4822,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 992
+              "line": 792
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số kho tối đa')"
           }
@@ -4839,7 +4835,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 996
+            "line": 796
           },
           "calls": [
             {
@@ -4847,7 +4843,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 997
+                "line": 797
               }
             }
           ],
@@ -4855,21 +4851,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1008
+                "line": 808
               },
               "expression": "'Không có kho tài sản nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1011
+                "line": 811
               },
               "expression": "`- ${warehouse.ma} — ${warehouse.ten}${viTri ? ` · ${viTri}` : ''}`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1013
+                "line": 813
               },
               "expression": "`Có ${rows.length} kho tài sản (tối đa ${data?.gioi_han ?? args.so_luong} dòng mỗi lần hỏi):\\n${lines.join('\\n')}\\n[link: /settings/categories/warehouses]`"
             }
@@ -4920,14 +4916,14 @@
           "name": "copilot_warehouse_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 998
+            "line": 798
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -4937,7 +4933,7 @@
       "id": "danh_sach_khu_vuc",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 782
+        "line": 582
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -4974,7 +4970,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 791
+              "line": 591
             }
           }
         ],
@@ -4986,7 +4982,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 784
+            "line": 584
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên hoặc mã khu vực'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số khu vực tối đa'),\n      })"
         },
@@ -4996,7 +4992,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 785
+              "line": 585
             },
             "expression": "z.string().max(100).optional().describe('Tên hoặc mã khu vực')"
           },
@@ -5004,7 +5000,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 786
+              "line": 586
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số khu vực tối đa')"
           }
@@ -5017,7 +5013,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 790
+            "line": 590
           },
           "calls": [
             {
@@ -5025,7 +5021,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 791
+                "line": 591
               }
             }
           ],
@@ -5033,21 +5029,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 802
+                "line": 602
               },
               "expression": "'Hiện không có khu vực nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 806
+                "line": 606
               },
               "expression": "`- ${area.ten}${code} — ${area.so_toa} toà: ${buildings} [link: /buildings]`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 808
+                "line": 608
               },
               "expression": "`Có ${data?.so_luong ?? rows.length} khu vực (hiện ${rows.length}):\\n${lines.join('\\n')}`"
             }
@@ -5098,14 +5094,14 @@
           "name": "copilot_area_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 792
+            "line": 592
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -5115,7 +5111,7 @@
       "id": "danh_sach_loai_cong_viec",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1072
+        "line": 872
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -5152,7 +5148,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1082
+              "line": 882
             }
           }
         ],
@@ -5164,7 +5160,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1075
+            "line": 875
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên loại công việc, bộ phận hoặc nhóm'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số loại công việc tối đa'),\n      })"
         },
@@ -5174,7 +5170,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1076
+              "line": 876
             },
             "expression": "z.string().max(100).optional().describe('Tên loại công việc, bộ phận hoặc nhóm')"
           },
@@ -5182,7 +5178,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1077
+              "line": 877
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số loại công việc tối đa')"
           }
@@ -5195,7 +5191,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1081
+            "line": 881
           },
           "calls": [
             {
@@ -5203,7 +5199,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1082
+                "line": 882
               }
             }
           ],
@@ -5211,21 +5207,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1093
+                "line": 893
               },
               "expression": "'Không có loại công việc nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1098
+                "line": 898
               },
               "expression": "'- ' + jobType.ma + ' — ' + jobType.ten + (context ? ' · ' + context : '') + ' · ' + deadlines"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1100
+                "line": 900
               },
               "expression": "'Có ' + rows.length + ' loại công việc (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\\n' + lines.join('\\n') + '\\n[link: /settings/categories/task-types]'"
             }
@@ -5276,14 +5272,14 @@
           "name": "copilot_job_type_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1083
+            "line": 883
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -5293,7 +5289,7 @@
       "id": "danh_sach_loai_tai_san",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1045
+        "line": 845
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -5330,7 +5326,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1055
+              "line": 855
             }
           }
         ],
@@ -5342,7 +5338,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1048
+            "line": 848
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên loại tài sản'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số loại tài sản tối đa'),\n      })"
         },
@@ -5352,7 +5348,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1049
+              "line": 849
             },
             "expression": "z.string().max(100).optional().describe('Tên loại tài sản')"
           },
@@ -5360,7 +5356,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1050
+              "line": 850
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số loại tài sản tối đa')"
           }
@@ -5373,7 +5369,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1054
+            "line": 854
           },
           "calls": [
             {
@@ -5381,7 +5377,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1055
+                "line": 855
               }
             }
           ],
@@ -5389,14 +5385,14 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1066
+                "line": 866
               },
               "expression": "'Không có loại tài sản nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1067
+                "line": 867
               },
               "expression": "'Có ' + rows.length + ' loại tài sản (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\\n' + rows.map((assetType) => '- ' + assetType.ma + ' — ' + assetType.ten).join('\\n') + '\\n[link: /settings/categories/asset-types]'"
             }
@@ -5447,14 +5443,14 @@
           "name": "copilot_asset_type_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1056
+            "line": 856
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -5464,7 +5460,7 @@
       "id": "danh_sach_nha_cung_cap",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1018
+        "line": 818
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -5501,7 +5497,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1028
+              "line": 828
             }
           }
         ],
@@ -5513,7 +5509,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1021
+            "line": 821
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên nhà cung cấp'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số nhà cung cấp tối đa'),\n      })"
         },
@@ -5523,7 +5519,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1022
+              "line": 822
             },
             "expression": "z.string().max(100).optional().describe('Tên nhà cung cấp')"
           },
@@ -5531,7 +5527,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1023
+              "line": 823
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số nhà cung cấp tối đa')"
           }
@@ -5544,7 +5540,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1027
+            "line": 827
           },
           "calls": [
             {
@@ -5552,7 +5548,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1028
+                "line": 828
               }
             }
           ],
@@ -5560,14 +5556,14 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1039
+                "line": 839
               },
               "expression": "'Không có nhà cung cấp nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1040
+                "line": 840
               },
               "expression": "'Có ' + rows.length + ' nhà cung cấp (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\\n' + rows.map((supplier) => '- ' + supplier.ma + ' — ' + supplier.ten).join('\\n') + '\\n[link: /settings/categories/suppliers]'"
             }
@@ -5618,14 +5614,14 @@
           "name": "copilot_supplier_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1029
+            "line": 829
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -5635,7 +5631,7 @@
       "id": "danh_sach_phong_sale",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 896
+        "line": 696
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -5677,7 +5673,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 907
+              "line": 707
             }
           }
         ],
@@ -5689,7 +5685,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 899
+            "line": 699
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Mã/tên phòng hoặc tên toà nhà'),\n        loai_danh_sach: z.enum(['trong_ngay', 'khach_nho_sale']).optional().describe('Lọc phòng trống ngay hoặc phòng khách nhờ sale'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số phòng tối đa'),\n      })"
         },
@@ -5699,7 +5695,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 900
+              "line": 700
             },
             "expression": "z.string().max(100).optional().describe('Mã/tên phòng hoặc tên toà nhà')"
           },
@@ -5707,7 +5703,7 @@
             "name": "loai_danh_sach",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 901
+              "line": 701
             },
             "expression": "z.enum(['trong_ngay', 'khach_nho_sale']).optional().describe('Lọc phòng trống ngay hoặc phòng khách nhờ sale')"
           },
@@ -5715,7 +5711,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 902
+              "line": 702
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số phòng tối đa')"
           }
@@ -5728,7 +5724,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 906
+            "line": 706
           },
           "calls": [
             {
@@ -5736,7 +5732,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 907
+                "line": 707
               }
             }
           ],
@@ -5744,21 +5740,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 919
+                "line": 719
               },
               "expression": "'Không có phòng sale nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 929
+                "line": 729
               },
               "expression": "`- ${ma} — ${room.toa_nha} · ${trangThai} · thuê ${formatVND(room.gia_thue)} · cọc ${formatVND(room.tien_coc)}${dacDiem ? ` · ${dacDiem}` : ''}${ngayTrong}`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 931
+                "line": 731
               },
               "expression": "`Có ${rows.length} phòng sale (tối đa ${data?.gioi_han ?? args.so_luong} dòng mỗi lần hỏi):\\n${lines.join('\\n')}\\n[link: /sale-phong]`"
             }
@@ -5809,14 +5805,14 @@
           "name": "copilot_sale_listing_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 908
+            "line": 708
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -6009,7 +6005,7 @@
       "id": "danh_sach_tang",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1105
+        "line": 905
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -6046,7 +6042,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1115
+              "line": 915
             }
           }
         ],
@@ -6058,7 +6054,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1108
+            "line": 908
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên tầng, số tầng hoặc tên toà nhà'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số tầng tối đa'),\n      })"
         },
@@ -6068,7 +6064,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1109
+              "line": 909
             },
             "expression": "z.string().max(100).optional().describe('Tên tầng, số tầng hoặc tên toà nhà')"
           },
@@ -6076,7 +6072,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1110
+              "line": 910
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số tầng tối đa')"
           }
@@ -6089,7 +6085,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1114
+            "line": 914
           },
           "calls": [
             {
@@ -6097,7 +6093,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1115
+                "line": 915
               }
             }
           ],
@@ -6105,21 +6101,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1126
+                "line": 926
               },
               "expression": "'Không có tầng nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1130
+                "line": 930
               },
               "expression": "'- ' + floor.ma + ' — tầng ' + floor.so_tang + ' · ' + name + ' · ' + status + ' · ' + floor.toa_nha"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1132
+                "line": 932
               },
               "expression": "'Có ' + rows.length + ' tầng (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\\n' + lines.join('\\n') + '\\n[link: /settings/categories/floors]'"
             }
@@ -6170,14 +6166,14 @@
           "name": "copilot_floor_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1116
+            "line": 916
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -6187,7 +6183,7 @@
       "id": "danh_sach_thanh_vien_vai_tro",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 936
+        "line": 736
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -6224,7 +6220,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 948
+              "line": 748
             }
           }
         ],
@@ -6236,7 +6232,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 939
+            "line": 739
           },
           "expression": "z.object({\n        trang_thai: z.enum(['dang_hoat_dong', 'duoc_moi', 'tam_dung']).optional().describe('Lọc trạng thái thành viên'),\n        loai_thanh_vien: z.enum(['chu_cong_ty', 'nhan_vien', 'co_dong', 'doi_tac', 'dich_vu']).optional().describe('Lọc loại thành viên'),\n        chi_chua_gan_vai_tro: z.boolean().default(false).describe('Chỉ lấy thành viên chưa có vai trò hiệu lực'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số thành viên và vai trò tối đa'),\n      })"
         },
@@ -6246,7 +6242,7 @@
             "name": "trang_thai",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 940
+              "line": 740
             },
             "expression": "z.enum(['dang_hoat_dong', 'duoc_moi', 'tam_dung']).optional().describe('Lọc trạng thái thành viên')"
           },
@@ -6254,7 +6250,7 @@
             "name": "loai_thanh_vien",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 941
+              "line": 741
             },
             "expression": "z.enum(['chu_cong_ty', 'nhan_vien', 'co_dong', 'doi_tac', 'dich_vu']).optional().describe('Lọc loại thành viên')"
           },
@@ -6262,7 +6258,7 @@
             "name": "chi_chua_gan_vai_tro",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 942
+              "line": 742
             },
             "expression": "z.boolean().default(false).describe('Chỉ lấy thành viên chưa có vai trò hiệu lực')"
           },
@@ -6270,7 +6266,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 943
+              "line": 743
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số thành viên và vai trò tối đa')"
           }
@@ -6283,7 +6279,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 947
+            "line": 747
           },
           "calls": [
             {
@@ -6291,7 +6287,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 948
+                "line": 748
               }
             }
           ],
@@ -6299,21 +6295,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 968
+                "line": 768
               },
               "expression": "'Không có thành viên hoặc vai trò nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 973
+                "line": 773
               },
               "expression": "`- ${member.ma_thanh_vien} — ${loai}, ${trangThai} — ${rolesText} — ${member.so_quyen_hieu_luc} quyền hiệu lực`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 982
+                "line": 782
               },
               "expression": "`${head}\\n\\nThành viên:\\n${memberLines.join('\\n') || '- Không có thành viên khớp bộ lọc.'}\\n\\nMẫu vai trò:\\n${roleLines.join('\\n') || '- Chưa có vai trò nào.'}\\n[link: /settings/members]`"
             }
@@ -6364,14 +6360,14 @@
           "name": "copilot_member_role_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 949
+            "line": 749
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -6381,7 +6377,7 @@
       "id": "danh_sach_toa_nha",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1204
+        "line": 1004
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -6427,7 +6423,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1214
+              "line": 1014
             }
           }
         ],
@@ -6439,7 +6435,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1207
+            "line": 1007
           },
           "expression": "z.object({\n        tu_khoa: z.string().max(100).optional().describe('Tên, mã, loại hoặc trạng thái toà nhà'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số toà nhà tối đa'),\n      })"
         },
@@ -6449,7 +6445,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1208
+              "line": 1008
             },
             "expression": "z.string().max(100).optional().describe('Tên, mã, loại hoặc trạng thái toà nhà')"
           },
@@ -6457,7 +6453,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1209
+              "line": 1009
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số toà nhà tối đa')"
           }
@@ -6470,7 +6466,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1213
+            "line": 1013
           },
           "calls": [
             {
@@ -6478,7 +6474,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1214
+                "line": 1014
               }
             }
           ],
@@ -6486,14 +6482,14 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1225
+                "line": 1025
               },
               "expression": "'Không có toà nhà nào trong phạm vi bạn được xem.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1244
+                "line": 1044
               },
               "expression": "'Có ' + rows.length + ' toà nhà (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\\n' + lines.join('\\n') + '\\n[link: /buildings]'"
             }
@@ -6544,14 +6540,14 @@
           "name": "copilot_building_directory_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1215
+            "line": 1015
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -6854,7 +6850,7 @@
       "id": "doanh_thu_thang",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1469
+        "line": 1269
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -6891,7 +6887,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1480
+              "line": 1280
             }
           },
           {
@@ -6899,7 +6895,7 @@
             "name": "copilot_financial_pnl_v1",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1491
+              "line": 1291
             },
             "expression": "supabase.rpc('copilot_financial_pnl_v1', {\n          p_organization_id: orgId,\n          p_start_date: start,\n          p_end_date: end,\n          p_accrual: args.accrual,\n        })"
           }
@@ -6912,7 +6908,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1472
+            "line": 1272
           },
           "expression": "z.object({\n        thang: z.string().regex(/^\\d{4}-\\d{2}$/).describe('Tháng YYYY-MM'),\n        accrual: z.boolean().default(false).describe('true = dồn tích (accrual), false = tiền mặt'),\n      })"
         },
@@ -6922,7 +6918,7 @@
             "name": "thang",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1473
+              "line": 1273
             },
             "expression": "z.string().regex(/^\\d{4}-\\d{2}$/).describe('Tháng YYYY-MM')"
           },
@@ -6930,7 +6926,7 @@
             "name": "accrual",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1474
+              "line": 1274
             },
             "expression": "z.boolean().default(false).describe('true = dồn tích (accrual), false = tiền mặt')"
           }
@@ -6943,7 +6939,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1479
+            "line": 1279
           },
           "calls": [
             {
@@ -6951,7 +6947,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1480
+                "line": 1280
               }
             },
             {
@@ -6959,7 +6955,7 @@
               "name": "copilot_financial_pnl_v1",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1491
+                "line": 1291
               },
               "expression": "supabase.rpc('copilot_financial_pnl_v1', {\n          p_organization_id: orgId,\n          p_start_date: start,\n          p_end_date: end,\n          p_accrual: args.accrual,\n        })"
             }
@@ -6968,21 +6964,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1499
+                "line": 1299
               },
               "expression": "`Không có dữ liệu KQKD tháng ${args.thang}.`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1504
+                "line": 1304
               },
               "expression": "`- ${r.building_name}: thu ${formatVND(Number(r.revenue) || 0)}, chi ${formatVND(Number(r.expense) || 0)}, ròng ${formatVND(Number(r.net) || 0)}`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1506
+                "line": 1306
               },
               "expression": "[\n          `KQKD tháng ${args.thang} (${args.accrual ? 'dồn tích' : 'tiền mặt'}):`,\n          `TỔNG: doanh thu ${formatVND(rev)}, chi phí ${formatVND(exp)}, lợi nhuận ${formatVND(rev - exp)}`,\n          ...lines,\n        ].join('\\n')"
             }
@@ -7033,7 +7029,7 @@
           "name": "copilot_financial_pnl_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1491
+            "line": 1291
           },
           "role": "literal_call",
           "via": null
@@ -7972,7 +7968,7 @@
       "id": "hop_dong_sap_het_han",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1429
+        "line": 1229
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -8009,7 +8005,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1438
+              "line": 1238
             }
           }
         ],
@@ -8021,7 +8017,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1431
+            "line": 1231
           },
           "expression": "z.object({\n        so_ngay: z.number().int().min(1).max(365).default(30).describe('Số ngày tới'),\n      })"
         },
@@ -8031,7 +8027,7 @@
             "name": "so_ngay",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1432
+              "line": 1232
             },
             "expression": "z.number().int().min(1).max(365).default(30).describe('Số ngày tới')"
           }
@@ -8044,7 +8040,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1437
+            "line": 1237
           },
           "calls": [
             {
@@ -8052,7 +8048,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1438
+                "line": 1238
               }
             }
           ],
@@ -8060,21 +8056,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1459
+                "line": 1259
               },
               "expression": "`Không có hợp đồng nào hết hạn trong ${args.so_ngay} ngày tới.`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1462
+                "line": 1262
               },
               "expression": "`- ${c.contract_number ?? c.contract_id.slice(0, 8)} — ${c.customer_name ?? '?'} — phòng ${c.room_name ?? '?'}${toa} — hết hạn ${c.effective_end_date ?? c.end_date} [link: /contracts/${c.contract_id}]`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1464
+                "line": 1264
               },
               "expression": "`${rows.length} hợp đồng hết hạn trong ${args.so_ngay} ngày tới:\\n${lines.join('\\n')}`"
             }
@@ -8125,148 +8121,18 @@
           "name": "copilot_expiring_contracts_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1449
+            "line": 1249
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
       ]
-    },
-    {
-      "id": "huong_dan",
-      "source": {
-        "path": "src/copilot/tools/registry.ts",
-        "line": 1515
-      },
-      "legacyCategory": "read",
-      "semanticCategory": "read",
-      "permission": null,
-      "permissionEvidence": "unresolved_or_absent_review_required",
-      "actionId": null,
-      "rollout": {
-        "key": null,
-        "symbol": null,
-        "exempt": true,
-        "resolution": "no_literal_key"
-      },
-      "flags": {
-        "chatOnly": false,
-        "navigationOnly": false,
-        "uiControlOnly": false,
-        "superAdminOnly": false
-      },
-      "relatedCapabilities": [],
-      "disposition": "migrate_to_gateway",
-      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
-      "hermesExposure": "not_implemented",
-      "scope": {
-        "evidence": "source_declarations_not_authority",
-        "requiredPermission": null,
-        "applicationContext": [
-          "user",
-          "organization",
-          "permission_specific_resource_scope"
-        ],
-        "observed": [],
-        "verification": "server_scope_projection_and_revocation_not_verified",
-        "note": "Phải kiểm executor/RPC của từng năng lực; metadata quyền không thay RLS."
-      },
-      "input": {
-        "evidence": "source_schema_expression",
-        "declaration": {
-          "source": {
-            "path": "src/copilot/tools/registry.ts",
-            "line": 1518
-          },
-          "expression": "z.object({\n        chu_de: z.string().min(2).describe('Câu hỏi hoặc chủ đề, vd \"làm sao lấy lại tiền cọc\"'),\n        tai_lieu: z\n          .string()\n          .optional()\n          .describe('Chỉ tìm trong một tài liệu (mã lấy từ liet_ke_chu_de), vd \"16-thanh-ly-hop-dong\" hoặc \"huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don\"'),\n      })"
-        },
-        "definitions": [],
-        "fields": [
-          {
-            "name": "chu_de",
-            "source": {
-              "path": "src/copilot/tools/registry.ts",
-              "line": 1519
-            },
-            "expression": "z.string().min(2).describe('Câu hỏi hoặc chủ đề, vd \"làm sao lấy lại tiền cọc\"')"
-          },
-          {
-            "name": "tai_lieu",
-            "source": {
-              "path": "src/copilot/tools/registry.ts",
-              "line": 1520
-            },
-            "expression": "z\n          .string()\n          .optional()\n          .describe('Chỉ tìm trong một tài liệu (mã lấy từ liet_ke_chu_de), vd \"16-thanh-ly-hop-dong\" hoặc \"huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don\"')"
-          }
-        ],
-        "fieldExtraction": "outer_zod_object",
-        "runtimeValidated": false
-      },
-      "output": {
-        "evidence": "source_return_expressions",
-        "body": {
-          "source": {
-            "path": "src/copilot/tools/registry.ts",
-            "line": 1527
-          },
-          "calls": [],
-          "returnExpressions": [
-            {
-              "source": {
-                "path": "src/copilot/tools/registry.ts",
-                "line": 1534
-              },
-              "expression": "dinhDangChoModel(kq)"
-            }
-          ],
-          "coverage": "direct_body_only_helpers_and_nested_semantics_require_review"
-        },
-        "format": "DomainTool Promise<string>; helpers/structured server receipts require adapter contract",
-        "runtimeValidated": false
-      },
-      "consent": {
-        "evidence": "source_category_and_migration_proposal",
-        "current": "no_write_consent_declared",
-        "proposed": "Read/navigation still requires current permission and connection restriction",
-        "legacySuperAdminOnly": false
-      },
-      "channels": {
-        "declaredAdapters": [
-          "copilot_chat",
-          "page_agent_domain_adapter"
-        ],
-        "proposed": [
-          "hermes_via_crm_gateway"
-        ],
-        "groupProjection": "not_approved_for_direct_group_output",
-        "runtime": "not_verified"
-      },
-      "phase": [
-        "P3",
-        "P8"
-      ],
-      "acceptance": {
-        "status": "proposed_not_run",
-        "requiredCases": [
-          "huong_dan: đúng user/org và phạm vi được cấp trả kết quả đúng nguồn nghiệp vụ.",
-          "huong_dan: thiếu quyền được nguồn khai báo hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
-          "huong_dan: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
-          "huong_dan: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi."
-        ],
-        "evidence": []
-      },
-      "completeness": {
-        "declarationMetadata": "captured",
-        "runtimeDispatch": "not_verified",
-        "parity": "not_run"
-      },
-      "rpcReferences": []
     },
     {
       "id": "lap_ke_hoach",
@@ -8417,126 +8283,6 @@
           "lap_ke_hoach: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
           "lap_ke_hoach: phân biệt cờ superAdminOnly legacy với quyền nghiệp vụ server; chưa map/xác minh thì không mở capability Hermes.",
           "lap_ke_hoach: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
-        ],
-        "evidence": []
-      },
-      "completeness": {
-        "declarationMetadata": "captured",
-        "runtimeDispatch": "not_verified",
-        "parity": "not_run"
-      },
-      "rpcReferences": []
-    },
-    {
-      "id": "liet_ke_chu_de",
-      "source": {
-        "path": "src/copilot/tools/registry.ts",
-        "line": 1564
-      },
-      "legacyCategory": "read",
-      "semanticCategory": "read",
-      "permission": null,
-      "permissionEvidence": "unresolved_or_absent_review_required",
-      "actionId": null,
-      "rollout": {
-        "key": null,
-        "symbol": null,
-        "exempt": true,
-        "resolution": "no_literal_key"
-      },
-      "flags": {
-        "chatOnly": false,
-        "navigationOnly": false,
-        "uiControlOnly": false,
-        "superAdminOnly": false
-      },
-      "relatedCapabilities": [],
-      "disposition": "migrate_to_gateway",
-      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
-      "hermesExposure": "not_implemented",
-      "scope": {
-        "evidence": "source_declarations_not_authority",
-        "requiredPermission": null,
-        "applicationContext": [
-          "user",
-          "organization",
-          "permission_specific_resource_scope"
-        ],
-        "observed": [],
-        "verification": "server_scope_projection_and_revocation_not_verified",
-        "note": "Phải kiểm executor/RPC của từng năng lực; metadata quyền không thay RLS."
-      },
-      "input": {
-        "evidence": "source_schema_expression",
-        "declaration": {
-          "source": {
-            "path": "src/copilot/tools/registry.ts",
-            "line": 1567
-          },
-          "expression": "z.object({})"
-        },
-        "definitions": [],
-        "fields": [],
-        "fieldExtraction": "outer_zod_object",
-        "runtimeValidated": false
-      },
-      "output": {
-        "evidence": "source_return_expressions",
-        "body": {
-          "source": {
-            "path": "src/copilot/tools/registry.ts",
-            "line": 1570
-          },
-          "calls": [],
-          "returnExpressions": [
-            {
-              "source": {
-                "path": "src/copilot/tools/registry.ts",
-                "line": 1573
-              },
-              "expression": "ctx.perms === undefined\n            ? 'Đang tải quyền truy cập, chưa liệt kê được. Thử lại sau vài giây.'\n            : 'Không có tài liệu nào bạn được phép đọc.'"
-            },
-            {
-              "source": {
-                "path": "src/copilot/tools/registry.ts",
-                "line": 1593
-              },
-              "expression": "`Có ${topics.length} tài liệu.\\n\\n${khoi.join('\\n\\n')}`"
-            }
-          ],
-          "coverage": "direct_body_only_helpers_and_nested_semantics_require_review"
-        },
-        "format": "DomainTool Promise<string>; helpers/structured server receipts require adapter contract",
-        "runtimeValidated": false
-      },
-      "consent": {
-        "evidence": "source_category_and_migration_proposal",
-        "current": "no_write_consent_declared",
-        "proposed": "Read/navigation still requires current permission and connection restriction",
-        "legacySuperAdminOnly": false
-      },
-      "channels": {
-        "declaredAdapters": [
-          "copilot_chat",
-          "page_agent_domain_adapter"
-        ],
-        "proposed": [
-          "hermes_via_crm_gateway"
-        ],
-        "groupProjection": "not_approved_for_direct_group_output",
-        "runtime": "not_verified"
-      },
-      "phase": [
-        "P3",
-        "P8"
-      ],
-      "acceptance": {
-        "status": "proposed_not_run",
-        "requiredCases": [
-          "liet_ke_chu_de: đúng user/org và phạm vi được cấp trả kết quả đúng nguồn nghiệp vụ.",
-          "liet_ke_chu_de: thiếu quyền được nguồn khai báo hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
-          "liet_ke_chu_de: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
-          "liet_ke_chu_de: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi."
         ],
         "evidence": []
       },
@@ -8729,7 +8475,7 @@
       "id": "mo_trang",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1613
+        "line": 1355
       },
       "legacyCategory": "navigate",
       "semanticCategory": "navigation",
@@ -8766,7 +8512,7 @@
             "name": "canUse",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1637
+              "line": 1379
             }
           }
         ],
@@ -8778,7 +8524,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1622
+            "line": 1364
           },
           "expression": "z.object({\n        trang: z.enum(MO_TRANG_KEYS),\n      })"
         },
@@ -8788,7 +8534,7 @@
             "name": "trang",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1623
+              "line": 1365
             },
             "expression": "z.enum(MO_TRANG_KEYS)"
           }
@@ -8801,7 +8547,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1632
+            "line": 1374
           },
           "calls": [
             {
@@ -8809,7 +8555,7 @@
               "name": "canUse",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1637
+                "line": 1379
               }
             }
           ],
@@ -8817,21 +8563,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1642
+                "line": 1384
               },
               "expression": "`[${target.label}](${target.route})`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1645
+                "line": 1387
               },
               "expression": "`✅ Đã mở trang ${target.label} (${target.route}).`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1647
+                "line": 1389
               },
               "expression": "`✅ Đã mở trang ${target.label} (${target.route}) — ${CAU_NGOAI_PILOT}.`"
             }
@@ -8883,7 +8629,7 @@
       "id": "phong_trong",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1319
+        "line": 1119
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -8925,7 +8671,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1328
+              "line": 1128
             }
           },
           {
@@ -8933,7 +8679,7 @@
             "name": "copilot_available_rooms_v1",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1329
+              "line": 1129
             },
             "expression": "supabase.rpc('copilot_available_rooms_v1', { p_organization_id: orgId })"
           }
@@ -8946,7 +8692,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1322
+            "line": 1122
           },
           "expression": "z.object({\n        toa_nha: z.string().optional().describe('Lọc theo tên toà (khớp gần đúng), bỏ trống = tất cả'),\n      })"
         },
@@ -8956,7 +8702,7 @@
             "name": "toa_nha",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1323
+              "line": 1123
             },
             "expression": "z.string().optional().describe('Lọc theo tên toà (khớp gần đúng), bỏ trống = tất cả')"
           }
@@ -8969,7 +8715,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1327
+            "line": 1127
           },
           "calls": [
             {
@@ -8977,7 +8723,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1328
+                "line": 1128
               }
             },
             {
@@ -8985,7 +8731,7 @@
               "name": "copilot_available_rooms_v1",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1329
+                "line": 1129
               },
               "expression": "supabase.rpc('copilot_available_rooms_v1', { p_organization_id: orgId })"
             }
@@ -8994,14 +8740,14 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1352
+                "line": 1152
               },
               "expression": "'Hiện không có phòng trống nào.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1353
+                "line": 1153
               },
               "expression": "`Tổng ${totalFree} phòng trống; xem ngày sẵn sàng của từng phòng.\\n\\n${lines.join('\\n\\n')}`"
             }
@@ -9052,7 +8798,7 @@
           "name": "copilot_available_rooms_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1329
+            "line": 1129
           },
           "role": "literal_call",
           "via": null
@@ -9776,7 +9522,7 @@
       "id": "thong_bao_gan_day",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 856
+        "line": 656
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -9818,7 +9564,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 866
+              "line": 666
             }
           }
         ],
@@ -9830,7 +9576,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 859
+            "line": 659
           },
           "expression": "z.object({\n        chi_chua_doc: z.boolean().default(false).describe('Chỉ lấy thông báo chưa đọc'),\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số thông báo tối đa'),\n      })"
         },
@@ -9840,7 +9586,7 @@
             "name": "chi_chua_doc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 860
+              "line": 660
             },
             "expression": "z.boolean().default(false).describe('Chỉ lấy thông báo chưa đọc')"
           },
@@ -9848,7 +9594,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 861
+              "line": 661
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số thông báo tối đa')"
           }
@@ -9861,7 +9607,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 865
+            "line": 665
           },
           "calls": [
             {
@@ -9869,7 +9615,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 866
+                "line": 666
               }
             }
           ],
@@ -9877,21 +9623,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 878
+                "line": 678
               },
               "expression": "args.chi_chua_doc\n            ? 'Không có thông báo chưa đọc nào trong công ty đang chọn.'\n            : 'Không có thông báo nào trong công ty đang chọn.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 885
+                "line": 685
               },
               "expression": "'- ' + loai + ' — ' + trangThai + ' — ' + notification.thoi_diem"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 888
+                "line": 688
               },
               "expression": "(\n          'Có ' + unread + ' thông báo chưa đọc. Hiển thị ' + rows.length + ' dòng ' +\n          '(tối đa ' + (data?.gioi_han ?? args.so_luong) + '):\\n' + lines.join('\\n') + '\\n[link: /notifications]'\n        )"
             }
@@ -9942,14 +9688,14 @@
           "name": "copilot_notification_feed_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 867
+            "line": 667
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -10118,7 +9864,7 @@
       "id": "tim_hoa_don",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1397
+        "line": 1197
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -10160,7 +9906,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1408
+              "line": 1208
             }
           },
           {
@@ -10168,7 +9914,7 @@
             "name": "copilot_invoice_search_v1",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1409
+              "line": 1209
             },
             "expression": "supabase.rpc('copilot_invoice_search_v1', {\n          p_organization_id: orgId,\n          p_billing_month: args.thang,\n          p_payment_status: args.trang_thai,\n          ...(args.tu_khoa?.trim() ? { p_search: args.tu_khoa.trim() } : {}),\n        })"
           }
@@ -10181,7 +9927,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1400
+            "line": 1200
           },
           "expression": "z.object({\n        thang: z.string().regex(/^\\d{4}-\\d{2}$/).optional().describe('Kỳ YYYY-MM'),\n        trang_thai: z.enum(['paid', 'unpaid', 'partial']).optional().describe('paid=đã thu đủ, unpaid=chưa thu, partial=thu một phần'),\n        tu_khoa: z.string().optional().describe('Tên khách hoặc số hoá đơn'),\n      })"
         },
@@ -10191,7 +9937,7 @@
             "name": "thang",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1401
+              "line": 1201
             },
             "expression": "z.string().regex(/^\\d{4}-\\d{2}$/).optional().describe('Kỳ YYYY-MM')"
           },
@@ -10199,7 +9945,7 @@
             "name": "trang_thai",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1402
+              "line": 1202
             },
             "expression": "z.enum(['paid', 'unpaid', 'partial']).optional().describe('paid=đã thu đủ, unpaid=chưa thu, partial=thu một phần')"
           },
@@ -10207,7 +9953,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1403
+              "line": 1203
             },
             "expression": "z.string().optional().describe('Tên khách hoặc số hoá đơn')"
           }
@@ -10220,7 +9966,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1407
+            "line": 1207
           },
           "calls": [
             {
@@ -10228,7 +9974,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1408
+                "line": 1208
               }
             },
             {
@@ -10236,7 +9982,7 @@
               "name": "copilot_invoice_search_v1",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1409
+                "line": 1209
               },
               "expression": "supabase.rpc('copilot_invoice_search_v1', {\n          p_organization_id: orgId,\n          p_billing_month: args.thang,\n          p_payment_status: args.trang_thai,\n          ...(args.tu_khoa?.trim() ? { p_search: args.tu_khoa.trim() } : {}),\n        })"
             }
@@ -10245,21 +9991,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1417
+                "line": 1217
               },
               "expression": "'Không tìm thấy hoá đơn nào khớp điều kiện.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1422
+                "line": 1222
               },
               "expression": "`- HĐ ${inv.invoice_number ?? inv.id.slice(0, 8)} — phòng ${room}${building ? ` (${building})` : ''} — kỳ ${inv.billing_month} — tổng ${formatVND(inv.total_amount)} — trạng thái ${inv.status}`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1424
+                "line": 1224
               },
               "expression": "`Tìm thấy ${Array.isArray(data) ? data.length : rows.length} hoá đơn (hiện 10 đầu):\\n${lines.join('\\n')}`"
             }
@@ -10310,7 +10056,7 @@
           "name": "copilot_invoice_search_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1409
+            "line": 1209
           },
           "role": "literal_call",
           "via": null
@@ -10512,7 +10258,7 @@
       "id": "tim_khach_hang",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1358
+        "line": 1158
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -10554,7 +10300,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1364
+              "line": 1164
             }
           }
         ],
@@ -10566,7 +10312,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1360
+            "line": 1160
           },
           "expression": "z.object({ tu_khoa: z.string().min(1).describe('Tên hoặc SĐT') })"
         },
@@ -10576,7 +10322,7 @@
             "name": "tu_khoa",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1360
+              "line": 1160
             },
             "expression": "z.string().min(1).describe('Tên hoặc SĐT')"
           }
@@ -10589,7 +10335,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1363
+            "line": 1163
           },
           "calls": [
             {
@@ -10597,7 +10343,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1364
+                "line": 1164
               }
             }
           ],
@@ -10605,21 +10351,21 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1384
+                "line": 1184
               },
               "expression": "`Không tìm thấy khách hàng nào khớp \"${kw}\".`"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1385
+                "line": 1185
               },
               "expression": "rows\n          .map((c) => {\n            const noiO = c.room_name\n              ? ` — phòng ${c.room_name}${c.building_name ? ` (${c.building_name})` : ''}`\n              : '';\n            return `- ${c.customer_name} — ${maskPhonePartial(c.phone)}${noiO} [link: /customers/${c.customer_id}]`;\n          })\n          .join('\\n')"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1390
+                "line": 1190
               },
               "expression": "`- ${c.customer_name} — ${maskPhonePartial(c.phone)}${noiO} [link: /customers/${c.customer_id}]`"
             }
@@ -10670,14 +10416,14 @@
           "name": "copilot_customer_search_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1375
+            "line": 1175
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -11459,7 +11205,7 @@
       "id": "trang_thai_gach_no_tu_dong",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1249
+        "line": 1049
       },
       "legacyCategory": "read",
       "semanticCategory": "read",
@@ -11496,7 +11242,7 @@
             "name": "chotToChuc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1258
+              "line": 1058
             }
           }
         ],
@@ -11508,7 +11254,7 @@
         "declaration": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1252
+            "line": 1052
           },
           "expression": "z.object({\n        so_luong: z.number().int().min(1).max(50).default(20).describe('Số cấu hình tối đa'),\n      })"
         },
@@ -11518,7 +11264,7 @@
             "name": "so_luong",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 1253
+              "line": 1053
             },
             "expression": "z.number().int().min(1).max(50).default(20).describe('Số cấu hình tối đa')"
           }
@@ -11531,7 +11277,7 @@
         "body": {
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1257
+            "line": 1057
           },
           "calls": [
             {
@@ -11539,7 +11285,7 @@
               "name": "chotToChuc",
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1258
+                "line": 1058
               }
             }
           ],
@@ -11547,14 +11293,14 @@
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1268
+                "line": 1068
               },
               "expression": "'Không có cấu hình gạch nợ tự động nào trong công ty đang chọn.'"
             },
             {
               "source": {
                 "path": "src/copilot/tools/registry.ts",
-                "line": 1279
+                "line": 1079
               },
               "expression": "'Có ' + rows.length + ' cấu hình gạch nợ tự động (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\\n' + lines.join('\\n') + '\\n[link: /settings/categories/auto-debt]'"
             }
@@ -11605,14 +11351,14 @@
           "name": "copilot_auto_debt_status_v1",
           "source": {
             "path": "src/copilot/tools/registry.ts",
-            "line": 1259
+            "line": 1059
           },
           "role": "literal_call",
           "via": {
             "helper": "callCopilotRpc",
             "source": {
               "path": "src/copilot/tools/registry.ts",
-              "line": 769
+              "line": 569
             }
           }
         }
@@ -21318,18 +21064,6 @@
         "runtime": "subject_to_org_rollout_permission_checks_not_verified"
       },
       {
-        "id": "huong_dan",
-        "permission": null,
-        "superAdminOnly": false,
-        "runtime": "subject_to_org_rollout_permission_checks_not_verified"
-      },
-      {
-        "id": "liet_ke_chu_de",
-        "permission": null,
-        "superAdminOnly": false,
-        "runtime": "subject_to_org_rollout_permission_checks_not_verified"
-      },
-      {
         "id": "loi_nhuan_co_dong",
         "permission": "shareholder_profit.view",
         "superAdminOnly": false,
@@ -21503,7 +21237,7 @@
       "name": null,
       "source": {
         "path": "src/copilot/memoryClient.ts",
-        "line": 186
+        "line": 185
       },
       "expression": "supabase.rpc(ten)",
       "role": "dynamic_call",
@@ -21514,7 +21248,7 @@
       "name": "copilot_memory_list_v1",
       "source": {
         "path": "src/copilot/memoryClient.ts",
-        "line": 193
+        "line": 192
       },
       "expression": "goiRpc('copilot_memory_list_v1')",
       "role": "literal_call",
@@ -21522,7 +21256,7 @@
         "helper": "goiRpc",
         "source": {
           "path": "src/copilot/memoryClient.ts",
-          "line": 185
+          "line": 184
         }
       },
       "staticOnly": true
@@ -21531,7 +21265,7 @@
       "name": "copilot_memory_upsert_v1",
       "source": {
         "path": "src/copilot/memoryClient.ts",
-        "line": 220
+        "line": 219
       },
       "expression": "goiRpc('copilot_memory_upsert_v1')",
       "role": "literal_call",
@@ -21539,7 +21273,7 @@
         "helper": "goiRpc",
         "source": {
           "path": "src/copilot/memoryClient.ts",
-          "line": 185
+          "line": 184
         }
       },
       "staticOnly": true
@@ -21548,7 +21282,7 @@
       "name": "copilot_memory_forget_v1",
       "source": {
         "path": "src/copilot/memoryClient.ts",
-        "line": 242
+        "line": 241
       },
       "expression": "goiRpc('copilot_memory_forget_v1')",
       "role": "literal_call",
@@ -21556,7 +21290,7 @@
         "helper": "goiRpc",
         "source": {
           "path": "src/copilot/memoryClient.ts",
-          "line": 185
+          "line": 184
         }
       },
       "staticOnly": true
@@ -23051,7 +22785,7 @@
       "name": null,
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 773
+        "line": 573
       },
       "expression": "supabase.rpc(functionName)",
       "role": "dynamic_call",
@@ -23062,7 +22796,7 @@
       "name": "copilot_area_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 792
+        "line": 592
       },
       "expression": "callCopilotRpc('copilot_area_directory_v1')",
       "role": "literal_call",
@@ -23070,7 +22804,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23079,7 +22813,7 @@
       "name": "copilot_meter_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 825
+        "line": 625
       },
       "expression": "callCopilotRpc('copilot_meter_directory_v1')",
       "role": "literal_call",
@@ -23087,7 +22821,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23096,7 +22830,7 @@
       "name": "copilot_notification_feed_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 867
+        "line": 667
       },
       "expression": "callCopilotRpc('copilot_notification_feed_v1')",
       "role": "literal_call",
@@ -23104,7 +22838,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23113,7 +22847,7 @@
       "name": "copilot_sale_listing_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 908
+        "line": 708
       },
       "expression": "callCopilotRpc('copilot_sale_listing_directory_v1')",
       "role": "literal_call",
@@ -23121,7 +22855,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23130,7 +22864,7 @@
       "name": "copilot_member_role_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 949
+        "line": 749
       },
       "expression": "callCopilotRpc('copilot_member_role_directory_v1')",
       "role": "literal_call",
@@ -23138,7 +22872,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23147,7 +22881,7 @@
       "name": "copilot_warehouse_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 998
+        "line": 798
       },
       "expression": "callCopilotRpc('copilot_warehouse_directory_v1')",
       "role": "literal_call",
@@ -23155,7 +22889,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23164,7 +22898,7 @@
       "name": "copilot_supplier_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1029
+        "line": 829
       },
       "expression": "callCopilotRpc('copilot_supplier_directory_v1')",
       "role": "literal_call",
@@ -23172,7 +22906,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23181,7 +22915,7 @@
       "name": "copilot_asset_type_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1056
+        "line": 856
       },
       "expression": "callCopilotRpc('copilot_asset_type_directory_v1')",
       "role": "literal_call",
@@ -23189,7 +22923,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23198,7 +22932,7 @@
       "name": "copilot_job_type_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1083
+        "line": 883
       },
       "expression": "callCopilotRpc('copilot_job_type_directory_v1')",
       "role": "literal_call",
@@ -23206,7 +22940,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23215,7 +22949,7 @@
       "name": "copilot_floor_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1116
+        "line": 916
       },
       "expression": "callCopilotRpc('copilot_floor_directory_v1')",
       "role": "literal_call",
@@ -23223,7 +22957,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23232,7 +22966,7 @@
       "name": "copilot_hotline_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1148
+        "line": 948
       },
       "expression": "callCopilotRpc('copilot_hotline_directory_v1')",
       "role": "literal_call",
@@ -23240,7 +22974,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23249,7 +22983,7 @@
       "name": "copilot_service_quota_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1178
+        "line": 978
       },
       "expression": "callCopilotRpc('copilot_service_quota_directory_v1')",
       "role": "literal_call",
@@ -23257,7 +22991,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23266,7 +23000,7 @@
       "name": "copilot_building_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1215
+        "line": 1015
       },
       "expression": "callCopilotRpc('copilot_building_directory_v1')",
       "role": "literal_call",
@@ -23274,7 +23008,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23283,7 +23017,7 @@
       "name": "copilot_auto_debt_status_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1259
+        "line": 1059
       },
       "expression": "callCopilotRpc('copilot_auto_debt_status_v1')",
       "role": "literal_call",
@@ -23291,7 +23025,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23300,7 +23034,7 @@
       "name": "copilot_asset_maintenance_directory_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1295
+        "line": 1095
       },
       "expression": "callCopilotRpc('copilot_asset_maintenance_directory_v1')",
       "role": "literal_call",
@@ -23308,7 +23042,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23317,7 +23051,7 @@
       "name": "copilot_available_rooms_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1329
+        "line": 1129
       },
       "expression": "supabase.rpc('copilot_available_rooms_v1')",
       "role": "literal_call",
@@ -23328,7 +23062,7 @@
       "name": "copilot_customer_search_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1375
+        "line": 1175
       },
       "expression": "callCopilotRpc('copilot_customer_search_v1')",
       "role": "literal_call",
@@ -23336,7 +23070,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23345,7 +23079,7 @@
       "name": "copilot_invoice_search_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1409
+        "line": 1209
       },
       "expression": "supabase.rpc('copilot_invoice_search_v1')",
       "role": "literal_call",
@@ -23356,7 +23090,7 @@
       "name": "copilot_expiring_contracts_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1449
+        "line": 1249
       },
       "expression": "callCopilotRpc('copilot_expiring_contracts_v1')",
       "role": "literal_call",
@@ -23364,7 +23098,7 @@
         "helper": "callCopilotRpc",
         "source": {
           "path": "src/copilot/tools/registry.ts",
-          "line": 769
+          "line": 569
         }
       },
       "staticOnly": true
@@ -23373,7 +23107,7 @@
       "name": "copilot_financial_pnl_v1",
       "source": {
         "path": "src/copilot/tools/registry.ts",
-        "line": 1491
+        "line": 1291
       },
       "expression": "supabase.rpc('copilot_financial_pnl_v1')",
       "role": "literal_call",

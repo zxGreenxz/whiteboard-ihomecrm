@@ -145,7 +145,7 @@ jobs:
           retention-days: 2
 
   vitest-tests:
-    name: ${{ matrix.shard == 1 && 'vitest-tests' || 'vitest-tests (2)' }}
+    name: ${{ matrix.shard == 1 && 'vitest-tests' || format('vitest-tests ({0})', matrix.shard) }}
     strategy:
       fail-fast: false
       matrix:

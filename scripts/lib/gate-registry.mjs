@@ -1,6 +1,6 @@
 import { isDeferredGate, isDeferredTest } from './deferred-modules.mjs';
 import { DANH_SACH_VIEW } from '../generate-docs-views.mjs';
-import { filesForTestShard, MIN_FILES_TO_SHARD } from './gate-test-shards.mjs';
+import { filesForTestShard, SHARD_THRESHOLDS } from './gate-test-shards.mjs';
 import { selectionDigest } from './selected-vitest.mjs';
 
 // Commands have one owner. Selection belongs to gate-plan, execution to the runners.
@@ -21,19 +21,16 @@ for (const id of [
   'check-rpc-cast-ratchet', 'check-rpc-in-view-ratchet', 'check-error-swallow-ratchet',
   'check-money-table-dml', 'check-migration-provenance', 'check-no-auto-apply',
   'check-management-api-writes', 'check-promote-readiness', 'check-migration-test-liveness',
-  'check-doc-counts', 'check-new-modules-strict', 'check-ts-baseline', 'check-eslint-baseline',
+  'check-doc-counts', 'check-new-modules-strict', 'check-eslint-baseline',
   'check-docs', 'check-rpc-arg-names', 'check-rpc-name-literal', 'check-rpc-layer',
   'check-realtime-key-ownership', 'check-vault-access', 'check-workflow-runner-pins',
 ]) nodeGate(id);
 for (const id of ['check-agent-contract', 'check-capability-docs', 'check-baseline-doc', 'check-doc-counts', 'check-docs', 'check-test-matrix', 'check-workflow-paths', 'check-workflow-runner-pins']) gates[id].inputs = docsInputs;
 // P0 restores only offline checks for the CRM core reused by Hermes.
 // Live/model/browser checks remain deferred and are not runtime evidence.
-for (const id of ['check-copilot-docs-manifest', 'check-copilot-tool-inventory', 'check-copilot-forbidden-actions']) {
+for (const id of ['check-copilot-tool-inventory', 'check-copilot-forbidden-actions']) {
   nodeGate(id, 'quality-gates', { inputs: docsInputs });
 }
-nodeGate('generate-copilot-guide-corpus', 'quality-gates', {
-  args: ['scripts/generate-copilot-guide-corpus.mjs', '--check'], inputs: docsInputs,
-});
 nodeGate('generate-hermes-crm-inventory', 'quality-gates', {
   args: ['scripts/generate-hermes-crm-inventory.mjs', '--check'],
 });
@@ -43,6 +40,7 @@ nodeGate('normalize-supabase-types', 'quality-gates', { args: ['scripts/normaliz
 nodeGate('generate-docs-views', 'quality-gates', { args: ['scripts/generate-docs-views.mjs', '--check'], inputs: docsInputs });
 nodeGate('check-dependency-audit', 'quality-gates', { local: false, evidenceClass: 'external' });
 gates['check-known-gaps'].evidenceClass = 'external';
+nodeGate('check-ts-baseline', 'strict-islands-gate');
 nodeGate('check-strict-islands', 'strict-islands-gate');
 nodeGate('check-timezone', 'timezone-gate', { args: ['scripts/check-timezone-stability.mjs'], local: false, evidenceClass: 'external' });
 nodeGate('check-realtime-descriptors', 'realtime-gates', { local: false, evidenceClass: 'live', requires: ['SUPABASE_PAT'] });
@@ -89,9 +87,12 @@ for (const [id, job, command, args] of [
 gates['suite:edge-deno-llm-proxy'].inputs = [...broadInputs, 'deno.lock'];
 gates['suite:meter-capture-python'].inputs = [...broadInputs, 'infra/meter-capture-worker/**', '.github/workflows/ci-gates.yml'];
 
-for (const suiteId of Object.keys(MIN_FILES_TO_SHARD)) {
-  const id = `suite:${suiteId}-shard-2`;
-  gates[id] = { ...gates[`suite:${suiteId}`], id, suiteId, shard: 2, local: false };
+for (const [suiteId, thresholds] of Object.entries(SHARD_THRESHOLDS)) {
+  const maxShards = Math.max(...Object.keys(thresholds).map(Number));
+  for (let shard = 2; shard <= maxShards; shard++) {
+    const id = `suite:${suiteId}-shard-${shard}`;
+    gates[id] = { ...gates[`suite:${suiteId}`], id, suiteId, shard, local: false };
+  }
 }
 
 export const GATE_REGISTRY = Object.freeze(gates);

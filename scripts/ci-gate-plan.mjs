@@ -45,7 +45,8 @@ if (process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF === 'refs
 writeFileSync(join(output, 'plan.json'), JSON.stringify(plan, null, 2) + '\n');
 if (process.env.GITHUB_OUTPUT) {
   for (const [output, suiteId] of [['vitest_shards', 'app-unit'], ['node_shards', 'node-native']]) {
-    const shards = plan.gateIds.includes(`suite:${suiteId}-shard-2`) ? [1, 2] : [1];
+    const count = plan.suiteSelections.find(selection => selection.id === suiteId)?.shards ?? 1;
+    const shards = Array.from({ length: count }, (_, index) => index + 1);
     appendFileSync(process.env.GITHUB_OUTPUT, `${output}=${JSON.stringify(shards)}\n`);
   }
   appendFileSync(process.env.GITHUB_OUTPUT, `required_jobs=${JSON.stringify(plan.requiredJobs)}\nneeds_demo_browser=${plan.suiteSelections.some((s) => s.runner === 'playwright' && plan.gateIds.includes(`suite:${s.id}`))}\nneeds_docs_build=${plan.gateIds.includes('docs-build')}\nneeds_deno=${plan.gateIds.some((id) => GATE_REGISTRY[id]?.command === 'deno')}\nneeds_meter_python=${plan.gateIds.includes('suite:meter-capture-python')}\n`);

@@ -166,7 +166,6 @@ không chứng minh "bây giờ vẫn bật".
 - **Sổ quỹ theo tên:** một số resolver vẫn phụ thuộc quy ước tên `…Thu`, `…Thối`, `Chung`; đổi tên phải test các luồng thu/bàn giao.
 - **Hermes:** máy chủ kiểm tra quyền CRM và phạm vi kết nối cho từng thao tác. Các bước phê duyệt nghiệp vụ tiếp tục theo quy trình của CRM. Xem [hợp đồng của connector](../../infra/hermes-broker/CONNECTOR.md).
 - **Zalo worker:** service-role, cookie phiên và polling là rủi ro vận hành cần kiểm soát bằng runbook.
-- **Tài liệu dùng cho bộ tra cứu Copilot cũ:** bộ tra cứu lọc theo `copilotIngest` và quyền đã khai trong [manifest](manifest.json). Ghi rõ mốc thời gian khi dẫn hành vi cũ.
 
 ## 6. Gate khi thay đổi luồng xuyên domain
 

@@ -1,14 +1,30 @@
-// Small selections stay on one runner. Split broad suites where a second
-// runner's checkout and npm install are short compared with test execution.
-export const MIN_FILES_TO_SHARD = Object.freeze({ 'node-native': 64, 'app-unit': 256 });
+// Minimum selected files to justify each level of runner parallelism.
+export const SHARD_THRESHOLDS = Object.freeze({
+  'node-native': { 2: 64 },
+  'app-unit': { 2: 256, 4: 1024 },
+});
+
+export function shardCountForSuite(suiteId, fileCount) {
+  let count = 1;
+  for (const [shards, minimum] of Object.entries(SHARD_THRESHOLDS[suiteId] ?? {})) {
+    if (fileCount >= minimum) count = Number(shards);
+  }
+  return count;
+}
 
 export function filesForTestShard(selection, shard = 1) {
   const count = selection.shards ?? 1;
-  if (![1, 2].includes(count) || !Number.isInteger(shard) || shard < 1 || shard > count) {
+  const supported = count === 1 || Object.hasOwn(SHARD_THRESHOLDS[selection.id] ?? {}, count);
+  if (!Number.isInteger(count) || !supported || !Number.isInteger(shard) || shard < 1 || shard > count) {
     throw new Error(`Invalid test shard ${shard} of ${count}`);
   }
   if (selection.files.length < count) throw new Error('Each test shard needs at least one file');
-  // The planner sorts paths. Alternating distributes neighbouring SQL/DOM
-  // suites without depending on timing data from a previous run.
-  return count === 1 ? selection.files : selection.files.filter((_, i) => i % count === shard - 1);
+  if (count === 1) return selection.files;
+  // Preserve the two-shard layout. With four runners, reverse every other
+  // group so each runner gets both early and late paths in neighbouring groups.
+  return selection.files.filter((_, index) => {
+    const offset = index % count;
+    const reverse = count === 4 && Math.floor(index / count) % 2 === 1;
+    return (reverse ? count - offset : offset + 1) === shard;
+  });
 }
