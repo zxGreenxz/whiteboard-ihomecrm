@@ -28522,6 +28522,17 @@ export type Database = {
         Args: { p_voucher_id: string }
         Returns: Json
       }
+      preview_room_transfer_v1: {
+        Args: {
+          p_contract_id: string
+          p_new_deposit?: number
+          p_new_rent_price?: number
+          p_new_room_id: string
+          p_org: string
+          p_transfer_date: string
+        }
+        Returns: Json
+      }
       preview_special_fees_v1: {
         Args: { p_building_ids?: string[]; p_period: string }
         Returns: {
@@ -29517,6 +29528,10 @@ export type Database = {
           rent_price: number
           start_date: string
         }[]
+      }
+      room_transfer_invoice_rents_v1: {
+        Args: { p_billing_month: string; p_building_id: string }
+        Returns: Json
       }
       rooms_list_v1: {
         Args: {
@@ -30558,6 +30573,22 @@ export type Database = {
           p_notes?: string
           p_notice_reason?: string
           p_organization_id: string
+          p_request_id: string
+          p_transfer_date: string
+        }
+        Returns: string
+      }
+      transfer_room_with_notice_v2: {
+        Args: {
+          p_contract_id: string
+          p_expected_updated_at: string
+          p_new_deposit?: number
+          p_new_rent_price?: number
+          p_new_room_id: string
+          p_notes?: string
+          p_notice_reason?: string
+          p_organization_id: string
+          p_quote_key?: string
           p_request_id: string
           p_transfer_date: string
         }
