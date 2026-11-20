@@ -1,3 +1,4 @@
+import { roomPhotoCount } from '@/lib/roomMedia';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { DoorOpen, ImagePlus, LockKeyhole, RefreshCw, Search, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -117,7 +118,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
     return rows.filter(row => {
       if (buildingId && row.buildingId !== buildingId) return false;
       if (query && !roomSearchKey(`${row.buildingName} ${row.name} ${row.code ?? ''}`).includes(query)) return false;
-      if (status === 'missing-images') return row.images.length === 0;
+      if (status === 'missing-images') return roomPhotoCount(row.images) === 0;
       if (status === 'draft') return !!drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]);
       if (status === 'preparing') return row.room.saleFact?.kind === 'preparing';
       if (status === 'free') return row.room.status === 'free' && row.room.saleFact?.kind !== 'preparing';
@@ -260,7 +261,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
         : mobile ? <div className="space-y-3">{visible.map(row => <article key={row.room.id} className="space-y-3 rounded-xl border bg-card p-4">
           <div className="flex items-start justify-between gap-2"><div><h3 className="font-semibold">{rowLabel(row)}</h3><p className="mt-1 text-sm text-muted-foreground">{statusLabel(row.room)}</p></div>
             {drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]) && <Badge variant="secondary">Có nháp</Badge>}</div>
-          <div className="flex justify-between text-sm"><span>{money(row.rentPrice)}</span><span className="text-muted-foreground">{row.images.length} ảnh</span></div>
+          <div className="flex justify-between text-sm"><span>{money(row.rentPrice)}</span><span className="text-muted-foreground">{roomPhotoCount(row.images)} ảnh</span></div>
           {row.room.saleLock && <p className="text-xs text-amber-700">Lock đến {timeLabel(row.room.saleLock.expiresAt)}</p>}
           {policySummary(row)}
           {actions(row)}
@@ -271,7 +272,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
               {drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]) && <span className="mt-1 block text-xs text-amber-700">Bản nháp chưa lưu</span>}</td>
             <td className="px-3 py-3">{statusLabel(row.room)}{row.room.saleLock && <span className="mt-1 block text-xs text-muted-foreground">Đến {timeLabel(row.room.saleLock.expiresAt)}</span>}{policySummary(row)}</td>
             <td className="whitespace-nowrap px-3 py-3">{money(row.rentPrice)}{row.room.status === 'pass' && <span className="block text-xs text-muted-foreground">Giá pass: {money(Math.round(row.room.price * 1_000_000))}</span>}</td>
-            <td className="px-3 py-3"><span className={row.images.length ? '' : 'text-amber-700'}>{row.images.length || 'Thiếu'} ảnh</span></td>
+            <td className="px-3 py-3"><span className={roomPhotoCount(row.images) ? '' : 'text-amber-700'}>{roomPhotoCount(row.images) || 'Thiếu'} ảnh</span></td>
             <td className="px-3 py-3 text-xs text-muted-foreground">{timeLabel(row.updatedAt)}{row.updatedByName && <span className="block">{row.updatedByName}</span>}</td><td className="px-3 py-3">{actions(row)}</td>
           </tr>)}</tbody>
         </table></div>}
@@ -287,7 +288,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
           {policySummary(selected)}
           {(stale || (unknown && !update.isPending)) && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
             <p>{unknown ? 'Chưa rõ lần lưu đã hoàn tất hay chưa. Bản nháp tạm khóa để đối chiếu đúng yêu cầu cũ.' : 'Thông tin máy chủ đã thay đổi. Bản nháp của bạn vẫn được giữ; hãy đối chiếu trước khi lưu.'}</p>
-            <p>Hiện tại: {money(selected.rentPrice)} · {selected.area ?? '—'} m² · {selected.images.length} ảnh.</p>
+            <p>Hiện tại: {money(selected.rentPrice)} · {selected.area ?? '—'} m² · {roomPhotoCount(selected.images)} ảnh.</p>
             {!unknown && <Button type="button" size="sm" variant="outline" onClick={() => { removeDraft(selected.room.id); setErrors({}); setWriteError(''); }}>Dùng bản mới, bỏ bản nháp</Button>}
             {unknown && <Button type="button" size="sm" variant="outline" disabled={blocked} onClick={() => void save(true)}>Đối chiếu lần lưu</Button>}
           </div>}
@@ -306,7 +307,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
           </fieldset>
           {selected.capabilities.images && <div className="space-y-2 border-t pt-4"><h3 className="flex items-center gap-2 font-medium"><ImagePlus className="h-4 w-4" />Ảnh phòng</h3>
             <p className="text-xs text-muted-foreground">Ảnh mới được thêm vào cuối. Chọn ảnh bìa hoặc gỡ ảnh rồi bấm Lưu thay đổi.</p>
-            <SaleImageManager key={selected.room.id} value={draft.images} onChange={images => change('images', images)} disabled={update.isPending || turnoverBusy || turnoverEditing || unknown} onUploadingChange={setUploading} />
+            <SaleImageManager allowRoomVideo key={selected.room.id} value={draft.images} onChange={images => change('images', images)} disabled={update.isPending || turnoverBusy || turnoverEditing || unknown} onUploadingChange={setUploading} />
             {fieldError('images')}{uploading && <p role="status" className="text-sm text-muted-foreground">Đang tải ảnh. Chờ tải xong trước khi lưu hoặc chuyển phòng.</p>}
           </div>}
           {writeError && <p role="alert" className="text-sm text-destructive">{writeError}</p>}

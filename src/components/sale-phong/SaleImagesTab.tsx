@@ -202,7 +202,7 @@ function RoomInfoSection({ buildingId, onDraftStateChange }: { buildingId: strin
 
             <div className="space-y-3 pt-4 border-t">
               <Label>Ảnh phòng</Label>
-              <SaleImageManager value={images} onChange={setImages} disabled={saving} onUploadingChange={setUploading} />
+              <SaleImageManager allowRoomVideo value={images} onChange={setImages} disabled={saving} onUploadingChange={setUploading} />
 
               {/* Đồng bộ ảnh sang các phòng cùng mẫu */}
               <div className="space-y-2 rounded-lg border border-dashed p-3">

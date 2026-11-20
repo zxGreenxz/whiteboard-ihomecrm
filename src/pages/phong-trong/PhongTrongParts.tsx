@@ -1,4 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
+import { isRoomVideo } from '@/lib/roomMedia';
 import { testMediaSource } from '@/lib/storage/testMedia';
 import { Icon, amenIcon } from "./icons";
 import {
@@ -62,11 +63,12 @@ export function FilterBar({ showRented, setShowRented, band, setBand }: {
 
 /* ===== List view ===== */
 export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) {
+  const cover = r.images?.find(url => !isRoomVideo(url));
   const impRef = useRoomImpression<HTMLDivElement>(r);
   return (
     <div className="room-card" ref={impRef} onClick={() => onOpen(r)}>
       <div className="rc-photo">
-        {r.images?.[0] ? <img className="rc-img" src={testMediaSource(r.images[0])} alt={r.type} loading="lazy" decoding="async" /> : <div className="rc-img" aria-label="Chưa có ảnh phòng" />}
+        {cover ? <img className="rc-img" src={testMediaSource(cover)} alt={r.type} loading="lazy" decoding="async" /> : <div className="rc-img" aria-label="Chưa có ảnh phòng" />}
         <span className="rc-badge">
           <i className="bd" style={{ background: stColor(r.status) }} />{r.saleFact?.label || SM[r.status].label}
         </span>

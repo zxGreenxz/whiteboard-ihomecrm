@@ -1,3 +1,5 @@
+import { isRoomVideo } from '@/lib/roomMedia';
+import { testMediaSource } from '@/lib/storage/testMedia';
 import { StorageImage } from "@/components/ui/storage-image";
 import { Button } from "@/components/ui/button";
 import ImageUploadZone from "@/components/customers/ImageUploadZone";
@@ -10,15 +12,17 @@ import { useRef } from "react";
  * Tái dùng cho cả phòng và toà nhà. Ảnh lưu dạng URL công khai (bucket room-sale-images).
  */
 export default function SaleImageManager({
-  value, onChange, bucket = "room-sale-images", disabled = false, onUploadingChange,
+  value, onChange, bucket = "room-sale-images", disabled = false, onUploadingChange, allowRoomVideo = false,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
   bucket?: string;
+  allowRoomVideo?: boolean;
   disabled?: boolean;
   onUploadingChange?: (uploading: boolean) => void;
 }) {
   const imgs = value ?? [];
+  const coverIndex = imgs.findIndex(url => !isRoomVideo(url));
   const latest = useRef(imgs);
   latest.current = imgs;
 
@@ -44,8 +48,8 @@ export default function SaleImageManager({
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {imgs.map((url, i) => (
             <div key={url + i} className="relative group rounded-lg border overflow-hidden">
-              <StorageImage value={url} alt={`Ảnh ${i + 1}`} className="w-full h-28 object-cover" />
-              {i === 0 && (
+              {isRoomVideo(url) ? <video src={testMediaSource(url)} controls playsInline preload="metadata" className="w-full h-28 object-contain" aria-label={`Video phòng ${i + 1}`} /> : <StorageImage value={url} alt={`Ảnh ${i + 1}`} className="w-full h-28 object-cover" />}
+              {i === coverIndex && (
                 <span className="absolute top-1 left-1 text-[10px] bg-primary text-primary-foreground rounded px-1.5 py-0.5">
                   Ảnh bìa
                 </span>
@@ -56,7 +60,7 @@ export default function SaleImageManager({
                   <ArrowLeft className="h-3.5 w-3.5" />
                 </Button>
                 <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-white hover:text-white hover:bg-white/20"
-                  title="Đặt làm ảnh bìa" onClick={() => toFront(i)} disabled={disabled || i === 0}>
+                  title="Đặt làm ảnh bìa" onClick={() => toFront(i)} disabled={disabled || isRoomVideo(url) || i === coverIndex}>
                   <Star className="h-3.5 w-3.5" />
                 </Button>
                 <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-white hover:text-white hover:bg-white/20"
@@ -73,7 +77,7 @@ export default function SaleImageManager({
         </div>
       )}
       <ImageUploadZone
-        label="Thêm ảnh"
+        label={allowRoomVideo ? "Thêm ảnh hoặc video" : "Thêm ảnh"}
         value=""
         multiple
         onChange={(url) => { if (url) onChange([...latest.current, url]); }}
@@ -81,7 +85,8 @@ export default function SaleImageManager({
         disabled={disabled}
         onUploadingChange={onUploadingChange}
         bucket={bucket}
-        accept="image/png,image/jpeg,image/jpg,image/webp"
+        allowRoomVideo={allowRoomVideo}
+        accept={allowRoomVideo ? "image/png,image/jpeg,image/jpg,image/webp,video/mp4" : "image/png,image/jpeg,image/jpg,image/webp"}
         maxSizeMB={5}
       />
     </div>

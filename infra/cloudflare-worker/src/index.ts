@@ -69,6 +69,7 @@ function safeKey(key: string | null): string | null {
 // (<uid>/...). Chặn ghi đè bucket riêng tư, cross-user overwrite và tuỳ ý chọn key.
 const R2_UPLOAD_ALLOWED_BUCKET = 'room-sale-images';
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8MB (client giới hạn 5MB, chừa biên)
+const MAX_VIDEO_BYTES = 32 * 1024 * 1024;
 const ALLOWED_UPLOAD_MIME = new Set([
   'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
 ]);
@@ -105,17 +106,21 @@ export default {
 
         // Giới hạn kích thước (chặn Content-Length gian lận + đọc thân quá lớn).
         const declaredLen = Number(req.headers.get('Content-Length') || '0');
-        if (declaredLen > MAX_UPLOAD_BYTES) {
-          return json({ error: 'file too large' }, 413, headers);
-        }
 
         // MIME allowlist (ảnh sale). Không phục vụ như trusted nhưng chặn upload lạ.
         const contentType = (req.headers.get('Content-Type') || 'application/octet-stream')
           .split(';')[0]
           .trim()
           .toLowerCase();
-        if (!ALLOWED_UPLOAD_MIME.has(contentType)) {
+        const isVideo = contentType === 'video/mp4';
+        if (isVideo !== key.toLowerCase().endsWith('.mp4') || (!isVideo && !ALLOWED_UPLOAD_MIME.has(contentType))) {
           return json({ error: 'unsupported media type' }, 415, headers);
+        }
+        if (declaredLen > (isVideo ? MAX_VIDEO_BYTES : MAX_UPLOAD_BYTES)) {
+          return json({ error: 'file too large' }, 413, headers);
+        }
+        if (isVideo && (!Number.isSafeInteger(declaredLen) || declaredLen < 12)) {
+          return json({ error: 'MP4 content length required' }, 411, headers);
         }
 
         // Không cho ghi đè object đã tồn tại (chống cố tình overwrite key người khác/của mình).
@@ -126,9 +131,28 @@ export default {
           req.headers.get('X-Cache-Control') || 'public, max-age=31536000, immutable';
 
         // Đọc thân có chốt kích thước cứng (phòng khi Content-Length nói dối).
-        const buf = await req.arrayBuffer();
-        if (buf.byteLength > MAX_UPLOAD_BYTES) {
-          return json({ error: 'file too large' }, 413, headers);
+        let buf: ArrayBuffer;
+        if (isVideo) {
+          const data = new Uint8Array(declaredLen);
+          const reader = req.body.getReader();
+          let offset = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (offset + value.length > declaredLen) {
+              await reader.cancel();
+              return json({ error: 'content length mismatch' }, 413, headers);
+            }
+            data.set(value, offset);
+            offset += value.length;
+          }
+          if (offset !== declaredLen || new TextDecoder().decode(data.subarray(4, 8)) !== 'ftyp') {
+            return json({ error: 'invalid MP4' }, 415, headers);
+          }
+          buf = data.buffer;
+        } else {
+          buf = await req.arrayBuffer();
+          if (buf.byteLength > MAX_UPLOAD_BYTES) return json({ error: 'file too large' }, 413, headers);
         }
 
         await env.FILES.put(key, buf, {

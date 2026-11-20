@@ -1,3 +1,4 @@
+import { roomPhotoCount } from '@/lib/roomMedia';
 /**
  * Adapter: map payload RPC public `get_public_available_rooms(p_token)` -> type
  * Building/Room cho cả public và in-app. Reader quyết định occupancy/hold;
@@ -225,7 +226,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         availDate: status === "soon" ? fmtAvail(saleFact?.availableOn) : null,
         saleFact,
         // Thiếu ảnh không tự thêm ảnh mẫu.
-        imgCount: imgs.length,
+        imgCount: roomPhotoCount(imgs),
         phClass: "",
         images: imgs,
         description: rr.description || null,
