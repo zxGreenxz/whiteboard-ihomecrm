@@ -3,7 +3,7 @@ vi.mock('zca-js', () => ({ ThreadType: { User: 0, Group: 1 } }));
 const state = vi.hoisted(() => ({
   sessions: new Map(), writes: [], calls: [], status: 'connected', persistError: null,
   claimAllowed: true, fenceAllowed: true, autoAllowed: true,
-  echoFirst: false, queueExists: true, footerRows: [],
+  echoFirst: false, queueExists: true, priorJobs: [],
   forwardSource: null, beforeAdmissionReturns: null, threadType: 'user',
 }));
 vi.mock('../lib/ctx.js', () => ({
@@ -28,7 +28,7 @@ vi.mock('../lib/ctx.js', () => ({
       const result = () => {
         // Model the real FK ON DELETE CASCADE: deleting the pending canonical
         // also destroys the queue receipt and its unique request key.
-        if (filters.some(([key]) => key === 'payload->>automation_request_key')) return { data: state.footerRows, error: null };
+        if (filters.some(([key]) => key === 'payload->>automation_request_key')) return { data: state.priorJobs, error: null };
         if (deleting && table === 'zalo_messages' && filters.some(([key, value]) => key === 'id' && value === 'message')) state.queueExists = false;
         return { data: state.queueExists ? [{ id: 'job' }] : [], count: 1, error: table === 'zalo_messages' && patch?.status === 'sent' ? state.persistError : null };
       };
@@ -36,6 +36,7 @@ vi.mock('../lib/ctx.js', () => ({
         update: value => { patch = value; state.writes.push({ table, patch, filters }); return q; },
         delete: () => { deleting = true; return q; }, select: () => q,
         eq: (column, value) => { filters.push([column, value]); return q; },
+        lt: (column, value) => { filters.push([column, value]); return q; },
         like: (column, value) => { filters.push([column, value]); return q; },
         neq: (column, value) => { filters.push([column, value]); return q; },
         in: (column, value) => { filters.push([column, value]); return q; },
@@ -71,7 +72,7 @@ const connect = () => {
   return api;
 };
 beforeEach(() => {
-  state.footerRows = [];
+  state.priorJobs = [];
   state.sessions.clear(); state.writes.length = 0; state.calls.length = 0;
   state.status = 'connected'; state.persistError = null;
   state.claimAllowed = true; state.fenceAllowed = true; state.autoAllowed = true;
@@ -144,12 +145,34 @@ describe('queue admission and delivery outcomes', () => {
   });
   it.each(['failed','sent'])('mentions the group only when delivery of its summary and all prior jobs succeeded: %s', async status => {
     state.threadType = 'group';
-    state.footerRows = [{status:'sent',automation_request_key:'scheduled:day:conv:table_image'},{status,automation_request_key:'scheduled:day:conv:room:203:album'}];
+    state.priorJobs = [{status:'sent',automation_request_key:'scheduled:day:conv:table_image'},{status,automation_request_key:'scheduled:day:conv:room:203:album'}];
     const api=connect(), text='Link danh sách\n@all';
     await processJob(makeJob({tu_dong:true, automation_request_key:'scheduled:day:conv:link', body:text}));
     const content=api.sendMessage.mock.calls[0][0];
     if (status==='sent') expect(content.mentions).toEqual([{pos:text.length-4,uid:'-1',len:4}]);
     else expect(content).toEqual({msg:'Link danh sách'});
+  });
+  it.each([
+    ['album', ['failed'], 'failed'],
+    ['album', ['processing'], 'wait'],
+    ['album', [], 'send'], // legacy album was enqueued before the room text
+    ['divider', ['sent'], 'failed'],
+    ['divider', ['sent', 'failed'], 'failed'],
+    ['divider', ['sent', 'queued'], 'wait'],
+    ['divider', ['sent', 'sent'], 'send'],
+  ])('checks room delivery before %s with earlier jobs %j', async (part, statuses, outcome) => {
+    const api = connect();
+    const room = 'scheduled:day:conv:room:203';
+    state.priorJobs = statuses.map(status => ({ status }));
+    const job = makeJob({ tu_dong: true, automation_request_key: room + ':' + part,
+      ...(part === 'album' && { type: 'image', attachments: [{ path: 'account/photo.jpg' }] }) });
+    await processJob({ ...job, created_at: '2026-10-11T01:00:05Z' });
+    expect(api.sendMessage).toHaveBeenCalledTimes(outcome === 'send' ? 1 : 0);
+    if (outcome === 'failed') expect(state.writes[0].patch).toMatchObject({ status: 'failed' });
+    if (outcome === 'wait') {
+      expect(state.writes).toEqual([]);
+      expect(state.calls.some(c => c.name === 'zalo_worker_claim_job_v1')).toBe(false);
+    }
   });
   it('defers boot-time queued messages while login is still pending', async () => {
     await processJob(makeJob());

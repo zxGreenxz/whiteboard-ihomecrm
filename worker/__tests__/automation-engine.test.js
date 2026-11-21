@@ -306,7 +306,7 @@ describe('engine broadcast — xếp hàng', () => {
     }
   });
 
-  it('sends every room photo, then information and separator, then the next room; empty rooms explicitly await photos', async () => {
+  it('sends room information, its complete album and a divider before the next room', async () => {
     vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
     const bytes = Buffer.alloc(32); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
     bytes.writeUInt32BE(640,16); bytes.writeUInt32BE(480,20);
@@ -315,25 +315,27 @@ describe('engine broadcast — xếp hàng', () => {
     datCauHinh({ schedule: { time: '08:30', days: { mon: 'full' } }, template: { blocks: ['room_details'] } });
     await tickTuDongHoa();
     const rooms = rpcCalls.map(c => c.args);
-    expect(rooms).toHaveLength(6); // (one complete album + information + empty room) × 2 recipients
+    expect(rooms).toHaveLength(8); // (information + native album + divider + room without photos) × 2
     expect(request).toHaveBeenCalledTimes(2); // all photos reused for this organization's recipients
-    expect(rooms[0].p_request_key).toBe('scheduled:2026-08-31:c1:room:r1:album');
-    expect(rooms[0].p_attachment).toHaveLength(2);
-    expect(rooms[0].p_attachment.every(a => a.bucket === 'zalo-media' && a.width === 640 && a.height === 480)).toBe(true);
-    expect(rooms[0].p_body).toBe('');
-    expect(new Set(rooms.map(r => r.p_request_key)).size).toBe(6);
-    expect(rooms[1]).toMatchObject({ p_request_key: 'scheduled:2026-08-31:c1:room:r1', p_attachment: null });
-    expect(rooms[1].p_body).toContain('PHÒNG r1');
-    expect(rooms[1].p_body).not.toContain('Chờ cập nhật ảnh');
-    expect(rooms[2].p_attachment).toBeNull();
-    expect(rooms[2].p_body).toContain('PHÒNG r2');
-    expect(rooms[2].p_body).toContain('\nChờ cập nhật ảnh\n');
-    expect(rooms.filter(r => !r.p_attachment).every(r => r.p_body.endsWith('\n────────────────'))).toBe(true);
-    expect(rooms.slice(0, 3).map(r => (Date.parse(r.p_not_before) - THU_HAI_0830.getTime()) / 1000)).toEqual([0, 20, 40]);
-    expect(daChen.runs[0]).toMatchObject({ mode: 'full', messages_count: 6 });
+    const divider = '\\--------------------------------/';
+    const [info, album, end, noPhoto] = rooms;
+    expect(info).toMatchObject({ p_request_key: 'scheduled:2026-08-31:c1:room:r1', p_attachment: null });
+    expect(info.p_body).toContain('PHÒNG r1');
+    expect(info.p_body).not.toContain(divider);
+    expect(album).toMatchObject({ p_request_key: 'scheduled:2026-08-31:c1:room:r1:album', p_body: '' });
+    expect(album.p_attachment).toHaveLength(2);
+    expect(album.p_attachment.every(a => a.bucket === 'zalo-media' && a.width === 640 && a.height === 480)).toBe(true);
+    expect(end).toMatchObject({ p_request_key: 'scheduled:2026-08-31:c1:room:r1:divider', p_attachment: null, p_body: divider });
+    expect(noPhoto.p_body).toContain('PHÒNG r2');
+    expect(noPhoto.p_body.endsWith('\nChờ cập nhật ảnh\n' + divider)).toBe(true);
+    expect(new Set(rooms.map(r => r.p_request_key)).size).toBe(8);
+    expect(rooms.map(r => (Date.parse(r.p_not_before) - THU_HAI_0830.getTime()) / 1000)).toEqual([0, 20, 40, 60, 180, 200, 220, 240]);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'full', messages_count: 8 });
     const first = rooms.filter(r => r.p_attachment).map(r => r.p_request_key);
     rpcCalls = []; phongGia[0].images.reverse();
+    duLieuAutomations[0].config.template.roomTemplate = '{khuyen_mai}\n{mo_ta}';
     await tickTuDongHoa();
+    expect(rpcCalls[0].args.p_body).toBe('Phòng r1');
     expect(rpcCalls.filter(c => c.args.p_attachment).map(c => c.args.p_request_key)).toEqual(first);
   });
   it('marks a partial run when an existing room photo fails, instead of sending a misleading text-only room', async () => {
@@ -344,7 +346,7 @@ describe('engine broadcast — xếp hàng', () => {
     await tickTuDongHoa();
     expect(rpcCalls).toHaveLength(2);
     expect(rpcCalls.every(c => c.args.p_request_key.endsWith(':room:r2'))).toBe(true);
-    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 2, detail: { partial: true, khong_xep_duoc: 4 } });
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 2, detail: { partial: true, khong_xep_duoc: 6 } });
   });
   it.each(['quota', 'window'])('does not start a photographed room that cannot fit wholly within the %s', async boundary => {
     vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
@@ -355,13 +357,13 @@ describe('engine broadcast — xếp hàng', () => {
     duLieuConversations = [conv('c1')];
     if (boundary === 'window') vi.setSystemTime(new Date('2026-08-31T13:00:50Z'));
     datCauHinh({ schedule: { time: boundary === 'window' ? '20:00' : '08:30', days: { mon: 'full' } }, template: { blocks: ['room_details'] } },
-      boundary === 'quota' ? { sentDate: '2026-08-31', sentToday: 119 } : {});
+      boundary === 'quota' ? { sentDate: '2026-08-31', sentToday: 118 } : {});
     await tickTuDongHoa();
     expect(rpcCalls).toHaveLength(0);
     expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 0 });
-    expect(daChen.runs[0].detail[boundary === 'quota' ? 'bo_qua_tran' : 'bo_qua_khung_gio']).toBe(2);
+    expect(daChen.runs[0].detail[boundary === 'quota' ? 'bo_qua_tran' : 'bo_qua_khung_gio']).toBe(3);
   });
-  it.each(['download', 'enqueue'])('does not claim complete room information after a later photo %s fails', async failure => {
+  it.each(['download', 'enqueue'])('does not close a room after a photo %s fails', async failure => {
     vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
     const bytes = Buffer.alloc(32); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
     bytes.writeUInt32BE(640,16); bytes.writeUInt32BE(480,20);
@@ -372,10 +374,11 @@ describe('engine broadcast — xếp hàng', () => {
     if (failure === 'enqueue') rpcFailureFor = args => args.p_attachment ? { message: 'unavailable' } : null;
     datCauHinh({ schedule: { time: '08:30', days: { mon: 'full' } }, template: { blocks: ['room_details'] } });
     await tickTuDongHoa();
-    expect(rpcCalls.some(c => c.args.p_request_key.endsWith(':room:r1'))).toBe(false);
+    expect(rpcCalls.some(c => c.args.p_request_key.endsWith(':room:r1'))).toBe(failure === 'enqueue');
+    expect(rpcCalls.some(c => c.args.p_request_key.endsWith(':room:r1:divider'))).toBe(false);
     expect(rpcCalls.at(-1).args.p_request_key).toBe('scheduled:2026-08-31:c1:room:r2');
     expect(daChen.runs[0]).toMatchObject({ mode: 'failed', detail: { partial: true,
-      khong_xep_duoc: 2, bo_qua_tran: 0 } });
+      khong_xep_duoc: failure === 'enqueue' ? 2 : 3, bo_qua_tran: 0 } });
   });
   it('shortens addresses before rendering the outgoing table without changing the room data', async () => {
     datCauHinh(); await tickTuDongHoa();
