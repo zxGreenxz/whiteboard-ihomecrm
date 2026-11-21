@@ -27305,6 +27305,7 @@ export type Database = {
         Returns: {
           amount: number
           approval_version: number
+          is_maker: boolean
           maker_name: string
           organization_id: string
           posting_version: number
