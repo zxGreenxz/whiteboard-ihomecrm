@@ -986,24 +986,6 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
-    },
-    "supabase/migrations/20261121004800_phan_loai_tam_ung_do_chu_lap.sql": {
-      "sha256": "a49c53d533f13540b30a62fd2dfa61e50e20b0552d65141b70dfb95d108f0ef0",
-      "missingObjects": [
-        "function:app_private.profit_advance_maker_kind_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Migration mới trong nhánh đang review. Catalog production chưa có hàm phân loại người lập phiếu ứng. Bài kiểm trên PostgreSQL cục bộ đã chạy migration hai lần và đối chiếu quyền theo tổ chức. Việc áp dụng trên production đi qua forward lane.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261121004800_phan_loai_tam_ung_do_chu_lap.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.profit_advance_maker_kind_v1(p_org uuid, p_self boolean)"
-        },
-        {
-          "duong_dan": "scripts/__tests__/shareholder-advance-maker.test.mjs",
-          "trich_doan": "assert.equal(await kind(other,true),'CUSTODIAN_ADVANCE');"
-        }
-      ]
     }
   }
 }

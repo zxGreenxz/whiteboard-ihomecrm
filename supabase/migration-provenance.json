@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-21T02:12:23.812Z",
+  "generatedAt": "2026-11-21T02:48:54.862Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 979,
-    "unknown": 82,
+    "ledger-applied": 981,
+    "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14656,10 +14656,9 @@
       "name": "phan_loai_tam_ung_do_chu_lap",
       "scheme": "timestamp14",
       "sha256": "a49c53d533f13540b30a62fd2dfa61e50e20b0552d65141b70dfb95d108f0ef0",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.profit_advance_maker_kind_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-21T02:45:20.700Z|bien-nhan-backup"
       ]
     },
     {
@@ -14679,10 +14678,9 @@
       "name": "duyet_phieu_co_dong_theo_vai_tro",
       "scheme": "timestamp14",
       "sha256": "0626769e9397d3149cf8d5f4967a39c5176e8231df1c1430cc79843e49299d81",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-21T02:47:35.261Z|bien-nhan-backup"
       ]
     },
     {

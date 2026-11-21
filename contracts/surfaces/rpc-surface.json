@@ -4215,7 +4215,7 @@
         {
           "schema": "public",
           "args": "",
-          "returns": "TABLE(request_id uuid, submission_no bigint, submitted_at timestamp with time zone, amount numeric, voucher_id uuid, voucher_code text, voucher_name text, voucher_type text, maker_name text, step_no integer, request_version bigint, organization_id uuid, approval_version bigint, posting_version bigint)",
+          "returns": "TABLE(request_id uuid, submission_no bigint, submitted_at timestamp with time zone, amount numeric, voucher_id uuid, voucher_code text, voucher_name text, voucher_type text, maker_name text, step_no integer, request_version bigint, organization_id uuid, approval_version bigint, posting_version bigint, is_maker boolean)",
           "volatility": "STABLE",
           "securityDefiner": true,
           "searchPath": "search_path=pg_catalog, public, app_private",
