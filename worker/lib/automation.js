@@ -160,10 +160,11 @@ async function luuSo(autoId, stats) {
  * Xếp hàng một lô tin cho toàn bộ người nhận.
  * @returns {Promise<{soTin:number, soNguoiNhan:number}>}
  */
-async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId, contentGuard, chiTietBiCat = false }) {
+async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId, contentGuard, chiTietBiCat = false, earliestStart = 0 }) {
   const gapNguoi = config.antiSpam.gapBetweenRecipientsSec;
   const gapTin = config.antiSpam.gapBetweenRoomMsgsSec;
-  const bayGio = Date.now();
+  const bayGio = Math.max(Date.now(), earliestStart);
+  let nextScheduledStart = earliestStart;
   let soTin = 0;
   let soNguoiNhan = 0;
   let soBoQuaKhungGio = 0;
@@ -193,6 +194,8 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
         return false;
       }
       if (await xepMotTin({ conv, khiNao, requestKey, oneshotId, contentGuard, ...content })) {
+        nextScheduledStart = Math.max(nextScheduledStart, khiNao.getTime() + gapTin * 1000,
+          convs.length > 1 ? bayGio + (i + 1) * gapNguoi * 1000 : 0);
         soTin++; daGuiChoNguoiNay = true;
         return true;
       }
@@ -246,7 +249,7 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
     }
     if (daGuiChoNguoiNay) soNguoiNhan++;
   }
-  return { soTin, soNguoiNhan, soBoQuaKhungGio, soKhongXepDuoc,
+  return { soTin, soNguoiNhan, soBoQuaKhungGio, soKhongXepDuoc, nextScheduledStart,
     soChuaXep: Math.max(0, duKien - soTin),
     soBoQuaTran: Math.max(0, duKien - soTin - soBoQuaKhungGio - soKhongXepDuoc) };
 }
@@ -322,9 +325,11 @@ async function xuLyMotCongTy(auto, now) {
     const qd = chonCheDo({ now, config, stats, rooms: phong.rooms });
     if (qd.mode === 'skipped' && !phong.rooms.length && phong.trangSale === 0) qd.reason = KHONG_CO_TRANG_SALE;
 
-    // Dù không gửi, vẫn ĐÓNG SỔ ngày hôm nay: nếu không, mỗi phút engine lại
-    // xét lại cùng một lượt và nhật ký ngập những dòng giống hệt nhau.
+    // Preserve the original primary slot's queue keys across a worker upgrade.
+    const runKey = luot.gioHen === config.schedule.time ? `scheduled:${t.ngay}` : `scheduled:${t.ngay}:${luot.gioHen}`;
+    if (luot.daXuLyGioChinh) stats.lastPrimaryDate = t.ngay;
     stats.lastScheduledDate = t.ngay;
+    stats.lastScheduledTime = luot.gioHen;
     stats.lastRunAt = now.toISOString();
 
     if (qd.mode === 'off' || qd.mode === 'skipped') {
@@ -334,7 +339,7 @@ async function xuLyMotCongTy(auto, now) {
       await ghiNhatKy({
         organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
         mode: qd.mode, reason: qd.reason,
-        detail: { so_phong: phong.rooms.length, che_do_cai: config.schedule.days[t.thu] },
+        detail: { gio_hen: luot.gioHen, so_phong: phong.rooms.length, che_do_cai: config.schedule.days[t.thu] },
       });
       return;
     }
@@ -343,7 +348,7 @@ async function xuLyMotCongTy(auto, now) {
       await luuSo(auto.id, stats);
       await ghiNhatKy({
         organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
-        mode: 'skipped', reason: khung.lyDo, detail: { che_do_dinh_gui: qd.mode },
+        mode: 'skipped', reason: khung.lyDo, detail: { gio_hen: luot.gioHen, che_do_dinh_gui: qd.mode },
       });
       return;
     }
@@ -353,13 +358,14 @@ async function xuLyMotCongTy(auto, now) {
         organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
         mode: 'skipped',
         reason: `Đã chạm trần ${config.antiSpam.dailyCap} tin tự động trong ngày.`,
+        detail: { gio_hen: luot.gioHen },
       });
       return;
     }
 
     const ketQua = await guiLo({
       convs, config, phong, accountId, orgId, now,
-      runKey: `scheduled:${t.ngay}`,
+      runKey, earliestStart: Number(stats.nextScheduledStart) || 0,
       day: qd.mode === 'full', tranConLai: conLai,
     });
 
@@ -370,7 +376,7 @@ async function xuLyMotCongTy(auto, now) {
         organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
         mode: 'failed', reason: 'Chưa xác nhận được tin nào được xếp hàng. Lượt chưa hoàn tất; sẽ xét lại trong khung giờ hợp lệ.',
         recipients_count: 0, messages_count: 0,
-        detail: { che_do_dinh_gui: qd.mode, retry_pending: true, partial: false,
+        detail: { gio_hen: luot.gioHen, che_do_dinh_gui: qd.mode, retry_pending: true, partial: false,
           khong_xep_duoc: ketQua.soKhongXepDuoc, bo_qua_khung_gio: ketQua.soBoQuaKhungGio },
       });
       return;
@@ -381,6 +387,7 @@ async function xuLyMotCongTy(auto, now) {
     stats.pendingSince = null;
     if (qd.mode === 'full') stats.lastFullAt = now.toISOString();
     congSoTin(stats, t.ngay, ketQua.soTin);
+    stats.nextScheduledStart = ketQua.nextScheduledStart;
     await luuSo(auto.id, stats);
 
     await ghiNhatKy({
@@ -391,6 +398,7 @@ async function xuLyMotCongTy(auto, now) {
         : `Đã xếp hàng ${ketQua.soTin} tin. ${qd.reason}`,
       recipients_count: ketQua.soNguoiNhan, messages_count: ketQua.soTin,
       detail: {
+        gio_hen: luot.gioHen,
         so_phong: phong.rooms.length,
         phong_moi: qd.phongMoi.length,
         co_anh_bang: !!ketQua.anhBang,
@@ -470,7 +478,7 @@ function congSoTin(stats, ngay, them) {
  * @param {boolean} p.chiChiTiet lượt bổ sung: chỉ gửi chi tiết phòng mới
  * @param {string}  [p.oneshotId] lượt gửi MỘT LẦN: xếp qua cổng SQL của lượt đó
  */
-export async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey, oneshotId }) {
+export async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey, oneshotId, earliestStart }) {
   const khoiCai = config.template.blocks;
   const khoi = chiChiTiet
     ? khoiCai.filter((k) => k === 'room_details')
@@ -512,7 +520,7 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
   }
 
   const ketQua = await xepLo({
-    convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId,
+    convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId, earliestStart,
     chiTietBiCat: khoi.includes('room_details') && tinPhong.length < phong.rooms.length,
     contentGuard: saleContentGuard(phong, config.template),
   });

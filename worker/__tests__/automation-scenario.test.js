@@ -60,6 +60,37 @@ describe('vanTayDanhSach', () => {
 });
 
 describe('toiLuotTheoLich', () => {
+  it('can send an extra slot between the old run and the edited primary', () => {
+    const config = cfg({ schedule: { time: '09:10', extraTimes: ['08:30', '12:30'] } });
+    const stats = { lastScheduledDate: '2026-08-31', lastRunAt: '2026-08-31T01:00:02Z' };
+    const at = (time, ledger) => toiLuotTheoLich({ now: vaoLuc('2026-08-31T' + time), config, stats: ledger });
+    expect(at('08:30', stats)).toMatchObject({ gioHen: '08:30', daXuLyGioChinh: true });
+    const updated = { ...stats, lastScheduledTime: '08:30', lastPrimaryDate: '2026-08-31' };
+    expect(at('09:10', updated).chay).toBe(false);
+    expect(at('12:30', updated).gioHen).toBe('12:30');
+  });
+
+  it('does not replay a consumed legacy primary slot after its time was edited', () => {
+    const stats = { lastScheduledDate: '2026-08-31', lastRunAt: '2026-08-31T01:00:02Z' };
+    for (const extraTimes of [[], ['12:30']]) {
+      const config = cfg({ schedule: { time: '09:10', extraTimes } });
+      expect(toiLuotTheoLich({ now: vaoLuc('2026-08-31T09:42'), config, stats }).chay).toBe(false);
+      if (extraTimes.length) {
+        expect(toiLuotTheoLich({ now: vaoLuc('2026-08-31T12:30'), config, stats }).gioHen).toBe('12:30');
+      }
+    }
+  });
+
+  it('handles legacy receipts, a restart after missed slots, and a new Vietnamese day', () => {
+    const config = cfg({ schedule: { time: '08:30', extraTimes: ['00:00', '09:00', '09:10'] } });
+    const stats = { lastScheduledDate: '2026-08-31', lastRunAt: '2026-08-31T01:32:00Z' };
+    const at = (time, ledger = stats) => toiLuotTheoLich({ now: vaoLuc(time), config, stats: ledger });
+    expect(at('2026-08-31T08:45').chay).toBe(false);
+    expect(at('2026-08-31T09:10')).toMatchObject({ chay: true, gioHen: '09:10' });
+    expect(at('2026-08-31T09:11', { ...stats, lastScheduledTime: '09:10' }).chay).toBe(false);
+    expect(at('2026-09-01T00:00')).toMatchObject({ chay: true, gioHen: '00:00' });
+  });
+
   it('chưa tới giờ thì chưa chạy', () => {
     const r = toiLuotTheoLich({ now: vaoLuc('2026-08-31T07:00'), config: cfg(), stats: {} });
     expect(r.chay).toBe(false);
@@ -85,7 +116,7 @@ describe('toiLuotTheoLich', () => {
     const phut = String(tre % 60).padStart(2, '0');
     const r = toiLuotTheoLich({ now: vaoLuc(`2026-08-31T${gio}:${phut}`), config: cfg(), stats: {} });
     expect(r.chay).toBe(false);
-    expect(r.lyDo).toContain('bỏ lượt hôm nay');
+    expect(r.lyDo).toContain('bỏ lượt này');
   });
 });
 

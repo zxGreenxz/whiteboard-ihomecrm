@@ -36,7 +36,7 @@ export function gioVietNam(now) {
     timeZone: 'Asia/Ho_Chi_Minh',
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', weekday: 'short',
-    hour12: false,
+    hourCycle: 'h23',
   });
   const p = Object.fromEntries(f.formatToParts(now).map((x) => [x.type, x.value]));
   const gio = `${p.hour}:${p.minute}`;
@@ -81,26 +81,39 @@ export function vanTayDanhSach(rooms) {
 
 /**
  * Đã tới lượt gửi theo lịch chưa?
- * @returns {{ chay: boolean, lyDo: string }}
+ * @returns {{ chay: boolean, lyDo: string, gioHen?: string, daXuLyGioChinh?: boolean }}
  */
 export function toiLuotTheoLich({ now, config, stats }) {
   const t = gioVietNam(now);
   const s = stats || {};
-  const moc = phutTrongNgay(config.schedule.time);
-
-  if (s.lastScheduledDate === t.ngay) {
-    return { chay: false, lyDo: `Hôm nay (${t.ngay}) đã chạy lượt theo lịch rồi.` };
+  const { time, extraTimes = [] } = config.schedule;
+  const cungNgay = s.lastScheduledDate === t.ngay;
+  const soCu = cungNgay && !s.lastScheduledTime;
+  const daXuLyGioChinh = s.lastPrimaryDate === t.ngay || soCu;
+  const cacGio = (daXuLyGioChinh ? [...extraTimes] : [time, ...extraTimes]).sort();
+  if (!cacGio.length) return { chay: false, lyDo: 'Hôm nay đã chạy lượt chính.' };
+  // Khi worker bật lại, chỉ xét giờ hẹn gần nhất để tránh dồn các lượt đã lỡ.
+  const gioHen = cacGio.filter(gio => gio <= t.gio).at(-1);
+  if (!gioHen) {
+    return { chay: false, lyDo: `Chưa tới giờ gửi (${cacGio[0]}), hiện ${t.gio}.` };
   }
-  if (t.phut < moc) {
-    return { chay: false, lyDo: `Chưa tới giờ gửi (${config.schedule.time}), hiện ${t.gio}.` };
+  if (cungNgay) {
+    // Sổ cũ chỉ ghi ngày và thời điểm chạy thực tế.
+    let mocCu = s.lastScheduledTime;
+    if (!mocCu) {
+      const lanCuoi = new Date(s.lastRunAt);
+      const tCu = Number.isFinite(lanCuoi.getTime()) ? gioVietNam(lanCuoi) : null;
+      mocCu = tCu?.ngay === t.ngay ? tCu.gio : time;
+    }
+    if (gioHen <= mocCu) return { chay: false, lyDo: `Hôm nay đã chạy tới lượt ${mocCu}.` };
   }
-  if (t.phut - moc > TRE_TOI_DA_PHUT) {
+  if (t.phut - phutTrongNgay(gioHen) > TRE_TOI_DA_PHUT) {
     return {
       chay: false,
-      lyDo: `Đã quá ${TRE_TOI_DA_PHUT} phút so với giờ hẹn ${config.schedule.time} (hiện ${t.gio}) — bỏ lượt hôm nay thay vì gửi muộn.`,
+      lyDo: `Đã quá ${TRE_TOI_DA_PHUT} phút so với giờ hẹn ${gioHen} (hiện ${t.gio}) — bỏ lượt này.`,
     };
   }
-  return { chay: true, lyDo: `Tới giờ gửi ${config.schedule.time}.` };
+  return { chay: true, gioHen, daXuLyGioChinh: daXuLyGioChinh || gioHen === time, lyDo: `Tới giờ gửi ${gioHen}.` };
 }
 
 /**

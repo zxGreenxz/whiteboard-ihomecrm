@@ -23,6 +23,24 @@ const conversations = ['a-1', 'a-2', 'b-1'].map(id => ({
   id, name: id, accountId: id.split('-')[0], isGroup: true, initials: 'N', tone: 'emerald', profile: {},
 })) as ZaloConversation[];
 
+it('adds and removes daily slots without changing the selected groups or pacing', () => {
+  render(<AutomationSettingsDialog account={accounts[0]} open onOpenChange={() => {}} conversations={conversations} />);
+  const add = (value: string) => {
+    fireEvent.change(screen.getByLabelText('Giờ gửi mới'), { target: { value } });
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm giờ gửi' }));
+  };
+  add('12:30');
+  add('17:00');
+  add('12:30');
+  expect(screen.getByRole('alert').textContent).toContain('đã có');
+  fireEvent.click(screen.getByRole('button', { name: 'Xóa giờ 08:48' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu lịch gửi' }));
+  const payload = mutate.mock.calls[0][0];
+  expect(Object.keys(payload.changes)).toEqual(['schedule']);
+  expect(payload).toMatchObject({ add: [], remove: [], expected: { schedule: { time: '08:48' } },
+    changes: { schedule: { time: '12:30', extraTimes: ['17:00'] } } });
+});
+
 it('shows this account’s groups and contributes only its changed recipient IDs to the company schedule', () => {
   const view = (account: ZaloAccount) => <AutomationSettingsDialog key={account.id} account={account} open
     onOpenChange={() => {}} conversations={conversations} />;
