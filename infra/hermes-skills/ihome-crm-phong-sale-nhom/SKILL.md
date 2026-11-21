@@ -1,7 +1,7 @@
 ---
 name: ihome-crm-phong-sale-nhom
 description: "Đăng sắp trống: báo trả hợp đồng. Trang Sale, pass, nhóm."
-version: 1.0.2
+version: 1.0.3
 author: iHome CRM
 metadata:
   hermes:
@@ -34,10 +34,24 @@ Khi khách đang thuê báo sẽ trả, câu “đưa / tạo phòng sắp trố
 phòng hiện có. Tra `crm_action_list` với `page: contract` để kiểm tra `contract.notice_set` của người đang nhắn riêng.
 Nếu người dùng chỉ hỏi phòng nào sắp trống thì đọc danh sách.
 
-- Giữ đúng tên tòa và từng mã phòng người dùng nêu. “Đầu tháng 12” là khoảng thời gian. Hỏi một câu cho tất cả căn còn thiếu
-  ngày, chẳng hạn “Hai căn dự kiến trả ngày nào trong tháng 12? Nếu khác ngày, anh cho em ngày của từng căn nhé.”
-- Khi đã rõ ý báo trả và ngày của từng căn, làm theo `ihome-crm-hop-dong`. Gọi `crm_action_run` với `contract.notice_set`
-  lần lượt cho từng căn. Dùng đúng ngày cho căn tương ứng. Nếu kết quả một lần ghi chưa rõ, tra `crm_action_status` với
+- Ở lượt đầu chỉ đọc. Dùng `crm_sale_action` operation=room_options (action=rooms.edit hoặc sale_phong.edit đang được cấp,
+  query=mã phòng). Đối chiếu label và buildingLabel, đọc tiếp nextCursor nếu cần; trùng căn thì hỏi lại.
+  Gọi operation=room_observe với roomId đã khớp. Không cần thông tin người thuê.
+  Đọc giá niêm yết `room.fields.rent_price` và nội thất `room.fields.amenities`. Trình từng căn với tòa, mã phòng, ngày dự kiến,
+  giá/tháng và nội thất thực tế. Trường trống thì ghi “chưa cập nhật”; thiếu quyền đọc thì nói rõ. Không bắt nhập lại dữ liệu đã lưu.
+  “Đầu tháng 12” là khoảng thời gian: hỏi một câu cho các căn thiếu ngày, cho phép mỗi căn khác ngày.
+- Khi đủ ngày và người dùng muốn thực hiện, tạo bản xem trước bằng crm_action_run contract.notice_set cho từng căn,
+  truyền saleRevision = room.revision vừa đọc cùng buildingName, roomName, date. Lượt này chỉ xem trước; nếu danh mục
+  crm_action_list chưa có saleRevision thì dừng ở bản nháp. Tuyệt đối không bỏ saleRevision để ghi theo luồng hợp đồng.
+  Nếu người dùng chỉ hỏi hoặc dặn chưa ghi thì chỉ dùng công cụ đọc.
+  Gửi bản tóm tắt đầy đủ và chờ người dùng xác nhận rõ ở tin sau, kể cả khi tin đầu đã nêu đủ ngày.
+  “Chưa ghi”, câu hỏi, bổ sung ngày và yêu cầu đổi giá hoặc nội thất đều chưa phải đồng ý. Ghép sửa đổi đúng căn vào bản mới
+  rồi chờ xác nhận lại. Trước khi ghi đọc lại room_observe; nếu giá hoặc nội thất đã đổi thì trình lại dữ liệu mới để duyệt.
+- Sau xác nhận, chỉ ghi các căn đã duyệt. Nếu có chỉnh giá hoặc nội thất thì dùng room_patch đúng trường người dùng đổi với
+  expectedRevision vừa đối chiếu; hoàn tất xác nhận công cụ nếu được yêu cầu. Nếu đổi chưa thành công, dừng báo trả của căn đó.
+  Giữ nguyên dữ liệu đã duyệt thì bỏ qua room_patch. Gọi `crm_action_run` với `contract.notice_set`
+  lần lượt cho từng căn, y nguyên params có saleRevision, confirmToken của căn đó và consentText nguyên văn tin đồng ý.
+  Nếu token hết hạn hoặc giá, nội thất hay ngày thay đổi, trình bản mới và chờ đồng ý lại. Nếu kết quả một lần ghi chưa rõ, tra `crm_action_status` với
   chính requestId của lần đó trước khi thử lại.
 - Báo kết quả riêng cho từng căn. Sau khi CRM ghi nhận, đọc `crm_available_rooms` và đối chiếu đúng roomId, trạng thái và ngày
   trên danh sách Sale. Chỉ báo “đã lên danh sách” khi tìm thấy căn ở trạng thái sắp trống đúng ngày. Nếu chưa thấy, báo ngày đã
