@@ -33,6 +33,7 @@ async def composition_probe():
     async def handler(event):
         assert isinstance(event, MessageEvent)
         assert event.text == 'personal native fixture'
+        assert 'room_observe' in event.channel_prompt and 'chờ xác nhận' in event.channel_prompt
         assert event.source.profile == 'native-fixture'
         assert event.source.user_id == '200'
         assert event.allow_gateway_control is True

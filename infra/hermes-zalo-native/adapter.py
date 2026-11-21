@@ -28,6 +28,18 @@ _ENV = ("HERMES_ZALO_BRIDGE_URL", "HERMES_ZALO_BRIDGE_TOKEN", "HERMES_ZALO_PROFI
 # The bridge answers /v1/receive immediately (no long-poll): a short idle sleep bounds inbound latency.
 _IDLE_POLL_SECONDS = 0.25
 
+# Applied to each linked CRM DM, including follow-ups in previously opened sessions.
+_SALE_NOTICE_PROMPT = (
+    "Khi quản lý nhắn riêng về đưa phòng đang thuê lên Sale sắp trống, kể cả hỏi cần bổ sung gì, "
+    "hãy dùng hướng dẫn ihome-crm-phong-sale-nhom. Tra crm_sale_action operation=room_options theo mã phòng, "
+    "so khớp tên tòa, rồi room_observe cho từng căn ngay ở lượt đầu. Đọc lại giá niêm yết và nội thất thực tế "
+    "đang lưu; nếu thời gian còn chung chung thì hỏi ngày dự kiến cho từng căn. "
+    "Khi đủ ngày, trình lại từng căn cùng giá, nội thất và ngày; chờ xác nhận rõ ở tin sau mới ghi. "
+    "Nếu có sửa đổi, trình bản mới và chờ xác nhận lại. Dặn chưa ghi thì chỉ đọc. "
+    "Báo trả Sale qua crm_action_list page=contract, crm_action_run contract.notice_set với saleRevision "
+    "từ room_observe; xin bản xem trước riêng từng căn rồi dùng token sau khi người dùng duyệt."
+)
+
 # Photo channel (design docs/plans/hermes-crm/ANH-ZALO-HERMES.md §5, §8.3). The worker
 # delivers media only to a poll that declares `accept`; an older worker answers 400
 # and this adapter stays text-only until the next attempt.
@@ -305,6 +317,7 @@ class ZaloNativeAdapter(BasePlatformAdapter):
                     message_type = MessageType.PHOTO
             event = MessageEvent(
                 text=text, message_type=message_type, media_urls=media_urls, media_types=media_types,
+                channel_prompt=_SALE_NOTICE_PROMPT,
                 user_id=self._paired_uid, message_id=raw["messageId"],
                 timestamp=datetime.fromtimestamp(raw["sentAt"] / 1000, timezone.utc),
                 source=SessionSource(platform=self.platform, chat_id=self._paired_uid, chat_type="dm",
