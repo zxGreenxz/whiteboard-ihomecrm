@@ -7,7 +7,11 @@ const migration = readFileSync(
   new URL('../../supabase/migrations/20261120155631_hermes_sale_advice.sql', import.meta.url),
   'utf8',
 );
-it('xếp tin theo phiên bot, nhóm môi giới, trang Sale và người vừa hỏi', async () => {
+const unlinkedDmMigration = readFileSync(
+  new URL('../../supabase/migrations/20261121010106_hermes_sale_dm_unlinked_v1.sql', import.meta.url),
+  'utf8',
+);
+it('xếp tin theo phiên bot, liên kết CRM, nhóm môi giới, trang Sale và người vừa hỏi', async () => {
   const db = new PGlite();
   const [org, other, account, owner, instance, generation] = Array.from({ length: 6 }, () => randomUUID());
   const [b1, b2, room1, room2, hidden] = Array.from({ length: 5 }, () => randomUUID());
@@ -19,6 +23,7 @@ it('xếp tin theo phiên bot, nhóm môi giới, trang Sale và người vừa 
       CREATE TABLE zalo_accounts(id uuid PRIMARY KEY, organization_id uuid, user_id uuid, kind text, status text, zalo_uid text,login_requested_at timestamptz);
       CREATE TABLE app_private.hermes_zalo_bots(account_id uuid, organization_id uuid,enabled boolean);
       CREATE TABLE app_private.hermes_zalo_ingress_sessions(account_id uuid,organization_id uuid, account_owner_id uuid,instance_id uuid,generation uuid,own_uid text,login_requested_at timestamptz);
+      CREATE TABLE app_private.hermes_zalo_bindings(organization_id uuid, account_id uuid, sender_uid text, state text, revoked_at timestamptz);
       CREATE TABLE zalo_worker_lease(id text,instance_id uuid,heartbeat_at timestamptz);
       CREATE TABLE zalo_conversations(organization_id uuid,account_id uuid,thread_type text,thread_id text,is_sale_partner boolean);
       CREATE TABLE zalo_automations(organization_id uuid,kind text,enabled boolean,config jsonb);
@@ -35,6 +40,8 @@ it('xếp tin theo phiên bot, nhóm môi giới, trang Sale và người vừa 
     `);
     await db.exec(migration);
     await db.exec(migration);
+    await db.exec(unlinkedDmMigration);
+    await db.exec(unlinkedDmMigration);
     expect(
       await one(
         "select has_function_privilege('authenticated','public.zalo_sale_advice_intake_v1(jsonb)','EXECUTE')",
@@ -106,6 +113,25 @@ it('xếp tin theo phiên bot, nhóm môi giới, trang Sale và người vừa 
     expect(await intake({ threadType: 'group', threadId: '400' })).toBe('inactive');
     expect(await intake()).toBe('queued');
     expect(await intake()).toBe('duplicate');
+    const dmJob = await one("select job_id from app_private.hermes_sale_questions where provider_id='dm'");
+    await db.query("UPDATE zalo_send_queue SET status='processing',processing_instance_id=$2 WHERE id=$1", [
+      dmJob,
+      instance,
+    ]);
+    const readDm = (signature = null) =>
+      one('select public.zalo_sale_advice_delivery_v1($1,$2,$3,$4)', [dmJob, instance, generation, signature]);
+    const beforeLink = await readDm();
+    await db.query("INSERT INTO app_private.hermes_zalo_bindings VALUES($1,$2,'200','ACTIVE',null)", [
+      org,
+      account,
+    ]);
+    expect(await intake({ messageId: 'linked' })).toBe('inactive');
+    await expect(readDm(beforeLink.signature)).rejects.toThrow('sale_advice_inactive');
+    expect(await one("select count(*)::int from app_private.hermes_sale_questions where provider_id='linked'")).toBe(0);
+    await db.query(`INSERT INTO app_private.hermes_zalo_bindings VALUES
+      ($1,$2,'201','REVOKED',now()),($3,$2,'201','ACTIVE',null),($1,$4,'201','ACTIVE',null)`,
+      [org, account, other, randomUUID()]);
+    expect(await intake({ messageId: 'unlinked', threadId: '201', senderUid: '201' })).toBe('queued');
     const group = { threadType: 'group', threadId: '300', messageId: 'g1' };
     expect(await intake(group)).toBe('queued');
     expect(await intake({ ...group, messageId: 'g2', senderUid: '201', followUp: true })).toBe('unrelated');

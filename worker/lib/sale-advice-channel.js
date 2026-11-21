@@ -9,7 +9,7 @@ import { buildRoomListTable } from './room-list-table.js';
 
 const uid = (value) => typeof value === 'string' && /^[1-9]\d{0,39}$/.test(value);
 
-// Called exclusively from the live message listener, before native DM capture.
+// Only live events outside the paired native DM reach Sale intake.
 // Never pass attachments, quote text, link handshakes or self echoes as questions.
 export async function captureSaleQuestion(event, source, db = sb) {
   const d = event?.data;
