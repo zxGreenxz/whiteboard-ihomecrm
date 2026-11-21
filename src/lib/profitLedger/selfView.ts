@@ -29,7 +29,10 @@ export function ledgerYears(ledger: MyProfitLedger, currentYear: number): number
   const years = new Set<number>([currentYear]);
   for (const m of ledger.months) years.add(periodYear(m.period_month));
   for (const s of ledger.salary) years.add(periodYear(s.period_month));
-  for (const p of ledger.payouts) if (p.voucher_date) years.add(periodYear(p.voucher_date));
+  for (const p of ledger.payouts) if (p.voucher_date) {
+    years.add(periodYear(p.voucher_date));
+    if (periodMonthNumber(p.voucher_date) === 1) years.add(periodYear(p.voucher_date) - 1);
+  }
   for (const t of ledger.building_totals ?? []) years.add(periodYear(t.period_month));
   return [...years].filter(Number.isFinite).sort((a, b) => b - a);
 }

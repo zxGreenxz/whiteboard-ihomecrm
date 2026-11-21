@@ -3,8 +3,8 @@
 //
 // SỐ CỦA CỔ ĐÔNG chỉ hiện khi máy chủ gửi `position` (chính người nhận đang có quyền tạm ứng, hoặc người có
 // quyền chi lợi nhuận). Người giữ sổ lập HỘ nhận `position = null`: khối này KHÔNG hiện con số nào của cổ
-// đông, chỉ nói phiếu chờ chủ duyệt và lý do chưa lập được (nếu có).
-// Ứng vượt lợi nhuận chưa chi chỉ CẢNH BÁO — không chặn (mọi phiếu chờ chủ duyệt). Một câu duy nhất: cảnh báo
+// đông, chỉ nói phiếu chờ người có quyền duyệt và lý do chưa lập được (nếu có).
+// Ứng vượt lợi nhuận chưa chi chỉ CẢNH BÁO — không chặn (mọi phiếu chờ người có quyền duyệt). Một câu duy nhất: cảnh báo
 // "vượt ước tính các tháng chưa chốt" (ADVANCE_EXCEEDS_ESTIMATE) của máy chủ chỉ có khi đã vượt lợi nhuận chưa chi,
 // nên gộp vào câu đó (bỏ con số "ước tính" khó hiểu); máy chủ có báo mà số tính ở đây ra 0 thì lấy số của máy chủ.
 
@@ -59,23 +59,23 @@ export function ShareholderAdvancePreviewBox({ loading, refreshing, error, onRet
           {isUnpaidNegative(position) && <p className="text-muted-foreground">{UNPAID_NEGATIVE_NOTE}</p>}
           {after && (
             <p data-testid="profit-advance-after">
-              Sau phiếu này: tạm ứng chờ duyệt <strong>{formatVND(after.advance_pending)}</strong>
+              {preview.maker_kind === 'OWNER' ? 'Khi lập phiếu, trước bước duyệt:' : 'Sau phiếu này:'} tạm ứng chờ duyệt <strong>{formatVND(after.advance_pending)}</strong>
               {' · '}tổng tạm ứng <strong>{formatVND(position.advance_outstanding + after.advance_pending)}</strong>
             </p>
           )}
           {over > 0 && (
             <p className="flex gap-1.5 text-amber-700 dark:text-amber-400" data-testid="profit-advance-over">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>Ứng vượt lợi nhuận chưa chi {formatVND(over)} — vẫn lập được, phiếu chờ chủ duyệt.</span>
+              <span>Ứng vượt lợi nhuận chưa chi {formatVND(over)} — vẫn lập được{preview.maker_kind === 'OWNER' ? '.' : ', phiếu chờ người có quyền duyệt.'}</span>
             </p>
           )}
         </>
       )}
       {blocked && <p role="alert" className="text-destructive" data-testid="profit-advance-blocked">{blocked}</p>}
       <p className="text-muted-foreground">
-        {preview.payee_is_maker
-          ? 'Phiếu chờ chủ duyệt; tiền chưa ra khỏi sổ. Tạm ứng đã duyệt được khấu trừ khi chủ chốt chi lợi nhuận.'
-          : 'Bạn lập hộ: phiếu chờ chủ duyệt (người duyệt khác người lập và người nhận); tiền chưa ra khỏi sổ.'}
+        {preview.maker_kind === 'OWNER' ? 'Superadmin hoặc chủ công ty có quyền duyệt. Người giữ sổ đã chọn mới được ghi chi.' : preview.payee_is_maker
+          ? 'Phiếu chờ người có quyền duyệt; tiền chưa ra khỏi sổ. Tạm ứng đã duyệt được khấu trừ khi chủ chốt chi lợi nhuận.'
+          : 'Bạn lập hộ: phiếu chờ người có quyền duyệt (người duyệt khác người lập và người nhận); tiền chưa ra khỏi sổ.'}
       </p>
     </div>
   );

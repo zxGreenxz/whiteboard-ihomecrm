@@ -112,7 +112,7 @@ interface ApprovalActionsProps {
  * nhận đã xoá, lương điều hành vượt) ⇒ khoá Duyệt; "Duyệt và Chi…" chỉ khi người duyệt giữ ĐÚNG sổ lúc lập.
  * Dòng chưa rõ loại: đang đọc ⇒ khoá Duyệt; đọc không được ⇒ duyệt như phiếu thường, nêu rõ máy chủ sẽ
  * chặn phiếu chi lợi nhuận. "Duyệt và Thu/Chi…" giữ như trước (openPosting đọc lại phiếu và tự chặn phiếu
- * sổ tổng không đi qua đường khoá sổ). Từ chối luôn được (chốt F5 cho qua, số dư hồi).
+ * sổ tổng không đi qua đường khoá sổ). Người duyệt độc lập có thể từ chối dù E7 lỗi.
  */
 function ApprovalActions({
   row, sourceState, postOption, custodianBookIds, approveBusy, postBusy, rejectBusy, mobile, onApprove, onPost, onReject,
@@ -150,16 +150,18 @@ function ApprovalActions({
           {row.voucher_type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
         </Button>
       )}
-      <Button
-        size="sm"
-        variant="destructive"
-        className={mobile ? "flex-1" : undefined}
-        disabled={rejectBusy}
-        onClick={onReject}
-      >
-        <X className="h-4 w-4 mr-1" />
-        Từ chối
-      </Button>
+      {!row.is_maker && (
+        <Button
+          size="sm"
+          variant="destructive"
+          className={mobile ? "flex-1" : undefined}
+          disabled={rejectBusy}
+          onClick={onReject}
+        >
+          <X className="h-4 w-4 mr-1" />
+          Từ chối
+        </Button>
+      )}
     </>
   );
 }

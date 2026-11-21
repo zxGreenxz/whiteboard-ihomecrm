@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-21T01:06:07.937Z",
+  "generatedAt": "2026-11-21T02:12:23.812Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 979,
-    "unknown": 80,
+    "unknown": 82,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14651,6 +14651,18 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261121004800_phan_loai_tam_ung_do_chu_lap.sql",
+      "version": "20261121004800",
+      "name": "phan_loai_tam_ung_do_chu_lap",
+      "scheme": "timestamp14",
+      "sha256": "a49c53d533f13540b30a62fd2dfa61e50e20b0552d65141b70dfb95d108f0ef0",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.profit_advance_maker_kind_v1"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261121010106_hermes_sale_dm_unlinked_v1.sql",
       "version": "20261121010106",
       "name": "hermes_sale_dm_unlinked_v1",
@@ -14659,6 +14671,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-21T01:05:35.399Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261121014008_duyet_phieu_co_dong_theo_vai_tro.sql",
+      "version": "20261121014008",
+      "name": "duyet_phieu_co_dong_theo_vai_tro",
+      "scheme": "timestamp14",
+      "sha256": "0626769e9397d3149cf8d5f4967a39c5176e8231df1c1430cc79843e49299d81",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
       ]
     },
     {

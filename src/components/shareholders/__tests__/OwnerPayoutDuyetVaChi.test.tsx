@@ -247,7 +247,7 @@ describe('hộp chốt chi lợi nhuận: một nút lập phiếu rồi Duyệt
     await addImage();
     fireEvent.click(button('Duyệt và Chi'));
     const failure = await screen.findByTestId('owner-payout-step-failure');
-    expect(failure.textContent).toMatch(/Người lập phiếu không tự duyệt được/);
+    expect(failure.textContent).toMatch(/người được chỉ định khác người lập/);
     expect(failure.textContent).toMatch(/vẫn sẽ bị từ chối.*Phiếu vẫn nằm ở Chờ duyệt.*Chờ duyệt \/ Thu chi/);
     expect(button('Làm tiếp').disabled).toBe(true);
     fireEvent.click(button('Làm tiếp'));

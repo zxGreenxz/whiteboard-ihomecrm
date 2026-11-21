@@ -357,7 +357,7 @@ export function readAdvancePreview(value: unknown, request: AdvancePreviewReques
   return {
     route: readProfitLedgerRoute(str(root.route, 'R4.route')),
     shareholder_id: request.shareholderId,
-    maker_kind: makerKind,
+    maker_kind: root.owner_workflow === true ? 'OWNER' : makerKind,
     payee_is_maker: payeeIsMaker,
     // Không tin can_submit khi còn lý do khoá, hoặc khi chưa đủ số tiền + sổ quỹ.
     can_submit: bool(root.can_submit, 'R4.can_submit') && blocked === null && request.amount !== null && request.accountId !== null,
@@ -404,7 +404,7 @@ export function readAdvanceResult(value: unknown, request: { shareholderId: stri
     advance_amount: advance,
     balance_before: optMoney(root.balance_before, 'W1.balance_before'),
     warnings: readWarnings(root.warnings, 'W1.warnings'),
-    maker_kind: makerKind,
+    maker_kind: root.owner_workflow === true ? 'OWNER' : makerKind,
     payout_kind: oneOf(root.payout_kind, ['ADVANCE'] as const, 'W1.payout_kind'),
     state: oneOf(root.state, ['PENDING_APPROVAL'] as const, 'W1.state'),
   };

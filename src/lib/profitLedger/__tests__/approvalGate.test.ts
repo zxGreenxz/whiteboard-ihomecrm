@@ -58,7 +58,7 @@ describe('ledgerApprovalNoteView / ledgerBalanceText', () => {
     expect(view.notes).toEqual(['Chỉ chi được từ sổ đã chọn lúc lập: Quỹ A.']);
     expect(ledgerApprovalNoteView(e7({ at_create: null })).atCreate).toBeNull();
   });
-  it('phiếu TẠM ỨNG tự lập: nói "tạm ứng X", vượt lợi nhuận chưa chi bao nhiêu thì nói rõ; người duyệt phải là chủ khác', () => {
+  it('phiếu TẠM ỨNG tự lập: nói "tạm ứng X", vượt lợi nhuận chưa chi bao nhiêu thì nói rõ; người duyệt được chỉ định phải khác người lập', () => {
     const self = ledgerApprovalNoteView(e7({
       at_create: { balance_before: 100, within: 0, advance: 300, warnings: [], maker_kind: 'CUSTODIAN_ADVANCE', payee_is_maker: true },
       now: { balance_excluding_this: 250, within: 250, advance: 50 },
@@ -73,7 +73,7 @@ describe('ledgerApprovalNoteView / ledgerBalanceText', () => {
     const deep = ledgerApprovalNoteView(e7({ at_create: { balance_before: -40, within: 0, advance: 300, warnings: [], maker_kind: 'CUSTODIAN_ADVANCE', payee_is_maker: true } }));
     expect(deep.atCreate).toMatch(/tạm ứng đang vượt lợi nhuận chưa chi 40.* · tạm ứng 300.* · vượt lợi nhuận chưa chi 300/);
   });
-  it('phiếu Tạm Ứng người giữ sổ lập HỘ: lưu ý người duyệt là chủ, khác người lập và người nhận; không vượt thì nói không vượt', () => {
+  it('phiếu Tạm Ứng người giữ sổ lập HỘ: lưu ý người duyệt được chỉ định phải khác người lập và người nhận; không vượt thì nói không vượt', () => {
     const forPayee = ledgerApprovalNoteView(e7({
       at_create: { balance_before: 900, within: 0, advance: 300, warnings: [], maker_kind: 'CUSTODIAN_FOR_PAYEE', payee_is_maker: false },
       now: { balance_excluding_this: 900, within: 300, advance: 0 },
@@ -81,7 +81,7 @@ describe('ledgerApprovalNoteView / ledgerBalanceText', () => {
     expect(forPayee.title).toBe('Tạm ứng lợi nhuận · Cổ đông 1');
     expect(forPayee.atCreate).toMatch(/ · tạm ứng 300[^·]*$/);
     expect(forPayee.now).toMatch(/ · duyệt thì tạm ứng 300.* · không vượt lợi nhuận chưa chi$/);
-    expect(forPayee.notes[0]).toBe('Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt là chủ, khác người lập và người nhận.');
+    expect(forPayee.notes[0]).toBe('Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt được chỉ định phải khác người lập và người nhận.');
     expect(forPayee.notes.some((note) => /tự lập phiếu tạm ứng cho chính mình/.test(note))).toBe(false);
   });
   it('phiếu chi lợi nhuận của chủ (phiếu tiền của lần chốt): nói rõ đã khấu trừ tạm ứng, không còn chữ "tạm ứng 0"', () => {
@@ -93,6 +93,11 @@ describe('ledgerApprovalNoteView / ledgerBalanceText', () => {
     expect(settle.atCreate).toMatch(/ · chi lợi nhuận 300/);
     expect(settle.notes[0]).toMatch(/đã khấu trừ tạm ứng đã duyệt/);
     expect(`${settle.atCreate} ${settle.now}`).not.toMatch(/tạm ứng 0|trong số dư/);
+  });
+  it('tạm ứng do chủ lập giữ đúng loại nghiệp vụ khi vào Chờ duyệt', () => {
+    const owner = { within: 0, advance: 300, balance_before: 0, warnings: [], maker_kind: 'OWNER' as const, payee_is_maker: false };
+    expect(ledgerApprovalNoteView(e7({ at_create: { ...owner, payout_kind: 'ADVANCE' } })).title).toMatch(/^Tạm ứng lợi nhuận/);
+    expect(ledgerApprovalNoteView(e7({ at_create: owner })).title).toMatch(/^Chi lợi nhuận cổ đông/);
   });
   it('lương điều hành: câu chữ không đổi', () => {
     const view = ledgerApprovalNoteView(e7({ subject: { kind: 'MANAGER', id: 'm', name: 'QL', is_deleted: false, has_login: false } }));

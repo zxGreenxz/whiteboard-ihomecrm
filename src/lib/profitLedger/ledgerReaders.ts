@@ -401,6 +401,7 @@ export interface LedgerPayoutDetail {
     advance: number;
     warnings: PayoutWarning[];
     maker_kind: PayoutMakerKind;
+    payout_kind?: 'ADVANCE' | 'SETTLEMENT';
     payee_is_maker: boolean;
   } | null;
   /** Bây giờ: số dư nếu bỏ chính phiếu này; MANAGER mà advance > 0 ⇒ duyệt sẽ bị từ chối. */
@@ -429,6 +430,9 @@ export function readLedgerPayoutDetail(value: unknown, voucherId: string): Ledge
       advance: money(atCreateRow.advance, 'E7.at_create.advance'),
       warnings: readWarnings(atCreateRow.warnings, 'E7.at_create.warnings'),
       maker_kind: oneOf(atCreateRow.maker_kind, PAYOUT_MAKER_KINDS, 'E7.at_create.maker_kind'),
+      ...(atCreateRow.payout_kind == null ? {} : {
+        payout_kind: oneOf(atCreateRow.payout_kind, ['ADVANCE', 'SETTLEMENT'] as const, 'E7.at_create.payout_kind'),
+      }),
       payee_is_maker: bool(atCreateRow.payee_is_maker, 'E7.at_create.payee_is_maker'),
     };
     if (!sameMoney(atCreate.within + atCreate.advance, amount)) fail('E7.at_create');
