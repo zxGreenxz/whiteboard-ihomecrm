@@ -99,7 +99,8 @@ export function toiLuotTheoLich({ now, config, stats }) {
     if (!mocCu) {
       const lanCuoi = new Date(s.lastRunAt);
       const tCu = Number.isFinite(lanCuoi.getTime()) ? gioVietNam(lanCuoi) : null;
-      mocCu = tCu?.ngay === t.ngay ? tCu.gio : time;
+      // Sổ một lượt/ngày đã đóng cả giờ chính, kể cả khi sau đó người dùng đổi giờ.
+      mocCu = tCu?.ngay === t.ngay && tCu.gio > time ? tCu.gio : time;
     }
     if (gioHen <= mocCu) return { chay: false, lyDo: `Hôm nay đã chạy tới lượt ${mocCu}.` };
   }

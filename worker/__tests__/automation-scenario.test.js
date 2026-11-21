@@ -60,6 +60,17 @@ describe('vanTayDanhSach', () => {
 });
 
 describe('toiLuotTheoLich', () => {
+  it('does not replay a consumed legacy primary slot after its time was edited', () => {
+    const stats = { lastScheduledDate: '2026-08-31', lastRunAt: '2026-08-31T01:00:02Z' };
+    for (const extraTimes of [[], ['12:30']]) {
+      const config = cfg({ schedule: { time: '09:10', extraTimes } });
+      expect(toiLuotTheoLich({ now: vaoLuc('2026-08-31T09:42'), config, stats }).chay).toBe(false);
+      if (extraTimes.length) {
+        expect(toiLuotTheoLich({ now: vaoLuc('2026-08-31T12:30'), config, stats }).gioHen).toBe('12:30');
+      }
+    }
+  });
+
   it('handles legacy receipts, a restart after missed slots, and a new Vietnamese day', () => {
     const config = cfg({ schedule: { time: '08:30', extraTimes: ['00:00', '09:00', '09:10'] } });
     const stats = { lastScheduledDate: '2026-08-31', lastRunAt: '2026-08-31T01:32:00Z' };
