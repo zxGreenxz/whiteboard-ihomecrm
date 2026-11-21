@@ -43,7 +43,7 @@ const MO_TA_KHOI: Record<KhoiTin, { ten: string; icon: ReactNode; moTa: string; 
   room_details: {
     ten: 'Chi tiết + ảnh từng phòng',
     icon: <ListTree size={14} />,
-    moTa: 'Mỗi phòng một tin riêng kèm ảnh. Tốn nhịp nhất, và bị chặn bởi trần "số phòng gửi chi tiết mỗi lượt".',
+    moTa: 'Mỗi phòng bắt đầu bằng thông tin phòng, tiếp theo là album ảnh và video nếu có. Dòng ngăn đánh dấu hết phòng.',
     chiDayDu: true,
   },
 };
@@ -241,7 +241,7 @@ export default function TemplateBuilder({ value, onChange, eventDriven, onEventD
       <TruongNhap
         nhan="Mẫu tin chi tiết phòng (khối “chi tiết + ảnh từng phòng”)"
         id="mau-phong"
-        ghiChu="Mẫu này lặp lại cho TỪNG phòng, mỗi phòng một tin. Viết dài thì mỗi lượt gửi cũng dài ra bấy nhiêu lần."
+        ghiChu="Mẫu này tạo tin chữ gửi đầu tiên cho từng phòng."
       >
         <Textarea
           id="mau-phong"
