@@ -42,6 +42,16 @@ export function profitActionErrorMessage(error: unknown, operation: string):stri
  if(msg==='Unlock permission does not cover every requested building'||msg==='Permission denied: shareholder_profit.unlock') return 'Bạn không có quyền mở khoá lợi nhuận ở một hoặc nhiều nhà đã chọn.';
  return actionErrorMessage(error,`Chưa ${operation}.`);
 }
+/**
+ * Lượt ghi lợi nhuận gửi TRƯỚC (mất phản hồi) hoá ra đã được máy chủ ghi xong; lần bấm hiện tại
+ * không ghi gì. Màn chốt đóng hộp xác nhận khi gặp lỗi này: số liệu đang được tải lại bên dưới,
+ * hộp đang mở sẽ mang nghĩa cũ.
+ */
+export class ProfitPriorCommittedError extends FinancialWorkflowError {
+ constructor(operation: string) {
+  super(`Yêu cầu ${operation} gửi trước đó đã được máy chủ ghi xong; lần bấm này không ghi thêm gì. Số liệu đang được tải lại — kiểm tra trạng thái các nhà rồi thực hiện tiếp phần còn lại.`, 'failure', []);
+ }
+}
 export function readProfitActionResult(value:unknown, expectedCount?:number):{run_id:string;affected_buildings:number;idempotent_replay:boolean}{
  const r=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
  if(typeof r.run_id!=='string'||!r.run_id||!Number.isInteger(r.affected_buildings)||Number(r.affected_buildings)<1||(expectedCount!==undefined&&r.affected_buildings!==expectedCount)) throw new TypeError('Unconfirmed profit operation result');
