@@ -101,7 +101,7 @@ describe('ShareholderSelfMobile — màn sổ tổng (ready)', () => {
     expect(screen.queryByTestId('self-building-totals-card')).toBeNull();
     // Đầu thẻ: HAI số của vị thế, không còn "Còn được nhận".
     const balance = screen.getByTestId('self-mobile-balance').textContent ?? '';
-    expect(balance).toMatch(/Lợi nhuận chưa chi5tr/);
+    expect(balance).toMatch(/Lợi nhuận chưa chốt chi5tr/);
     expect(balance).toMatch(/Tạm ứng đang có: 1,2tr.*chờ duyệt 300k/);
     expect(balance).not.toMatch(/Còn được nhận|Đang tạm ứng/);
   });
@@ -121,12 +121,12 @@ describe('ShareholderSelfMobile — màn sổ tổng (ready)', () => {
     first.unmount();
     h.position = 'pending';
     const pending = view();
-    expect(screen.getByTestId('self-mobile-balance').textContent).toBe('Lợi nhuận chưa chi…Tạm ứng đang có: …');
+    expect(screen.getByTestId('self-mobile-balance').textContent).toBe('Lợi nhuận chưa chốt chi…Tạm ứng đang có: …');
     expect(screen.queryByTestId('self-settlements-card')).toBeNull();
     pending.unmount();
     h.position = { code: 'XX000', message: 'PROFIT_LEDGER_POSITION_DRIFT: lệch' };
     view();
-    expect(screen.getByTestId('self-mobile-balance').textContent).toBe('Lợi nhuận chưa chi—Tạm ứng đang có: —');
+    expect(screen.getByTestId('self-mobile-balance').textContent).toBe('Lợi nhuận chưa chốt chi—Tạm ứng đang có: —');
     expect(screen.getByTestId('self-position-error').textContent).toMatch(/Chưa tải được lợi nhuận chưa chi và tạm ứng của bạn/);
   });
 

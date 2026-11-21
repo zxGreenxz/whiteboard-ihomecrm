@@ -30,7 +30,7 @@ const KNOWN_SOURCES = {
 const ROWS = [
   { request_id: 'req-ln', voucher_id: 'phieu-ln', organization_id: 'org-1', voucher_type: 'EXPENSE', voucher_name: 'Chia lợi nhuận: Cổ đông 1',
     voucher_code: 'PC-LN', amount: 300, submitted_at: '2026-11-15T03:00:00Z', step_no: 1, approval_version: 1, posting_version: 1,
-    maker_name: 'Chủ A', submission_no: 1, request_version: 1, system_source: null },
+    is_maker: false, maker_name: 'Chủ A', submission_no: 1, request_version: 1, system_source: null },
   { request_id: 'req-thuong', voucher_id: 'phieu-thuong', organization_id: 'org-1', voucher_type: 'EXPENSE', voucher_name: 'Sửa máy bơm',
     voucher_code: 'PC-1', amount: 100, submitted_at: '2026-11-15T03:00:00Z', step_no: 1, approval_version: 1, posting_version: 1,
     maker_name: 'Kế toán', submission_no: 1, request_version: 1, system_source: null },
@@ -110,6 +110,17 @@ afterEach(cleanup);
 describe.each([false, true])('Chờ duyệt — phiếu chi theo sổ tổng (điện thoại=%s)', (mobile) => {
   beforeEach(() => { api.mobile = mobile; });
 
+  it('người lập thấy nút duyệt cho phiếu của mình, chỉ được từ chối phiếu người khác lập', () => {
+    const first = ROWS[0]!;
+    first.is_maker = true;
+    try {
+      render(<ApprovalsPage />, { wrapper: wrap() });
+      expect(screen.getAllByRole('button', { name: 'Duyệt' })).toHaveLength(2);
+      expect(screen.getAllByRole('button', { name: 'Từ chối' })).toHaveLength(1);
+    } finally { first.is_maker = false; }
+  });
+
+
   it('chỉ phiếu sổ tổng mới đọc E7 và có thẻ số dư: lúc lập + bây giờ, tách trong số dư / tạm ứng, sổ chi cố định', () => {
     render(<ApprovalsPage />, { wrapper: wrap() });
     expect(new Set(api.e7Calls.filter(Boolean))).toEqual(new Set(['phieu-ln']));
@@ -177,7 +188,7 @@ describe('Chờ duyệt — chặn trước theo E7', () => {
     render(<ApprovalsPage />, { wrapper: wrap() });
     const note = ledgerNote().textContent ?? '';
     expect(note).toContain('Tạm ứng lợi nhuận · Cổ đông 1');
-    expect(note).toMatch(/Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt là chủ, khác người lập và người nhận/);
+    expect(note).toMatch(/Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt được chỉ định phải khác người lập và người nhận/);
     expect(note).toMatch(/duyệt thì tạm ứng 300/);
     expect(screen.queryByTestId('ledger-approval-block')).toBeNull();
     expect(approveButtons()[0]!.disabled).toBe(false);
@@ -221,7 +232,7 @@ describe('Chờ duyệt — câu báo lỗi và làm mới sổ tổng', () => {
       opts.onError({ code: '42501', message: 'PROFIT_LEDGER_MAKER_SELF_APPROVE: người lập không tự duyệt', details: null }));
     render(<ApprovalsPage />, { wrapper: wrap() });
     fireEvent.click(approveButtons()[0]!);
-    expect((await screen.findByRole('alert')).textContent).toBe('Người lập phiếu không tự duyệt được — cần một chủ khác duyệt.');
+    expect((await screen.findByRole('alert')).textContent).toBe('Phiếu này cần người được chỉ định khác người lập duyệt.');
     expect(api.invalidate).not.toHaveBeenCalled();
   });
 
@@ -245,6 +256,7 @@ describe('Chờ duyệt — câu báo lỗi và làm mới sổ tổng', () => {
 // không được coi như phiếu thường một cách im lặng, và phiếu thường không được mất "Duyệt và Thu/Chi…".
 describe.each([false, true])('Chờ duyệt — dòng chưa rõ loại phiếu (điện thoại=%s)', (mobile) => {
   beforeEach(() => { api.mobile = mobile; });
+
   const ledgerDetail = { id: 'phieu-ln', organization_id: 'org-1', type: 'EXPENSE', name: 'Chia lợi nhuận: Cổ đông 1', total_amount: 300,
     system_source: 'profit.ledger_payout', account_id: 'so-a', commission_kind: null, approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED',
     approval_version: 1, posting_version: 1, items: [], detail_read: { complete: true, expected_item_count: 0 } };

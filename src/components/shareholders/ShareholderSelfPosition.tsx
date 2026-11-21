@@ -51,7 +51,7 @@ export function MySettlementsCard({ view }: { view: MyPositionView }) {
     <div className="ph-card" data-testid="self-settlements-card">
       <div className="ph-card__head">
         <div className="ph-card__title">Các lần chốt chi lợi nhuận</div>
-        <div className="ph-card__note">Mỗi lần chủ chốt: lợi nhuận chưa chi đến tháng đó − tạm ứng đã duyệt = tiền thực chi.</div>
+        <div className="ph-card__note">Tiền theo phiếu là phần lợi nhuận còn lại sau khi cấn ứng. Trạng thái cho biết phiếu đã ghi chi hay còn chờ.</div>
       </div>
       <div className="ph-tbl__scroll">
         <table className="ph-tbl">
@@ -60,7 +60,7 @@ export function MySettlementsCard({ view }: { view: MyPositionView }) {
               <th style={{ width: 130 }}>Chốt đến hết</th>
               <th className="num">Lợi nhuận ghi nhận</th>
               <th className="num">Khấu trừ tạm ứng</th>
-              <th className="num">Thực chi</th>
+              <th className="num">Tiền theo phiếu</th>
               <th>Trạng thái</th>
             </tr>
           </thead>

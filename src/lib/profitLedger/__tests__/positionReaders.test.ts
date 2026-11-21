@@ -165,6 +165,9 @@ describe('R4 — xem trước phiếu tạm ứng', () => {
     ...position({ advance_outstanding: 0, advance_pending: 0, balance: 100, components: { ...position().components, payouts_pending: 0, payouts_approved: 0, advance_outstanding_raw: 0 } }),
     after_advance: amount === null ? null : { balance: 100 - amount, advance_pending: amount },
   });
+  it('máy chủ cho dùng quy trình của chủ mà vẫn giữ định dạng cũ', () => {
+    expect(readAdvancePreview(forPayee({ owner_workflow: true }), request).maker_kind).toBe('OWNER');
+  });
   it('người giữ sổ lập hộ: KHÔNG có số của cổ đông', () => {
     const got = readAdvancePreview(forPayee(), request);
     expect(got).toMatchObject({ maker_kind: 'CUSTODIAN_FOR_PAYEE', payee_is_maker: false, can_submit: true, blocked_reason: null, position: null });
@@ -188,7 +191,7 @@ describe('R4 — xem trước phiếu tạm ứng', () => {
   it.each([
     ['cổ đông khác', { shareholder_id: 'sh-khac' }],
     ['cách lập không khớp người nhận', { maker_kind: 'CUSTODIAN_ADVANCE' }],
-    ['cách lập của lệnh chi cũ', { maker_kind: 'OWNER' }],
+    ['cách lập không xác định', { maker_kind: 'UNKNOWN' }],
     ['số sau khi ứng không cộng đúng số tiền', { maker_kind: 'CUSTODIAN_ADVANCE', payee_is_maker: true, position: { ...selfPosition(500), after_advance: { balance: -400, advance_pending: 400 } } }],
     ['có số tiền mà thiếu số sau khi ứng', { maker_kind: 'CUSTODIAN_ADVANCE', payee_is_maker: true, position: selfPosition(null) }],
   ])('%s ⇒ lỗi', (_name, over) => {
@@ -206,6 +209,9 @@ describe('W1 — biên nhận lập phiếu tạm ứng', () => {
   it('lập hộ: số dư trước là null (không phải 0)', () => {
     expect(readAdvanceResult(w1(), { shareholderId: SH, amount: 10 })).toMatchObject({ voucher_id: 'v-1', advance_amount: 10, within_amount: 0, balance_before: null, maker_kind: 'CUSTODIAN_FOR_PAYEE' });
   });
+  it('chấp nhận phiếu ứng mang vai trò chủ do máy chủ xác định', () => {
+    expect(readAdvanceResult(w1({ owner_workflow: true }), { shareholderId: SH, amount: 10 }).maker_kind).toBe('OWNER');
+  });
   it('tự tạm ứng: có số dư trước và cảnh báo vượt ước tính', () => {
     const got = readAdvanceResult(w1({ maker_kind: 'CUSTODIAN_ADVANCE', balance_before: 80, warnings: [{ code: 'ADVANCE_EXCEEDS_ESTIMATE', open_estimate: 0, outstanding_advance: 20 }] }), { shareholderId: SH, amount: 10 });
     expect(got.balance_before).toBe(80);
@@ -217,7 +223,7 @@ describe('W1 — biên nhận lập phiếu tạm ứng', () => {
     ['thiếu khoá số dư trước', { balance_before: undefined }],
     ['thiếu phiếu', { voucher_id: null }],
     ['loại khác tạm ứng', { payout_kind: 'SETTLEMENT' }],
-    ['cách lập của chủ', { maker_kind: 'OWNER' }],
+    ['cách lập không xác định', { maker_kind: 'UNKNOWN' }],
     ['cổ đông khác', { shareholder_id: 'sh-khac' }],
   ])('%s ⇒ biên nhận hỏng', (_name, over) => {
     expect(() => readAdvanceResult(w1(over), { shareholderId: SH, amount: 10 })).toThrow(ProfitLedgerPayloadError);

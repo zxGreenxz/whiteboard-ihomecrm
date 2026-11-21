@@ -99,12 +99,12 @@ export function ledgerApprovalNoteView(detail: LedgerPayoutDetail): LedgerApprov
   }
 
   // Phiếu tạm ứng: người giữ sổ lập (cho mình hoặc lập hộ) và cả số tiền là tạm ứng.
-  const isAdvance = !!at && at.maker_kind !== 'OWNER' && at.within === 0;
+  const isAdvance = at?.payout_kind === 'ADVANCE' || (at?.payout_kind == null && !!at && at.maker_kind !== 'OWNER' && at.within === 0);
   if (at?.maker_kind === 'CUSTODIAN_ADVANCE' && at.payee_is_maker) {
-    notes.push('Người giữ sổ tự lập phiếu tạm ứng cho chính mình — người duyệt phải là chủ khác.');
+    notes.push('Người giữ sổ tự lập phiếu tạm ứng cho chính mình — người duyệt được chỉ định phải khác người lập.');
   }
   if (at?.maker_kind === 'CUSTODIAN_FOR_PAYEE') {
-    notes.push('Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt là chủ, khác người lập và người nhận.');
+    notes.push('Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt được chỉ định phải khác người lập và người nhận.');
   }
 
   if (isAdvance && at) {

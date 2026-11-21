@@ -48,7 +48,7 @@ export function ShareholderAdvanceOption({ organizationId, query, onPick }: Shar
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{name}</span>
           <span className="block text-xs text-muted-foreground">
-            Phiếu riêng một hạng mục: chi từ sổ quỹ bạn đang giữ cho cổ đông được cấp quyền tạm ứng, chờ chủ duyệt.
+            Phiếu riêng một hạng mục: chi từ sổ quỹ bạn đang giữ cho cổ đông được cấp quyền tạm ứng, chờ người có quyền duyệt.
           </span>
         </span>
       </button>
