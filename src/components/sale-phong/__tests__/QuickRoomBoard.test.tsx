@@ -12,6 +12,16 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: state.org }) }));
 vi.mock('@/hooks/useAuth', () => ({ useSession: () => ({ data: { user: { id: state.actor } } }) }));
+vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { contracts: {
+  view: true, edit: { org_wide: false, building_ids: ['building-b'] }, terminate: { org_wide: false, building_ids: ['building-b'] },
+} } }) }));
+vi.mock('@/hooks/useContractMoveOutNotice', () => ({
+  useSaleRoomNoticeContracts: (org: string, actor: string, roomId: string) => ({
+    data: [{ id: [org, actor, roomId].join('/') }], isError: false,
+  }),
+}));
+vi.mock('@/components/contracts/MoveOutNoticeDialog', () => ({ MoveOutNoticeDialog: ({ contract, roomLabel }: { contract: { id: string }; roomLabel: string }) =>
+  <div role="dialog" aria-label={roomLabel}>{contract.id}</div> }));
 vi.mock('@/hooks/useSaleRoomInventory', () => ({
   useSaleRoomInventory: () => state.query, usePatchSaleRoom: () => ({ mutateAsync: state.save, isPending: state.pending }),
 }));
@@ -54,6 +64,16 @@ beforeEach(() => {
   state.query.refetch.mockReset().mockResolvedValue({}); state.save.mockReset().mockResolvedValue({});
 });
 afterEach(cleanup);
+
+it.each([false, true])('mở báo sắp trống đúng phòng và quyền theo tòa, mobile=%s', mobile => {
+  state.query.data!.rooms = [room('unassigned', 'building-a', 'rented'), room('vacant', 'building-b'), room('soon', 'building-b', 'soon'), room('occupied', 'building-b', 'rented')];
+  render(<QuickRoomBoard mobile={mobile} />);
+  expect(screen.getAllByRole('button', { name: 'Báo sắp trống' })).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Cập nhật ngày sắp trống' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Báo sắp trống' }));
+  expect(screen.getByRole('dialog', { name: 'Tòa Bình Minh · 101' }).textContent).toBe('org-a/actor-a/occupied');
+  expect(state.save).not.toHaveBeenCalled();
+});
 
 it.each([false, true])('U01 — Chủ trọ: cho tôi tìm không dấu đúng tòa và cả phòng đã thuê trên máy tính/điện thoại, mobile=%s', mobile => {
   render(<QuickRoomBoard mobile={mobile} />);

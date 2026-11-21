@@ -19,9 +19,10 @@ export interface MoveOutNoticeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contract: { id: string } | null;
+  roomLabel?: string;
 }
 
-export function MoveOutNoticeDialog({ open, onOpenChange, contract }: MoveOutNoticeDialogProps) {
+export function MoveOutNoticeDialog({ open, onOpenChange, contract, roomLabel }: MoveOutNoticeDialogProps) {
   const read = useReadContractMoveOutNotice();
   const save = useSaveContractMoveOutNotice();
   const [snapshot, setSnapshot] = useState<MoveOutNoticeSnapshot | null>(null);
@@ -79,7 +80,7 @@ export function MoveOutNoticeDialog({ open, onOpenChange, contract }: MoveOutNot
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{snapshot?.expected_move_out_date ? 'Sửa báo trả phòng' : 'Báo ngày dự kiến trả phòng'}</DialogTitle>
-          <DialogDescription>Ghi nhận ngày khách dự kiến trả phòng. Hợp đồng vẫn đang ở cho đến khi làm thanh lý.</DialogDescription>
+          <DialogDescription>{roomLabel && <strong>{roomLabel}. </strong>}Ghi nhận ngày khách dự kiến trả phòng. Hợp đồng vẫn đang ở cho đến khi làm thanh lý.</DialogDescription>
         </DialogHeader>
         {readError ? (
           <div className="space-y-3">

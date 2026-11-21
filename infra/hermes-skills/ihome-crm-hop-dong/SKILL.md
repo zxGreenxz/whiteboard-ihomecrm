@@ -1,7 +1,7 @@
 ---
 name: ihome-crm-hop-dong
 description: "Hợp đồng: báo trả để lên Sale sắp trống, giữ, gia hạn, trả."
-version: 1.0.2
+version: 1.0.3
 author: iHome CRM
 metadata:
   hermes:
@@ -23,11 +23,13 @@ soạn nháp HĐ, gia hạn hàng loạt. Câu hỏi ("302 báo trả chưa?") k
 
 Yêu cầu đưa căn đang thuê vào danh sách Sale “sắp trống” khi khách báo sẽ dọn đi cũng dùng `contract.notice_set`.
 “Đầu tháng 12”, “giữa tháng”, “cuối tháng sau” chỉ cho biết khoảng thời gian. Hỏi ngày dọn dự kiến của từng căn trước khi ghi.
-Nếu người dùng đã chỉ rõ cùng một ngày cho nhiều căn, dùng ngày đó cho từng căn. Sau khi ghi, kiểm tra căn trên trang Sale
-theo `ihome-crm-phong-sale-nhom`.
+Với yêu cầu đăng Sale, luôn làm theo `ihome-crm-phong-sale-nhom`: chỉ đọc giá và nội thất CRM qua room_observe, trình từng căn
+kèm ngày dự kiến, chờ người dùng xác nhận rõ ở tin sau mới được ghi. Nếu họ sửa thông tin thì trình lại và chờ xác nhận lại.
+Nếu người dùng chỉ rõ cùng một ngày cho nhiều căn, dùng ngày đó cho từng căn. Sau khi ghi, kiểm tra căn trên trang Sale.
 
 - `contract.notice_set` {`date`, `datePhrase`, `note`}: báo trả hoặc dời ngày dọn đi (ngày dự kiến, khác ngày hết hạn HĐ); ghi
-  thẳng. Người dùng nói "báo trả <ngày>" ⇒ gọi ngay, đọc lại `result.text`; không nói ngày ⇒ hỏi, không tự lấy hôm nay. Chỉ khi
+  thẳng với báo trả hợp đồng thuần túy. Với đăng Sale phải chờ duyệt giá, nội thất và ngày như trên. Trong luồng hợp đồng thuần túy:
+  Người dùng nói "báo trả <ngày>" ⇒ gọi ngay, đọc lại `result.text`; không nói ngày ⇒ hỏi, không tự lấy hôm nay. Chỉ khi
   nói "trả phòng" kèm ngày dọn đi TƯƠNG LAI (vd "trả phòng ngày mai" — đó là báo trả, chưa phải trả phòng) ⇒ hỏi MỘT câu "Em ghi
   BÁO TRẢ phòng … ngày … (thứ …) nhé?" rồi mới gọi. `notice_date_past` ⇒ hỏi khách đã dọn chưa (rồi ⇒ `contract.return`).
 - `contract.notice_cancel` {`reason`}: lý do = VÌ SAO khách huỷ, do người dùng nói. Chưa nêu ⇒ hỏi "Khách huỷ báo trả vì sao ạ?".

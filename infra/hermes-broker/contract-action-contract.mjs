@@ -16,8 +16,9 @@ const RPC = 'hermes_contract_action_v1';
 const place = () => ({ buildingName: param.name('building'), roomName: param.name('room') });
 
 export const CONTRACT_NOTICE_SET = defineAction({ id: 'contract.notice_set', page: 'contract', key: 'contracts.terminate', class: 'reversible', rpc: RPC,
-  title: 'Báo trả phòng / dời ngày báo trả: ngày khách dự kiến dọn đi (khác ngày hết hạn HĐ); ghi thẳng',
-  params: { ...place(), date: param.date(), datePhrase: param.text(1, 80, { optional: true, hint: 'NGUYÊN VĂN cụm ngày người dùng nói ("thứ hai tuần trước", "cuối tháng"); connector tự đổi ra ngày, ghi đè date' }), note: param.text(3, 500, { optional: true }) },
+  title: 'Báo ngày khách dự kiến dọn đi. Đăng Sale sắp trống: truyền saleRevision để xem trước rồi xác nhận.',
+  params: { ...place(), date: param.date(), datePhrase: param.text(1, 80, { optional: true, hint: 'NGUYÊN VĂN cụm ngày người dùng nói ("thứ hai tuần trước", "cuối tháng"); connector tự đổi ra ngày, ghi đè date' }), note: param.text(3, 500, { optional: true }),
+    saleRevision: param.text(32, 32, { optional: true, hint: 'Khi đăng Sale: revision từ room_observe của bản giá và nội thất để người dùng duyệt. Lượt sau giữ nguyên params và gửi confirmToken + consentText.' }) },
   reasons: ['room_has_no_active_contract', 'notice_date_past', 'already_returned'] });
 export const CONTRACT_NOTICE_CANCEL = defineAction({ id: 'contract.notice_cancel', page: 'contract', key: 'contracts.terminate', class: 'reversible', rpc: RPC,
   title: 'Huỷ báo trả phòng (khách ở tiếp); cần lý do; ghi thẳng',

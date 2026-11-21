@@ -19,6 +19,9 @@ import { QuickDepositModal } from '@/pages/phong-trong/QuickDepositModal';
 import type { Room } from '@/pages/phong-trong/sampleData';
 import '@/pages/phong-trong/phongTrong.css';
 import SaleImageManager from './SaleImageManager';
+import { SaleRoomNoticeDialog } from './SaleRoomNoticeDialog';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import PassListingsTab from './PassListingsTab';
 import { salePolicyTimeLabel } from '@/lib/saleRoomPolicyTypes';
 import {
@@ -60,6 +63,12 @@ export default function QuickRoomBoard({ mobile = false, onBusyChange }: { mobil
 
 function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, onBusyChange }: { mobile: boolean; storageKey: string; organizationId: string; actorId: string; onBusyChange?: (busy: boolean) => void }) {
   const inventory = useSaleRoomInventory();
+  const { data: permissions } = useMyPermissions();
+  const [noticeRoomId, setNoticeRoomId] = useState<string | null>(null);
+  const canReport = (row: SaleRoomInventoryRow) => row.room.status !== 'free'
+    && canUse(permissions, 'contracts', 'view', row.buildingId)
+    && canUse(permissions, 'contracts', 'edit', row.buildingId)
+    && canUse(permissions, 'contracts', 'terminate', row.buildingId);
   const update = usePatchSaleRoom();
   const rows = inventory.data?.rooms ?? EMPTY_ROOMS;
   const [search, setSearch] = useState('');
@@ -92,7 +101,9 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const stale = !!selected && !!draft && (selected.revision !== draft.revision || !!draft.request?.conflict);
   const unknown = !!draft?.request?.unknown;
   const draftCount = rows.filter(row => drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id])).length;
-  const navigationBusy = busy || batchOpen || turnoverEditing || !!selectedId || !!lockAction || !!depositRoom || !!passRoomId;
+  const noticeRoom = rows.find(row => row.room.id === noticeRoomId && canReport(row));
+  const navigationBusy = busy || batchOpen || turnoverEditing || !!selectedId || !!lockAction || !!depositRoom || !!passRoomId || !!noticeRoom;
+  useEffect(() => { if (noticeRoomId && !noticeRoom) setNoticeRoomId(null); }, [noticeRoomId, noticeRoom]);
   useEffect(() => { onBusyChange?.(navigationBusy); return () => onBusyChange?.(false); }, [navigationBusy, onBusyChange]);
 
   useEffect(() => {
@@ -207,6 +218,9 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
     <Button size="sm" variant="outline" disabled={blocked} onClick={() => openRoom(row.room.id)} aria-label={`Mở ${rowLabel(row)}`}>
       <DoorOpen className="mr-1.5 h-3.5 w-3.5" />Chi tiết
     </Button>
+    {canReport(row) && <Button size="sm" variant="outline" disabled={blocked} onClick={() => setNoticeRoomId(row.room.id)}>
+      {row.room.status === 'soon' ? 'Cập nhật ngày sắp trống' : 'Báo sắp trống'}
+    </Button>}
     {row.capabilities.lock && ['free', 'soon'].includes(row.room.status) && <Button size="sm" variant="outline" disabled={blocked} onClick={() => setLockAction({ room: row.room, mode: 'lock' })}>
       <LockKeyhole className="mr-1.5 h-3.5 w-3.5" />Lock
     </Button>}
@@ -328,6 +342,8 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
       </SheetContent>
     </Sheet>
     {lockAction && <LockRoomModal action={{ ...lockAction, room: currentLockRoom ?? lockAction.room }} blockedReason={lockBlockedReason} onClose={() => setLockAction(null)} onDone={text => done(text, lockAction.room.id)} />}
+    {noticeRoom && <SaleRoomNoticeDialog key={noticeRoom.room.id} roomId={noticeRoom.room.id} organizationId={organizationId} actorId={actorId}
+      roomLabel={rowLabel(noticeRoom)} onClose={() => setNoticeRoomId(null)} />}
     {depositRoom && <QuickDepositModal room={currentDepositRoom ?? depositRoom} blockedReason={actionBlockedReason(depositRoom.id, 'deposit', ['free', 'soon', 'locked'])} onClose={() => setDepositRoom(null)} onDone={text => done(text, depositRoom.id)} />}
     {passRoomId && <div className="space-y-2 rounded-lg border p-3">
       <PassListingsTab key={passRoomId} focusRoomId={passRoomId} blockedReason={actionBlockedReason(passRoomId, 'pass')} onFocusedClose={() => { setPassRoomId(null); void inventory.refetch(); }} />

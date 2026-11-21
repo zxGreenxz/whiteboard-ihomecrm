@@ -8,6 +8,20 @@ import {
   type MoveOutNoticeInput,
 } from '@/lib/contractMoveOutNotice';
 
+export function useSaleRoomNoticeContracts(organizationId: string, actorId: string, roomId: string) {
+  return useQuery({
+    queryKey: ['contracts', 'sale-notice-room', organizationId, actorId, roomId],
+    gcTime: 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('contracts').select('id')
+        .eq('organization_id', organizationId).eq('room_id', roomId).eq('status', 'ACTIVE')
+        .is('actual_end_date', null).is('deleted_at', null).limit(2);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
 export function useContractMoveOutNoticeSnapshot(contractId?: string) {
   const { selectedOrganizationId } = useOrganization();
   return useQuery({
@@ -54,7 +68,7 @@ export function useSaveContractMoveOutNotice() {
   const invalidate = (contractId: string) => {
     for (const key of [
       ['contracts'], ['rooms'], ['contract-history', contractId],
-      ['my-available-rooms'],
+      ['my-available-rooms'], ['sale-room-inventory'], ['phong-trong'],
     ]) void queryClient.invalidateQueries({ queryKey: key });
   };
   return useMutation({

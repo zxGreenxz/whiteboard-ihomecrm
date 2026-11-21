@@ -124,7 +124,13 @@ test('đưa phòng sắp trống lên Sale dẫn tới báo trả hợp đồng,
     assert.match(text, /contract\.notice_set/);
     assert.match(text, /đầu tháng 12/i);
   }
-  assert.match(sale, /crm_action_list.*contract/);
+    for (const text of [sale, contract]) {
+      assert.match(text, /room_observe/);
+      assert.match(text, /chờ (?:người dùng )?xác nhận/i);
+    }
+    assert.match(sale, /room\.fields\.rent_price/);
+    assert.match(sale, /room\.fields\.amenities/);
+    assert.match(sale, /crm_action_list.*contract/);
   assert.match(sale, /crm_available_rooms.*roomId/);
 });
 
