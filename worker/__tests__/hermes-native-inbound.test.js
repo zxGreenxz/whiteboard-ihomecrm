@@ -7,7 +7,9 @@ const state = vi.hoisted(() => ({ active: true, writes: [], rpc: [], logs: [], a
 vi.mock('../lib/ctx.js', () => ({
   sessions: new Map(), orgOf: () => '33333333-3333-4333-8333-333333333333', chunk: rows => [rows],
   notifyPush: vi.fn(), log: (...args) => state.logs.push(args),
-  sb: { rpc: (name, args) => { if (!args.p) return Promise.resolve({ data: 0 }); state.rpc.push([name, args]); return { abortSignal: () => Promise.resolve(state.allowLink
+  sb: { rpc: (name, args) => { if (!args.p) return Promise.resolve({ data: 0 }); state.rpc.push([name, args]);
+    if (name === 'zalo_sale_advice_intake_v1') return Promise.resolve({ data: 'queued' });
+    return { abortSignal: () => Promise.resolve(state.allowLink
     ? { data: args.p.operation === 'register' ? { status: 'registered', accountId: args.p.accountId,
       organizationId: args.p.organizationId, generation: '66666666-6666-4666-8666-666666666666' } : { status: 'observed' }, error: null }
     : { error: { code: '42501' }, status: 403 }) }; },
@@ -103,6 +105,32 @@ it('actual listener uses native grant despite denied CRM, suppresses personal hi
     expect(JSON.stringify([state.writes, state.logs])).not.toContain('hz_');
     expect(JSON.stringify(state.writes)).not.toContain('PERSONAL');
     expect(state.rpc.filter(([, args]) => args.p.operation === 'observe')).toHaveLength(1);
+    // The bot is now registered for Sale and the native peer remains paired.
+    const sendInbound = (msgId, content, sender = '200', group) => handlers.get('message')({
+      ...m, type: group ? 1 : 0, threadId: group || sender,
+      data: { ...m.data, msgId, content, uidFrom: sender, idTo: group || '100', ts: Date.now() },
+    });
+    const vacancy = 'Phòng 203 tòa Sen còn trống không?';
+    const questions = [
+      'Tôi có 2 phòng đầu tháng 12 khách trả, bạn tạo 2 phòng này sắp trống trong danh sách phòng trống nhé A01 và A02 tòa Sen',
+      'Có 1 khách ở phòng này thôi à',
+      vacancy,
+    ];
+    for (const [i, question] of questions.entries()) {
+      await sendInbound('private-' + i, question);
+      expect(await request('/v1/receive', { generation })).toMatchObject({
+        status: 'message', event: { text: question, senderUid: '200' },
+      });
+    }
+    const saleRequests = () => state.rpc.filter(([name]) => name === 'zalo_sale_advice_intake_v1').map(([, { p }]) => p);
+    expect(saleRequests()).toEqual([]);
+    await sendInbound('public-dm', vacancy, '300');
+    await sendInbound('public-group', vacancy, '200', '400');
+    expect(saleRequests()).toMatchObject([
+      { threadType: 'user', threadId: '300', senderUid: '300', question: vacancy },
+      { threadType: 'group', threadId: '400', senderUid: '200', question: vacancy },
+    ]);
+    expect((await request('/v1/receive', { generation })).status).toBe('empty');
     state.active = false;
     await handlers.get('message')({ ...m, data: { ...m.data, msgId: 'after-lease-loss' } });
     expect((await request('/v1/send', { generation, requestId: 'late-reply', text: 'late' })).status).toBe('unavailable');
