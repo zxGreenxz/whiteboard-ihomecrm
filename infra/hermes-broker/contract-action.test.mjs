@@ -140,6 +140,27 @@ test('vòng đời: ghi thẳng ở lượt 1 (auto, không confirmToken); mã t
     CONTRACT_ACTIONS.map(action => [action.id, action.class === 'reversible' && action.id !== 'contract.room_lock' ? 'if_required' : 'always']));
 });
 
+test('đăng Sale gắn xác nhận với ngày và phiên bản giá/nội thất của từng căn', async t => {
+  const env = setup(t, { action: ['contracts.terminate'], respond: request => request.phase === 'preview'
+    ? { kind: 'preview', preview: { text: 'Ngày dự kiến' }, basis: 'f'.repeat(32), resolved: { roomId: id('6') }, confirm: 'not_required' }
+    : { kind: 'applied', result: { text: 'Đã ghi báo trả' }, link: '/contracts' } });
+  const action = 'contract.notice_set';
+  const params = { buildingName: 'Toà A', roomName: '301', date: '2027-01-03', saleRevision: 'b'.repeat(32) };
+  let first = await env.call('crm_action_run', { action, params });
+  assert.equal(first.outcome, 'confirmation_required');
+  assert.equal(env.requests.at(-1).phase, 'preview');
+  assert.equal(env.requests.at(-1).params.saleRevision, undefined);
+  const confirm = (consentText, changes = {}) => env.call('crm_action_run', { action, params: { ...params, ...changes },
+    requestId: first.requestId, confirmToken: first.confirmToken, consentText });
+  assert.equal((await confirm('chưa ghi')).reason, 'consent_unclear');
+  assert.equal((await confirm('ok, đổi giá 4 triệu')).reason, 'consent_unclear');
+  await assert.rejects(confirm('ok', { saleRevision: 'c'.repeat(32) }), { code: 'confirmation_invalid' });
+  assert.equal(env.requests.filter(r => r.phase === 'apply').length, 0);
+  first = await env.call('crm_action_run', { action, params });
+  assert.equal((await confirm('đồng ý')).outcome, 'applied');
+  assert.equal(env.requests.filter(r => r.phase === 'apply').length, 1);
+});
+
 test('PS-K03 khoá tạm qua danh mục thật: 8 giờ ⇒ hỏi chọn mức, không gửi SQL; 12 giờ ⇒ xem trước, lời đồng ý rõ mới khoá; bỏ khoá vẫn ghi thẳng', async t => {
   const env = setup(t, { action: ['sale_phong.lock_room'], respond: request => request.phase === 'preview'
     ? { kind: 'preview', preview: { text: 'Sẽ khoá tạm phòng 303 toà 44TL 12 giờ' }, basis: 'f'.repeat(32), resolved: { roomId: id('6') }, confirm: 'required' }

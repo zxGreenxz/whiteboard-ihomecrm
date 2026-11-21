@@ -178,7 +178,14 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       // Lượt 15 (vn-relative-date.mjs): cụm ngày NGUYÊN VĂN (deadlinePhrase / datePhrase) ⇒ connector tự quy đổi theo giờ VN, tuần bắt
       // đầu thứ Hai, ghi đè ngày mô hình tự tính; SQL nhận params đã đổi (không còn cụm), token vẫn gắn params mô hình gửi (hai lượt
       // gửi y nguyên ⇒ cùng khoá, cùng kết quả đổi). Không hiểu cụm ⇒ hỏi lại ngày, không đoán.
-      const dated = applyDatePhrases(action.id, plan.params, clock());
+      // Keep the Sale snapshot in the confirmation token binding, outside the contract RPC's parameter schema.
+      const { saleRevision, ...noticeParams } = plan.params;
+      plan.saleNotice = action.id === 'contract.notice_set' && saleRevision !== undefined;
+      if (plan.saleNotice && !/^[a-f0-9]{32}$/.test(saleRevision)) {
+        plan.immediate = needsInput({ action: action.id, reason: 'invalid_params', detail: 'Đọc lại revision của căn bằng room_observe.' });
+        return Object.freeze({});
+      }
+      const dated = applyDatePhrases(action.id, plan.saleNotice ? noticeParams : plan.params, clock());
       if (dated.unclear !== null) {
         plan.immediate = needsInput({ action: action.id, reason: 'date_out_of_range',
           detail: `Chưa hiểu ngày "${dated.unclear}"; hỏi lại người dùng ngày cụ thể (vd thứ Sáu 30/10).` });
@@ -208,7 +215,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         // rào vào sổ audit của host cùng dòng prepared của lượt ghi (dãy số dài bị che). PS-K03: cả thao tác reversible khai confirm: 'always'
         // (khoá tạm phòng), với luật chặt hơn — câu đáp thuần (replyRule): câu nêu phòng / toà / số giờ (câu ra lệnh, kể cả mở đầu bằng "ok")
         // hay câu chỉ chọn mức không đổi được token tự xin trong cùng lượt; câu lệnh trống đối tượng ("giữ đi em") và câu bịa thì không chặn được.
-        const consenting = consentRequired(action), floored = consenting && action.class === 'reversible';
+        const consenting = plan.saleNotice || consentRequired(action), floored = consenting && action.class === 'reversible';
         if (consenting && !(floored ? replyRule(action).clear(plan.consentText) : consentClear(plan.consentText))) {
           plan.immediate = needsInput({ action: action.id, reason: 'consent_unclear', ...(floored ? { detail: replyRule(action).detail } : {}) });
           return Object.freeze({});
@@ -241,7 +248,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         plan.requestId ??= mint();
         // previewFirst: money / irreversible và thao tác reversible khai confirm: 'always' ⇒ 'preview' (SQL trả applied cho lượt này là
         // khuôn lệch — xem finish); còn lại 'auto' theo chính sách DB.
-        plan.phase = previewFirst(action) ? 'preview' : 'auto';
+        plan.phase = plan.saleNotice || previewFirst(action) ? 'preview' : 'auto';
         request = { op: 'run', action: action.id, phase: plan.phase, requestId: plan.requestId, params: plan.sqlParams };
       }
       const receipt = await service.prepareAction(token, Object.freeze(request), { signal });
@@ -296,7 +303,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         // Câu "Hiểu '…' là thứ … dd/mm/yyyy" của cụm ngày (lượt 15) đứng đầu cảnh báo để bot đọc lại cho người dùng.
         const warnings = [...(plan.dateNotes ?? []), ...(outcome.warnings ?? [])].slice(0, 10);
         return known(content(confirmationRequired({ action: plan.action, requestId: plan.requestId, preview: outcome.preview, warnings,
-          confirmToken: issued.token, expiresAt: issued.expiresAt, consent: consentNote(catalog.get(plan.action)) })));
+          confirmToken: issued.token, expiresAt: issued.expiresAt, consent: plan.saleNotice ? 'reversible' : consentNote(catalog.get(plan.action)) })));
       }
       if (outcome.kind === 'applied') {
         if (plan.phase === 'preview' || !exact(outcome, ['kind', 'result'], ['link']) || !data(outcome.result) ||
