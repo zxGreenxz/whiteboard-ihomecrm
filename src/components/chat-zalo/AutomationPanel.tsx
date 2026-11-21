@@ -185,7 +185,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
             <DongTrong>Chưa cấu hình lần nào. Mở “Cài đặt chi tiết” để chọn người nhận và lịch gửi.</DongTrong>
           ) : (
             <>
-              <Row label="Giờ gửi"><span style={{ fontWeight: 600, ...mono() }}>{bc.schedule.time}</span></Row>
+              <Row label="Giờ gửi"><span style={{ fontWeight: 600, ...mono() }}>{[bc.schedule.time, ...bc.schedule.extraTimes].sort().join(', ')}</span></Row>
               <Row label="Người nhận toàn công ty">
                 <span style={{ fontWeight: 600 }}>
                   {bc.recipients.length ? `${bc.recipients.length} hội thoại` : 'chưa chọn ai'}

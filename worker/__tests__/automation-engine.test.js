@@ -231,6 +231,26 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 /* -------------------------------------------------------------------- test */
 
 describe('engine broadcast — xếp hàng', () => {
+  it('runs each slot once, queues close slots in order, and shares the daily quota', async () => {
+    datCauHinh({ schedule: { time: '08:30', extraTimes: ['08:31', '09:10'], days: { mon: 'compact' }, skipIfUnchanged: false },
+      antiSpam: { dailyCap: 8, gapBetweenRecipientsSec: 180, gapBetweenRoomMsgsSec: 5 } });
+    const tick = async (minute) => {
+      vi.setSystemTime(new Date(THU_HAI_0830.getTime() + minute * 60000));
+      await tickTuDongHoa();
+      duLieuAutomations[0].stats = structuredClone(capNhatAutomations.at(-1).stats);
+    };
+    await tick(0);
+    await tick(1);
+    await tick(2);
+    await tick(40);
+    expect(daChen.runs.map(r => r.detail.gio_hen)).toEqual(['08:30', '08:31', '09:10']);
+    expect(daChen.runs[2].reason).toContain('chạm trần');
+    expect(duLieuAutomations[0].stats.sentToday).toBe(8);
+    expect(new Set(rpcCalls.map(call => call.args.p_request_key)).size).toBe(8);
+    expect(daChen.queue.map(q => (Date.parse(q.not_before) - THU_HAI_0830.getTime()) / 1000))
+      .toEqual([0, 5, 180, 185, 360, 365, 540, 545]);
+  });
+
   it('polls the exact Hermes due RPC once through the real tick without inventing a queued message', async () => {
     duLieuAutomations = [];
     await tickTuDongHoa(['org-1']);

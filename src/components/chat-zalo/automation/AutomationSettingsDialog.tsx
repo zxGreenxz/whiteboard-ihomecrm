@@ -240,7 +240,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, account, 
                 <KhoiCaiDat
                   icon={<Users size={15} />}
                   tieuDe={account ? `Người nhận · ${account.name}` : 'Người nhận'}
-                  moTa="Tích ô để chọn người nhận định kỳ, rồi lưu lịch. Nút đánh dấu sale lưu ngay và cho phép gửi phòng trống một lần vào nhóm."
+                  moTa="Tích ô để chọn nhóm nhận tin định kỳ, rồi lưu lịch. Để gửi một lần, đánh dấu nhóm sale và yêu cầu Hermes gửi vào nhóm đó."
                 >
                   <div data-field-name="recipients" tabIndex={-1} aria-invalid={!!errors.recipients} className="rounded aria-[invalid=true]:border aria-[invalid=true]:border-destructive">
                   {account && <SyncGroupsButton account={account} />}

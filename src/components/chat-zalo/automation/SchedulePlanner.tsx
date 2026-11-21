@@ -10,7 +10,7 @@
 // Thứ tự đó là thứ tự người dùng phải hiểu, nên UI cũng xếp đúng như vậy.
 // =============================================================================
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Clock, CalendarDays } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -51,6 +51,17 @@ export default function SchedulePlanner({ value, onChange }: Props) {
   // qua `chuanHoaBroadcast` rồi lấy nhánh `schedule` là dùng ĐÚNG bộ luật mà
   // worker dùng, thay vì viết lại một bộ mặc định thứ hai ở đây.
   const v = useMemo(() => chuanHoaBroadcast({ schedule: value }).schedule, [value]);
+  const [gioMoi, setGioMoi] = useState('');
+  const [loiGio, setLoiGio] = useState('');
+  const cacGio = [v.time, ...v.extraTimes];
+  const doiGio = (times: string[]) => {
+    if (new Set(times).size !== times.length) {
+      setLoiGio('Giờ này đã có trong lịch.');
+      return;
+    }
+    setLoiGio('');
+    onChange({ ...v, time: times[0], extraTimes: times.slice(1) });
+  };
 
   const doiNgay = (k: KhoaNgay, che: CheDoNgay) => onChange({ ...v, days: { ...v.days, [k]: che } });
 
@@ -63,11 +74,30 @@ export default function SchedulePlanner({ value, onChange }: Props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Clock size={15} style={{ color: CHU_MO, flex: 'none' }} />
         <label htmlFor="lich-gio" style={{ fontSize: 12.5, fontWeight: 600 }}>Giờ gửi chung của công ty</label>
-        <GioInput id="lich-gio" value={v.time} macDinh="08:30" onChange={(t) => onChange({ ...v, time: t })} />
-        <span style={{ fontSize: 11, color: CHU_MO }}>
-          Giờ Việt Nam. Lượt gửi vẫn phải nằm trong khung giờ cho phép ở khối Chống spam.
-        </span>
+        <span style={{ fontSize: 11, color: CHU_MO }}>{cacGio.length} lượt/ngày theo giờ Việt Nam</span>
       </div>
+      <div className="flex flex-wrap gap-2">
+        {cacGio.map((gio, i) => (
+          <div key={i} className="flex items-center gap-1">
+            {i > 0 && <label className="sr-only" htmlFor={`lich-gio-${i}`}>Giờ gửi lượt {i + 1}</label>}
+            <GioInput id={i === 0 ? 'lich-gio' : `lich-gio-${i}`} value={gio} macDinh={gio}
+              onChange={t => doiGio(cacGio.map((cu, j) => j === i ? t : cu))} />
+            {cacGio.length > 1 && <button type="button" className="px-1 text-xs" aria-label={`Xóa giờ ${gio}`}
+              onClick={() => doiGio(cacGio.filter((_, j) => j !== i))}>Xóa</button>}
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input type="time" aria-label="Giờ gửi mới" className="rounded-md border px-2 py-1 text-sm"
+          value={gioMoi} onChange={e => { setGioMoi(e.target.value); setLoiGio(''); }} />
+        <button type="button" className="rounded-md border px-2 py-1 text-sm disabled:opacity-50" disabled={!gioMoi}
+          onClick={() => {
+            doiGio([...cacGio, gioMoi]);
+            if (!cacGio.includes(gioMoi)) setGioMoi('');
+          }}>Thêm giờ gửi</button>
+        {loiGio && <span role="alert" className="text-xs text-destructive">{loiGio}</span>}
+      </div>
+      <GhiChu>Các giờ đã thêm dùng chung chế độ theo thứ, khung giờ cho phép và trần tin trong ngày.</GhiChu>
 
       {/* Bảng 7 thứ */}
       <div>
@@ -137,9 +167,8 @@ export default function SchedulePlanner({ value, onChange }: Props) {
           nhan="Danh sách không đổi thì bỏ lượt"
           moTa={
             <>
-              Danh sách phòng trống y hệt lần gửi trước thì bỏ hẳn lượt hôm đó, ghi vào nhật ký với chế độ
-              <b> skipped</b>. Đây là thứ giữ cho nhóm sale không nhận đúng một bảng lặp lại mỗi sáng —
-              cách nhanh nhất để bị tắt thông báo hoặc bị đá khỏi nhóm. Tắt đi thì ngày nào cũng gửi, dù không có gì mới.
+              Mỗi giờ hẹn, hệ thống so danh sách với lần gửi trước. Bật để bỏ qua lượt có danh sách
+              giống nhau. Tắt để gửi ở mỗi giờ đã đặt dù danh sách phòng vẫn như cũ.
             </>
           }
         >

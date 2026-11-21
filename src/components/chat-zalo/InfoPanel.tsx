@@ -58,7 +58,7 @@ function HangSale({ conv, canManage }: { conv: ZaloConversation; canManage: bool
         />
       </div>
       <p style={{ fontSize: 11.5, color: 'hsl(210 10% 50%)', margin: '6px 0 0', lineHeight: 1.5 }}>
-        Đánh dấu sale để dùng tự động trả lời và gửi phòng trống một lần vào nhóm. Người nhận định kỳ được chọn riêng trong cài đặt.
+        Đánh dấu sale để dùng tự động trả lời hoặc yêu cầu Hermes gửi phòng trống một lần vào nhóm. Người nhận định kỳ được chọn trong cài đặt.
       </p>
     </div>
   );

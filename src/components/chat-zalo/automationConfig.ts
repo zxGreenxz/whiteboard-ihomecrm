@@ -44,6 +44,7 @@ export interface KhungGio {
 export interface LichGui {
   /** Giờ hẹn gửi trong ngày, "HH:MM". */
   time: string;
+  extraTimes: string[];
   days: LichNgay;
   /** Có phòng mới thì nâng ngày `compact` lên `full`. */
   upgradeOnNewRooms: boolean;
@@ -106,6 +107,7 @@ export const MAC_DINH_BROADCAST: CauHinhBroadcast = {
   recipients: [],
   schedule: {
     time: '08:30',
+    extraTimes: [],
     days: { mon: 'full', tue: 'compact', wed: 'compact', thu: 'compact', fri: 'compact', sat: 'compact', sun: 'off' },
     upgradeOnNewRooms: true,
     skipIfUnchanged: true,
@@ -188,6 +190,10 @@ const mangChuoi = (v: unknown, macDinh: readonly string[]): string[] => {
 export function chuanHoaBroadcast(raw: unknown): CauHinhBroadcast {
   const c: Record<string, unknown> = laObject(raw) ? raw : {};
   const s: Record<string, unknown> = laObject(c.schedule) ? c.schedule : {};
+  const time = gioHopLe(s.time, MAC_DINH_BROADCAST.schedule.time);
+  const extraTimes = Array.isArray(s.extraTimes)
+    ? [...new Set(s.extraTimes.map(v => gioHopLe(v, '')).filter(v => v && v !== time))].sort()
+    : [];
   const t: Record<string, unknown> = laObject(c.template) ? c.template : {};
   const a: Record<string, unknown> = laObject(c.antiSpam) ? c.antiSpam : {};
   const e: Record<string, unknown> = laObject(c.eventDriven) ? c.eventDriven : {};
@@ -219,7 +225,8 @@ export function chuanHoaBroadcast(raw: unknown): CauHinhBroadcast {
   return {
     recipients: [...new Set(mangChuoi(c.recipients, []))],
     schedule: {
-      time: gioHopLe(s.time, MAC_DINH_BROADCAST.schedule.time),
+      time,
+      extraTimes,
       days,
       upgradeOnNewRooms: s.upgradeOnNewRooms !== false,
       skipIfUnchanged: s.skipIfUnchanged !== false,

@@ -125,6 +125,11 @@ describe('hợp đồng cấu hình tự động hoá Zalo — web ↔ worker', 
 });
 
 describe('chuanHoaBroadcast — hai bản cho cùng kết quả', () => {
+  it('normalizes additional times without duplicating the primary slot or accepting an invalid time', () => {
+    const raw = { schedule: { time: '09:10', extraTimes: ['17:00', '9:10', '8:5', '08:05', '25:10', null] } };
+    expect(chuanHoaBroadcast(raw).schedule.extraTimes).toEqual(['08:05', '17:00']);
+    expect(worker.chuanHoaBroadcast(raw)).toEqual(chuanHoaBroadcast(raw));
+  });
   for (const { ten, raw } of DAU_VAO_RAC) {
     it(`khớp với đầu vào: ${ten}`, () => {
       expect(chuanHoaBroadcast(raw)).toEqual(worker.chuanHoaBroadcast(raw));
