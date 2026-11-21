@@ -564,6 +564,9 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
   try {
     api.listener.on('message', async (m) => {
       if (!active()) return;
+      // A paired personal DM belongs to its CRM assistant for every message topic.
+      if (await session.hermesNative?.capture(m)) return;
+      if (!active()) return;
       let saleHandled = false;
       try {
         saleHandled = await captureSaleQuestion(m, session.hermesIngress?.privateCommandSource());
@@ -573,8 +576,6 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
         log('sale advice intake unavailable');
       }
       if (!active() || (saleHandled && m.type === ThreadType.User)) return;
-      if (await session.hermesNative?.capture(m)) return;
-      if (!active()) return;
       const ingress = session.hermesIngress;
       const privateSource = ingress?.privateCommandSource();
       const privateCommand = privateSource ? prepareLivePrivateCommand({ event: m, source: privateSource }) : null;

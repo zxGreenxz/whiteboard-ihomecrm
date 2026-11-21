@@ -37,6 +37,7 @@ import { saleContentGuard } from './automation-content-guard.js';
 export const AUTOMATION_MS = 60_000;
 
 const BUCKET = 'zalo-media';
+const ROOM_DIVIDER = '\\--------------------------------/';
 
 /** Danh sách phòng = trang Sale Phòng; không có link chia sẻ còn hiệu lực ≠ hết phòng. */
 const KHONG_CO_TRANG_SALE = 'Công ty chưa có link chia sẻ trang Sale phòng còn hiệu lực nên không có danh sách phòng đang đăng để gửi (không phải hết phòng). Tạo hoặc bật lại link ở trang Sale phòng.';
@@ -216,11 +217,14 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
         for (const t of tinPhong) {
           if (t.loiAnh) { soKhongXepDuoc += t.soTinDuKien; continue; }
           // Reserve room-sized space before starting: never deliberately cut
-          // off its photos or final information/separator at a quota boundary.
+          // off its photos or final divider at a quota boundary.
           if (soTin + t.soTinDuKien > tranConLai) break;
           const messages = [
-            ...(t.anh.length ? [{ key: `room:${t.roomId}:album`, anh: t.anh }] : []),
             { key: `room:${t.roomId}`, body: t.body },
+            ...(t.anh.length ? [
+              { key: `room:${t.roomId}:album`, anh: t.anh },
+              { key: `room:${t.roomId}:divider`, body: ROOM_DIVIDER },
+            ] : []),
           ];
           if (messages.some((_, index) => {
             const due = new Date(bayGio + (offset + index * gapTin) * 1000);
@@ -491,18 +495,18 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
   if (khoi.includes('room_details')) {
     // Prepare once per room, then reuse the account-scoped copy for recipients
     // in this organization. All room photos share one native Zalo album job;
-    // information and the separator follow it, before the next room.
+    // the room information precedes it and the divider closes the room.
     for (const r of phong.rooms.slice(0, config.antiSpam.maxRoomsPerRun)) {
       try {
         const anh = await chuanBiAnhPhong(r, { accountId, orgId });
         if (anh.length > 12) throw new Error('Album vượt giới hạn 12 ảnh của hàng đợi; chưa gửi phòng, không cắt bớt ảnh');
-        const body = [soanTinPhong(r, config.template.roomTemplate, phong.hotline),
-          ...(!anh.length ? ['Chờ cập nhật ảnh'] : []), '────────────────'].filter(Boolean).join('\n');
-        tinPhong.push({ roomId: r.id, body, anh, soTinDuKien: anh.length ? 2 : 1 });
+        const info = soanTinPhong(r, config.template.roomTemplate, phong.hotline) || `Phòng ${r.code || r.id}`;
+        const body = anh.length ? info : [info, 'Chờ cập nhật ảnh', ROOM_DIVIDER].join('\n');
+        tinPhong.push({ roomId: r.id, body, anh, soTinDuKien: anh.length ? 3 : 1 });
       } catch (e) {
         log('automation: chuẩn bị ảnh phòng lỗi', r.id, e?.message || e);
         tinPhong.push({ roomId: r.id, loiAnh: true,
-          soTinDuKien: (r.images || []).some(u => typeof u === 'string' && u.trim()) ? 2 : 1 });
+          soTinDuKien: (r.images || []).some(u => typeof u === 'string' && u.trim()) ? 3 : 1 });
       }
     }
   }

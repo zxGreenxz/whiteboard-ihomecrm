@@ -139,6 +139,26 @@ function buildQuote(p) {
   };
 }
 
+// Chỉ gửi phần tiếp theo của phòng khi phần đứng trước đã có biên nhận.
+// Album của lượt cũ có thể được xếp trước tin chữ, khi đó nó chưa phụ thuộc tin nào.
+async function roomPartReady(job) {
+  if (job.payload?.tu_dong !== true) return true;
+  const part = /^(.*:room:[^:]+):(album|divider)$/.exec(job.payload.automation_request_key || '');
+  if (!part) return true;
+  const [, roomKey, kind] = part;
+  const keys = kind === 'album' ? [roomKey] : [roomKey, roomKey + ':album'];
+  const { data, error } = await sb.from('zalo_send_queue').select('status')
+    .eq('organization_id', job.organization_id).eq('account_id', job.account_id)
+    .eq('conversation_id', job.conversation_id).in('payload->>automation_request_key', keys)
+    .lt('created_at', job.created_at);
+  if (error) throw new Error(`Chưa kiểm được kết quả gửi phòng: ${error.message}`);
+  if ((kind === 'divider' && data.length !== keys.length) || data.some(row => row.status === 'failed')) {
+    await jobFail(job, 'Chưa gửi đủ nội dung trước đó của phòng.', { claimed: false });
+    return false;
+  }
+  return data.every(row => row.status === 'sent');
+}
+
 async function sendText(s, job, p, threadId, type) {
   const content = { msg: p.body || '' };
   if (Array.isArray(p.mentions) && p.mentions.length && type === ThreadType.Group) {
@@ -246,6 +266,7 @@ export async function processJob(job) {
     }
     const automation = await validateAutomationDelivery(job);
     if (!automation.ok) { await jobFail(job, automation.reason, { claimed: false }); return; }
+    if (!await roomPartReady(job)) return;
     const { data: claim, error: claimError } = await sb.rpc('zalo_worker_claim_job_v1', { p_job_id: job.id, p_instance_id: INSTANCE_ID });
     if (claimError) throw new Error(claimError.message);
     if (!claim?.ok) return;

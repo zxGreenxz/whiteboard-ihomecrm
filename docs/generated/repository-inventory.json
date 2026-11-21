@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1940,
   "soFileDocBangFs": 501,
-  "tongLoiGoi": 1367,
+  "tongLoiGoi": 1368,
   "khongPhanLoaiDuoc": 606,
   "theoLoai": {
     "ma-nguon": {
@@ -2061,6 +2061,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "worker/__tests__/sale-advice-db.test.js",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -3813,14 +3821,6 @@
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "worker/__tests__/sale-advice-db.test.js",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
       },
       "khongPhanLoaiDuoc": 0
     }
