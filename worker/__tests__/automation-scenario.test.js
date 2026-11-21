@@ -60,6 +60,16 @@ describe('vanTayDanhSach', () => {
 });
 
 describe('toiLuotTheoLich', () => {
+  it('can send an extra slot between the old run and the edited primary', () => {
+    const config = cfg({ schedule: { time: '09:10', extraTimes: ['08:30', '12:30'] } });
+    const stats = { lastScheduledDate: '2026-08-31', lastRunAt: '2026-08-31T01:00:02Z' };
+    const at = (time, ledger) => toiLuotTheoLich({ now: vaoLuc('2026-08-31T' + time), config, stats: ledger });
+    expect(at('08:30', stats)).toMatchObject({ gioHen: '08:30', daXuLyGioChinh: true });
+    const updated = { ...stats, lastScheduledTime: '08:30', lastPrimaryDate: '2026-08-31' };
+    expect(at('09:10', updated).chay).toBe(false);
+    expect(at('12:30', updated).gioHen).toBe('12:30');
+  });
+
   it('does not replay a consumed legacy primary slot after its time was edited', () => {
     const stats = { lastScheduledDate: '2026-08-31', lastRunAt: '2026-08-31T01:00:02Z' };
     for (const extraTimes of [[], ['12:30']]) {

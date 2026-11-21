@@ -326,8 +326,8 @@ async function xuLyMotCongTy(auto, now) {
     if (qd.mode === 'skipped' && !phong.rooms.length && phong.trangSale === 0) qd.reason = KHONG_CO_TRANG_SALE;
 
     // Preserve the original primary slot's queue keys across a worker upgrade.
-    const legacyKey = !config.schedule.extraTimes.length && stats.lastScheduledDate !== t.ngay;
-    const runKey = legacyKey ? `scheduled:${t.ngay}` : `scheduled:${t.ngay}:${luot.gioHen}`;
+    const runKey = luot.gioHen === config.schedule.time ? `scheduled:${t.ngay}` : `scheduled:${t.ngay}:${luot.gioHen}`;
+    if (luot.daXuLyGioChinh) stats.lastPrimaryDate = t.ngay;
     stats.lastScheduledDate = t.ngay;
     stats.lastScheduledTime = luot.gioHen;
     stats.lastRunAt = now.toISOString();

@@ -81,26 +81,29 @@ export function vanTayDanhSach(rooms) {
 
 /**
  * Đã tới lượt gửi theo lịch chưa?
- * @returns {{ chay: boolean, lyDo: string, gioHen?: string }}
+ * @returns {{ chay: boolean, lyDo: string, gioHen?: string, daXuLyGioChinh?: boolean }}
  */
 export function toiLuotTheoLich({ now, config, stats }) {
   const t = gioVietNam(now);
   const s = stats || {};
   const { time, extraTimes = [] } = config.schedule;
-  const cacGio = [time, ...extraTimes].sort();
+  const cungNgay = s.lastScheduledDate === t.ngay;
+  const soCu = cungNgay && !s.lastScheduledTime;
+  const daXuLyGioChinh = s.lastPrimaryDate === t.ngay || soCu;
+  const cacGio = (daXuLyGioChinh ? [...extraTimes] : [time, ...extraTimes]).sort();
+  if (!cacGio.length) return { chay: false, lyDo: 'Hôm nay đã chạy lượt chính.' };
   // Khi worker bật lại, chỉ xét giờ hẹn gần nhất để tránh dồn các lượt đã lỡ.
   const gioHen = cacGio.filter(gio => gio <= t.gio).at(-1);
   if (!gioHen) {
     return { chay: false, lyDo: `Chưa tới giờ gửi (${cacGio[0]}), hiện ${t.gio}.` };
   }
-  if (s.lastScheduledDate === t.ngay) {
+  if (cungNgay) {
     // Sổ cũ chỉ ghi ngày và thời điểm chạy thực tế.
     let mocCu = s.lastScheduledTime;
     if (!mocCu) {
       const lanCuoi = new Date(s.lastRunAt);
       const tCu = Number.isFinite(lanCuoi.getTime()) ? gioVietNam(lanCuoi) : null;
-      // Sổ một lượt/ngày đã đóng cả giờ chính, kể cả khi sau đó người dùng đổi giờ.
-      mocCu = tCu?.ngay === t.ngay && tCu.gio > time ? tCu.gio : time;
+      mocCu = tCu?.ngay === t.ngay ? tCu.gio : time;
     }
     if (gioHen <= mocCu) return { chay: false, lyDo: `Hôm nay đã chạy tới lượt ${mocCu}.` };
   }
@@ -110,7 +113,7 @@ export function toiLuotTheoLich({ now, config, stats }) {
       lyDo: `Đã quá ${TRE_TOI_DA_PHUT} phút so với giờ hẹn ${gioHen} (hiện ${t.gio}) — bỏ lượt này.`,
     };
   }
-  return { chay: true, gioHen, lyDo: `Tới giờ gửi ${gioHen}.` };
+  return { chay: true, gioHen, daXuLyGioChinh: daXuLyGioChinh || gioHen === time, lyDo: `Tới giờ gửi ${gioHen}.` };
 }
 
 /**

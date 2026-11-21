@@ -411,7 +411,8 @@ describe('engine broadcast — xếp hàng', () => {
     expect(rpcCalls.every(call => call.name === 'zalo_enqueue_broadcast_v2')).toBe(true);
     expect(new Set(first).size).toBe(4);
     rpcCalls = [];
-    // Same schedule/stats after a lost response or worker restart.
+    // After a lost response, adding an extra time must reuse the primary receipt.
+    duLieuAutomations[0].config.schedule.extraTimes = ['12:30'];
     await tickTuDongHoa();
     expect(rpcCalls.map(call => call.args.p_request_key)).toEqual(first);
   });
