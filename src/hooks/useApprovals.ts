@@ -14,6 +14,7 @@ import { ledgerAwareWorkflowError } from "@/lib/profitLedger/voucherFailure";
 // public.list_my_pending_approvals_v1() (server đã lọc theo auth.uid(), client
 // không truyền tham số nào).
 export interface PendingApproval {
+  is_maker?: boolean;
   request_id: string;
   submission_no: number;
   submitted_at: string;
@@ -83,6 +84,7 @@ export const usePendingApprovals = () => {
         voucher_name: r.voucher_name ?? null,
         voucher_type: r.voucher_type ?? null,
         maker_name: r.maker_name ?? null,
+        is_maker: r.is_maker === true,
         step_no: Number(r.step_no ?? 0),
         request_version: Number(r.request_version ?? 0),
         organization_id: r.organization_id ?? null,

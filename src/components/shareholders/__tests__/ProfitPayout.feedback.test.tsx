@@ -680,7 +680,7 @@ describe('hộp Chi tạm ứng cho tôi (cổ đông có quyền tạm ứng)',
     expect(m.advance).toHaveBeenCalledWith({
       organizationId: 'org-a', shareholderId: 's', amount: 50_000, accountId: 'a2', voucherDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), note: null,
     });
-    await waitFor(() => expect(vi.mocked(toast.success).mock.calls[0]![0]).toMatch(/phiếu PC2611888 tạm ứng 50\.000.*chờ chủ duyệt/));
+    await waitFor(() => expect(vi.mocked(toast.success).mock.calls[0]![0]).toMatch(/phiếu PC2611888 tạm ứng 50\.000.*chờ người có quyền duyệt/));
   });
   it('chủ tự ứng từ sổ mình giữ: cần chứng từ và duyệt chi đúng phiếu vừa lập', async () => {
     m.ownerAdvance = true;
@@ -742,7 +742,7 @@ describe('hộp Chi tạm ứng cho tôi (cổ đông có quyền tạm ứng)',
     render(dialog());
     await fill('80000');
     const box = screen.getByTestId('profit-advance-preview');
-    expect(text('profit-advance-over')).toBe('Ứng vượt lợi nhuận chưa chi 20.000 đ — vẫn lập được, phiếu chờ chủ duyệt.');
+    expect(text('profit-advance-over')).toBe('Ứng vượt lợi nhuận chưa chi 20.000 đ — vẫn lập được, phiếu chờ người có quyền duyệt.');
     expect(box.textContent).not.toMatch(/ước tính|còn treo/);
     expect(within(box).getAllByText(/vượt/)).toHaveLength(1);
   });

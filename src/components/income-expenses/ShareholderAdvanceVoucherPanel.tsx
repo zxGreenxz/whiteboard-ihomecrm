@@ -4,7 +4,7 @@
 //   toà khoá về toà ảo của công ty · "người nhận" là dropdown các cổ đông có quyền tạm ứng · sổ quỹ chỉ còn
 //   các sổ mình đang giữ · một hạng mục, một số tiền · không phòng / hợp đồng / lặp lại / KQKD / đính kèm.
 // Lưu bằng lệnh tạm ứng (W1 shareholder_profit_advance_v1) — KHÔNG đi đường tạo phiếu thường. Mọi phiếu
-// chờ chủ duyệt (người duyệt khác người lập và người nhận), tiền chưa ra khỏi sổ.
+// chờ người có quyền duyệt (người duyệt khác người lập và người nhận), tiền chưa ra khỏi sổ.
 // Người lập HỘ không thấy số của cổ đông: máy chủ không gửi (xem ShareholderAdvancePreviewBox).
 
 import { useEffect, useRef, useState } from 'react';
@@ -138,7 +138,7 @@ export function ShareholderAdvanceVoucherPanel({
       }
       const result = await create();
       toast.success(
-        `Đã lập ${result.code ? `phiếu ${result.code}` : 'phiếu'} tạm ứng ${formatVND(result.advance_amount)}${payee ? ` cho ${payee.name}` : ''}: chờ chủ duyệt, chưa chi tiền.`,
+        `Đã lập ${result.code ? `phiếu ${result.code}` : 'phiếu'} tạm ứng ${formatVND(result.advance_amount)}${payee ? ` cho ${payee.name}` : ''}: chờ người có quyền duyệt, chưa chi tiền.`,
       );
       onSaved?.(result.advance_amount);
       onClose();
@@ -161,7 +161,7 @@ export function ShareholderAdvanceVoucherPanel({
         data-testid="shareholder-advance-panel"
       >
         <p className="text-sm text-muted-foreground">
-          Phiếu <b>{typeName}</b> cho cổ đông: một hạng mục, chi từ sổ quỹ bạn đang giữ, {owner.active ? 'chủ duyệt và chi kèm chứng từ.' : 'chờ chủ duyệt rồi mới chi tiền.'}
+          Phiếu <b>{typeName}</b> cho cổ đông: một hạng mục, chi từ sổ quỹ bạn đang giữ, {owner.active ? 'superadmin hoặc chủ công ty có quyền duyệt và ghi chi khi giữ sổ, kèm chứng từ.' : 'chờ người có quyền duyệt rồi mới chi tiền.'}
           Tên phiếu do hệ thống đặt theo người nhận.
         </p>
 

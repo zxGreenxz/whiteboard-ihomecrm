@@ -146,7 +146,7 @@ export default function ProfitSelfAdvanceDialog({ open, onOpenChange, organizati
         return;
       }
       const result = await create();
-      toast.success(`Đã lập ${result.code ? `phiếu ${result.code}` : 'phiếu'} tạm ứng ${formatVND(result.advance_amount)}: chờ chủ duyệt, chưa chi tiền.`);
+      toast.success(`Đã lập ${result.code ? `phiếu ${result.code}` : 'phiếu'} tạm ứng ${formatVND(result.advance_amount)}: chờ người có quyền duyệt, chưa chi tiền.`);
       onOpenChange(false);
     } catch (error) {
       const info = profitLedgerErrorMessage(error, 'advance');

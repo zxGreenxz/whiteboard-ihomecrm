@@ -264,7 +264,7 @@ describe('chế độ Tạm Ứng của form', () => {
     fireEvent.change(o('shareholderId')!, { target: { value: 'sh-1' } });
     fireEvent.change(o('accountId')!, { target: { value: 'a-giu' } });
     const box = await screen.findByTestId('profit-advance-preview');
-    expect(box.textContent).toMatch(/Bạn lập hộ: phiếu chờ chủ duyệt/);
+    expect(box.textContent).toMatch(/Bạn lập hộ: phiếu chờ người có quyền duyệt/);
     expect(screen.queryByTestId('profit-advance-position')).toBeNull();
     expect(panel().textContent).not.toMatch(/Lợi nhuận chưa chi|Tạm ứng đang có|7\.777\.000|1\.111\.000|6\.666\.000/);
     fireEvent.change(o('shareholderId')!, { target: { value: 'sh-toi' } });
@@ -289,7 +289,7 @@ describe('chế độ Tạm Ứng của form', () => {
     // Lần kiểm mới về (máy chủ không gửi số cho người lập hộ): vẫn không có số nào.
     h.holdPreview = false;
     fireEvent.change(o('note')!, { target: { value: 'Ứng hộ' } });
-    expect((await screen.findByTestId('profit-advance-preview')).textContent).toMatch(/Bạn lập hộ: phiếu chờ chủ duyệt/);
+    expect((await screen.findByTestId('profit-advance-preview')).textContent).toMatch(/Bạn lập hộ: phiếu chờ người có quyền duyệt/);
     expect(panel().textContent).not.toMatch(/Lợi nhuận chưa chi|Tạm ứng đang có|7\.777\.000|1\.111\.000|1\.611\.000|6\.666\.000|6\.166\.000/);
   });
   it('Lưu ⇒ gọi lệnh tạm ứng đúng nội dung, KHÔNG gọi lệnh tạo phiếu thường; xong thì đóng hộp', async () => {
@@ -310,7 +310,7 @@ describe('chế độ Tạm Ứng của form', () => {
     expect(h.create).not.toHaveBeenCalled();
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(onSaved).toHaveBeenCalledWith(500_000);
-    expect(h.toastSuccess.mock.calls[0]![0]).toMatch(/phiếu PC2611777 tạm ứng 500\.000.*cho Cổ đông Một.*chờ chủ duyệt/);
+    expect(h.toastSuccess.mock.calls[0]![0]).toMatch(/phiếu PC2611777 tạm ứng 500\.000.*cho Cổ đông Một.*chờ người có quyền duyệt/);
   });
   it('thiếu người nhận / sổ quỹ / số tiền ⇒ báo đúng ô, không gọi máy chủ', async () => {
     moForm();
