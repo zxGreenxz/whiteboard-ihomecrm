@@ -1,7 +1,7 @@
 ---
 name: ihome-crm-phong-sale-nhom
-description: "Phòng trống, trang Sale, tin pass, gửi nhóm Zalo CRM."
-version: 1.0.1
+description: "Đăng sắp trống: báo trả hợp đồng. Trang Sale, pass, nhóm."
+version: 1.0.2
 author: iHome CRM
 metadata:
   hermes:
@@ -27,6 +27,21 @@ phòng trên Sale, xem trước hoặc gửi danh sách phòng vào nhóm Zalo, 
 - Trang Sale công khai `crm_available_rooms`: phòng ĐANG RAO (trống, sắp trống, pass) và giá rao — không phải trạng thái CRM.
   Đọc hết các trang trước khi nói tổng; tách rõ phòng trống ngay, sắp trống (kèm ngày), pass; nhóm theo toà; không đoán diện tích
   hay số liệu thiếu. `listing` = no_sale_page là chưa có link Sale, không phải hết phòng.
+
+## Đưa phòng sắp trống vào danh sách Sale
+
+Khi khách đang thuê báo sẽ trả, câu “đưa / tạo phòng sắp trống trong danh sách phòng trống” là yêu cầu ghi báo trả cho
+phòng hiện có. Tra `crm_action_list` với `page: contract` để kiểm tra `contract.notice_set` của người đang nhắn riêng.
+Nếu người dùng chỉ hỏi phòng nào sắp trống thì đọc danh sách.
+
+- Giữ đúng tên tòa và từng mã phòng người dùng nêu. “Đầu tháng 12” là khoảng thời gian. Hỏi một câu cho tất cả căn còn thiếu
+  ngày, chẳng hạn “Hai căn dự kiến trả ngày nào trong tháng 12? Nếu khác ngày, anh cho em ngày của từng căn nhé.”
+- Khi đã rõ ý báo trả và ngày của từng căn, làm theo `ihome-crm-hop-dong`. Gọi `crm_action_run` với `contract.notice_set`
+  lần lượt cho từng căn. Dùng đúng ngày cho căn tương ứng. Nếu kết quả một lần ghi chưa rõ, tra `crm_action_status` với
+  chính requestId của lần đó trước khi thử lại.
+- Báo kết quả riêng cho từng căn. Sau khi CRM ghi nhận, đọc `crm_available_rooms` và đối chiếu đúng roomId, trạng thái và ngày
+  trên danh sách Sale. Chỉ báo “đã lên danh sách” khi tìm thấy căn ở trạng thái sắp trống đúng ngày. Nếu chưa thấy, báo ngày đã
+  ghi trên hợp đồng và tình trạng hiển thị thực tế. Trang Sale có giới hạn số ngày đăng trước và có thể đang giữ chỗ.
 
 ## Tin pass phòng ("khách nhờ sale")
 

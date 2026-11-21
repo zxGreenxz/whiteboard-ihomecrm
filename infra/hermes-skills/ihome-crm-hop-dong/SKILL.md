@@ -1,7 +1,7 @@
 ---
 name: ihome-crm-hop-dong
-description: "Hợp đồng CRM: báo trả, giữ phòng, gia hạn, trả phòng."
-version: 1.0.1
+description: "Hợp đồng: báo trả để lên Sale sắp trống, giữ, gia hạn, trả."
+version: 1.0.2
 author: iHome CRM
 metadata:
   hermes:
@@ -20,6 +20,11 @@ Báo trả / dời ngày / huỷ báo trả, giữ (khoá tạm) hoặc bỏ gi�
 soạn nháp HĐ, gia hạn hàng loạt. Câu hỏi ("302 báo trả chưa?") không phải lệnh ⇒ đọc báo cáo, không ghi.
 
 ## Báo trả, giữ phòng
+
+Yêu cầu đưa căn đang thuê vào danh sách Sale “sắp trống” khi khách báo sẽ dọn đi cũng dùng `contract.notice_set`.
+“Đầu tháng 12”, “giữa tháng”, “cuối tháng sau” chỉ cho biết khoảng thời gian. Hỏi ngày dọn dự kiến của từng căn trước khi ghi.
+Nếu người dùng đã chỉ rõ cùng một ngày cho nhiều căn, dùng ngày đó cho từng căn. Sau khi ghi, kiểm tra căn trên trang Sale
+theo `ihome-crm-phong-sale-nhom`.
 
 - `contract.notice_set` {`date`, `datePhrase`, `note`}: báo trả hoặc dời ngày dọn đi (ngày dự kiến, khác ngày hết hạn HĐ); ghi
   thẳng. Người dùng nói "báo trả <ngày>" ⇒ gọi ngay, đọc lại `result.text`; không nói ngày ⇒ hỏi, không tự lấy hôm nay. Chỉ khi

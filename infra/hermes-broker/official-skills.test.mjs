@@ -116,6 +116,18 @@ test('skill chuẩn: mọi tên tool / mã thao tác / mã báo cáo nhắc tớ
   for (const dir of skillDirs().filter(name => name !== CORE_SKILL)) assert.match(texts[dir], /Hướng dẫn chuẩn, cùng connector; khác skill tự học thì theo đây/, dir);
 });
 
+test('đưa phòng sắp trống lên Sale dẫn tới báo trả hợp đồng, hỏi ngày rồi kiểm từng căn', () => {
+  const sale = skillText('ihome-crm-phong-sale-nhom');
+  const contract = skillText(PAGE_SKILLS.contract);
+  for (const text of [sale, contract]) {
+    assert.match(text, /^description: .*sắp trống/im);
+    assert.match(text, /contract\.notice_set/);
+    assert.match(text, /đầu tháng 12/i);
+  }
+  assert.match(sale, /crm_action_list.*contract/);
+  assert.match(sale, /crm_available_rooms.*roomId/);
+});
+
 test('skill chuẩn giữ luật chặn của SOUL: Sale cấm reservation_* và lock; chặn trước tiền hệ thống; if_required có thể ghi ngay', () => {
   // Thao tác cọc của Sale có tiền và ghi thẳng (sale-action-contract.mjs) ⇒ SOUL dòng 17/20: cọc làm trên web. Mỗi operation reservation_*
   // (kể cả thao tác mới thêm sau này) và lock / release phải nằm trên một dòng "KHÔNG" của skill phòng / Sale.
