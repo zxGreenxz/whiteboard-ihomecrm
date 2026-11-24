@@ -50,6 +50,20 @@
       ]
     },
     {
+      "id": "contract-exit-deposit-retained",
+      "sourcePaths": [
+        "supabase/migrations/*_coc_giu_lai_theo_thoa_thuan.sql",
+        "src/lib/__tests__/fixtures/deposit-retained-before.sql",
+        "src/lib/__tests__/depositRetainedMigration.test.ts",
+        "scripts/tests/test-deposit-retained-live.sql"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/lib/__tests__/depositRetainedMigration.test.ts",
+        "src/lib/__tests__/terminationSettlement.test.ts"
+      ]
+    },
+    {
       "id": "navigation",
       "sourcePaths": [
         "src/components/layout/**",

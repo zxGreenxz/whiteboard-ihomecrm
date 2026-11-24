@@ -63,6 +63,45 @@ describe('thanh lý tách bước trả phòng', () => {
     expect((field as HTMLInputElement).value).toBe('4.000.000');
   });
 
+  it('chủ nhà hỗ trợ, hoàn một phần cọc: tự thêm dòng "Cọc giữ lại theo thoả thuận", gửi cọc đem ra bằng cọc đã thu', async () => {
+    early.data = [landlordRow()];
+    spies.finalize.mockResolvedValue({ state: 'FINALIZED' });
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={{ ...contract, total_deposit: 4_500_000, deposit_paid: 4_500_000 }}
+      exitCase={{id:EXIT_FIXTURE_IDS.exitCase,current_kind:'EARLY_RETURN',initial_kind:'EARLY_RETURN',actual_move_out_on:'2026-12-01',version:1,state:'PENDING',kind_history:[]} as import('@/lib/contractExitCases').ContractExitCase} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Tiếp tục quyết toán' }));
+    const field = screen.getByLabelText('Tiền cọc hoàn trả') as HTMLInputElement;
+    expect(field.value).toBe('4.500.000');
+    expect(screen.queryByTestId('deposit-retained-line')).toBeNull();
+    fireEvent.change(field, { target: { value: '2500000' } });
+    expect(screen.getByTestId('deposit-retained-line').textContent).toContain('Cọc giữ lại theo thoả thuận: 2.000.000đ');
+    expect(screen.getByTestId('deposit-retained-line').textContent).toContain('Cọc đem ra quyết toán: 4.500.000đ');
+    fireEvent.click(screen.getByRole('button', { name: /Lập hoá đơn & thanh lý/i }));
+    // Hộp xác nhận nói rõ dòng giữ lại trước khi bấm.
+    expect((await screen.findByTestId('confirm-deposit-retained')).textContent).toMatch(/Cọc giữ lại theo thoả thuận \(doanh thu\)2\.000\.000 đ/);
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận thanh lý' }));
+    await waitFor(() => expect(spies.finalize).toHaveBeenCalledOnce());
+    expect(spies.finalize.mock.calls[0][0].settlement).toMatchObject({ depositRefund: 4_500_000,
+      extraCharges: [{ kind: 'DEPOSIT_RETAINED', description: 'Cọc giữ lại theo thoả thuận', amount: 2_000_000 }] });
+  });
+
+  it('sổ cọc ghi dôi: nhập từ cọc HĐ trở lên không thêm dòng giữ lại; dưới cọc HĐ chỉ phần dưới thành dòng giữ lại', async () => {
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={{ ...contract, total_deposit: 2_000_000, deposit_paid: 4_000_000 }} />);
+    fireEvent.click(screen.getByLabelText('Hết hạn hợp đồng'));
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng nội dung mẫu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tiếp tục quyết toán ngay' }));
+    const field = await screen.findByLabelText('Tiền cọc hoàn trả') as HTMLInputElement;
+    expect(screen.getByText(/Sổ cọc ghi nhận cao hơn mức thỏa thuận/)).toBeTruthy();
+    fireEvent.change(field, { target: { value: '3000000' } });
+    expect(screen.queryByTestId('deposit-retained-line')).toBeNull();
+    fireEvent.change(field, { target: { value: '1500000' } });
+    expect(screen.getByTestId('deposit-retained-line').textContent).toContain('Cọc giữ lại theo thoả thuận: 500.000đ');
+    fireEvent.click(screen.getByRole('button', { name: /Lập hoá đơn & thanh lý/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Xác nhận thanh lý' }));
+    await waitFor(() => expect(spies.confirm).toHaveBeenCalledOnce());
+    expect(spies.confirm.mock.calls[0][0]).toMatchObject({ initialKind: 'NATURAL_EXPIRY', settlementMode: 'IMMEDIATE',
+      settlement: { depositRefund: 2_000_000, extraCharges: [{ kind: 'DEPOSIT_RETAINED', description: 'Cọc giữ lại theo thoả thuận', amount: 500_000 }] } });
+  });
+
   it('không mở quyết toán tiền khi truy vấn công nợ hoặc credit lỗi', () => {
     finance.invoiceError = true;
     finance.creditError = true;
