@@ -19,8 +19,8 @@ const writeGuard=()=>persistentFinancialWorkflow('public-room-admin',{scope:'act
 /**
  * Ranh giới kiểu TẠM cho create_public_room_token(p_label, p_organization_id) — migration
  * 20261124171545_link_chia_se_va_thong_ke_ghi_ro_cong_ty chưa lên production nên types.ts sinh tự động còn bản một tham số.
- * Khi đã áp production và `npm run gen:types` chạy lại: gọi thẳng
- * `supabase.rpc('create_public_room_token',{p_label,p_organization_id})` và XOÁ hàm bọc này.
+ * Khi đã áp production và `npm run gen:types` chạy lại: gọi thẳng supabase.rpc có kiểu sinh tự động (hai tham số
+ * p_label, p_organization_id) và XOÁ hàm bọc này.
  */
 type CreateTokenArgs={p_label?:string;p_organization_id:string};
 type CreateTokenReply=PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>;
