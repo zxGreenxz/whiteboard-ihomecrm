@@ -1,5 +1,6 @@
 import { focusFirstError } from '@/lib/formErrors';
 import { collectionFailureMessage } from '@/lib/collectionFeedback';
+import { PriorCollectionSettledError } from '@/lib/pendingCollection';
 import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useForm, useFieldArray, type Resolver } from 'react-hook-form';
@@ -667,7 +668,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       console.error('Payment error:', error);
       const started=!!collectionAttemptRef.current?.started;
       setSubmitError(started ? collectionFailureMessage(error) : 'Chưa gửi lệnh thu tiền. Kiểm tra kết nối và chứng từ đã chọn; dữ liệu đã nhập vẫn được giữ.');
-      if (started && voucherOutcomeUnknown(error)) setReconcileRequired(true);
+      // Lần thu trước còn hiệu lực (đối chiếu kết luận đã ghi): khoá hộp như khi chưa rõ kết quả để không thu thêm.
+      if (started && (voucherOutcomeUnknown(error) || (error instanceof PriorCollectionSettledError && !error.reversed))) setReconcileRequired(true);
     } finally {
       setIsUploading(false);
     }

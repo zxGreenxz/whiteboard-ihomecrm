@@ -39,18 +39,21 @@ const params: BulkPaymentParams = { payment_date: '2026-09-08', items: [{ invoic
   amount_tm: 5_000_000, amount_tk: 0, amount_tt: 0, change_amount: 200_000,
   account_id: 'cash', change_account_id: 'change', rounding_amount: 5_000, rounding_account_id: 'rounding' }] };
 
-it('Thu tiền / bulk giữ khóa qua remount sau timeout, không gửi lại khi lookup chưa xác nhận',async()=>{
+// Đợt 2 (24/11/2026): trước đây lookup chưa thấy thì khoá mãi; nay gửi lại ĐÚNG khoá cũ (máy chủ chống trùng theo khoá).
+it('Thu tiền / bulk giữ dấu qua remount sau timeout; lookup chưa thấy thì gửi lại đúng khoá cũ, không khoá mới',async()=>{
  const first=renderHook(()=>useBulkRecordPayment());
  const fn=first.result.current as unknown as {mutationFn:(input:BulkPaymentParams)=>Promise<BulkPaymentResult>};
  mock.rpc.mockResolvedValueOnce({data:null,error:{message:'Network timeout'}});
  expect((await fn.mutationFn(params)).failures).toHaveLength(1);
  const originalKey=mock.rpc.mock.calls[0][1].p_idempotency_key;
+ expect(JSON.stringify(localStorage)).toContain(originalKey);
  first.unmount();
  const second=renderHook(()=>useBulkRecordPayment());
  const result=await(second.result.current as unknown as {mutationFn:(input:BulkPaymentParams)=>Promise<BulkPaymentResult>}).mutationFn(params);
- expect(result.failures[0]).toMatchObject({outcomeUnknown:true,message:expect.stringContaining('chưa được đối chiếu')});
- expect(mock.rpc).toHaveBeenCalledTimes(1);
- expect(JSON.stringify(localStorage)).toContain(originalKey);
+ expect(result).toMatchObject({ok:['invoice'],failures:[]});
+ expect(mock.rpc).toHaveBeenCalledTimes(2);
+ expect(mock.rpc.mock.calls[1][1].p_idempotency_key).toBe(originalKey);
+ expect(JSON.stringify(localStorage)).not.toContain(originalKey);
 });
 
 it('bulk cannot silently retain money by lowering change', async () => {

@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1944,
+  "tongSoFileTest": 1949,
   "soFileDocBangFs": 503,
-  "tongLoiGoi": 1373,
-  "khongPhanLoaiDuoc": 609,
+  "tongLoiGoi": 1370,
+  "khongPhanLoaiDuoc": 608,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 67,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 216,
+      "soFile": 215,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -869,14 +869,6 @@
     },
     {
       "file": "src/lib/__tests__/boSinhDinhKyChongTrungMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "src/lib/__tests__/contractExitEarlyTermsMigration.test.ts",
       "soGoi": 4,
       "loai": {
         "sql": 2
@@ -3576,6 +3568,12 @@
     },
     {
       "file": "src/lib/__tests__/paidInvoiceAdjustmentGuard.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/pendingStrategies.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

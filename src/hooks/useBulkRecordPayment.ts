@@ -1,5 +1,5 @@
 import {financialReadNumber} from '@/lib/financialReadValidation';
-import {runDurableCollection,reconcilePendingCollection} from '@/lib/pendingCollection';
+import {runDurableCollection,reconcilePendingCollection,PriorCollectionSettledError} from '@/lib/pendingCollection';
 import {lookupPendingCollection} from '@/lib/collectionRecovery';
 import { collectionFailureMessage, confirmedCollection } from '@/lib/collectionFeedback';
 import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
@@ -271,7 +271,8 @@ export const useBulkRecordPayment = (options?: {silentFeedback?:boolean}) => {
             attemptsRef.current.set(item.invoice_id, attempt);
           }
 
-          const result = await runDurableCollection({userId:user.id,organizationId:attempt.organizationId,invoiceId:item.invoice_id},attempt.idempotencyKey,async()=>confirmedCollection(await recordInvoiceCollectionV5(
+          // `key` là khoá thật sự được gửi: hoá đơn còn dấu của lần thu trước thì đó là khoá CŨ của dấu.
+          const result = await runDurableCollection({userId:user.id,organizationId:attempt.organizationId,invoiceId:item.invoice_id},attempt.idempotencyKey,async key=>confirmedCollection(await recordInvoiceCollectionV5(
             // Xem chú thích cùng chỗ ở useInvoicePayments.ts: hai tham số này
             // bắt buộc nhưng nhận NULL, bộ sinh không diễn đạt được.
             (fn, args) => supabase.rpc(fn, {
@@ -280,19 +281,24 @@ export const useBulkRecordPayment = (options?: {silentFeedback?:boolean}) => {
               p_receipt_image_url: rpcNullable(args.p_receipt_image_url),
             }),
             attempt.request,
-            attempt.idempotencyKey,
+            key,
           )),lookupPendingCollection);
           confirmedCollection(result);
           voucherIds.push(...resultVoucherIds(result));
           attemptsRef.current.delete(item.invoice_id);
           ok.push(item.invoice_id);
         } catch (error) {
+          const prior = error instanceof PriorCollectionSettledError ? error : null;
+          // Khoá của lượt đã có kết luận trên máy chủ: lượt sau phải chuẩn bị lại (đọc lại hoá đơn, khoá mới).
+          if (prior) attemptsRef.current.delete(item.invoice_id);
           failures.push({
             invoice_id: item.invoice_id,
             invoice_number: item.invoice_number,
             room_name: item.room_name,
             message: collectionFailureMessage(error),
-            outcomeUnknown: voucherOutcomeUnknown(error),
+            // Lần thu trước còn hiệu lực thì dòng này đã được thu: nơi gọi khoá dòng như dòng chưa rõ kết quả để
+            // không thu thêm lần nữa trong cùng hộp. Đã bị hoàn tác thì để người dùng thu lại.
+            outcomeUnknown: voucherOutcomeUnknown(error) || (!!prior && !prior.reversed),
           });
         }
       }

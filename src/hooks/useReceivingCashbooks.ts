@@ -223,7 +223,11 @@ export function useChangeCollectionTenderMethod() {
       if(result.tenderId!==input.tenderId || (result.changed && !result.replayed && (!result.to || result.to.method!==input.method || (input.accountId!==null && result.to.accountId!==input.accountId))))throw new TypeError("Chưa xác nhận được đúng khoản thu và sổ nhận sau thay đổi.");
       progress.completed.push({id:result.voucherId,label:`Phiếu thu đã đối chiếu: ${result.voucherId}`});
       return result;
-    }),
+    },
+    // Cách B: `change_collection_tender_method_v1` khoá đợt thu, hoá đơn, dòng thu và phiếu rồi mới tra lượt sửa theo
+    // (phiếu, người làm, khoá) và trả `replayed:true` (đọc thân hàm production 24/11/2026). Gửi lại cùng mã không thể
+    // đổi hai lần, kể cả khi lệnh cũ còn đang chạy.
+    async()=>({outcome:'not-written',serverDedupesRequestKey:true})),
     onSuccess: async (result) => {
       await Promise.all(
         [
@@ -232,7 +236,9 @@ export function useChangeCollectionTenderMethod() {
           ["cash-book"], ["cash-book-summary"],
         ].map((queryKey) => client.invalidateQueries({ queryKey })),
       );
-      if(result.changed) toast.success("Đã đổi hình thức thu"+(result.to?.accountName?` vào sổ ${result.to.accountName}`:"")+".");
+      // Máy chủ trả kết quả của lần gửi trước (cùng mã): không biết lần đó đổi sang đâu, không nói như vừa đổi xong.
+      if(result.replayed) toast.info("Lần đổi hình thức thu trước đã được ghi; không đổi thêm. Kiểm tra lại hình thức và sổ nhận của dòng thu.");
+      else if(result.changed) toast.success("Đã đổi hình thức thu"+(result.to?.accountName?` vào sổ ${result.to.accountName}`:"")+".");
       else toast.info("Hình thức thu và sổ nhận không thay đổi.");
     },
     onError: (error: { message?: string }) => {

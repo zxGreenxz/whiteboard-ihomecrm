@@ -52,6 +52,7 @@ describe("clearAccountBrowserState", () => {
       "sb-tryymsxyyckgbrmmvozx-auth-token": "{}",
       "ihome:pending-collection:v1:user-a:org-1:inv-1": "{}",
       "ihome:financial-pending:v1:ns:user-a:org-1:key": "{}",
+      "ihome:pending-valve-log:v1:user-a": "[]",
       "ihome:quick-entry:models:user-a": "{}",
       "ihomecrm.selectedOrganizationId:user-a": "{}",
       "ihomecrm.camera-quality:user-a:playback": '{"quality":"hd"}',
@@ -63,6 +64,7 @@ describe("clearAccountBrowserState", () => {
     expect(local.keys()).toEqual([
       "ihome:financial-pending:v1:ns:user-a:org-1:key",
       "ihome:pending-collection:v1:user-a:org-1:inv-1",
+      "ihome:pending-valve-log:v1:user-a",
       "ihome:quick-entry:models:user-a",
       "ihomecrm.camera-quality:user-a:playback",
       "ihomecrm.selectedOrganizationId:user-a",
@@ -132,6 +134,9 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/lib/contractImportWorkflow.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/financialPending.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/pendingCollection.ts": "nhat-ky-chong-ghi-trung",
+  // Nhật ký tự gỡ dấu chờ đối chiếu: khoá `ihome:pending-valve-log:v1:<người dùng>`, chờ đẩy lên máy chủ.
+  // Đăng xuất không được xoá, nếu không lần tự gỡ mất dấu vết.
+  "src/lib/pendingValve.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/persistentFinancialWorkflow.ts": "nhat-ky-chong-ghi-trung",
   "src/hooks/income-expenses/batch.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/leadConversionProgress.ts": "nhat-ky-chong-ghi-trung",
