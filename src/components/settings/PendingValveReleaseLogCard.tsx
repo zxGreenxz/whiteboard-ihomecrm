@@ -83,13 +83,13 @@ function DongGoKhoa({ row }: { row: PendingValveReleaseLogRow }) {
         <span className="font-medium">{thaoTac}</span>
         <span className="text-xs text-muted-foreground">{nguoi} · gỡ lúc {formatPendingTime(row.releasedAt)}</span>
       </div>
-      <dl className="mt-1.5 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[auto_1fr]">
+      <dl className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs sm:gap-x-4">
         <dt className="text-muted-foreground">Kẹt từ</dt>
         <dd>{formatPendingTime(row.stuckAt)}</dd>
         <dt className="text-muted-foreground">Mã bản ghi</dt>
         <dd className="min-w-0">
           {row.recordIds.length ? (
-            <span className="break-all font-mono">{row.recordIds.join(', ')}{conLai > 0 && ` và ${conLai} mã khác`}</span>
+            <><span className="break-all font-mono">{row.recordIds.join(', ')}</span>{conLai > 0 && <span className="whitespace-nowrap"> và {conLai} mã khác</span>}</>
           ) : 'Chưa có mã nào được ghi nhận'}
         </dd>
         <dt className="text-muted-foreground">Khoá nghiệp vụ</dt>

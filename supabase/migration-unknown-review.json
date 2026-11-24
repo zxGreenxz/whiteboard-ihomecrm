@@ -986,6 +986,36 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
+    },
+    "supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql": {
+      "sha256": "d6b41d7799e36eaa06c6bdb37e3839029461e48e9089ee09597716ddc1878887",
+      "missingObjects": [
+        "table:app_private.pending_valve_release_log",
+        "function:app_private.pending_valve_release_log_append_only_v1",
+        "function:public.pending_valve_release_log_append_v1",
+        "function:public.pending_valve_release_log_list_v1",
+        "index:app_private.pending_valve_release_log_org_idx"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration MỚI (đợt 1b: nhật ký tự gỡ khoá «chờ đối chiếu» trên máy chủ — bảng chỉ thêm app_private.pending_valve_release_log, hàm ghi pending_valve_release_log_append_v1, hàm đọc pending_valve_release_log_list_v1), chưa áp dụng production: chờ review chéo rồi mới đi forward lane. Các object vắng trong catalog production vì file chưa từng chạy ở đó — có chủ ý, không phải bị migration sau thay thế. Đã đo ngày 24/11/2026: test PGlite chạy migration hai lượt (18 ca); chạy hai lượt trên TEST trong ROLLBACK (test-env:thu-sql) xanh rồi ghi TEST; kiểm quyền bằng vai thật của TEST trong một giao dịch ROLLBACK (nhân viên thường ghi được dòng của mình, gửi lại cùng mã trả duplicate, dòng người khác not_self, sai công ty not_member, nhân viên không đọc được, chủ công ty và superadmin đọc được, anon 42501, UPDATE/DELETE 0A000) và gọi PostgREST của TEST bằng khoá anon (401/42501). Hồ sơ này chỉ giải thích object vắng; không thay review độc lập, forward lane và backup. Sau khi áp production (có biên nhận) thì mục này thành thừa — gỡ đi.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.pending_valve_release_log ("
+        },
+        {
+          "duong_dan": "supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.pending_valve_release_log_append_v1(p_entries jsonb, p_device text DEFAULT NULL)"
+        },
+        {
+          "duong_dan": "supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.pending_valve_release_log_list_v1("
+        },
+        {
+          "duong_dan": "src/lib/__tests__/nhatKyTuGoKhoaMigration.test.ts",
+          "trich_doan": "const FILE = \"supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql\";"
+        }
+      ]
     }
   }
 }

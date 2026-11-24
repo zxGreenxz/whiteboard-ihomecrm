@@ -66,7 +66,7 @@ describe('mục Nhật ký tự gỡ khoá ở trang Tổ chức', () => {
     // Dòng thứ hai: không tên người, không tên thao tác, công ty suy từ màn đang mở, còn mã chưa hiện.
     expect(screen.getByText('Tài khoản abcdef12 · gỡ lúc 09:05 ngày 24/11/2026')).toBeTruthy();
     expect(screen.getByText('voucher-lifecycle', { selector: 'span' })).toBeTruthy();
-    expect(screen.getByText('pc-1, pc-2 và 3 mã khác')).toBeTruthy();
+    expect(screen.getByText('pc-1, pc-2').closest('dd')?.textContent).toBe('pc-1, pc-2 và 3 mã khác');
     expect(screen.getByText('Công ty theo màn đang mở lúc gỡ')).toBeTruthy();
     expect(screen.getByText('Không rõ thiết bị')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Xem thêm' })).toBeNull();

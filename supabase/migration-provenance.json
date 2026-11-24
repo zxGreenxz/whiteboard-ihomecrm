@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-21T02:48:54.862Z",
+  "generatedAt": "2026-11-24T13:35:50.692Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 981,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14681,6 +14681,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-21T02:47:35.261Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql",
+      "version": "20261124131052",
+      "name": "nhat_ky_tu_go_khoa_cho_doi_chieu",
+      "scheme": "timestamp14",
+      "sha256": "d6b41d7799e36eaa06c6bdb37e3839029461e48e9089ee09597716ddc1878887",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.pending_valve_release_log",
+        "function:app_private.pending_valve_release_log_append_only_v1",
+        "function:public.pending_valve_release_log_append_v1",
+        "function:public.pending_valve_release_log_list_v1",
+        "index:app_private.pending_valve_release_log_org_idx"
       ]
     },
     {
