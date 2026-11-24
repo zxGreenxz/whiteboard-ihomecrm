@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react';
 import { useContractExitEarlyTerms } from '@/hooks/contracts/useContractExitEarlyTerms';
-import { EARLY_REASON_LABELS, contractNumberLabel, isTransferReason, type ContractExitEarlyTerms } from '@/lib/contractExitEarlyTerms';
+import { EARLY_REASON_LABELS, contractNumberLabel, type ContractExitEarlyTerms } from '@/lib/contractExitEarlyTerms';
+import { pendingExitHold } from '@/lib/contractExitSupport';
 import { formatISODateVN } from '@/lib/vnDate';
 import { cn } from '@/lib/utils';
 
@@ -16,12 +17,6 @@ interface ExitHoldRoomBannerProps {
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Hồ sơ còn chờ nối mà máy chủ sẽ nối trước: cũ nhất trước, cùng thứ tự trigger tự nối. */
-function pendingExitHold(rows: readonly ContractExitEarlyTerms[] | null | undefined) {
-  return rows?.filter(row => row.pending_link && isTransferReason(row.early_reason))
-    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.exit_case_id.localeCompare(b.exit_case_id))[0];
-}
 
 function exitHoldRoomMessages(terms: ContractExitEarlyTerms, variant: ExitHoldRoomBannerVariant, startDate?: string | null) {
   const moveOut = formatISODateVN(terms.actual_move_out_on);

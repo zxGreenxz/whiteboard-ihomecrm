@@ -22,13 +22,8 @@ const invoke:ContractExitRpcInvoker=(name,args)=>{
       if (!charge || typeof charge !== 'object' || Array.isArray(charge) || !charge.meter_source) return [];
       return [meterSourceReferenceSchema.parse(charge.meter_source)];
     }) : [];
-    if (sources.length && name === 'confirm_contract_return_v2') {
-      // Đường ảnh đồng hồ chỉ nhận writer v1; v1 chặn trả phòng trước hạn + quyết toán ngay khi không qua v2.
-      if (args.p_initial_kind === 'EARLY_RETURN') return Promise.resolve({ data: null, error: { code: '22023',
-        message: 'Trả phòng trước hạn kèm ảnh đồng hồ: chọn "Trả phòng, quyết toán sau" rồi quyết toán hồ sơ ở bước sau.' } });
-      const { p_early_terms: _unused, ...v1Args } = args;
-      return exitWithMeterSources(String(args.p_organization_id), 'confirm_contract_return_v1', v1Args, sources).then(data => ({ data, error: null }));
-    }
+    // Đường ảnh đồng hồ nhận cả writer v2 (migration 20261124154554): trả phòng trước hạn + quyết toán ngay đi qua v2 kèm
+    // trường hợp (chỉ chủ nhà hỗ trợ được quyết toán ngay; hai trường hợp sang nhượng máy chủ vẫn chỉ cho quyết toán sau).
     if (sources.length) return exitWithMeterSources(String(args.p_organization_id), name, args, sources).then(data => ({ data, error: null }));
   }
   switch(name){

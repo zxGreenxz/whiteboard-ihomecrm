@@ -210,6 +210,19 @@ describe("buildCreateContractRpcArgs", () => {
   );
 });
 
+describe("transfer_support_amount (khách cũ hỗ trợ khách mới)", () => {
+  it("sends a positive amount at the top level, omits zero, rejects invalid amounts", () => {
+    const withSupport = buildCreateContractRpcArgs(prepareContractCreateRequest({ ...PAYLOAD, transfer_support_amount: 1_500_000 }, KEY));
+    expect((withSupport.p_payload as Record<string, unknown>).transfer_support_amount).toBe(1_500_000);
+    expect((withSupport.p_payload as { contract: Record<string, unknown> }).contract).not.toHaveProperty("transfer_support_amount");
+    const zero = buildCreateContractRpcArgs(prepareContractCreateRequest({ ...PAYLOAD, transfer_support_amount: 0 }, KEY));
+    expect(zero.p_payload as Record<string, unknown>).not.toHaveProperty("transfer_support_amount");
+    for (const bad of [-1, 1.005, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => buildCreateContractRpcArgs(prepareContractCreateRequest({ ...PAYLOAD, transfer_support_amount: bad }, KEY))).toThrow();
+    }
+  });
+});
+
 describe("create_contract_v2 date guards", () => {
   it("rejects first-invoice dates outside the signed and billing bounds", () => {
     expect(contractMigration).toContain(

@@ -14,7 +14,9 @@ vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({
   useSetContractExitEarlyTerms: () => ({ mutateAsync: early.setTerms, isPending: false }),
   useUpdateContractExitBrokerFee: () => ({ mutateAsync: early.updateFee, isPending: false }),
   useCreateContractExitCommission: () => ({ mutateAsync: early.createCommission, isPending: false }),
+  useReverseContractExitSupport: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true } }) }));
 vi.mock('@/hooks/useMeters', () => ({ useMeters: () => meters }));
 vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({
   useContractExitSettlementDraft: () => ({ data: null, isPending: false, isError: false, isSuccess: true, isFetching: false, isFetchedAfterMount: true, refetch: vi.fn() }),
@@ -150,6 +152,25 @@ describe('thanh lý tách bước trả phòng', () => {
     await waitFor(() => expect(close).toHaveBeenCalledWith(false));
     expect(spies.finalize.mock.calls[0][0].settlement.extraCharges).toEqual([]);
     expect(early.createCommission).not.toHaveBeenCalled();
+  });
+  it('có số khách cũ hỗ trợ: bước 1 hiện số và khoá Đổi trường hợp; quyết toán dùng cọc còn lại, báo đã cấn và ghi vào ghi chú', async () => {
+    early.data = [linkedExitTermsRow({ early_reason: 'SELF_FOUND', sale_name: null, broker_fee: 0, support_amount: 1_200_000,
+      support_out_code: 'PC2611012', support_in_code: 'PT2611003', old_contract_deposit_paid: 2_800_000 })];
+    spies.finalize.mockResolvedValue({ state: 'FINALIZED' });
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={{ ...contract, deposit_paid: 2_800_000 }} exitCase={{id:EXIT_FIXTURE_IDS.exitCase,current_kind:'EARLY_RETURN',initial_kind:'EARLY_RETURN',actual_move_out_on:'2026-12-01',version:1,state:'PENDING',kind_history:[]} as import('@/lib/contractExitCases').ContractExitCase} />);
+    expect(screen.getByTestId('exit-support-summary').textContent).toContain('1.200.000 đ');
+    expect(screen.getByRole('button', { name: 'Đổi trường hợp' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Đảo số hỗ trợ' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tiếp tục quyết toán' }));
+    expect(screen.getByTestId('exit-support-line').textContent).toContain('Đã cấn sang HD-0202: 1.200.000đ');
+    expect((screen.getByLabelText('Tiền cọc hoàn trả') as HTMLInputElement).value).toBe('2.800.000');
+    fireEvent.change(screen.getByPlaceholderText('Ghi chú thanh lý...'), { target: { value: 'Bàn giao đủ' } });
+    fireEvent.click(screen.getByRole('button', { name: /Lập hoá đơn & thanh lý/i }));
+    expect((await screen.findByText('Đã cấn sang cọc hợp đồng khách nhận (khách cũ hỗ trợ)')).parentElement?.textContent).toContain('1.200.000 đ');
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận thanh lý' }));
+    await waitFor(() => expect(spies.finalize).toHaveBeenCalledOnce());
+    expect(spies.finalize.mock.calls[0][0].settlement).toMatchObject({ depositRefund: 2_800_000,
+      notes: 'Bàn giao đủ\nKhách cũ hỗ trợ khách nhận phòng 1.200.000đ: đã cấn sang cọc hợp đồng mới HD-0202 (phiếu PC2611012 / PT2611003).' });
   });
   it('hồ sơ sang nhượng mà đổi loại khỏi trước hạn thì chặn, chỉ đường đổi trường hợp', () => {
     early.data = [linkedExitTermsRow()];

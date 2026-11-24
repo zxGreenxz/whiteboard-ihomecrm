@@ -243,7 +243,15 @@ export function useContractSubmit({
         return;
       }
 
-      const depositPaidValue = typedDepositTotal + approvedOrphanTotal;
+      // Khách cũ hỗ trợ khách mới (sang nhượng phòng): tính như cọc đã nộp; máy chủ ghi cặp phiếu chuyển cọc và kiểm lại trần.
+      const exitSupportAmount = state.exitSupport?.applied ?? 0;
+      if (exitSupportAmount > 0 && state.exitSupport?.issue) {
+        form.setError('transfer_support_amount' as never, { type: 'manual', message: state.exitSupport.issue });
+        focusField('transfer_support_amount');
+        toast.error('Không thể lưu hợp đồng', { description: state.exitSupport.issue });
+        return;
+      }
+      const depositPaidValue = typedDepositTotal + approvedOrphanTotal + exitSupportAmount;
       const depositBalance = calculateContractDepositBalance(
         data.total_deposit || 0,
         depositPaidValue,
@@ -403,6 +411,7 @@ export function useContractSubmit({
         existing_deposit_voucher_ids: orphanDepositVouchers
           .filter((voucher) => voucher.approval_status === "APPROVED")
           .map((voucher) => voucher.id),
+        ...(exitSupportAmount > 0 ? { transfer_support_amount: exitSupportAmount } : {}),
         first_invoice:
           firstInvoiceItems.length > 0
             ? {
