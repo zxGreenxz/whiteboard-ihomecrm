@@ -162,7 +162,9 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
             {selectedReservation && !reservationValid && <p role="alert" className="text-destructive">Nguồn đã chọn chưa xác minh được hoặc đã đổi. Tải lại và chọn đúng phiên bản trước khi ký.</p>}
             {unpreparedReservationSources && <p role="alert" className="text-destructive">Nguồn giữ chỗ có phiếu cọc chưa được form hợp đồng kiểm tra. Quay lại form để kiểm tra cọc và hoá đơn đầu trước khi ký.</p>}
           </div>
-          {preparedCreation ? <p className="rounded-md border p-3 text-sm">Dùng khoản cọc đã nhận {depositPaid.toLocaleString('vi-VN')} đ cùng lựa chọn nợ cọc và hoá đơn đầu đã kiểm tra trong form hợp đồng chính thức.</p> : <>
+          {preparedCreation ? <p className="rounded-md border p-3 text-sm">Dùng khoản cọc đã nhận {depositPaid.toLocaleString('vi-VN')} đ
+            {preparedCreation.options.transfer_support_amount ? ` (gồm ${preparedCreation.options.transfer_support_amount.toLocaleString('vi-VN')} đ khách cũ hỗ trợ, chuyển từ cọc hợp đồng cũ)` : ''}
+            {' '}cùng lựa chọn nợ cọc và hoá đơn đầu đã kiểm tra trong form hợp đồng chính thức.</p> : <>
           {draft.payload.form.total_deposit - depositPaid >= 0.01 && <div className="rounded-md border p-3 space-y-3 text-sm">
             <p>Cọc còn thiếu {(draft.payload.form.total_deposit - depositPaid).toLocaleString('vi-VN')} đ. Chọn cách bổ sung:</p>
             <label className="flex gap-2"><input type="radio" name="signing-deposit-mode" checked={depositMode === 'DEBT'} onChange={() => setDepositMode('DEBT')}/>Theo dõi nợ cọc, bổ sung sau</label>

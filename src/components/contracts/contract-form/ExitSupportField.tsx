@@ -4,7 +4,8 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { EARLY_REASON_LABELS, contractNumberLabel } from '@/lib/contractExitEarlyTerms';
 import { formatISODateVN } from '@/lib/vnDate';
-import { formatVND } from './types';
+// Ô tiền dùng hậu tố "đ" (CurrencyInput) nên câu kèm theo dùng formatVND của utils ("đ"), như RentDepositSection.
+import { formatVND } from '@/lib/utils';
 import type { ContractFormState } from './useContractFormState';
 
 type ExitSupportFieldProps = Pick<ContractFormState, 'exitSupport'> & { onAmountChange?: () => void };
@@ -49,7 +50,7 @@ export function ExitSupportField({ exitSupport, onAmountChange }: ExitSupportFie
     {blockedReason && <p className="text-xs text-amber-800 dark:text-amber-200">{blockedReason}</p>}
     {caps && !blockedReason && <p className="text-xs text-muted-foreground" data-testid="exit-support-cap">
       Tối đa {formatVND(caps.cap)}: cọc cũ đã thu {formatVND(hold.old_contract_deposit_paid ?? 0)}
-      {fee > 0 ? ` − phí môi giới ${formatVND(fee)}` : ''} = {formatVND(caps.oldCap)}; cọc còn thiếu của hợp đồng này {formatVND(caps.newCap)}.
+      {fee > 0 ? ` − phí môi giới ${formatVND(fee)} = ${formatVND(caps.oldCap)}` : ''}; cọc còn thiếu của hợp đồng này {formatVND(caps.newCap)}.
     </p>}
     {exitSupport.issue && <p id={errorId} role="alert" className="text-sm font-medium text-destructive">{exitSupport.issue}</p>}
   </div>;

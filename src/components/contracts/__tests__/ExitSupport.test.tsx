@@ -36,8 +36,8 @@ describe('ô "Khách cũ hỗ trợ khách mới" ở form tạo hợp đồng',
     const onAmountChange = vi.fn();
     render(<ExitSupportField exitSupport={state} onAmountChange={onAmountChange} />);
     expect(screen.getByRole('group', { name: 'Khách cũ hỗ trợ khách mới' }).textContent).toContain('HD-0101');
-    expect(screen.getByTestId('exit-support-cap').textContent).toContain('Tối đa 2.000.000');
-    expect(screen.getByTestId('exit-support-cap').textContent).toContain('phí môi giới 2.000.000');
+    expect(screen.getByTestId('exit-support-cap').textContent).toContain('Tối đa 2.000.000 đ');
+    expect(screen.getByTestId('exit-support-cap').textContent).toContain('phí môi giới 2.000.000 đ');
     const input = amountInput();
     expect(input.getAttribute('name')).toBe('transfer_support_amount');
     fireEvent.change(input, { target: { value: '1500000' } });

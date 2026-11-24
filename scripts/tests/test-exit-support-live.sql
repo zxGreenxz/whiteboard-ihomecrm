@@ -347,3 +347,54 @@ BEGIN
   END LOOP;
 END
 $exit_support_test$;
+
+-- Đường ảnh đồng hồ: meter_capture_exit_v1 nhận writer v2 (trả phòng trước hạn + quyết toán ngay có trường hợp) và đi tới
+-- bước kiểm nguồn chỉ số; writer lạ vẫn bị từ chối ở cửa. Không có ảnh thật trên TEST nên dừng ở "Expected meter sources".
+DO $meter_exit_v2$
+DECLARE
+  org constant uuid := 'dddd0000-0000-4000-8000-000000000001';
+  actor uuid; building uuid; account uuid; today date := public.org_today_v1(org);
+  room uuid := gen_random_uuid(); customer uuid := gen_random_uuid(); contract_id uuid; updated timestamptz; response jsonb; args jsonb;
+BEGIN
+  SELECT m.user_id INTO STRICT actor FROM public.organization_memberships m JOIN auth.users u ON u.id = m.user_id
+  WHERE m.organization_id = org AND m.member_type = 'OWNER' AND m.status = 'ACTIVE' AND u.email = 'demo.chunha@username.ihomecrm.local';
+  SELECT id INTO STRICT building FROM public.buildings
+  WHERE organization_id = org AND user_id = actor AND deleted_at IS NULL AND NOT coalesce(is_virtual, false) ORDER BY id LIMIT 1;
+  SELECT id INTO STRICT account FROM public.accounts
+  WHERE organization_id = org AND deleted_at IS NULL AND NOT coalesce(is_virtual, false) ORDER BY is_default DESC NULLS LAST, id LIMIT 1;
+  PERFORM set_config('request.jwt.claim.sub', actor::text, true);
+  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', actor, 'role', 'authenticated')::text, true);
+  INSERT INTO public.rooms(id, building_id, organization_id, name, rent_price, deposit_amount, status)
+  VALUES (room, building, org, 'QA-meter-' || left(room::text, 8), 2000000, 1000000, 'AVAILABLE');
+  INSERT INTO public.customers(id, organization_id, user_id, full_name, phone)
+  VALUES (customer, org, actor, 'Khách QA', '09' || lpad(floor(random()*100000000)::text, 8, '0'));
+  SET LOCAL ROLE authenticated;
+  response := public.create_contract_v2(jsonb_build_object('contract', jsonb_build_object('room_id', room, 'signed_date', today-20,
+      'start_date', today-20, 'end_date', today+60, 'rent_price', 2000000, 'total_deposit', 1000000, 'payment_cycle', 'MONTHLY'),
+    'customers', jsonb_build_array(jsonb_build_object('customer_id', customer, 'is_representative', true)), 'services', '[]'::jsonb,
+    'deposit_receipts', jsonb_build_array(jsonb_build_object('account_id', account, 'received_date', today, 'amount', 1000000,
+      'attachments', '[]'::jsonb))), gen_random_uuid()::text);
+  contract_id := (response->'contract'->>'id')::uuid;
+  SELECT c.updated_at INTO STRICT updated FROM public.contracts c WHERE c.id = contract_id;
+  args := jsonb_build_object('p_organization_id', org, 'p_contract_id', contract_id, 'p_expected_contract_updated_at', updated,
+    'p_idempotency_key', 'qa-meter-v2-' || contract_id::text, 'p_actual_move_out_on', today, 'p_initial_kind', 'EARLY_RETURN',
+    'p_settlement_mode', 'IMMEDIATE', 'p_return_note', 'QA ảnh đồng hồ', 'p_meter_boundary', '{"state":"VERIFIED","readings":[]}'::jsonb,
+    'p_settlement', jsonb_build_object('deposit_refund', 1000000, 'penalty_fee', 0, 'excess_rent', 0, 'outstanding_debt', 0,
+      'shortfall_mode', 'PAID', 'refund_items', '[]'::jsonb, 'extra_charges', '[]'::jsonb),
+    'p_early_terms', '{"early_reason":"LANDLORD_AGREEMENT"}'::jsonb);
+  BEGIN
+    PERFORM public.meter_capture_exit_v1(org, 'confirm_contract_return_v2', args, '[]'::jsonb);
+    RAISE EXCEPTION 'meter: nguồn chỉ số rỗng mà không bị chặn' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN invalid_parameter_value THEN
+    IF SQLERRM NOT LIKE '%meter sources%' THEN RAISE; END IF;
+  END;
+  BEGIN
+    PERFORM public.meter_capture_exit_v1(org, 'confirm_contract_return_v3', args, '[]'::jsonb);
+    RAISE EXCEPTION 'meter: writer lạ không bị chặn' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN insufficient_privilege THEN
+    IF SQLERRM NOT LIKE 'Wrong exit writer%' THEN RAISE; END IF;
+  END;
+  RESET ROLE;
+  RAISE NOTICE 'PASS meter: đường ảnh đồng hồ nhận writer v2 tới bước kiểm nguồn chỉ số; writer lạ bị chặn';
+END
+$meter_exit_v2$;
