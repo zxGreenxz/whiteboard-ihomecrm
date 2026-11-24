@@ -5,7 +5,8 @@ import { supabase } from '@/integrations/supabase/client';
 /**
  * Nhật ký tự gỡ khoá «chờ đối chiếu» của MỘT công ty (đợt 1b, `pending_valve_release_log_list_v1`, migration
  * 20261124131052). Máy chủ chỉ trả dòng cho superadmin và chủ công ty theo nghĩa chặt; người khác nhận
- * `allowed: false` để giao diện ẩn mục. Mới nhất trước, mỗi trang `PENDING_VALVE_RELEASE_LOG_PAGE` dòng.
+ * `allowed: false` để giao diện ẩn mục. Mới nhất trước theo giờ máy chủ nhận, mỗi trang
+ * `PENDING_VALVE_RELEASE_LOG_PAGE` dòng, con trỏ (giờ máy chủ nhận, id).
  */
 export const PENDING_VALVE_RELEASE_LOG_PAGE = 20;
 
@@ -14,7 +15,7 @@ const rowSchema = z.object({
   entryId: z.string().min(1),
   actorUserId: z.string().min(1),
   actorName: z.string().nullable(),
-  organizationSource: z.enum(['pending', 'context', 'sole_membership']),
+  organizationSource: z.enum(['pending', 'sole_membership']),
   namespace: z.string().min(1),
   businessKey: z.string(),
   operation: z.string().nullable(),
@@ -34,12 +35,12 @@ const pageSchema = z.object({
 });
 export type PendingValveReleaseLogRow = z.infer<typeof rowSchema>;
 export type PendingValveReleaseLogPage = z.infer<typeof pageSchema>;
-type Cursor = { releasedAt: string; id: string };
+type Cursor = { receivedAt: string; id: string };
 
 type ListArgs = {
   p_organization_id: string;
   p_limit: number;
-  p_before_released_at: string | null;
+  p_before_received_at: string | null;
   p_before_id: string | null;
 };
 // Hàm mới chưa có trong kiểu sinh từ production cho tới khi migration 20261124131052 được áp; chữ ký khai tay, phản
@@ -50,7 +51,7 @@ export async function readPendingValveReleaseLogPage(organizationId: string, cur
   const { data, error } = await (supabase.rpc as unknown as ListRpc)('pending_valve_release_log_list_v1', {
     p_organization_id: organizationId,
     p_limit: PENDING_VALVE_RELEASE_LOG_PAGE,
-    p_before_released_at: cursor?.releasedAt ?? null,
+    p_before_received_at: cursor?.receivedAt ?? null,
     p_before_id: cursor?.id ?? null,
   });
   if (error) throw error;
@@ -69,7 +70,7 @@ export function usePendingValveReleaseLog(organizationId: string | null, enabled
     queryFn: ({ pageParam }) => readPendingValveReleaseLogPage(organizationId!, pageParam),
     getNextPageParam: (last): Cursor | undefined => {
       const tail = last.rows.at(-1);
-      return last.hasMore && tail ? { releasedAt: tail.releasedAt, id: tail.id } : undefined;
+      return last.hasMore && tail ? { receivedAt: tail.receivedAt, id: tail.id } : undefined;
     },
   });
 }

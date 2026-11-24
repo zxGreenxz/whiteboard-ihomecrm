@@ -11,19 +11,22 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  *
  * Người trong bản giả:
  *   CHU        chủ công ty A theo nghĩa chặt (OWNER + binding tới vai TENANT_OWNER còn hạn)
- *   JOEY       quản lý toà ở công ty A (thành viên thường)
+ *   JOEY       quản lý toà ở công ty A (thành viên thường, chỉ một công ty)
  *   CHU_TEN    thành viên A giữ vai TỰ ĐẶT TÊN «Chủ công ty» (system_key NULL) — không được đọc
  *   CHU_HET    chủ A nhưng binding tới TENANT_OWNER đã hết hạn — không được đọc
  *   KHAC       thành viên công ty B
  *   HAI_CTY    thành viên cả A và B
  *   SIEU       superadmin, chỉ là thành viên A
- *   NGHI       từng ở công ty A, tư cách REVOKED
+ *   NGHI_LAU   tư cách A REVOKED 40 ngày trước          NGHI_MOI   REVOKED 5 ngày trước
+ *   HET_LAU    tư cách A ACTIVE hết hạn 40 ngày trước   HET_MOI    hết hạn 10 ngày trước
+ *   TAM_DUNG   tư cách A SUSPENDED
  */
 const FILE = "supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql";
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const [ORG_A, ORG_B, ORG_KHONG_CO] = [1, 2, 3].map(id);
-const [CHU, JOEY, CHU_TEN, CHU_HET, KHAC, HAI_CTY, SIEU, NGHI] = [11, 12, 13, 14, 15, 16, 17, 18].map(id);
-const [VAI_CHU_A, VAI_TEN_A, VAI_QL_A] = [21, 22, 23].map(id);
+const [CHU, JOEY, CHU_TEN, CHU_HET, KHAC, HAI_CTY, SIEU] = [11, 12, 13, 14, 15, 16, 17].map(id);
+const [NGHI_LAU, NGHI_MOI, HET_LAU, HET_MOI, TAM_DUNG] = [18, 19, 20, 21, 22].map(id);
+const [VAI_CHU_A, VAI_TEN_A, VAI_QL_A] = [31, 32, 33].map(id);
 const db = new PGlite();
 
 type KetQua = { id: string | null; status: "inserted" | "duplicate" | "rejected"; reason?: string };
@@ -40,7 +43,7 @@ let soMa = 1000;
 function dong(user: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   soMa += 1;
   return {
-    id: id(soMa), userId: user, organizationId: ORG_A, contextOrganizationId: null, namespace: "voucher-form-create",
+    id: id(soMa), userId: user, organizationId: ORG_A, namespace: "voucher-form-create",
     businessKey: "INCOME:b1:", operation: "lập phiếu thu", attemptId: `a-${soMa}`, recordIds: ["pt-01"], recordCount: 1,
     stuckAt: "2026-11-24T02:00:00.000Z", releasedAt: "2026-11-24T02:05:00.000Z", ...extra,
   };
@@ -61,10 +64,10 @@ async function ghi(user: string | null, entries: unknown, device: string | null 
   await db.exec("RESET ROLE");
   return r.rows[0].r.results;
 }
-async function doc(user: string, org: string, limit = 50, before: { releasedAt: string; id: string } | null = null): Promise<Trang> {
+async function doc(user: string, org: string, limit = 50, before: { receivedAt: string; id: string } | null = null): Promise<Trang> {
   await vai(user);
   const r = await db.query<{ r: Trang }>("SELECT public.pending_valve_release_log_list_v1($1::uuid, $2, $3::timestamptz, $4::uuid) AS r",
-    [org, limit, before?.releasedAt ?? null, before?.id ?? null]);
+    [org, limit, before?.receivedAt ?? null, before?.id ?? null]);
   await db.exec("RESET ROLE");
   return r.rows[0].r;
 }
@@ -85,6 +88,12 @@ async function bang(): Promise<Array<Record<string, unknown>>> {
     "SELECT client_entry_id::text, actor_user_id::text, organization_id::text, organization_source, pending_scope, operation, device, record_ids, record_count FROM app_private.pending_valve_release_log ORDER BY received_at, client_entry_id",
   )).rows;
 }
+/** Gieo sẵn n dòng của một người, như đã nhận trong 24 giờ qua. */
+async function gieoDaNhan(user: string, n: number) {
+  await db.query(`INSERT INTO app_private.pending_valve_release_log
+    (client_entry_id, actor_user_id, organization_id, organization_source, pending_scope, namespace, business_key, attempt_id, stuck_at, released_at)
+    SELECT gen_random_uuid(), $1::uuid, $2::uuid, 'pending', $3, 'ns', 'k', 'a', now(), now() FROM generate_series(1, $4::int)`, [user, ORG_A, ORG_A, n]);
+}
 
 beforeAll(async () => {
   await db.exec(`
@@ -97,8 +106,8 @@ beforeAll(async () => {
     CREATE TABLE public.super_admins (user_id uuid PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE public.organization_memberships (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL, user_id uuid NOT NULL,
-      member_type text NOT NULL, status text NOT NULL, valid_from timestamptz NOT NULL DEFAULT now() - interval '1 day',
-      valid_to timestamptz
+      member_type text NOT NULL, status text NOT NULL, valid_from timestamptz NOT NULL DEFAULT now() - interval '90 days',
+      valid_to timestamptz, revoked_at timestamptz
     );
     CREATE TABLE public.organization_roles (
       id uuid PRIMARY KEY, organization_id uuid NOT NULL, name text NOT NULL, system_key text, status text NOT NULL DEFAULT 'ACTIVE'
@@ -114,16 +123,20 @@ beforeAll(async () => {
       ('${VAI_CHU_A}', '${ORG_A}', 'Chủ sở hữu tổ chức', 'TENANT_OWNER', 'ACTIVE'),
       ('${VAI_TEN_A}', '${ORG_A}', 'Chủ công ty', NULL, 'ACTIVE'),
       ('${VAI_QL_A}', '${ORG_A}', 'Quản Lý Tòa', NULL, 'ACTIVE');
-    INSERT INTO public.organization_memberships (organization_id, user_id, member_type, status, valid_to) VALUES
-      ('${ORG_A}', '${CHU}', 'OWNER', 'ACTIVE', NULL),
-      ('${ORG_A}', '${JOEY}', 'STAFF', 'ACTIVE', NULL),
-      ('${ORG_A}', '${CHU_TEN}', 'OWNER', 'ACTIVE', NULL),
-      ('${ORG_A}', '${CHU_HET}', 'OWNER', 'ACTIVE', NULL),
-      ('${ORG_B}', '${KHAC}', 'STAFF', 'ACTIVE', NULL),
-      ('${ORG_A}', '${HAI_CTY}', 'STAFF', 'ACTIVE', NULL),
-      ('${ORG_B}', '${HAI_CTY}', 'STAFF', 'ACTIVE', NULL),
-      ('${ORG_A}', '${SIEU}', 'STAFF', 'ACTIVE', NULL),
-      ('${ORG_A}', '${NGHI}', 'STAFF', 'REVOKED', NULL);
+    INSERT INTO public.organization_memberships (organization_id, user_id, member_type, status, valid_to, revoked_at) VALUES
+      ('${ORG_A}', '${CHU}', 'OWNER', 'ACTIVE', NULL, NULL),
+      ('${ORG_A}', '${JOEY}', 'STAFF', 'ACTIVE', NULL, NULL),
+      ('${ORG_A}', '${CHU_TEN}', 'OWNER', 'ACTIVE', NULL, NULL),
+      ('${ORG_A}', '${CHU_HET}', 'OWNER', 'ACTIVE', NULL, NULL),
+      ('${ORG_B}', '${KHAC}', 'STAFF', 'ACTIVE', NULL, NULL),
+      ('${ORG_A}', '${HAI_CTY}', 'STAFF', 'ACTIVE', NULL, NULL),
+      ('${ORG_B}', '${HAI_CTY}', 'STAFF', 'ACTIVE', NULL, NULL),
+      ('${ORG_A}', '${SIEU}', 'STAFF', 'ACTIVE', NULL, NULL),
+      ('${ORG_A}', '${NGHI_LAU}', 'STAFF', 'REVOKED', NULL, now() - interval '40 days'),
+      ('${ORG_A}', '${NGHI_MOI}', 'STAFF', 'REVOKED', NULL, now() - interval '5 days'),
+      ('${ORG_A}', '${HET_LAU}', 'STAFF', 'ACTIVE', now() - interval '40 days', NULL),
+      ('${ORG_A}', '${HET_MOI}', 'STAFF', 'ACTIVE', now() - interval '10 days', NULL),
+      ('${ORG_A}', '${TAM_DUNG}', 'STAFF', 'SUSPENDED', NULL, NULL);
     INSERT INTO public.role_bindings (organization_id, membership_id, role_id, valid_from, valid_to)
       SELECT m.organization_id, m.id, v.role_id, NULL, v.valid_to
         FROM public.organization_memberships m
@@ -205,17 +218,25 @@ describe("hàm ghi", () => {
     });
   });
 
-  it("sai công ty bị từ chối not_member: công ty mình không thuộc, tư cách đã thu hồi, công ty không tồn tại", async () => {
+  it("sai công ty bị từ chối not_member: công ty mình không thuộc, công ty không tồn tại", async () => {
     await trongGiaoDich(async () => {
       const b = dong(JOEY, { organizationId: ORG_B });
       expect(await ghi(JOEY, [b])).toEqual([{ id: b.id, status: "rejected", reason: "not_member" }]);
-      const nghi = dong(NGHI);
-      expect(await ghi(NGHI, [nghi])).toEqual([{ id: nghi.id, status: "rejected", reason: "not_member" }]);
-      const ngucanh = dong(JOEY, { organizationId: "actor-scope", contextOrganizationId: ORG_B });
-      expect(await ghi(JOEY, [ngucanh])).toEqual([{ id: ngucanh.id, status: "rejected", reason: "not_member" }]);
       const khongCo = dong(SIEU, { organizationId: ORG_KHONG_CO });
       expect(await ghi(SIEU, [khongCo])).toEqual([{ id: khongCo.id, status: "rejected", reason: "not_member" }]);
       expect(await bang()).toEqual([]);
+    });
+  });
+
+  it("vừa nghỉ / vừa hết hạn / đang tạm dừng (trong 30 ngày) vẫn ghi được lần gỡ cũ; quá 30 ngày thì not_member", async () => {
+    await trongGiaoDich(async () => {
+      for (const nguoi of [NGHI_MOI, HET_MOI, TAM_DUNG]) {
+        expect(await ghi(nguoi, [dong(nguoi)]), nguoi).toMatchObject([{ status: "inserted" }]);
+      }
+      for (const nguoi of [NGHI_LAU, HET_LAU]) {
+        expect(await ghi(nguoi, [dong(nguoi)]), nguoi).toMatchObject([{ status: "rejected", reason: "not_member" }]);
+      }
+      expect(await bang()).toHaveLength(3);
     });
   });
 
@@ -241,18 +262,31 @@ describe("hàm ghi", () => {
     });
   });
 
+  it("dòng đã ghi vẫn được báo duplicate dù sau đó tư cách của người gỡ đổi (thêm công ty, bị thu hồi)", async () => {
+    await trongGiaoDich(async () => {
+      const row = dong(JOEY, { organizationId: "actor-scope" });
+      expect(await ghi(JOEY, [row])).toEqual([{ id: row.id, status: "inserted" }]);
+      await db.query("INSERT INTO public.organization_memberships (organization_id, user_id, member_type, status) VALUES ($1, $2, 'STAFF', 'ACTIVE')", [ORG_B, JOEY]);
+      expect(await ghi(JOEY, [row])).toEqual([{ id: row.id, status: "duplicate" }]);
+      await db.query("UPDATE public.organization_memberships SET status = 'REVOKED', revoked_at = now() - interval '60 days' WHERE user_id = $1", [JOEY]);
+      expect(await ghi(JOEY, [row])).toEqual([{ id: row.id, status: "duplicate" }]);
+    });
+  });
+
   it("một dòng hỏng không chặn các dòng khác trong cùng lô", async () => {
     await trongGiaoDich(async () => {
       const tot1 = dong(JOEY), tot2 = dong(JOEY);
       const hong = [
         dong(JOEY, { stuckAt: "2026-13-40T02:00:00.000Z" }),
         dong(JOEY, { releasedAt: "hôm qua" }),
+        dong(JOEY, { releasedAt: "9999-12-31T00:00:00Z" }),
+        dong(JOEY, { stuckAt: "0001-01-01T00:00:00+14:00" }),
+        dong(JOEY, { stuckAt: "2019-12-31T23:59:59Z" }),
         dong(JOEY, { businessKey: "x".repeat(1001) }),
         dong(JOEY, { recordIds: [1, 2] }),
         dong(JOEY, { recordIds: Array.from({ length: 101 }, (_, i) => `m${i}`) }),
         dong(JOEY, { namespace: "" }),
         dong(JOEY, { operation: "x".repeat(201) }),
-        dong(JOEY, { contextOrganizationId: "khong-phai-uuid", organizationId: "actor-scope" }),
         dong(JOEY, { recordCount: 1.5 }),
         dong(JOEY, { userId: undefined }),
         { ...dong(JOEY), id: "khong-phai-uuid" },
@@ -268,26 +302,16 @@ describe("hàm ghi", () => {
     });
   });
 
-  it("dấu phạm vi người dùng: dùng công ty đang mở lúc gỡ; không có thì công ty duy nhất; nhiều công ty thì no_org", async () => {
+  it("dấu phạm vi người dùng: chỉ ghi khi người gỡ có đúng một công ty; nhiều công ty thì no_org, không đoán", async () => {
     await trongGiaoDich(async () => {
-      const ngucanh = dong(HAI_CTY, { organizationId: "actor-scope", contextOrganizationId: ORG_B });
       const duyNhat = dong(JOEY, { organizationId: "actor-scope" });
-      const khongRo = dong(HAI_CTY, { organizationId: "actor-scope" });
-      expect(await ghi(HAI_CTY, [ngucanh, khongRo])).toEqual([
-        { id: ngucanh.id, status: "inserted" }, { id: khongRo.id, status: "rejected", reason: "no_org" },
-      ]);
+      // Ô contextOrganizationId (nếu trình duyệt cũ gửi) bị bỏ qua: không dùng để chọn công ty.
+      const khongRo = dong(HAI_CTY, { organizationId: "actor-scope", contextOrganizationId: ORG_B });
+      expect(await ghi(HAI_CTY, [khongRo])).toEqual([{ id: khongRo.id, status: "rejected", reason: "no_org" }]);
       expect(await ghi(JOEY, [duyNhat])).toEqual([{ id: duyNhat.id, status: "inserted" }]);
       expect((await bang()).map(r => [r.organization_id, r.organization_source, r.pending_scope])).toEqual([
-        [ORG_B, "context", "actor-scope"], [ORG_A, "sole_membership", "actor-scope"],
+        [ORG_A, "sole_membership", "actor-scope"],
       ]);
-    });
-  });
-
-  it("dấu mang uuid công ty thì công ty đang mở không thay được nó", async () => {
-    await trongGiaoDich(async () => {
-      const row = dong(HAI_CTY, { organizationId: ORG_A, contextOrganizationId: ORG_B });
-      expect(await ghi(HAI_CTY, [row])).toEqual([{ id: row.id, status: "inserted" }]);
-      expect((await bang())[0]).toMatchObject({ organization_id: ORG_A, organization_source: "pending" });
     });
   });
 
@@ -302,12 +326,14 @@ describe("hàm ghi", () => {
     });
   });
 
-  it("giới hạn 500 dòng mới mỗi người trong 24 giờ (54000); người khác không bị ảnh hưởng", async () => {
+  it("hạn mức 500 dòng mới / người / 24 giờ: dòng vượt trả rate_limited, không vượt dù một lô, dòng đã có vẫn duplicate", async () => {
     await trongGiaoDich(async () => {
-      await db.query(`INSERT INTO app_private.pending_valve_release_log
-        (client_entry_id, actor_user_id, organization_id, organization_source, pending_scope, namespace, business_key, attempt_id, stuck_at, released_at)
-        SELECT gen_random_uuid(), $1::uuid, $2::uuid, 'pending', $3, 'ns', 'k', 'a', now(), now() FROM generate_series(1, 500)`, [JOEY, ORG_A, ORG_A]);
-      expect((await loi(() => ghi(JOEY, [dong(JOEY)]))).code).toBe("54000");
+      const daCo = dong(JOEY);
+      expect(await ghi(JOEY, [daCo])).toMatchObject([{ status: "inserted" }]);
+      await gieoDaNhan(JOEY, 498);
+      const moi = [dong(JOEY), dong(JOEY), dong(JOEY)];
+      expect((await ghi(JOEY, [daCo, ...moi])).map(r => r.reason ?? r.status)).toEqual(["duplicate", "inserted", "rate_limited", "rate_limited"]);
+      expect((await db.query<{ n: number }>("SELECT count(*)::int AS n FROM app_private.pending_valve_release_log WHERE actor_user_id = $1", [JOEY])).rows[0].n).toBe(500);
       expect(await ghi(CHU, [dong(CHU)])).toMatchObject([{ status: "inserted" }]);
     });
   });
@@ -315,14 +341,13 @@ describe("hàm ghi", () => {
 
 describe("hàm đọc", () => {
   async function gieo() {
-    const rows = [
-      dong(JOEY, { releasedAt: "2026-11-24T02:05:00.000Z" }),
-      dong(CHU, { releasedAt: "2026-11-24T03:05:00.000Z", operation: null }),
-      dong(JOEY, { releasedAt: "2026-11-24T04:05:00.000Z" }),
-    ];
-    await ghi(JOEY, [rows[0], rows[2]]);
-    await ghi(CHU, [rows[1]]);
-    await ghi(KHAC, [dong(KHAC, { organizationId: ORG_B })]);
+    // Mỗi dòng một lần gọi, cách nhau vài mili giây: đồng hồ của PostgreSQL nhúng thô hơn production, và cả ca chạy
+    // trong một giao dịch, nên không cách ra thì giờ máy chủ nhận có thể trùng nhau.
+    const rows = [dong(JOEY), dong(CHU, { operation: null }), dong(JOEY)];
+    for (const [nguoi, row] of [[JOEY, rows[0]], [CHU, rows[1]], [JOEY, rows[2]], [KHAC, dong(KHAC, { organizationId: ORG_B })]] as const) {
+      await ghi(nguoi, [row]);
+      await db.query("SELECT pg_sleep(0.005)");
+    }
     return rows;
   }
 
@@ -336,7 +361,7 @@ describe("hàm đọc", () => {
     });
   });
 
-  it("chủ công ty đọc đúng công ty mình, mới nhất trước, có tên người gỡ; công ty khác thì không", async () => {
+  it("chủ công ty đọc đúng công ty mình, mới nhất (máy chủ nhận) trước, có tên người gỡ; công ty khác thì không", async () => {
     await trongGiaoDich(async () => {
       const rows = await gieo();
       const trang = await doc(CHU, ORG_A);
@@ -348,8 +373,9 @@ describe("hàm đọc", () => {
         businessKey: "INCOME:b1:", operation: "lập phiếu thu", recordIds: ["pt-01"], recordCount: 1,
         device: "Mozilla/5.0 (iPhone) Safari",
       });
-      expect(Date.parse(trang.rows[0].releasedAt)).toBe(Date.parse("2026-11-24T04:05:00.000Z"));
+      expect(Date.parse(trang.rows[0].releasedAt)).toBe(Date.parse("2026-11-24T02:05:00.000Z"));
       expect(Date.parse(trang.rows[0].stuckAt)).toBe(Date.parse("2026-11-24T02:00:00.000Z"));
+      expect(Date.parse(trang.rows[0].receivedAt)).toBeGreaterThan(Date.parse(trang.rows[1].receivedAt));
       expect(trang.rows[1]).toMatchObject({ actorUserId: CHU, operation: null });
       expect(await doc(CHU, ORG_B)).toMatchObject({ allowed: false, rows: [] });
     });
@@ -367,14 +393,14 @@ describe("hàm đọc", () => {
     });
   });
 
-  it("phân trang theo con trỏ (giờ gỡ, id), không trùng không sót", async () => {
+  it("phân trang theo con trỏ (giờ máy chủ nhận, id), không trùng không sót", async () => {
     await trongGiaoDich(async () => {
       const rows = await gieo();
       const p1 = await doc(CHU, ORG_A, 2);
       expect(p1.hasMore).toBe(true);
       expect(p1.rows.map(r => r.entryId)).toEqual([rows[2].id, rows[1].id]);
       const cuoi = p1.rows.at(-1)!;
-      const p2 = await doc(CHU, ORG_A, 2, { releasedAt: cuoi.releasedAt, id: cuoi.id });
+      const p2 = await doc(CHU, ORG_A, 2, { receivedAt: cuoi.receivedAt, id: cuoi.id });
       expect(p2.rows.map(r => r.entryId)).toEqual([rows[0].id]);
       expect(p2.hasMore).toBe(false);
     });

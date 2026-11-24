@@ -14,23 +14,32 @@
 --   * Không khoá ngoại tới auth.users / organizations: người dùng hay công ty bị xoá thì dòng vẫn phải còn.
 --   * Chống trùng theo (người gỡ, mã dòng do trình duyệt sinh): trình duyệt gửi lại cùng dòng (rớt mạng sau
 --     khi máy chủ đã ghi) không tạo dòng thứ hai.
+--   * stuck_at / released_at là giờ MÁY người gỡ (có thể lệch); received_at là giờ máy chủ nhận và là thứ tự
+--     của danh sách, để một dòng mang giờ máy sai không ghim đầu hay chìm cuối danh sách.
 --
 -- HÀM GHI public.pending_valve_release_log_append_v1(p_entries jsonb, p_device text)
 --   * Người gỡ lấy từ auth.uid(), không tin tham số; dòng mang userId khác người gọi bị từ chối (not_self).
---   * Công ty của dòng: organizationId của dấu nếu là uuid; dấu phạm vi người dùng ('actor-scope') thì dùng
---     contextOrganizationId (công ty đang mở lúc gỡ, trình duyệt ghi kèm), không có thì công ty DUY NHẤT của
---     người gỡ; vẫn không xác định được thì từ chối no_org (trình duyệt giữ dòng lại, không bỏ).
---   * Người gỡ phải là thành viên ACTIVE còn hạn của công ty đó, hoặc superadmin (công ty phải tồn tại).
+--   * Tra chống trùng TRƯỚC mọi phép kiểm khác: dòng đã có (cùng người, cùng mã) trả duplicate/conflict dù
+--     trạng thái công ty của người đó đã đổi, để trình duyệt bỏ được nó khỏi hàng đợi.
+--   * Công ty của dòng: organizationId của dấu nếu là uuid. Dấu phạm vi người dùng ('actor-scope') cố ý không
+--     gắn công ty (thao tác có thể thuộc bất kỳ công ty nào người đó làm việc), nên chỉ ghi khi người gỡ có
+--     ĐÚNG MỘT tư cách ACTIVE còn hạn (sole_membership); nhiều công ty thì từ chối no_org và trình duyệt giữ
+--     dòng lại — không đoán công ty, để không ghi dữ liệu của công ty này vào nhật ký công ty khác.
+--   * Người gỡ phải từng làm ở công ty đó: tư cách ACTIVE (còn hạn hoặc hết hạn chưa quá 30 ngày), SUSPENDED,
+--     hoặc REVOKED chưa quá 30 ngày; hoặc là superadmin (công ty phải tồn tại). Khoảng 30 ngày để lần gỡ
+--     ngay trước khi bị tạm dừng / thu hồi vẫn lên được nhật ký nếu lần đẩy đầu bị rớt mạng.
+--   * Giờ kẹt / giờ gỡ phải trong năm 2020–2099 (ngoài khoảng đó là dữ liệu hỏng: invalid).
 --   * Từng dòng một kết quả: inserted / duplicate / rejected(reason). Một dòng hỏng không làm hỏng cả lô.
---   * Tối đa 50 dòng mỗi lần gọi; tối đa 500 dòng mới mỗi người trong 24 giờ (54000, trình duyệt thử lại sau).
+--   * Tối đa 50 dòng mỗi lần gọi; tối đa 500 dòng MỚI mỗi người trong 24 giờ — dòng vượt hạn mức trả
+--     rejected(rate_limited), trình duyệt giữ lại; dòng đã có vẫn trả duplicate.
 --
--- HÀM ĐỌC public.pending_valve_release_log_list_v1(p_organization_id, p_limit, p_before_released_at, p_before_id)
+-- HÀM ĐỌC public.pending_valve_release_log_list_v1(p_organization_id, p_limit, p_before_received_at, p_before_id)
 --   * Chỉ superadmin và chủ công ty theo nghĩa CHẶT (tư cách ACTIVE loại OWNER còn hạn + binding còn hiệu
 --     lực tới vai system_key = 'TENANT_OWNER'), theo đúng công ty được hỏi. Cố ý không khớp theo TÊN vai
 --     ('Chủ công ty' khi system_key NULL): người giữ users.edit đổi được tên vai thường. Đo production
 --     24/11/2026 (chỉ đọc): công ty thật 2 người đạt vế chặt, 1 superadmin.
 --   * Người không đủ quyền nhận {allowed:false, rows:[]} để giao diện ẩn mục, KHÔNG nhận dòng nào.
---   * Mới nhất trước theo giờ gỡ, phân trang theo con trỏ (giờ gỡ, id).
+--   * Mới nhất trước theo giờ máy chủ nhận, phân trang theo con trỏ (received_at, id).
 --
 -- Không chứa tên khách hay số tiền: dòng chỉ mang tên thao tác, namespace, khoá nghiệp vụ, mã lần gửi, mã
 -- bản ghi do lõi chống ghi trùng ghi lại, và chuỗi trình duyệt (user agent) của máy gỡ.
@@ -61,7 +70,7 @@ CREATE TABLE IF NOT EXISTS app_private.pending_valve_release_log (
   client_entry_id uuid NOT NULL,
   actor_user_id uuid NOT NULL,
   organization_id uuid NOT NULL,
-  organization_source text NOT NULL CHECK (organization_source IN ('pending', 'context', 'sole_membership')),
+  organization_source text NOT NULL CHECK (organization_source IN ('pending', 'sole_membership')),
   pending_scope text NOT NULL CHECK (char_length(pending_scope) BETWEEN 1 AND 100),
   namespace text NOT NULL CHECK (char_length(namespace) BETWEEN 1 AND 100),
   business_key text NOT NULL CHECK (char_length(business_key) BETWEEN 1 AND 1000),
@@ -69,15 +78,16 @@ CREATE TABLE IF NOT EXISTS app_private.pending_valve_release_log (
   attempt_id text NOT NULL CHECK (char_length(attempt_id) BETWEEN 1 AND 200),
   record_ids text[] NOT NULL DEFAULT '{}'::text[] CHECK (cardinality(record_ids) <= 100),
   record_count integer NOT NULL DEFAULT 0 CHECK (record_count BETWEEN cardinality(record_ids) AND 1000000),
-  stuck_at timestamptz NOT NULL,
-  released_at timestamptz NOT NULL,
-  received_at timestamptz NOT NULL DEFAULT now(),
+  stuck_at timestamptz NOT NULL CHECK (stuck_at >= '2020-01-01T00:00:00Z' AND stuck_at < '2100-01-01T00:00:00Z'),
+  released_at timestamptz NOT NULL CHECK (released_at >= '2020-01-01T00:00:00Z' AND released_at < '2100-01-01T00:00:00Z'),
+  -- clock_timestamp chứ không now(): các dòng của cùng một lô giữ đúng thứ tự trong hàng đợi.
+  received_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   device text CHECK (device IS NULL OR char_length(device) BETWEEN 1 AND 300),
   CONSTRAINT pending_valve_release_log_entry_uq UNIQUE (actor_user_id, client_entry_id)
 );
 
 CREATE INDEX IF NOT EXISTS pending_valve_release_log_org_idx
-  ON app_private.pending_valve_release_log (organization_id, released_at DESC, id DESC);
+  ON app_private.pending_valve_release_log (organization_id, received_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS pending_valve_release_log_actor_idx
   ON app_private.pending_valve_release_log (actor_user_id, received_at DESC);
 
@@ -85,7 +95,7 @@ ALTER TABLE app_private.pending_valve_release_log ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE app_private.pending_valve_release_log FROM PUBLIC, anon, authenticated, service_role;
 
 COMMENT ON TABLE app_private.pending_valve_release_log IS
-  'Mỗi lần người dùng tự gỡ một dấu «chờ đối chiếu» qua hộp cảnh báo chung (van, src/lib/pendingValve.ts): ai gỡ, công ty, thao tác, giờ kẹt, giờ gỡ, mã bản ghi liên quan, thiết bị. CHỈ THÊM (trigger chặn sửa/xoá). Chống trùng theo (actor_user_id, client_entry_id). Chỉ ghi qua pending_valve_release_log_append_v1, chỉ đọc qua pending_valve_release_log_list_v1.';
+  'Mỗi lần người dùng tự gỡ một dấu «chờ đối chiếu» qua hộp cảnh báo chung (van, src/lib/pendingValve.ts): ai gỡ, công ty, thao tác, giờ kẹt, giờ gỡ (giờ máy người gỡ), giờ máy chủ nhận, mã bản ghi liên quan, thiết bị. CHỈ THÊM (trigger chặn sửa/xoá). Chống trùng theo (actor_user_id, client_entry_id). Chỉ ghi qua pending_valve_release_log_append_v1, chỉ đọc qua pending_valve_release_log_list_v1.';
 
 -- ---------- 2. Chặn sửa / xoá ----------
 CREATE OR REPLACE FUNCTION app_private.pending_valve_release_log_append_only_v1()
@@ -121,12 +131,12 @@ DECLARE
   v_actor uuid := auth.uid();
   v_device text := left(nullif(btrim(coalesce(p_device, '')), ''), 300);
   v_is_super boolean;
-  v_orgs uuid[];
+  v_active_orgs uuid[];
+  v_quota integer;
   v_item jsonb;
   v_id_text text;
   v_id uuid;
   v_scope text;
-  v_context text;
   v_org uuid;
   v_source text;
   v_namespace text;
@@ -155,16 +165,14 @@ BEGIN
     RETURN jsonb_build_object('results', v_results);
   END IF;
 
-  -- Tuần tự hoá theo người gỡ để giới hạn tần suất không bị lọt bởi các lần gọi song song.
+  -- Tuần tự hoá theo người gỡ để hạn mức không bị lọt bởi các lần gọi song song.
   PERFORM pg_advisory_xact_lock(hashtextextended('pending_valve_release_log:' || v_actor::text, 0));
-  IF (SELECT count(*) FROM app_private.pending_valve_release_log l
-       WHERE l.actor_user_id = v_actor AND l.received_at > now() - interval '24 hours') >= 500 THEN
-    RAISE EXCEPTION 'Gửi nhật ký tự gỡ khoá quá nhiều lần — thử lại sau.' USING ERRCODE = '54000';
-  END IF;
+  v_quota := 500 - (SELECT count(*) FROM app_private.pending_valve_release_log l
+                     WHERE l.actor_user_id = v_actor AND l.received_at > now() - interval '24 hours')::integer;
 
   v_is_super := EXISTS (SELECT 1 FROM public.super_admins s WHERE s.user_id = v_actor);
   SELECT coalesce(array_agg(DISTINCT m.organization_id ORDER BY m.organization_id), '{}'::uuid[])
-    INTO v_orgs
+    INTO v_active_orgs
     FROM public.organization_memberships m
    WHERE m.user_id = v_actor
      AND m.status = 'ACTIVE'
@@ -185,7 +193,6 @@ BEGIN
       OR jsonb_typeof(v_item -> 'stuckAt') IS DISTINCT FROM 'string'
       OR jsonb_typeof(v_item -> 'releasedAt') IS DISTINCT FROM 'string'
       OR coalesce(jsonb_typeof(v_item -> 'operation'), 'null') NOT IN ('string', 'null')
-      OR coalesce(jsonb_typeof(v_item -> 'contextOrganizationId'), 'null') NOT IN ('string', 'null')
       OR jsonb_typeof(v_item -> 'recordIds') IS DISTINCT FROM 'array'
       OR coalesce(jsonb_typeof(v_item -> 'recordCount'), 'null') NOT IN ('number', 'null') THEN
       v_reason := 'invalid';
@@ -195,27 +202,44 @@ BEGIN
     ELSE
       v_id := v_id_text::uuid;
       v_scope := v_item ->> 'organizationId';
-      v_context := v_item ->> 'contextOrganizationId';
       v_namespace := v_item ->> 'namespace';
       v_business_key := v_item ->> 'businessKey';
       v_operation := v_item ->> 'operation';
       v_attempt := v_item ->> 'attemptId';
-      IF char_length(v_scope) NOT BETWEEN 1 AND 100
-        OR char_length(v_namespace) NOT BETWEEN 1 AND 100
-        OR char_length(v_business_key) NOT BETWEEN 1 AND 1000
-        OR char_length(v_attempt) NOT BETWEEN 1 AND 200
-        OR (v_operation IS NOT NULL AND char_length(v_operation) NOT BETWEEN 1 AND 200)
-        OR (v_context IS NOT NULL AND v_context !~ c_uuid)
-        OR jsonb_array_length(v_item -> 'recordIds') > 100
-        OR EXISTS (
-          SELECT 1 FROM jsonb_array_elements(v_item -> 'recordIds') AS r(value)
-           WHERE jsonb_typeof(r.value) <> 'string' OR char_length(r.value #>> '{}') NOT BETWEEN 1 AND 200
-        )
-        OR (v_item ->> 'stuckAt') !~ c_time
-        OR (v_item ->> 'releasedAt') !~ c_time
-        OR (jsonb_typeof(v_item -> 'recordCount') = 'number' AND (v_item ->> 'recordCount') !~ '^[0-9]{1,7}$') THEN
-        v_reason := 'invalid';
+    END IF;
+
+    -- Chống trùng trước mọi phép kiểm phụ thuộc trạng thái hiện tại (tư cách, hạn mức): dòng đã ghi thì
+    -- luôn được báo là đã ghi.
+    IF v_reason IS NULL THEN
+      SELECT * INTO v_existing
+        FROM app_private.pending_valve_release_log l
+       WHERE l.actor_user_id = v_actor AND l.client_entry_id = v_id;
+      IF FOUND THEN
+        v_results := v_results || jsonb_build_array(CASE
+          WHEN v_existing.pending_scope = v_scope AND v_existing.namespace = v_namespace
+           AND v_existing.business_key = v_business_key AND v_existing.attempt_id = v_attempt
+          THEN jsonb_build_object('id', v_id_text, 'status', 'duplicate')
+          ELSE jsonb_build_object('id', v_id_text, 'status', 'rejected', 'reason', 'conflict')
+        END);
+        CONTINUE;
       END IF;
+    END IF;
+
+    IF v_reason IS NULL AND (
+         char_length(v_scope) NOT BETWEEN 1 AND 100
+      OR char_length(v_namespace) NOT BETWEEN 1 AND 100
+      OR char_length(v_business_key) NOT BETWEEN 1 AND 1000
+      OR char_length(v_attempt) NOT BETWEEN 1 AND 200
+      OR (v_operation IS NOT NULL AND char_length(v_operation) NOT BETWEEN 1 AND 200)
+      OR jsonb_array_length(v_item -> 'recordIds') > 100
+      OR EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_item -> 'recordIds') AS r(value)
+         WHERE jsonb_typeof(r.value) <> 'string' OR char_length(r.value #>> '{}') NOT BETWEEN 1 AND 200
+      )
+      OR (v_item ->> 'stuckAt') !~ c_time
+      OR (v_item ->> 'releasedAt') !~ c_time
+      OR (jsonb_typeof(v_item -> 'recordCount') = 'number' AND (v_item ->> 'recordCount') !~ '^[0-9]{1,7}$')) THEN
+      v_reason := 'invalid';
     END IF;
 
     IF v_reason IS NULL THEN
@@ -229,10 +253,14 @@ BEGIN
     END IF;
 
     IF v_reason IS NULL THEN
-      -- Ngày giờ đúng mẫu mà sai giá trị (tháng 13, giờ 25…) là dòng hỏng, không phải lỗi cả lô.
+      -- Ngày giờ đúng mẫu mà sai giá trị (tháng 13, giờ 25…) hay ngoài 2020–2099 là dòng hỏng, không phải lỗi cả lô.
       BEGIN
         v_stuck := (v_item ->> 'stuckAt')::timestamptz;
         v_released := (v_item ->> 'releasedAt')::timestamptz;
+        IF v_stuck < '2020-01-01T00:00:00Z' OR v_stuck >= '2100-01-01T00:00:00Z'
+          OR v_released < '2020-01-01T00:00:00Z' OR v_released >= '2100-01-01T00:00:00Z' THEN
+          v_reason := 'invalid';
+        END IF;
       EXCEPTION WHEN data_exception THEN
         v_reason := 'invalid';
       END;
@@ -242,11 +270,8 @@ BEGIN
       IF v_scope ~ c_uuid THEN
         v_org := v_scope::uuid;
         v_source := 'pending';
-      ELSIF v_context IS NOT NULL THEN
-        v_org := v_context::uuid;
-        v_source := 'context';
-      ELSIF cardinality(v_orgs) = 1 THEN
-        v_org := v_orgs[1];
+      ELSIF cardinality(v_active_orgs) = 1 THEN
+        v_org := v_active_orgs[1];
         v_source := 'sole_membership';
       ELSE
         v_reason := 'no_org';
@@ -254,9 +279,21 @@ BEGIN
     END IF;
 
     IF v_reason IS NULL
-      AND NOT (v_org = ANY (v_orgs))
+      AND NOT EXISTS (
+        SELECT 1 FROM public.organization_memberships m
+         WHERE m.organization_id = v_org
+           AND m.user_id = v_actor
+           AND m.valid_from <= now()
+           AND (   (m.status = 'ACTIVE' AND (m.valid_to IS NULL OR m.valid_to > now() - interval '30 days'))
+                OR m.status = 'SUSPENDED'
+                OR (m.status = 'REVOKED' AND m.revoked_at > now() - interval '30 days'))
+      )
       AND NOT (v_is_super AND EXISTS (SELECT 1 FROM public.organizations o WHERE o.id = v_org)) THEN
       v_reason := 'not_member';
+    END IF;
+
+    IF v_reason IS NULL AND v_quota <= 0 THEN
+      v_reason := 'rate_limited';
     END IF;
 
     IF v_reason IS NOT NULL THEN
@@ -276,21 +313,12 @@ BEGIN
     RETURNING id INTO v_inserted;
 
     IF v_inserted IS NOT NULL THEN
+      v_quota := v_quota - 1;
       v_results := v_results || jsonb_build_array(jsonb_build_object('id', v_id_text, 'status', 'inserted'));
-      CONTINUE;
-    END IF;
-
-    -- Đã có dòng cùng mã của người này: lần gửi lại sau khi máy chủ đã ghi. Không ghi thêm, không sửa dòng cũ.
-    SELECT * INTO v_existing
-      FROM app_private.pending_valve_release_log l
-     WHERE l.actor_user_id = v_actor AND l.client_entry_id = v_id;
-    IF v_existing.organization_id = v_org
-      AND v_existing.namespace = v_namespace
-      AND v_existing.business_key = v_business_key
-      AND v_existing.attempt_id = v_attempt THEN
-      v_results := v_results || jsonb_build_array(jsonb_build_object('id', v_id_text, 'status', 'duplicate'));
     ELSE
-      v_results := v_results || jsonb_build_array(jsonb_build_object('id', v_id_text, 'status', 'rejected', 'reason', 'conflict'));
+      -- Không tới được nhánh này khi các lần gọi của cùng người đã tuần tự bởi khoá ở trên; giữ để không
+      -- bao giờ báo «đã ghi» cho một dòng không chắc là của lượt này.
+      v_results := v_results || jsonb_build_array(jsonb_build_object('id', v_id_text, 'status', 'duplicate'));
     END IF;
   END LOOP;
 
@@ -299,13 +327,13 @@ END
 $fn$;
 
 COMMENT ON FUNCTION public.pending_valve_release_log_append_v1(jsonb, text) IS
-  'Đẩy hàng đợi nhật ký tự gỡ khoá của trình duyệt lên máy chủ (tối đa 50 dòng/lần, 500 dòng mới/người/24 giờ — 54000). Người gỡ = auth.uid(); dòng của người khác bị từ chối not_self. Công ty: uuid của dấu, không có thì contextOrganizationId, không có thì công ty duy nhất của người gỡ (không xác định được: no_org); phải là thành viên ACTIVE còn hạn hoặc superadmin (not_member). Chống trùng theo (người gỡ, id dòng): gửi lại cùng dòng trả duplicate, khác nội dung trả conflict, không tạo dòng thứ hai. Trả {results:[{id,status:inserted|duplicate|rejected,reason?}]}; lỗi từng dòng không làm hỏng cả lô.';
+  'Đẩy hàng đợi nhật ký tự gỡ khoá của trình duyệt lên máy chủ (tối đa 50 dòng/lần). Người gỡ = auth.uid(); dòng của người khác bị từ chối not_self. Chống trùng theo (người gỡ, id dòng) trước mọi phép kiểm khác: gửi lại cùng dòng trả duplicate, khác nội dung trả conflict, không tạo dòng thứ hai. Công ty: uuid của dấu; dấu actor-scope chỉ ghi khi người gỡ có đúng một tư cách ACTIVE (không thì no_org). Phải từng làm ở công ty đó (ACTIVE, SUSPENDED, hoặc hết hạn/REVOKED chưa quá 30 ngày) hoặc là superadmin (not_member). Giờ ngoài 2020–2099 là invalid. Quá 500 dòng mới/người/24 giờ trả rate_limited. Trả {results:[{id,status:inserted|duplicate|rejected,reason?}]}; lỗi từng dòng không làm hỏng cả lô.';
 
 -- ---------- 4. Hàm đọc ----------
 CREATE OR REPLACE FUNCTION public.pending_valve_release_log_list_v1(
   p_organization_id uuid,
   p_limit integer DEFAULT 50,
-  p_before_released_at timestamptz DEFAULT NULL,
+  p_before_received_at timestamptz DEFAULT NULL,
   p_before_id uuid DEFAULT NULL
 )
 RETURNS jsonb
@@ -329,7 +357,7 @@ BEGIN
   IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 200 THEN
     RAISE EXCEPTION 'Số dòng mỗi trang phải từ 1 đến 200.' USING ERRCODE = '22023';
   END IF;
-  IF (p_before_released_at IS NULL) <> (p_before_id IS NULL) THEN
+  IF (p_before_received_at IS NULL) <> (p_before_id IS NULL) THEN
     RAISE EXCEPTION 'Con trỏ trang không hợp lệ.' USING ERRCODE = '22023';
   END IF;
 
@@ -374,17 +402,17 @@ BEGIN
            'releasedAt', t.released_at,
            'receivedAt', t.received_at,
            'device', t.device
-         ) ORDER BY t.released_at DESC, t.id DESC) FILTER (WHERE t.n <= p_limit), '[]'::jsonb),
+         ) ORDER BY t.received_at DESC, t.id DESC) FILTER (WHERE t.n <= p_limit), '[]'::jsonb),
          count(*)
     INTO v_rows, v_total
     FROM (
       SELECT l.*, nullif(btrim(p.full_name), '') AS actor_name,
-             row_number() OVER (ORDER BY l.released_at DESC, l.id DESC) AS n
+             row_number() OVER (ORDER BY l.received_at DESC, l.id DESC) AS n
         FROM app_private.pending_valve_release_log l
         LEFT JOIN public.profiles p ON p.id = l.actor_user_id
        WHERE l.organization_id = p_organization_id
-         AND (p_before_released_at IS NULL OR (l.released_at, l.id) < (p_before_released_at, p_before_id))
-       ORDER BY l.released_at DESC, l.id DESC
+         AND (p_before_received_at IS NULL OR (l.received_at, l.id) < (p_before_received_at, p_before_id))
+       ORDER BY l.received_at DESC, l.id DESC
        LIMIT p_limit + 1
     ) t;
 
@@ -393,7 +421,7 @@ END
 $fn$;
 
 COMMENT ON FUNCTION public.pending_valve_release_log_list_v1(uuid, integer, timestamptz, uuid) IS
-  'Danh sách nhật ký tự gỡ khoá của MỘT công ty, mới nhất trước theo giờ gỡ, con trỏ (p_before_released_at, p_before_id), 1–200 dòng/trang. Chỉ superadmin và chủ công ty theo nghĩa chặt (tư cách ACTIVE loại OWNER còn hạn + binding còn hiệu lực tới vai system_key=TENANT_OWNER) của đúng công ty đó; người khác nhận {allowed:false, rows:[]}. Trả {organizationId, allowed, rows, hasMore}.';
+  'Danh sách nhật ký tự gỡ khoá của MỘT công ty, mới nhất trước theo giờ máy chủ nhận, con trỏ (p_before_received_at, p_before_id), 1–200 dòng/trang. Chỉ superadmin và chủ công ty theo nghĩa chặt (tư cách ACTIVE loại OWNER còn hạn + binding còn hiệu lực tới vai system_key=TENANT_OWNER) của đúng công ty đó; người khác nhận {allowed:false, rows:[]}. Trả {organizationId, allowed, rows, hasMore}.';
 
 -- ---------- 5. ACL ----------
 REVOKE ALL ON FUNCTION app_private.pending_valve_release_log_append_only_v1() FROM PUBLIC, anon, authenticated, service_role;

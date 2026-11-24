@@ -8,7 +8,7 @@ const T0 = Date.parse('2026-11-24T02:00:00.000Z');
 const ORG = '00000000-0000-4000-8000-000000000001';
 const scope = (businessKey: string, organizationId = ORG) => ({ namespace: 'voucher-form-create', userId: 'u1', organizationId, businessKey });
 
-function harness(options: { activeOrganization?: string | null } = {}) {
+function harness() {
   const map = new Map<string, string>();
   const storage = {
     getItem: (key: string) => map.get(key) ?? null,
@@ -18,7 +18,7 @@ function harness(options: { activeOrganization?: string | null } = {}) {
   let clock = T0;
   const now = () => new Date(clock);
   const store = createFinancialPendingStore({ storage, now });
-  const valve = createPendingValve({ storage, now, contextOrganization: () => options.activeOrganization ?? null });
+  const valve = createPendingValve({ storage, now });
   let made = 0;
   /** Tự gỡ n dấu đã quá 2 phút, trả các dòng nhật ký theo thứ tự. */
   const release = (n: number, organizationId = ORG): PendingValveLogEntry[] => {
@@ -44,13 +44,13 @@ function harness(options: { activeOrganization?: string | null } = {}) {
     };
   });
   const sessionUserId = vi.fn(async () => 'u1' as string | null);
-  const sync = createPendingValveLogSync({ log: valve, append, sessionUserId, device: () => 'Mozilla/5.0 (iPhone) Safari' });
+  const sync = createPendingValveLogSync({ log: valve, append, sessionUserId, device: () => 'Mozilla/5.0 (iPhone) Safari', timeoutMs: 1000 });
   return { map, store, valve, release, server, calls, append, sessionUserId, sync, advance: (ms: number) => { clock += ms; } };
 }
 
 describe('đẩy hàng đợi nhật ký tự gỡ lên máy chủ', () => {
   it('máy chủ xác nhận đã ghi thì dòng rời hàng đợi; gửi đúng hình dạng dòng và thiết bị', async () => {
-    const h = harness({ activeOrganization: ORG });
+    const h = harness();
     const [entry] = h.release(1);
     expect(h.valve.readLog('u1')).toHaveLength(1);
     expect(await h.sync.flush('u1')).toMatchObject({ sent: 1, acknowledged: 1, kept: 0, error: null });
@@ -58,7 +58,7 @@ describe('đẩy hàng đợi nhật ký tự gỡ lên máy chủ', () => {
     expect(h.calls).toEqual([{
       device: 'Mozilla/5.0 (iPhone) Safari',
       entries: [{
-        id: entry.id, userId: 'u1', organizationId: ORG, contextOrganizationId: ORG, namespace: 'voucher-form-create',
+        id: entry.id, userId: 'u1', organizationId: ORG, namespace: 'voucher-form-create',
         businessKey: entry.businessKey, operation: 'lập phiếu thu', attemptId: entry.attemptId, recordIds: [], recordCount: 0,
         stuckAt: entry.stuckAt, releasedAt: entry.releasedAt,
       }],
@@ -102,18 +102,20 @@ describe('đẩy hàng đợi nhật ký tự gỡ lên máy chủ', () => {
 
   it('một dòng bị từ chối rõ (không thể ghi lại) rời hàng đợi và không chặn các dòng sau', async () => {
     const h = harness();
-    const [bad, good, noOrg, otherSession] = h.release(4);
+    const [bad, good, noOrg, otherSession, limited, strange] = h.release(6);
     h.append.mockImplementationOnce(async () => ({
       results: [
         { id: bad.id, status: 'rejected', reason: 'invalid' },
         { id: good.id, status: 'inserted' },
         { id: noOrg.id, status: 'rejected', reason: 'no_org' },
         { id: otherSession.id, status: 'rejected', reason: 'not_self' },
+        { id: limited.id, status: 'rejected', reason: 'rate_limited' },
+        { id: strange.id, status: 'rejected', reason: 'ly_do_moi_chua_biet' },
       ],
     }));
-    expect(await h.sync.flush('u1')).toMatchObject({ sent: 4, acknowledged: 2, kept: 2 });
-    // no_org / not_self có thể ghi được sau (chọn công ty, phiên đúng người): giữ lại.
-    expect(h.valve.readLog('u1').map((entry) => entry.id)).toEqual([noOrg.id, otherSession.id]);
+    expect(await h.sync.flush('u1')).toMatchObject({ sent: 6, acknowledged: 2, kept: 4 });
+    // no_org / not_self / rate_limited / lý do lạ có thể ghi được sau: giữ lại, không bỏ.
+    expect(h.valve.readLog('u1').map((entry) => entry.id)).toEqual([noOrg.id, otherSession.id, limited.id, strange.id]);
     for (const reason of ['not_member', 'conflict']) {
       const [row] = h.release(1);
       h.append.mockImplementationOnce(async (entries) => ({
@@ -198,6 +200,71 @@ describe('đẩy hàng đợi nhật ký tự gỡ lên máy chủ', () => {
     expect(h.valve.readLog('u1')).toEqual([]);
   });
 
+  it('cả lô bị từ chối vì dữ liệu (22xxx): gửi lại từng dòng; dòng hỏng riêng thì bỏ, dòng tốt lên máy chủ', async () => {
+    const h = harness();
+    const [a, poison, b] = h.release(3);
+    const real = h.append.getMockImplementation()!;
+    h.append.mockImplementation(async (entries, device) => {
+      if (entries.some((entry) => entry.id === poison.id)) throw { code: '22P02', message: 'invalid input syntax for type json' };
+      return real(entries, device);
+    });
+    const outcome = await h.sync.flush('u1');
+    expect(outcome).toMatchObject({ acknowledged: 3, kept: 0 });
+    expect(outcome.error).toMatchObject({ code: '22P02' });
+    expect([...h.server.keys()].sort()).toEqual([a.id, b.id].sort());
+    expect(h.valve.readLog('u1')).toEqual([]);
+    expect(h.append.mock.calls.map(([entries]) => entries.length)).toEqual([3, 1, 1, 1]);
+  });
+
+  it('lỗi mạng / phiên / máy chủ không bị coi là lỗi dữ liệu: không gửi từng dòng, giữ cả lô', async () => {
+    const h = harness();
+    h.release(3);
+    for (const error of [new TypeError('Failed to fetch'), { code: '42501', message: 'permission denied' }, { code: '57014', message: 'timeout' }, { code: 'PGRST301', message: 'JWT expired' }]) {
+      const before = h.append.mock.calls.length;
+      h.append.mockRejectedValueOnce(error);
+      expect(await h.sync.flush('u1')).toMatchObject({ acknowledged: 0, kept: 3 });
+      expect(h.append.mock.calls.length - before).toBe(1);
+    }
+    expect(h.valve.readLog('u1')).toHaveLength(3);
+  });
+
+  it('lời gọi treo quá hạn chờ: lượt đẩy kết thúc, dòng ở lại, lượt sau chạy được', async () => {
+    const h = harness();
+    h.release(1);
+    h.append.mockImplementationOnce(() => new Promise(() => {}));
+    const first = await h.sync.flush('u1');
+    expect(first).toMatchObject({ acknowledged: 0, kept: 1 });
+    expect((first.error as Error).name).toBe('PendingValveLogTimeout');
+    expect(await h.sync.flush('u1')).toMatchObject({ acknowledged: 1, kept: 0 });
+  });
+
+  it('không lưu mã link chia sẻ phòng đầy đủ trong khoá nghiệp vụ', async () => {
+    const h = harness();
+    const entry: PendingValveLogEntry = {
+      id: '22222222-2222-4222-8222-222222222222', userId: 'u1', organizationId: 'actor-scope', namespace: 'public-room-admin',
+      businessKey: 'token:abcdefghijklmnop1234', operation: 'thu hồi link', attemptId: 'a1', recordIds: [],
+      stuckAt: '2026-11-24T02:00:00.000Z', releasedAt: '2026-11-24T02:05:00.000Z',
+    };
+    h.map.set('ihome:pending-valve-log:v1:u1', JSON.stringify([entry]));
+    await h.sync.flush('u1');
+    expect(h.calls[0].entries[0].businessKey).toBe('token:…1234');
+  });
+
+  it('cắt theo ký tự thật: không chặt đôi emoji thành chuỗi hỏng', async () => {
+    const h = harness();
+    const entry: PendingValveLogEntry = {
+      id: '33333333-3333-4333-8333-333333333333', userId: 'u1', organizationId: ORG, namespace: 'ns',
+      businessKey: 'k', operation: 'x'.repeat(199) + '😀😀', attemptId: 'a1', recordIds: [],
+      stuckAt: '2026-11-24T02:00:00.000Z', releasedAt: '2026-11-24T02:05:00.000Z',
+    };
+    h.map.set('ihome:pending-valve-log:v1:u1', JSON.stringify([entry]));
+    await h.sync.flush('u1');
+    const operation = h.calls[0].entries[0].operation!;
+    expect(Array.from(operation)).toHaveLength(200);
+    expect(operation.endsWith('😀')).toBe(true);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(operation)).toBe(false);
+  });
+
   it('cắt độ dài theo giới hạn của máy chủ, giữ tổng số mã bản ghi', async () => {
     const h = harness();
     const entry: PendingValveLogEntry = {
@@ -216,7 +283,6 @@ describe('đẩy hàng đợi nhật ký tự gỡ lên máy chủ', () => {
     expect(sent.recordIds).toHaveLength(100);
     expect(sent.recordIds.every((value) => value.length === 200)).toBe(true);
     expect(sent.recordCount).toBe(130);
-    expect(sent.contextOrganizationId).toBeNull();
     expect(sent.organizationId).toBe('actor-scope');
   });
 });

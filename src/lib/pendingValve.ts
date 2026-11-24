@@ -14,7 +14,7 @@ import {
   type FinancialPendingRecord, type FinancialPendingScope, type FinancialPendingStore,
 } from './financialPending';
 import { pendingStrategyOf } from './pendingStrategies';
-import { flushPendingValveLogSoon, pendingValveLogKey, readActiveOrganizationId } from './pendingValveLogQueue';
+import { flushPendingValveLogSoon, pendingValveLogKey } from './pendingValveLogQueue';
 import { raisePendingValveSignal } from './pendingValveSignal';
 
 /**
@@ -40,11 +40,6 @@ export interface PendingValveLogEntry {
   userId: string;
   /** Công ty trong phạm vi của dấu; dấu phạm vi người dùng mang 'actor-scope' thay vì mã công ty. */
   organizationId: string;
-  /**
-   * Công ty đang mở lúc gỡ (đợt 1b). Máy chủ dùng nó cho dấu 'actor-scope'. Dòng ghi trước đợt 1b không có ô này;
-   * `null` khi trình duyệt không đọc được công ty đang mở.
-   */
-  contextOrganizationId?: string | null;
   namespace: string;
   businessKey: string;
   operation: string | null;
@@ -93,14 +88,11 @@ function isLogEntry(value: unknown): value is PendingValveLogEntry {
   const row = value as Record<string, unknown>;
   return ['id', 'userId', 'organizationId', 'namespace', 'businessKey', 'attemptId', 'stuckAt', 'releasedAt'].every(field => typeof row[field] === 'string' && row[field])
     && (row.operation === null || typeof row.operation === 'string')
-    && (row.contextOrganizationId === undefined || row.contextOrganizationId === null || typeof row.contextOrganizationId === 'string')
     && Array.isArray(row.recordIds) && row.recordIds.every(id => typeof id === 'string');
 }
 
 export function createPendingValve(options: {
   storage?: StoragePort; now?: () => Date; onReport?: () => void;
-  /** Công ty đang mở, ghi vào dòng nhật ký lúc gỡ. Không truyền thì dòng không có ô `contextOrganizationId`. */
-  contextOrganization?: () => string | null;
   /** Gọi sau khi đã gỡ dấu thành công, với dòng nhật ký vừa ghi. Lỗi của nó không làm hỏng lần gỡ. */
   onRelease?: (entry: PendingValveLogEntry) => void;
 } = {}) {
@@ -169,11 +161,6 @@ export function createPendingValve(options: {
         businessKey: live.businessKey, operation: pendingOperationName(live), attemptId: live.attemptId,
         recordIds: [...live.completedIds], stuckAt: live.startedAt, releasedAt: releasedAt.toISOString(),
       };
-      if (options.contextOrganization) {
-        let context: string | null = null;
-        try { context = options.contextOrganization(); } catch { context = null; }
-        entry.contextOrganizationId = context;
-      }
       const before = readLog(live.userId);
       writeLog(live.userId, [...before, entry]);
       let cleared = false;
@@ -196,11 +183,10 @@ export function createPendingValve(options: {
 }
 export type PendingValve = ReturnType<typeof createPendingValve>;
 /**
- * Van dùng chung của ứng dụng: mỗi lời báo bật tín hiệu để gốc ứng dụng nạp hộp cảnh báo; mỗi lần gỡ ghi kèm công
- * ty đang mở và đẩy hàng đợi nhật ký lên máy chủ ở nền.
+ * Van dùng chung của ứng dụng: mỗi lời báo bật tín hiệu để gốc ứng dụng nạp hộp cảnh báo; mỗi lần gỡ đẩy hàng đợi
+ * nhật ký lên máy chủ ở nền.
  */
 export const pendingValve = createPendingValve({
   onReport: raisePendingValveSignal,
-  contextOrganization: () => readActiveOrganizationId(),
   onRelease: (entry) => { void flushPendingValveLogSoon(entry.userId); },
 });

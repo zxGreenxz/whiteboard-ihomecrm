@@ -1,7 +1,11 @@
 // Phần NHẸ của hàng đợi nhật ký tự gỡ khoá «chờ đối chiếu» (đợt 1b): khoá lưu, phép thử «còn dòng chờ đẩy
-// không», công ty đang mở, và lối gọi đẩy ở nền. Tệp này được nạp lúc mở ứng dụng (OrganizationProvider) và
-// bởi van (`pendingValve.ts`), nên cố ý không kéo theo supabase, zod hay sổ chiến lược: phần đẩy thật nằm ở
-// `pendingValveLogSync.ts` và chỉ được nạp khi hàng đợi có dòng.
+// không», và lối gọi đẩy ở nền. Phần đẩy thật nằm ở `pendingValveLogSync.ts` (kéo theo supabase, zod) và chỉ được
+// nạp lười khi có việc.
+//
+// CHỈ `pendingValve.ts` được import tĩnh tệp này. Có thêm nơi import tĩnh (ví dụ gói mở ứng dụng) thì Vite tách nó
+// thành gói riêng, và gói đó chen vào danh sách nạp trước của mọi trang đang dùng van, làm gói entry phình (đo
+// 24/11/2026: +390 byte, vượt ngưỡng cửa bundle-inventory). Hook mở ứng dụng vì thế tự giữ một bản khoá
+// (`usePendingValveLogFlushOnOpen.ts`), có test so khớp với `pendingValveLogKey`.
 //
 // Khoá localStorage `ihome:pending-valve-log:v1:<người dùng>` là của van (đợt 1); đăng xuất không xoá nó, để lần
 // tự gỡ không mất dấu vết trước khi lên được máy chủ.
@@ -17,19 +21,6 @@ export function pendingValveLogWaiting(userId: string, storage: ReadPort = globa
     return raw !== null && raw !== '[]';
   } catch {
     return false;
-  }
-}
-
-/**
- * Công ty đang mở trong tab này, đúng khoá mà lõi chống ghi trùng đọc khi dựng phạm vi dấu
- * (`persistentFinancialWorkflow.ts`, `companyPreference.ts` ghi). Van ghi giá trị này vào dòng nhật ký lúc gỡ để
- * máy chủ biết công ty của các dấu phạm vi người dùng ('actor-scope'), vốn không mang mã công ty.
- */
-export function readActiveOrganizationId(storage: ReadPort = globalThis.localStorage): string | null {
-  try {
-    return storage.getItem('ihomecrm.selectedOrganizationId') || null;
-  } catch {
-    return null;
   }
 }
 

@@ -41,10 +41,12 @@ import {
   type AuthorizationAuditEvent,
 } from '@/hooks/useOrganizationAuthorization';
 import { LOAI_TV } from '@/components/authorization/MemberAuthorizationDialog';
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
+import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
 import { docSuKienDatLaiMatKhau, laSuKienDatLaiMatKhau } from '@/lib/resetUserPassword';
 
-// Nhật ký tự gỡ khoá «chờ đối chiếu» (đợt 1b): chỉ chủ công ty và superadmin thấy; nạp lười vì đa số người mở
-// trang này không có quyền xem mục đó.
+// Nhật ký tự gỡ khoá «chờ đối chiếu» (đợt 1b): chỉ chủ công ty và superadmin thấy; nạp lười và chỉ nạp khi cờ hiển
+// thị cho phép, vì đa số người mở trang này không có quyền xem mục đó. Hàng rào thật là hàm đọc ở máy chủ.
 const PendingValveReleaseLogCard = lazyWithRetry(() => import('@/components/settings/PendingValveReleaseLogCard'));
 
 const NHAN_SU_KIEN: Record<string, string> = {
@@ -64,6 +66,9 @@ export default function OrganizationPage() {
   const { data, isLoading, error } = organizationQuery;
   const luuTen = useUpdateOrganizationProfile();
   const thuHoi = useRevokeInvitation();
+  const superAdmin = useIsSuperAdmin();
+  const companyOwner = useIsCompanyOwner();
+  const xemNhatKyGoKhoa = superAdmin.data === true || companyOwner.data === true;
   const [ten, setTen] = useState('');
   const [nameError, setNameError] = useState('');
   const [serverError, setServerError] = useState('');
@@ -252,9 +257,11 @@ export default function OrganizationPage() {
           </CardContent>
         </Card>
 
-        <Suspense fallback={null}>
-          <PendingValveReleaseLogCard />
-        </Suspense>
+        {xemNhatKyGoKhoa && (
+          <Suspense fallback={null}>
+            <PendingValveReleaseLogCard />
+          </Suspense>
+        )}
 
         {IS_TEST_ENV && <TheMoiTruongTest />}
       </div>

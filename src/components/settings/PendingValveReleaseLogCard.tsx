@@ -3,33 +3,28 @@ import { QueryRegion } from '@/components/errors/QueryRegion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
-import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { usePendingValveReleaseLog, type PendingValveReleaseLogRow } from '@/hooks/usePendingValveReleaseLog';
 import { formatPendingTime } from '@/lib/financialPending';
 import { userAgentLabel } from '@/lib/userAgentLabel';
 
-const NGUON_CONG_TY: Record<PendingValveReleaseLogRow['organizationSource'], string | null> = {
-  pending: null,
-  context: 'Công ty theo màn đang mở lúc gỡ',
-  sole_membership: 'Công ty duy nhất của người gỡ',
-};
+/** Giờ Việt Nam; chuỗi giờ không đọc được thì hiện nguyên văn thay vì làm hỏng cả mục. */
+function thoiGian(value: string): string {
+  try { return formatPendingTime(value); } catch { return value; }
+}
 
 /**
  * Mục «Nhật ký tự gỡ khoá» ở trang Cài đặt › Tổ chức (đợt 1b): mỗi lần một người tự xác nhận «Đã kiểm tra, cho làm
- * tiếp» để gỡ một yêu cầu chưa rõ kết quả. Chỉ đọc, công ty đang chọn, mới nhất trước.
+ * tiếp» để gỡ một yêu cầu chưa rõ kết quả. Chỉ đọc, công ty đang chọn, mới nhất (theo giờ máy chủ nhận) trước.
  *
- * Chỉ superadmin và chủ công ty thấy mục này. Cờ hiển thị (`useIsSuperAdmin`, `useIsCompanyOwner`) chỉ quyết có hỏi
- * máy chủ hay không; hàng rào thật là hàm đọc, trả `allowed: false` cho người không đủ quyền ở công ty này, và khi đó
- * mục không hiện.
+ * Trang chỉ nạp mục này cho superadmin và chủ công ty (cờ hiển thị); hàng rào thật là hàm đọc, trả `allowed: false`
+ * cho người không đủ quyền ở công ty này — khi đó, và trong lúc chưa có trang đầu, mục không hiện gì để không chớp
+ * khối chờ cho người rồi sẽ không được xem.
  */
 export default function PendingValveReleaseLogCard() {
   const { selectedOrganizationId } = useOrganization();
-  const superAdmin = useIsSuperAdmin();
-  const companyOwner = useIsCompanyOwner();
-  const mayRead = superAdmin.data === true || companyOwner.data === true;
-  const log = usePendingValveReleaseLog(selectedOrganizationId, mayRead);
-  if (!selectedOrganizationId || !mayRead) return null;
+  const log = usePendingValveReleaseLog(selectedOrganizationId);
+  if (!selectedOrganizationId) return null;
+  if (!log.data && !log.isError) return null;
   if (log.data?.pages[0]?.allowed === false) return null;
 
   const rows = log.data?.pages.flatMap((page) => page.rows) ?? [];
@@ -76,16 +71,15 @@ function DongGoKhoa({ row }: { row: PendingValveReleaseLogRow }) {
   const nguoi = row.actorName ?? `Tài khoản ${row.actorUserId.slice(0, 8)}`;
   const thaoTac = row.operation ?? row.namespace;
   const conLai = row.recordCount - row.recordIds.length;
-  const nguonCongTy = NGUON_CONG_TY[row.organizationSource];
   return (
     <li className="rounded-md border p-2.5 text-sm">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="font-medium">{thaoTac}</span>
-        <span className="text-xs text-muted-foreground">{nguoi} · gỡ lúc {formatPendingTime(row.releasedAt)}</span>
+        <span className="text-xs text-muted-foreground">{nguoi} · gỡ lúc {thoiGian(row.releasedAt)}</span>
       </div>
       <dl className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs sm:gap-x-4">
         <dt className="text-muted-foreground">Kẹt từ</dt>
-        <dd>{formatPendingTime(row.stuckAt)}</dd>
+        <dd>{thoiGian(row.stuckAt)}</dd>
         <dt className="text-muted-foreground">Mã bản ghi</dt>
         <dd className="min-w-0">
           {row.recordIds.length ? (
@@ -96,10 +90,12 @@ function DongGoKhoa({ row }: { row: PendingValveReleaseLogRow }) {
         <dd className="min-w-0 break-all font-mono">{row.namespace} · {row.businessKey}</dd>
         <dt className="text-muted-foreground">Thiết bị</dt>
         <dd className="min-w-0" title={row.device ?? undefined}>{userAgentLabel(row.device)}</dd>
-        {nguonCongTy && (
+        <dt className="text-muted-foreground">Lên máy chủ</dt>
+        <dd>{thoiGian(row.receivedAt)}</dd>
+        {row.organizationSource === 'sole_membership' && (
           <>
             <dt className="text-muted-foreground">Ghi chú</dt>
-            <dd>{nguonCongTy}</dd>
+            <dd>Thao tác không gắn công ty; ghi vào công ty duy nhất của người gỡ</dd>
           </>
         )}
       </dl>
