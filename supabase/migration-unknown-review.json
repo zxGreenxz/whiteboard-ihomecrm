@@ -986,32 +986,6 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
-    },
-    "supabase/migrations/20261124154554_so_ho_tro_sang_nhuong_chuyen_coc.sql": {
-      "sha256": "5257d38bfe327fb2c278950760cfce03d9f399f18b5f8e5cd7e90c571eaf36bd",
-      "missingObjects": [
-        "table:app_private.contract_exit_support_writes",
-        "function:app_private.exit_support_write_allowed_v1",
-        "function:app_private.guard_exit_support_voucher_v1",
-        "function:app_private.guard_exit_support_item_v1",
-        "function:app_private.guard_contract_exit_support_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward migration đợt 3 plan sang nhượng phòng (số tiền khách cũ hỗ trợ khách mới: cặp phiếu chuyển cọc trên sổ nội bộ, chặn huỷ/xoá, đảo có lý do) chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Đã kiểm PGlite (thân hàm production đúng md5, hai lượt, đột biến), áp TEST qua lane và chạy scripts/tests/test-exit-support-live.sql trong giao dịch ROLLBACK. Hồ sơ này chỉ giải thích object chưa triển khai; không thay review độc lập, forward lane, backup và nghiệm thu sau áp.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261124154554_so_ho_tro_sang_nhuong_chuyen_coc.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.contract_exit_support_writes ("
-        },
-        {
-          "duong_dan": "scripts/tests/test-exit-support-live.sql",
-          "trich_doan": "RAISE NOTICE 'PASS %: trường hợp %, số hỗ trợ %, hai bên khớp, quyết toán đúng', scenario.label, scenario.early_reason, amount;"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/contractExitSupportMigration.test.ts",
-          "trich_doan": "it('thân hàm production đúng md5 trước vá; chạy hai lượt không đổi gì thêm; md5 sau vá đúng bản đã ghim'"
-        }
-      ]
     }
   }
 }

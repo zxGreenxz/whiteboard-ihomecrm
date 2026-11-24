@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-24T19:18:08.392Z",
+  "generatedAt": "2026-11-24T19:33:15.863Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 983,
-    "unknown": 81,
+    "ledger-applied": 984,
+    "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14711,14 +14711,9 @@
       "name": "so_ho_tro_sang_nhuong_chuyen_coc",
       "scheme": "timestamp14",
       "sha256": "5257d38bfe327fb2c278950760cfce03d9f399f18b5f8e5cd7e90c571eaf36bd",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.contract_exit_support_writes",
-        "function:app_private.exit_support_write_allowed_v1",
-        "function:app_private.guard_exit_support_voucher_v1",
-        "function:app_private.guard_exit_support_item_v1",
-        "function:app_private.guard_contract_exit_support_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-24T19:33:02.834Z|bien-nhan-backup"
       ]
     },
     {

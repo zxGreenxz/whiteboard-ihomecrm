@@ -6,26 +6,10 @@ import type { Database } from '@/integrations/supabase/types';
 import {
   createExitCommission, exitEarlyTermsErrorMessage, extendExitHold, readExitEarlyTerms, reopenExitHold, reverseExitSupport, setExitEarlyTerms,
   updateExitBrokerFee,
-  type ContractExitEarlyTerms, type CreateExitCommissionInput, type EarlyTermsFilter, type ExitEarlyTermsInvoker,
-  type ExitEarlyTermsRpcError, type HoldActionInput, type ReverseExitSupportInput, type SetEarlyTermsInput, type UpdateBrokerFeeInput,
+  type ContractExitEarlyTerms, type CreateExitCommissionInput, type EarlyTermsFilter, type ExitEarlyTermsInvoker, type HoldActionInput, type ReverseExitSupportInput, type SetEarlyTermsInput, type UpdateBrokerFeeInput,
 } from '@/lib/contractExitEarlyTerms';
 
 type Functions = Database['public']['Functions'];
-/**
- * Ranh giới kiểu TẠM cho RPC chưa có trong `types.ts` sinh tự động — migration
- * 20261124154554_so_ho_tro_sang_nhuong_chuyen_coc chưa lên production nên generator chưa thấy hàm này.
- * Cùng khuôn `goiRpcTruongHopTraPhong` của đợt 2: ép `supabase.rpc` chứ không ép `supabase`, tên RPC viết thẳng
- * tại nơi gọi. Khi migration đã áp production và `npm run gen:types` chạy lại: đổi nhánh switch sang
- * `supabase.rpc('reverse_contract_exit_support_v1', args as Functions[...]['Args'])` có kiểu và XOÁ hàm bọc này.
- */
-const goiRpcDaoSoHoTro = (
-  tenHam: string,
-  args: Record<string, unknown>,
-): PromiseLike<{ data: unknown; error: ExitEarlyTermsRpcError | null }> =>
-  (supabase.rpc as unknown as (
-    name: string,
-    params: Record<string, unknown>,
-  ) => PromiseLike<{ data: unknown; error: ExitEarlyTermsRpcError | null }>)(tenHam, args);
 // Tên RPC viết thẳng tại nơi gọi để giữ ranh giới kiểu sinh tự động (như useContractExitCases).
 const invoke: ExitEarlyTermsInvoker = (name, args) => {
   switch (name) {
@@ -35,7 +19,7 @@ const invoke: ExitEarlyTermsInvoker = (name, args) => {
     case 'reopen_contract_exit_hold_v1': return supabase.rpc('reopen_contract_exit_hold_v1', args as Functions['reopen_contract_exit_hold_v1']['Args']);
     case 'extend_contract_exit_hold_v1': return supabase.rpc('extend_contract_exit_hold_v1', args as Functions['extend_contract_exit_hold_v1']['Args']);
     case 'create_contract_exit_commission_v1': return supabase.rpc('create_contract_exit_commission_v1', args as Functions['create_contract_exit_commission_v1']['Args']);
-    case 'reverse_contract_exit_support_v1': return goiRpcDaoSoHoTro('reverse_contract_exit_support_v1', args);
+    case 'reverse_contract_exit_support_v1': return supabase.rpc('reverse_contract_exit_support_v1', args as Functions['reverse_contract_exit_support_v1']['Args']);
   }
 };
 
