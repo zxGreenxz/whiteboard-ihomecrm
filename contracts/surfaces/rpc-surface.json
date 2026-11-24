@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3170,
-    "catalogFunctions": 1668,
+    "sourceCallSites": 3181,
+    "catalogFunctions": 1675,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 430,
+    "calledRpcs": 437,
     "byRisk": {
-      "normal": 320,
+      "normal": 327,
       "financial": 109,
       "infrastructure": 1
     },
-    "securityDefiner": 404
+    "securityDefiner": 411
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1164,6 +1164,25 @@
       ],
       "risk": "normal"
     },
+    "confirm_contract_return_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_contract_id uuid, p_expected_contract_updated_at timestamp with time zone, p_idempotency_key text, p_actual_move_out_on date, p_initial_kind text, p_settlement_mode text, p_settlement jsonb DEFAULT NULL::jsonb, p_meter_boundary jsonb DEFAULT NULL::jsonb, p_return_note text DEFAULT NULL::text, p_early_terms jsonb DEFAULT NULL::jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractExitCases.ts"
+      ],
+      "risk": "normal"
+    },
     "confirm_reconciliation": {
       "definitions": [
         {
@@ -1756,6 +1775,25 @@
       ],
       "risk": "normal"
     },
+    "create_contract_exit_commission_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_account_id uuid DEFAULT NULL::uuid, p_recipient_bank text DEFAULT NULL::text, p_recipient_account text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
+      ],
+      "risk": "normal"
+    },
     "create_contract_payouts_with_support_v1": {
       "definitions": [
         {
@@ -2253,6 +2291,25 @@
       ],
       "callers": [
         "src/lib/rentSupportApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "extend_contract_exit_hold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_days integer DEFAULT 3, p_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
       ],
       "risk": "normal"
     },
@@ -5439,6 +5496,25 @@
       ],
       "risk": "normal"
     },
+    "read_contract_exit_early_terms_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_contract_id uuid DEFAULT NULL::uuid, p_exit_case_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
+      ],
+      "risk": "normal"
+    },
     "read_contract_meter_boundary_set_v1": {
       "definitions": [
         {
@@ -5916,6 +5992,25 @@
         "src/lib/cashbookReopening.ts"
       ],
       "risk": "financial"
+    },
+    "reopen_contract_exit_hold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
+      ],
+      "risk": "normal"
     },
     "request_cancel_handover": {
       "definitions": [
@@ -6561,6 +6656,25 @@
         "src/hooks/useReceivingCashbooks.ts"
       ],
       "risk": "financial"
+    },
+    "set_contract_exit_early_terms_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_early_reason text, p_sale_name text, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
+      ],
+      "risk": "normal"
     },
     "set_contract_move_out_notice_v1": {
       "definitions": [
@@ -7431,6 +7545,25 @@
       ],
       "callers": [
         "src/hooks/useAccounts.ts"
+      ],
+      "risk": "normal"
+    },
+    "update_contract_exit_broker_fee_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_broker_fee numeric, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
       ],
       "risk": "normal"
     },

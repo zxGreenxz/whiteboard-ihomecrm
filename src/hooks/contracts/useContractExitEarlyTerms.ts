@@ -2,39 +2,23 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import type { Database } from '@/integrations/supabase/types';
 import {
   createExitCommission, exitEarlyTermsErrorMessage, extendExitHold, readExitEarlyTerms, reopenExitHold, setExitEarlyTerms,
   updateExitBrokerFee,
-  type ContractExitEarlyTerms, type CreateExitCommissionInput, type EarlyTermsFilter, type ExitEarlyTermsInvoker,
-  type ExitEarlyTermsRpcError, type HoldActionInput, type SetEarlyTermsInput, type UpdateBrokerFeeInput,
+  type ContractExitEarlyTerms, type CreateExitCommissionInput, type EarlyTermsFilter, type ExitEarlyTermsInvoker, type HoldActionInput, type SetEarlyTermsInput, type UpdateBrokerFeeInput,
 } from '@/lib/contractExitEarlyTerms';
 
-/**
- * Ranh giới kiểu TẠM cho RPC chưa có trong `types.ts` sinh tự động — migration
- * 20261124075933_tra_phong_truoc_han_ba_truong_hop chưa lên production nên generator chưa thấy các hàm này.
- * Cùng khuôn `goiRpcCongTuDuyet` (selfApproveGate) / `goiRpcQuyetToan` (useLandlordSettlement): ép
- * `supabase.rpc` chứ không ép `supabase`, tên RPC vẫn viết thẳng tại nơi gọi.
- * Khi migration đã áp production và `npm run gen:types` chạy lại: đổi từng nhánh switch bên dưới sang
- * `supabase.rpc('<tên>', args as Functions['<tên>']['Args'])` có kiểu (như useContractExitCases), XOÁ hàm bọc này
- * và chạy `node scripts/check-raw-rpc-callers.mjs --write` nếu gate yêu cầu.
- */
-const goiRpcTruongHopTraPhong = (
-  tenHam: string,
-  args: Record<string, unknown>,
-): PromiseLike<{ data: unknown; error: ExitEarlyTermsRpcError | null }> =>
-  (supabase.rpc as unknown as (
-    name: string,
-    params: Record<string, unknown>,
-  ) => PromiseLike<{ data: unknown; error: ExitEarlyTermsRpcError | null }>)(tenHam, args);
-
+type Functions = Database['public']['Functions'];
+// Tên RPC viết thẳng tại nơi gọi để giữ ranh giới kiểu sinh tự động (như useContractExitCases).
 const invoke: ExitEarlyTermsInvoker = (name, args) => {
   switch (name) {
-    case 'read_contract_exit_early_terms_v1': return goiRpcTruongHopTraPhong('read_contract_exit_early_terms_v1', args);
-    case 'set_contract_exit_early_terms_v1': return goiRpcTruongHopTraPhong('set_contract_exit_early_terms_v1', args);
-    case 'update_contract_exit_broker_fee_v1': return goiRpcTruongHopTraPhong('update_contract_exit_broker_fee_v1', args);
-    case 'reopen_contract_exit_hold_v1': return goiRpcTruongHopTraPhong('reopen_contract_exit_hold_v1', args);
-    case 'extend_contract_exit_hold_v1': return goiRpcTruongHopTraPhong('extend_contract_exit_hold_v1', args);
-    case 'create_contract_exit_commission_v1': return goiRpcTruongHopTraPhong('create_contract_exit_commission_v1', args);
+    case 'read_contract_exit_early_terms_v1': return supabase.rpc('read_contract_exit_early_terms_v1', args as Functions['read_contract_exit_early_terms_v1']['Args']);
+    case 'set_contract_exit_early_terms_v1': return supabase.rpc('set_contract_exit_early_terms_v1', args as Functions['set_contract_exit_early_terms_v1']['Args']);
+    case 'update_contract_exit_broker_fee_v1': return supabase.rpc('update_contract_exit_broker_fee_v1', args as Functions['update_contract_exit_broker_fee_v1']['Args']);
+    case 'reopen_contract_exit_hold_v1': return supabase.rpc('reopen_contract_exit_hold_v1', args as Functions['reopen_contract_exit_hold_v1']['Args']);
+    case 'extend_contract_exit_hold_v1': return supabase.rpc('extend_contract_exit_hold_v1', args as Functions['extend_contract_exit_hold_v1']['Args']);
+    case 'create_contract_exit_commission_v1': return supabase.rpc('create_contract_exit_commission_v1', args as Functions['create_contract_exit_commission_v1']['Args']);
   }
 };
 

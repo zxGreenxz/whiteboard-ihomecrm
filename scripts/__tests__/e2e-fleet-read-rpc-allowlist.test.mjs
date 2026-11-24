@@ -47,8 +47,6 @@ const VOLATILE_EXCEPTIONS = {
  * ở đó. Trình duyệt không gửi chúng; giữ vì danh sách cũ hoặc tên cũ của hàm dùng chung.
  */
 const NOT_IN_SURFACE = {
-  read_contract_exit_early_terms_v1:
-    "RPC đọc STABLE mới (migration 20261124075933), chưa vào rpc-surface vì chưa áp production; gỡ khỏi đây khi cập nhật rpc-surface",
   can_access_building: "helper RLS SQL, web không gọi thẳng; danh sách SHELL cũ",
   accessible_building_ids: "helper RLS SQL, web không gọi thẳng; danh sách SHELL cũ",
   customer_location_ids_v1: "helper STABLE của customer_list_v1 (20261017115708), web không gọi thẳng",

@@ -13,14 +13,6 @@ import {
 } from '@/lib/contractExitCases';
 
 type Functions=Database['public']['Functions'];
-/**
- * Ranh giới kiểu TẠM cho confirm_contract_return_v2 — migration 20261124075933_tra_phong_truoc_han_ba_truong_hop chưa lên
- * production nên types.ts sinh tự động chưa có hàm này (cùng khuôn useContractExitEarlyTerms / selfApproveGate). Khi đã áp
- * production và `npm run gen:types` chạy lại: đổi nhánh 'confirm_contract_return_v2' sang
- * `supabase.rpc('confirm_contract_return_v2', args as Functions['confirm_contract_return_v2']['Args'])` và XOÁ hàm bọc này.
- */
-const goiRpcTraPhongV2=(tenHam:'confirm_contract_return_v2',args:Record<string,unknown>):PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>=>
-  (supabase.rpc as unknown as (name:string,params:Record<string,unknown>)=>PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>)(tenHam,args);
 // Literal RPC names preserve the normal generated-client boundary.
 const invoke:ContractExitRpcInvoker=(name,args)=>{
   const settlement = args.p_settlement;
@@ -40,7 +32,7 @@ const invoke:ContractExitRpcInvoker=(name,args)=>{
     if (sources.length) return exitWithMeterSources(String(args.p_organization_id), name, args, sources).then(data => ({ data, error: null }));
   }
   switch(name){
-    case 'confirm_contract_return_v2': return goiRpcTraPhongV2('confirm_contract_return_v2',args);
+    case 'confirm_contract_return_v2': return supabase.rpc('confirm_contract_return_v2',args as Functions['confirm_contract_return_v2']['Args']);
     case 'confirm_contract_return_v1': return supabase.rpc('confirm_contract_return_v1',args as Functions['confirm_contract_return_v1']['Args']);
     case 'finalize_contract_exit_case_v1': return supabase.rpc('finalize_contract_exit_case_v1',args as Functions['finalize_contract_exit_case_v1']['Args']);
     case 'update_contract_exit_case_kind_v1': return supabase.rpc('update_contract_exit_case_kind_v1',args as Functions['update_contract_exit_case_kind_v1']['Args']);
