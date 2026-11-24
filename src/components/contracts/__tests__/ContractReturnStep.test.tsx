@@ -57,3 +57,38 @@ describe('bước ghi trả phòng', () => {
     expect(screen.getByRole('button', { name: 'Tiếp tục quyết toán ngay' }).hasAttribute('disabled')).toBe(true);
   });
 });
+
+describe('ba trường hợp dưới Trả phòng trước hạn', () => {
+  const early = (reason: 'SALE_ASSISTED' | 'SELF_FOUND' | 'LANDLORD_AGREEMENT' | null, saleName = '') =>
+    ({ reason, onReasonChange: vi.fn(), saleName, onSaleNameChange: vi.fn() });
+  it('chưa chọn trường hợp thì khoá cả hai nhánh; chọn được ba trường hợp', () => {
+    const choice = early(null);
+    render(<ContractReturnStep {...defaults()} kind="EARLY_RETURN" early={choice} />);
+    expect(screen.getByRole('button', { name: 'Trả phòng, quyết toán sau' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Tiếp tục quyết toán ngay' }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByLabelText('Tự tìm khách sang phòng'));
+    expect(choice.onReasonChange).toHaveBeenCalledWith('SELF_FOUND');
+    expect(screen.getByLabelText('Nhờ sale tìm khách sang phòng')).toBeTruthy();
+    expect(screen.getByLabelText('Chủ nhà hỗ trợ thanh lý sớm')).toBeTruthy();
+  });
+  it('nhờ sale bắt tên sale, ẩn quyết toán ngay; tự tìm cũng ẩn quyết toán ngay; chủ nhà hỗ trợ cho cả hai nhánh', () => {
+    const { rerender } = render(<ContractReturnStep {...defaults()} kind="EARLY_RETURN" early={early('SALE_ASSISTED')} />);
+    expect(screen.queryByRole('button', { name: 'Tiếp tục quyết toán ngay' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Trả phòng, quyết toán sau' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('Nhập tên sale / môi giới.')).toBeTruthy();
+    rerender(<ContractReturnStep {...defaults()} kind="EARLY_RETURN" early={early('SALE_ASSISTED', 'Minh')} />);
+    expect(screen.getByRole('button', { name: 'Trả phòng, quyết toán sau' }).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByTestId('early-reason-note').textContent).toMatch(/Phòng giữ 3 ngày/);
+    rerender(<ContractReturnStep {...defaults()} kind="EARLY_RETURN" early={early('SELF_FOUND')} />);
+    expect(screen.queryByRole('button', { name: 'Tiếp tục quyết toán ngay' })).toBeNull();
+    rerender(<ContractReturnStep {...defaults()} kind="EARLY_RETURN" early={early('LANDLORD_AGREEMENT')} />);
+    expect(screen.getByRole('button', { name: 'Tiếp tục quyết toán ngay' }).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByTestId('early-reason-note').textContent).toMatch(/rao bán lại ngay/);
+  });
+  it('hồ sơ đã ghi mà chưa đủ điều kiện quyết toán: hiện lý do và khoá nút', () => {
+    const exitCase = { initial_kind: 'EARLY_RETURN', current_kind: 'EARLY_RETURN' } as const;
+    render(<ContractReturnStep {...defaults()} kind="EARLY_RETURN" exitCase={exitCase} continueBlocked="Chưa có hợp đồng của khách nhận phòng." />);
+    expect(screen.getByRole('alert').textContent).toBe('Chưa có hợp đồng của khách nhận phòng.');
+    expect(screen.getByRole('button', { name: 'Tiếp tục quyết toán' }).hasAttribute('disabled')).toBe(true);
+  });
+});

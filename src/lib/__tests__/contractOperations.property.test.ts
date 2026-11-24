@@ -93,7 +93,6 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
  * - renewDisabled: true unless dbStatus is ACTIVE OR displayStatus is 'EXPIRED'/'EXPIRING'
  * - transferRoomDisabled: true unless dbStatus is ACTIVE
  * - moveOutDisabled: true unless dbStatus is ACTIVE
- * - transferContractDisabled: true unless dbStatus is ACTIVE
  * - terminateDisabled: true unless dbStatus is ACTIVE OR displayStatus is 'EXPIRED'/'EXPIRING'
  * - deleteDisabled: true unless dbStatus === 'DRAFT'
  *
@@ -148,16 +147,6 @@ describe('Feature: lease-contract-management, Property 9: Action button availabi
       fc.property(contractWithRelationsArb(), (contract) => {
         const states = getActionButtonStates(contract);
         expect(states.moveOutDisabled).toBe(!inEffect(contract.status));
-      }),
-      { numRuns: 100 },
-    );
-  });
-
-  it('transferContractDisabled is false only when dbStatus is ACTIVE/EXTENDED', () => {
-    fc.assert(
-      fc.property(contractWithRelationsArb(), (contract) => {
-        const states = getActionButtonStates(contract);
-        expect(states.transferContractDisabled).toBe(!inEffect(contract.status));
       }),
       { numRuns: 100 },
     );
@@ -236,7 +225,6 @@ describe('Feature: lease-contract-management, Property 9: Action button availabi
           expect(states.renewDisabled).toBe(true);
           expect(states.transferRoomDisabled).toBe(true);
           expect(states.moveOutDisabled).toBe(true);
-          expect(states.transferContractDisabled).toBe(true);
           expect(states.terminateDisabled).toBe(true);
           expect(states.deleteDisabled).toBe(true);
         },
@@ -253,7 +241,6 @@ describe('Feature: lease-contract-management, Property 9: Action button availabi
         expect(typeof states.renewDisabled).toBe('boolean');
         expect(typeof states.transferRoomDisabled).toBe('boolean');
         expect(typeof states.moveOutDisabled).toBe('boolean');
-        expect(typeof states.transferContractDisabled).toBe('boolean');
         expect(typeof states.terminateDisabled).toBe('boolean');
         expect(typeof states.deleteDisabled).toBe('boolean');
       }),

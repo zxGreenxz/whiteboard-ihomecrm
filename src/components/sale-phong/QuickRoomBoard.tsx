@@ -1,6 +1,6 @@
 import { roomPhotoCount } from '@/lib/roomMedia';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { DoorOpen, ImagePlus, LockKeyhole, RefreshCw, Search, Wallet } from 'lucide-react';
+import { DoorOpen, ImagePlus, LockKeyhole, Megaphone, RefreshCw, Search, TimerReset, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,25 +23,29 @@ import { SaleRoomNoticeDialog } from './SaleRoomNoticeDialog';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import PassListingsTab from './PassListingsTab';
+import { ExitHoldDialog, type ExitHoldAction } from './ExitHoldDialog';
+import { EXIT_HOLD_STATUS_LABEL, exitHoldActionBlockedReason, exitHoldLines, isExitHeld } from '@/pages/phong-trong/exitHold';
 import { salePolicyTimeLabel } from '@/lib/saleRoomPolicyTypes';
 import {
   newQuickRoomDraft, quickRoomChanges, quickRoomDraftDirty, readQuickRoomDrafts, roomSearchKey,
   type QuickRoomDraft,
 } from './quickRoomDraft';
 
-type StatusFilter = 'all' | Room['status'] | 'preparing' | 'missing-images' | 'draft';
+type StatusFilter = 'all' | Room['status'] | 'preparing' | 'exit-hold' | 'missing-images' | 'draft';
 const SaleRoomBatchPanel = lazy(() => import('./SaleRoomBatchPanel'));
 const EMPTY_ROOMS: SaleRoomInventoryRow[] = [];
 const FILTERS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'all', label: 'Mọi tình trạng' }, { value: 'free', label: 'Trống sẵn' },
   { value: 'soon', label: 'Sắp trống / cần xác nhận' }, { value: 'preparing', label: 'Đang chuẩn bị' },
   { value: 'locked', label: 'Đang lock' }, { value: 'pass', label: 'Khách pass' },
-  { value: 'rented', label: 'Đã thuê / giữ chỗ' }, { value: 'missing-images', label: 'Thiếu ảnh' },
-  { value: 'draft', label: 'Có bản nháp của tôi' },
+  { value: 'rented', label: 'Đã thuê / giữ chỗ' }, { value: 'exit-hold', label: 'Chờ khách sang nhượng' },
+  { value: 'missing-images', label: 'Thiếu ảnh' }, { value: 'draft', label: 'Có bản nháp của tôi' },
 ];
-const statusLabel = (room: Room) => room.status === 'locked' ? 'Đang lock' : room.saleFact?.label ?? ({
+const statusLabel = (room: Room) => room.status === 'locked' ? 'Đang lock' : isExitHeld(room) ? EXIT_HOLD_STATUS_LABEL : room.saleFact?.label ?? ({
   free: 'Trống sẵn', soon: 'Cần xác nhận ngày trống', rented: 'Đã thuê / giữ chỗ', pass: 'Khách pass phòng',
 }[room.status]);
+/** Cọc theo luật hiện có (trống / sắp trống / lock) và phòng đang giữ cho khách sang nhượng: người khác vẫn cọc được. */
+const depositableStatus = (room: Room) => ['free', 'soon', 'locked'].includes(room.status) || isExitHeld(room);
 const money = (value: number | null) => value == null ? 'Chưa khai giá' : `${value.toLocaleString('vi-VN')} đ`;
 const timeLabel = (value: string | null | undefined) => {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Chưa có thời điểm';
@@ -65,7 +69,8 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const inventory = useSaleRoomInventory();
   const { data: permissions } = useMyPermissions();
   const [noticeRoomId, setNoticeRoomId] = useState<string | null>(null);
-  const canReport = (row: SaleRoomInventoryRow) => row.room.status !== 'free'
+  // Phòng đang giữ cho khách sang nhượng đã trả phòng (hợp đồng cũ không còn ở) nên không báo sắp trống.
+  const canReport = (row: SaleRoomInventoryRow) => row.room.status !== 'free' && !isExitHeld(row.room)
     && canUse(permissions, 'contracts', 'view', row.buildingId)
     && canUse(permissions, 'contracts', 'edit', row.buildingId)
     && canUse(permissions, 'contracts', 'terminate', row.buildingId);
@@ -86,6 +91,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const [lockAction, setLockAction] = useState<SaleLockAction | null>(null);
   const [depositRoom, setDepositRoom] = useState<Room | null>(null);
   const [passRoomId, setPassRoomId] = useState<string | null>(null);
+  const [holdAction, setHoldAction] = useState<ExitHoldAction | null>(null);
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchRoomIds, setBatchRoomIds] = useState<string[]>([]);
@@ -102,7 +108,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const unknown = !!draft?.request?.unknown;
   const draftCount = rows.filter(row => drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id])).length;
   const noticeRoom = rows.find(row => row.room.id === noticeRoomId && canReport(row));
-  const navigationBusy = busy || batchOpen || turnoverEditing || !!selectedId || !!lockAction || !!depositRoom || !!passRoomId || !!noticeRoom;
+  const navigationBusy = busy || batchOpen || turnoverEditing || !!selectedId || !!lockAction || !!depositRoom || !!passRoomId || !!noticeRoom || !!holdAction;
   useEffect(() => { if (noticeRoomId && !noticeRoom) setNoticeRoomId(null); }, [noticeRoomId, noticeRoom]);
   useEffect(() => { onBusyChange?.(navigationBusy); return () => onBusyChange?.(false); }, [navigationBusy, onBusyChange]);
 
@@ -132,6 +138,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
       if (status === 'missing-images') return roomPhotoCount(row.images) === 0;
       if (status === 'draft') return !!drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]);
       if (status === 'preparing') return row.room.saleFact?.kind === 'preparing';
+      if (status === 'exit-hold') return !!row.room.exitHold;
       if (status === 'free') return row.room.status === 'free' && row.room.saleFact?.kind !== 'preparing';
       return status === 'all' || row.room.status === status;
     });
@@ -202,18 +209,33 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
       void inventory.refetch();
     } finally { submitting.current = false; }
   };
-  const actionBlockedReason = (id: string, capability: keyof SaleRoomInventoryRow['capabilities'], allowedStatuses?: Room['status'][]) => {
-    if (inventory.isError || !inventory.data) return 'Chưa tải được tình trạng mới nhất. Giữ nội dung đã nhập, đóng hộp thoại và tải lại trước khi tiếp tục.';
+  const inventoryBlockedReason = () => inventory.isError || !inventory.data
+    ? 'Chưa tải được tình trạng mới nhất. Giữ nội dung đã nhập, đóng hộp thoại và tải lại trước khi tiếp tục.' : undefined;
+  const actionBlockedReason = (id: string, capability: keyof SaleRoomInventoryRow['capabilities'], allowedStatus?: (room: Room) => boolean) => {
+    const unavailable = inventoryBlockedReason();
+    if (unavailable) return unavailable;
     const target = rows.find(row => row.room.id === id);
     if (!target) return 'Phòng không còn trong phạm vi được giao. Nội dung đã nhập được giữ trong hộp thoại; không thể gửi thay đổi.';
     if (!target.capabilities[capability]) return 'Quyền thao tác phòng này đã thay đổi. Nội dung đã nhập được giữ; không thể gửi khi chưa được cấp quyền.';
-    if (allowedStatuses && !allowedStatuses.includes(target.room.status)) return 'Tình trạng phòng đã thay đổi. Nội dung đã nhập được giữ; kiểm tra lại trước khi tiếp tục.';
+    if (allowedStatus && !allowedStatus(target.room)) return 'Tình trạng phòng đã thay đổi. Nội dung đã nhập được giữ; kiểm tra lại trước khi tiếp tục.';
     return undefined;
   };
   const currentLockRoom = lockAction ? rows.find(row => row.room.id === lockAction.room.id)?.room : undefined;
-  const lockBlockedReason = lockAction ? actionBlockedReason(lockAction.room.id, lockAction.mode === 'lock' ? 'lock' : 'releaseLock', lockAction.mode === 'lock' ? ['free', 'soon'] : ['locked'])
+  const lockBlockedReason = lockAction ? actionBlockedReason(lockAction.room.id, lockAction.mode === 'lock' ? 'lock' : 'releaseLock',
+    lockAction.mode === 'lock' ? room => room.status === 'free' || room.status === 'soon' : room => room.status === 'locked')
     ?? (lockAction.mode === 'release' && currentLockRoom?.saleLock?.id !== lockAction.room.saleLock?.id ? 'Lock đang chọn đã thay đổi hoặc hết hạn. Đóng hộp thoại và kiểm tra lock hiện tại.' : undefined) : undefined;
   const currentDepositRoom = depositRoom ? rows.find(row => row.room.id === depositRoom.id)?.room : undefined;
+  // Mở bán lại / Giữ tiếp luôn gửi phiên bản hồ sơ đọc mới nhất; hồ sơ đổi hoặc mất quyền thì khoá nút gửi.
+  const holdRoom = holdAction ? rows.find(row => row.room.id === holdAction.roomId)?.room : undefined;
+  const currentHold = holdAction && holdRoom?.exitHold?.exitCaseId === holdAction.hold.exitCaseId ? holdRoom.exitHold : undefined;
+  const holdBlockedReason = holdAction ? inventoryBlockedReason()
+    ?? (holdRoom ? exitHoldActionBlockedReason(holdAction.hold, holdRoom.exitHold) : 'Phòng không còn trong phạm vi được giao; không thể gửi thay đổi.') : undefined;
+  const openHold = (row: SaleRoomInventoryRow, mode: ExitHoldAction['mode']) => {
+    if (row.room.exitHold) setHoldAction({ mode, roomId: row.room.id, roomLabel: rowLabel(row), hold: row.room.exitHold });
+  };
+  const holdSummary = (room: Room) => room.exitHold ? <div className={`mt-1 space-y-0.5 text-xs ${room.exitHold.active ? 'text-amber-800' : 'text-muted-foreground'}`}>
+    {exitHoldLines(room.exitHold).map(line => <p key={line}>{line}</p>)}
+  </div> : null;
   const actions = (row: SaleRoomInventoryRow) => <div className="flex flex-wrap gap-1.5">
     <Button size="sm" variant="outline" disabled={blocked} onClick={() => openRoom(row.room.id)} aria-label={`Mở ${rowLabel(row)}`}>
       <DoorOpen className="mr-1.5 h-3.5 w-3.5" />Chi tiết
@@ -225,8 +247,14 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
       <LockKeyhole className="mr-1.5 h-3.5 w-3.5" />Lock
     </Button>}
     {row.capabilities.releaseLock && row.room.saleLock && <Button size="sm" variant="outline" disabled={blocked} onClick={() => setLockAction({ room: row.room, mode: 'release' })}>Gỡ lock</Button>}
-    {row.capabilities.deposit && ['free', 'soon', 'locked'].includes(row.room.status) && <Button size="sm" variant="outline" disabled={blocked} onClick={() => setDepositRoom(row.room)}>
+    {row.capabilities.deposit && depositableStatus(row.room) && <Button size="sm" variant="outline" disabled={blocked} onClick={() => setDepositRoom(row.room)}>
       <Wallet className="mr-1.5 h-3.5 w-3.5" />Cọc
+    </Button>}
+    {row.room.exitHold?.canManage && row.room.exitHold.active && <Button size="sm" variant="outline" disabled={blocked} onClick={() => openHold(row, 'reopen')}>
+      <Megaphone className="mr-1.5 h-3.5 w-3.5" />Mở bán lại
+    </Button>}
+    {row.room.exitHold?.canManage && <Button size="sm" variant="outline" disabled={blocked} onClick={() => openHold(row, 'extend')}>
+      <TimerReset className="mr-1.5 h-3.5 w-3.5" />Giữ tiếp
     </Button>}
     {row.capabilities.pass && <Button size="sm" variant="outline" disabled={blocked} onClick={() => setPassRoomId(row.room.id)}>{row.room.status === 'pass' ? 'Sửa pass' : 'Báo pass'}</Button>}
   </div>;
@@ -277,6 +305,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
             {drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]) && <Badge variant="secondary">Có nháp</Badge>}</div>
           <div className="flex justify-between text-sm"><span>{money(row.rentPrice)}</span><span className="text-muted-foreground">{roomPhotoCount(row.images)} ảnh</span></div>
           {row.room.saleLock && <p className="text-xs text-amber-700">Lock đến {timeLabel(row.room.saleLock.expiresAt)}</p>}
+          {holdSummary(row.room)}
           {policySummary(row)}
           {actions(row)}
         </article>)}</div> : <div className="overflow-x-auto rounded-lg border"><table className="w-full text-left text-sm">
@@ -284,7 +313,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
           <tbody>{visible.map(row => <tr key={row.room.id} className="border-b last:border-b-0">
             <td className="px-3 py-3"><button className="text-left font-medium underline-offset-4 hover:underline" onClick={() => openRoom(row.room.id)}>{rowLabel(row)}</button>
               {drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]) && <span className="mt-1 block text-xs text-amber-700">Bản nháp chưa lưu</span>}</td>
-            <td className="px-3 py-3">{statusLabel(row.room)}{row.room.saleLock && <span className="mt-1 block text-xs text-muted-foreground">Đến {timeLabel(row.room.saleLock.expiresAt)}</span>}{policySummary(row)}</td>
+            <td className="px-3 py-3">{statusLabel(row.room)}{row.room.saleLock && <span className="mt-1 block text-xs text-muted-foreground">Đến {timeLabel(row.room.saleLock.expiresAt)}</span>}{holdSummary(row.room)}{policySummary(row)}</td>
             <td className="whitespace-nowrap px-3 py-3">{money(row.rentPrice)}{row.room.status === 'pass' && <span className="block text-xs text-muted-foreground">Giá pass: {money(Math.round(row.room.price * 1_000_000))}</span>}</td>
             <td className="px-3 py-3"><span className={roomPhotoCount(row.images) ? '' : 'text-amber-700'}>{roomPhotoCount(row.images) || 'Thiếu'} ảnh</span></td>
             <td className="px-3 py-3 text-xs text-muted-foreground">{timeLabel(row.updatedAt)}{row.updatedByName && <span className="block">{row.updatedByName}</span>}</td><td className="px-3 py-3">{actions(row)}</td>
@@ -299,6 +328,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
           <SheetDescription>{selected ? statusLabel(selected.room) : 'Phòng đã đổi phạm vi hoặc bị xóa. Bản nháp được giữ theo tài khoản và tổ chức; không ghi sang phòng khác.'}</SheetDescription></SheetHeader>
         {selected && draft && <form ref={editor} className="mt-5 space-y-5" onSubmit={event => { event.preventDefault(); void save(); }}>
           <p className="text-xs text-muted-foreground">Tình trạng lấy từ hợp đồng, báo trả, cọc và lock. Sửa thông tin sale không đổi hợp đồng.</p>
+          {selected.room.exitHold && <div role="note" className="rounded-md border border-amber-200 bg-amber-50/60 p-2" aria-label="Giữ phòng cho khách sang nhượng">{holdSummary(selected.room)}</div>}
           {policySummary(selected)}
           {(stale || (unknown && !update.isPending)) && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
             <p>{unknown ? 'Chưa rõ lần lưu đã hoàn tất hay chưa. Bản nháp tạm khóa để đối chiếu đúng yêu cầu cũ.' : 'Thông tin máy chủ đã thay đổi. Bản nháp của bạn vẫn được giữ; hãy đối chiếu trước khi lưu.'}</p>
@@ -344,7 +374,9 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
     {lockAction && <LockRoomModal action={{ ...lockAction, room: currentLockRoom ?? lockAction.room }} blockedReason={lockBlockedReason} onClose={() => setLockAction(null)} onDone={text => done(text, lockAction.room.id)} />}
     {noticeRoom && <SaleRoomNoticeDialog key={noticeRoom.room.id} roomId={noticeRoom.room.id} organizationId={organizationId} actorId={actorId}
       roomLabel={rowLabel(noticeRoom)} onClose={() => setNoticeRoomId(null)} />}
-    {depositRoom && <QuickDepositModal room={currentDepositRoom ?? depositRoom} blockedReason={actionBlockedReason(depositRoom.id, 'deposit', ['free', 'soon', 'locked'])} onClose={() => setDepositRoom(null)} onDone={text => done(text, depositRoom.id)} />}
+    {depositRoom && <QuickDepositModal room={currentDepositRoom ?? depositRoom} blockedReason={actionBlockedReason(depositRoom.id, 'deposit', depositableStatus)} onClose={() => setDepositRoom(null)} onDone={text => done(text, depositRoom.id)} />}
+    {holdAction && <ExitHoldDialog key={`${holdAction.roomId}:${holdAction.mode}`} action={{ ...holdAction, hold: currentHold ?? holdAction.hold }}
+      blockedReason={holdBlockedReason} onClose={() => setHoldAction(null)} />}
     {passRoomId && <div className="space-y-2 rounded-lg border p-3">
       <PassListingsTab key={passRoomId} focusRoomId={passRoomId} blockedReason={actionBlockedReason(passRoomId, 'pass')} onFocusedClose={() => { setPassRoomId(null); void inventory.refetch(); }} />
     </div>}

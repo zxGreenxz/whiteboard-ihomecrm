@@ -100,6 +100,15 @@ Quyền **Lock tạm phòng** (`sale_phong.lock_room`, nhóm Sale Phòng) mặc 
 - Hết giờ mà chưa ai tạo phiếu cọc thì phòng tự hiện lại, không cần ai bấm. Phòng hiện lại được coi như phòng mới với worker gửi tin Zalo phòng trống.
 - Gỡ lock sớm: người đã lock (còn quyền) hoặc người có quyền tạo cọc ở toà đó, có bước xác nhận. Quản lý tạo phiếu cọc cho phòng đang lock thì lock tự gỡ trong cùng lần lưu (xem [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/)).
 
+### Phòng chờ khách sang nhượng
+
+Khi khách cũ trả phòng trước hạn theo trường hợp **Nhờ sale tìm khách sang phòng** hoặc **Tự tìm khách sang phòng** (xem [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/)), phòng được giữ **3 ngày** cho khách nhận: không được chào trên link công khai, bot và Hermes. Trong app, nhân viên đăng nhập vẫn thấy phòng với nhãn **Chờ khách Sang/Nhượng phòng** kèm khách cũ (tên và số hợp đồng), trường hợp (kèm tên sale), người ghi và giờ **giữ đến**. Người khác vẫn nhận cọc hoặc tạo hợp đồng cho phòng này được.
+
+- **Mở bán lại**: rao phòng ngay (khi khách nhận huỷ). Hộp xác nhận nhắc rằng hợp đồng mới tạo sau đó **không tự nối** với hồ sơ trả phòng cũ; lý do là tuỳ chọn.
+- **Giữ tiếp**: giữ phòng thêm 1 đến 7 ngày (mặc định 3), tính từ lúc bấm.
+- Hết hạn giữ: phòng tự rao lại, thẻ phòng ghi "Hết hạn giữ cho khách sang nhượng" và chỉ còn **Giữ tiếp**; hồ sơ trả phòng vẫn chờ hợp đồng khách nhận.
+- Hai nút này chỉ hiện với người có quyền **Thanh lý hợp đồng** ở toà đó (`contracts.terminate`).
+
 ### Phiên bản điện thoại
 
 Mở `/sale-phong` trên điện thoại, màn chuyển sang bản mobile: xem nhanh **phòng trống của chính bạn** (không cần link) và chế độ **Quản lý** với các chức năng như bản máy tính, cùng ràng buộc quyền.
@@ -114,6 +123,7 @@ Mở `/sale-phong` trên điện thoại, màn chuyển sang bản mobile: xem n
 | Phòng hiện **"Cần xác nhận ngày trống"** hoặc **"Đang chuẩn bị"** | Khách đã báo trả nhưng ngày trống đã qua mà chưa ghi trả phòng, hoặc phòng đang dọn/sửa. Cập nhật trả phòng ở [hợp đồng](/03-quan-ly-van-hanh/thanh-ly-move-out/) hoặc **Cập nhật dọn/sửa** ở màn [Căn hộ](/03-quan-ly-van-hanh/can-ho-phong/). |
 | Ô **Thưởng sale** khách có nhìn thấy không | Không. **Thưởng sale** chỉ hiện cho người đang đăng nhập; khách vãng lai không thấy. **Khuyến mãi** (nếu có) thì hiện cho khách. |
 | Phòng trống **biến mất** khỏi link, ảnh và tin Zalo dù chưa có hợp đồng hay cọc | Phòng có thể đang bị **Lock tạm**. Trong app (danh sách phòng trống đăng nhập) phòng vẫn hiện với nhãn **Đã chốt tạm · còn X giờ · bởi …**; hết giờ phòng tự hiện lại, hoặc người đã lock / người có quyền tạo cọc gỡ lock sớm. |
+| Phòng **biến khỏi link** và hiện nhãn **Chờ khách Sang/Nhượng phòng** trong app | Phòng đang giữ 3 ngày cho khách sang nhượng. Hết hạn giữ phòng tự rao lại; cần rao ngay thì **Mở bán lại**, cần giữ thêm thì **Giữ tiếp** (cần quyền thanh lý hợp đồng ở toà). |
 | Không thấy một số tab | Mỗi tab cần quyền chi tiết riêng (xem Điều kiện tiên quyết). Nhờ quản trị bật quyền `sale_phong.*` tương ứng ở [Phân quyền](/05-cai-dat/phan-quyen/). |
 | Tab **Lỗi** có hàng nghìn dòng | Mặc định chỉ xem **Lỗi ứng dụng**. Lỗi **Ngoài app** chủ yếu do trình duyệt trong Zalo chèn script, không cần xử lý. |
 
@@ -138,6 +148,7 @@ Kết quả mong đợi: bạn biết mỗi tab dùng để làm gì và không 
 - [Hotline](/05-cai-dat/hotline/) — quản lý số điện thoại khách bấm Gọi/Zalo trên trang công khai (chọn ở tab Cài đặt hiển thị).
 - [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — giữ chỗ và cọc trước hợp đồng; phòng đã giữ chỗ tự biến khỏi danh sách trống trên trang công khai.
 - [Căn hộ / Phòng](/03-quan-ly-van-hanh/can-ho-phong/) — nơi nhập giá, trạng thái và theo dõi dọn/sửa phòng.
+- [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) — luồng trả phòng trước hạn sinh ra nhãn **Chờ khách Sang/Nhượng phòng**.
 - [Toà nhà](/03-quan-ly-van-hanh/toa-nha/) — thông tin toà và địa chỉ dùng cho trang công khai.
 - [Phân quyền](/05-cai-dat/phan-quyen/) — bật các quyền chi tiết `sale_phong.*` cho từng tab và quyền tạo cọc nhanh.
 - [Chat Zalo](/03-quan-ly-van-hanh/chat-zalo/) — kênh trả lời khách nhắn tới từ trang phòng trống.

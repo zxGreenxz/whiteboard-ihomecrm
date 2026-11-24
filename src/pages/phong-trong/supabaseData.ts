@@ -14,6 +14,7 @@ import {
   type RoomStatus,
 } from "./sampleData";
 import { applyStoredLayout, type StoredFloorLayout } from "./floorLayoutShared";
+import { EXIT_HOLD_SALE_FACT, isExitHeld, parseRoomExitHold } from "./exitHold";
 
 /** Bucket Storage PUBLIC cho ảnh sale (phòng + tòa). Ảnh thường lưu dạng URL đầy đủ
  *  (imageUrl pass-through); bucket dùng khi giá trị là storage PATH. */
@@ -70,6 +71,9 @@ export interface RpcRoom {
   // Chỉ get_my_available_rooms (trong app): lock tạm còn hạn của phòng bị ẩn vì lock.
   sale_lock?: { id: string; hours: number; note: string | null; locked_at: string; expires_at: string;
     locked_by_name: string; locked_by_me: boolean } | null;
+  // Chỉ hai reader trong app: hồ sơ trả phòng trước hạn còn chờ khách nhận sang nhượng (xem exitHold.ts).
+  // Để `unknown`: khoá lệch dạng bị bỏ khi ánh xạ chứ không làm hỏng cả danh sách.
+  exit_hold?: unknown;
 }
 export interface RpcContact { name: string | null; phone: string | null }
 export interface RpcPayload {
@@ -116,6 +120,7 @@ const payloadSchema = z.object({
     pass_price: z.number().nullable().optional(), pass_avail_date: optionalText, pass_contact_manager: z.boolean().nullable().optional(),
     sale_lock: z.object({ id: z.string(), hours: z.number(), note: nullableText, locked_at: z.string(), expires_at: z.string(),
       locked_by_name: z.string(), locked_by_me: z.boolean() }).nullable().optional(),
+    exit_hold: z.unknown().optional(),
   })),
   contact: z.object({ name: nullableText, phone: nullableText }).nullable().optional(),
   sale_policy: optionalText,
@@ -212,8 +217,11 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
       // Lock tạm chỉ hiện cho nhân viên trong app; ngoài app phòng vẫn là "đã thuê" và bị ẩn.
       const lock = options.includeInternal && rr.status_public === "rented" ? rr.sale_lock ?? null : null;
       const status: RoomStatus = lock ? "locked" : rr.status_public;
-      const saleFact = lock ? undefined : roomSaleFacts({ status, state: rr.sale_state, today: rr.sale_today,
-        availableOn: rr.avail_date, expectedReadyOn: rr.expected_ready_on });
+      // Hồ sơ giữ cho khách nhận sang nhượng: chỉ nhân viên trong app; link công khai bỏ qua kể cả khi payload có.
+      const exitHold = options.includeInternal ? parseRoomExitHold(rr.exit_hold) : null;
+      const saleFact = lock ? undefined : isExitHeld({ status, exitHold }) ? EXIT_HOLD_SALE_FACT
+        : roomSaleFacts({ status, state: rr.sale_state, today: rr.sale_today,
+          availableOn: rr.avail_date, expectedReadyOn: rr.expected_ready_on });
       return {
         id: rr.id,
         no: roomNo(rr, rr.floor * 100 + i + 1),
@@ -247,6 +255,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         passContactManager: !!rr.pass_contact_manager,
         saleLock: lock ? { id: lock.id, hours: lock.hours, note: lock.note, lockedAt: lock.locked_at, expiresAt: lock.expires_at,
           lockedByName: lock.locked_by_name, lockedByMe: lock.locked_by_me } : null,
+        exitHold,
         x: 0, y: 0, w: 0, h: 0,
       };
     });
@@ -254,9 +263,10 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
     // Nhóm theo tầng (cao -> thấp). Có sơ đồ thủ công cho tầng -> dùng (applyStoredLayout),
     // không thì tự sinh layoutFloor (fallback). Phòng chưa đặt được applyStoredLayout xếp tạm.
     const stored = b.floor_layouts ?? null;
-    // Chỉ giữ tầng có ≥1 phòng trống/sắp trống/khách-pass (ẩn tầng đã full khỏi Sơ đồ).
+    // Chỉ giữ tầng có ≥1 phòng trống/sắp trống/khách-pass (ẩn tầng đã full khỏi Sơ đồ); trong app thêm phòng
+    // chốt tạm và phòng đang giữ cho khách sang nhượng.
     const floorNums = Array.from(new Set(rooms.map((r) => r.floor)))
-      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked")))
+      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || isExitHeld(r))))
       .sort((a, z) => z - a);
     const floors = floorNums.map((f) => {
       const floorRooms = rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no);

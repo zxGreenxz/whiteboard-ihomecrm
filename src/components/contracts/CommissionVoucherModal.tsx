@@ -1,7 +1,7 @@
 import {validateInputDrafts} from '@/lib/inputDraftValidation';
 import {focusFirstError} from '@/lib/formErrors';
 import {voucherFailureMessage} from '@/lib/voucherFeedback';
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,8 @@ import {
 import { useSaleBonusStatus } from "@/hooks/useSaleBonus";
 import { useContractCommissionFollowups } from "@/hooks/useContractCommissionFollowup";
 import { useContractRentSupport } from '@/hooks/useContractRentSupport';
+import { useContractExitEarlyTerms } from '@/hooks/contracts/useContractExitEarlyTerms';
+import { receivingExitTerms, saleAssistedBrokerNotice, SELF_FOUND_COMMISSION_NOTICE } from './contract-form/exitLinkedCommission';
 import { RentSupportPayoutForm } from './RentSupportPayoutForm';
 import { CommissionAmountReview } from './CommissionAmountReview';
 import { CommissionRequestEvidence } from './CommissionRequestEvidence';
@@ -59,6 +61,8 @@ interface CommissionVoucherModalProps {
   onlyKind?: CommissionKind;
   replacementRequestId?: string;
 }
+
+const EXIT_CHECK_FAILED = 'Chưa kiểm được hợp đồng có nhận sang phòng từ hồ sơ trả phòng trước hạn không. Máy chủ vẫn chặn khoản không đúng trường hợp.';
 
 function formatVND(n: number): string {
   return new Intl.NumberFormat("vi-VN").format(Math.round(n)) + " đ";
@@ -154,6 +158,15 @@ function QlRecipientField({
   );
 }
 
+/** Hợp đồng khách nhận của ca trả phòng trước hạn: hoa hồng không đi đường lập chung. */
+function ExitReceivingNotice({ children }: { children: ReactNode }) {
+  return (
+    <div role="status" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+      {children}
+    </div>
+  );
+}
+
 function QlNote() {
   return (
     <p className="col-span-2 md:col-span-3 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800">
@@ -203,6 +216,12 @@ export function CommissionVoucherModal({
   const saleBonus = saleQuery.data;
   const salePaidElsewhere = !!saleBonus?.alreadyPaid && !existingSale;
   const followups = useContractCommissionFollowups({ contractId: contractId ?? undefined, enabled: open && !!contractId });
+  // Lớp chặn thứ hai (máy chủ chặn trước): hợp đồng khách nhận của ca tự tìm không có hoa hồng môi giới hay thưởng
+  // sale; ca nhờ sale lập hoa hồng môi giới từ hồ sơ trả phòng sau quyết toán, thưởng sale vẫn lập ở đây.
+  const exitTermsQuery = useContractExitEarlyTerms(contractId ? { contractId } : null, open && !!contractId);
+  const receivingTerms = receivingExitTerms(exitTermsQuery.data, contractId);
+  const exitReason = receivingTerms?.early_reason;
+  const exitCheckFailed = exitTermsQuery.isError && (exitTermsQuery.error as { code?: string } | null)?.code !== '42501';
   const [submitError,setSubmitError]=useState<string|null>(null);
   const [receipts,setReceipts]=useState<{id:string;code:string|null}[]>([]);
   const modalRef=useRef<HTMLDivElement>(null);
@@ -224,11 +243,15 @@ export function CommissionVoucherModal({
   const resolved = (row: typeof brokerFollowup) => row?.state === 'VOUCHER_CREATED' || row?.state === 'NOT_APPLICABLE' || row?.state === 'SETTLED_BY_SUPPORT';
   const brokerDone = !!existingBroker || resolved(brokerFollowup) || createdKinds.includes('broker');
   const saleDone = !!existingSale || salePaidElsewhere || saleBonus?.settledBySupport || resolved(saleFollowup) || createdKinds.includes('sale');
-  const brokerEditable = activeKind !== 'sale' && !brokerDone && !brokerSaved;
-  const saleEditable = activeKind !== 'broker' && !saleDone && !saleSaved;
-  const checkingVouchers = vouchersQuery.isLoading || saleQuery.isLoading || followups.isLoading;
+  const brokerEditable = activeKind !== 'sale' && !exitReason && !brokerDone && !brokerSaved;
+  const saleEditable = activeKind !== 'broker' && exitReason !== 'SELF_FOUND' && !saleDone && !saleSaved;
+  /** Không còn loại nào lập được ở hộp này cho hợp đồng khách nhận. */
+  const exitNoKindLeft = exitReason === 'SELF_FOUND' || (exitReason === 'SALE_ASSISTED' && activeKind === 'broker');
+  /** Ca nhờ sale chỉ còn thưởng sale ở hộp này. */
+  const effectiveKind = activeKind ?? (exitReason === 'SALE_ASSISTED' ? 'sale' : undefined);
+  const checkingVouchers = vouchersQuery.isLoading || saleQuery.isLoading || followups.isLoading || exitTermsQuery.isLoading;
   const checkFailed = vouchersQuery.isError || saleQuery.isError || followups.isError;
-  const canCreate = activeKind === 'broker' ? !!brokerFollowup?.can_manage : activeKind === 'sale' ? !!saleFollowup?.can_manage
+  const canCreate = effectiveKind === 'broker' ? !!brokerFollowup?.can_manage : effectiveKind === 'sale' ? !!saleFollowup?.can_manage
     : !!brokerFollowup?.can_manage && !!saleFollowup?.can_manage;
   const supportRead = useContractRentSupport({ contractIds: contractId ? [contractId] : [], enabled: open && !!contractId && canCreate });
   const supportPlan = supportRead.data?.rows.find(row => row.contract_id === contractId);
@@ -591,10 +614,12 @@ export function CommissionVoucherModal({
     </div>
   );
 
-  if (open && canCreate && prefill && !checkingVouchers && !checkFailed && (supportUnavailable || supportPlan?.kind === 'V2')) return (
+  if (open && canCreate && prefill && !checkingVouchers && !checkFailed && !exitNoKindLeft && (supportUnavailable || supportPlan?.kind === 'V2')) return (
     <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-3xl max-h-[90vh] overflow-auto p-0">
       <DialogHeader className="px-6 pt-6"><DialogTitle>Tạo phiếu hoa hồng và hỗ trợ tiền thuê</DialogTitle>
         <DialogDescription>Đối chiếu toàn bộ cam kết, nguồn chi và thực nhận trước khi lưu yêu cầu.</DialogDescription></DialogHeader>
+      {receivingTerms?.early_reason === 'SALE_ASSISTED' && <div className="px-6"><ExitReceivingNotice>{saleAssistedBrokerNotice(receivingTerms)}</ExitReceivingNotice></div>}
+      {exitCheckFailed && <p role="status" className="px-6 text-xs text-muted-foreground">{EXIT_CHECK_FAILED}</p>}
       {supportUnavailable ? <div className="px-6 text-sm space-y-2">{supportRead.isLoading
         // Chờ đọc lịch hỗ trợ: khối xám (chủ chốt 02/10/2026); quá 8 giây tự có "Mạng đang chậm" + Thử lại.
         ? <LoadingState label="lịch hỗ trợ" rows={3} onRetry={() => void supportRead.refetch()} />
@@ -602,7 +627,7 @@ export function CommissionVoucherModal({
           <Button variant="outline" onClick={() => void supportRead.refetch()}>Tải lại lịch hỗ trợ</Button></>}</div>
         : replacement && replacementLoaded !== replacement.requestId ? <div className="p-6 text-sm" role="status">{submitError || 'Đang đối chiếu yêu cầu cũ và cấu hình hiện tại…'}</div>
         : supportPlan && selectedOrganizationId && contractId && <RentSupportPayoutForm key={`${selectedOrganizationId}:${contractId}:${replacement?.requestId ?? ''}`} organizationId={selectedOrganizationId} contractId={contractId}
-          plan={supportPlan} prefill={prefill} rows={rows ?? []} refetchRows={followups.refetch} onlyKind={activeKind} userId={authUser?.id} replacement={replacement} onReplaceRequest={startReplacement} />}
+          plan={supportPlan} prefill={prefill} rows={rows ?? []} refetchRows={followups.refetch} onlyKind={effectiveKind} userId={authUser?.id} replacement={replacement} onReplaceRequest={startReplacement} />}
       <DialogFooter className="px-6 pb-6"><Button variant="outline" onClick={() => onOpenChange(false)}>Để xử lý sau</Button></DialogFooter>
     </DialogContent></Dialog>
   );
@@ -641,7 +666,11 @@ export function CommissionVoucherModal({
           ) : !prefill ? (
             // Chờ thông tin hợp đồng: khối xám dạng bảng chi tiết (chủ chốt 02/10/2026).
             <LoadingState label="thông tin hợp đồng" variant="detail" rows={5} className="py-4" />
-          ) : checkingVouchers || checkFailed || !canCreate ? <div className="p-6 text-sm space-y-2">
+          ) : exitNoKindLeft && receivingTerms && !checkingVouchers ? <div className="py-4 space-y-3">
+            <ExitReceivingNotice>{exitReason === 'SELF_FOUND' ? SELF_FOUND_COMMISSION_NOTICE : saleAssistedBrokerNotice(receivingTerms)}</ExitReceivingNotice>
+            {existingBroker && <ExistingVoucherBanner voucher={existingBroker} label="hoa hồng môi giới" />}
+            {existingSale && <ExistingVoucherBanner voucher={existingSale} label="thưởng nóng Sale" />}
+          </div> : checkingVouchers || checkFailed || !canCreate ? <div className="p-6 text-sm space-y-2">
             {checkingVouchers ? <LoadingState label="phiếu hiện có để đối chiếu" rows={3} /> : checkFailed ? <>
               <p role="alert">Chưa đối chiếu được phiếu hiện có. Hãy tải lại trước khi tạo để tránh trùng phiếu.</p>
               <Button variant="outline" onClick={() => { void vouchersQuery.refetch(); void saleQuery.refetch(); void followups.refetch(); }}>Đối chiếu lại</Button>
@@ -653,6 +682,7 @@ export function CommissionVoucherModal({
                   <p>Chưa đối chiếu được phiếu hiện có. Hãy tải lại trước khi tạo để tránh trùng phiếu.</p>
                   <Button variant="outline" onClick={() => { void vouchersQuery.refetch(); void saleQuery.refetch(); void followups.refetch(); }}>Đối chiếu lại</Button>
                 </div> : !canCreate ? <p role="alert" className="text-sm text-muted-foreground">Bạn chưa có quyền xử lý hoa hồng của hợp đồng này.</p> : null}
+              {exitCheckFailed && <p role="status" className="text-xs text-muted-foreground">{EXIT_CHECK_FAILED}</p>}
               {/* Metadata HĐ (owner decision 2026-07-23): Phòng/Tòa, thời hạn
                   HĐ, giá phòng, % hoa hồng — read-only, không đổi logic tạo. */}
               {replacement && <div className="rounded border border-amber-200 p-3 text-sm space-y-2"><p>Đang lập yêu cầu mới thay cho lần chưa hoàn tất. Nhập lý do lập lại; lịch sử yêu cầu cũ được giữ nguyên.</p>
@@ -766,7 +796,8 @@ export function CommissionVoucherModal({
                     voucher={existingBroker}
                     label="hoa hồng môi giới"
                   />
-                ) : brokerDone ? <p className="text-sm text-muted-foreground">{brokerFollowup?.state === 'NOT_APPLICABLE' ? 'Đã ghi nhận không phát sinh hoa hồng môi giới. Có thể mở lại tại phần theo dõi trên hợp đồng.' : 'Đã có phiếu hoa hồng môi giới; đối chiếu tại Thu chi.'}</p> : brokerSaved ? savedNotice('broker', brokerFollowup) : (
+                ) : receivingTerms?.early_reason === 'SALE_ASSISTED' ? <ExitReceivingNotice>{saleAssistedBrokerNotice(receivingTerms)}</ExitReceivingNotice>
+                : brokerDone ? <p className="text-sm text-muted-foreground">{brokerFollowup?.state === 'NOT_APPLICABLE' ? 'Đã ghi nhận không phát sinh hoa hồng môi giới. Có thể mở lại tại phần theo dõi trên hợp đồng.' : 'Đã có phiếu hoa hồng môi giới; đối chiếu tại Thu chi.'}</p> : brokerSaved ? savedNotice('broker', brokerFollowup) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Số tiền hoa hồng *</Label>

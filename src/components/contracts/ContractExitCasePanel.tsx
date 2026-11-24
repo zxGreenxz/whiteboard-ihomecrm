@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { useContractExitCases } from '@/hooks/useContractExitCases';
@@ -10,8 +10,12 @@ import type { ContractWithRelations } from '@/types/contract';
 import { EXIT_KIND_LABELS } from './ContractReturnStep';
 import { TerminateDialog } from './TerminateDialog';
 import { ContractMeterBoundaryPanel } from './ContractMeterBoundaryPanel';
+import { ExitCommissionDialog } from './ExitCommissionForm';
+import { earlyTermsStatus } from './ExitEarlyTermsPanel';
+import { useContractExitEarlyTerms } from '@/hooks/contracts/useContractExitEarlyTerms';
+import { EARLY_REASON_LABELS, needsExitCommission } from '@/lib/contractExitEarlyTerms';
 
-const TransferPanel = lazy(() => import('./ContractTransferLinkPanel').then(module => ({ default: module.ContractTransferLinkPanel })));
+const vnd = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
 
 export function ContractExitCasePanel({ contract }: { contract: ContractWithRelations }) {
   const query = useContractExitCases({ contractId: contract.id, limit: 1 });
@@ -22,6 +26,11 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
   const canSettle = canUse(permissions, 'contracts', 'terminate');
   const drafts = useContractExitSettlementDrafts(pendingCase && canSettle ? [pendingCase.id] : []);
   const draft = pendingCase ? drafts.data?.find(item => item.caseId === pendingCase.id) : undefined;
+  const caseId = query.data?.items[0]?.id;
+  const earlyQuery = useContractExitEarlyTerms(caseId ? { exitCaseId: caseId } : null);
+  const earlyTerms = earlyQuery.data?.[0];
+  const [commissionOpen, setCommissionOpen] = useState(false);
+  const canCommission = canUse(permissions, 'income_expenses', 'create');
   // Khung hồ sơ chỉ có khi hợp đồng đã có hồ sơ trả phòng — chờ thì không vẽ gì để
   // khỏi hiện rồi biến (chủ chốt 02/10/2026: không chữ "Đang tải…").
   if (query.isLoading) return <LoadingState label="hồ sơ trả phòng" variant="none" />;
@@ -41,7 +50,22 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
       </div>}
     </div>
     <div className="text-sm"><p>Loại ban đầu: <strong>{EXIT_KIND_LABELS[exitCase.initial_kind]}</strong></p>
-      <p>Loại hiện tại: <strong>{EXIT_KIND_LABELS[exitCase.current_kind]}</strong></p></div>
+      <p>Loại hiện tại: <strong>{EXIT_KIND_LABELS[exitCase.current_kind]}</strong></p>
+      {earlyTerms && <p>Trường hợp: <strong>{EARLY_REASON_LABELS[earlyTerms.early_reason]}</strong>
+        {earlyTerms.sale_name && <> · Sale: <strong>{earlyTerms.sale_name}</strong></>}
+        {earlyTerms.early_reason === 'SALE_ASSISTED' && <> · Phí môi giới {vnd(earlyTerms.broker_fee)} đ</>}</p>}
+      {earlyTerms && exitCase.state === 'PENDING' && <p className="text-muted-foreground">{earlyTermsStatus(earlyTerms)}</p>}
+      {earlyTerms?.commission_voucher_id && <p>Phiếu hoa hồng môi giới: <strong>{earlyTerms.commission_code ?? ''}</strong>
+        {earlyTerms.commission_live === false && <span className="text-amber-800"> (đã huỷ — lập lại phiếu mới)</span>}</p>}
+      {!earlyTerms && !earlyQuery.isLoading && !earlyQuery.isError && exitCase.state === 'PENDING' && exitCase.current_kind === 'EARLY_RETURN'
+        && <p className="text-amber-800">Chưa chọn trường hợp trả phòng trước hạn: chọn khi quyết toán.</p>}
+      {earlyQuery.isError && <p role="alert" className="text-destructive">Không tải được trường hợp trả phòng trước hạn. <Button variant="link" className="h-auto p-0" onClick={() => void earlyQuery.refetch()}>Thử lại</Button></p>}
+    </div>
+    {needsExitCommission(earlyTerms) && earlyTerms && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+      <p>Hồ sơ nhờ sale đã quyết toán nhưng chưa có phiếu hoa hồng môi giới cho sale {earlyTerms.sale_name} ({vnd(earlyTerms.broker_fee)} đ).</p>
+      {canCommission && <Button size="sm" onClick={() => setCommissionOpen(true)}>Lập phiếu hoa hồng</Button>}
+    </div>}
+    {commissionOpen && earlyTerms && <ExitCommissionDialog exitCaseId={earlyTerms.exit_case_id} open={commissionOpen} onOpenChange={setCommissionOpen} />}
     <section aria-label="Nội dung thanh lý" className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
       <h3 className="font-medium">Nội dung thanh lý</h3>
       <p className="whitespace-pre-wrap break-words">{exitCase.return_note || 'Chưa có nội dung thanh lý'}</p>
@@ -53,9 +77,8 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
       </li>)}</ol>
     </details>}
     {exitCase.state === 'FINALIZED' && <p className="text-xs text-muted-foreground">Theo dõi tiền khách trả và tiền hoàn trên các chứng từ hiện có của hợp đồng.</p>}
-    <Suspense fallback={<LoadingState label="liên kết nhượng" variant="none" />}><TransferPanel exitCase={exitCase} /></Suspense>
     <ContractMeterBoundaryPanel key={contract.id} contractId={contract.id} roomId={exitCase.room_at_handover_id}
       canEdit={canUse(permissions, 'contracts', 'edit')} exit={exitCase} />
-    {open && exitCase.state === 'PENDING' && <TerminateDialog open={open} onOpenChange={setOpen} contract={contract} exitCase={exitCase} resumeDraft={resumeDraft} />}
+    {open && <TerminateDialog open={open} onOpenChange={setOpen} contract={contract} exitCase={exitCase} resumeDraft={resumeDraft} />}
   </section>;
 }

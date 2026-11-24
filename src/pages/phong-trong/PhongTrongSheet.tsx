@@ -5,6 +5,7 @@ import { useTrack } from "./useTracking";
 import { corsFetchUrl } from "@/lib/storage/r2Config";
 import { isUnavailableTestMedia, TEST_MEDIA_MESSAGE, testMediaSource } from '@/lib/storage/testMedia';
 import { saleLockRemaining } from "@/lib/roomSaleLockRpc";
+import { EXIT_HOLD_STATUS_LABEL, exitHoldLines, isExitHeld } from "./exitHold";
 
 import { isRoomVideo, roomAlbum } from '@/lib/roomMedia';
 
@@ -142,6 +143,7 @@ type FilesCacheEntry = { key: string; promise: Promise<File[]>; done: boolean };
 
 export function DetailSheet({
   room, show, onClose, onToast, saved, toggleSave, onGo, buildings, onQuickDeposit, onLock, onReleaseLock, canReleaseLock,
+  onReopenHold, onExtendHold,
 }: {
   room: Room | null;
   show: boolean;
@@ -158,6 +160,9 @@ export function DetailSheet({
   /** Gỡ lock: hiện khi phòng đang chốt tạm và canReleaseLock(r) đúng (người lock hoặc người tạo cọc). */
   onReleaseLock?: (r: Room) => void;
   canReleaseLock?: (r: Room) => boolean;
+  /** Phòng đang giữ cho khách sang nhượng: chỉ truyền khi trong app; nút hiện khi máy chủ báo exitHold.canManage. */
+  onReopenHold?: (r: Room) => void;
+  onExtendHold?: (r: Room) => void;
 }) {
   const track = useTrack();
   const [lb, setLb] = useState<number | null>(null);
@@ -194,7 +199,7 @@ export function DetailSheet({
   // Phong cung toa (con trong) de chuyen nhanh truoc/sau
   const building = buildings.find((b) => b.id === r.buildingId);
   const siblings = building
-    ? building.rooms.filter((x) => x.status !== "rented").sort((a, b) => b.floor - a.floor || a.no - b.no)
+    ? building.rooms.filter((x) => x.status !== "rented" || isExitHeld(x)).sort((a, b) => b.floor - a.floor || a.no - b.no)
     : [r];
   const idx = siblings.findIndex((x) => x.id === r.id);
   const prev = idx > 0 ? siblings[idx - 1] : null;
@@ -345,9 +350,27 @@ export function DetailSheet({
               </div>
             )}
 
-            {onQuickDeposit && r.status !== "rented" && r.status !== "pass" && (
+            {r.exitHold && (
+              <div className={"eh-banner" + (r.exitHold.active ? "" : " expired")} role="note" aria-label="Giữ phòng cho khách sang nhượng">
+                {(r.exitHold.active ? [EXIT_HOLD_STATUS_LABEL, ...exitHoldLines(r.exitHold)] : exitHoldLines(r.exitHold))
+                  .map((line, i) => i === 0 ? <b key={line}>{line}</b> : <span key={line}>{line}</span>)}
+              </div>
+            )}
+
+            {/* Phòng đang giữ cho khách sang nhượng: người khác vẫn cọc được (máy chủ quyết định). */}
+            {onQuickDeposit && (r.status !== "rented" || isExitHeld(r)) && r.status !== "pass" && (
               <button className="qd-trigger" onClick={() => onQuickDeposit(r)}>
                 <Icon.Money />{r.status === "locked" ? "Tạo phiếu cọc" : "Tạo cọc giữ phòng"}
+              </button>
+            )}
+            {onReopenHold && r.exitHold?.canManage && r.exitHold.active && (
+              <button className="eh-trigger" onClick={() => onReopenHold(r)}>
+                <Icon.Tag />Mở bán lại
+              </button>
+            )}
+            {onExtendHold && r.exitHold?.canManage && (
+              <button className="eh-trigger" onClick={() => onExtendHold(r)}>
+                <Icon.Refresh />Giữ tiếp
               </button>
             )}
             {onLock && (r.status === "free" || r.status === "soon") && (

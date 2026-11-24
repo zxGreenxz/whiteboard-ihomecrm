@@ -25,7 +25,7 @@ const noop = () => {};
 function show(overrides: Partial<ComponentProps<typeof ContractDetailMobile>> = {}) {
   render(<MemoryRouter><ContractDetailMobile contract={contract} services={[]} invoices={[]} history={[]}
     depositVouchers={[]} perms={{}} customers={[]} onBack={noop} onEdit={noop} onPrint={noop} onShowQR={noop}
-    onRenew={noop} onTransferRoom={noop} onTransferContract={noop} onMoveOut={noop} onTerminate={noop} onDelete={noop}
+    onRenew={noop} onTransferRoom={noop} onMoveOut={noop} onTerminate={noop} onDelete={noop}
     terminationInfo={termination} pendingForfeitCount={0} pendingRefundCount={0} statusLoading={false}
     sideLoadErrors={[]} {...overrides} /></MemoryRouter>);
   return within(screen.getByRole('region', { name: 'Trạng thái sau trả phòng' }));
@@ -84,7 +84,7 @@ it('preserves pending forfeit status and prevents a false completed label', () =
 it('does not render a returned-contract status for an active contract', () => {
   render(<MemoryRouter><ContractDetailMobile contract={{ ...contract, status: 'ACTIVE' }} services={[]} invoices={[]}
     history={[]} depositVouchers={[]} perms={{}} customers={[]} onBack={noop} onEdit={noop} onPrint={noop} onShowQR={noop}
-    onRenew={noop} onTransferRoom={noop} onTransferContract={noop} onMoveOut={noop} onTerminate={noop} onDelete={noop}
+    onRenew={noop} onTransferRoom={noop} onMoveOut={noop} onTerminate={noop} onDelete={noop}
     terminationInfo={termination} pendingForfeitCount={0} pendingRefundCount={0} statusLoading={false} sideLoadErrors={[]} /></MemoryRouter>);
   expect(screen.queryByRole('region', { name: 'Trạng thái sau trả phòng' })).toBeNull();
 });

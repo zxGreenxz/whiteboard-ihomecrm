@@ -21,6 +21,11 @@ interface TerminationRefundItemsProps {
   initialDraft?: RefundItemsDraft | null;
   /** Emit trạng thái các ô tự nhập (để lưu nháp) mỗi khi có thay đổi. */
   onDraftChange?: (draft: RefundItemsDraft) => void;
+  /**
+   * Gợi ý ô "không ở TỪ ngày" khác mặc định (ngày sau ngày trả phòng). Hồ sơ sang nhượng mà hợp đồng khách mới
+   * tính tiền từ chính ngày bàn giao ⇒ truyền ngày bàn giao: khách cũ được hoàn tiền phòng từ ngày đó.
+   */
+  defaultFromDate?: string;
 }
 
 let customRowSeq = 0;
@@ -65,6 +70,7 @@ function cuoiThangCua(iso?: string): string {
 export function TerminationRefundItems({
   contract,
   moveOutDate,
+  defaultFromDate,
   onChange,
   initialDraft,
   onDraftChange,
@@ -126,13 +132,14 @@ export function TerminationRefundItems({
     if (!moveOutDate || !suggestDates) return;
     setFromDate((cu) => {
       if (cu) return cu;
+      if (defaultFromDate) return defaultFromDate;
       const d = new Date(`${moveOutDate}T00:00:00Z`);
       if (Number.isNaN(d.getTime())) return cu;
       d.setUTCDate(d.getUTCDate() + 1);
       return d.toISOString().slice(0, 10);
     });
     setToDate((cu) => cu || cuoiThangCua(moveOutDate));
-  }, [moveOutDate, suggestDates]);
+  }, [moveOutDate, suggestDates, defaultFromDate]);
 
   const days = calcProratedDays(fromDate, toDate);
   const autoProrated = days > 0 ? prorateAmount(proratedBase, days) : 0;

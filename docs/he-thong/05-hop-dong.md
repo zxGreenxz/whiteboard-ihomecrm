@@ -35,7 +35,7 @@ Khi khách đã ký đúng tài liệu đã xuất, chọn **Xác nhận đã k�
 
 **Báo ngày dự kiến trả phòng** chỉ ghi kế hoạch, không kết thúc lượt ở. Có thể sửa ngày hoặc hủy báo với lý do. Đến/quá hẹn mà khách chưa đi thì xác nhận lại ngày hoặc hủy báo nếu ở tiếp. Ngày hết hạn không tự thành báo trả. Khi khách bàn giao, dùng [luồng trả phòng/quyết toán](16-thanh-ly-hop-dong.md).
 
-**Nhượng liên kết hai hồ sơ:** hồ sơ cũ đã trả nối với nháp người nhận để đối soát. Lựa chọn **cấn cọc cũ sang hợp đồng mới** hiện chỉ lưu ý định và chặn ký; chưa chuyển/cấn phiếu hoặc tiền cọc. Không ghi khách mới đã nộp cọc từ lựa chọn này.
+**Sang nhượng phòng** (cập nhật 24/11/2026): giao diện không còn nút **Nhượng HĐ** hay **Liên kết nhượng**; sang nhượng giờ ghi ngay trong hộp **Thanh lý** khi khách trả phòng trước hạn (nhờ sale / tự tìm khách / chủ nhà hỗ trợ). Bảng và RPC liên kết nhượng cũ vẫn để nguyên trong database.
 
 ---
 
@@ -303,7 +303,7 @@ Ngoài wrapper RPC (§4.3), bản thân các bảng cũng có policy RBAC theo t
 - **Mặc định theo user**: nếu `full_name` là `joey`/`nathan` → tự **chọn sẵn toàn bộ toà** thuộc khu vực trùng tên — **chỉ khi phiên chưa có filter toà đã persist** (F5 khôi phục lựa chọn của user thì bỏ qua default).
 - **Lỗi tải danh sách** → panel lỗi (message thật) + nút **"Thử lại"** (refetch) thay vì rơi vào empty-state giả (f36ef69, 30/06 — `useContractsPaged` throw thay vì nuốt lỗi); `ContractsMobilePage` cũng vậy.
 - Nút **Thêm/Nhập** cần scope toà **và** quyền `contracts.create` (`hasAnyScope = hasBuildingScope && canUse(perms,'contracts','create')`); nút **Xuất** cần quyền `contracts.export` — export kéo **toàn bộ** kết quả theo filter hiện tại qua `fetchContractsForExport` (loop `.range` từng khúc 1000) rồi sort gom toà → phòng, không chỉ trang đang xem.
-- **Per-row `canManageBuilding`**: từng dòng còn ẩn toàn bộ nút quản trị (Sửa / Gia hạn / Chuyển phòng / Đăng ký chuyển đi / Nhượng / Thanh lý / Xoá) nếu user không quản lý toà của HĐ — chỉ giữ Xem / In / QR.
+- **Per-row `canManageBuilding`**: từng dòng còn ẩn toàn bộ nút quản trị (Sửa / Gia hạn / Chuyển phòng / Đăng ký chuyển đi / Thanh lý / Xoá) nếu user không quản lý toà của HĐ — chỉ giữ Xem / In / QR.
 - **Click ô "Vị trí"** của mỗi dòng → copy **ảnh QR** (QR + nhãn phòng/toà) vào clipboard (`copyContractQrToClipboard` — [contractQrImage.ts](../../src/lib/contractQrImage.ts)); không khả dụng khi HĐ `TERMINATED/DRAFT`.
 - Cột "Người tạo" hiện đang hard-code `-` (chưa hoàn thiện).
 
@@ -315,7 +315,6 @@ Ngoài wrapper RPC (§4.3), bản thân các bảng cũng có policy RBAC theo t
 | Gia hạn | inEffect / EXPIRED / EXPIRING | `RenewDialog` | `useRenewContract` → `renew_contract` |
 | Chuyển phòng | inEffect | `TransferRoomDialog` | `useTransferRoom` → `transfer_room` (đổi `room_id`, giữ status, đồng bộ phòng cũ/mới — xem §4.3) |
 | Đăng ký chuyển đi / Báo trả | inEffect | MoveOutDialog / RegisterMoveOutDialog | Cùng form ghi/sửa/hủy ngày dự kiến và lý do; không xóa ghi chú cũ. |
-| Nhượng HĐ | inEffect | TransferContractDialog | Ghi nhận khách cũ trả phòng, rồi liên kết hồ sơ cũ với nháp của người nhận; hai hợp đồng được xử lý riêng. |
 | Thanh lý / Quyết toán | Đang ở, hoặc hồ sơ đã trả còn chờ quyết toán | TerminateDialog | Bắt buộc ngày thực trả + loại; chọn quyết toán ngay/sau, mở đúng hồ sơ cũ. |
 | Xoá | `status = DRAFT` | `DeleteContractDialog` | `useDeleteContract` (soft-delete). ⚠️ UI tạo HĐ luôn set thẳng `ACTIVE` → nút Xoá gần như không bao giờ bật trên dữ liệu thật (guard trong `useDeleteContract` thực ra cho phép rộng hơn). |
 | QR | `status ≠ TERMINATED/DRAFT` | `ContractQRDialog` | dựng link `/c/<public_code>` |
@@ -418,11 +417,11 @@ Bỏ cọc, xử lý nợ, credit, thu/hoàn tiền và duyệt phiếu vẫn th
 4. **Thanh toán** — gom payments từ mọi hoá đơn.
 5. **Lịch sử** — timeline gia hạn / chuyển / thanh lý kèm badge status; nếu thanh lý còn `DRAFT/PENDING_APPROVAL` → nút "Đi đến duyệt thanh lý". ⚠️ Nút này navigate `/contracts?tab=termination-approvals` nhưng `ContractsPage` **không đọc query param** đó → ngõ cụt; cũng không tồn tại UI duyệt nào (`usePendingTerminations`/`useApproveTermination` không được mount ở đâu).
 
-**Thao tác (header)**: Cập nhật (nếu ≠ TERMINATED), In HĐ, QR (nếu ≠ TERMINATED/DRAFT), và khi `isContractInEffect`: Gia hạn / Chuyển phòng / Nhượng HĐ / Đăng ký chuyển đi / Thanh lý. `DRAFT` → nút Xoá. Trang chi tiết **không gate nút theo quyền toà** (chỉ kiểm `isContractInEffect`) — staff ngoài scope vẫn thấy đủ nút, bấm mới bị RLS/RPC từ chối (42501); lệch UX với trang danh sách (đã ẩn theo `canManageBuilding`).
+**Thao tác (header)**: Cập nhật (nếu ≠ TERMINATED), In HĐ, QR (nếu ≠ TERMINATED/DRAFT), và khi `isContractInEffect`: Gia hạn / Chuyển phòng / Đăng ký chuyển đi / Thanh lý. `DRAFT` → nút Xoá. Trang chi tiết **không gate nút theo quyền toà** (chỉ kiểm `isContractInEffect`) — staff ngoài scope vẫn thấy đủ nút, bấm mới bị RLS/RPC từ chối (42501); lệch UX với trang danh sách (đã ẩn theo `canManageBuilding`).
 
 > ✅ **Gia hạn / Thanh lý đã đồng nhất với trang danh sách** (df24746, 2026-06-10): trang chi tiết dùng chung [RenewDialog](../../src/components/contracts/RenewDialog.tsx) → RPC `renew_contract` và [TerminateDialog](../../src/components/contracts/TerminateDialog.tsx) → RPC forfeit/move-out. Cặp dialog legacy `ExtendContractDialog`/`TerminateContractDialog` + 3 hook deprecated (`useExtendContract`/`useTransferContract`/`useTerminateContract` trong `useContracts.ts`) đã **xoá khỏi codebase** — trước đó chúng tạo bản ghi `DRAFT`/`PENDING_APPROVAL` không có UI duyệt (user thấy toast thành công nhưng HĐ không đổi; bản ghi PENDING mồ côi còn làm RPC thanh lý thật mất audit row vì UNIQUE 1 biên bản/HĐ §2.7). Lưu ý: hook sống `useTransferContract` của [useContractOperations.ts](../../src/hooks/useContractOperations.ts) (RPC `transfer_contract`) **không** bị xoá — chỉ bản trùng tên deprecated trong `useContracts.ts`.
 >
-> ✅ **Đăng ký chuyển đi đã sửa (922061f, 2026-06-29)**: [RegisterMoveOutDialog](../../src/components/contracts/RegisterMoveOutDialog.tsx) trước đây gọi `mutate({ id, expected_move_out_date, notes })` **phẳng** trong khi `useUpdateContract` nhận `{ id, updates }` → `updates = undefined` → `.update(undefined)` gửi PATCH rỗng → PostgREST báo **"Empty or invalid json"**, không ghi được gì. Nay đã bọc đúng `{ id, updates: {...} }`: UPDATE `expected_move_out_date` + **APPEND** `[Đăng ký chuyển đi]: ...` vào notes (bỏ trống ghi chú → **giữ nguyên** notes cũ). Lệch nhỏ còn lại: `MoveOutDialog` của trang danh sách (`useRegisterMoveOut`) vẫn có thể **ghi đè trắng** notes khi bỏ trống ghi chú (§5.1). Chuyển phòng / Nhượng HĐ dùng `TransferRoomDialog` / `TransferContractDialog` (RPC `transfer_room` / `transfer_contract`) như danh sách.
+> ✅ **Đăng ký chuyển đi đã sửa (922061f, 2026-06-29)**: [RegisterMoveOutDialog](../../src/components/contracts/RegisterMoveOutDialog.tsx) trước đây gọi `mutate({ id, expected_move_out_date, notes })` **phẳng** trong khi `useUpdateContract` nhận `{ id, updates }` → `updates = undefined` → `.update(undefined)` gửi PATCH rỗng → PostgREST báo **"Empty or invalid json"**, không ghi được gì. Nay đã bọc đúng `{ id, updates: {...} }`: UPDATE `expected_move_out_date` + **APPEND** `[Đăng ký chuyển đi]: ...` vào notes (bỏ trống ghi chú → **giữ nguyên** notes cũ). Lệch nhỏ còn lại: `MoveOutDialog` của trang danh sách (`useRegisterMoveOut`) vẫn có thể **ghi đè trắng** notes khi bỏ trống ghi chú (§5.1). Chuyển phòng dùng `TransferRoomDialog` (RPC `transfer_room`) như danh sách; sang nhượng ghi trong hộp Thanh lý (§1.1).
 
 **Alert**: sắp hết hạn ≤30 ngày (nếu đang hiệu lực); đã đăng ký chuyển đi (`expected_move_out_date`).
 

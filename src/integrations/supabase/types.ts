@@ -3928,6 +3928,200 @@ export type Database = {
           },
         ]
       }
+      contract_exit_early_terms: {
+        Row: {
+          broker_fee: number
+          building_id: string
+          commission_voucher_id: string | null
+          contract_id: string
+          created_at: string
+          created_by: string
+          deposit_base: number
+          early_reason: string
+          exit_case_id: string
+          expiry_notified_at: string | null
+          fee_applied_at: string | null
+          hold_until: string | null
+          linked_at: string | null
+          new_contract_id: string | null
+          organization_id: string
+          reopened_at: string | null
+          reopened_by: string | null
+          room_id: string
+          sale_name: string | null
+          support_amount: number
+          support_in_voucher_id: string | null
+          support_out_voucher_id: string | null
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          broker_fee?: number
+          building_id: string
+          commission_voucher_id?: string | null
+          contract_id: string
+          created_at?: string
+          created_by: string
+          deposit_base?: number
+          early_reason: string
+          exit_case_id: string
+          expiry_notified_at?: string | null
+          fee_applied_at?: string | null
+          hold_until?: string | null
+          linked_at?: string | null
+          new_contract_id?: string | null
+          organization_id: string
+          reopened_at?: string | null
+          reopened_by?: string | null
+          room_id: string
+          sale_name?: string | null
+          support_amount?: number
+          support_in_voucher_id?: string | null
+          support_out_voucher_id?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          broker_fee?: number
+          building_id?: string
+          commission_voucher_id?: string | null
+          contract_id?: string
+          created_at?: string
+          created_by?: string
+          deposit_base?: number
+          early_reason?: string
+          exit_case_id?: string
+          expiry_notified_at?: string | null
+          fee_applied_at?: string | null
+          hold_until?: string | null
+          linked_at?: string | null
+          new_contract_id?: string | null
+          organization_id?: string
+          reopened_at?: string | null
+          reopened_by?: string | null
+          room_id?: string
+          sale_name?: string | null
+          support_amount?: number
+          support_in_voucher_id?: string | null
+          support_out_voucher_id?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_exit_early_terms_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_commission_voucher_id_fkey"
+            columns: ["commission_voucher_id"]
+            isOneToOne: true
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_commission_voucher_id_fkey"
+            columns: ["commission_voucher_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_commission_voucher_id_fkey"
+            columns: ["commission_voucher_id"]
+            isOneToOne: true
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_exit_case_id_fkey"
+            columns: ["exit_case_id"]
+            isOneToOne: true
+            referencedRelation: "contract_exit_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_organization_id_contract_id_fkey"
+            columns: ["organization_id", "contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_organization_id_new_contract_id_fkey"
+            columns: ["organization_id", "new_contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_organization_id_room_id_fkey"
+            columns: ["organization_id", "room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_support_in_voucher_id_fkey"
+            columns: ["support_in_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_support_in_voucher_id_fkey"
+            columns: ["support_in_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_support_in_voucher_id_fkey"
+            columns: ["support_in_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_support_out_voucher_id_fkey"
+            columns: ["support_out_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_support_out_voucher_id_fkey"
+            columns: ["support_out_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_early_terms_support_out_voucher_id_fkey"
+            columns: ["support_out_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
       contract_extensions: {
         Row: {
           additional_deposit_required: number | null
@@ -22924,6 +23118,22 @@ export type Database = {
         }
         Returns: Json
       }
+      confirm_contract_return_v2: {
+        Args: {
+          p_actual_move_out_on: string
+          p_contract_id: string
+          p_early_terms?: Json
+          p_expected_contract_updated_at: string
+          p_idempotency_key: string
+          p_initial_kind: string
+          p_meter_boundary?: Json
+          p_organization_id: string
+          p_return_note?: string
+          p_settlement?: Json
+          p_settlement_mode: string
+        }
+        Returns: Json
+      }
       confirm_reconciliation: { Args: { p_id: string }; Returns: Json }
       contract_deposit_paid_derived: {
         Args: { p_contract_id: string }
@@ -23873,6 +24083,18 @@ export type Database = {
         }
         Returns: Json
       }
+      create_contract_exit_commission_v1: {
+        Args: {
+          p_account_id?: string
+          p_exit_case_id: string
+          p_expected_version: number
+          p_organization_id: string
+          p_recipient_account?: string
+          p_recipient_bank?: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       create_contract_payouts_with_support_v1: {
         Args: {
           p_contract_id: string
@@ -24602,6 +24824,17 @@ export type Database = {
           resource: string
           sensitivity: string
         }[]
+      }
+      extend_contract_exit_hold_v1: {
+        Args: {
+          p_days?: number
+          p_exit_case_id: string
+          p_expected_version: number
+          p_organization_id: string
+          p_reason?: string
+          p_request_id: string
+        }
+        Returns: Json
       }
       fa_accrual_allocations: {
         Args: {
@@ -28738,6 +28971,15 @@ export type Database = {
         Args: { p_draft_id: string; p_organization_id: string }
         Returns: Json
       }
+      read_contract_exit_early_terms_v1: {
+        Args: {
+          p_contract_id?: string
+          p_exit_case_id?: string
+          p_organization_id: string
+          p_room_id?: string
+        }
+        Returns: Json
+      }
       read_contract_meter_boundary_set_v1: {
         Args: {
           p_contract_id: string
@@ -29239,6 +29481,16 @@ export type Database = {
           p_expected_revision: string
           p_idempotency_key: string
           p_reason: string
+        }
+        Returns: Json
+      }
+      reopen_contract_exit_hold_v1: {
+        Args: {
+          p_exit_case_id: string
+          p_expected_version: number
+          p_organization_id: string
+          p_reason?: string
+          p_request_id: string
         }
         Returns: Json
       }
@@ -29884,6 +30136,18 @@ export type Database = {
           p_note?: string
           p_organization_id?: string
           p_rate_percent: number
+        }
+        Returns: Json
+      }
+      set_contract_exit_early_terms_v1: {
+        Args: {
+          p_early_reason: string
+          p_exit_case_id: string
+          p_expected_version: number
+          p_organization_id: string
+          p_reason: string
+          p_request_id: string
+          p_sale_name: string
         }
         Returns: Json
       }
@@ -30722,6 +30986,17 @@ export type Database = {
           p_name: string
           p_owner_user_id: string
           p_quick_default_building_id: string
+        }
+        Returns: Json
+      }
+      update_contract_exit_broker_fee_v1: {
+        Args: {
+          p_broker_fee: number
+          p_exit_case_id: string
+          p_expected_version: number
+          p_organization_id: string
+          p_reason: string
+          p_request_id: string
         }
         Returns: Json
       }

@@ -544,6 +544,9 @@ export const useCreateContract = () => {
       queryClient.invalidateQueries({ queryKey: ["contract-commission-followups"] });
       queryClient.invalidateQueries({ queryKey: ["contract-rent-support"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      // Hợp đồng mới đầu tiên của phòng có thể vừa tự nối với hồ sơ trả phòng trước hạn (trigger máy chủ).
+      queryClient.invalidateQueries({ queryKey: ["contract-exit-early-terms"] });
+      queryClient.invalidateQueries({ queryKey: ["sale-room-inventory"] });
       markLocalWrite([
         "contracts",
         "rooms",

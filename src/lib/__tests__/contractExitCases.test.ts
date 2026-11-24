@@ -12,6 +12,7 @@ const deferred: ConfirmContractReturnInput = {
   contractId, expectedContractUpdatedAt: '2026-09-27T00:00:00Z',
   idempotencyKey: 'return-request-0001', actualMoveOutOn: '2026-09-28',
   initialKind: 'EARLY_RETURN', settlementMode: 'DEFERRED', returnNote: 'Khách chuyển nơi làm việc.',
+  earlyTerms: { earlyReason: 'SELF_FOUND' },
 };
 const row = {
   id: caseId, organization_id: contractId, building_id: contractId, contract_id: contractId,
@@ -22,13 +23,24 @@ const row = {
 };
 
 describe('contract return request boundary', () => {
+  it('trả phòng trước hạn bắt buộc một trong ba trường hợp; nhờ sale cần tên sale; hai trường hợp đầu chỉ quyết toán sau', () => {
+    expect(() => buildConfirmContractReturnArgs({ ...deferred, earlyTerms: undefined }, contractId)).toThrow(/ba trường hợp/);
+    expect(() => buildConfirmContractReturnArgs({ ...deferred, initialKind: 'NATURAL_EXPIRY' }, contractId)).toThrow(/Chỉ trả phòng trước hạn/);
+    expect(() => buildConfirmContractReturnArgs({ ...deferred, earlyTerms: { earlyReason: 'SALE_ASSISTED', saleName: '  ' } }, contractId)).toThrow(/tên sale/);
+    expect(buildConfirmContractReturnArgs({ ...deferred, earlyTerms: { earlyReason: 'SALE_ASSISTED', saleName: ' Minh ' } }, contractId).p_early_terms)
+      .toEqual({ early_reason: 'SALE_ASSISTED', sale_name: 'Minh' });
+    for (const earlyReason of ['SALE_ASSISTED', 'SELF_FOUND'] as const) {
+      expect(() => buildConfirmContractReturnArgs({ ...deferred, earlyTerms: { earlyReason, saleName: 'Minh' }, settlementMode: 'IMMEDIATE', settlement: {} }, contractId)).toThrow(/quyết toán sau/);
+    }
+    expect(buildConfirmContractReturnArgs({ ...deferred, initialKind: 'NATURAL_EXPIRY', earlyTerms: undefined }, contractId).p_early_terms).toBeNull();
+  });
   it.each(['', '  \n\t  ', undefined])('từ chối nội dung thanh lý rỗng trước khi gọi RPC: %j', (returnNote) => {
     expect(() => buildConfirmContractReturnArgs({ ...deferred, returnNote } as ConfirmContractReturnInput, contractId)).toThrow();
   });
   it('trim ghi chú riêng cho cả quyết toán sau và bỏ cọc ngay', () => {
     expect(buildConfirmContractReturnArgs({ ...deferred, returnNote: '  Khách chuyển nhà.\nBàn giao đủ chìa.  ' }, contractId).p_return_note)
       .toBe('Khách chuyển nhà.\nBàn giao đủ chìa.');
-    expect(buildConfirmContractReturnArgs({ ...deferred, initialKind: 'FORFEIT', settlementMode: 'IMMEDIATE', settlement: {} }, contractId))
+    expect(buildConfirmContractReturnArgs({ ...deferred, initialKind: 'FORFEIT', earlyTerms: undefined, settlementMode: 'IMMEDIATE', settlement: {} }, contractId))
       .toMatchObject({ p_return_note: 'Khách chuyển nơi làm việc.', p_settlement: { extra_charges: [] } });
   });
   it('đọc lại ghi chú và tương thích hồ sơ cũ thiếu nội dung', () => {
@@ -46,7 +58,7 @@ describe('contract return request boundary', () => {
       p_organization_id:contractId,p_contract_id: contractId, p_expected_contract_updated_at: '2026-09-27T00:00:00Z',
       p_idempotency_key: 'return-request-0001', p_actual_move_out_on: '2026-09-28',
       p_initial_kind: 'EARLY_RETURN', p_settlement_mode: 'DEFERRED', p_settlement: null,p_meter_boundary:null,
-      p_return_note: 'Khách chuyển nơi làm việc.',
+      p_return_note: 'Khách chuyển nơi làm việc.', p_early_terms: { early_reason: 'SELF_FOUND' },
     });
     expect(() => buildConfirmContractReturnArgs({...deferred, settlement: {depositRefund: 0}} as unknown as ConfirmContractReturnInput,contractId)).toThrow();
   });
@@ -56,7 +68,7 @@ describe('contract return request boundary', () => {
     expect(args.p_meter_boundary).toEqual({state:'VERIFIED',reason:null,readings:[{meter_id:contractId,reading:0,measured_at:'2026-09-28T09:00:00+07:00',evidence:null}]});
   });
   it('IMMEDIATE requires its monetary branch and keeps the existing field names/defaults', () => {
-    const args = buildConfirmContractReturnArgs({...deferred, settlementMode: 'IMMEDIATE', settlement: {depositRefund: 120, shortfallMode: 'DEBT', refundItems: [{kind:'CUSTOM',description:'Rent',amount:30}]}},contractId);
+    const args = buildConfirmContractReturnArgs({...deferred, earlyTerms: { earlyReason: 'LANDLORD_AGREEMENT' }, settlementMode: 'IMMEDIATE', settlement: {depositRefund: 120, shortfallMode: 'DEBT', refundItems: [{kind:'CUSTOM',description:'Rent',amount:30}]}},contractId);
     expect(args.p_settlement).toEqual({deposit_refund:120,penalty_fee:0,excess_rent:0,outstanding_debt:0,notes:null,extra_charges:[],shortfall_mode:'DEBT',receipt_account_id:null,refund_items:[{kind:'CUSTOM',description:'Rent',amount:30}]});
     expect(() => buildConfirmContractReturnArgs({...deferred, settlementMode:'IMMEDIATE'} as ConfirmContractReturnInput,contractId)).toThrow();
   });
@@ -68,7 +80,7 @@ describe('contract return request boundary', () => {
   it('validates server results rather than returning an empty success', async () => {
     const invoke = vi.fn<ContractExitRpcInvoker>().mockResolvedValue({data:row,error:null});
     expect(await confirmContractReturn(invoke,deferred,contractId)).toMatchObject({id:caseId,state:'PENDING'});
-    expect(invoke).toHaveBeenCalledWith('confirm_contract_return_v1',buildConfirmContractReturnArgs(deferred,contractId));
+    expect(invoke).toHaveBeenCalledWith('confirm_contract_return_v2',buildConfirmContractReturnArgs(deferred,contractId));
     expect(() => parseContractExitCase({...row, initial_kind:null})).toThrow();
     invoke.mockResolvedValueOnce({data:{},error:null});
     await expect(confirmContractReturn(invoke,deferred,contractId)).rejects.toThrow();
