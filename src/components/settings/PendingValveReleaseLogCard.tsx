@@ -79,7 +79,8 @@ function DongGoKhoa({ row }: { row: PendingValveReleaseLogRow }) {
       </div>
       <dl className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs sm:gap-x-4">
         <dt className="text-muted-foreground">Kẹt từ</dt>
-        <dd>{thoiGian(row.stuckAt)}</dd>
+        {/* Kho dấu thu tiền gán giờ gửi 1970-01-01 cho dấu cũ không lưu giờ gửi. */}
+        <dd>{Date.parse(row.stuckAt) === 0 ? 'Không rõ (dấu ghi từ bản cũ)' : thoiGian(row.stuckAt)}</dd>
         <dt className="text-muted-foreground">Mã bản ghi</dt>
         <dd className="min-w-0">
           {row.recordIds.length ? (

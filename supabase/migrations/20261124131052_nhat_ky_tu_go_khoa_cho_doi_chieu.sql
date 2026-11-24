@@ -25,13 +25,15 @@
 --     gắn công ty (thao tác có thể thuộc bất kỳ công ty nào người đó làm việc), nên chỉ ghi khi người gỡ có
 --     ĐÚNG MỘT tư cách ACTIVE còn hạn (sole_membership); nhiều công ty thì từ chối no_org và trình duyệt giữ
 --     dòng lại — không đoán công ty, để không ghi dữ liệu của công ty này vào nhật ký công ty khác.
---   * Người gỡ phải từng làm ở công ty đó: tư cách ACTIVE (còn hạn hoặc hết hạn chưa quá 30 ngày), SUSPENDED,
---     hoặc REVOKED chưa quá 30 ngày; hoặc là superadmin (công ty phải tồn tại). Khoảng 30 ngày để lần gỡ
---     ngay trước khi bị tạm dừng / thu hồi vẫn lên được nhật ký nếu lần đẩy đầu bị rớt mạng.
---   * Giờ kẹt / giờ gỡ phải trong năm 2020–2099 (ngoài khoảng đó là dữ liệu hỏng: invalid).
+--   * Người gỡ phải đang làm ở công ty đó (tư cách ACTIVE còn hạn) hoặc là superadmin (công ty phải tồn tại);
+--     hoặc vừa thôi làm: ACTIVE/SUSPENDED hết hạn chưa quá 30 ngày, REVOKED chưa quá 30 ngày — để lần gỡ ngay trước
+--     khi bị tạm dừng / thu hồi vẫn lên được nhật ký nếu lần đẩy đầu bị rớt mạng.
+--   * Giờ kẹt / giờ gỡ phải trong năm 1970–2099 (ngoài khoảng đó là dữ liệu hỏng: invalid). Cận dưới 1970 vì kho
+--     dấu thu tiền gán giờ gửi 1970-01-01 cho dấu cũ thiếu giờ.
 --   * Từng dòng một kết quả: inserted / duplicate / rejected(reason). Một dòng hỏng không làm hỏng cả lô.
---   * Tối đa 50 dòng mỗi lần gọi; tối đa 500 dòng MỚI mỗi người trong 24 giờ — dòng vượt hạn mức trả
---     rejected(rate_limited), trình duyệt giữ lại; dòng đã có vẫn trả duplicate.
+--   * Tối đa 50 dòng mỗi lần gọi; tối đa 500 dòng MỚI mỗi người trong 24 giờ, và chỉ 20 nếu người đó không còn
+--     làm ở công ty của dòng — dòng vượt hạn mức trả rejected(rate_limited), trình duyệt giữ lại; dòng đã có vẫn
+--     trả duplicate.
 --
 -- HÀM ĐỌC public.pending_valve_release_log_list_v1(p_organization_id, p_limit, p_before_received_at, p_before_id)
 --   * Chỉ superadmin và chủ công ty theo nghĩa CHẶT (tư cách ACTIVE loại OWNER còn hạn + binding còn hiệu
@@ -78,8 +80,8 @@ CREATE TABLE IF NOT EXISTS app_private.pending_valve_release_log (
   attempt_id text NOT NULL CHECK (char_length(attempt_id) BETWEEN 1 AND 200),
   record_ids text[] NOT NULL DEFAULT '{}'::text[] CHECK (cardinality(record_ids) <= 100),
   record_count integer NOT NULL DEFAULT 0 CHECK (record_count BETWEEN cardinality(record_ids) AND 1000000),
-  stuck_at timestamptz NOT NULL CHECK (stuck_at >= '2020-01-01T00:00:00Z' AND stuck_at < '2100-01-01T00:00:00Z'),
-  released_at timestamptz NOT NULL CHECK (released_at >= '2020-01-01T00:00:00Z' AND released_at < '2100-01-01T00:00:00Z'),
+  stuck_at timestamptz NOT NULL CHECK (stuck_at >= '1970-01-01T00:00:00Z' AND stuck_at < '2100-01-01T00:00:00Z'),
+  released_at timestamptz NOT NULL CHECK (released_at >= '1970-01-01T00:00:00Z' AND released_at < '2100-01-01T00:00:00Z'),
   -- clock_timestamp chứ không now(): các dòng của cùng một lô giữ đúng thứ tự trong hàng đợi.
   received_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   device text CHECK (device IS NULL OR char_length(device) BETWEEN 1 AND 300),
@@ -133,6 +135,8 @@ DECLARE
   v_is_super boolean;
   v_active_orgs uuid[];
   v_quota integer;
+  v_inactive_quota integer;
+  v_member_active boolean;
   v_item jsonb;
   v_id_text text;
   v_id uuid;
@@ -167,8 +171,10 @@ BEGIN
 
   -- Tuần tự hoá theo người gỡ để hạn mức không bị lọt bởi các lần gọi song song.
   PERFORM pg_advisory_xact_lock(hashtextextended('pending_valve_release_log:' || v_actor::text, 0));
-  v_quota := 500 - (SELECT count(*) FROM app_private.pending_valve_release_log l
-                     WHERE l.actor_user_id = v_actor AND l.received_at > now() - interval '24 hours')::integer;
+  v_quota := (SELECT count(*) FROM app_private.pending_valve_release_log l
+               WHERE l.actor_user_id = v_actor AND l.received_at > now() - interval '24 hours')::integer;
+  v_inactive_quota := 20 - v_quota;
+  v_quota := 500 - v_quota;
 
   v_is_super := EXISTS (SELECT 1 FROM public.super_admins s WHERE s.user_id = v_actor);
   SELECT coalesce(array_agg(DISTINCT m.organization_id ORDER BY m.organization_id), '{}'::uuid[])
@@ -253,12 +259,14 @@ BEGIN
     END IF;
 
     IF v_reason IS NULL THEN
-      -- Ngày giờ đúng mẫu mà sai giá trị (tháng 13, giờ 25…) hay ngoài 2020–2099 là dòng hỏng, không phải lỗi cả lô.
+      -- Ngày giờ đúng mẫu mà sai giá trị (tháng 13, giờ 25…) hay ngoài 1970–2099 là dòng hỏng, không phải lỗi cả lô.
+      -- Cận dưới là 1970 chứ không phải năm triển khai: kho dấu thu tiền gán giờ gửi = 1970-01-01 cho dấu cũ thiếu
+      -- giờ (src/lib/pendingCollection.ts), và máy hết pin có thể về năm 1970/2000 — những lần gỡ đó vẫn phải lên.
       BEGIN
         v_stuck := (v_item ->> 'stuckAt')::timestamptz;
         v_released := (v_item ->> 'releasedAt')::timestamptz;
-        IF v_stuck < '2020-01-01T00:00:00Z' OR v_stuck >= '2100-01-01T00:00:00Z'
-          OR v_released < '2020-01-01T00:00:00Z' OR v_released >= '2100-01-01T00:00:00Z' THEN
+        IF v_stuck < '1970-01-01T00:00:00Z' OR v_stuck >= '2100-01-01T00:00:00Z'
+          OR v_released < '1970-01-01T00:00:00Z' OR v_released >= '2100-01-01T00:00:00Z' THEN
           v_reason := 'invalid';
         END IF;
       EXCEPTION WHEN data_exception THEN
@@ -278,22 +286,24 @@ BEGIN
       END IF;
     END IF;
 
-    IF v_reason IS NULL
-      AND NOT EXISTS (
+    IF v_reason IS NULL THEN
+      -- Đang làm ở công ty đó (hoặc superadmin): hạn mức thường. Vừa thôi làm (tư cách hết hạn / tạm dừng / thu hồi
+      -- chưa quá 30 ngày): vẫn nhận, để lần gỡ ngay trước khi thôi việc không mất khi lần đẩy đầu bị rớt, nhưng chỉ
+      -- trong hạn mức nhỏ — người đã bị tạm dừng hay thu hồi không đổ được nhiều dòng vào nhật ký công ty.
+      v_member_active := v_org = ANY (v_active_orgs)
+        OR (v_is_super AND EXISTS (SELECT 1 FROM public.organizations o WHERE o.id = v_org));
+      IF NOT v_member_active AND NOT EXISTS (
         SELECT 1 FROM public.organization_memberships m
          WHERE m.organization_id = v_org
            AND m.user_id = v_actor
            AND m.valid_from <= now()
-           AND (   (m.status = 'ACTIVE' AND (m.valid_to IS NULL OR m.valid_to > now() - interval '30 days'))
-                OR m.status = 'SUSPENDED'
+           AND (   (m.status IN ('ACTIVE', 'SUSPENDED') AND (m.valid_to IS NULL OR m.valid_to > now() - interval '30 days'))
                 OR (m.status = 'REVOKED' AND m.revoked_at > now() - interval '30 days'))
-      )
-      AND NOT (v_is_super AND EXISTS (SELECT 1 FROM public.organizations o WHERE o.id = v_org)) THEN
-      v_reason := 'not_member';
-    END IF;
-
-    IF v_reason IS NULL AND v_quota <= 0 THEN
-      v_reason := 'rate_limited';
+      ) THEN
+        v_reason := 'not_member';
+      ELSIF v_quota <= 0 OR (NOT v_member_active AND v_inactive_quota <= 0) THEN
+        v_reason := 'rate_limited';
+      END IF;
     END IF;
 
     IF v_reason IS NOT NULL THEN
@@ -314,6 +324,7 @@ BEGIN
 
     IF v_inserted IS NOT NULL THEN
       v_quota := v_quota - 1;
+      v_inactive_quota := v_inactive_quota - 1;
       v_results := v_results || jsonb_build_array(jsonb_build_object('id', v_id_text, 'status', 'inserted'));
     ELSE
       -- Không tới được nhánh này khi các lần gọi của cùng người đã tuần tự bởi khoá ở trên; giữ để không
@@ -327,7 +338,7 @@ END
 $fn$;
 
 COMMENT ON FUNCTION public.pending_valve_release_log_append_v1(jsonb, text) IS
-  'Đẩy hàng đợi nhật ký tự gỡ khoá của trình duyệt lên máy chủ (tối đa 50 dòng/lần). Người gỡ = auth.uid(); dòng của người khác bị từ chối not_self. Chống trùng theo (người gỡ, id dòng) trước mọi phép kiểm khác: gửi lại cùng dòng trả duplicate, khác nội dung trả conflict, không tạo dòng thứ hai. Công ty: uuid của dấu; dấu actor-scope chỉ ghi khi người gỡ có đúng một tư cách ACTIVE (không thì no_org). Phải từng làm ở công ty đó (ACTIVE, SUSPENDED, hoặc hết hạn/REVOKED chưa quá 30 ngày) hoặc là superadmin (not_member). Giờ ngoài 2020–2099 là invalid. Quá 500 dòng mới/người/24 giờ trả rate_limited. Trả {results:[{id,status:inserted|duplicate|rejected,reason?}]}; lỗi từng dòng không làm hỏng cả lô.';
+  'Đẩy hàng đợi nhật ký tự gỡ khoá của trình duyệt lên máy chủ (tối đa 50 dòng/lần). Người gỡ = auth.uid(); dòng của người khác bị từ chối not_self. Chống trùng theo (người gỡ, id dòng) trước mọi phép kiểm khác: gửi lại cùng dòng trả duplicate, khác nội dung trả conflict, không tạo dòng thứ hai. Công ty: uuid của dấu; dấu actor-scope chỉ ghi khi người gỡ có đúng một tư cách ACTIVE (không thì no_org). Phải đang làm ở công ty đó (ACTIVE còn hạn) hoặc là superadmin, hoặc vừa thôi làm (ACTIVE/SUSPENDED hết hạn hay REVOKED chưa quá 30 ngày) — không thì not_member. Giờ ngoài 1970–2099 là invalid. Quá 500 dòng mới/người/24 giờ (20 nếu đã thôi làm ở công ty của dòng) trả rate_limited. Trả {results:[{id,status:inserted|duplicate|rejected,reason?}]}; lỗi từng dòng không làm hỏng cả lô.';
 
 -- ---------- 4. Hàm đọc ----------
 CREATE OR REPLACE FUNCTION public.pending_valve_release_log_list_v1(

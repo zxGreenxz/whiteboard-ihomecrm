@@ -10,8 +10,9 @@
 //     Máy chủ chống trùng theo (người gỡ, mã dòng), nên gửi lại sau khi mất phản hồi không tạo dòng thứ hai.
 //   * Từ chối có thể hết sau (no_org, not_self, rate_limited, hay lý do lạ), lỗi mạng, lỗi máy chủ, quá hạn chờ,
 //     phản hồi lạ dạng: dòng ở lại, đẩy lại lần sau. Một dòng bị từ chối không chặn các dòng khác.
-//   * Cả lần gọi bị máy chủ từ chối vì DỮ LIỆU (mã 22xxx, PGRST1xx — ví dụ một chuỗi không mã hoá được) thì gửi lại
-//     từng dòng một, để một dòng hỏng không chặn cả hàng đợi mãi; dòng gửi riêng mà vẫn bị từ chối như vậy thì bỏ.
+//   * Cả lần gọi bị máy chủ từ chối vì NỘI DUNG (22P02, 22P05, PGRST102 — ví dụ một chuỗi không mã hoá được) thì gửi
+//     lại từng dòng một, để một dòng hỏng không chặn cả hàng đợi mãi; dòng gửi riêng mà vẫn bị từ chối như vậy thì
+//     bỏ. Mọi dòng đều bị từ chối như nhau thì đó là lỗi chung: giữ cả lô.
 //   * Không bao giờ ném ra ngoài: đẩy hỏng không được chặn việc gỡ dấu hay thao tác của người dùng.
 //   * Chỉ đẩy hàng đợi của đúng người đang đăng nhập.
 import { z } from 'zod';
@@ -97,11 +98,16 @@ export function toPendingValveLogPayload(entry: PendingValveLogEntry): PendingVa
   };
 }
 
-/** Lỗi do chính DỮ LIỆU gửi lên (không phải mạng, phiên, máy chủ quá tải): gửi lại y nguyên cũng hỏng y nguyên. */
+/**
+ * Lỗi do NỘI DUNG một dòng gửi lên mà máy chủ không đọc được (chuỗi không mã hoá được thành JSON/jsonb): gửi lại y
+ * nguyên cũng hỏng y nguyên. Cố ý hẹp: các mã PGRST1xx khác và phần lớn 22xxx là lỗi chung của cả lời gọi (cấu hình,
+ * hình dạng request, tham số dùng chung) — coi chúng là lỗi dữ liệu sẽ bỏ cả hàng đợi đúng lúc đang có sự cố.
+ */
+const DATA_REJECTION_CODES = new Set(['22P02', '22P05', 'PGRST102']);
 function isDataRejection(error: unknown): boolean {
   const code = error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
     ? (error as { code: string }).code : '';
-  return /^22[0-9A-Z]{3}$/.test(code) || /^PGRST1\d\d$/.test(code);
+  return DATA_REJECTION_CODES.has(code);
 }
 
 class PendingValveLogTimeout extends Error {
@@ -134,23 +140,32 @@ export function createPendingValveLogSync(deps: PendingValveLogSyncDeps) {
     return { done, malformed: null };
   }
 
-  /** Gửi một lô; lô bị từ chối vì dữ liệu thì gửi lại từng dòng. Ném lỗi tạm thời (mạng, phiên, máy chủ). */
+  /**
+   * Gửi một lô. Lô bị từ chối vì nội dung (xem `isDataRejection`) thì gửi lại từng dòng: dòng máy chủ nhận được thì
+   * xử như thường, dòng vẫn bị từ chối vì nội dung thì bỏ — NHƯNG nếu mọi dòng đều bị từ chối như vậy thì đó là lỗi
+   * chung, giữ cả lô (một dòng hỏng đứng một mình cũng nằm lại, chờ có dòng khác đi cùng). Ném lỗi tạm thời.
+   */
   async function sendBatch(batch: PendingValveLogPayload[], device: string | null): Promise<{ done: Set<string>; malformed: unknown }> {
     try {
       return settledIds(await withTimeout(deps.append(batch, device), timeoutMs), batch);
     } catch (error) {
-      if (!isDataRejection(error)) throw error;
-      if (batch.length === 1) {
-        // Một dòng riêng mà máy chủ vẫn từ chối vì dữ liệu: gửi lại cũng không bao giờ ghi được.
-        return { done: new Set([batch[0]!.id]), malformed: error };
-      }
+      if (!isDataRejection(error) || batch.length === 1) throw error;
       const done = new Set<string>();
+      const rejected: string[] = [];
       let malformed: unknown = error;
       for (const row of batch) {
-        const one = await sendBatch([row], device);
-        one.done.forEach((id) => done.add(id));
-        if (one.malformed) malformed = one.malformed;
+        try {
+          const one = settledIds(await withTimeout(deps.append([row], device), timeoutMs), [row]);
+          one.done.forEach((id) => done.add(id));
+          if (one.malformed) malformed = one.malformed;
+        } catch (rowError) {
+          if (!isDataRejection(rowError)) throw rowError;
+          rejected.push(row.id);
+          malformed = rowError;
+        }
       }
+      if (rejected.length === batch.length) throw error;
+      rejected.forEach((id) => done.add(id));
       return { done, malformed };
     }
   }

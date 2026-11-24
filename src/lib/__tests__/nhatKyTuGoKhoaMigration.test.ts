@@ -19,13 +19,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  *   SIEU       superadmin, chỉ là thành viên A
  *   NGHI_LAU   tư cách A REVOKED 40 ngày trước          NGHI_MOI   REVOKED 5 ngày trước
  *   HET_LAU    tư cách A ACTIVE hết hạn 40 ngày trước   HET_MOI    hết hạn 10 ngày trước
- *   TAM_DUNG   tư cách A SUSPENDED
+ *   TAM_DUNG   tư cách A SUSPENDED                      TAM_DUNG_LAU SUSPENDED, hết hạn 40 ngày trước
  */
 const FILE = "supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql";
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const [ORG_A, ORG_B, ORG_KHONG_CO] = [1, 2, 3].map(id);
 const [CHU, JOEY, CHU_TEN, CHU_HET, KHAC, HAI_CTY, SIEU] = [11, 12, 13, 14, 15, 16, 17].map(id);
-const [NGHI_LAU, NGHI_MOI, HET_LAU, HET_MOI, TAM_DUNG] = [18, 19, 20, 21, 22].map(id);
+const [NGHI_LAU, NGHI_MOI, HET_LAU, HET_MOI, TAM_DUNG, TAM_DUNG_LAU] = [18, 19, 20, 21, 22, 23].map(id);
 const [VAI_CHU_A, VAI_TEN_A, VAI_QL_A] = [31, 32, 33].map(id);
 const db = new PGlite();
 
@@ -136,7 +136,8 @@ beforeAll(async () => {
       ('${ORG_A}', '${NGHI_MOI}', 'STAFF', 'REVOKED', NULL, now() - interval '5 days'),
       ('${ORG_A}', '${HET_LAU}', 'STAFF', 'ACTIVE', now() - interval '40 days', NULL),
       ('${ORG_A}', '${HET_MOI}', 'STAFF', 'ACTIVE', now() - interval '10 days', NULL),
-      ('${ORG_A}', '${TAM_DUNG}', 'STAFF', 'SUSPENDED', NULL, NULL);
+      ('${ORG_A}', '${TAM_DUNG}', 'STAFF', 'SUSPENDED', NULL, NULL),
+      ('${ORG_A}', '${TAM_DUNG_LAU}', 'STAFF', 'SUSPENDED', now() - interval '40 days', NULL);
     INSERT INTO public.role_bindings (organization_id, membership_id, role_id, valid_from, valid_to)
       SELECT m.organization_id, m.id, v.role_id, NULL, v.valid_to
         FROM public.organization_memberships m
@@ -233,10 +234,26 @@ describe("hàm ghi", () => {
       for (const nguoi of [NGHI_MOI, HET_MOI, TAM_DUNG]) {
         expect(await ghi(nguoi, [dong(nguoi)]), nguoi).toMatchObject([{ status: "inserted" }]);
       }
-      for (const nguoi of [NGHI_LAU, HET_LAU]) {
+      for (const nguoi of [NGHI_LAU, HET_LAU, TAM_DUNG_LAU]) {
         expect(await ghi(nguoi, [dong(nguoi)]), nguoi).toMatchObject([{ status: "rejected", reason: "not_member" }]);
       }
       expect(await bang()).toHaveLength(3);
+    });
+  });
+
+  it("người đã thôi làm chỉ có hạn mức nhỏ (20 dòng / 24 giờ); người đang làm vẫn hạn mức thường", async () => {
+    await trongGiaoDich(async () => {
+      await gieoDaNhan(NGHI_MOI, 19);
+      expect((await ghi(NGHI_MOI, [dong(NGHI_MOI), dong(NGHI_MOI)])).map(r => r.reason ?? r.status)).toEqual(["inserted", "rate_limited"]);
+      await gieoDaNhan(JOEY, 30);
+      expect(await ghi(JOEY, [dong(JOEY)])).toMatchObject([{ status: "inserted" }]);
+    });
+  });
+
+  it("giờ kẹt 1970-01-01 (kho thu tiền gán cho dấu cũ thiếu giờ gửi) vẫn ghi được", async () => {
+    await trongGiaoDich(async () => {
+      const row = dong(JOEY, { namespace: "pending-collection", stuckAt: "1970-01-01T00:00:00.000Z" });
+      expect(await ghi(JOEY, [row])).toEqual([{ id: row.id, status: "inserted" }]);
     });
   });
 
@@ -281,7 +298,7 @@ describe("hàm ghi", () => {
         dong(JOEY, { releasedAt: "hôm qua" }),
         dong(JOEY, { releasedAt: "9999-12-31T00:00:00Z" }),
         dong(JOEY, { stuckAt: "0001-01-01T00:00:00+14:00" }),
-        dong(JOEY, { stuckAt: "2019-12-31T23:59:59Z" }),
+        dong(JOEY, { stuckAt: "1969-12-31T23:59:59Z" }),
         dong(JOEY, { businessKey: "x".repeat(1001) }),
         dong(JOEY, { recordIds: [1, 2] }),
         dong(JOEY, { recordIds: Array.from({ length: 101 }, (_, i) => `m${i}`) }),

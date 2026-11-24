@@ -988,7 +988,7 @@
       ]
     },
     "supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql": {
-      "sha256": "4e301e5ba2633042cff3651a9228eca1e462ec67f8f17168bf4a7193d7765d03",
+      "sha256": "46fc29ed8abf885a48058db7208f49a705f1d8959b55bb0a8a36895575f3ebc5",
       "missingObjects": [
         "table:app_private.pending_valve_release_log",
         "function:app_private.pending_valve_release_log_append_only_v1",

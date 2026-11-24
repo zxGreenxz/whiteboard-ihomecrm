@@ -216,10 +216,26 @@ describe('đẩy hàng đợi nhật ký tự gỡ lên máy chủ', () => {
     expect(h.append.mock.calls.map(([entries]) => entries.length)).toEqual([3, 1, 1, 1]);
   });
 
-  it('lỗi mạng / phiên / máy chủ không bị coi là lỗi dữ liệu: không gửi từng dòng, giữ cả lô', async () => {
+  it('mọi dòng gửi riêng đều bị từ chối như nhau là lỗi chung: giữ cả lô; dòng hỏng đứng một mình cũng giữ', async () => {
     const h = harness();
     h.release(3);
-    for (const error of [new TypeError('Failed to fetch'), { code: '42501', message: 'permission denied' }, { code: '57014', message: 'timeout' }, { code: 'PGRST301', message: 'JWT expired' }]) {
+    h.append.mockRejectedValue({ code: '22P02', message: 'invalid input syntax for type json' });
+    const outcome = await h.sync.flush('u1');
+    expect(outcome).toMatchObject({ acknowledged: 0, kept: 3 });
+    expect(h.append.mock.calls.map(([entries]) => entries.length)).toEqual([3, 1, 1, 1]);
+    expect(h.valve.readLog('u1')).toHaveLength(3);
+    const lone = harness();
+    lone.release(1);
+    lone.append.mockRejectedValue({ code: '22P05', message: 'unsupported Unicode escape sequence' });
+    expect(await lone.sync.flush('u1')).toMatchObject({ acknowledged: 0, kept: 1 });
+    expect(lone.append).toHaveBeenCalledTimes(1);
+  });
+
+  it('lỗi mạng / phiên / máy chủ / cấu hình không bị coi là lỗi dữ liệu: không gửi từng dòng, giữ cả lô', async () => {
+    const h = harness();
+    h.release(3);
+    for (const error of [new TypeError('Failed to fetch'), { code: '42501', message: 'permission denied' }, { code: '57014', message: 'timeout' }, { code: 'PGRST301', message: 'JWT expired' },
+      { code: 'PGRST106', message: 'schema must be one of' }, { code: 'PGRST107', message: 'content type' }, { code: '22023', message: 'Danh sách nhật ký không hợp lệ.' }]) {
       const before = h.append.mock.calls.length;
       h.append.mockRejectedValueOnce(error);
       expect(await h.sync.flush('u1')).toMatchObject({ acknowledged: 0, kept: 3 });

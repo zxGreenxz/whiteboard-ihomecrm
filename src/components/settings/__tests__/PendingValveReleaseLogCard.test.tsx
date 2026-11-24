@@ -73,11 +73,12 @@ describe('mục Nhật ký tự gỡ khoá ở trang Tổ chức', () => {
     expect(screen.queryByRole('button', { name: 'Xem thêm' })).toBeNull();
   });
 
-  it('giờ không đọc được thì hiện nguyên văn, không làm hỏng mục', async () => {
-    state.rpc.mockResolvedValue(page([row(1, { stuckAt: '10000-01-01T00:00:00+00:00' })]));
+  it('giờ không đọc được thì hiện nguyên văn, không làm hỏng mục; giờ kẹt 1970 của dấu cũ hiện «Không rõ»', async () => {
+    state.rpc.mockResolvedValue(page([row(1, { stuckAt: '10000-01-01T00:00:00+00:00' }), row(2, { stuckAt: '1970-01-01T00:00:00+00:00' })]));
     renderCard();
     expect(await screen.findByText('10000-01-01T00:00:00+00:00')).toBeTruthy();
-    expect(screen.getByText('thu tiền hoá đơn')).toBeTruthy();
+    expect(screen.getAllByText('thu tiền hoá đơn')).toHaveLength(2);
+    expect(screen.getByText('Không rõ (dấu ghi từ bản cũ)')).toBeTruthy();
   });
 
   it('«Xem thêm» nạp trang sau theo con trỏ (giờ lên máy chủ, id) của dòng cuối', async () => {
