@@ -24,30 +24,34 @@ function load() {
 }
 const advance = async (time: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(time); }); };
 
+// Đợt 4 «Tải nhẹ» (25/11/2026): link công khai đọc lại 60 giây một lần thay vì 5 giây.
 describe('live public availability refresh', () => {
-  it('polls at five seconds, pauses while hidden, then refreshes on focus/reconnect', async () => {
+  it('polls at sixty seconds, pauses while hidden, then refreshes on focus/reconnect', async () => {
     rpc.mockResolvedValue(empty);load();await advance(1);
     expect(rpc).toHaveBeenCalledTimes(1);
-    await advance(5000);expect(rpc).toHaveBeenCalledTimes(2);
+    await advance(5_000);expect(rpc).toHaveBeenCalledTimes(1);
+    await advance(54_000);expect(rpc).toHaveBeenCalledTimes(1);
+    await advance(1_000);expect(rpc).toHaveBeenCalledTimes(2);
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
-    focusManager.setFocused(false);await advance(20000);expect(rpc).toHaveBeenCalledTimes(2);
+    focusManager.setFocused(false);await advance(300_000);expect(rpc).toHaveBeenCalledTimes(2);
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     await act(async () => { focusManager.setFocused(true);await vi.advanceTimersByTimeAsync(1); });
     expect(rpc).toHaveBeenCalledTimes(3);
     await act(async () => { onlineManager.setOnline(false);onlineManager.setOnline(true);await vi.advanceTimersByTimeAsync(1); });
     expect(rpc).toHaveBeenCalledTimes(4);
   });
-  it('backs off repeated errors and resumes five-second refresh after success', async () => {
+  it('backs off repeated errors and resumes sixty-second refresh after success', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: new Error('Offline') })
       .mockResolvedValueOnce({ data: null, error: new Error('Offline again') }).mockResolvedValue(empty);
     load();await advance(1);expect(rpc).toHaveBeenCalledTimes(1);
-    await advance(9999);expect(rpc).toHaveBeenCalledTimes(2);
-    await advance(19999);expect(rpc).toHaveBeenCalledTimes(2);
+    await advance(119_999);expect(rpc).toHaveBeenCalledTimes(2);
+    await advance(239_999);expect(rpc).toHaveBeenCalledTimes(2);
     await advance(1);expect(rpc).toHaveBeenCalledTimes(3);
-    await advance(5000);expect(rpc).toHaveBeenCalledTimes(4);
+    await advance(59_999);expect(rpc).toHaveBeenCalledTimes(3);
+    await advance(1);expect(rpc).toHaveBeenCalledTimes(4);
   });
   it('does not repeatedly poll a revoked token', async () => {
     rpc.mockResolvedValue({ data: null, error: null });load();await advance(1);
-    await advance(60000);expect(rpc).toHaveBeenCalledTimes(1);
+    await advance(600_000);expect(rpc).toHaveBeenCalledTimes(1);
   });
 });

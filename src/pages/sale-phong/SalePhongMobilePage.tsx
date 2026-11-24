@@ -50,20 +50,22 @@ const TAB_DEFS: TabDef[] = [
  * "Phòng trống" — màn app full-screen mobile (web-app), shell .cm-*. Redesign theo
  * handoff Claude Design "Quản lý phòng trống".
  *  - Cập nhật (mặc định): toàn bộ phòng trong phạm vi được giao, kèm quyền từng thao tác.
- *  - Phòng trống: nhúng PhongTrongPage với data in-app (useMyAvailableRooms).
+ *  - Phòng trống: nhúng PhongTrongPage với data in-app (useMyAvailableRooms). Chỉ đọc khi đang
+ *    ở chế độ này (đợt 4 «Tải nhẹ»): ở Cập nhật đã có vòng đọc của bảng nội bộ, không chạy thêm
+ *    vòng thứ hai chạy ngầm.
  *  - Quản lý: 6 hàng tab quản trị (gate quyền). Chạm 1 hàng → mở màn tab full-screen,
  *    mỗi tab là component mobile-native riêng (bottom-sheet thay dialog desktop).
  */
 export default function SalePhongMobilePage() {
   const navigate = useNavigate();
   const { data: perms } = useMyPermissions();
-  const { data: buildings, isLoading, isError, refetch, readFresh } = useMyAvailableRooms();
+  const [mode, setMode] = useState<Mode>('update');
+  const { data: buildings, isLoading, isError, refetch, readFresh } = useMyAvailableRooms({ enabled: mode === 'browse' });
   const tokenQuery=usePublicRoomTokens();
   const tokens=tokenQuery.data;
   const passQuery = usePassListings();
   const { data: passListings } = passQuery;
 
-  const [mode, setMode] = useState<Mode>('update');
   const [openTab, setOpenTab] = useState<TabKey | null>(null);
   const [headerAction, setHeaderAction] = useState<HeaderAction | null>(null);
   const [busy, setBusy] = useState(false);

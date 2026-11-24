@@ -35,7 +35,7 @@ export function useSaleRoomInventory() {
     refetchOnWindowFocus: 'always',
     refetchOnReconnect: 'always',
     refetchIntervalInBackground: false,
-    refetchInterval: query => roomSalePollingInterval(query.state.error ? query.state.errorUpdateCount : 0),
+    refetchInterval: query => roomSalePollingInterval('internal', query.state.error ? query.state.errorUpdateCount : 0),
   });
   const [, setBoundaryTick] = useState(0);
   const clock = query.data ? saleInventoryClock(query.data) : null;
