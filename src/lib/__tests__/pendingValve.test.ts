@@ -215,3 +215,17 @@ describe('hàng đợi nhật ký chờ đẩy lên máy chủ',()=>{
   expect(h.valve.readLog('u1')).toEqual([second]);
  });
 });
+
+describe('tín hiệu nạp hộp cảnh báo',()=>{
+ it('mỗi lời báo gọi onReport một lần; namespace silent thì không',()=>{
+  const map=new Map<string,string>();const storage={getItem:(k:string)=>map.get(k)??null,setItem:(k:string,v:string)=>{map.set(k,v);},removeItem:(k:string)=>{map.delete(k);}};
+  const store=createFinancialPendingStore({storage,now:()=>new Date(T0)});const onReport=vi.fn();
+  const valve=createPendingValve({storage,now:()=>new Date(T0),onReport});
+  store.markPending(scope,{attemptId:'a1'});
+  valve.report({pending:store.read(scope)!,store});valve.report({pending:store.read(scope)!,store});
+  expect(onReport).toHaveBeenCalledTimes(2);
+  const publicScope={namespace:'lucky-public-draw',userId:'public-viewer',organizationId:'public-event',businessKey:'ev1'};
+  store.markPending(publicScope,{attemptId:'p1'});valve.report({pending:store.read(publicScope)!,store});
+  expect(onReport).toHaveBeenCalledTimes(2);
+ });
+});

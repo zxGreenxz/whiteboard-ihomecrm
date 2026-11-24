@@ -13,6 +13,7 @@ import {
   type FinancialPendingRecord, type FinancialPendingScope, type FinancialPendingStore,
 } from './financialPending';
 import { pendingStrategyOf } from './pendingStrategies';
+import { raisePendingValveSignal } from './pendingValveSignal';
 
 /**
  * Kho mà van đọc lại và gỡ dấu. Kho dấu riêng (thu tiền, sửa hợp đồng…) dùng được hộp cảnh báo chung bằng
@@ -88,7 +89,7 @@ function isLogEntry(value: unknown): value is PendingValveLogEntry {
     && Array.isArray(row.recordIds) && row.recordIds.every(id => typeof id === 'string');
 }
 
-export function createPendingValve(options: { storage?: StoragePort; now?: () => Date } = {}) {
+export function createPendingValve(options: { storage?: StoragePort; now?: () => Date; onReport?: () => void } = {}) {
   const storage = () => options.storage ?? globalThis.localStorage;
   const now = () => options.now?.() ?? new Date();
   let queue: readonly PendingValveNotice[] = [];
@@ -124,6 +125,7 @@ export function createPendingValve(options: { storage?: StoragePort; now?: () =>
       };
       const at = queue.findIndex(item => sameScope(item.pending, input.pending));
       publish(at < 0 ? [...queue, notice] : queue.map((item, index) => index === at ? notice : item));
+      options.onReport?.();
     },
 
     /** Đóng hộp cảnh báo mà không gỡ: dấu giữ nguyên, lần bấm sau lại được báo. */
@@ -173,4 +175,5 @@ export function createPendingValve(options: { storage?: StoragePort; now?: () =>
   };
 }
 export type PendingValve = ReturnType<typeof createPendingValve>;
-export const pendingValve = createPendingValve();
+/** Van dùng chung của ứng dụng: mỗi lời báo bật tín hiệu để gốc ứng dụng nạp hộp cảnh báo. */
+export const pendingValve = createPendingValve({ onReport: raisePendingValveSignal });
