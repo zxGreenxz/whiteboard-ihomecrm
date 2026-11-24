@@ -75,9 +75,10 @@ import { computeTerminationSettlement } from "@/lib/terminationSettlement";
 import { todayISO } from '@/lib/collect';
 import { useContractExitEarlyTerms } from '@/hooks/contracts/useContractExitEarlyTerms';
 import {
-  brokerFeeLine, isTransferReason, refundFromHandoverDate, withBrokerFeeLine,
+  brokerFeeLine, contractNumberLabel, isTransferReason, refundFromHandoverDate, withBrokerFeeLine,
   type ContractExitEarlyTerms, type EarlyReason,
 } from '@/lib/contractExitEarlyTerms';
+import { exitSupportSettlementNote } from '@/lib/contractExitSupport';
 import { ExitEarlyTermsPanel } from './ExitEarlyTermsPanel';
 import { ExitCommissionForm } from './ExitCommissionForm';
 import { BrokerFeeEditDialog } from './BrokerFeeEditDialog';
@@ -850,6 +851,10 @@ function StepMoveOut({
   const transferCase = isTransferReason(earlyTerms?.early_reason);
   const brokerFee = earlyTerms ? brokerFeeLine(earlyTerms) : null;
   const [feeEditing, setFeeEditing] = useState(false);
+  // Khách cũ hỗ trợ khách nhận (đợt 3): số đó đã chuyển sang cọc hợp đồng mới bằng cặp phiếu nội bộ, nên cọc đã thu ở
+  // đây là phần còn lại; ghi một dòng vào ghi chú quyết toán để hoá đơn thanh lý / biên bản nói rõ.
+  const supportAmount = earlyTerms?.support_amount ?? 0;
+  const supportNote = earlyTerms ? exitSupportSettlementNote(earlyTerms) : null;
 
   const form = useForm<TerminateMoveOutFormData>({
     resolver: zodResolver(terminateMoveOutFormSchema),
@@ -961,7 +966,8 @@ function StepMoveOut({
         depositRefund: pendingData.deposit_refund,
         excessRent: pendingData.excess_rent,
         outstandingDebt,
-        notes: pendingData.notes,
+        // Không có số hỗ trợ thì gửi ghi chú đúng như trước (khoá lặp so cả ghi chú).
+        notes: supportNote ? [pendingData.notes?.trim(), supportNote].filter(Boolean).join("\n") : pendingData.notes,
         extraCharges,
         refundItems,
         shortfallMode,
@@ -1139,6 +1145,10 @@ function StepMoveOut({
                     Cọc theo HĐ: {formatVND(totalDeposit)}đ · Đã thu:{" "}
                     {formatVND(depositPaid)}đ
                   </p>
+                  {supportAmount > 0 && earlyTerms && <p className="text-[11px] text-sky-800 dark:text-sky-200" data-testid="exit-support-line">
+                    Đã cấn sang {contractNumberLabel(earlyTerms.new_contract_number)}: {formatVND(supportAmount)}đ (khách cũ hỗ trợ khách nhận
+                    phòng{earlyTerms.support_out_code ? `, phiếu ${earlyTerms.support_out_code}` : ''}). Cọc đã thu ở trên là phần còn lại sau khi cấn.
+                  </p>}
                   {depositPaid > totalDeposit && <p className="text-xs text-muted-foreground">
                     Sổ cọc ghi nhận cao hơn mức thỏa thuận {formatVND(depositPaid - totalDeposit)}đ.
                     Đối chiếu phiếu thu rồi nhập số cọc thực giữ cần hoàn hoặc cấn.
@@ -1479,6 +1489,12 @@ function StepMoveOut({
             <AlertDialogTitle>Xác nhận thanh lý — khách rời phòng</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-1.5 text-sm">
+                {supportAmount > 0 && (
+                  <div className="flex justify-between">
+                    <span>Đã cấn sang cọc hợp đồng khách nhận (khách cũ hỗ trợ)</span>
+                    <b className="tabular-nums">{formatVND(supportAmount)} đ</b>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Cọc hoàn/cấn (kẹp theo đã thu)</span>
                   <b className="tabular-nums">

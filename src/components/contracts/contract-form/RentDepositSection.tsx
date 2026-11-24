@@ -40,6 +40,7 @@ import type { ContractFormState } from "./useContractFormState";
 import { ConnectedRentSupportScheduleEditor } from './ConnectedRentSupportScheduleEditor';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { ExitSupportField } from './ExitSupportField';
 
 type RentDepositSectionProps = Pick<
   ContractFormState,
@@ -67,7 +68,7 @@ type RentDepositSectionProps = Pick<
   | "addDepositRow"
   | "updateDepositRow"
   | "removeDepositRow"
->;
+> & Partial<Pick<ContractFormState, "exitSupport">>;
 
 /** ===== Section 3: Tiền thuê & Tiền cọc ===== (JSX chuyển NGUYÊN VĂN) */
 export function RentDepositSection({
@@ -95,6 +96,7 @@ export function RentDepositSection({
   addDepositRow,
   updateDepositRow,
   removeDepositRow,
+  exitSupport,
 }: RentDepositSectionProps) {
   const rowErrors=flattenFieldErrors(form.formState.errors);
   const { data: permissions } = useMyPermissions();
@@ -392,8 +394,12 @@ export function RentDepositSection({
             </div>
           ))}
 
+          {exitSupport && <ExitSupportField exitSupport={exitSupport}
+            onAmountChange={() => form.clearErrors('transfer_support_amount' as never)} />}
+
           <div className="flex items-center justify-between text-sm px-1">
-            <span className="text-muted-foreground">Tổng đã đặt cọc</span>
+            <span className="text-muted-foreground">Tổng đã đặt cọc
+              {!!exitSupport?.applied && <> (gồm {formatVND(exitSupport.applied)} khách cũ hỗ trợ)</>}</span>
             <span className="font-medium tabular-nums">
               {formatVND(depositPaidTotal)}
             </span>

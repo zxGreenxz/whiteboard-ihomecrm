@@ -29643,6 +29643,16 @@ export type Database = {
           revenue: number
         }[]
       }
+      reverse_contract_exit_support_v1: {
+        Args: {
+          p_exit_case_id: string
+          p_expected_version: number
+          p_organization_id: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       reverse_customer_credit_application_v1: {
         Args: {
           p_application_id: string

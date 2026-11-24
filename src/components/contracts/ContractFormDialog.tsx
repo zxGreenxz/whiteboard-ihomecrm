@@ -116,14 +116,14 @@ export function ContractFormDialog({
       if (!canSign) return;
       const current = editor.current;
       if (current && editor.matchesSavedDocument(request) && compatibleDraftDocument(current)) {
-        setSigning({ draft: current, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal) });
+        setSigning({ draft: current, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal + (state.exitSupport?.applied ?? 0)) });
         return;
       }
       if (!canSaveDraft || !canExport) {
         toast.error('Nội dung đã đổi hoặc chưa có tài liệu. Cần lưu và in bản nháp trước khi ký.'); return;
       }
       const saved = await editor.persist({ signingRequest: request });
-      if (saved) setPrintBeforeSigning({ draft: saved, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal) });
+      if (saved) setPrintBeforeSigning({ draft: saved, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal + (state.exitSupport?.applied ?? 0)) });
     } : undefined,
   });
   const { form, isEditMode, onInvalid } = state;
