@@ -267,6 +267,19 @@ BEGIN
     EXCEPTION WHEN object_not_in_prerequisite_state THEN
       IF SQLERRM NOT LIKE '%tiền hỗ trợ%' THEN RAISE; END IF;
     END;
+    IF scenario.label = 'sale' THEN
+      -- Phiếu thu chuyển cọc không phải tiền khách nộp: sổ claim thưởng Sale theo phiếu cọc không nhận nó làm nguồn.
+      -- (RPC thưởng nóng hôm nay dừng sớm ở rào lý do hoa hồng với phiếu đã gắn hợp đồng; trigger giữ chặn ở sổ claim.)
+      RESET ROLE;
+      BEGIN
+        INSERT INTO app_private.sale_bonus_claims(organization_id, deposit_voucher_id, contract_id, bonus_voucher_id, amount, created_by)
+        VALUES (org, in_voucher, new_contract, out_voucher, 100000, actor);
+        RAISE EXCEPTION 'sale: sổ claim nhận phiếu chuyển cọc làm nguồn thưởng Sale' USING ERRCODE = 'P0001';
+      EXCEPTION WHEN invalid_parameter_value THEN
+        IF SQLERRM NOT LIKE '%không dùng làm nguồn thưởng Sale%' THEN RAISE; END IF;
+      END;
+      SET LOCAL ROLE authenticated;
+    END IF;
 
     IF scenario.label = 'sale' THEN
       -- Thu nốt hoá đơn đầu (phần còn lại của cọc + tiền phòng) bằng writer thu hoá đơn: không bị rào semantic chặn.

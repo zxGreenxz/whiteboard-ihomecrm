@@ -361,9 +361,10 @@ describe('migration', () => {
     expect(count(response, "'support_out_code'")).toBe(1);
     expect(count(response, "'support_in_code'")).toBe(1);
     const triggers = (await db.query<{ t: string }>(`SELECT tgrelid::regclass::text||':'||tgname t FROM pg_trigger WHERE tgname IN
-      ('a00_exit_support_voucher_guard','a00_exit_support_item_guard','a02_contract_exit_support_guard') ORDER BY 1`)).rows.map(r => r.t);
-    expect(triggers).toEqual(['contracts:a02_contract_exit_support_guard', 'income_expense_items:a00_exit_support_item_guard',
-      'income_expenses:a00_exit_support_voucher_guard']);
+      ('a00_exit_support_voucher_guard','a00_exit_support_item_guard','a02_contract_exit_support_guard','a00_exit_support_bonus_claim_guard')
+      ORDER BY 1`)).rows.map(r => r.t);
+    expect(triggers).toEqual(['app_private.sale_bonus_claims:a00_exit_support_bonus_claim_guard', 'contracts:a02_contract_exit_support_guard',
+      'income_expense_items:a00_exit_support_item_guard', 'income_expenses:a00_exit_support_voucher_guard']);
     const priv = (await db.query<Row>(`SELECT
       has_function_privilege('authenticated','app_private.apply_exit_support_on_contract_create_v1(uuid,uuid,jsonb,text)','EXECUTE') apply,
       has_function_privilege('authenticated','public.reverse_contract_exit_support_v1(uuid,uuid,bigint,uuid,text)','EXECUTE') reverse,
@@ -497,6 +498,21 @@ describe('chặn huỷ, xoá và đổi trường hợp khi có số hỗ trợ'
     await db.query(`UPDATE public.income_expense_items SET description='Mô tả mới' WHERE income_expense_id=$1`, [out]);
     await rejects(`INSERT INTO public.income_expenses(organization_id,type,total_amount,system_source) VALUES($1,'INCOME',1,'exit.support_in')`, [org], '42501');
     expect(await paid(olds[0])).toBe(3_000_000);
+  });
+
+  it('phiếu chuyển cọc không làm nguồn thưởng Sale theo phiếu cọc; phiếu cọc khác vẫn ghi claim được', async () => {
+    const { vouchers } = await applied();
+    const [out, inn] = vouchers.map(v => String(v.id));
+    const bonus = '30000000-0000-4000-8000-0000000000b1';
+    await rejects(`INSERT INTO app_private.sale_bonus_claims(organization_id,deposit_voucher_id,bonus_voucher_id) VALUES($1,$2,$3)`,
+      [org, inn, bonus], '22023', /không dùng làm nguồn thưởng Sale/);
+    await rejects(`INSERT INTO app_private.sale_bonus_claims(organization_id,deposit_voucher_id,bonus_voucher_id) VALUES($1,$2,$3)`,
+      [org, out, bonus], '22023');
+    const other = String((await db.query<Row>(`INSERT INTO public.income_expenses(organization_id,type,total_amount,system_source)
+      VALUES($1,'INCOME',500000,'manual') RETURNING id`, [org])).rows[0].id);
+    await db.query(`INSERT INTO app_private.sale_bonus_claims(organization_id,deposit_voucher_id,bonus_voucher_id) VALUES($1,$2,$3)`, [org, other, bonus]);
+    await rejects(`UPDATE app_private.sale_bonus_claims SET deposit_voucher_id=$1 WHERE deposit_voucher_id=$2`, [inn, other], '22023');
+    await db.query(`DELETE FROM app_private.sale_bonus_claims WHERE deposit_voucher_id=$1`, [other]);
   });
 
   it('hợp đồng mới và cũ không xoá được; đổi trường hợp bị chặn; quyết toán cũ vẫn đi với cọc còn lại', async () => {

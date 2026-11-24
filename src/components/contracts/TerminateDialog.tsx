@@ -966,7 +966,8 @@ function StepMoveOut({
         depositRefund: pendingData.deposit_refund,
         excessRent: pendingData.excess_rent,
         outstandingDebt,
-        notes: [pendingData.notes?.trim(), supportNote].filter(Boolean).join("\n"),
+        // Không có số hỗ trợ thì gửi ghi chú đúng như trước (khoá lặp so cả ghi chú).
+        notes: supportNote ? [pendingData.notes?.trim(), supportNote].filter(Boolean).join("\n") : pendingData.notes,
         extraCharges,
         refundItems,
         shortfallMode,

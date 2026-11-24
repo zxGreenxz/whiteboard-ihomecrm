@@ -18,6 +18,7 @@ DO $requires$
 BEGIN
   IF to_regclass('public.contract_exit_early_terms') IS NULL OR to_regclass('app_private.contract_exit_early_term_events') IS NULL
     OR to_regclass('public.income_expenses') IS NULL OR to_regclass('public.income_expense_items') IS NULL
+    OR to_regclass('app_private.sale_bonus_claims') IS NULL
     OR to_regprocedure('public.create_contract_v2(jsonb,text)') IS NULL
     OR to_regprocedure('public.sign_and_checkin_contract_draft_v1(uuid,uuid,integer,uuid,text,uuid,date,boolean,boolean,jsonb,jsonb,uuid,bigint,uuid[])') IS NULL
     OR to_regprocedure('public.meter_capture_exit_v1(uuid,text,jsonb,jsonb)') IS NULL
@@ -141,6 +142,24 @@ $fn$;
 DROP TRIGGER IF EXISTS a02_contract_exit_support_guard ON public.contracts;
 CREATE TRIGGER a02_contract_exit_support_guard BEFORE UPDATE OF deleted_at OR DELETE ON public.contracts
   FOR EACH ROW EXECUTE FUNCTION app_private.guard_contract_exit_support_v1();
+
+-- Phiếu chuyển cọc không phải tiền khách nộp: không làm nguồn "Thưởng nóng Sale theo phiếu cọc". Thưởng trên phiếu
+-- cọc thật lúc giữ chỗ không mang hợp đồng, nên phép kiểm trùng theo hợp đồng của hàm thưởng không bắt được thưởng
+-- thứ hai đặt trên phiếu exit.support_in. Sổ claim là nơi mọi thưởng theo phiếu cọc phải ghi, nên chặn ở đây.
+CREATE OR REPLACE FUNCTION app_private.guard_exit_support_bonus_claim_v1()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.income_expenses v WHERE v.id=NEW.deposit_voucher_id
+      AND v.system_source IN ('exit.support_out','exit.support_in')) THEN
+    RAISE EXCEPTION 'Phiếu chuyển cọc từ hợp đồng cũ (khách cũ hỗ trợ khách nhận) không phải tiền cọc khách nộp, không dùng làm nguồn thưởng Sale'
+      USING ERRCODE='22023';
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+DROP TRIGGER IF EXISTS a00_exit_support_bonus_claim_guard ON app_private.sale_bonus_claims;
+CREATE TRIGGER a00_exit_support_bonus_claim_guard BEFORE INSERT OR UPDATE OF deposit_voucher_id ON app_private.sale_bonus_claims
+  FOR EACH ROW EXECUTE FUNCTION app_private.guard_exit_support_bonus_claim_v1();
 
 -- Hạng mục của hai phiếu chuyển cọc, tra và tạo đúng trong tổ chức của hồ sơ (không suy tổ chức từ thành viên của chủ
 -- toà như _termination_ensure_type: chủ thuộc nhiều tổ chức thì chọn nhầm). Cùng khoá duy nhất (tổ chức, loại, tên chuẩn hoá).
@@ -414,7 +433,7 @@ BEGIN
   FOREACH v_signature IN ARRAY ARRAY[
     'app_private.exit_support_write_allowed_v1(uuid)','app_private.exit_support_type_v1(uuid,uuid,text,text)',
     'app_private.guard_exit_support_voucher_v1()','app_private.guard_exit_support_item_v1()',
-    'app_private.guard_contract_exit_support_v1()',
+    'app_private.guard_contract_exit_support_v1()','app_private.guard_exit_support_bonus_claim_v1()',
     'app_private.apply_exit_support_on_contract_create_v1(uuid,uuid,jsonb,text)'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',v_signature);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role',v_signature);
@@ -425,7 +444,7 @@ BEGIN
 END
 $acl$;
 
--- 8. Nghiệm thu: mỗi điểm nối đúng một lần, độ biến động giữ nguyên, ba trigger có mặt, helper đóng, RPC mở.
+-- 8. Nghiệm thu: mỗi điểm nối đúng một lần, độ biến động giữ nguyên, bốn trigger có mặt, helper đóng, RPC mở.
 DO $check$
 DECLARE r record; v_def text;
 BEGIN
@@ -451,7 +470,8 @@ BEGIN
   IF (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled='O' AND (
         (tgrelid='public.income_expenses'::regclass AND tgname='a00_exit_support_voucher_guard')
         OR (tgrelid='public.income_expense_items'::regclass AND tgname='a00_exit_support_item_guard')
-        OR (tgrelid='public.contracts'::regclass AND tgname='a02_contract_exit_support_guard')))<>3
+        OR (tgrelid='public.contracts'::regclass AND tgname='a02_contract_exit_support_guard')
+        OR (tgrelid='app_private.sale_bonus_claims'::regclass AND tgname='a00_exit_support_bonus_claim_guard')))<>4
     OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.contract_exit_early_terms'::regclass AND conname='contract_exit_early_terms_support')
     OR has_function_privilege('authenticated','app_private.apply_exit_support_on_contract_create_v1(uuid,uuid,jsonb,text)','EXECUTE')
     OR has_function_privilege('anon','public.reverse_contract_exit_support_v1(uuid,uuid,bigint,uuid,text)','EXECUTE')
