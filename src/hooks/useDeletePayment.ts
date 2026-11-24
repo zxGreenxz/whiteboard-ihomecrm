@@ -1,6 +1,7 @@
+import {useRef} from 'react';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {useOrganization} from '@/contexts/OrganizationContext';
-import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
+import {FinancialAlreadyRecordedError,FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadRows} from '@/lib/financialReadValidation';
 // =============================================
 // useDeletePayment
@@ -122,11 +123,56 @@ export const useCollectionReversalEligibility = (collectionIds: string[]) => {
   });
 };
 
+/**
+ * Biên nhận của `undo_invoice_payment_compat_v1` cho thanh toán kiểu cũ (đọc thân hàm production 24/11/2026):
+ *  - nhánh thường gọi `reverse_invoice_payment_v3` rồi trả `{payment_id, mode:'REVERSED', result}`; `result` là biên
+ *    nhận của writer cũ (`original_payment_id`, `reversal_voucher_id`) hoặc của collection (`status:'REVERSED'`);
+ *  - nhánh dọn thu tách cọc trả `{payment_id, mode:'DELETED'}`.
+ * Trước đợt 2 chỉ nhận `DELETED` nên mọi lần hoàn tác nhánh thường thành công đều bị báo lỗi và để lại dấu.
+ */
+function isLegacyUndoReceipt(receipt:Record<string,unknown>|null,paymentId:string):boolean{
+  if(receipt?.payment_id!==paymentId)return false;
+  if(receipt.mode==='DELETED')return true;
+  if(receipt.mode!=='REVERSED')return false;
+  const nested=receipt.result&&typeof receipt.result==='object'?receipt.result as Record<string,unknown>:null;
+  return !!nested&&((nested.original_payment_id===paymentId&&typeof nested.reversal_voucher_id==='string'&&!!nested.reversal_voucher_id)||nested.status==='REVERSED');
+}
+const errorCode=(error:unknown)=>error&&typeof error==='object'?String((error as {code?:unknown}).code??''):'';
+const stillUnknown=(cause:unknown)=>new FinancialWorkflowError('Máy chủ báo yêu cầu hoàn tác này đã được dùng nhưng chưa xác nhận được trạng thái khoản thu. Tải lại hoá đơn để đối chiếu trước khi thực hiện tiếp.','unknown',[],cause);
+
+/**
+ * Máy chủ báo 23505 cho lần hoàn tác: khoá đã dùng với nội dung khác (thử lại qua ngày vì `reversal_date` là hôm nay,
+ * hoặc đổi lý do) hoặc khoản thu đã được hoàn tác ở lần khác. Đọc trạng thái thật: đã hoàn tác thì báo đã ghi,
+ * không thì chưa kết luận (giữ dấu).
+ */
+async function confirmAlreadyReversed(source:{collectionId:string|null;paymentId:string|null},cause:unknown):Promise<never>{
+  if(source.collectionId){
+    let verdict:unknown;
+    try{
+      const {data,error}=await supabase.rpc('can_reverse_collection_v1',{p_collection_ids:[source.collectionId]});
+      if(error)throw error;
+      verdict=financialReadRows(data).find(row=>row.collection_id===source.collectionId)?.reason_code;
+    }catch(readError){throw stillUnknown(readError);}
+    if(verdict==='ALREADY_REVERSED')throw new FinancialAlreadyRecordedError('Khoản thu này đã được hoàn tác trước đó (ở lần gửi trước hoặc bởi người khác). Không hoàn tác thêm; tải lại hoá đơn để xem trạng thái mới.',[source.collectionId]);
+    throw stillUnknown(cause);
+  }
+  let payment:{reversed_at?:unknown}|null;
+  try{
+    const {data,error}=await supabase.from('payments').select('id, reversed_at').eq('id',source.paymentId!).maybeSingle();
+    if(error)throw error;
+    payment=data as {reversed_at?:unknown}|null;
+  }catch(readError){throw stillUnknown(readError);}
+  // Nhánh dọn thu tách cọc xoá hẳn thanh toán; nhánh thường đặt `reversed_at`.
+  if(!payment||payment.reversed_at)throw new FinancialAlreadyRecordedError('Thanh toán cũ này đã được hoàn tác ở lần gửi trước. Không hoàn tác thêm; tải lại hoá đơn để xem trạng thái mới.',[source.paymentId!]);
+  throw stillUnknown(cause);
+}
+
 export const useDeletePayment = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const {selectedOrganizationId}=useOrganization();
-  const workflow=persistentFinancialWorkflow('collection-reversal');
+  // Một guard cho cả vòng đời hook: khoá "đang xử lý" trong bộ nhớ phải sống qua các lần render.
+  const workflow=useRef(persistentFinancialWorkflow('collection-reversal'));
 
   return useMutation({
     mutationFn: async ({
@@ -159,20 +205,26 @@ export const useDeletePayment = () => {
         collectionId = (payment as { collection_id?: string | null }).collection_id ?? null;
       }
 
-      return workflow.run(collectionId??paymentId!,'hoàn tác khoản thu',async progress=>{
-      const outcome = await reverseInvoicePaymentBySource(
-        (fn, args) => supabase.rpc(fn, args as never),
-        {
-          payment_id: paymentId,
-          collection_id: collectionId,
-          reversal_date: todayISO(),
-          reason,
-          idempotency_key: progress.requestKey,
-        },
-      );
+      return workflow.current.run(collectionId??paymentId!,'hoàn tác khoản thu',async progress=>{
+      let outcome: Awaited<ReturnType<typeof reverseInvoicePaymentBySource>>;
+      try {
+        outcome = await reverseInvoicePaymentBySource(
+          (fn, args) => supabase.rpc(fn, args as never),
+          {
+            payment_id: paymentId,
+            collection_id: collectionId,
+            reversal_date: todayISO(),
+            reason,
+            idempotency_key: progress.requestKey,
+          },
+        );
+      } catch (error) {
+        if (errorCode(error) === '23505') await confirmAlreadyReversed({collectionId,paymentId},error);
+        throw error;
+      }
 
-      const receipt=outcome.result as {collection_id?:unknown;payment_id?:unknown;status?:unknown;mode?:unknown}|null;
-      if(collectionId ? receipt?.collection_id!==collectionId||receipt.status!=='REVERSED'||!outcome.reversalMode : receipt?.payment_id!==paymentId||receipt.mode!=='DELETED')throw new TypeError('Chưa xác nhận được nguồn và kết quả hoàn tác khoản thu.');
+      const receipt=outcome.result as Record<string,unknown>|null;
+      if(collectionId ? receipt?.collection_id!==collectionId||receipt.status!=='REVERSED'||!outcome.reversalMode : !isLegacyUndoReceipt(receipt,paymentId!))throw new TypeError('Chưa xác nhận được nguồn và kết quả hoàn tác khoản thu.');
       progress.completed.push({id:collectionId??paymentId!,label:`Đã hoàn tác ${collectionId?'lần thu':'thanh toán cũ'} ${collectionId??paymentId}`});
       return {
         payment_id: paymentId,
@@ -182,7 +234,13 @@ export const useDeletePayment = () => {
           : 'LEGACY_PAYMENT_REVERSED',
         reversalMode: outcome.reversalMode,
       };
-      },undefined,selectedOrganizationId??undefined);
+      },
+      // Cách B: `reverse_invoice_collection_v5` và `undo_invoice_payment_compat_v1` (đọc thân hàm production
+      // 24/11/2026) giữ một dòng chống trùng theo (tổ chức, việc, nguồn, người làm, khoá), khoá dòng nguồn trước khi so.
+      // Gửi lại cùng mã: đã ghi thì trả kết quả cũ hoặc 23505 (nội dung khác ⇒ xác nhận ở `confirmAlreadyReversed`);
+      // chưa ghi thì hoàn tác lần này. Không thể hoàn tác hai lần.
+      async()=>({outcome:'not-written',serverDedupesRequestKey:true}),
+      selectedOrganizationId??undefined);
     },
     onSuccess: (result) => {
       // Đợt 5: huỷ tại chỗ đổi TRẠNG THÁI phiếu thu gốc và rút tiền khỏi sổ
@@ -230,6 +288,10 @@ export const useDeletePayment = () => {
       });
     },
     onError: (error: Error) => {
+      // Lần trước đã hoàn tác xong: danh sách khoản thu và nút hoàn tác trên màn đang cũ.
+      if (error instanceof FinancialAlreadyRecordedError) {
+        for (const queryKey of [['invoice-payments-summary'], ['invoices'], ['invoice'], ['payments'], ['can-reverse-collection'], ['income-expenses']]) queryClient.invalidateQueries({ queryKey });
+      }
       // Kỳ đã đóng đến từ TRIGGER/vị ngữ dùng chung với tiền tố [CASHBOOK_CLOSED]
       // / [HANDOVER_LOCKED] / [PROFIT_LOCKED]; in thẳng SQLERRM ra toast là ném
       // cả dấu ngoặc vuông vào mặt người dùng.
