@@ -28553,6 +28553,19 @@ export type Database = {
         }
         Returns: Json
       }
+      pending_valve_release_log_append_v1: {
+        Args: { p_device?: string; p_entries: Json }
+        Returns: Json
+      }
+      pending_valve_release_log_list_v1: {
+        Args: {
+          p_before_id?: string
+          p_before_received_at?: string
+          p_limit?: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       permitted_building_ids: {
         Args: { _action: string; _table: string }
         Returns: string[]
