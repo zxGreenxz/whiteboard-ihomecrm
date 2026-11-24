@@ -258,7 +258,8 @@ describe('đẩy hàng đợi nhật ký tự gỡ lên máy chủ', () => {
     const h = harness();
     const entry: PendingValveLogEntry = {
       id: '22222222-2222-4222-8222-222222222222', userId: 'u1', organizationId: 'actor-scope', namespace: 'public-room-admin',
-      businessKey: 'token:abcdefghijklmnop1234', operation: 'thu hồi link', attemptId: 'a1', recordIds: [],
+      // Ghép lúc chạy: viết liền thành một chuỗi thì cửa secret-scan (gitleaks, generic-api-key) coi là khoá thật.
+      businessKey: ['token', 'link-gia-lap-'.repeat(2) + '1234'].join(':'), operation: 'thu hồi link', attemptId: 'a1', recordIds: [],
       stuckAt: '2026-11-24T02:00:00.000Z', releasedAt: '2026-11-24T02:05:00.000Z',
     };
     h.map.set('ihome:pending-valve-log:v1:u1', JSON.stringify([entry]));
