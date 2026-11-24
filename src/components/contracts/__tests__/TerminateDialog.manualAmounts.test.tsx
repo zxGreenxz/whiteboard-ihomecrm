@@ -9,10 +9,17 @@ import { buildFinalizeContractExitCaseArgs, type ContractExitCase, type Finalize
 
 const spies = vi.hoisted(() => ({ finalize: vi.fn(), confirm: vi.fn(), resolve: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock('@/hooks/contracts/useContractTransferLinks', () => ({
-  useContractTransferLinks: () => ({ data: [], isPending: false, isError: false }),
-  useFinalizeContractTransferExit: () => ({ mutateAsync: vi.fn(), isPending: false }),
-}));
+// Hồ sơ trả phòng trước hạn trong các bài này: chủ nhà hỗ trợ (không giữ phòng, không phí môi giới).
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', async () => {
+  const { exitTermsRow } = await import('./exitEarlyTermsFixture');
+  const row = exitTermsRow({ early_reason: 'LANDLORD_AGREEMENT', sale_name: null, broker_fee: 0, hold_until: null, pending_link: false, hold_open: false });
+  return {
+    useContractExitEarlyTerms: () => ({ data: [row], isPending: false, isError: false, refetch: vi.fn() }),
+    useSetContractExitEarlyTerms: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useUpdateContractExitBrokerFee: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useCreateContractExitCommission: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  };
+});
 vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({
   useContractExitSettlementDraft: () => ({ data: null, isPending: false, isError: false, isSuccess: true, isFetching: false, isFetchedAfterMount: true, refetch: vi.fn() }),
   useSaveContractExitSettlementDraft: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -21,6 +28,7 @@ vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({
 vi.mock('@/hooks/useContractExitCases', () => ({
   useConfirmContractReturn: () => ({ mutateAsync: spies.confirm, isPending: false }),
   useFinalizeContractExitCase: () => ({ mutateAsync: spies.finalize, isPending: false }),
+  useUpdateContractExitKind: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/hooks/useContracts', () => ({ useUnpaidInvoices: () => ({ data: [], isError: false, isPending: false }) }));
 vi.mock('@/hooks/useInvoices', () => ({ useExcessAmount: () => ({ data: 0, isError: false, isPending: false }) }));

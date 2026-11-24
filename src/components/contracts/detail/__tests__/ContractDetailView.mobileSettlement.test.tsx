@@ -23,6 +23,7 @@ vi.mock('@/hooks/useContractCommissionFollowup', () => ({
 }));
 vi.mock('@/hooks/useCommissionVoucher', () => ({ useRetryCommissionVoucher: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: {} }) }));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({ useContractExitEarlyTerms: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }) }));
 vi.mock('@/hooks/useContracts', () => ({ useContract: () => state.contract }));
 vi.mock('@/hooks/useInvoices', () => ({ useInvoicesLegacy: () => state.invoices }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [], isLoading: false }) }));
@@ -39,7 +40,6 @@ vi.mock('../ContractPaymentsTab', () => ({ ContractPaymentsTab: () => null }));
 vi.mock('../ContractHistoryTab', () => ({ ContractHistoryTab: () => null }));
 vi.mock('../desktop/ContractDetailDesktop', () => ({ ContractDetailDesktop: ({ commissionFollowup }: { commissionFollowup: ReactNode }) => <main>{commissionFollowup}</main> }));
 vi.mock('@/components/contracts/RenewDialog', () => ({ RenewDialog: () => null }));
-vi.mock('@/components/contracts/TransferContractDialog', () => ({ TransferContractDialog: () => null }));
 vi.mock('@/components/contracts/TransferRoomDialog', () => ({ TransferRoomDialog: () => null }));
 vi.mock('@/components/contracts/TerminateDialog', () => ({ TerminateDialog: () => null }));
 vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({ useContractExitSettlementDrafts: () => ({ data: [] }) }));
@@ -49,7 +49,6 @@ vi.mock('@/hooks/useContractExitCases', () => ({ useContractExitCases: () => ({
     return_note: 'Khách chuyển công tác.\nĐã bàn giao chìa khóa.' }] }, isLoading: false, isError: false,
 }) }));
 vi.mock('@/components/contracts/ContractReturnStep', () => ({ EXIT_KIND_LABELS: { EARLY_RETURN: 'Trả sớm' } }));
-vi.mock('@/components/contracts/ContractTransferLinkPanel', () => ({ ContractTransferLinkPanel: () => null }));
 vi.mock('@/components/contracts/ContractMeterBoundaryPanel', () => ({ ContractMeterBoundaryPanel: () => null }));
 vi.mock('@/components/contracts/RegisterMoveOutDialog', () => ({ default: () => null }));
 vi.mock('@/components/contracts/ContractQRDialog', () => ({ default: () => null }));

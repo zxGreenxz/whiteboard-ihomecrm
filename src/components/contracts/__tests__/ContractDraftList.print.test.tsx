@@ -29,7 +29,7 @@ it('shows exactly one In action per printable draft and keeps signing separate',
     draft('88888888-8888-4888-8888-888888888888', 'SIGNED')];
   const onPrint = vi.fn();
   render(<ContractDraftList canEdit canExport canSign onEdit={vi.fn()} onPrint={onPrint}
-    onSign={vi.fn()} onTransfer={vi.fn()} />);
+    onSign={vi.fn()} />);
   const print = screen.getAllByRole('button', { name: /^In$/ });
   expect(print).toHaveLength(2);
   expect(screen.queryByRole('button', { name: /Xuất nháp|Tải v\d/ })).toBeNull();
@@ -42,7 +42,7 @@ it('shows exactly one In action per printable draft and keeps signing separate',
 function renderDeletable(canDelete = (_draft: ContractDraft) => true) {
   data.remove.mockReset().mockResolvedValue(undefined);
   data.drafts = [draft('77777777-7777-4777-8777-777777777777','EDITABLE'),draft('88888888-8888-4888-8888-888888888888','SIGNED')];
-  render(<ContractDraftList canEdit canExport canSign canDelete={canDelete} onEdit={vi.fn()} onPrint={vi.fn()} onSign={vi.fn()} onTransfer={vi.fn()}/>);
+  render(<ContractDraftList canEdit canExport canSign canDelete={canDelete} onEdit={vi.fn()} onPrint={vi.fn()} onSign={vi.fn()}/>);
 }
 it('offers delete only for unsigned drafts in the authorized building and cancelling does nothing',()=>{
   renderDeletable();

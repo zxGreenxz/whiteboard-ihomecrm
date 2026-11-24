@@ -54,7 +54,7 @@ import type {
   TerminateMoveOutFormData,
 } from "@/lib/contractValidation";
 import type { ContractWithRelations } from "@/types/contract";
-import { useConfirmContractReturn, useFinalizeContractExitCase } from '@/hooks/useContractExitCases';
+import { useConfirmContractReturn, useFinalizeContractExitCase, useUpdateContractExitKind } from '@/hooks/useContractExitCases';
 import type { ContractExitCase, ExitKind, ExitSettlementInput } from '@/lib/contractExitCases';
 import { ContractReturnStep } from './ContractReturnStep';
 import type { MeterBoundaryInput } from '@/lib/contractMeterBoundaries';
@@ -73,8 +73,14 @@ import { TerminationRefundItems } from "./TerminationRefundItems";
 import type { ExtraChargeItem, RefundItem } from "@/lib/contractValidation";
 import { computeTerminationSettlement } from "@/lib/terminationSettlement";
 import { todayISO } from '@/lib/collect';
-import { useContractTransferLinks, useFinalizeContractTransferExit } from '@/hooks/contracts/useContractTransferLinks';
-import { transferBrokerFeeLine, withTransferBrokerFee } from '@/lib/contract-lifecycle/transfers';
+import { useContractExitEarlyTerms } from '@/hooks/contracts/useContractExitEarlyTerms';
+import {
+  brokerFeeLine, isTransferReason, refundFromHandoverDate, withBrokerFeeLine,
+  type ContractExitEarlyTerms, type EarlyReason,
+} from '@/lib/contractExitEarlyTerms';
+import { ExitEarlyTermsPanel } from './ExitEarlyTermsPanel';
+import { ExitCommissionForm } from './ExitCommissionForm';
+import { BrokerFeeEditDialog } from './BrokerFeeEditDialog';
 import { useContractExitSettlementDraft, useDiscardContractExitSettlementDraft, useSaveContractExitSettlementDraft } from '@/hooks/useContractExitSettlementDrafts';
 import {
   EXIT_SETTLEMENT_DRAFT_SCHEMA, draftSavedBy, exitSettlementDraftErrorMessage, exitSettlementDraftPayloadSchema,
@@ -109,21 +115,26 @@ export function TerminateDialog({
   exitCase,
   resumeDraft = false,
 }: TerminateDialogProps) {
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [kind, setKind] = useState<ExitKind | null>(null);
   const [actualDate, setActualDate] = useState('');
   const [changeReason, setChangeReason] = useState('');
   const [returnNote, setReturnNote] = useState('');
+  // Thanh lý mới, "Trả phòng trước hạn": một trong ba trường hợp (bắt buộc), nhờ sale kèm tên sale.
+  const [earlyReason, setEarlyReason] = useState<EarlyReason | null>(null);
+  const [saleName, setSaleName] = useState('');
+  const [presetChange, setPresetChange] = useState<EarlyReason | null>(null);
+  const commissionNext = useRef(false);
   const requestKeys = useRef(new Map<string, string>());
   const confirmReturn = useConfirmContractReturn();
   const finalizeExit = useFinalizeContractExitCase();
-  const transferQuery = useContractTransferLinks({ exitCaseId: exitCase?.id }, open && !!exitCase);
-  const finalizeTransfer = useFinalizeContractTransferExit();
-  const transfer = transferQuery.data?.find(link => link.state === 'LINKED');
-  const brokerFee = useMemo(() => transfer?.mode === 'BROKER' && transfer.broker_fee !== null && transfer.broker_fee >= 0
-    ? transferBrokerFeeLine(transfer) : null, [transfer]);
-  const brokerFeeUnavailable = transfer?.mode === 'BROKER' && !brokerFee;
-  const transferUnavailable = !!exitCase && (transferQuery.isPending || transferQuery.isError || brokerFeeUnavailable);
+  const updateKind = useUpdateContractExitKind();
+  const kindKeys = useRef(new Map<string, string>());
+  // Trường hợp trả phòng trước hạn của hồ sơ đã ghi (bảng contract_exit_early_terms). Chưa đọc xong thì khoá nút như
+  // khi chờ công nợ: quyết toán thiếu dòng phí môi giới sẽ bị máy chủ từ chối.
+  const earlyQuery = useContractExitEarlyTerms(exitCase ? { exitCaseId: exitCase.id } : null, open && !!exitCase);
+  const earlyTerms: ContractExitEarlyTerms | null = earlyQuery.data?.[0] ?? null;
+  const earlyUnavailable = !!exitCase && step !== 3 && (earlyQuery.isPending || earlyQuery.isError);
 
   // Query unpaid invoices — dùng cho cả move-out (tính công nợ) lẫn forfeit
   // (liệt kê các hoá đơn sẽ bị huỷ khi bỏ cọc).
@@ -170,6 +181,10 @@ export function TerminateDialog({
       setActualDate(exitCase?.actual_move_out_on ?? todayISO());
       setChangeReason('');
       setReturnNote(exitCase?.return_note ?? '');
+      setEarlyReason(null);
+      setSaleName('');
+      setPresetChange(null);
+      commissionNext.current = false;
       requestKeys.current.clear();
       working.current = EMPTY_DRAFT;
       setInitialDraft(EMPTY_START);
@@ -188,7 +203,7 @@ export function TerminateDialog({
   useEffect(() => {
     if (!open || hydrated) return;
     if (exitCase && resumeDraft) {
-      if (!draftQuery.isFetchedAfterMount || draftQuery.isFetching || transferQuery.isPending) return;
+      if (!draftQuery.isFetchedAfterMount || draftQuery.isFetching || earlyQuery.isPending) return;
       const read = draftQuery.isSuccess ? draftQuery.data : undefined;
       const payload = read?.payload;
       setBaseVersion(read ? read.version : null);
@@ -202,7 +217,7 @@ export function TerminateDialog({
       }
     }
     setHydrated(true);
-  }, [open, hydrated, exitCase, resumeDraft, draftQuery.isFetchedAfterMount, draftQuery.isFetching, draftQuery.isSuccess, draftQuery.data, transferQuery.isPending]);
+  }, [open, hydrated, exitCase, resumeDraft, draftQuery.isFetchedAfterMount, draftQuery.isFetching, draftQuery.isSuccess, draftQuery.data, earlyQuery.isPending]);
   // Mở form mới: gốc là bản nháp thấy ở lần đọc thành công đầu tiên (khung trên báo "Bấm Lưu nháp sẽ thay bản đó").
   useEffect(() => {
     if (open && exitCase && !resumeDraft && baseVersion === undefined && draftQuery.isSuccess && draftQuery.isFetchedAfterMount && !draftQuery.isFetching) {
@@ -225,7 +240,7 @@ export function TerminateDialog({
   };
 
   const draftBusy = saveDraft.isPending || discardDraft.isPending;
-  const isPending = confirmReturn.isPending || finalizeExit.isPending || finalizeTransfer.isPending || draftBusy;
+  const isPending = confirmReturn.isPending || finalizeExit.isPending || draftBusy;
   const waitingDraft = !!exitCase && open && resumeDraft && !hydrated;
   const draftVersionUnknown = !!exitCase && (baseVersion === undefined || draftQuery.isError);
   const saveDraftNow = async (overwrite?: { version: number | null }) => {
@@ -264,10 +279,14 @@ export function TerminateDialog({
     if (!key) { key = crypto.randomUUID(); requestKeys.current.set(value, key); }
     return key;
   };
+  const earlyChoice = () => kind === 'EARLY_RETURN' && earlyReason
+    ? { earlyTerms: { earlyReason, saleName: earlyReason === 'SALE_ASSISTED' ? saleName.trim() : null } } : {};
   const deferSettlement = async () => {
     if (!kind || !actualDate || exitCase || !returnNote.trim()) return;
+    if (kind === 'EARLY_RETURN' && !earlyReason) return;
     const intent = { contractId: contract.id, expectedContractUpdatedAt: contract.updated_at,
-      actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'DEFERRED' as const, meterBoundary: MOVE_OUT_BOUNDARY };
+      actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'DEFERRED' as const,
+      meterBoundary: MOVE_OUT_BOUNDARY, ...earlyChoice() };
     try {
       await confirmReturn.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
       onOpenChange(false);
@@ -277,21 +296,63 @@ export function TerminateDialog({
     if (!kind) throw new Error('Chọn loại thanh lý trước khi quyết toán');
     if (financeUnavailable) throw new Error('Chưa tải được công nợ và số dư khách hàng để quyết toán');
     if (exitCase) {
-      if (transferUnavailable) throw new Error('Chưa tải được liên kết nhượng, vui lòng thử lại');
+      if (earlyUnavailable) throw new Error('Chưa tải được trường hợp trả phòng trước hạn, vui lòng thử lại');
       const intent = { caseId: exitCase.id, expectedVersion: exitCase.version,
         currentKind: kind, reason: changeReason.trim() || undefined, settlement };
-      if (transfer) {
-        const linkedIntent = { ...intent, linkId: transfer.id, expectedLinkVersion: transfer.version };
-        await finalizeTransfer.mutateAsync({ ...linkedIntent, idempotencyKey: requestKey(linkedIntent) });
-      } else {
-        await finalizeExit.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
-      }
+      await finalizeExit.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
+      // Ca nhờ sale có phí: mở ngay phiếu hoa hồng điền sẵn (người nhận, số tiền đúng phí) thay vì đóng hộp.
+      commissionNext.current = earlyTerms?.early_reason === 'SALE_ASSISTED' && earlyTerms.broker_fee > 0;
     } else {
       if (!returnNote.trim()) throw new Error('Vui lòng ghi nội dung thanh lý để đối chiếu');
+      if (kind === 'EARLY_RETURN' && (!earlyReason || isTransferReason(earlyReason))) {
+        throw new Error('Khách sang nhượng phòng: chỉ ghi trả phòng, quyết toán sau khi có hợp đồng khách mới');
+      }
       const intent = { contractId: contract.id, expectedContractUpdatedAt: contract.updated_at,
-        actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'IMMEDIATE' as const, settlement, meterBoundary: MOVE_OUT_BOUNDARY };
+        actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'IMMEDIATE' as const, settlement,
+        meterBoundary: MOVE_OUT_BOUNDARY, ...earlyChoice() };
       await confirmReturn.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
     }
+  };
+
+  const afterSettle = () => {
+    if (commissionNext.current) { commissionNext.current = false; setStep(3); return; }
+    onOpenChange(false);
+  };
+
+  // Hồ sơ đã ghi: lý do chưa cho sang bước quyết toán (luật ở máy chủ; ở đây chỉ báo sớm và chỉ đường).
+  const continueBlocked = (() => {
+    if (!exitCase || earlyUnavailable) return null;
+    if (kind === 'EARLY_RETURN') {
+      if (!earlyTerms) return 'Chọn trường hợp trả phòng trước hạn ở trên trước khi quyết toán.';
+      if (isTransferReason(earlyTerms.early_reason) && !earlyTerms.new_contract_id) return <div className="space-y-2">
+        {earlyTerms.reopened_at
+          ? <p>Chưa có hợp đồng của khách nhận phòng. Phòng đã mở bán lại nên hợp đồng mới không tự nối với hồ sơ này;
+            đổi sang trường hợp 3 để quyết toán.</p>
+          : <p>Chưa có hợp đồng của khách nhận phòng. Tạo hợp đồng cho khách mới (hợp đồng sẽ tự nối với hồ sơ này) rồi mới quyết toán.
+            Khách nhận đã huỷ thì đổi sang trường hợp 3.</p>}
+        <Button type="button" size="sm" variant="outline" disabled={isPending}
+          onClick={() => setPresetChange('LANDLORD_AGREEMENT')}>Đổi sang trường hợp 3</Button>
+      </div>;
+      return null;
+    }
+    if (earlyTerms && isTransferReason(earlyTerms.early_reason)) {
+      return 'Hồ sơ sang nhượng phòng chỉ quyết toán theo "Trả phòng trước hạn". Khách nhận đã huỷ thì chọn lại "Trả phòng trước hạn" và đổi sang trường hợp 3 trước.';
+    }
+    return null;
+  })();
+  const showEarlyPanel = !!exitCase && (kind === 'EARLY_RETURN' || !!earlyTerms);
+  // Hồ sơ ghi loại khác (ví dụ Hết hạn) mà quyết toán thành Trả phòng trước hạn: máy chủ chỉ cho chọn trường hợp khi
+  // hồ sơ đã mang loại này, nên ghi loại trước (kèm lý do đổi loại) rồi mới chọn trường hợp.
+  const needsKindRecord = !!exitCase && kind === 'EARLY_RETURN' && exitCase.current_kind !== 'EARLY_RETURN' && !earlyTerms;
+  const recordEarlyKind = async () => {
+    if (!exitCase || !changeReason.trim()) return;
+    const intent = JSON.stringify({ case: exitCase.id, version: exitCase.version, reason: changeReason.trim() });
+    let key = kindKeys.current.get(intent);
+    if (!key) { key = crypto.randomUUID(); kindKeys.current.set(intent, key); }
+    try {
+      await updateKind.mutateAsync({ caseId: exitCase.id, expectedVersion: exitCase.version, idempotencyKey: key,
+        kind: 'EARLY_RETURN', reason: changeReason.trim() });
+    } catch { /* Hook đã báo lỗi; giữ hộp để thử lại. */ }
   };
 
   // Get representative customer name
@@ -313,7 +374,8 @@ export function TerminateDialog({
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {step === 1
+            {step === 3 ? "Phiếu hoa hồng môi giới"
+              : step === 1
               ? (exitCase ? "Quyết toán hồ sơ đã trả phòng" : "Thanh lý hợp đồng")
               : kind === "FORFEIT"
                 ? "Quyết toán — Khách bỏ cọc"
@@ -322,7 +384,7 @@ export function TerminateDialog({
           <DialogDescription className="sr-only">Ghi nhận ngày trả phòng và loại thanh lý; chọn quyết toán ngay hoặc xử lý hồ sơ sau.</DialogDescription>
         </DialogHeader>
 
-        {exitCase && !waitingDraft && (draftQuery.isError
+        {exitCase && step !== 3 && !waitingDraft && (draftQuery.isError
           ? <p role="alert" className="text-sm text-destructive">Không tải được bản nháp của hồ sơ. Đóng và mở lại để thử; chưa lưu nháp được lúc này.</p>
           : draft ? <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900" data-testid="exit-draft-banner">
               <span>{baseVersion !== undefined && draft.version !== baseVersion
@@ -336,10 +398,10 @@ export function TerminateDialog({
         {waitingDraft && <LoadingState label="bản nháp quyết toán" rows={4} />}
 
         {/* Chờ đọc: vạch/khối xám thay chữ "Đang …" (chủ chốt 02/10/2026); nút vẫn khoá như cũ
-            (transferUnavailable / financeUnavailable). Câu báo lỗi giữ nguyên. */}
-        {transferUnavailable && (brokerFeeUnavailable || transferQuery.isError
-          ? <p role="status" className="text-sm">{brokerFeeUnavailable ? 'Chưa xác định được phí nhượng hợp lệ. Kiểm tra liên kết nhượng trước khi quyết toán.' : 'Không tải được liên kết nhượng. Đóng và mở lại hồ sơ để thử lại.'}</p>
-          : <LoadingState label="liên kết nhượng" variant="inline" />)}
+            (earlyUnavailable / financeUnavailable). Câu báo lỗi giữ nguyên. */}
+        {earlyUnavailable && (earlyQuery.isError
+          ? <p role="alert" className="text-sm text-destructive">Không tải được trường hợp trả phòng trước hạn. Đóng và mở lại hồ sơ để thử lại.</p>
+          : <LoadingState label="trường hợp trả phòng" variant="inline" />)}
         {financeUnavailable && (invoiceQuery.isError || creditQuery.isError
           ? <p role="alert" className="text-sm text-destructive">Không tải được công nợ và số dư khách hàng. Vui lòng tải lại trước khi quyết toán.</p>
           : <LoadingState label="công nợ và số dư khách hàng" rows={5} />)}
@@ -349,8 +411,19 @@ export function TerminateDialog({
             kind={kind} onKindChange={setKind} exitCase={exitCase}
             changeReason={changeReason} onReasonChange={setChangeReason}
             returnNote={returnNote} onReturnNoteChange={setReturnNote}
-            pending={isPending || transferUnavailable} physicalReady={!!exitCase || !!contract.room_id}
-            onDefer={() => void deferSettlement()} onContinue={continueToSettlement} />
+            pending={isPending || earlyUnavailable} physicalReady={!!exitCase || !!contract.room_id}
+            early={exitCase ? undefined : { reason: earlyReason, onReasonChange: setEarlyReason, saleName, onSaleNameChange: setSaleName }}
+            continueBlocked={continueBlocked}
+            onDefer={() => void deferSettlement()} onContinue={continueToSettlement}>
+            {needsKindRecord && <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" data-testid="exit-record-early-kind">
+              <p>Hồ sơ đang ghi loại thanh lý khác. Ghi loại &quot;Trả phòng trước hạn&quot; (dùng lý do đổi loại ở trên) rồi chọn trường hợp.</p>
+              <Button type="button" size="sm" variant="outline" disabled={isPending || updateKind.isPending || !changeReason.trim()}
+                onClick={() => void recordEarlyKind()}>Ghi loại Trả phòng trước hạn</Button>
+            </div>}
+            {showEarlyPanel && exitCase && !needsKindRecord && <ExitEarlyTermsPanel exitCaseId={exitCase.id} terms={earlyTerms}
+              loading={earlyQuery.isPending} error={earlyQuery.isError} onRetry={() => void earlyQuery.refetch()}
+              disabled={isPending} presetChange={presetChange} onPresetConsumed={() => setPresetChange(null)} />}
+          </ContractReturnStep>
         )}
 
         {step === 2 && !waitingDraft && !financeUnavailable && kind === "FORFEIT" && (
@@ -360,7 +433,7 @@ export function TerminateDialog({
             unpaidInvoices={unpaidInvoices!}
             onBack={handleBack}
             onClose={() => onOpenChange(false)}
-            isPending={isPending || transferUnavailable}
+            isPending={isPending || earlyUnavailable}
             actualDate={actualDate}
             onSettle={settle}
             initialDraft={stepDraft}
@@ -373,19 +446,18 @@ export function TerminateDialog({
 
         {step === 2 && !waitingDraft && !financeUnavailable && kind && kind !== "FORFEIT" && (
           <StepMoveOut
-            key={transfer?.id ?? 'ordinary'}
+            key={earlyTerms?.exit_case_id ?? 'ordinary'}
             contract={contract}
             customerName={customerName}
             locationDisplay={locationDisplay}
             unpaidInvoices={unpaidInvoices!}
             creditBalance={creditBalance!}
             onBack={handleBack}
-            onClose={() => onOpenChange(false)}
-            isPending={isPending || transferUnavailable}
+            onClose={afterSettle}
+            isPending={isPending || earlyUnavailable}
             actualDate={actualDate}
             onSettle={settle}
-            brokerFee={brokerFee}
-            brokerDepositBase={transfer?.mode === 'BROKER' ? transfer.deposit_base : null}
+            earlyTerms={earlyTerms}
             initialDraft={stepDraft}
             onDraftChange={updateWorking}
             onSaveDraft={exitCase ? () => void saveDraftNow() : undefined}
@@ -393,6 +465,9 @@ export function TerminateDialog({
             draftSaving={saveDraft.isPending}
           />
         )}
+
+        {step === 3 && exitCase && <ExitCommissionForm exitCaseId={exitCase.id} onDone={() => onOpenChange(false)}
+          laterLabel="Để sau (hồ sơ sẽ nhắc)" />}
 
         <AlertDialog open={draftConflict} onOpenChange={value => { if (!value) setDraftConflict(false); }}>
           <AlertDialogContent>
@@ -746,8 +821,7 @@ function StepMoveOut({
   isPending,
   actualDate,
   onSettle,
-  brokerFee,
-  brokerDepositBase,
+  earlyTerms,
   initialDraft,
   onDraftChange,
   onSaveDraft,
@@ -764,20 +838,24 @@ function StepMoveOut({
   isPending: boolean;
   actualDate: string;
   onSettle: (settlement: ExitSettlementInput) => Promise<void>;
-  brokerFee: ExtraChargeItem | null;
-  brokerDepositBase: number | null;
+  earlyTerms: ContractExitEarlyTerms | null;
 } & DraftStepProps) {
   // A1 (audit 03/07): mặc định hoàn cọc theo cọc THỰC THU (deposit_paid), không
   // phải cọc theo HĐ — server cũng kẹp LEAST(refund, deposit_paid) để không thể
   // hoàn quá số khách đã đóng.
   const totalDeposit = Number(contract.total_deposit || 0);
   const depositPaid = Number(contract.deposit_paid ?? contract.total_deposit ?? 0);
+  // Nhờ sale / tự tìm: cọc đem ra quyết toán khoá ở mức cọc đã thu (phí môi giới cấn từ đó); phần giữ lại theo thoả thuận
+  // xử lý ở đợt sau. Nhờ sale có phí: đúng một dòng BROKER_FEE lấy từ hồ sơ, khoá; sửa qua "Sửa phí" kèm lý do.
+  const transferCase = isTransferReason(earlyTerms?.early_reason);
+  const brokerFee = earlyTerms ? brokerFeeLine(earlyTerms) : null;
+  const [feeEditing, setFeeEditing] = useState(false);
 
   const form = useForm<TerminateMoveOutFormData>({
     resolver: zodResolver(terminateMoveOutFormSchema),
     defaultValues: {
       move_out_date: actualDate,
-      deposit_refund: brokerDepositBase ?? initialDraft.moveOut?.depositRefund ?? Math.min(totalDeposit, depositPaid),
+      deposit_refund: transferCase ? depositPaid : initialDraft.moveOut?.depositRefund ?? Math.min(totalDeposit, depositPaid),
       excess_rent: initialDraft.moveOut?.excessRent ?? 0,
       notes: initialDraft.moveOut?.notes ?? "",
     },
@@ -785,7 +863,7 @@ function StepMoveOut({
 
   const [editableCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
   const [meterValid, setMeterValid] = useState(false);
-  const extraCharges = useMemo(() => withTransferBrokerFee(editableCharges, brokerFee), [editableCharges, brokerFee]);
+  const extraCharges = useMemo(() => withBrokerFeeLine(editableCharges, brokerFee), [editableCharges, brokerFee]);
   const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
 
   // Khoản MÌNH trả lại khách (tiền phòng ngày không ở…) — thêm 22/08/2026.
@@ -1049,7 +1127,7 @@ function StepMoveOut({
                   <FormLabel className="text-xs">Tiền cọc hoàn trả</FormLabel>
                   <FormControl>
                     <CurrencyInput
-                      disabled={!!brokerFee}
+                      disabled={transferCase}
                       className="h-9 text-sm text-right"
                       value={field.value}
                       onChange={field.onChange}
@@ -1122,11 +1200,17 @@ function StepMoveOut({
         {/* Section 3b: Thu thêm — vào HOÁ ĐƠN THANH LÝ RIÊNG (kind SETTLEMENT,
             đúng kỳ tháng trả phòng), KHÔNG đụng hoá đơn tiền phòng của tháng. */}
         <div className="border-t pt-4">
-          {brokerFee && <div className="mb-3 rounded border p-3 text-sm">
-            <p>Phí nhượng qua môi giới · 50% cọc cũ: <strong>{formatVND(brokerFee.amount)} đ</strong></p>
-            <p className="text-xs text-muted-foreground">{brokerFee.amount === 0
-              ? 'Cọc cũ bằng 0 đồng, không phát sinh hoa hồng môi giới.'
-              : 'Đã cộng một lần vào khoản thu khi thanh lý. Các khoản khác xử lý như hiện tại.'}</p>
+          {earlyTerms?.early_reason === 'SALE_ASSISTED' && <div className="mb-3 space-y-2 rounded border p-3 text-sm" data-testid="broker-fee-line">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p>{brokerFee ? brokerFee.description : 'Phí môi giới'}: <strong>{formatVND(earlyTerms.broker_fee)} đ</strong>
+                {earlyTerms.sale_name && <span className="text-muted-foreground"> · sale {earlyTerms.sale_name}</span>}</p>
+              {earlyTerms.exit_state === 'PENDING' && !earlyTerms.fee_applied_at && <Button type="button" size="sm" variant="outline"
+                disabled={isPending} onClick={() => setFeeEditing(true)}>Sửa phí</Button>}
+            </div>
+            <p className="text-xs text-muted-foreground">{earlyTerms.broker_fee > 0
+              ? 'Dòng thu thêm tự có và khoá, cấn từ cọc như các khoản thu khác. Phiếu hoa hồng cho sale lập ngay sau khi quyết toán.'
+              : 'Phí môi giới đã sửa về 0 đồng: không có dòng phí, không phát sinh phiếu hoa hồng môi giới.'}</p>
+            {feeEditing && <BrokerFeeEditDialog terms={earlyTerms} open={feeEditing} onOpenChange={setFeeEditing} />}
           </div>}
           <TerminationExtraCharges
             contract={contract}
@@ -1155,6 +1239,7 @@ function StepMoveOut({
           <TerminationRefundItems
             contract={contract}
             moveOutDate={form.watch("move_out_date")}
+            defaultFromDate={refundFromHandoverDate(earlyTerms) ? earlyTerms?.actual_move_out_on : undefined}
             onChange={setRefundItems}
             initialDraft={initialDraft.refund}
             onDraftChange={onRefundDraft}

@@ -28,7 +28,6 @@ import {
   CalendarPlus,
   ArrowRightLeft,
   LogOut,
-  UserPlus,
   FileX,
   Trash2,
   Printer,
@@ -61,7 +60,6 @@ interface ContractListTableProps {
   onRenew: (contract: ContractWithRelations) => void;
   onTransferRoom: (contract: ContractWithRelations) => void;
   onMoveOut: (contract: ContractWithRelations) => void;
-  onTransferContract: (contract: ContractWithRelations) => void;
   onTerminate: (contract: ContractWithRelations) => void;
   onDelete: (contract: ContractWithRelations) => void;
   onPrint: (contract: ContractWithRelations) => void;
@@ -165,7 +163,6 @@ export function getActionButtonStates(contract: ContractWithRelations) {
     renewDisabled: !(inEffect || displayStatus === 'EXPIRED' || displayStatus === 'EXPIRING'),
     transferRoomDisabled: !inEffect,
     moveOutDisabled: !inEffect,
-    transferContractDisabled: !inEffect,
     terminateDisabled: !(inEffect || displayStatus === 'EXPIRED' || displayStatus === 'EXPIRING'),
     deleteDisabled: !(dbStatus === 'DRAFT'),
     qrDisabled: dbStatus === 'TERMINATED' || dbStatus === 'DRAFT',
@@ -183,7 +180,6 @@ export default function ContractListTable({
   onRenew,
   onTransferRoom,
   onMoveOut,
-  onTransferContract,
   onTerminate,
   onDelete,
   onPrint,
@@ -388,7 +384,6 @@ export default function ContractListTable({
                         onRenew={onRenew}
                         onTransferRoom={onTransferRoom}
                         onMoveOut={onMoveOut}
-                        onTransferContract={onTransferContract}
                         onTerminate={onTerminate}
                         onDelete={onDelete}
                         onPrint={onPrint}
@@ -463,7 +458,6 @@ interface ActionButtonsProps {
   onRenew: (contract: ContractWithRelations) => void;
   onTransferRoom: (contract: ContractWithRelations) => void;
   onMoveOut: (contract: ContractWithRelations) => void;
-  onTransferContract: (contract: ContractWithRelations) => void;
   onTerminate: (contract: ContractWithRelations) => void;
   onDelete: (contract: ContractWithRelations) => void;
   onPrint: (contract: ContractWithRelations) => void;
@@ -478,7 +472,6 @@ function ActionButtons({
   onRenew,
   onTransferRoom,
   onMoveOut,
-  onTransferContract,
   onTerminate,
   onDelete,
   onPrint,
@@ -535,14 +528,6 @@ function ActionButtons({
       disabled: actions.moveOutDisabled,
       hidden: !buildingId || !canUse(perms, 'contracts', 'terminate', buildingId),
       bg: 'bg-blue-500 hover:bg-blue-600',
-    },
-    {
-      label: 'Nhượng HĐ',
-      icon: UserPlus,
-      onClick: () => onTransferContract(contract),
-      disabled: actions.transferContractDisabled,
-      hidden: !buildingId || !canUse(perms, 'contracts', 'transfer', buildingId),
-      bg: 'bg-yellow-500 hover:bg-yellow-600',
     },
     {
       label: 'Thanh lý',

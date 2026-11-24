@@ -106,4 +106,17 @@ describe('full scoped management inventory', () => {
     expect(() => parseSaleRoomInventory({ ...payload, rooms: [...payload.rooms, ...payload.rooms] })).toThrow();
     expect(() => parseSaleRoomInventory({ ...payload, buildings: [] })).toThrow();
   });
+  it('carries the exit hold of a room waiting for its transfer tenant; a malformed hold is dropped, not the list', () => {
+    const exitHold = { exit_case_id: requestId, version: 3, early_reason: 'SALE_ASSISTED', sale_name: 'Sale Minh',
+      old_customer_name: 'Khách cũ', old_contract_number: 'HD-1', actual_move_out_on: '2026-11-24', recorded_by_name: 'Người ghi',
+      recorded_by_me: false, hold_until: '2026-11-27T03:05:00+00:00', active: true, can_manage: true };
+    const payload = inventoryPayload();
+    const held = parseSaleRoomInventory({ ...payload, rooms: payload.rooms.map(r => ({ ...r, exit_hold: exitHold })) });
+    expect(held.rooms[0]?.room).toMatchObject({ status: 'rented', saleFact: { label: 'Chờ khách Sang/Nhượng phòng' },
+      exitHold: { exitCaseId: requestId, version: 3, saleName: 'Sale Minh', active: true, canManage: true } });
+    expect(held.buildings[0]?.rooms[0]?.exitHold?.exitCaseId).toBe(requestId);
+    const broken = parseSaleRoomInventory({ ...payload, rooms: payload.rooms.map(r => ({ ...r, exit_hold: { ...exitHold, version: null } })) });
+    expect(broken.rooms).toHaveLength(1);
+    expect(broken.rooms[0]?.room.exitHold).toBeNull();
+  });
 });

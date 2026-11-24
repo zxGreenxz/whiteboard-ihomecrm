@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import "./phongTrong.css";
 import { Icon } from "./icons";
@@ -15,9 +15,15 @@ import { canUse } from "@/lib/permissionPages";
 import { useTracking, TrackingProvider } from "./useTracking";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { LoadingState } from "@/components/loading/LoadingState";
+import { exitHoldActionBlockedReason, isExitHeld } from "./exitHold";
+import type { ExitHoldAction } from "@/components/sale-phong/ExitHoldDialog";
 
 /** Giá trị đặc biệt cho chip "Tổng hợp" trong hàng chọn tòa nhà (xem tất cả tòa). */
 const OVERVIEW = "__overview__";
+// Chỉ nhân viên trong app mở hộp thoại này; link công khai không tải mã hộp thoại và hook ghi.
+const ExitHoldDialog = lazy(() => import("@/components/sale-phong/ExitHoldDialog"));
+/** Nhân viên vẫn thấy phòng đang giữ cho khách sang nhượng (máy chủ che "rented" như Lock). */
+const shownInList = (r: Room) => r.status !== "rented" || isExitHeld(r);
 
 /**
  * Bảng phòng cho Sale, chỉ hiển thị dữ liệu thật từ liên kết hoặc dữ liệu
@@ -61,7 +67,7 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
 
   const [room, setRoom] = useState<Room | null>(null);
   // Detail follows fresh reader facts after notice edits/return/holds; no stale room snapshot.
-  const currentRoom = room ? buildings.flatMap((b) => b.rooms).find((r) => r.id === room.id && r.status !== 'rented') ?? null : null;
+  const currentRoom = room ? buildings.flatMap((b) => b.rooms).find((r) => r.id === room.id && shownInList(r)) ?? null : null;
   const [sheetShow, setSheetShow] = useState(false);
   useEffect(() => {
     if (room && !currentRoom) { setRoom(null); setSheetShow(false); }
@@ -75,6 +81,11 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const canLock = (r: Room) => !!session?.user && canUse(perms, "sale_phong", "lock_room", r.buildingId);
   const canReleaseLock = (r: Room) => (!!r.saleLock?.lockedByMe && canLock(r)) || canQuickDeposit(r);
   const [lockAction, setLockAction] = useState<SaleLockAction | null>(null);
+  // Mở bán lại / Giữ tiếp phòng chờ khách sang nhượng: máy chủ báo exitHold.canManage (contracts.terminate ở toà).
+  const canManageHold = (r: Room) => !!session?.user && !!r.exitHold?.canManage;
+  const [holdAction, setHoldAction] = useState<ExitHoldAction | null>(null);
+  const holdRoom = holdAction ? buildings.flatMap((b) => b.rooms).find((r) => r.id === holdAction.roomId) : undefined;
+  const currentHold = holdAction && holdRoom?.exitHold?.exitCaseId === holdAction.hold.exitCaseId ? holdRoom.exitHold : undefined;
   // Bộ đo đếm: no-op khi không có token; is_staff = đang đăng nhập (cờ boolean, KHÔNG id/email).
   const tracker = useTracking(token, !!session?.user);
   const [depositRoom, setDepositRoom] = useState<Room | null>(null);
@@ -176,7 +187,7 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const listRooms = useMemo(() => {
     if (!building) return [] as Room[];
     return building.rooms
-      .filter((r) => (showRented || r.status !== "rented") && bandTest(r.price))
+      .filter((r) => (showRented || shownInList(r)) && bandTest(r.price))
       .sort((a, b) => b.floor - a.floor || a.no - b.no);
   }, [building, bandTest]);
 
@@ -206,6 +217,12 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
     requestAnimationFrame(() => setSheetShow(true));
   };
   const closeSheet = () => { emitRoomDwell(); setSheetShow(false); window.setTimeout(() => setRoom(null), 300); };
+  // Đóng thẻ phòng trước: thẻ nằm trên lớp hộp thoại của app (như Lock tạm / Tạo cọc).
+  const openHold = (r: Room, mode: ExitHoldAction["mode"]) => {
+    if (!r.exitHold || !canManageHold(r)) return;
+    closeSheet();
+    setHoldAction({ mode, roomId: r.id, roomLabel: `${r.buildingName} · Phòng ${r.code}`, hold: r.exitHold });
+  };
 
   const showToast = (msg: string) => {
     setToast({ msg, show: true });
@@ -358,7 +375,9 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
         <DetailSheet room={currentRoom} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={currentRoom && canQuickDeposit(currentRoom) ? (r) => { closeSheet(); openDeposit(r); } : undefined}
           onLock={currentRoom && canLock(currentRoom) ? (r) => { if (canLock(r)) { closeSheet(); setLockAction({ room: r, mode: "lock" }); } } : undefined}
           onReleaseLock={currentRoom && canReleaseLock(currentRoom) ? (r) => { if (canReleaseLock(r)) { closeSheet(); setLockAction({ room: r, mode: "release" }); } } : undefined}
-          canReleaseLock={canReleaseLock} />
+          canReleaseLock={canReleaseLock}
+          onReopenHold={currentRoom && canManageHold(currentRoom) ? (r) => openHold(r, "reopen") : undefined}
+          onExtendHold={currentRoom && canManageHold(currentRoom) ? (r) => openHold(r, "extend") : undefined} />
         {/* Chỉ mount khi có quyền tạo cọc: modal gọi useAccounts() ngay lúc render,
             khách vãng lai (anon) sẽ bị RLS chặn và nổ toast đỏ "Không thể tải
             danh sách sổ quỹ" giữa trang công khai. Không có quyền thì depositRoom
@@ -368,6 +387,14 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
         )}
         {lockAction && (lockAction.mode === "lock" ? canLock(lockAction.room) : canReleaseLock(lockAction.room)) && (
           <LockRoomModal action={lockAction} onClose={() => setLockAction(null)} onDone={showToast} />
+        )}
+        {holdAction && session?.user && (
+          <Suspense fallback={null}>
+            <ExitHoldDialog key={`${holdAction.roomId}:${holdAction.mode}`} action={{ ...holdAction, hold: currentHold ?? holdAction.hold }}
+              blockedReason={holdRoom ? exitHoldActionBlockedReason(holdAction.hold, holdRoom.exitHold)
+                : "Phòng không còn trong danh sách của bạn; không thể gửi thay đổi."}
+              onClose={() => setHoldAction(null)} />
+          </Suspense>
         )}
         <Toast msg={toast.msg} show={toast.show} />
       </div>

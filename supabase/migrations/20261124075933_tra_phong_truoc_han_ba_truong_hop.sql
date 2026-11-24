@@ -2,11 +2,14 @@
 -- thanh lý sớm), giữ phòng cho khách nhận, phí môi giới ở quyết toán và phiếu hoa hồng theo trường hợp.
 -- Plan "Sang nhượng phòng trong hộp Thanh lý", đợt 2, phần máy chủ (chủ duyệt 24/11/2026).
 --
--- Giữ nguyên: confirm_contract_return_v1 (Hermes gọi), bảng contract_transfer_links và các RPC cũ của nó,
--- máy tính quyết toán, giá trị status_public/sale_state. Không thêm cột vào contract_exit_cases.
--- Năm hàm hiện hành chỉ được nối thêm bằng neo (mỗi neo phải xuất hiện đúng một lần, chạy lại thì bỏ qua):
+-- Giữ nguyên: bảng contract_transfer_links và các RPC cũ của nó, máy tính quyết toán, giá trị
+-- status_public/sale_state. Không thêm cột vào contract_exit_cases.
+-- Tám hàm hiện hành chỉ được nối thêm bằng neo (mỗi neo phải xuất hiện đúng một lần, chạy lại thì bỏ qua):
 --   finalize_contract_exit_case_v1, app_private.room_sale_workflow_fact_v1, create_commission_voucher,
---   get_my_available_rooms, get_sale_room_inventory_v1, real_estate_renewals_transfers_v1.
+--   get_my_available_rooms, get_sale_room_inventory_v1, real_estate_renewals_transfers_v1,
+--   confirm_contract_return_v1 (một kiểm: trả phòng trước hạn + quyết toán ngay phải đi qua v2;
+--   DEFERRED qua v1 của Hermes giữ nguyên), và create_sale_bonus_from_deposit_v1 (thưởng sale từ phiếu cọc
+--   bị chặn cho khách nhận của ca tự tìm).
 
 DO $requires$
 BEGIN
@@ -19,6 +22,8 @@ BEGIN
     OR to_regprocedure('public.get_my_available_rooms()') IS NULL
     OR to_regprocedure('public.get_sale_room_inventory_v1(uuid,uuid,uuid)') IS NULL
     OR to_regprocedure('public.real_estate_renewals_transfers_v1(uuid,uuid[],date,date)') IS NULL
+    OR to_regprocedure('public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)') IS NULL
+    OR to_regprocedure('app_private.authorize_commission_request_v1(uuid,uuid)') IS NULL
     OR to_regprocedure('app_private.assert_contract_exit_writer_v1(uuid,uuid)') IS NULL
     OR to_regprocedure('app_private.require_building_perm_v1(uuid,text,text[])') IS NULL
     OR to_regprocedure('app_private.has_building_perm_v1(uuid,text[])') IS NULL
@@ -126,7 +131,10 @@ BEGIN
   IF NEW.exit_case_id<>OLD.exit_case_id OR NEW.contract_id<>OLD.contract_id OR NEW.organization_id<>OLD.organization_id
     OR NEW.building_id<>OLD.building_id OR NEW.room_id<>OLD.room_id OR NEW.created_by<>OLD.created_by
     OR NEW.created_at<>OLD.created_at OR NEW.version<OLD.version
-    OR (OLD.commission_voucher_id IS NOT NULL AND NEW.commission_voucher_id IS DISTINCT FROM OLD.commission_voucher_id) THEN
+    -- Phiếu hoa hồng đã nối chỉ được thay khi phiếu cũ đã huỷ hoặc xoá (lập lại sau khi huỷ vì sai sổ/số tài khoản).
+    OR (OLD.commission_voucher_id IS NOT NULL AND NEW.commission_voucher_id IS DISTINCT FROM OLD.commission_voucher_id
+      AND (NEW.commission_voucher_id IS NULL OR EXISTS (SELECT 1 FROM public.income_expenses v WHERE v.id=OLD.commission_voucher_id
+        AND v.deleted_at IS NULL AND v.approval_status IS DISTINCT FROM 'CANCELLED'))) THEN
     RAISE EXCEPTION 'Cột định danh của hồ sơ trường hợp trả phòng không đổi được' USING ERRCODE='42501';
   END IF;
   RETURN NEW;
@@ -185,9 +193,11 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pu
       'reopened_by_name',rp.full_name,'expiry_notified_at',t.expiry_notified_at,
       'new_contract_id',t.new_contract_id,'new_contract_number',nc.contract_number,'linked_at',t.linked_at,
       'new_contract_deposit_paid',nc.deposit_paid,'new_contract_total_deposit',nc.total_deposit,
+      'new_contract_start_date',nc.start_date,'new_contract_billing_start',COALESCE(nc.start_billing_date,nc.start_date),
       'support_amount',t.support_amount,'support_out_voucher_id',t.support_out_voucher_id,
       'support_in_voucher_id',t.support_in_voucher_id,'commission_voucher_id',t.commission_voucher_id,
-      'commission_code',v.code,'commission_approval_status',v.approval_status)
+      'commission_code',v.code,'commission_approval_status',v.approval_status,
+      'commission_live',(v.id IS NOT NULL AND v.deleted_at IS NULL AND v.approval_status IS DISTINCT FROM 'CANCELLED'))
     || jsonb_build_object(
       'version',t.version,'created_by',t.created_by,'created_by_name',cp.full_name,
       'created_at',t.created_at,'updated_at',t.updated_at,
@@ -436,6 +446,20 @@ BEGIN
 END
 $fn$;
 
+-- Kiểm ở create_sale_bonus_from_deposit_v1 (thưởng sale lập từ phiếu cọc, không qua create_commission_voucher): phiếu cọc
+-- của phòng đang chờ khách tự tìm sang phòng, hoặc của hợp đồng khách nhận ca tự tìm, không có thưởng sale.
+CREATE OR REPLACE FUNCTION app_private.assert_exit_early_deposit_bonus_v1(p_org uuid,p_room uuid,p_contract uuid)
+RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.contract_exit_early_terms t JOIN public.contract_exit_cases e ON e.id=t.exit_case_id
+      WHERE t.organization_id=p_org AND t.early_reason='SELF_FOUND'
+        AND ((p_contract IS NOT NULL AND t.new_contract_id=p_contract)
+          OR (p_room IS NOT NULL AND t.room_id=p_room AND t.new_contract_id IS NULL AND t.reopened_at IS NULL AND e.state='PENDING'))) THEN
+    RAISE EXCEPTION 'Khách tự tìm sang phòng: phiếu cọc của khách nhận không có thưởng sale' USING ERRCODE='55000';
+  END IF;
+END
+$fn$;
+
 -- 4. RPC.
 CREATE OR REPLACE FUNCTION public.confirm_contract_return_v2(p_organization_id uuid,p_contract_id uuid,p_expected_contract_updated_at timestamptz,
   p_idempotency_key text,p_actual_move_out_on date,p_initial_kind text,p_settlement_mode text,p_settlement jsonb DEFAULT NULL,
@@ -472,8 +496,11 @@ BEGIN
     AND EXISTS (SELECT 1 FROM jsonb_array_elements(p_settlement->'extra_charges') j WHERE j->>'kind'='BROKER_FEE') THEN
     RAISE EXCEPTION 'Dòng phí môi giới chỉ có ở quyết toán trường hợp nhờ sale, sau khi có hợp đồng khách mới' USING ERRCODE='22023';
   END IF;
+  -- Dấu trong giao dịch: v1 chỉ cho trả phòng trước hạn + quyết toán ngay khi đi qua v2 (đã chọn trường hợp).
+  PERFORM set_config('app.exit_early_terms_v2','on',true);
   v_result:=public.confirm_contract_return_v1(p_organization_id,p_contract_id,p_expected_contract_updated_at,p_idempotency_key,
     p_actual_move_out_on,p_initial_kind,p_settlement_mode,p_settlement,p_meter_boundary,p_return_note);
+  PERFORM set_config('app.exit_early_terms_v2','',true);
   IF p_initial_kind IS DISTINCT FROM 'EARLY_RETURN' THEN
     RETURN v_result||jsonb_build_object('early_terms',NULL);
   END IF;
@@ -754,6 +781,10 @@ BEGIN
   SELECT * INTO t FROM public.contract_exit_early_terms WHERE exit_case_id=p_exit_case_id AND organization_id=p_organization_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Không có quyền hồ sơ trả phòng' USING ERRCODE='42501'; END IF;
   PERFORM app_private.assert_contract_exit_writer_v1(t.organization_id,t.building_id);
+  IF t.new_contract_id IS NOT NULL THEN
+    -- Cùng cửa quyền với mọi đường lập hoa hồng (quyền hoa hồng + quyền tạo phiếu thu chi trên toà).
+    PERFORM app_private.authorize_commission_request_v1(t.organization_id,t.new_contract_id);
+  END IF;
   v_hash:=md5(jsonb_build_object('case',t.exit_case_id,'version',p_expected_version,'account',p_account_id,
     'bank',p_recipient_bank,'number',p_recipient_account)::text);
   SELECT * INTO h FROM app_private.contract_exit_early_term_events WHERE request_id=p_request_id;
@@ -768,7 +799,10 @@ BEGIN
     OR NOT EXISTS (SELECT 1 FROM public.contract_exit_cases e WHERE e.id=t.exit_case_id AND e.state='FINALIZED') THEN
     RAISE EXCEPTION 'Chỉ lập hoa hồng môi giới cho trường hợp nhờ sale, sau khi có hợp đồng khách mới và đã quyết toán phí' USING ERRCODE='55000';
   END IF;
-  IF t.commission_voucher_id IS NOT NULL OR t.broker_fee=0 THEN RETURN app_private.contract_exit_early_terms_response_v1(t.exit_case_id); END IF;
+  IF t.broker_fee=0 OR EXISTS (SELECT 1 FROM public.income_expenses x WHERE x.id=t.commission_voucher_id
+      AND x.deleted_at IS NULL AND x.approval_status IS DISTINCT FROM 'CANCELLED') THEN
+    RETURN app_private.contract_exit_early_terms_response_v1(t.exit_case_id);
+  END IF;
   SELECT * INTO nc FROM public.contracts WHERE id=t.new_contract_id AND organization_id=t.organization_id AND deleted_at IS NULL;
   IF nc.id IS NULL OR COALESCE(nc.deposit_paid,0)<COALESCE(nc.total_deposit,0) THEN
     RAISE EXCEPTION 'Khách nhận phòng chưa nộp đủ cọc; lập phiếu hoa hồng sau khi thu đủ cọc' USING ERRCODE='55000';
@@ -777,7 +811,8 @@ BEGIN
     AND commission_kind='broker' AND deleted_at IS NULL AND approval_status IS DISTINCT FROM 'CANCELLED' FOR UPDATE;
   IF FOUND THEN
     -- Writer hoa hồng ghi người nhận vào ghi chú ("Người nhận: <tên>"); income_expenses không có cột người nhận.
-    IF v.type::text<>'EXPENSE' OR v.total_amount<>t.broker_fee OR strpos(COALESCE(v.notes,''),'Người nhận: '||t.sale_name)=0 THEN
+    -- So khớp đúng cả chuỗi (writer ghi đúng 'Người nhận: <tên>'), không so một phần tên.
+    IF v.type::text<>'EXPENSE' OR v.total_amount<>t.broker_fee OR btrim(COALESCE(v.notes,''))<>'Người nhận: '||btrim(t.sale_name) THEN
       RAISE EXCEPTION 'Hợp đồng khách nhận đã có phiếu môi giới khác số tiền hoặc người nhận; không tạo trùng hay đổi phiếu hiện hành' USING ERRCODE='55000';
     END IF;
     v_result:=jsonb_build_object('id',v.id);
@@ -828,8 +863,8 @@ BEGIN
       INSERT INTO public.notifications(user_id,organization_id,type,channel,status,subject,content,contract_id,metadata)
       VALUES(r.created_by,r.organization_id,'ACTION_REQUIRED','IN_APP','PENDING','Hết hạn giữ phòng chờ khách sang nhượng',
         COALESCE(NULLIF(concat_ws(' · ',NULLIF(r.building_name,''),NULLIF(r.room_name,'')),''),'Phòng')
-          ||': hết hạn giữ, phòng đã tự mở bán lại. Mở hồ sơ trả phòng HĐ '||COALESCE(r.contract_number,'')
-          ||' để Giữ tiếp, hoặc đổi trường hợp nếu khách nhận đã huỷ.',
+          ||': hết hạn giữ, phòng đang rao lại; hợp đồng mới đầu tiên của phòng vẫn tự nối với hồ sơ trả phòng '
+          ||COALESCE(r.contract_number,'')||'. Khách nhận còn thuê thì Giữ tiếp; khách nhận đã huỷ thì Mở bán lại rồi đổi trường hợp.',
         r.contract_id,
         jsonb_build_object('kind','exit_hold_expired','event','EXIT_HOLD_EXPIRED','exit_case_id',r.exit_case_id,
           'room_id',r.room_id,'building_id',r.building_id,'hold_until',r.hold_until,'url','/contracts/'||r.contract_id::text));
@@ -896,7 +931,22 @@ BEGIN
       '    SELECT ''TRANSFER'',s.link_id,s.new_contract_id,s.received_on,s.room_id,s.signed_rent,s.representative_id,true FROM signed s'||chr(10)
         ||'    UNION ALL'||chr(10)
         ||'    SELECT ''TRANSFER'',x.exit_case_id,x.new_contract_id,x.received_on,x.room_id,NULL::numeric,NULL::text,false FROM early x',
-      'FROM early x')
+      'FROM early x'),
+    -- Trả phòng trước hạn + quyết toán ngay chỉ đi qua v2 (đã chọn trường hợp). DEFERRED qua v1 giữ nguyên (Hermes);
+    -- hồ sơ chưa phân loại bị chặn ở bước kiểm quyết toán.
+    (9,'public.confirm_contract_return_v1(uuid,uuid,timestamp with time zone,text,date,text,text,jsonb,jsonb,text)',
+      '  IF auth.uid() IS NULL OR NOT COALESCE(p_organization_id=ANY(public.my_org_ids()),false) THEN RAISE EXCEPTION ''Organization is outside the writable scope'' USING ERRCODE=''42501''; END IF;',
+      '  IF p_initial_kind=''EARLY_RETURN'' AND p_settlement_mode=''IMMEDIATE'' AND COALESCE(current_setting(''app.exit_early_terms_v2'',true),'''')<>''on'' THEN'||chr(10)
+        ||'    RAISE EXCEPTION ''Trả phòng trước hạn cần chọn trường hợp (nhờ sale, tự tìm khách, chủ nhà hỗ trợ) trước khi quyết toán ngay. Tải lại trang để chọn trường hợp rồi ghi lại.'' USING ERRCODE=''22023'';'||chr(10)
+        ||'  END IF;'||chr(10)
+        ||'  IF auth.uid() IS NULL OR NOT COALESCE(p_organization_id=ANY(public.my_org_ids()),false) THEN RAISE EXCEPTION ''Organization is outside the writable scope'' USING ERRCODE=''42501''; END IF;',
+      'app.exit_early_terms_v2'),
+    -- Thưởng sale từ phiếu cọc không đi qua create_commission_voucher: chặn riêng cho khách nhận của ca tự tìm.
+    (10,'public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)',
+      ' SELECT * INTO d FROM public.income_expenses WHERE id=p_deposit_voucher_id AND organization_id=org FOR UPDATE;',
+      ' SELECT * INTO d FROM public.income_expenses WHERE id=p_deposit_voucher_id AND organization_id=org FOR UPDATE;'||chr(10)
+        ||' PERFORM app_private.assert_exit_early_deposit_bonus_v1(org,d.room_id,d.contract_id);',
+      'assert_exit_early_deposit_bonus_v1(')
   ) AS edits(ord,signature,anchor,replacement,marker) ORDER BY ord LOOP
     v_body:=pg_get_functiondef(r.signature::regprocedure);
     IF strpos(v_body,r.marker)=0 THEN
@@ -938,6 +988,7 @@ BEGIN
     'app_private.contract_exit_early_terms_on_contract_v1()',
     'app_private.assert_exit_early_terms_settlement_v1(uuid,text,jsonb)',
     'app_private.assert_exit_early_commission_v1(uuid,uuid,text,numeric)',
+    'app_private.assert_exit_early_deposit_bonus_v1(uuid,uuid,uuid)',
     'app_private.exit_hold_expiry_tick_v1(timestamp with time zone)'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',v_signature);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role',v_signature);
@@ -969,7 +1020,9 @@ BEGIN
     ('public.get_my_available_rooms()','OR exit_hold IS NOT NULL','s'),
     ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)','room_exit_hold_json_v1(','s'),
     ('public.real_estate_renewals_transfers_v1(uuid,uuid[],date,date)','public.contract_exit_early_terms t','s'),
-    ('public.real_estate_renewals_transfers_v1(uuid,uuid[],date,date)','FROM early x','s')
+    ('public.real_estate_renewals_transfers_v1(uuid,uuid[],date,date)','FROM early x','s'),
+    ('public.confirm_contract_return_v1(uuid,uuid,timestamp with time zone,text,date,text,text,jsonb,jsonb,text)','app.exit_early_terms_v2','v'),
+    ('public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)','assert_exit_early_deposit_bonus_v1(','v')
   ) AS t(sig,marker,vol) LOOP
     v_def:=pg_get_functiondef(r.sig::regprocedure);
     IF (length(v_def)-length(replace(v_def,r.marker,'')))<>length(r.marker)
@@ -980,6 +1033,7 @@ BEGIN
   IF (SELECT count(*) FROM pg_trigger WHERE tgrelid='public.contracts'::regclass AND tgname='z50_contract_exit_early_terms_link' AND NOT tgisinternal)<>1
     OR NOT EXISTS (SELECT 1 FROM app_private.feature_cutovers WHERE key='exit_early_terms')
     OR has_function_privilege('authenticated','app_private.assert_exit_early_commission_v1(uuid,uuid,text,numeric)','EXECUTE')
+    OR has_function_privilege('authenticated','app_private.assert_exit_early_deposit_bonus_v1(uuid,uuid,uuid)','EXECUTE')
     OR has_function_privilege('authenticated','app_private.exit_hold_expiry_tick_v1(timestamp with time zone)','EXECUTE')
     OR has_table_privilege('authenticated','public.contract_exit_early_terms','INSERT')
     OR has_table_privilege('authenticated','public.contract_exit_early_terms','UPDATE')

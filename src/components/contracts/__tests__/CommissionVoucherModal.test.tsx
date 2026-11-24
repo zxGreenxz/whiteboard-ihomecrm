@@ -32,12 +32,17 @@ const state = vi.hoisted(() => ({
   voucherLoading: false,
   supportKind: 'LEGACY', supportReadEnabled: false,
   followups: [] as { kind: string; state: string; can_manage: boolean; request_id?: string; can_retry?: boolean; last_reason?: string; preparation?: ContractCommissionFollowup['preparation'] }[],
+  exit: { data: [] as unknown[] | undefined, isLoading: false, isError: false, error: null as unknown },
+  exitCalls: [] as [unknown, boolean | undefined][],
 }));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({ useContractExitEarlyTerms: (filter: unknown, enabled?: boolean) => {
+  state.exitCalls.push([filter, enabled]); return state.exit;
+} }));
 vi.mock('@/hooks/useContractRentSupport', () => ({ useContractRentSupport: (filter: { enabled?: boolean; contractIds?: string[] }) => {
   state.supportReadEnabled = !!filter.enabled;
   return { data: { rows: [{ contract_id: filter.contractIds?.[0], kind: state.supportKind, financial: { payload: {} } }] }, isLoading: false, isError: false, refetch: vi.fn() };
 } }));
-vi.mock('../RentSupportPayoutForm', () => ({ RentSupportPayoutForm: () => <div>Phiếu hỗ trợ ròng canonical</div> }));
+vi.mock('../RentSupportPayoutForm', () => ({ RentSupportPayoutForm: ({ onlyKind }: { onlyKind?: string }) => <div data-only-kind={onlyKind ?? ''}>Phiếu hỗ trợ ròng canonical</div> }));
 
 vi.mock("@/hooks/useCommissionVoucher", () => ({
   useCommissionPrefill: () => ({
@@ -70,6 +75,7 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.f
 
 import { CommissionVoucherModal } from "../CommissionVoucherModal";
 import { toast } from 'sonner';
+import { exitTermsRow, linkedExitTermsRow } from './exitEarlyTermsFixture';
 
 vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 
@@ -161,6 +167,7 @@ beforeEach(() => {
   state.voucherError = false;
   state.voucherLoading = false;
   state.supportKind = 'LEGACY'; state.supportReadEnabled = false;
+  state.exit = { data: [], isLoading: false, isError: false, error: null }; state.exitCalls = [];
   state.followups = ['broker', 'sale'].map(kind => ({ kind, state: 'PENDING', can_manage: true }));
   state.refetch.mockReset();
   state.refetch.mockImplementation(async () => ({ data: { rows: state.followups }, isError: state.voucherError }));
@@ -434,4 +441,80 @@ it('D17 reload đọc unknown saved intent, không prepare hoặc execute qua n�
  fireEvent.click(screen.getByRole('button',{name:'Tạo phiếu chi'}));
  expect(state.prepare).not.toHaveBeenCalled();expect(state.create).not.toHaveBeenCalled();
  expect(screen.getByRole('button',{name:'Tạo lại hoa hồng môi giới'})).toBeTruthy();
+});
+
+// Trả phòng trước hạn: hợp đồng khách nhận đã tự nối với hồ sơ cũ. Lớp chặn thứ hai ở giao diện (máy chủ chặn trước).
+const selfFoundText = 'Hợp đồng nhận sang phòng từ khách tự tìm: không có hoa hồng môi giới hay thưởng sale.';
+const saleAssistedText = 'Hoa hồng môi giới của khách nhận lập từ hồ sơ trả phòng HD-0101 sau khi quyết toán.';
+const receiving = (early_reason: 'SALE_ASSISTED' | 'SELF_FOUND') => [linkedExitTermsRow({ early_reason, new_contract_id: 'c1' })];
+
+it('đọc hồ sơ trả phòng theo hợp đồng đang mở, chỉ khi hộp mở', () => {
+  const { rerender } = render(<CommissionVoucherModal open={false} contractId="c1" onOpenChange={() => {}} />);
+  expect(state.exitCalls.at(-1)).toEqual([{ contractId: 'c1' }, false]);
+  rerender(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(state.exitCalls.at(-1)).toEqual([{ contractId: 'c1' }, true]);
+});
+it('khách nhận ca tự tìm: không cho lập hoa hồng môi giới lẫn thưởng sale', () => {
+  state.exit.data = receiving('SELF_FOUND');
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(screen.getByText(selfFoundText)).toBeTruthy();
+  expect(screen.queryByPlaceholderText('Tên công ty / cá nhân môi giới')).toBeNull();
+  expect(screen.queryByPlaceholderText('Để trống nếu không có')).toBeNull();
+  const submit = screen.getByRole('button', { name: 'Tạo phiếu chi' }) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+  fireEvent.click(submit);
+  expect(state.prepare).not.toHaveBeenCalled(); expect(state.create).not.toHaveBeenCalled();
+});
+it('khách nhận ca tự tìm có lịch hỗ trợ v2: không mở form chi ròng', () => {
+  state.exit.data = receiving('SELF_FOUND'); state.supportKind = 'V2';
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(screen.queryByText('Phiếu hỗ trợ ròng canonical')).toBeNull();
+  expect(screen.getByText(selfFoundText)).toBeTruthy();
+});
+it('khách nhận ca nhờ sale: khoá hoa hồng môi giới, thưởng sale vẫn lập (kể cả khi không quản lý được dòng môi giới)', async () => {
+  state.exit.data = receiving('SALE_ASSISTED');
+  state.followups = [{ kind: 'broker', state: 'PENDING', can_manage: false }, { kind: 'sale', state: 'PENDING', can_manage: true }];
+  state.create.mockResolvedValue({ status: 'COMPLETED', id: 'sale-voucher', code: 'PC-SALE' });
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(screen.getByText(saleAssistedText)).toBeTruthy();
+  expect(screen.queryByPlaceholderText('Tên công ty / cá nhân môi giới')).toBeNull();
+  expect(screen.queryByText('Sổ quỹ (chi hoa hồng MG)')).toBeNull();
+  fireEvent.change(screen.getByPlaceholderText('Để trống nếu không có'), { target: { value: '300000' } });
+  fireEvent.change(screen.getByLabelText('Lý do điều chỉnh thưởng Sale *'), { target: { value: 'Thưởng sale theo thỏa thuận đã xác nhận' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(state.create).toHaveBeenCalledOnce());
+  expect(state.prepare.mock.calls[0][0].map((input: { kind: string }) => input.kind)).toEqual(['sale']);
+});
+it('khách nhận ca nhờ sale mở riêng cho môi giới: chỉ báo đường lập từ hồ sơ trả phòng', () => {
+  state.exit.data = receiving('SALE_ASSISTED');
+  render(<CommissionVoucherModal open contractId="c1" onlyKind="broker" onOpenChange={() => {}} />);
+  expect(screen.getByText(saleAssistedText)).toBeTruthy();
+  expect(screen.queryByLabelText('Số tiền hoa hồng')).toBeNull();
+  expect((screen.getByRole('button', { name: 'Tạo phiếu chi' }) as HTMLButtonElement).disabled).toBe(true);
+});
+it('khách nhận ca nhờ sale có lịch hỗ trợ v2: form chi ròng chỉ còn thưởng sale', () => {
+  state.exit.data = receiving('SALE_ASSISTED'); state.supportKind = 'V2';
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(screen.getByText('Phiếu hỗ trợ ròng canonical').getAttribute('data-only-kind')).toBe('sale');
+  expect(screen.getByText(saleAssistedText)).toBeTruthy();
+});
+it('hợp đồng cũ của hồ sơ trả phòng (không phải khách nhận) lập hoa hồng như thường', () => {
+  state.exit.data = [exitTermsRow({ contract_id: 'c1', early_reason: 'SELF_FOUND' })];
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(oTenMG()).toBeTruthy(); expect(screen.queryByText(selfFoundText)).toBeNull();
+});
+it('đang đọc hồ sơ trả phòng: chưa cho nhập hay tạo phiếu', () => {
+  state.exit = { data: undefined, isLoading: true, isError: false, error: null };
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(screen.queryByPlaceholderText('Tên công ty / cá nhân môi giới')).toBeNull();
+  expect((screen.getByRole('button', { name: 'Tạo phiếu chi' }) as HTMLButtonElement).disabled).toBe(true);
+});
+it.each([
+  ['lỗi mạng', new TypeError('Failed to fetch'), true],
+  ['không có quyền đọc (42501)', { code: '42501', message: 'Không có quyền đọc hồ sơ trả phòng' }, false],
+])('đọc hồ sơ trả phòng %s: vẫn lập như cũ (máy chủ chặn), chỉ báo khi không phải lỗi quyền', (_name, error, note) => {
+  state.exit = { data: undefined, isLoading: false, isError: true, error };
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(oTenMG()).toBeTruthy();
+  expect(!!screen.queryByText(/Chưa kiểm được hợp đồng có nhận sang phòng/)).toBe(note);
 });

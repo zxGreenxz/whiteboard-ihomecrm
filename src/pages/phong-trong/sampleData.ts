@@ -20,6 +20,26 @@ export interface RoomSaleLockInfo {
   lockedByMe: boolean;
 }
 
+/**
+ * Hồ sơ trả phòng trước hạn "Nhờ sale / Tự tìm khách sang phòng" còn chờ hợp đồng khách nhận — chỉ nhân viên
+ * trong app thấy. `active` = còn hạn giữ (máy chủ che phòng thành "rented" như Lock); hết hạn thì phòng rao lại
+ * nhưng hồ sơ vẫn chờ. `version` là phiên bản hồ sơ trường hợp, gửi kèm khi Mở bán lại / Giữ tiếp.
+ */
+export interface RoomExitHoldInfo {
+  exitCaseId: string;
+  version: number;
+  earlyReason: 'SALE_ASSISTED' | 'SELF_FOUND';
+  saleName: string | null;
+  oldCustomerName: string | null;
+  oldContractNumber: string | null;
+  actualMoveOutOn: string;
+  recordedByName: string;
+  recordedByMe: boolean;
+  holdUntil: string;
+  active: boolean;
+  canManage: boolean;
+}
+
 export interface Room extends Box {
   id: string;
   no: number;
@@ -51,6 +71,7 @@ export interface Room extends Box {
   passAvailDate?: string | null;  // "dd/mm" — ngày dự kiến trống (tuỳ chọn)
   passContactManager?: boolean;   // true = khách ẩn SĐT, chỉ "Liên hệ quản lý" (dùng SĐT QL tòa)
   saleLock?: RoomSaleLockInfo | null; // status === "locked"
+  exitHold?: RoomExitHoldInfo | null; // chỉ reader trong app; link công khai không bao giờ có
 }
 
 export interface Fixture extends Box {

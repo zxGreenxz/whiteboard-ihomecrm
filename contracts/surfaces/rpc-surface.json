@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3161,
+    "sourceCallSites": 3170,
     "catalogFunctions": 1668,
     "schemas": [
       "public",
@@ -9,13 +9,13 @@
     ]
   },
   "counts": {
-    "calledRpcs": 435,
+    "calledRpcs": 430,
     "byRisk": {
-      "normal": 325,
+      "normal": 320,
       "financial": 109,
       "infrastructure": 1
     },
-    "securityDefiner": 409
+    "securityDefiner": 404
   },
   "missingOnServer": [],
   "rpcs": {
@@ -676,25 +676,6 @@
         "src/hooks/useCashbookClosing.ts"
       ],
       "risk": "financial"
-    },
-    "cancel_contract_transfer_link_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_link_id uuid, p_expected_version bigint, p_reason text, p_request_id uuid",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
-      ],
-      "risk": "normal"
     },
     "cancel_income_expense_flex_v1": {
       "definitions": [
@@ -1794,44 +1775,6 @@
       ],
       "risk": "normal"
     },
-    "create_contract_transfer_commission_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_link_id uuid, p_expected_version bigint, p_request_id uuid, p_account_id uuid DEFAULT NULL::uuid, p_recipient_bank text DEFAULT NULL::text, p_recipient_account text DEFAULT NULL::text",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
-      ],
-      "risk": "normal"
-    },
-    "create_contract_transfer_link_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_old_exit_case_id uuid, p_new_draft_id uuid, p_expected_exit_version bigint, p_expected_draft_revision integer, p_mode text, p_deposit_mode text, p_term_mode text, p_broker_name text, p_reason text, p_request_id uuid",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
-      ],
-      "risk": "normal"
-    },
     "create_income_expense_v1": {
       "definitions": [
         {
@@ -2511,25 +2454,6 @@
       ],
       "callers": [
         "src/hooks/useContractExitCases.ts"
-      ],
-      "risk": "normal"
-    },
-    "finalize_contract_transfer_exit_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_case_id uuid, p_expected_version bigint, p_idempotency_key text, p_current_kind text, p_reason text, p_settlement jsonb, p_link_id uuid, p_expected_link_version bigint",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
       ],
       "risk": "normal"
     },
@@ -5626,25 +5550,6 @@
       ],
       "callers": [
         "src/lib/rentSupportApi.ts"
-      ],
-      "risk": "normal"
-    },
-    "read_contract_transfer_links_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_contract_id uuid DEFAULT NULL::uuid, p_draft_id uuid DEFAULT NULL::uuid, p_exit_case_id uuid DEFAULT NULL::uuid",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
       ],
       "risk": "normal"
     },

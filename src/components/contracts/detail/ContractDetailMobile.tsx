@@ -34,7 +34,6 @@ interface Props extends Pick<ContractMobileSettlementStatusProps,
   onShowQR: () => void;
   onRenew: () => void;
   onTransferRoom: () => void;
-  onTransferContract: () => void;
   onMoveOut: () => void;
   onTerminate: () => void;
   onDelete: () => void;
@@ -87,7 +86,6 @@ export function ContractDetailMobile(props: Props) {
               onShowQR={props.onShowQR}
               onRenew={props.onRenew}
               onTransferRoom={props.onTransferRoom}
-              onTransferContract={props.onTransferContract}
               onMoveOut={props.onMoveOut}
               onTerminate={props.onTerminate}
               onDelete={props.onDelete}

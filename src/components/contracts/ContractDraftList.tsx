@@ -11,13 +11,12 @@ export interface ContractDraftListProps {
   buildingId?: string; buildingIds?: string[]; canEdit: boolean; canExport: boolean; canSign: boolean;
   onEdit: (draft: ContractDraft) => void; onPrint: (draft: ContractDraft) => void;
   onSign: (draft: ContractDraft) => void;
-  onTransfer: (draft: ContractDraft) => void;
   canDelete?: (draft: ContractDraft) => boolean;
   /** "sheet": dòng gọn cho bảng trượt của mobile, thao tác phụ gom sau nút "⋯". */
   layout?: 'page' | 'sheet';
 }
 
-type DraftActions = Pick<ContractDraftListProps, 'canEdit' | 'canExport' | 'canSign' | 'canDelete' | 'onEdit' | 'onPrint' | 'onSign' | 'onTransfer'>;
+type DraftActions = Pick<ContractDraftListProps, 'canEdit' | 'canExport' | 'canSign' | 'canDelete' | 'onEdit' | 'onPrint' | 'onSign'>;
 
 // "31/10 19:30": toLocale* của vi-VN với ngày + tháng lại ghi "31-10", lệch mọi ngày khác trên trang.
 const editedAt = (value: string) => {
@@ -26,7 +25,7 @@ const editedAt = (value: string) => {
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
-function DraftSheetRows({ drafts, canEdit, canExport, canSign, canDelete, onEdit, onPrint, onSign, onTransfer, onDelete }: DraftActions & {
+function DraftSheetRows({ drafts, canEdit, canExport, canSign, canDelete, onEdit, onPrint, onSign, onDelete }: DraftActions & {
   drafts: ContractDraft[]; onDelete: (draft: ContractDraft) => void;
 }) {
   const { data: roomsData } = useRooms();
@@ -38,7 +37,7 @@ function DraftSheetRows({ drafts, canEdit, canExport, canSign, canDelete, onEdit
     const start = draft.payload.form.start_date;
     const canSignRow = canSign && !signed;
     const canDeleteRow = !signed && !!canDelete?.(draft);
-    const hasMore = canSignRow || canExport || canEdit || canDeleteRow;
+    const hasMore = canSignRow || canExport || canDeleteRow;
     const open = openId === draft.id;
     return <div key={draft.id} className="cm-qdraft">
       <div className="cm-qdraft-top">
@@ -57,14 +56,13 @@ function DraftSheetRows({ drafts, canEdit, canExport, canSign, canDelete, onEdit
       {open && <div className="cm-qdraft-actions">
         {canSignRow && <Button className="cm-qbtn cm-qbtn-primary wide" onClick={() => onSign(draft)}><FileCheck2 className="mr-1 h-4 w-4" />Xác nhận đã ký</Button>}
         {canExport && <Button variant="outline" className="cm-qbtn" onClick={() => onPrint(draft)}><Printer className="mr-1 h-4 w-4" />In</Button>}
-        {canEdit && <Button variant="outline" className="cm-qbtn" onClick={() => onTransfer(draft)}>Liên kết nhượng</Button>}
         {canDeleteRow && <Button variant="outline" className="cm-qbtn danger" onClick={() => onDelete(draft)}><Trash2 className="mr-1 h-4 w-4" />Xóa nháp</Button>}
       </div>}
     </div>;
   })}</div>;
 }
 
-export function ContractDraftList({ buildingId, buildingIds, canEdit, canExport, canSign, canDelete, onEdit, onPrint, onSign, onTransfer, layout = 'page' }: ContractDraftListProps) {
+export function ContractDraftList({ buildingId, buildingIds, canEdit, canExport, canSign, canDelete, onEdit, onPrint, onSign, layout = 'page' }: ContractDraftListProps) {
   const query = useContractDrafts(buildingId);
   const remove = useDeleteContractDraft();
   const [deleting, setDeleting] = useState<ContractDraft>();
@@ -82,12 +80,11 @@ export function ContractDraftList({ buildingId, buildingIds, canEdit, canExport,
   const drafts = query.data?.filter(draft => !buildingIds?.length || buildingIds.includes(draft.building_id)) ?? [];
   if (!drafts.length) return <p className="p-6 text-sm text-muted-foreground text-center">Chưa có bản nháp. Chọn “Soạn nháp” để lưu thông tin trước khi ký.</p>;
   return <>{layout === 'sheet' ? <DraftSheetRows drafts={drafts} canEdit={canEdit} canExport={canExport} canSign={canSign} canDelete={canDelete}
-    onEdit={onEdit} onPrint={onPrint} onSign={onSign} onTransfer={onTransfer} onDelete={draft => { setDeleteError(''); setDeleting(draft); }} />
+    onEdit={onEdit} onPrint={onPrint} onSign={onSign} onDelete={draft => { setDeleteError(''); setDeleting(draft); }} />
     : <div className="divide-y rounded-md border">{drafts.map(draft => <div key={draft.id} className="p-4 flex flex-wrap items-start justify-between gap-3">
     <div><div className="font-medium">{draft.status === 'SIGNED' ? 'Đã ký từ nháp' : 'Bản nháp'} · {draft.payload.customers.find(c => c.is_representative)?.full_name || 'Chưa chọn khách đại diện'}</div><p className="text-sm text-muted-foreground">Phiên bản {draft.revision} · {draft.room_id ? 'Đã chọn phòng' : 'Chưa chọn phòng'} · {draft.payload.form.start_date || 'Chưa có ngày bắt đầu'}</p><p className="text-xs text-muted-foreground">Cập nhật {new Date(draft.updated_at).toLocaleString('vi-VN')}</p></div>
     <div className="flex flex-wrap gap-2">{canEdit && draft.status !== 'SIGNED' && <Button variant="outline" size="sm" onClick={() => onEdit(draft)}><Pencil className="h-4 w-4 mr-1" />Sửa nháp</Button>}{canExport && <Button variant="outline" size="sm" onClick={() => onPrint(draft)}><Printer className="h-4 w-4 mr-1" />In</Button>}
       {canSign && draft.status !== 'SIGNED' && <Button size="sm" onClick={() => onSign(draft)}><FileCheck2 className="h-4 w-4 mr-1" />Xác nhận đã ký</Button>}
-      {canEdit && <Button variant="outline" size="sm" onClick={() => onTransfer(draft)}>Liên kết nhượng</Button>}
       {draft.status !== 'SIGNED' && canDelete?.(draft) && <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => { setDeleteError(''); setDeleting(draft); }}><Trash2 className="h-4 w-4 mr-1" />Xóa nháp</Button>}
     </div>
   </div>)}</div>}

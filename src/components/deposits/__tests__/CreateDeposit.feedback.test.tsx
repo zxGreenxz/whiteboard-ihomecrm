@@ -7,7 +7,12 @@ import { financialPending } from '@/lib/financialPending';
 const h = vi.hoisted(() => ({
   create: vi.fn(), hold: vi.fn(), bonus: vi.fn(), close: vi.fn(), success: vi.fn(), error: vi.fn(),
   roomsError: false, roomsRetry: vi.fn(),
+  exitRows: [] as unknown[], exitCalls: [] as [unknown, boolean | undefined][],
 }));
+// Không gọi máy chủ: băng báo phòng chờ khách sang nhượng đọc qua hook này.
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({ useContractExitEarlyTerms: (filter: unknown, enabled?: boolean) => {
+  h.exitCalls.push([filter, enabled]); return { data: h.exitRows, isError: false, error: null, refetch: vi.fn() };
+} }));
 const roomId = '00000000-0000-4000-8000-000000000001';
 const customerId = '00000000-0000-4000-8000-000000000002';
 const reservationId = '00000000-0000-4000-8000-000000000003';
@@ -42,6 +47,7 @@ vi.mock('@/components/ui/select', () => ({
   SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => <option value={value}>{children}</option>,
 }));
 import { CreateDepositDialog } from '../CreateDepositDialog';
+import { exitTermsRow } from '@/components/contracts/__tests__/exitEarlyTermsFixture';
 
 function result(received: boolean) {
   return {
@@ -88,7 +94,7 @@ beforeAll(() => {
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 });
 beforeEach(() => {
-  vi.clearAllMocks(); localStorage.clear(); h.roomsError = false;
+  vi.clearAllMocks(); localStorage.clear(); h.roomsError = false; h.exitRows = []; h.exitCalls = [];
   h.create.mockResolvedValue(result(false)); h.hold.mockResolvedValue({}); h.bonus.mockResolvedValue({ voucherId: bonusId, code: 'PC-01', amount: 200000 });
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -144,6 +150,18 @@ it('tên khách gợi nhớ gửi customerHint, không gửi customerId, và nh�
   expect(input).toMatchObject({ roomId, customerHint: 'anh Tuấn', receipt: { amount: 500000, accountId: bookId } });
   expect(input).not.toHaveProperty('customerId');
   await waitFor(() => expect(h.success).toHaveBeenCalledWith(expect.stringContaining('gắn khách thật')));
+});
+it('phòng đang chờ khách sang nhượng: báo khách cọc là khách nhận, vẫn cho cọc', async () => {
+  h.exitRows = [exitTermsRow({ room_id: roomId })];
+  view();
+  expect(screen.queryByRole('status', { name: 'Phòng đang chờ khách sang nhượng' })).toBeNull();
+  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: roomId } });
+  const banner = await screen.findByRole('status', { name: 'Phòng đang chờ khách sang nhượng' });
+  expect(banner.textContent).toContain('Phòng đang chờ khách sang nhượng từ 01/12/2026');
+  expect(banner.textContent).toContain('Khách cọc phòng này là khách nhận; hợp đồng tạo sau sẽ tự nối với hồ sơ cũ.');
+  expect(h.exitCalls.at(-1)).toEqual([{ roomId }, true]);
+  fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
 });
 it('thiếu khách hoặc số tiền 0 thì chặn tại form, không gọi writer', async () => {
   view();

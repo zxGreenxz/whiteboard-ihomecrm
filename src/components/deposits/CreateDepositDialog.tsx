@@ -44,6 +44,8 @@ import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { getSessionUser } from "@/lib/authSession";
 import { useCreateRoomReservation } from "@/hooks/useRoomReservations";
 import { CustomerSelectionDialog, type CustomerBasic } from "@/components/contracts/CustomerSelectionDialog";
+import { ExitHoldRoomBanner } from "@/components/contracts/ExitHoldRoomBanner";
+import { useContractExitEarlyTerms } from "@/hooks/contracts/useContractExitEarlyTerms";
 import type { CreateRoomReservationInput } from "@/lib/reservationIdentityRpc";
 import { useCreateSaleBonusFromDeposit } from "@/hooks/useSaleBonus";
 import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE, COMMISSION_REASON_MAX } from '@/lib/commissionAudit';
@@ -204,6 +206,9 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
 
   // ── Giá phòng: mặc định hệ thống, sửa tay thì đánh dấu ────────────────────
   const selectedRoomId = form.watch("room_id");
+  // Phòng đang chờ khách tự tìm sang phòng: khách cọc là khách nhận, không có thưởng sale (máy chủ cũng chặn).
+  const exitTermsQuery = useContractExitEarlyTerms(selectedRoomId ? { roomId: selectedRoomId } : null, open && !!selectedRoomId);
+  const selfFoundHold = !!exitTermsQuery.data?.some(row => row.pending_link && row.early_reason === 'SELF_FOUND');
   const depositDate = form.watch("deposit_date");
   const holdUntil = form.watch("hold_until");
   const roomPrice = form.watch("room_price") ?? 0;
@@ -300,7 +305,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       // có id: phiếu thưởng neo vào phiếu cọc, và chính cái neo đó là thứ giúp
       // màn hình ký hợp đồng sau này biết là "đã thưởng rồi" mà tô xám ô nhập.
       // Thưởng hỏng thì KHÔNG kéo đổ phiếu cọc — cọc là việc chính.
-      const bonusAmt = Number(data.sale_bonus_amount) || 0;
+      const bonusAmt = selfFoundHold ? 0 : Number(data.sale_bonus_amount) || 0;
       const depositId = createdReservation.receipts[0]?.source_voucher_id ?? null;
 
       // Reservation terms and voucher projections are saved atomically by
@@ -407,6 +412,8 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
                   </FormItem>
                 )}
               />
+              {/* Phòng giữ cho khách sang nhượng (trả phòng trước hạn): người khác vẫn cọc được, khách cọc là khách nhận. */}
+              <ExitHoldRoomBanner variant="deposit" roomId={selectedRoomId} enabled={open} />
 
               {/* Giá phòng / tháng — lấy mặc định từ giá niêm yết của căn hộ.
                   Sửa tay thì đánh dấu "giá thoả thuận" và ghi vào ghi chú phiếu
@@ -718,7 +725,10 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
                   Để trống thì không tạo gì. Phiếu thưởng ra ở trạng thái CHỜ DUYỆT,
                   và khi hợp đồng của phiếu cọc này được ký thì màn hình ký sẽ tự
                   biết là đã thưởng rồi. */}
-              <div className="rounded-md border p-3 space-y-3">
+              {selfFoundHold && <p className="rounded-md border p-3 text-sm text-muted-foreground" data-testid="deposit-no-sale-bonus">
+                Khách tự tìm sang phòng: không có thưởng sale cho khách nhận.
+              </p>}
+              <div className="rounded-md border p-3 space-y-3" hidden={selfFoundHold}>
                 <div className="text-sm font-medium">
                   Thưởng nóng Sale{" "}
                   <span className="text-xs font-normal text-muted-foreground">

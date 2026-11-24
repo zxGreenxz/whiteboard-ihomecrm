@@ -47,7 +47,6 @@ vi.mock('@/components/contracts/ContractDraftWorkspace',()=>({ContractDraftWorks
 vi.mock('@/components/contracts/ContractCommissionFollowupPanel',()=>({ContractCommissionFollowupPanel:()=>null}));
 vi.mock('@/components/contracts/ContractExitQueue',()=>({ContractExitQueue:()=>null}));
 vi.mock('@/components/contracts/ContractMeterFollowupQueue',()=>({ContractMeterFollowupQueue:()=>null}));
-vi.mock('@/components/contracts/TransferContractDialog',()=>({TransferContractDialog:()=>null}));
 vi.mock('@/components/contracts/TerminateDialog',()=>({TerminateDialog:()=>null}));
 vi.mock('@/components/contracts/DeleteContractDialog',()=>({DeleteContractDialog:()=>null}));
 vi.mock('@/components/contracts/ContractImportExportDialog',()=>({ContractImportExportDialog:()=>null}));

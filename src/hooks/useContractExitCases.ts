@@ -13,18 +13,34 @@ import {
 } from '@/lib/contractExitCases';
 
 type Functions=Database['public']['Functions'];
+/**
+ * Ranh giới kiểu TẠM cho confirm_contract_return_v2 — migration 20261124075933_tra_phong_truoc_han_ba_truong_hop chưa lên
+ * production nên types.ts sinh tự động chưa có hàm này (cùng khuôn useContractExitEarlyTerms / selfApproveGate). Khi đã áp
+ * production và `npm run gen:types` chạy lại: đổi nhánh 'confirm_contract_return_v2' sang
+ * `supabase.rpc('confirm_contract_return_v2', args as Functions['confirm_contract_return_v2']['Args'])` và XOÁ hàm bọc này.
+ */
+const goiRpcTraPhongV2=(tenHam:'confirm_contract_return_v2',args:Record<string,unknown>):PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>=>
+  (supabase.rpc as unknown as (name:string,params:Record<string,unknown>)=>PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>)(tenHam,args);
 // Literal RPC names preserve the normal generated-client boundary.
 const invoke:ContractExitRpcInvoker=(name,args)=>{
   const settlement = args.p_settlement;
-  if ((name === 'confirm_contract_return_v1' || name === 'finalize_contract_exit_case_v1') && settlement && typeof settlement === 'object' && !Array.isArray(settlement)) {
+  if ((name === 'confirm_contract_return_v2' || name === 'confirm_contract_return_v1' || name === 'finalize_contract_exit_case_v1') && settlement && typeof settlement === 'object' && !Array.isArray(settlement)) {
     const charges = settlement.extra_charges;
     const sources = Array.isArray(charges) ? charges.flatMap(charge => {
       if (!charge || typeof charge !== 'object' || Array.isArray(charge) || !charge.meter_source) return [];
       return [meterSourceReferenceSchema.parse(charge.meter_source)];
     }) : [];
+    if (sources.length && name === 'confirm_contract_return_v2') {
+      // Đường ảnh đồng hồ chỉ nhận writer v1; v1 chặn trả phòng trước hạn + quyết toán ngay khi không qua v2.
+      if (args.p_initial_kind === 'EARLY_RETURN') return Promise.resolve({ data: null, error: { code: '22023',
+        message: 'Trả phòng trước hạn kèm ảnh đồng hồ: chọn "Trả phòng, quyết toán sau" rồi quyết toán hồ sơ ở bước sau.' } });
+      const { p_early_terms: _unused, ...v1Args } = args;
+      return exitWithMeterSources(String(args.p_organization_id), 'confirm_contract_return_v1', v1Args, sources).then(data => ({ data, error: null }));
+    }
     if (sources.length) return exitWithMeterSources(String(args.p_organization_id), name, args, sources).then(data => ({ data, error: null }));
   }
   switch(name){
+    case 'confirm_contract_return_v2': return goiRpcTraPhongV2('confirm_contract_return_v2',args);
     case 'confirm_contract_return_v1': return supabase.rpc('confirm_contract_return_v1',args as Functions['confirm_contract_return_v1']['Args']);
     case 'finalize_contract_exit_case_v1': return supabase.rpc('finalize_contract_exit_case_v1',args as Functions['finalize_contract_exit_case_v1']['Args']);
     case 'update_contract_exit_case_kind_v1': return supabase.rpc('update_contract_exit_case_kind_v1',args as Functions['update_contract_exit_case_kind_v1']['Args']);
@@ -48,7 +64,7 @@ function useExitMutation<Input>(mutationFn:(input:Input,organizationId:string)=>
     return mutationFn(input,selectedOrganizationId);
   },retry:false,onError:(error)=>toast.error(contractExitErrorMessage(error)),onSuccess:async(result)=>{
     toast.success(kindChange?'Đã cập nhật loại thanh lý':result.state==='PENDING'?'Đã trả phòng • Chờ quyết toán':'Đã quyết toán');
-    await Promise.all(['contract-exit-cases','contract-exit-case','contract-meter-boundaries','contract-meter-followups','contracts','contract','rooms','my-available-rooms','phong-trong','invoices','income-expenses','excess-amount','contract-pending-forfeit',...EXIT_SETTLEMENT_DRAFT_KEYS].map(key=>cache.invalidateQueries({queryKey:[key]})));
+    await Promise.all(['contract-exit-cases','contract-exit-case','contract-exit-early-terms','sale-room-inventory','contract-meter-boundaries','contract-meter-followups','contracts','contract','rooms','my-available-rooms','phong-trong','invoices','income-expenses','excess-amount','contract-pending-forfeit',...EXIT_SETTLEMENT_DRAFT_KEYS].map(key=>cache.invalidateQueries({queryKey:[key]})));
   }});
 }
 export function useConfirmContractReturn(){return useExitMutation((input:ConfirmContractReturnInput,org:string)=>confirmContractReturn(invoke,input,org));}

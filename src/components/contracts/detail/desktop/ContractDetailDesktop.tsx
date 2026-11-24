@@ -74,7 +74,6 @@ export interface ContractDetailDesktopProps {
   onShowQR: () => void;
   onRenew: () => void;
   onTransferRoom: () => void;
-  onTransferContract: () => void;
   onMoveOut: () => void;
   onTerminate: () => void;
   onDelete: () => void;
@@ -138,7 +137,6 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
         onShowQR={props.onShowQR}
         onRenew={props.onRenew}
         onTransferRoom={props.onTransferRoom}
-        onTransferContract={props.onTransferContract}
         onMoveOut={props.onMoveOut}
         onTerminate={props.onTerminate}
         onDelete={props.onDelete}

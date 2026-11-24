@@ -91,9 +91,11 @@ export const transferContractFormSchema = z.object({
 //  - ELECTRIC: tiền điện chốt cuối kỳ (kèm chỉ số + meter để ghi meter_readings).
 //  - CLEANING: tiền vệ sinh (mặc định 200k).
 //  - CUSTOM:   khoản tuỳ ý {tên, số tiền}.
+//  - BROKER_FEE: phí môi giới của hồ sơ trả phòng trước hạn nhờ sale (đúng một dòng, số lấy từ hồ sơ,
+//    máy chủ kiểm ở assert_exit_early_terms_settlement_v1). Người dùng không tự thêm dòng này.
 export const extraChargeItemSchema = z.object({
   meter_source: meterSourceReferenceSchema.optional(),
-  kind: z.enum(['PRORATED', 'ELECTRIC', 'CLEANING', 'CUSTOM']),
+  kind: z.enum(['PRORATED', 'ELECTRIC', 'CLEANING', 'CUSTOM', 'BROKER_FEE']),
   description: z.string().min(1, 'Tên khoản thu không được để trống'),
   amount: z.number().min(0, 'Số tiền không được âm'),
   days: z.number().min(0).optional(),

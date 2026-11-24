@@ -85,7 +85,16 @@ BEGIN
     SELECT updated_at INTO STRICT old_updated_at FROM public.contracts WHERE id = old_contract;
 
     IF scenario.label = 'landlord' THEN
-      -- Đường Hermes: v1 không biết trường hợp; quyết toán bị chặn tới khi phân loại.
+      -- Gọi thẳng v1 quyết toán ngay EARLY_RETURN (không qua v2, chưa chọn trường hợp): phải bị từ chối, không ghi gì.
+      BEGIN
+        PERFORM public.confirm_contract_return_v1(org, old_contract, old_updated_at, gen_random_uuid()::text,
+          today, 'EARLY_RETURN', 'IMMEDIATE', jsonb_build_object('deposit_refund', old_deposit), boundary, 'QA đã bàn giao');
+        RAISE EXCEPTION 'landlord: v1 EARLY_RETURN + IMMEDIATE không bị chặn' USING ERRCODE = 'P0001';
+      EXCEPTION WHEN invalid_parameter_value THEN
+        IF SQLERRM NOT LIKE '%Tải lại trang để chọn trường hợp%' THEN RAISE; END IF;
+      END;
+      -- Đường Hermes: v1 không biết trường hợp; quyết toán bị chặn tới khi phân loại. Lần gọi này dùng lại
+      -- old_updated_at: nếu lần bị chặn ở trên đã ghi gì vào hợp đồng thì CAS ở đây hỏng.
       response := public.confirm_contract_return_v1(org, old_contract, old_updated_at, gen_random_uuid()::text,
         today, 'EARLY_RETURN', 'DEFERRED', NULL, boundary, 'QA đã bàn giao');
     ELSE

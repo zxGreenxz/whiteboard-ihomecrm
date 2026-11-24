@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { Room } from '@/pages/phong-trong/sampleData';
+import type { Room, RoomExitHoldInfo } from '@/pages/phong-trong/sampleData';
 import { SaleRoomOperationError, type SaleRoomInventoryRow } from '@/lib/saleRoomOperations';
 import QuickRoomBoard from '../QuickRoomBoard';
 
 const state = vi.hoisted(() => ({
   org: 'org-a', actor: 'actor-a',
   query: { data: undefined as { rooms: SaleRoomInventoryRow[]; serverNow: string } | undefined, isError: false, isLoading: false, isFetching: false, dataUpdatedAt: Date.now(), refetch: vi.fn() },
-  save: vi.fn(), pending: false,
+  save: vi.fn(), pending: false, reopen: vi.fn(), extend: vi.fn(),
+}));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({
+  useReopenContractExitHold: () => ({ mutateAsync: state.reopen, isPending: false }),
+  useExtendContractExitHold: () => ({ mutateAsync: state.extend, isPending: false }),
 }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: state.org }) }));
 vi.mock('@/hooks/useAuth', () => ({ useSession: () => ({ data: { user: { id: state.actor } } }) }));
@@ -62,6 +66,7 @@ beforeEach(() => {
   sessionStorage.clear(); state.org = 'org-a'; state.actor = 'actor-a'; state.pending = false;
   Object.assign(state.query, { data: { rooms: [room(), room('room-b', 'building-b', 'rented')], serverNow: '2026-10-21T05:01:00Z' }, isError: false, isLoading: false, isFetching: false });
   state.query.refetch.mockReset().mockResolvedValue({}); state.save.mockReset().mockResolvedValue({});
+  state.reopen.mockReset().mockResolvedValue({}); state.extend.mockReset().mockResolvedValue({});
 });
 afterEach(cleanup);
 
@@ -417,6 +422,107 @@ it.each([
   state.query.data!.rooms = []; view.rerender(<QuickRoomBoard />);
   expect(screen.getByRole('button', { name: submit })).toHaveProperty('disabled', true);
   expect(state.save).not.toHaveBeenCalled();
+});
+
+const CASE_ID = '11111111-1111-4111-8111-111111111111';
+const hold = (overrides: Partial<RoomExitHoldInfo> = {}): RoomExitHoldInfo => ({
+  exitCaseId: CASE_ID, version: 4, earlyReason: 'SALE_ASSISTED', saleName: 'Minh', oldCustomerName: 'Nguyễn Văn Cũ',
+  oldContractNumber: 'HD-0451', actualMoveOutOn: '2026-11-24', recordedByName: 'Quản lý Lan', recordedByMe: false,
+  holdUntil: '2026-11-27T03:05:00Z', active: true, canManage: true, ...overrides,
+});
+const heldRow = (overrides: Partial<RoomExitHoldInfo> = {}, status: Room['status'] = 'rented', id = 'room-h', buildingId = 'building-b') => {
+  const row = room(id, buildingId, status); row.room.exitHold = hold(overrides); return row;
+};
+
+it.each([false, true])('U30 — Quản lý: phòng giữ cho khách sang nhượng hiện đủ thông tin, vẫn cọc được, không lock/báo trả, mobile=%s', mobile => {
+  state.query.data!.rooms = [heldRow()];
+  render(<QuickRoomBoard mobile={mobile} />);
+  expect(screen.getByText('Chờ khách Sang/Nhượng phòng')).toBeTruthy();
+  expect(screen.queryByText('Đã thuê / giữ chỗ', { ignore: 'option' })).toBeNull();
+  expect(screen.getByText('Khách cũ: Nguyễn Văn Cũ (HD-0451)')).toBeTruthy();
+  expect(screen.getByText('Nhờ sale tìm khách sang phòng · sale Minh')).toBeTruthy();
+  expect(screen.getByText('Người ghi: Quản lý Lan · giữ đến 10:05 27/11')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Lock' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Báo sắp trống' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Mở bán lại' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Giữ tiếp' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cọc' }));
+  // Người khác vẫn cọc được phòng đang giữ: hộp cọc không bị khoá vì tình trạng "rented" do giữ.
+  const deposit = screen.getByRole('dialog', { name: 'Cọc room-h' });
+  expect(within(deposit).getByRole('button', { name: 'Lưu cọc thử' })).toHaveProperty('disabled', false);
+});
+
+it('U31 — Quản lý: Mở bán lại hỏi xác nhận rồi gửi đúng hồ sơ, phiên bản và lý do', async () => {
+  state.query.data!.rooms = [heldRow({ recordedByMe: true })];
+  render(<QuickRoomBoard />);
+  expect(screen.getByText('Người ghi: bạn · giữ đến 10:05 27/11')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Mở bán lại' }));
+  const dialog = screen.getByRole('alertdialog');
+  expect(dialog.textContent).toContain('rao bán lại ngay');
+  expect(dialog.textContent).toContain('KHÔNG tự nối');
+  expect(state.reopen).not.toHaveBeenCalled();
+  fireEvent.change(within(dialog).getByLabelText('Lý do (tuỳ chọn)'), { target: { value: ' Khách nhận huỷ ' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Mở bán lại' }));
+  await waitFor(() => expect(state.reopen).toHaveBeenCalledTimes(1));
+  expect(state.reopen.mock.calls[0][0]).toEqual({ caseId: CASE_ID, expectedVersion: 4, requestId: expect.any(String), reason: 'Khách nhận huỷ' });
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(state.extend).not.toHaveBeenCalled();
+});
+
+it('U32 — Quản lý: hết hạn giữ thì phòng chào như trống, chỉ còn Giữ tiếp với số ngày đã chọn', async () => {
+  state.query.data!.rooms = [heldRow({ active: false }, 'free')];
+  render(<QuickRoomBoard />);
+  const row = screen.getByText('Tòa Bình Minh · 101').closest('tr')!;
+  expect(within(row).getByText('Trống sẵn')).toBeTruthy();
+  expect(within(row).getByText('Hết hạn giữ cho khách sang nhượng (HĐ cũ HD-0451 · Nguyễn Văn Cũ)')).toBeTruthy();
+  expect(within(row).queryByRole('button', { name: 'Mở bán lại' })).toBeNull();
+  expect(within(row).getByRole('button', { name: 'Lock' })).toBeTruthy();
+  fireEvent.click(within(row).getByRole('button', { name: 'Giữ tiếp' }));
+  const dialog = screen.getByRole('alertdialog');
+  expect(within(dialog).getByLabelText('Giữ thêm')).toHaveProperty('value', '3');
+  fireEvent.change(within(dialog).getByLabelText('Giữ thêm'), { target: { value: '5' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Giữ tiếp 5 ngày' }));
+  await waitFor(() => expect(state.extend).toHaveBeenCalledTimes(1));
+  expect(state.extend.mock.calls[0][0]).toEqual({ caseId: CASE_ID, expectedVersion: 4, requestId: expect.any(String), days: 5, reason: null });
+  expect(state.reopen).not.toHaveBeenCalled();
+});
+
+it('U33 — Sale: không có quyền thanh lý ở toà thì thấy phòng đang giữ nhưng không có nút Mở bán lại / Giữ tiếp', () => {
+  state.query.data!.rooms = [heldRow({ canManage: false }), heldRow({ canManage: false, active: false }, 'free', 'room-e', 'building-a')];
+  render(<QuickRoomBoard />);
+  expect(screen.getByText('Chờ khách Sang/Nhượng phòng')).toBeTruthy();
+  expect(screen.getByText(/^Hết hạn giữ cho khách sang nhượng/)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Mở bán lại' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Giữ tiếp' })).toBeNull();
+});
+
+it('U34 — Quản lý: hộp thoại gửi phiên bản đọc mới nhất và khoá gửi khi hồ sơ đã được xử lý ở nơi khác', async () => {
+  state.query.data!.rooms = [heldRow()];
+  const view = render(<QuickRoomBoard />);
+  fireEvent.click(screen.getByRole('button', { name: 'Giữ tiếp' }));
+  state.query.data = { ...state.query.data!, rooms: [heldRow({ version: 5 })] };
+  view.rerender(<QuickRoomBoard />);
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Giữ tiếp 3 ngày' }));
+  await waitFor(() => expect(state.extend).toHaveBeenCalledTimes(1));
+  expect(state.extend.mock.calls[0][0]).toMatchObject({ caseId: CASE_ID, expectedVersion: 5, days: 3 });
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'Mở bán lại' }));
+  state.query.data = { ...state.query.data!, rooms: [room('room-h', 'building-b', 'free')] };
+  view.rerender(<QuickRoomBoard />);
+  const dialog = screen.getByRole('alertdialog');
+  expect(within(dialog).getByRole('alert').textContent).toMatch(/Hồ sơ giữ phòng đã thay đổi/);
+  expect(within(dialog).getByRole('button', { name: 'Mở bán lại' })).toHaveProperty('disabled', true);
+  expect(state.reopen).not.toHaveBeenCalled();
+});
+
+it('U35 — Quản lý: lọc riêng các phòng đang/hết hạn giữ cho khách sang nhượng', () => {
+  state.query.data!.rooms = [room(), heldRow(), heldRow({ active: false, exitCaseId: '22222222-2222-4222-8222-222222222222' }, 'free', 'room-e', 'building-a')];
+  state.query.data!.rooms[2].name = '102';
+  render(<QuickRoomBoard />);
+  fireEvent.change(screen.getByLabelText('Tình trạng'), { target: { value: 'exit-hold' } });
+  expect(screen.getByText('2/3 phòng')).toBeTruthy();
+  expect(screen.getByText('Tòa Bình Minh · 101')).toBeTruthy();
+  expect(screen.getByText('Tòa Ánh Dương · 102 (101)')).toBeTruthy();
 });
 
 it('U28 — Quản lý: giữ giao diện cha ở nguyên tab khi đang sửa/tải ảnh rồi mở lại chuyển tab sau khi đóng', () => {

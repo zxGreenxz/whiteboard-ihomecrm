@@ -36,10 +36,11 @@ const PROD_MD5: Record<string, string> = {
   'public.get_my_available_rooms()': '797f061518ae382194335d9fad08686f',
   'public.get_sale_room_inventory_v1(uuid,uuid,uuid)': '68b9279ca5e6f6a21a1aed1ab6503b1f',
   'public.real_estate_renewals_transfers_v1(uuid,uuid[],date,date)': '2b0d3cabdda7957f4698006bb0861026',
+  'public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)': '5c120cb4a699f4520cbd68cc75ee4071',
 };
 // Sau migration (đo trên PGlite; đối chiếu lại trên TEST sau khi áp).
 const AFTER_MD5: Record<string, string> = {
-  'public.confirm_contract_return_v1(uuid,uuid,timestamp with time zone,text,date,text,text,jsonb,jsonb,text)': 'bd0839dc8dca04223770f83cac355c40',
+  'public.confirm_contract_return_v1(uuid,uuid,timestamp with time zone,text,date,text,text,jsonb,jsonb,text)': 'b871e6cb887a8c6434f26ca2b46a04dd',
   'public.finalize_contract_exit_case_v1(uuid,uuid,bigint,text,text,text,jsonb)': '52b77bf569607a6122570bbd14e7ccd5',
   'app_private.room_sale_workflow_fact_v1(uuid,uuid,text,boolean,integer)': '3e0c53200c740916992a6a02b69fda49',
   'app_private.room_sale_workflow_base_fact_v1(uuid,uuid,text,boolean,integer)': 'ce899102cacced8793739a362c02f74c',
@@ -47,6 +48,7 @@ const AFTER_MD5: Record<string, string> = {
   'public.get_my_available_rooms()': 'b78b8c84dd6a9b05e2173bc6cbe66b92',
   'public.get_sale_room_inventory_v1(uuid,uuid,uuid)': '1888552bcb8a6322145e29f2750e1adc',
   'public.real_estate_renewals_transfers_v1(uuid,uuid[],date,date)': 'db708bfd1c72fa132ada633f9961c5c5',
+  'public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)': '951c24f3d555907cfeec88cfcf79df7a',
 };
 
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString().padStart(12, '0')}`;
@@ -85,7 +87,7 @@ beforeAll(async () => {
       deposit_amount numeric,max_occupants int,amenities jsonb,images jsonb,description text,sale_note text,sale_bonus_note text,room_type text,
       sale_status_note text,sale_status_note_key text,status text DEFAULT 'OCCUPIED',updated_at timestamptz DEFAULT now(),deleted_at timestamptz,UNIQUE(organization_id,id));
     CREATE TABLE public.contracts(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,room_id uuid,contract_number text,status text DEFAULT 'ACTIVE',
-      start_date date DEFAULT '2026-01-01',end_date date DEFAULT '2026-12-31',actual_end_date date,expected_move_out_date date,
+      start_date date DEFAULT '2026-01-01',start_billing_date date,end_date date DEFAULT '2026-12-31',actual_end_date date,expected_move_out_date date,
       total_deposit numeric DEFAULT 4000000,deposit_paid numeric DEFAULT 4000000,rent_price numeric DEFAULT 3000000,
       user_id uuid,tenant_id uuid,parent_contract_id uuid,notes text,created_at timestamptz DEFAULT clock_timestamp(),
       updated_at timestamptz DEFAULT '2026-11-01',deleted_at timestamptz,UNIQUE(organization_id,id));
@@ -98,7 +100,8 @@ beforeAll(async () => {
       contact_manager boolean,contact_name text,contact_phone text,sale_policy text,pass_price numeric,avail_date date,updated_at timestamptz);
     CREATE TABLE public.contract_terminations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),contract_id uuid UNIQUE,actual_move_out_date date,status text);
     CREATE TABLE public.income_expenses(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,contract_id uuid,type text,commission_kind text,
-      total_amount numeric,notes text,approval_status text,deleted_at timestamptz,code text,created_at timestamptz DEFAULT clock_timestamp());
+      total_amount numeric,notes text,approval_status text,deleted_at timestamptz,code text,created_at timestamptz DEFAULT clock_timestamp(),
+      room_id uuid,building_id uuid);
     CREATE TABLE app_private.sale_bonus_claims(organization_id uuid,deposit_voucher_id uuid,bonus_voucher_id uuid);
     CREATE TABLE public.notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid NOT NULL REFERENCES auth.users(id),organization_id uuid,
       type text,channel text,status text,subject text,content text NOT NULL,contract_id uuid,metadata jsonb DEFAULT '{}',created_at timestamptz DEFAULT now());
@@ -165,6 +168,19 @@ beforeAll(async () => {
         RETURN jsonb_build_object('id',v_id); END $$;
     CREATE FUNCTION app_private.begin_commission_reason_v1(p_voucher uuid,p_contract uuid,p_kind text,p_stage text,p_reason text,p_baseline jsonb DEFAULT NULL)
       RETURNS uuid LANGUAGE sql AS $$ INSERT INTO public.reason_calls VALUES(p_contract,p_kind,p_stage,p_baseline) RETURNING gen_random_uuid() $$;
+    CREATE FUNCTION app_private.authorize_commission_request_v1(uuid,uuid) RETURNS void LANGUAGE plpgsql AS $$
+      BEGIN IF coalesce(current_setting('test.deny_commission',true),'')='yes' THEN RAISE EXCEPTION 'Thiếu quyền hoa hồng' USING ERRCODE='42501'; END IF; END $$;
+    -- Thưởng sale từ phiếu cọc (create_sale_bonus_from_deposit_v1 nạp thân production).
+    CREATE FUNCTION public.can_access_building(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
+    CREATE FUNCTION public.ie_all_buildings_scope(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+    CREATE FUNCTION public.is_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+    CREATE FUNCTION app_private.rent_support_legacy_deposit_bonus_v1(p_deposit uuid,p_amount numeric,p_recipient text,p_account_number text,p_bank text,
+      p_voucher_date date,p_account_id uuid,p_attachments jsonb) RETURNS jsonb LANGUAGE plpgsql AS $$
+      DECLARE v_id uuid:=gen_random_uuid(); BEGIN
+        INSERT INTO public.income_expenses(id,organization_id,contract_id,type,commission_kind,total_amount,notes,approval_status,code)
+          SELECT v_id,d.organization_id,d.contract_id,'EXPENSE','sale',p_amount,'Người nhận: '||coalesce(p_recipient,''),'UNAPPROVED','TN-1'
+          FROM public.income_expenses d WHERE d.id=p_deposit;
+        RETURN jsonb_build_object('id',v_id); END $$;
     CREATE FUNCTION app_private.sale_room_can_edit_v1(uuid,uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
     CREATE FUNCTION app_private.sale_room_can_v1(uuid,uuid,text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
     CREATE FUNCTION app_private.sale_room_fact_key_v1(uuid,uuid) RETURNS text LANGUAGE sql STABLE AS $$ SELECT 'k' $$;
@@ -185,7 +201,8 @@ beforeAll(async () => {
   for (const name of ['public.confirm_contract_return_v1', 'public.finalize_contract_exit_case_v1', 'app_private.room_sale_workflow_base_fact_v1',
     'app_private.room_sale_lock_open_id_v1', 'app_private.room_sale_workflow_fact_v1', 'public.create_commission_voucher',
     'app_private.contract_commission_live_voucher_v1', 'app_private.contract_commission_latest_event_v1',
-    'public.get_my_available_rooms', 'public.get_sale_room_inventory_v1', 'public.real_estate_renewals_transfers_v1']) {
+    'public.get_my_available_rooms', 'public.get_sale_room_inventory_v1', 'public.real_estate_renewals_transfers_v1',
+    'public.create_sale_bonus_from_deposit_v1']) {
     await db.exec(liveDefinitionOf(name));
   }
   await db.exec('SET check_function_bodies = on');
@@ -207,7 +224,7 @@ afterAll(async () => { await db.close(); });
 beforeEach(async () => { await db.exec('BEGIN'); await db.query(`SELECT set_config('test.actor',$1,false)`, [actor]); });
 afterEach(async () => {
   await db.exec('ROLLBACK');
-  await db.exec(`RESET test.deny_terminate; RESET test.deny_edit; RESET test.deny_view; RESET test.deposit_room`);
+  await db.exec(`RESET test.deny_terminate; RESET test.deny_edit; RESET test.deny_view; RESET test.deposit_room; RESET test.deny_commission`);
 });
 
 async function rejects(sql: string, args: unknown[], code: string, message?: RegExp) {
@@ -254,11 +271,9 @@ const fee = (amount: number) => ({ kind: 'BROKER_FEE', description: 'Phí môi g
 const SET = 'SELECT public.set_contract_exit_early_terms_v1($1,$2,$3,$4,$5,$6,$7) AS r';
 
 describe('migration', () => {
-  it('thân hàm nạp vào đúng md5 production; chạy hai lượt không đổi gì thêm; confirm v1 giữ nguyên từng byte', () => {
+  it('thân hàm nạp vào đúng md5 production; chạy hai lượt không đổi gì thêm; md5 sau vá đúng bản đã ghim', () => {
     expect(before).toEqual(PROD_MD5);
     expect(afterSecond).toEqual(after);
-    const sig = 'public.confirm_contract_return_v1(uuid,uuid,timestamp with time zone,text,date,text,text,jsonb,jsonb,text)';
-    expect(after[sig]).toBe(PROD_MD5[sig]);
     expect(after).toEqual(AFTER_MD5);
   });
 
@@ -274,6 +289,8 @@ describe('migration', () => {
     expect(await count('public.get_my_available_rooms()', 'room_exit_hold_json_v1(')).toBe(1);
     expect(await count('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', 'room_exit_hold_json_v1(')).toBe(1);
     expect(await count('public.real_estate_renewals_transfers_v1(uuid,uuid[],date,date)', 'FROM early x')).toBe(1);
+    expect(await count('public.confirm_contract_return_v1(uuid,uuid,timestamp with time zone,text,date,text,text,jsonb,jsonb,text)', 'app.exit_early_terms_v2')).toBe(1);
+    expect(await count('public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)', 'assert_exit_early_deposit_bonus_v1(')).toBe(1);
     const vol = (await db.query<{ proname: string; v: string }>(`SELECT proname,provolatile::text v FROM pg_proc WHERE proname IN
       ('get_my_available_rooms','get_sale_room_inventory_v1','room_sale_workflow_fact_v1','read_contract_exit_early_terms_v1','room_exit_hold_open_v1') ORDER BY 1`)).rows;
     expect(vol.every(r => r.v === 's')).toBe(true);
@@ -315,6 +332,20 @@ describe('confirm_contract_return_v2', () => {
     expect((await db.query<{ r: Row }>(CONFIRM, replay)).rows[0].r).toEqual(r);
     expect((await db.query(`SELECT 1 FROM app_private.contract_exit_early_term_events WHERE event='CREATED'`)).rows).toHaveLength(1);
     await rejects(CONFIRM, [...args.slice(0, 10), JSON.stringify({ early_reason: 'SELF_FOUND' })], '23505');
+  });
+
+  it('v1 gọi thẳng: trả phòng trước hạn + quyết toán ngay bị chặn; DEFERRED (Hermes) và loại khác vẫn qua; dấu v2 không rò sang lời gọi sau', async () => {
+    const V1 = `SELECT public.confirm_contract_return_v1($1,$2,$3,$4,$5,$6,$7,$8::jsonb,null,$9) AS r`;
+    const v1Args = async (i: number, kind: string, mode: string, key: string) => {
+      const updated = (await db.query<{ u: string }>('SELECT updated_at::text u FROM public.contracts WHERE id=$1', [olds[i]])).rows[0].u;
+      return [org, olds[i], updated, key, MOVE_OUT, kind, mode, mode === 'IMMEDIATE' ? JSON.stringify({ deposit_refund: 4_000_000 }) : null, NOTE];
+    };
+    await confirm(2, { early_reason: 'LANDLORD_AGREEMENT' }, { mode: 'IMMEDIATE', settlement: { deposit_refund: 4_000_000 } });
+    expect((await db.query<{ v: string | null }>(`SELECT current_setting('app.exit_early_terms_v2',true) v`)).rows[0].v ?? '').toBe('');
+    await rejects(V1, await v1Args(0, 'EARLY_RETURN', 'IMMEDIATE', 'v1-direct-0001'), '22023', /Tải lại trang để chọn trường hợp/);
+    await db.query(V1, await v1Args(1, 'NATURAL_EXPIRY', 'IMMEDIATE', 'v1-direct-0002'));
+    await db.query(V1, await v1Args(0, 'EARLY_RETURN', 'DEFERRED', 'v1-direct-0003'));
+    expect((await db.query<{ n: number }>(`SELECT count(*)::int n FROM public.contract_exit_cases`)).rows[0].n).toBe(3);
   });
 
   it('phí mặc định không vượt cọc đã thu; chủ nhà hỗ trợ quyết toán ngay ghi luôn mốc đã áp phí; hết hạn hợp đồng không có dòng', async () => {
@@ -485,10 +516,48 @@ describe('hoa hồng (bước 8)', () => {
     await rejects(EXIT, [org, e.id, 3, id(914)], '55000', /khác số tiền hoặc người nhận/);
     await db.exec(`UPDATE public.income_expenses SET total_amount=2000000,notes='Người nhận: Sale Khác' WHERE code='HH-9'`);
     await rejects(EXIT, [org, e.id, 3, id(914)], '55000', /khác số tiền hoặc người nhận/);
+    // Tên sale là phần đầu của người nhận khác ("Sale Minh Anh") không được coi là khớp.
+    await db.exec(`UPDATE public.income_expenses SET notes='Người nhận: Sale Minh Anh' WHERE code='HH-9'`);
+    await rejects(EXIT, [org, e.id, 3, id(914)], '55000', /khác số tiền hoặc người nhận/);
     await db.exec(`UPDATE public.income_expenses SET notes='Người nhận: Sale Minh' WHERE code='HH-9'`);
+    await db.exec(`SELECT set_config('test.deny_commission','yes',true)`);
+    await rejects(EXIT, [org, e.id, 3, id(914)], '42501');
+    await db.exec(`RESET test.deny_commission`);
     const r = (await db.query<{ r: Row }>(EXIT, [org, e.id, 3, id(914)])).rows[0].r;
-    expect(r).toMatchObject({ commission_code: 'HH-9', version: 4 });
+    expect(r).toMatchObject({ commission_code: 'HH-9', version: 4, commission_live: true });
     expect((await db.query('SELECT 1 FROM commission_calls')).rows).toHaveLength(0);
+  });
+
+  it('phiếu môi giới đã nối bị huỷ hoặc xoá thì lập lại được phiếu mới; phiếu còn sống thì không thay', async () => {
+    await confirm(0, { early_reason: 'SALE_ASSISTED', sale_name: 'Sale Minh' });
+    await newContract(0);
+    const e = await caseOf(0);
+    await db.query(FINALIZE, await finalizeArgs(0, [fee(2_000_000)]));
+    const first = (await db.query<{ r: Row }>(EXIT, [org, e.id, 3, id(920)])).rows[0].r;
+    expect(first).toMatchObject({ version: 4, commission_live: true });
+    await rejects(`UPDATE public.contract_exit_early_terms SET commission_voucher_id=NULL WHERE exit_case_id=$1`, [e.id], '42501');
+    expect((await db.query<{ r: Row }>(EXIT, [org, e.id, 4, id(921)])).rows[0].r).toMatchObject({ commission_voucher_id: first.commission_voucher_id });
+    await db.query(`UPDATE public.income_expenses SET approval_status='CANCELLED' WHERE id=$1`, [first.commission_voucher_id]);
+    expect((await db.query<{ r: Row }>('SELECT public.read_contract_exit_early_terms_v1($1,NULL,$2,NULL) r', [org, e.id])).rows[0].r)
+      .toEqual([expect.objectContaining({ commission_live: false })]);
+    const second = (await db.query<{ r: Row }>(EXIT, [org, e.id, 4, id(922)])).rows[0].r;
+    expect(second.commission_voucher_id).not.toBe(first.commission_voucher_id);
+    expect(second).toMatchObject({ version: 5, commission_live: true });
+    expect((await db.query(`SELECT 1 FROM commission_calls WHERE kind='broker'`)).rows).toHaveLength(2);
+  });
+
+  it('thưởng sale từ phiếu cọc: chặn khi phòng đang chờ khách tự tìm hoặc phiếu của hợp đồng khách nhận ca tự tìm; ca nhờ sale vẫn qua', async () => {
+    const BONUS = `SELECT public.create_sale_bonus_from_deposit_v1($1,300000,'Sale Minh') r`;
+    const deposit = async (room: string, contract: string | null) => (await db.query<{ id: string }>(`INSERT INTO public.income_expenses
+      (organization_id,contract_id,room_id,building_id,type,total_amount,approval_status,code) VALUES($1,$2,$3,$4,'INCOME',4000000,'APPROVED','PT-1') RETURNING id`,
+      [org, contract, room, building])).rows[0].id;
+    await confirm(1, { early_reason: 'SELF_FOUND' });
+    await rejects(BONUS, [await deposit(rooms[1], null)], '55000', /không có thưởng sale/);
+    const receiving = await newContract(1, { total: 1_000_000 });
+    await rejects(BONUS, [await deposit(rooms[1], receiving)], '55000', /không có thưởng sale/);
+    await confirm(0, { early_reason: 'SALE_ASSISTED', sale_name: 'Sale Minh' });
+    expect((await db.query<{ r: Row }>(BONUS, [await deposit(rooms[0], null)])).rows[0].r).toHaveProperty('id');
+    expect((await db.query<{ r: Row }>(BONUS, [await deposit(rooms[3], null)])).rows[0].r).toHaveProperty('id');
   });
 
   it('phí 0 thì không tạo phiếu; ca khác bị từ chối', async () => {
