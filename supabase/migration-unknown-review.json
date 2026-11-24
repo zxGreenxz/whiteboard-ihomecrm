@@ -986,6 +986,28 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
+    },
+    "supabase/migrations/20261124171943_network_center_camera_alerts_v2.sql": {
+      "sha256": "98753b258e0bd8a1a3cc87c8a14141637b3f1beb3ab1e08a316187a68ff5912f",
+      "missingObjects": [
+        "table:app_private.camera_alert_settings",
+        "table:app_private.camera_alert_conditions",
+        "table:app_private.camera_alert_channel_mutes",
+        "table:app_private.camera_alert_events",
+        "table:app_private.camera_alert_deliveries"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration mới của cảnh báo camera v2 (thay 20261102072602 của PR #384, chưa từng merge hay áp production), chưa qua lane migrate:forward. Object vắng trong catalog production là trạng thái triển khai đang chờ, không phải object bị DROP. DDL chỉ phụ thuộc camera_recorders/camera_recorder_current/camera_events (20261022145352), camera_share_actor_can_v1 (20261110070438) và network_incidents; bảng Zalo/notifications chỉ được đọc lúc chạy. Kiểm logic bằng scripts/test-network-center-camera-disposable.mjs --alerts (PostgreSQL 17 dùng một lần, áp migration ba lượt, nạp thân thật authorize_tenant_action_v3/ie_actor_is_company_owner_v1/org_timezone_v1/demo_user_ids, 16 mục spec §8 + 26 đột biến). Hồ sơ này chỉ giải thích object chưa triển khai; không thay review chéo, dry-run, backup hay nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261124171943_network_center_camera_alerts_v2.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.camera_alert_settings ("
+        },
+        {
+          "duong_dan": "scripts/test-network-center-camera-disposable.mjs",
+          "trich_doan": "SELECT 'CAMERA_ALERTS_PROOF_OK' AS verdict"
+        }
+      ]
     }
   }
 }
