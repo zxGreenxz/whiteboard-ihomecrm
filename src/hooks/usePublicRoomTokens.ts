@@ -23,8 +23,10 @@ const writeGuard=()=>persistentFinancialWorkflow('public-room-admin',{scope:'act
  * `supabase.rpc('create_public_room_token',{p_label,p_organization_id})` và XOÁ hàm bọc này.
  */
 type CreateTokenArgs={p_label?:string;p_organization_id:string};
-const goiRpcTaoLink=(args:CreateTokenArgs):PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>=>
- (supabase.rpc as unknown as (name:'create_public_room_token',params:CreateTokenArgs)=>PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>)('create_public_room_token',args);
+type CreateTokenReply=PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>;
+// Gọi qua `.rpc('create_public_room_token'` để bề mặt RPC (scripts/generate-rpc-surface.mjs) vẫn thấy call site.
+const goiRpcTaoLink=(args:CreateTokenArgs):CreateTokenReply=>
+ (supabase as unknown as {rpc:(name:'create_public_room_token',params:CreateTokenArgs)=>CreateTokenReply}).rpc('create_public_room_token',args);
 const report=(error:unknown,options:Options,operation:string)=>{if(!options.inlineError)notifyActionError(error,`Chưa ${operation}.`);};
 export function usePublicRoomTokens(){return useQuery({queryKey:KEY,meta:{errorDisplay:"inline"},queryFn:async():Promise<PublicRoomToken[]>=>{
  const {data,error}=await supabase.from('public_room_share_tokens').select('*').order('created_at',{ascending:false});if(error)throw error;
