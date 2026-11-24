@@ -24,7 +24,7 @@ const PROD_MD5: Record<string, string> = {
 };
 // Sau migration (đo trên PGlite; đối chiếu lại trên TEST sau khi áp).
 const AFTER_MD5: Record<string, string> = {
-  [IMPL]: '4140915710480b59d8d22cfeb4aef31f',
+  [IMPL]: '11af8545b0a165ab154865b864cc776d',
   [RUN]: '560ed9dc8d6f63d5c7f93789bf0bb886',
   [ASSERT]: '4cdd578c773da9e1cf17d3d512c8c0e6',
 };
@@ -342,13 +342,48 @@ describe('luật sàn: cọc đem ra không thấp hơn số nhỏ hơn giữa c
     expect(Number(r.refund_deposit)).toBe(2_000_000);
   });
 
-  it('dòng giữ lại sai dạng ⇒ từ chối: hai dòng, sai tên, số 0, vượt cọc đem ra', async () => {
+  it('dòng giữ lại sai dạng ⇒ từ chối: hai dòng, sai tên, số 0, vượt sàn', async () => {
     const contract = await seedContract(db, { paid: 4_500_000, total: 4_500_000 });
     await rejects(db, () => settle(db, contract, 4_500_000, [retained(1_000_000), retained(500_000)]), '22023', /tối đa một dòng/);
     await rejects(db, () => settle(db, contract, 4_500_000, [retained(1_000_000, 'Giữ cọc')]), '22023', /đúng tên đó/);
     await rejects(db, () => settle(db, contract, 4_500_000, [{ kind: 'DEPOSIT_RETAINED', description: LABEL, amount: 0 }]), '22023', /lớn hơn 0/);
     await rejects(db, () => settle(db, contract, 4_500_000, [retained(5_000_000)]), '22023',
-      /Cọc giữ lại theo thoả thuận \(5000000 đ\) lớn hơn cọc đem ra quyết toán \(4500000 đ\)/);
+      /Cọc giữ lại theo thoả thuận \(5000000 đ\) lớn hơn cọc phải xử lý \(4500000 đ\)/);
+  });
+
+  it('sổ cọc ghi dôi: dòng giữ lại không vượt sàn (phần ghi dôi không thành doanh thu dù gọi thẳng máy chủ)', async () => {
+    const contract = await seedContract(db, { paid: 5_000_000, total: 4_000_000 });
+    await rejects(db, () => settle(db, contract, 5_000_000, [retained(4_500_000)]), '22023',
+      /lớn hơn cọc phải xử lý \(4000000 đ\): phần sổ cọc ghi dôi trên cọc hợp đồng không phải cọc giữ lại/);
+    const noAgreed = await seedContract(db, { paid: 4_000_000, total: 0 });
+    await rejects(db, () => settle(db, noAgreed, 4_000_000, [retained(1_000_000)]), '22023', /lớn hơn cọc phải xử lý \(0 đ\)/);
+    // Đem ra cả phần dôi (người dùng tự chọn hoàn) kèm dòng giữ lại trong sàn vẫn được.
+    const r = await settle(db, contract, 5_000_000, [retained(1_000_000)]);
+    expect(Number(r.refund_deposit)).toBe(4_000_000);
+  });
+
+  it('Ghi nợ (DEBT) khi nợ vượt số hoàn: khách nợ đúng như bản cũ; tổng doanh thu + phần còn nợ = nợ + giữ lại (hạn chế đã ghi: phần còn nợ nằm trên hoá đơn thanh lý)', async () => {
+    const DEBT_CALL = `SELECT public.terminate_contract_move_out_impl($1,$2,$3,0,0,$4,NULL,$5::jsonb,'DEBT',NULL,'[]'::jsonb) AS r`;
+    const prepare = async (pg: PGlite) => {
+      const contract = await seedContract(pg, { paid: 4_500_000, total: 4_500_000 });
+      await pg.query(`INSERT INTO public.invoices(user_id,contract_id,building_id,kind,billing_month,status,subtotal,total_amount,paid_amount,created_at)
+        VALUES($1,$2,$3,'MONTHLY','2026-10','APPROVED',3000000,3000000,0,'2026-10-01')`, [owner, contract, building]);
+      return contract;
+    };
+    const contract = await prepare(db);
+    const r = (await db.query<{ r: Row }>(DEBT_CALL, [contract, MOVE_OUT, 4_500_000, 3_000_000, JSON.stringify([retained(2_000_000)])])).rows[0].r;
+    const old = await prepare(before);
+    const o = (await before.query<{ r: Row }>(DEBT_CALL, [old, MOVE_OUT, 2_500_000, 3_000_000, '[]'])).rows[0].r;
+    expect(Number(r.net_settlement)).toBe(-500_000);
+    expect(Number(o.net_settlement)).toBe(-500_000);
+    const items = await revenueItems(db, contract);
+    expect(items.map(i => [i.description, i.amount])).toEqual([['Doanh thu thanh lý (cấn cọc)', 2_500_000], [LABEL, 2_000_000]]);
+    const unpaid = (await db.query<{ u: number }>(`SELECT COALESCE(SUM(iv.total_amount - COALESCE((SELECT SUM(p.amount) FROM public.payments p
+      WHERE p.invoice_id = iv.id), 0)), 0)::float8 u FROM public.invoices iv WHERE iv.contract_id = $1`, [contract])).rows[0].u;
+    expect(unpaid).toBe(500_000);
+    expect(items.reduce((s, i) => s + i.amount, 0) + unpaid).toBe(3_000_000 + 2_000_000);
+    expect(await depositLedger(db, contract)).toBe(0);
+    expect(await depositLedger(before, old)).toBe(2_000_000);
   });
 });
 

@@ -251,7 +251,8 @@ describe("cọc giữ lại theo thoả thuận (đợt 4) — sàn và dòng gi
       expect(r.retained).toBeGreaterThanOrEqual(0);
       if (requested < r.floor) expect(r.retained + requested).toBe(r.floor);
       else expect(r.retained).toBe(0);
-      // Máy chủ đòi dòng giữ lại không vượt cọc đem ra (sau khi kẹp theo cọc đã thu).
+      // Máy chủ đòi dòng giữ lại không vượt sàn (nên không vượt cọc đem ra sau khi kẹp theo cọc đã thu).
+      expect(r.retained).toBeLessThanOrEqual(r.floor);
       expect(r.retained).toBeLessThanOrEqual(Math.min(r.depositSent, paid));
     }));
   });

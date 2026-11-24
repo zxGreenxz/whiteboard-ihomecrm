@@ -9,7 +9,7 @@
 --   Cọc đem ra nằm giữa sàn và cọc đã thu (sổ cọc ghi dôi trên cọc hợp đồng, người dùng đối chiếu rồi nhập số thực giữ)
 --   cho qua như trước: phần dôi là lệch sổ, không phải cọc giữ lại, nên không thành doanh thu.
 --   Dòng DEPOSIT_RETAINED là một khoản thu thêm như mọi khoản khác (dòng hoá đơn thanh lý, cấn từ cọc qua cặp bút toán
---   nội bộ), tối đa một dòng, đúng tên, không vượt cọc đem ra. Trên phiếu "Doanh thu thanh lý" phần đó đứng hạng mục
+--   nội bộ), tối đa một dòng, đúng tên, không vượt sàn. Trên phiếu "Doanh thu thanh lý" phần đó đứng hạng mục
 --   riêng "Cọc giữ lại theo thoả thuận" (doanh thu, không phải cọc); tổng phiếu, số phiếu và mọi phép tính khác giữ nguyên.
 -- Hai trường hợp sang nhượng (nhờ sale, tự tìm) hoàn đủ cọc: không có dòng DEPOSIT_RETAINED (kiểm ở
 -- assert_exit_early_terms_settlement_v1). Bỏ cọc đã giữ toàn bộ cọc: không nhận dòng này (kiểm ở
@@ -70,9 +70,9 @@ BEGIN
     RAISE EXCEPTION 'Quyết toán chỉ có tối đa một dòng "Cọc giữ lại theo thoả thuận", đúng tên đó, số tiền lớn hơn 0'
       USING ERRCODE = '22023';
   END IF;
-  IF v_retained > 0 AND v_retained > v_deposit THEN
-    RAISE EXCEPTION 'Cọc giữ lại theo thoả thuận (% đ) lớn hơn cọc đem ra quyết toán (% đ)',
-      round(v_retained)::bigint, round(v_deposit)::bigint USING ERRCODE = '22023';
+  IF v_retained > v_deposit_floor THEN
+    RAISE EXCEPTION 'Cọc giữ lại theo thoả thuận (% đ) lớn hơn cọc phải xử lý (% đ): phần sổ cọc ghi dôi trên cọc hợp đồng không phải cọc giữ lại',
+      round(v_retained)::bigint, round(v_deposit_floor)::bigint USING ERRCODE = '22023';
   END IF;$r$,
       $m$v_deposit_floor := LEAST($m$),
     -- Ghi chú quyết toán nói rõ phần giữ lại.

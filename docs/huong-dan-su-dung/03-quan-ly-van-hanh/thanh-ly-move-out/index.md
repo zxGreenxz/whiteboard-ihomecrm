@@ -87,7 +87,7 @@ Khi xác nhận, hệ thống: tạo **hoá đơn thanh lý** kèm các khoản 
 
 ## Cọc giữ lại theo thoả thuận
 
-Từ 25/11/2026 mọi lần thanh lý rời phòng (hết hạn hoặc trả trước hạn) **không để cọc treo** trên hợp đồng. Phần cọc không hoàn cho khách theo thoả thuận (ví dụ chủ nhà đồng ý thanh lý sớm nhưng giữ lại một phần cọc) phải thành một dòng thu có chứng từ.
+Từ 25/11/2026 thanh lý rời phòng (hết hạn hoặc trả trước hạn) **không để cọc treo** trên hợp đồng (trừ phần sổ cọc ghi dôi trên cọc HĐ, xem dưới). Phần cọc không hoàn cho khách theo thoả thuận (ví dụ chủ nhà đồng ý thanh lý sớm nhưng giữ lại một phần cọc) phải thành một dòng thu có chứng từ.
 
 - **Sàn** = số nhỏ hơn giữa **cọc đã thu** và **cọc theo HĐ**. Ô **Tiền cọc hoàn trả** mặc định bằng sàn.
 - Nhập **thấp hơn sàn**: ngay dưới ô hiện dòng **Cọc giữ lại theo thoả thuận: … đ** (bằng sàn trừ số nhập). Hệ thống tự đem **đủ sàn** ra quyết toán và tự thêm dòng khoá **Cọc giữ lại theo thoả thuận** vào khu **THU THÊM**; dòng này vào **hoá đơn thanh lý**, được cấn từ cọc và ghi **doanh thu** với hạng mục riêng **Cọc giữ lại theo thoả thuận**. Khách vẫn nhận đúng số đã nhập trừ các khoản khấu trừ. Hộp xác nhận nói rõ dòng này trước khi bấm.
@@ -95,6 +95,7 @@ Từ 25/11/2026 mọi lần thanh lý rời phòng (hết hạn hoặc trả tr�
 - **Sổ cọc ghi cao hơn mức thỏa thuận** (cọc đã thu lớn hơn cọc theo HĐ): màn hình nhắc **đối chiếu phiếu thu**. Nhập từ cọc HĐ trở lên (số cọc thực giữ) thì không có dòng giữ lại; phần sổ ghi dôi **không** thành doanh thu, vẫn còn trên hợp đồng để kiểm phiếu cọc (thường là phiếu đếm trùng). Nhập dưới cọc HĐ thì chỉ phần dưới cọc HĐ thành dòng giữ lại.
 - **Không áp dụng** cho **Bỏ cọc** (toàn bộ cọc đã thành doanh thu bỏ cọc) và cho hai trường hợp **sang nhượng phòng** (nhờ sale / tự tìm khách): ô hoàn cọc khoá ở cọc đã thu, máy chủ từ chối dòng giữ lại.
 - Bản nháp quyết toán lưu trước đây có số hoàn thấp hơn sàn: mở lại sẽ tự hiện dòng giữ lại theo cùng luật.
+- Chọn **Ghi nợ** khi khách còn nợ nhiều hơn số hoàn: số khách còn nợ không đổi so với trước, nhưng phần còn nợ hiện trên **hoá đơn thanh lý** (nơi có dòng giữ lại), vì công nợ cũ được gạch trước.
 
 ## Trả phòng trước hạn: ba trường hợp
 
