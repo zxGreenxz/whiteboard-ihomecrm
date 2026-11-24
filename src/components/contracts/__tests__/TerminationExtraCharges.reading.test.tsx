@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContractWithRelations } from '@/types/contract';
 import type { ExtraChargeItem } from '@/lib/contractValidation';
 import type { MeterBillingSource } from '@/lib/meter-capture/types';
 import type { ExtraChargesDraft } from '@/lib/contractExitSettlementDrafts';
+import { prorateAmount } from '@/lib/prorateCalculation';
 const api = vi.hoisted(() => ({ resolve: vi.fn(), latest: vi.fn(), meter: vi.fn() }));
 vi.mock('@/lib/meter-capture/service', () => ({ resolveMeterBilling: api.resolve, readLatestApprovedReading: api.latest, readActiveElectricMeter: api.meter }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
@@ -218,5 +219,49 @@ describe('nháp quyết toán: điền lại các ô tự nhập', () => {
     resolveSources([manualMeter()]);
     await waitFor(() => expect(drafts[drafts.length - 1].meter).toBeNull());
     expect((screen.getByTitle('Số điện cuối Đồng hồ 4') as HTMLInputElement).value).toBe('');
+  });
+});
+
+// Cùng khuôn lỗi với "Hoàn lại khách" (23/11/2026): rời ô ngày mà không đổi ngày không được đè số thu đã gõ tay.
+describe('Thu thêm: số gõ tay không bị ô ngày đè', () => {
+  const prorated = () => items.find(item => item.kind === 'PRORATED');
+  const amountInput = () => within(screen.getByText('Tiền phòng + Nước + PDV').parentElement as HTMLElement).getByRole('textbox') as HTMLInputElement;
+  const dateInputs = () => screen.getAllByPlaceholderText('dd/mm/yyyy') as HTMLInputElement[];
+  const ready = async () => {
+    api.resolve.mockResolvedValue([]);
+    const drafts: ExtraChargesDraft[] = [];
+    render(<TerminationExtraCharges contract={contract} chargeDate="2026-10-08" onChange={changed} onValidityChange={valid} onDraftChange={draft => drafts.push(draft)} />);
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(true));
+    fireEvent.change(dateInputs()[0], { target: { value: '01/10/2026' } });
+    const auto = prorated();
+    expect(auto).toMatchObject({ days: 8 });
+    expect(auto!.amount).toBeGreaterThan(0);
+    return { drafts, autoAmount: auto!.amount };
+  };
+
+  it('gõ tay rồi đi qua hai ô ngày (không đổi ngày): số gõ còn nguyên tới khoản thu và nháp', async () => {
+    const { drafts, autoAmount } = await ready();
+    expect(autoAmount).not.toBe(350_000);
+    fireEvent.change(amountInput(), { target: { value: '350000' } });
+    for (const input of dateInputs()) { fireEvent.focus(input); fireEvent.blur(input); }
+    expect(amountInput().value).toBe('350.000');
+    expect(prorated()).toMatchObject({ amount: 350_000, days: 8 });
+    expect(drafts[drafts.length - 1]).toMatchObject({ fromDate: '2026-10-01', toDate: '2026-10-08', proratedAmount: 350_000, proratedTouched: true });
+  });
+
+  it('ô ngày phát lại đúng ngày đang có cũng không đè số gõ tay; đổi ngày thật mới tính lại', async () => {
+    const { drafts } = await ready();
+    fireEvent.change(amountInput(), { target: { value: '350000' } });
+    const [from] = dateInputs();
+    fireEvent.change(from, { target: { value: '01/10/202' } });
+    fireEvent.change(from, { target: { value: '01/10/2026' } });
+    expect(prorated()).toMatchObject({ amount: 350_000, days: 8 });
+    expect(drafts[drafts.length - 1]).toMatchObject({ proratedAmount: 350_000, proratedTouched: true });
+    fireEvent.change(from, { target: { value: '05/10/2026' } });
+    const recalculated = prorated()!;
+    expect(recalculated.days).toBe(4);
+    expect(recalculated.amount).toBe(prorateAmount(recalculated.unit_price!, 4));
+    expect(recalculated.amount).not.toBe(350_000);
+    expect(drafts[drafts.length - 1]).toMatchObject({ fromDate: '2026-10-05', proratedAmount: recalculated.amount, proratedTouched: false });
   });
 });
