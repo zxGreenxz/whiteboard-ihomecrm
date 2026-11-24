@@ -9,6 +9,7 @@ vi.mock('@/hooks/useReceivingCashbooks',async original=>({...await original<type
 vi.mock('@/hooks/useCollectionTenders',()=>({fetchRecentInvoiceCollections:h.recent}));
 vi.mock('@/hooks/useClipboardImagePaste',()=>({useClipboardImagePaste:()=>({})}));
 import RecordPaymentDialog from '../RecordPaymentDialog';
+import {PriorCollectionSettledError} from '@/lib/pendingCollection';
 const invoice={id:'invoice',organization_id:'org',building_id:'b1',invoice_number:'HD01',total_amount:100000,paid_amount:0,invoice_items:[],payments:[],contract_id:'contract'};
 beforeEach(()=>{vi.stubGlobal('ResizeObserver',class {observe(){} unobserve(){} disconnect(){}});vi.clearAllMocks();h.record.mockReset();h.recent.mockResolvedValue([]);HTMLElement.prototype.scrollIntoView=vi.fn();});
 afterEach(cleanup);
@@ -30,4 +31,18 @@ it('D05 timeout sau gửi giữ form và khóa gửi tiếp',async()=>{
  expect(await screen.findByText(/Chưa xác nhận được kết quả thu tiền/)).toBeTruthy();
  expect((screen.getByRole('button',{name:'Ghi nhận thanh toán'}) as HTMLButtonElement).disabled).toBe(true);
  expect(h.record).toHaveBeenCalledOnce();expect(h.close).not.toHaveBeenCalled();
+});
+// Đợt 2 (24/11/2026): đối chiếu kết luận lần thu trước đã ghi thì hộp khoá như khi chưa rõ kết quả; đã bị hoàn tác
+// thì không khoá để người dùng thu lại.
+it('lần thu trước còn hiệu lực: báo đã ghi kèm mã và khoá gửi tiếp',async()=>{
+ h.record.mockRejectedValueOnce(new PriorCollectionSettledError('Lần thu trước của hoá đơn này đã được ghi (mã col-1). Không thu thêm.','col-1',false));show();
+ fireEvent.click(screen.getByRole('button',{name:'Ghi nhận thanh toán'}));
+ expect(await screen.findByText(/đã được ghi \(mã col-1\)/)).toBeTruthy();
+ expect((screen.getByRole('button',{name:'Ghi nhận thanh toán'}) as HTMLButtonElement).disabled).toBe(true);
+});
+it('lần thu trước đã bị hoàn tác: báo rõ, không khoá gửi tiếp',async()=>{
+ h.record.mockRejectedValueOnce(new PriorCollectionSettledError('Lần thu trước của hoá đơn này đã được ghi rồi bị hoàn tác (mã col-1).','col-1',true));show();
+ fireEvent.click(screen.getByRole('button',{name:'Ghi nhận thanh toán'}));
+ expect(await screen.findByText(/bị hoàn tác \(mã col-1\)/)).toBeTruthy();
+ expect((screen.getByRole('button',{name:'Ghi nhận thanh toán'}) as HTMLButtonElement).disabled).toBe(false);
 });

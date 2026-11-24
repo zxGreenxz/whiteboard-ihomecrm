@@ -40,11 +40,11 @@ const tien = (reconcile: PendingReconcile, label: string): PendingStrategy => ({
 const khac = (reconcile: PendingReconcile, label: string): PendingStrategy => ({ money: false, reconcile, label });
 
 export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
-  // Đợt 2: thu tiền, hoàn tác, hoàn trả
-  'collection-reversal': tien('van', 'hoàn tác lần thu'),
-  'invoice-refund': tien('van', 'lập hoàn trả'),
-  'collection-tender-method': tien('van', 'đổi hình thức thu'),
-  'payment-receipt-upload': tien('van', 'thêm ảnh chứng từ thanh toán'),
+  // Đợt 2: thu tiền, hoàn tác, hoàn trả (thu tiền hoá đơn dùng kho riêng `pendingCollection.ts`, không nằm ở sổ này)
+  'collection-reversal': tien('B', 'hoàn tác lần thu'), // reverse_invoice_collection_v5 / undo_invoice_payment_compat_v1 chống trùng theo khoá
+  'invoice-refund': tien('B', 'lập hoàn trả'), // create_invoice_refund_obligation_v2 trả replayed:true; chỉ gửi lại sau 2 phút
+  'collection-tender-method': tien('B', 'đổi hình thức thu'), // change_collection_tender_method_v1 trả replayed:true
+  'payment-receipt-upload': tien('C', 'thêm ảnh chứng từ thanh toán'), // ô ảnh của phiếu thanh toán đã có = đã gắn
 
   // Đợt 3: lập phiếu, cọc, phí (họ runFinancialPending)
   'voucher-form-create': tien('van', 'lập phiếu thu/chi'),
