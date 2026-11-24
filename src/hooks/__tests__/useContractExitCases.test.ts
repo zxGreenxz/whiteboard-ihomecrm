@@ -51,6 +51,14 @@ describe('selected organization at the exit-case hook boundary',()=>{
     expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.meter).toHaveBeenCalledWith(row.organization_id,'confirm_contract_return_v2',
       expect.objectContaining({p_initial_kind:'EARLY_RETURN',p_settlement_mode:'IMMEDIATE',p_early_terms:{early_reason:'LANDLORD_AGREEMENT'}}),[source]);
+    // Hết hạn hợp đồng kèm ảnh đồng hồ: vẫn writer v1, không gửi p_early_terms (jsonb null sẽ làm v2 từ chối).
+    await confirm.mutationFn({contractId:id,expectedContractUpdatedAt:'2026-09-27T00:00:00Z',idempotencyKey:'return-key-0003',actualMoveOutOn:'2026-09-28',
+      initialKind:'NATURAL_EXPIRY',settlementMode:'IMMEDIATE',returnNote:'Hết hạn.',
+      settlement:{depositRefund:0,extraCharges:[{kind:'ELECTRIC',description:'Điện',amount:35000,previous_reading:10,current_reading:20,unit_price:3500,meter_source:source}]}} as ConfirmContractReturnInput);
+    const [, writer, v1Args] = mocks.meter.mock.calls.at(-1)!;
+    expect(writer).toBe('confirm_contract_return_v1');
+    expect(v1Args).not.toHaveProperty('p_early_terms');
+    expect(v1Args).toMatchObject({p_initial_kind:'NATURAL_EXPIRY'});
   });
   it('denies mutation with no selected organization and maps CAS failure to an actionable toast',async()=>{
     mocks.org=null;

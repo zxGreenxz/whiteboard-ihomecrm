@@ -677,7 +677,8 @@ export function useContractFormState({
       ).some((field) => form.getFieldState(field).isDirty);
       // Preserve saved rows until the first user edit. Once generated, returning
       // to defaults is still a change even though RHF clears the dirty flags.
-      if (baseline.signature === null && !userChangedInvoiceField && draftInvoiceEditRevision.current === 0) return;
+      // Số khách cũ hỗ trợ không phải trường của form: nhập số đó cũng phải dựng lại dòng cọc của hoá đơn đầu.
+      if (baseline.signature === null && !userChangedInvoiceField && draftInvoiceEditRevision.current === 0 && !exitSupportApplied) return;
       if (baseline.signature === draftInvoiceSignature) return;
       baseline.signature = draftInvoiceSignature;
     }

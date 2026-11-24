@@ -988,7 +988,7 @@
       ]
     },
     "supabase/migrations/20261124154554_so_ho_tro_sang_nhuong_chuyen_coc.sql": {
-      "sha256": "f2e99d7ec50988b15358d06c878df26ff83ce218ab5e33a559c672c2e6d42e20",
+      "sha256": "f30383f119492098c7450b92066c7266cbe00c411d0a31fd099d79a7d13b1cbd",
       "missingObjects": [
         "table:app_private.contract_exit_support_writes",
         "function:app_private.exit_support_write_allowed_v1",

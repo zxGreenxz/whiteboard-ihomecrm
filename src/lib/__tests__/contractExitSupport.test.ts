@@ -28,6 +28,8 @@ describe('trần số tiền khách cũ hỗ trợ khách mới (cùng hai trầ
     expect(exitSupportError(600_000, tight)).toMatch(/Vượt phần cọc còn thiếu của hợp đồng mới \(tối đa 500\.000 đ\)/);
     expect(exitSupportError(-1, caps)).toMatch(/không hợp lệ/);
     expect(exitSupportError(1.005, caps)).toMatch(/không hợp lệ/);
+    // Số lẻ hai chữ số không bị từ chối nhầm vì sai số dấu phẩy động (0,29 × 100 = 28,999…).
+    expect(exitSupportError(1000.29, caps)).toBeNull();
     expect(exitSupportError(Number.NaN, caps)).toMatch(/không hợp lệ/);
   });
 });

@@ -26,7 +26,7 @@ BEGIN
     OR to_regprocedure('app_private.contract_exit_early_terms_response_v1(uuid)') IS NULL
     OR to_regprocedure('app_private.contract_exit_early_term_event_v1(uuid,text,text,uuid,text,jsonb)') IS NULL
     OR to_regprocedure('public._internal_settlement_account(uuid)') IS NULL
-    OR to_regprocedure('public._termination_ensure_type(uuid,text,text)') IS NULL
+    OR to_regprocedure('public.normalize_income_expense_type_name(text)') IS NULL
     OR to_regprocedure('public.recompute_contract_deposit_paid(uuid)') IS NULL
     OR to_regprocedure('public.contract_deposit_paid_derived(uuid)') IS NULL
     OR to_regprocedure('app_private.finance_v2_transition_owned_approval(uuid,text,text)') IS NULL
@@ -142,6 +142,32 @@ DROP TRIGGER IF EXISTS a02_contract_exit_support_guard ON public.contracts;
 CREATE TRIGGER a02_contract_exit_support_guard BEFORE UPDATE OF deleted_at OR DELETE ON public.contracts
   FOR EACH ROW EXECUTE FUNCTION app_private.guard_contract_exit_support_v1();
 
+-- Hạng mục của hai phiếu chuyển cọc, tra và tạo đúng trong tổ chức của hồ sơ (không suy tổ chức từ thành viên của chủ
+-- toà như _termination_ensure_type: chủ thuộc nhiều tổ chức thì chọn nhầm). Cùng khoá duy nhất (tổ chức, loại, tên chuẩn hoá).
+CREATE OR REPLACE FUNCTION app_private.exit_support_type_v1(p_organization_id uuid,p_owner uuid,p_type text,p_name text)
+RETURNS uuid LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
+DECLARE v_id uuid;
+BEGIN
+  SELECT t.id INTO v_id FROM public.income_expense_types t
+  WHERE t.organization_id=p_organization_id AND lower(btrim(t.type))=p_type
+    AND public.normalize_income_expense_type_name(t.name)=public.normalize_income_expense_type_name(p_name)
+  ORDER BY t.created_at,t.id LIMIT 1;
+  IF v_id IS NULL THEN
+    INSERT INTO public.income_expense_types(user_id,organization_id,type,name,description,is_deposit,force_approval)
+    VALUES(p_owner,p_organization_id,p_type,p_name,'Tự tạo khi ghi số khách cũ hỗ trợ khách nhận phòng (chuyển cọc giữa hai hợp đồng)',true,true)
+    ON CONFLICT DO NOTHING RETURNING id INTO v_id;
+    IF v_id IS NULL THEN
+      SELECT t.id INTO v_id FROM public.income_expense_types t
+      WHERE t.organization_id=p_organization_id AND lower(btrim(t.type))=p_type
+        AND public.normalize_income_expense_type_name(t.name)=public.normalize_income_expense_type_name(p_name)
+      ORDER BY t.created_at,t.id LIMIT 1;
+    END IF;
+  END IF;
+  UPDATE public.income_expense_types SET is_deposit=true WHERE id=v_id AND is_deposit IS DISTINCT FROM true;
+  RETURN v_id;
+END
+$fn$;
+
 -- 4. Ghi số hỗ trợ khi tạo hợp đồng khách nhận. Gọi từ create_contract_v2 ngay trước khi tính lại cọc đã thu:
 -- lúc đó trigger tự nối đã nối hợp đồng mới với hồ sơ cũ, phiếu cọc có sẵn đã gắn và phiếu cọc mới đã ghi.
 -- Lặp lại cùng khoá tạo hợp đồng thì create_contract_v2 trả kết quả cũ trước khi tới đây.
@@ -204,10 +230,8 @@ BEGIN
       AND a.organization_id=t.organization_id) THEN
     RAISE EXCEPTION 'Không xác định được sổ nội bộ cấn trừ thanh lý của toà' USING ERRCODE='55000';
   END IF;
-  v_type_out:=public._termination_ensure_type(v_owner,'expense','Chuyển cọc sang hợp đồng khách nhận');
-  UPDATE public.income_expense_types SET is_deposit=true WHERE id=v_type_out AND is_deposit IS DISTINCT FROM true;
-  v_type_in:=public._termination_ensure_type(v_owner,'income','Nhận cọc chuyển từ hợp đồng cũ');
-  UPDATE public.income_expense_types SET is_deposit=true WHERE id=v_type_in AND is_deposit IS DISTINCT FROM true;
+  v_type_out:=app_private.exit_support_type_v1(t.organization_id,v_owner,'expense','Chuyển cọc sang hợp đồng khách nhận');
+  v_type_in:=app_private.exit_support_type_v1(t.organization_id,v_owner,'income','Nhận cọc chuyển từ hợp đồng cũ');
   IF (SELECT count(*) FROM public.income_expense_types x WHERE x.id IN (v_type_out,v_type_in)
       AND x.organization_id=t.organization_id AND x.is_deposit AND NOT COALESCE(x.internal_transfer,false))<>2 THEN
     RAISE EXCEPTION 'Hạng mục chuyển cọc không thuộc tổ chức' USING ERRCODE='55000';
@@ -296,6 +320,9 @@ BEGIN
   PERFORM 1 FROM public.contracts c WHERE c.id IN (t.contract_id,t.new_contract_id) ORDER BY c.id FOR UPDATE;
   v_old_paid:=public.contract_deposit_paid_derived(t.contract_id);
   v_new_paid:=public.contract_deposit_paid_derived(t.new_contract_id);
+  IF NOT EXISTS (SELECT 1 FROM public.contracts c WHERE c.id=t.new_contract_id AND c.deleted_at IS NULL AND c.status::text IN ('ACTIVE','EXTENDED')) THEN
+    RAISE EXCEPTION 'Hợp đồng khách nhận không còn hiệu lực; không đảo được số hỗ trợ' USING ERRCODE='55000';
+  END IF;
   IF v_new_paid<v_amount OR (SELECT count(*) FROM public.income_expenses v WHERE v.id IN (v_out,v_in)
       AND v.approval_status='APPROVED' AND v.deleted_at IS NULL)<>2 THEN
     RAISE EXCEPTION 'Cặp phiếu chuyển cọc hoặc cọc của hợp đồng mới đã thay đổi; không đảo được' USING ERRCODE='55000';
@@ -385,7 +412,7 @@ DO $acl$
 DECLARE v_signature text;
 BEGIN
   FOREACH v_signature IN ARRAY ARRAY[
-    'app_private.exit_support_write_allowed_v1(uuid)',
+    'app_private.exit_support_write_allowed_v1(uuid)','app_private.exit_support_type_v1(uuid,uuid,text,text)',
     'app_private.guard_exit_support_voucher_v1()','app_private.guard_exit_support_item_v1()',
     'app_private.guard_contract_exit_support_v1()',
     'app_private.apply_exit_support_on_contract_create_v1(uuid,uuid,jsonb,text)'] LOOP

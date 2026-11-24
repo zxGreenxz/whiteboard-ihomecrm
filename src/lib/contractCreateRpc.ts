@@ -243,7 +243,7 @@ export function buildCreateContractRpcArgs(
 
   if (payload.transfer_support_amount !== undefined && payload.transfer_support_amount !== 0) {
     const amount = payload.transfer_support_amount;
-    if (!Number.isFinite(amount) || amount < 0 || Math.round(amount * 100) !== amount * 100) {
+    if (!Number.isFinite(amount) || amount < 0 || Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) {
       throw new Error("transfer_support_amount must be a non-negative amount with at most 2 decimals");
     }
     rpcPayload.transfer_support_amount = amount;

@@ -24,6 +24,12 @@ const invoke:ContractExitRpcInvoker=(name,args)=>{
     }) : [];
     // Đường ảnh đồng hồ nhận cả writer v2 (migration 20261124154554): trả phòng trước hạn + quyết toán ngay đi qua v2 kèm
     // trường hợp (chỉ chủ nhà hỗ trợ được quyết toán ngay; hai trường hợp sang nhượng máy chủ vẫn chỉ cho quyết toán sau).
+    // Loại khác giữ writer v1 và bỏ p_early_terms: bộ gọi writer của máy chủ dựng jsonb từ khoá, p_early_terms=null thành
+    // jsonb 'null' (khác SQL NULL) và v2 sẽ từ chối "chỉ trả phòng trước hạn mới có trường hợp".
+    if (sources.length && name === 'confirm_contract_return_v2' && args.p_initial_kind !== 'EARLY_RETURN') {
+      const { p_early_terms: _unused, ...v1Args } = args;
+      return exitWithMeterSources(String(args.p_organization_id), 'confirm_contract_return_v1', v1Args, sources).then(data => ({ data, error: null }));
+    }
     if (sources.length) return exitWithMeterSources(String(args.p_organization_id), name, args, sources).then(data => ({ data, error: null }));
   }
   switch(name){

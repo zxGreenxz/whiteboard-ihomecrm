@@ -108,8 +108,10 @@ beforeAll(async () => {
       deleted_at timestamptz,created_at timestamptz DEFAULT now());
     INSERT INTO public.accounts(id,organization_id,user_id,name,is_virtual) VALUES('${internalAccount}','${org}','${owner}','Cấn trừ thanh lý (nội bộ)',true),
       ('${cashAccount}','${org}','${owner}','Tiền mặt thu',false);
-    CREATE TABLE public.income_expense_types(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,user_id uuid,type text,name text,
+    CREATE TABLE public.income_expense_types(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,user_id uuid,type text,name text,description text,
       is_deposit boolean DEFAULT false,internal_transfer boolean DEFAULT false,force_approval boolean DEFAULT false,created_at timestamptz DEFAULT now());
+    CREATE FUNCTION public.normalize_income_expense_type_name(text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT lower(btrim($1)) $$;
+    CREATE UNIQUE INDEX income_expense_types_org_side_normalized_name_uq ON public.income_expense_types(organization_id,lower(btrim(type)),public.normalize_income_expense_type_name(name));
     INSERT INTO public.income_expense_types(organization_id,user_id,type,name,is_deposit) VALUES('${org}','${owner}','income','Tiền cọc',true);
     CREATE TABLE public.income_expenses(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,organization_id uuid,contract_id uuid,room_id uuid,
       building_id uuid,account_id uuid,invoice_id uuid,type text,name text,commission_kind text,total_amount numeric,notes text,
@@ -227,12 +229,6 @@ beforeAll(async () => {
     CREATE FUNCTION app_private.invoice_rent_support_items_close_v1(uuid) RETURNS void LANGUAGE sql AS $$ SELECT $$;
     CREATE FUNCTION public.compute_first_billing_month_v2(date,date) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT to_char($1,'YYYY-MM') $$;
     CREATE FUNCTION public._internal_settlement_account(p_user_id uuid) RETURNS uuid LANGUAGE sql AS $$ SELECT '${internalAccount}'::uuid $$;
-    CREATE FUNCTION public._termination_ensure_type(p_user_id uuid,p_type text,p_name text) RETURNS uuid LANGUAGE plpgsql AS $$
-      DECLARE v uuid; BEGIN
-        SELECT id INTO v FROM public.income_expense_types WHERE organization_id='${org}' AND type=lower(p_type) AND name=p_name;
-        IF v IS NULL THEN INSERT INTO public.income_expense_types(organization_id,user_id,type,name,force_approval)
-          VALUES('${org}',p_user_id,lower(p_type),p_name,true) RETURNING id INTO v; END IF;
-        RETURN v; END $$;
     -- Mã phiếu như trigger auto_generate_voucher_code.
     CREATE SEQUENCE voucher_codes;
     CREATE FUNCTION public.test_voucher_code() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -397,6 +393,10 @@ describe('ghi số hỗ trợ khi tạo hợp đồng khách nhận', () => {
     const t = await terms(0);
     expect(t).toMatchObject({ new_contract_id: contract.id, support_out_voucher_id: vouchers[0].id, support_in_voucher_id: vouchers[1].id, version: 3 });
     expect(Number(t.support_amount)).toBe(1_500_000);
+    // Hạng mục hai phiếu: loại cọc, đúng tổ chức của hồ sơ, tạo một lần.
+    expect((await db.query(`SELECT t.type,t.is_deposit,t.organization_id FROM public.income_expense_types t JOIN public.income_expense_items i ON i.income_expense_type_id=t.id
+      WHERE i.income_expense_id IN ($1,$2) ORDER BY t.type`, [vouchers[0].id, vouchers[1].id])).rows).toEqual([
+      { type: 'expense', is_deposit: true, organization_id: org }, { type: 'income', is_deposit: true, organization_id: org }]);
     const read = (await db.query<{ r: Row[] }>('SELECT public.read_contract_exit_early_terms_v1($1,$2) r', [org, contract.id])).rows[0].r[0];
     expect(read).toMatchObject({ support_amount: 1_500_000, support_out_code: vouchers[0].code, support_in_code: vouchers[1].code,
       old_contract_deposit_paid: 2_500_000, new_contract_deposit_paid: 2_500_000 });
@@ -544,6 +544,14 @@ describe('đảo số hỗ trợ', () => {
     await db.query(`UPDATE public.contracts SET deleted_at=now() WHERE id=$1`, [newId]);
     await db.query('SELECT public.set_contract_exit_early_terms_v1($1,$2,$3,$4,$5,$6,$7)',
       [org, e.id, version + 1, id(962), 'LANDLORD_AGREEMENT', null, 'Khách nhận huỷ, chủ nhà đồng ý']);
+  });
+
+  it('hợp đồng khách nhận không còn hiệu lực thì không đảo được', async () => {
+    await confirm(1, { early_reason: 'SELF_FOUND' });
+    const r = await createContract(1, { receipt: 1_000_000, support: 300_000 });
+    await db.query(`UPDATE public.contracts SET status='TERMINATED' WHERE id=$1`, [String((r.contract as Row).id)]);
+    const e = await caseOf(1);
+    await rejects(REVERSE, [org, e.id, Number((await terms(1)).version), id(980), 'Thử'], '55000', /không còn hiệu lực/);
   });
 
   it('hồ sơ cũ đã quyết toán thì không đảo được', async () => {

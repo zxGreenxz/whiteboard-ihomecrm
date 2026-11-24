@@ -40,7 +40,7 @@ const vnd = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
 
 /** Lý do số hỗ trợ bị từ chối (cùng hai trần máy chủ kiểm); null khi hợp lệ. */
 export function exitSupportError(amount: number, caps: ExitSupportCaps): string | null {
-  if (!Number.isFinite(amount) || amount < 0 || Math.round(amount * 100) !== amount * 100) {
+  if (!Number.isFinite(amount) || amount < 0 || Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) {
     return 'Số tiền khách cũ hỗ trợ không hợp lệ.';
   }
   if (amount > caps.oldCap) return `Vượt cọc cũ đã thu sau khi trừ phí môi giới (tối đa ${vnd(caps.oldCap)} đ).`;
