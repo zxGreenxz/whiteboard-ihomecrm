@@ -1,6 +1,6 @@
 ---
 title: "Thanh lý hợp đồng — Khách rời phòng"
-description: "Báo ngày dự kiến trả phòng, ghi nhận khách trả phòng (quyết toán ngay hoặc quyết toán sau), chốt công nợ, hoàn cọc, thu thêm và hoàn lại khách, kèm checklist đối soát sau thanh lý."
+description: "Báo ngày dự kiến trả phòng, ghi nhận khách trả phòng (quyết toán ngay hoặc quyết toán sau), ba trường hợp trả phòng trước hạn, chốt công nợ, hoàn cọc, thu thêm và hoàn lại khách, kèm checklist đối soát sau thanh lý."
 routes: ["/contracts/:id", "/contracts"]
 permissions: [{module: contracts, action: terminate}]
 viewport: desktop
@@ -38,7 +38,7 @@ Sau khi lưu: trang chi tiết hiện dải **Khách dự kiến trả phòng: d
 **Bước 2 — Ghi nhận khách trả phòng**: Khi khách bàn giao thực tế, ấn nút đỏ **Thanh lý**. Hộp **Thanh lý hợp đồng** mở ra:
 
 - **Ngày khách thực tế trả phòng \*** (mặc định hôm nay).
-- **Loại thanh lý \***: **Hết hạn hợp đồng**, **Trả phòng trước hạn** hoặc **Bỏ cọc** (bỏ cọc xem trang [Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/)).
+- **Loại thanh lý \***: **Hết hạn hợp đồng**, **Trả phòng trước hạn** hoặc **Bỏ cọc** (bỏ cọc xem trang [Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/)). Chọn **Trả phòng trước hạn** thì hiện thêm ô **Trường hợp trả phòng trước hạn** — bắt buộc chọn một trong ba (xem mục **Trả phòng trước hạn: ba trường hợp** bên dưới).
 - **Nội dung thanh lý \*** — bắt buộc, dùng để đối chiếu và **in trên phiếu hoàn cọc**. Có thể bấm **Dùng nội dung mẫu** rồi bổ sung.
 - Bước này **không hỏi chỉ số**: số điện cuối nhập một lần ở mục **Tiền điện** khi quyết toán, và mốc trả phòng tự lấy số đó.
 
@@ -47,7 +47,7 @@ Sau khi lưu: trang chi tiết hiện dải **Khách dự kiến trả phòng: d
 **Bước 3 — Chọn quyết toán ngay hay để sau**:
 
 - **Trả phòng, quyết toán sau**: xác nhận khách đã đi; hợp đồng chuyển **Đã thanh lý** với ngày trả thực tế, phòng trống để sale, và hồ sơ vào tab **Chờ quyết toán** của màn Hợp đồng. Tiền cọc, khấu trừ và tiền hoàn xử lý khi quyết toán. Thao tác này **không ghi tiền**.
-- **Tiếp tục quyết toán ngay**: chuyển sang form quyết toán (Bước 4).
+- **Tiếp tục quyết toán ngay**: chuyển sang form quyết toán (Bước 4). Nút này **không có** khi bạn chọn trường hợp nhờ sale hoặc tự tìm khách sang phòng — hai trường hợp đó chỉ ghi **Trả phòng, quyết toán sau**.
 
 Với hồ sơ đã trả phòng, mở lại từ tab **Chờ quyết toán** (nút **Quyết toán**) hoặc khối **Hồ sơ trả phòng** trên trang chi tiết (**Quyết toán hồ sơ này**). Hộp mở với tiêu đề **Quyết toán hồ sơ đã trả phòng**, giữ ngày và nội dung đã ghi; nếu đổi loại thanh lý phải nhập **Lý do đổi loại thanh lý**. Ấn **Tiếp tục quyết toán**.
 
@@ -84,6 +84,24 @@ Khi xác nhận, hệ thống: tạo **hoá đơn thanh lý** kèm các khoản 
 4. Chỉ số bàn giao: số điện cuối nhập ở ô **Tiền điện (chốt số)** lúc quyết toán, mốc trả phòng tự lấy số đó. Hồ sơ đã quyết toán mà chưa có số chốt nằm trong khối **Chờ bổ sung chỉ số bàn giao** (tab Chờ quyết toán) — bấm **Mở mốc bàn giao** rồi **Bổ sung / sửa chỉ số**. Bỏ cọc không cần số chốt.
 5. Credit còn treo (nếu cảnh báo có nhắc) được xử lý riêng.
 
+## Trả phòng trước hạn: ba trường hợp
+
+Khi chọn loại **Trả phòng trước hạn** ở Bước 2, bạn phải chọn **một trong ba trường hợp**. Trường hợp quyết định phòng được giữ hay rao bán, có phí môi giới hay không và quyết toán lúc nào. Luồng đầy đủ của hai trường hợp sang nhượng xem ở [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/).
+
+| Trường hợp | Phòng | Quyết toán | Phí môi giới |
+| --- | --- | --- | --- |
+| **Nhờ sale tìm khách sang phòng** (bắt buộc ghi **Tên sale / môi giới**) | Giữ 3 ngày cho khách nhận, không rao bán. | Chỉ **Trả phòng, quyết toán sau**; quyết toán khi đã có hợp đồng khách nhận. | Mặc định 50% cọc cũ, trừ vào cọc. Phiếu hoa hồng cho sale lập sau quyết toán. |
+| **Tự tìm khách sang phòng** | Giữ 3 ngày, không rao bán. | Giống trường hợp trên. | Không có; hợp đồng khách nhận không có hoa hồng môi giới hay thưởng sale. |
+| **Chủ nhà hỗ trợ thanh lý sớm** | Rao bán lại ngay. | Như bình thường; có thể **Tiếp tục quyết toán ngay**. | Không có. |
+
+**Ở bước quyết toán của hồ sơ có trường hợp**, bạn gặp thêm các điểm sau:
+
+- **Trường hợp của hồ sơ** hiện ở đầu hộp quyết toán cùng tình trạng giữ phòng. Hồ sơ còn chờ quyết toán có nút **Đổi trường hợp** (bắt buộc ghi lý do). Hồ sơ trả phòng trước hạn chưa có trường hợp (ghi từ Hermes hoặc từ trước khi có tính năng này) phải chọn trường hợp trước khi quyết toán.
+- **Chặn khi chưa có hợp đồng khách nhận**: với hai trường hợp đầu, hộp báo "Chưa có hợp đồng của khách nhận phòng" và không cho tiếp tục. Tạo hợp đồng cho khách nhận ở đúng phòng (hệ thống tự nối với hồ sơ này). Khách nhận đã huỷ thì ấn **Đổi sang trường hợp 3**.
+- **Tiền cọc hoàn trả** bị khoá bằng **cọc đã thu** của hợp đồng cũ (hai trường hợp đầu), không nhập tay.
+- **Phí môi giới** (chỉ trường hợp nhờ sale): dòng **Phí môi giới** tự thêm vào khu **THU THÊM** và bị khoá, cấn từ cọc như các khoản thu khác. Ấn **Sửa phí** để đổi (kể cả về 0 đồng, không vượt cọc đã thu) — bắt buộc ghi **Lý do sửa phí**; chỉ sửa được trước khi quyết toán. Phí về 0 đồng thì không có dòng phí và không có phiếu hoa hồng.
+- **Sau khi quyết toán** ca nhờ sale có phí, hộp mở tiếp **Phiếu hoa hồng môi giới** điền sẵn người nhận (tên sale) và số tiền (đúng phí). Chỉ lập được khi khách nhận đã nộp đủ cọc; chưa đủ thì ấn **Để sau (hồ sơ sẽ nhắc)**, về sau lập bằng nút **Lập phiếu hoa hồng** ở khối **Hồ sơ trả phòng** (cần quyền tạo phiếu thu chi).
+
 ## Các tính năng khác trên màn hình
 
 | Thành phần | Công dụng |
@@ -94,6 +112,10 @@ Khi xác nhận, hệ thống: tạo **hoá đơn thanh lý** kèm các khoản 
 | **Dùng nội dung mẫu** | Điền nhanh nội dung thanh lý theo loại đã chọn. |
 | **Trả phòng, quyết toán sau** | Ghi nhận trả phòng, phòng trống, hồ sơ vào tab **Chờ quyết toán**; không ghi tiền. |
 | **Tiếp tục quyết toán ngay** / **Tiếp tục quyết toán** | Sang form quyết toán. |
+| Ô **Trường hợp trả phòng trước hạn** | Ba lựa chọn khi chọn **Trả phòng trước hạn**: nhờ sale / tự tìm khách / chủ nhà hỗ trợ. |
+| **Đổi trường hợp** / **Đổi sang trường hợp 3** | Đổi trường hợp của hồ sơ chờ quyết toán, bắt buộc ghi lý do. |
+| **Sửa phí** | Sửa phí môi giới (ca nhờ sale) trước khi quyết toán, bắt buộc ghi lý do. |
+| **Lập phiếu hoa hồng** | Lập phiếu hoa hồng môi giới cho sale sau quyết toán. |
 | Tab **Chờ quyết toán** → **Quyết toán** | Mở đúng hồ sơ đã trả phòng để quyết toán sau. |
 | Khu **THU THÊM** / **HOÀN LẠI KHÁCH** | Khoản khách trả thêm (vào hoá đơn thanh lý) / khoản mình trả lại khách (giảm lợi nhuận). |
 | **Lập hoá đơn & Thanh lý** → **Xác nhận thanh lý** | Chốt quyết toán (không hoàn tác). **Quay lại** về bước trước, **Hủy** đóng hộp. |
@@ -110,6 +132,10 @@ Khi xác nhận, hệ thống: tạo **hoá đơn thanh lý** kèm các khoản 
 | Khách có credit nhưng không được tính | Ô credit mặc định 0. Nhập số muốn cấn (tối đa bằng credit); phần không nhập vẫn treo trên hợp đồng và hộp xác nhận sẽ nhắc. |
 | Chưa biết chỉ số điện cuối | Chọn **Trả phòng, quyết toán sau**. Khi quyết toán, nhập số cuối ở ô **Tiền điện (chốt số)** (khu Thu thêm); mốc trả phòng tự lấy số đó. |
 | Đổi loại thanh lý khi quyết toán sau | Phải nhập **Lý do đổi loại thanh lý**; loại ban đầu vẫn được giữ để đối soát. |
+| Không có nút **Tiếp tục quyết toán ngay** | Bạn đã chọn trường hợp nhờ sale hoặc tự tìm khách sang phòng. Chọn **Trả phòng, quyết toán sau**; quyết toán khi đã có hợp đồng khách nhận. |
+| Hộp quyết toán báo "Chưa có hợp đồng của khách nhận phòng" | Tạo hợp đồng cho khách nhận ở đúng phòng, hoặc nếu khách nhận đã huỷ thì ấn **Đổi sang trường hợp 3** kèm lý do (phòng đã **Mở bán lại** ở Sale Phòng thì hợp đồng mới không tự nối). |
+| Muốn đổi phí môi giới | Ấn **Sửa phí** trước khi quyết toán, nhập phí mới và lý do. Sau quyết toán không sửa được. |
+| Không lập được phiếu hoa hồng | Khách nhận chưa nộp đủ cọc, hoặc phí môi giới bằng 0 đồng. Thu đủ cọc rồi lập từ khối **Hồ sơ trả phòng**. |
 | Lỡ thanh lý nhầm | Không thể hoàn tác vì phiếu đã tạo và phòng đã giải phóng. Liên hệ chủ nhà / kế toán; đừng tự sửa lẻ tẻ. |
 
 ## Thử trực tiếp trên sandbox
@@ -132,6 +158,8 @@ Kết quả mong đợi: bạn hiểu ba chặng báo trả → trả phòng →
 
 - [Thanh lý — Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/) — loại thanh lý còn lại: khách bỏ ngang, giữ cọc làm phí phạt.
 - [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — khối **Cần xác nhận ngày trả phòng** và tab **Chờ quyết toán**.
+- [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) — luồng đầy đủ của hai trường hợp sang nhượng phòng.
+- [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/) — phòng giữ cho khách nhận, **Mở bán lại**, **Giữ tiếp**.
 - [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) — theo dõi tiền cọc, hoàn cọc và bỏ cọc.
 - [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) — nơi có nút Thanh lý và khối Hồ sơ trả phòng.
 - [Ghi chỉ số](/03-quan-ly-van-hanh/ghi-chi-so/) — chỉ số điện nước của phòng.

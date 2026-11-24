@@ -61,7 +61,7 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Hoàn cọc, bỏ cọc', link: '/03-quan-ly-van-hanh/hoan-bo-coc/' },
           { text: 'Hợp đồng — danh sách, nháp & ký mới', link: '/03-quan-ly-van-hanh/hop-dong/' },
           { text: 'Chi tiết hợp đồng', link: '/03-quan-ly-van-hanh/hop-dong-chi-tiet/' },
-          { text: 'Gia hạn, chuyển phòng & nhượng', link: '/03-quan-ly-van-hanh/gia-han-chuyen-phong/' },
+          { text: 'Gia hạn, chuyển phòng & sang nhượng phòng', link: '/03-quan-ly-van-hanh/gia-han-chuyen-phong/' },
           { text: 'Thanh lý — Khách rời phòng', link: '/03-quan-ly-van-hanh/thanh-ly-move-out/' },
           { text: 'Thanh lý — Khách bỏ cọc', link: '/03-quan-ly-van-hanh/thanh-ly-forfeit/' },
           { text: 'Cư dân (Khách hàng)', link: '/03-quan-ly-van-hanh/cu-dan/' },

@@ -920,7 +920,7 @@
         "removedFunctions": 30,
         "removedTriggers": 3,
         "retainedTriggers": 2,
-        "forwardSuccessions": 7
+        "forwardSuccessions": 8
       },
       "witness": {
         "functions": [
@@ -1496,6 +1496,42 @@
                 "md5": "a8e8c8c66676f566e52edf888bc43579",
                 "owner": "postgres",
                 "acl": "{postgres=X/postgres}"
+              }
+            }
+          ]
+        },
+        {
+          "file": "20261124075933_tra_phong_truoc_han_ba_truong_hop.sql",
+          "sha256": "24e7b09713df84552e3450ac3bf2e71e0615129c39d29a77f7a960089e770cc3",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20261124075933_tra_phong_truoc_han_ba_truong_hop.json",
+          "expectedCounts": {
+            "functions": 2
+          },
+          "functions": [
+            {
+              "signature": "public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)",
+              "before": {
+                "md5": "26100576d7adde1bba05cb84ca8ffdc0",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              },
+              "after": {
+                "md5": "6fc44789fd3c7d2f93c34025482b99fb",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              }
+            },
+            {
+              "signature": "public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)",
+              "before": {
+                "md5": "5c120cb4a699f4520cbd68cc75ee4071",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              },
+              "after": {
+                "md5": "951c24f3d555907cfeec88cfcf79df7a",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
               }
             }
           ]

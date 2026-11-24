@@ -5,7 +5,6 @@ import {
   QrCode,
   RefreshCw,
   ArrowRightLeft,
-  Users,
   LogOut,
   Ban,
   Trash2,
@@ -22,7 +21,6 @@ interface ActionHandlers {
   onShowQR: () => void;
   onRenew: () => void;
   onTransferRoom: () => void;
-  onTransferContract: () => void;
   onMoveOut: () => void;
   onTerminate: () => void;
   onDelete: () => void;
@@ -46,7 +44,6 @@ export function ContractMobileActions({
     { show: status !== 'TERMINATED' && status !== 'DRAFT', label: 'Mã QR', icon: QrCode, onClick: h.onShowQR },
     { show: isActive && canUse(perms, 'contracts', 'renew'), label: 'Gia hạn', icon: RefreshCw, onClick: h.onRenew },
     { show: isActive && canTransferRoom(perms, contract.room?.building_id ?? contract.room?.building?.id), label: 'Chuyển phòng', icon: ArrowRightLeft, onClick: h.onTransferRoom },
-    { show: isActive && canUse(perms, 'contracts', 'transfer'), label: 'Nhượng HĐ', icon: Users, onClick: h.onTransferContract },
     { show: isActive && canUse(perms, 'contracts', 'terminate'), label: 'Chuyển đi', icon: LogOut, onClick: h.onMoveOut },
     { show: isActive && canUse(perms, 'contracts', 'terminate'), label: 'Thanh lý', icon: Ban, onClick: h.onTerminate, danger: true },
     { show: status === 'DRAFT' && canUse(perms, 'contracts', 'delete'), label: 'Xoá', icon: Trash2, onClick: h.onDelete, danger: true },

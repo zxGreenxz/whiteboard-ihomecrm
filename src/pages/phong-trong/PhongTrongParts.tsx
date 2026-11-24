@@ -8,9 +8,23 @@ import {
 } from "./sampleData";
 import { useRoomImpression } from "./useTracking";
 import { saleLockRemaining } from "@/lib/roomSaleLockRpc";
+import { exitHoldLines, isExitHeld } from "./exitHold";
 
 const SM = STATUS_META;
 const stColor = (s: RoomStatus | string) => `var(--st-${s})`;
+
+/** Dòng giữ phòng cho khách sang nhượng trên thẻ / hàng phòng (chỉ dữ liệu trong app có exitHold). */
+function ExitHoldLine({ r }: { r: Room }) {
+  if (!r.exitHold) return null;
+  const lines = exitHoldLines(r.exitHold);
+  // Còn hạn: khách cũ + người ghi/hạn giữ (trường hợp đầy đủ xem trong thẻ chi tiết). Hết hạn: dòng "Hết hạn giữ…".
+  const text = r.exitHold.active ? [lines[0], lines[2]].filter(Boolean).join(" · ") : lines[0] ?? "";
+  return (
+    <div className={"ovr-hold" + (r.exitHold.active ? "" : " expired")}>
+      <Icon.Calendar /><span>{text}</span>
+    </div>
+  );
+}
 
 /* ===== Summary strip ===== */
 export function Summary({ rooms }: { rooms: Room[] }) {
@@ -90,6 +104,7 @@ export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) 
         {r.status === 'locked' && r.saleLock && (
           <div className="ovr-lock"><Icon.Lock />Chốt tạm · {saleLockRemaining(r.saleLock.expiresAt)} · bởi {r.saleLock.lockedByMe ? 'bạn' : r.saleLock.lockedByName}</div>
         )}
+        <ExitHoldLine r={r} />
       </div>
     </div>
   );
@@ -136,7 +151,7 @@ export function OverviewView({
     .map((b) => ({
       b,
       rooms: b.rooms
-        .filter((r) => (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || (showRented && r.status === "rented")) && bandTest(r.price))
+        .filter((r) => (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || isExitHeld(r) || (showRented && r.status === "rented")) && bandTest(r.price))
         .sort((a, z) => z.floor - a.floor || a.no - z.no),
     }))
     .filter((g) => g.rooms.length);
@@ -245,6 +260,7 @@ function OvRow({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) {
                           <Icon.Lock />Chốt tạm · {saleLockRemaining(r.saleLock.expiresAt)} · bởi {r.saleLock.lockedByMe ? "bạn" : r.saleLock.lockedByName}
                         </div>
                       )}
+                      <ExitHoldLine r={r} />
                       {r.status === "pass" && (r.passContactManager || r.passContactPhone || r.passContactName || r.passSalePolicy || r.passAvailDate) && (
                         <div className="ovr-pass">
                           {r.passContactManager ? (
@@ -305,7 +321,8 @@ function FloorCanvas({
           ))}
           {fp.rooms.map((r) => {
             const vis = visible(r);
-            const clickable = r.status !== "rented" && vis;
+            const held = isExitHeld(r);
+            const clickable = (r.status !== "rented" || held) && vis;
             return (
               <button
                 key={r.id}
@@ -317,8 +334,9 @@ function FloorCanvas({
                 className={"fp-room " + r.status + (vis ? "" : " dim")}
               >
                 <span className="fr-no">{r.no}</span>
-                {r.status !== "rented" && <span className="fr-pr">{fmtPrice(r.price)}tr</span>}
+                {(r.status !== "rented" || held) && <span className="fr-pr">{fmtPrice(r.price)}tr</span>}
                 <span className="fr-ar">{[r.area > 0 && `${r.area}m²`, r.type].filter(Boolean).join(" · ")}</span>
+                {held && <span className="fr-ar">Chờ sang nhượng</span>}
                 {r.saleFact?.kind === 'preparing' && <span className="fr-ar">Đang chuẩn bị</span>}
                 {r.saleFact?.kind === 'confirm_notice' && <span className="fr-ar">Xác nhận ngày</span>}
               </button>
@@ -338,7 +356,7 @@ export function FloorPlan({
   bandTest: (p: number) => boolean;
   onOpen: (r: Room) => void;
 }) {
-  const visible = (r: Room) => (showRented || r.status !== "rented") && bandTest(r.price);
+  const visible = (r: Room) => (showRented || r.status !== "rented" || isExitHeld(r)) && bandTest(r.price);
   return (
     <div className="map-wrap">
       <div className="bld-card">

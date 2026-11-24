@@ -5,7 +5,7 @@ import { useContract } from '@/hooks/useContracts';
 import { contractDisplayStatusOn, isContractInEffect } from '@/types/contract';
 import { diffDaysISO, vnTodayISO } from '@/lib/vnDate';
 import { useInvoicesLegacy } from '@/hooks/useInvoices';
-import { lazy, Suspense, useState } from 'react';
+import { useState } from 'react';
 // Data layer tách riêng (Phase 9B) — UI không gọi supabase trực tiếp nữa.
 import {
   useContractDepositVouchers,
@@ -18,12 +18,10 @@ import {
 
 // Import contract action dialogs
 import { RenewDialog } from '@/components/contracts/RenewDialog';
-import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
 import { TransferRoomDialog } from '@/components/contracts/TransferRoomDialog';
 import { TerminateDialog } from '@/components/contracts/TerminateDialog';
 import { ContractExitCasePanel } from '@/components/contracts/ContractExitCasePanel';
 import { ContractCommissionFollowupPanel } from '@/components/contracts/ContractCommissionFollowupPanel';
-const TransferPanel = lazy(() => import('@/components/contracts/ContractTransferLinkPanel').then(module => ({ default: module.ContractTransferLinkPanel })));
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
@@ -64,7 +62,6 @@ const ContractDetailView = ({ id, onBack, showBackButton = true, title }: Contra
 
   // Dialog states
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
-  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [transferRoomDialogOpen, setTransferRoomDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
   const [moveOutDialogOpen, setMoveOutDialogOpen] = useState(false);
@@ -215,7 +212,6 @@ const ContractDetailView = ({ id, onBack, showBackButton = true, title }: Contra
   const dialogs = (
     <>
       <RenewDialog open={extendDialogOpen} onOpenChange={setExtendDialogOpen} contract={contract} />
-      <TransferContractDialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen} contract={contract} onStartReturn={() => setTerminateDialogOpen(true)} />
       <TerminateDialog open={terminateDialogOpen} onOpenChange={setTerminateDialogOpen} contract={contract} />
       <RegisterMoveOutDialog open={moveOutDialogOpen} onOpenChange={setMoveOutDialogOpen} contract={contract} />
       <ContractQRDialog
@@ -239,7 +235,6 @@ const ContractDetailView = ({ id, onBack, showBackButton = true, title }: Contra
   if (isMobile) {
     return (
       <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]} skeleton="detail" rows={8}>
-        {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
         <ContractDetailMobile
           contract={contract}
           animateEntry={frameShownFor !== id}
@@ -264,7 +259,6 @@ const ContractDetailView = ({ id, onBack, showBackButton = true, title }: Contra
           onShowQR={() => setQrDialogOpen(true)}
           onRenew={() => setExtendDialogOpen(true)}
           onTransferRoom={() => setTransferRoomDialogOpen(true)}
-          onTransferContract={() => setTransferDialogOpen(true)}
           onMoveOut={() => setMoveOutDialogOpen(true)}
           onTerminate={() => setTerminateDialogOpen(true)}
           onDelete={() => setDeleteDialogOpen(true)}
@@ -277,7 +271,6 @@ const ContractDetailView = ({ id, onBack, showBackButton = true, title }: Contra
   return (
     <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]} skeleton="detail" rows={8}>
       {contract.status === 'TERMINATED' && <ContractExitCasePanel key={`exit:${contract.id}`} contract={contract} />}
-      {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
       <ContractDetailDesktop
         contract={contract}
         commissionFollowup={<ContractCommissionFollowupPanel key={`commission:${contract.id}`} contractId={contract.id} />}
@@ -311,7 +304,6 @@ const ContractDetailView = ({ id, onBack, showBackButton = true, title }: Contra
         onShowQR={() => setQrDialogOpen(true)}
         onRenew={() => setExtendDialogOpen(true)}
         onTransferRoom={() => setTransferRoomDialogOpen(true)}
-        onTransferContract={() => setTransferDialogOpen(true)}
         onMoveOut={() => setMoveOutDialogOpen(true)}
         onTerminate={() => setTerminateDialogOpen(true)}
         onDelete={() => setDeleteDialogOpen(true)}

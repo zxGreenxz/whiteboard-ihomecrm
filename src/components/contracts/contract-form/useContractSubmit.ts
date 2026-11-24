@@ -24,12 +24,15 @@ import {workflowErrorMessage} from '@/lib/financialWorkflow';
 import { supportPlanInputSchema } from '@/lib/rentSupport';
 import type { ContractFormState } from "./useContractFormState";
 import { hasCommissionBasisChange, isCommissionReasonValid, COMMISSION_REASON_MESSAGE } from '@/lib/commissionAudit';
+import { openCommissionUnlessExitLinked } from './exitLinkedCommission';
 
 interface UseContractSubmitParams {
   state: ContractFormState;
   formRoot?:()=>HTMLElement|null;
   contract?: ContractWithRelations;
   commissionChangeReason?: string;
+  /** Tổ chức đang chọn: đọc hợp đồng vừa tạo đã tự nối với hồ sơ trả phòng trước hạn chưa. */
+  organizationId?: string | null;
   onOpenChange: (open: boolean) => void;
   /** Gọi sau khi TẠO HĐ thành công (không gọi ở edit mode). */
   onCreated?: (contractId: string) => void;
@@ -60,6 +63,7 @@ export function useContractSubmit({
   formRoot,
   contract,
   commissionChangeReason,
+  organizationId,
   onOpenChange,
   onCreated,
   onCreateRequest,
@@ -432,7 +436,8 @@ export function useContractSubmit({
             onOpenChange(false);
             if (contract?.id) {
               onCreated?.(contract.id);
-              setCommissionContractId(contract.id);
+              // Khách nhận của ca nhờ sale / tự tìm: không mở hộp hoa hồng chung (xem exitLinkedCommission).
+              void openCommissionUnlessExitLinked({ contractId: contract.id, organizationId, openCommission: setCommissionContractId });
             }
           },
           onError: async (error) => {

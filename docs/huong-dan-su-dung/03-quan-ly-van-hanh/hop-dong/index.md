@@ -41,7 +41,7 @@ Trên mỗi dòng: badge trạng thái (**Còn hạn** / **Sắp hết hạn** /
 
 **Bước 2**: Lọc và tìm. Ấn một **thẻ thống kê** để lọc nhanh. Chọn **1 toà** ở ô toà nhà; khi đã chọn toà, ô **Phòng** và **Chọn tháng** giúp thu hẹp thêm. Gõ vào ô tìm kiếm để tìm theo **mã hợp đồng**, **tên khách đại diện**, **số điện thoại** hoặc **tên phòng**.
 
-**Bước 3**: Thao tác trên một dòng — cột **Thao tác** có lưới nút (rê chuột để xem tên): **Xem chi tiết**, **Cập nhật**, **In hợp đồng**, **Gia hạn**, **Chuyển phòng**, **ĐK chuyển đi**, **Nhượng HĐ**, **Thanh lý**, **Xóa**, **QR hợp đồng**. Nút ẩn hoặc mờ tuỳ trạng thái hợp đồng và quyền của bạn trên toà. **Xem chi tiết** mở cửa sổ chi tiết ngay trên màn danh sách; trang đầy đủ tại `/contracts/<mã>` xem ở [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/).
+**Bước 3**: Thao tác trên một dòng — cột **Thao tác** có lưới nút (rê chuột để xem tên): **Xem chi tiết**, **Cập nhật**, **In hợp đồng**, **Gia hạn**, **Chuyển phòng**, **ĐK chuyển đi**, **Thanh lý**, **Xóa**, **QR hợp đồng**. Khách cũ sang phòng cho người khác thì ghi trong hộp **Thanh lý** (chọn **Trả phòng trước hạn**, xem [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/)). Nút ẩn hoặc mờ tuỳ trạng thái hợp đồng và quyền của bạn trên toà. **Xem chi tiết** mở cửa sổ chi tiết ngay trên màn danh sách; trang đầy đủ tại `/contracts/<mã>` xem ở [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/).
 
 **Bước 4**: Ký hợp đồng mới — ấn nút **+** màu xanh để mở hộp thoại **Tạo hợp đồng mới**, gồm các phần:
 
@@ -67,7 +67,7 @@ Trên mỗi dòng: badge trạng thái (**Còn hạn** / **Sắp hết hạn** /
 **Xác nhận ký** tạo hợp đồng, gắn khách, ghi phiếu cọc của các lần cọc đã nhập (vào đúng sổ quỹ bạn chọn), gắn phiếu cọc giữ chỗ của phòng và lập hoá đơn tháng đầu. Kiểm tra lại phòng, khách, giá thuê và cọc trước khi xác nhận. Sau khi lưu, mở hợp đồng để xác nhận phiếu cọc, hoá đơn đầu và trạng thái duyệt/ghi sổ; phiếu **chờ duyệt** chưa phải tiền đã vào quỹ (chỉ **POSTED** mới là tiền thật). Không tạo bù ngay nếu một phần chưa xuất hiện.
 :::
 
-**Bước 7**: Làm việc với hợp đồng nháp — mở tab **Hợp đồng nháp**. Khối **Hợp đồng nháp** ("Soạn sẵn, tải gửi khách xem trước") có nút **Soạn nháp** và danh sách bản nháp (khách đại diện, phiên bản, phòng, ngày bắt đầu, thời điểm cập nhật). Mỗi bản nháp có **Sửa nháp**, **In** (chọn mẫu và tải tài liệu của đúng phiên bản), **Xác nhận đã ký**, **Liên kết nhượng** và **Xóa nháp** (chỉ bản chưa ký). Số trên tab là số bản chưa ký; bản đã ký vẫn được giữ để tra cứu.
+**Bước 7**: Làm việc với hợp đồng nháp — mở tab **Hợp đồng nháp**. Khối **Hợp đồng nháp** ("Soạn sẵn, tải gửi khách xem trước") có nút **Soạn nháp** và danh sách bản nháp (khách đại diện, phiên bản, phòng, ngày bắt đầu, thời điểm cập nhật). Mỗi bản nháp có **Sửa nháp**, **In** (chọn mẫu và tải tài liệu của đúng phiên bản), **Xác nhận đã ký** và **Xóa nháp** (chỉ bản chưa ký). Số trên tab là số bản chưa ký; bản đã ký vẫn được giữ để tra cứu.
 
 ![Tab Hợp đồng nháp trên DEMO: khối Hợp đồng nháp với nút Soạn nháp, chưa có bản nháp](./images/buoc-04-hop-dong-nhap.webp)
 
@@ -84,7 +84,7 @@ Trên mỗi dòng: badge trạng thái (**Còn hạn** / **Sắp hết hạn** /
 **Bước 9**: Theo dõi báo trả phòng và quyết toán:
 
 - Đầu tab **Danh sách**, khối **Cần xác nhận ngày trả phòng** liệt kê hợp đồng đã đến ngày khách hẹn trả: **Xem hợp đồng** hoặc **Cập nhật ngày trả** (xác nhận thực tế, đổi ngày hoặc hủy báo trả nếu khách ở tiếp).
-- Tab **Chờ quyết toán** liệt kê hồ sơ khách đã trả phòng nhưng chưa quyết toán (chọn **Trả phòng, quyết toán sau** khi thanh lý); bấm **Quyết toán** để mở đúng hồ sơ. Khi có hồ sơ đã quyết toán mà chưa có số điện chốt (hoặc số bổ sung khác số đã tính tiền), tab hiện thêm ô vàng **Chỉ số N** và khối **Chờ bổ sung chỉ số bàn giao** với nút **Mở mốc bàn giao**. Bỏ cọc không vào khối này.
+- Tab **Chờ quyết toán** liệt kê hồ sơ khách đã trả phòng nhưng chưa quyết toán (chọn **Trả phòng, quyết toán sau** khi thanh lý); bấm **Quyết toán** để mở đúng hồ sơ. Hồ sơ sang nhượng phòng (nhờ sale hoặc tự tìm khách) chỉ quyết toán được khi phòng đã có hợp đồng khách nhận (xem [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/)). Khi có hồ sơ đã quyết toán mà chưa có số điện chốt (hoặc số bổ sung khác số đã tính tiền), tab hiện thêm ô vàng **Chỉ số N** và khối **Chờ bổ sung chỉ số bàn giao** với nút **Mở mốc bàn giao**. Bỏ cọc không vào khối này.
 
 ![Tab Chờ quyết toán trên DEMO: dòng Không có hợp đồng chờ quyết toán](./images/buoc-05-cho-quyet-toan.webp)
 
@@ -105,7 +105,7 @@ Luồng **Nhập** ghi dữ liệu trực tiếp và bỏ qua một số kiểm 
 | **+** | Mở hộp **Tạo hợp đồng mới**. Cần quyền **Tạo** và phạm vi toà. |
 | **Nhập** | Luồng migration ghi trực tiếp; tránh dùng cho hợp đồng production. |
 | **Xuất** | Xuất **toàn bộ** hợp đồng theo bộ lọc hiện tại ra Excel. Cần quyền **Xuất**. |
-| Lưới nút **Thao tác** | **Xem chi tiết / Cập nhật / In hợp đồng / Gia hạn / Chuyển phòng / ĐK chuyển đi / Nhượng HĐ / Thanh lý / Xóa / QR hợp đồng**. |
+| Lưới nút **Thao tác** | **Xem chi tiết / Cập nhật / In hợp đồng / Gia hạn / Chuyển phòng / ĐK chuyển đi / Thanh lý / Xóa / QR hợp đồng**. Sang nhượng phòng ghi trong **Thanh lý** → **Trả phòng trước hạn**. |
 | Ô **Vị trí** | Sao chép ảnh QR phòng (kèm nhãn phòng/toà) vào clipboard. |
 | Khối **Cần xác nhận ngày trả phòng** | Hợp đồng đã đến ngày hẹn trả; **Cập nhật ngày trả** để xác nhận/đổi/hủy báo trả. |
 
@@ -142,7 +142,7 @@ Kết quả mong đợi: bạn đọc được trạng thái và tình trạng c
 ## Quy trình liên quan
 
 - [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) — toàn cảnh một hợp đồng và các nút vòng đời.
-- [Gia hạn, chuyển phòng & nhượng hợp đồng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) — kéo dài thời hạn, đổi phòng hoặc nhượng cho khách mới.
+- [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) — kéo dài thời hạn, đổi phòng hoặc sang nhượng phòng cho khách nhận.
 - [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/) — báo trả phòng, trả phòng và quyết toán.
 - [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — giữ chỗ và nhận cọc trước khi ký hợp đồng.
 - [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) — xử lý cọc khi khách rời phòng hoặc bỏ cọc.

@@ -44,7 +44,9 @@ const PAGES = {
   contracts: [
     'get_contract_stats', 'list_due_contract_move_out_notices_v1', 'list_contract_exit_cases_v1',
     'list_contract_meter_followups_v1', 'get_contract_move_out_notice_v1', 'read_contract_meter_boundary_set_v1',
-    'read_contract_transfer_links_v1', 'list_contract_drafts', 'list_room_reservations_v1',
+    // Hộp quyết toán và panel hồ sơ trả phòng đọc trường hợp trả phòng trước hạn (thay read_contract_transfer_links_v1,
+    // giao diện không còn gọi): src/hooks/contracts/useContractExitEarlyTerms.ts, migration 20261124075933.
+    'read_contract_exit_early_terms_v1', 'list_contract_drafts', 'list_room_reservations_v1',
     'read_contract_draft_signing_v1', 'read_contract_meter_interval_v1',
     // Chi tiết hợp đồng tải bảng hoa hồng: src/hooks/useContractCommissionFollowup.ts
     // (ContractCommissionFollowupPanel). Thấy khi chạy contract-mobile-settlement-readonly trên TEST 19/10/2026.
@@ -70,6 +72,9 @@ const PAGES = {
     // Khung "Phòng đang khoá tạm" của /deposits: src/hooks/useRoomSaleLocks.ts (RoomSaleLocksPanel,
     // lock tạm phòng 10/10/2026). Thấy khi chạy deposit-management-exclusion trên TEST 19/10/2026.
     'list_room_sale_locks_v1',
+    // Hộp Tạo cọc đọc phòng có đang chờ khách sang nhượng không: ExitHoldRoomBanner + CreateDepositDialog
+    // (src/hooks/contracts/useContractExitEarlyTerms.ts, migration 20261124075933, STABLE).
+    'read_contract_exit_early_terms_v1',
   ],
   /** Hỗ trợ tiền thuê, chi hợp đồng, hoa hồng (rent-support-browser.ts). */
   rentSupport: [

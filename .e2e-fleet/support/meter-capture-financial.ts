@@ -44,9 +44,12 @@ export function zeroMoveOutRequest(fixture: Fixture, source: MeterSourceReferenc
   assert.equal(source.purpose, 'MOVE_OUT');assert.equal(source.contractId, fixture.contractId);assert.equal(source.meterId, fixture.meterId);
   assert.equal(Number(source.previousReading), Number(fixture.currentValue));assert.equal(Number(source.currentReading), Number(fixture.currentValue));
   assert(Number.isFinite(outstandingDebt) && outstandingDebt >= 0);
+  // meter_capture_exit_v1 chỉ gọi writer v1 (không đặt dấu app.exit_early_terms_v2), và từ 24/11/2026 v1 từ chối
+  // EARLY_RETURN + IMMEDIATE (phải chọn trường hợp qua v2). NATURAL_EXPIRY chạy cùng nhánh quyết toán, cùng dạng
+  // p_settlement, nên đổi loại không đổi thứ spec này kiểm (nguồn đồng hồ, DEBT không tiền, không phiếu thu).
   const args = buildConfirmContractReturnArgs({ contractId: fixture.contractId, expectedContractUpdatedAt: contractUpdatedAt,
     idempotencyKey: `meter-exit-${fixture.fixtureId}`, actualMoveOutOn: fixture.readingDate,
-    initialKind: 'EARLY_RETURN', settlementMode: 'IMMEDIATE', returnNote: fixture.marker,
+    initialKind: 'NATURAL_EXPIRY', settlementMode: 'IMMEDIATE', returnNote: fixture.marker,
     meterBoundary: { state: 'VERIFIED', readings: [{ meterId: fixture.meterId, reading: Number(fixture.currentValue),
       measuredAt: `${fixture.readingDate}T00:00:00Z`, evidence: fixture.marker }] },
     settlement: { depositRefund: 0, penaltyFee: 0, excessRent: 0, outstandingDebt,

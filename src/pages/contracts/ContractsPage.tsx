@@ -23,7 +23,6 @@ import { MoveOutNoticeQueue } from '@/components/contracts/MoveOutNoticeQueue';
 import { ContractDraftWorkspace } from '@/components/contracts/ContractDraftWorkspace';
 import { ContractExitQueue } from '@/components/contracts/ContractExitQueue';
 import { ContractMeterFollowupQueue } from '@/components/contracts/ContractMeterFollowupQueue';
-import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
 import { TerminateDialog } from '@/components/contracts/TerminateDialog';
 import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
 import { ContractImportExportDialog } from '@/components/contracts/ContractImportExportDialog';
@@ -111,7 +110,6 @@ function ContractsDesktopPage() {
   const [renewDialogOpen, setRenewDialogOpen] = useState(false);
   const [transferRoomDialogOpen, setTransferRoomDialogOpen] = useState(false);
   const [moveOutDialogOpen, setMoveOutDialogOpen] = useState(false);
-  const [transferContractDialogOpen, setTransferContractDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
@@ -330,11 +328,6 @@ function ContractsDesktopPage() {
     setMoveOutDialogOpen(true);
   }, []);
 
-  const handleTransferContract = useCallback((contract: ContractWithRelations) => {
-    setSelectedContract(contract);
-    setTransferContractDialogOpen(true);
-  }, []);
-
   const handleTerminate = useCallback((contract: ContractWithRelations) => {
     setSelectedContract(contract);
     setTerminateDialogOpen(true);
@@ -526,7 +519,6 @@ function ContractsDesktopPage() {
               onRenew={handleRenew}
               onTransferRoom={handleTransferRoom}
               onMoveOut={handleMoveOut}
-              onTransferContract={handleTransferContract}
               onTerminate={handleTerminate}
               onDelete={handleDelete}
               onPrint={handlePrint}
@@ -578,17 +570,6 @@ function ContractsDesktopPage() {
             open={moveOutDialogOpen}
             onOpenChange={(open) => {
               setMoveOutDialogOpen(open);
-              if (!open) setSelectedContract(null);
-            }}
-            contract={dialogContract}
-          />
-        )}
-        {dialogContract && (
-          <TransferContractDialog
-            open={transferContractDialogOpen}
-            onStartReturn={() => handleTerminate(dialogContract)}
-            onOpenChange={(open) => {
-              setTransferContractDialogOpen(open);
               if (!open) setSelectedContract(null);
             }}
             contract={dialogContract}

@@ -70,6 +70,7 @@ Trang tự tính trạng thái từng phòng dựa trên **hợp đồng thật,
 | **Khách pass phòng** | Phòng đang có khách thuê nhưng khách nhờ tìm người sang lại — hiện chính sách và giá do khách đặt, số của khách hoặc chỉ "Liên hệ quản lý" tuỳ khách chọn. |
 | **Đã thuê / giữ chỗ** | Phòng đã có người thuê hoặc đã được giữ chỗ — hiện mờ trong sơ đồ, ẩn khỏi danh sách trống. |
 | **Đã chốt tạm** (chỉ nhân viên đăng nhập thấy) | Phòng đang bị Lock tạm. Khách mở link công khai không thấy phòng này; xem mục "Lock tạm phòng" bên dưới. |
+| **Chờ khách Sang/Nhượng phòng** (chỉ nhân viên đăng nhập thấy) | Phòng đang giữ 3 ngày cho khách nhận sau khi khách cũ trả phòng trước hạn. Khách mở link công khai không thấy phòng này; nhân viên có quyền xử lý xem [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/) (**Mở bán lại**, **Giữ tiếp**). |
 
 Khoảng "sắp trống" (mặc định 30 ngày) và hotline hiển thị được chỉnh trong **Sale Phòng => Cài đặt hiển thị**.
 

@@ -4,6 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { ContractExitCase, ExitKind } from '@/lib/contractExitCases';
+import { isTransferReason, type EarlyReason } from '@/lib/contractExitEarlyTerms';
+import { EarlyReasonChoice } from './ExitEarlyTermsPanel';
 
 export const EXIT_KIND_LABELS: Record<ExitKind, string> = {
   NATURAL_EXPIRY: 'Hết hạn hợp đồng',
@@ -17,6 +19,12 @@ const RETURN_NOTE_SAMPLES: Record<ExitKind, string> = {
   FORFEIT: 'Khách trả phòng và bỏ cọc.',
 };
 
+/** Lựa chọn trường hợp khi ghi trả phòng trước hạn MỚI (chưa có hồ sơ). */
+export interface EarlyChoiceProps {
+  reason: EarlyReason | null; onReasonChange: (value: EarlyReason) => void;
+  saleName: string; onSaleNameChange: (value: string) => void;
+}
+
 interface Props {
   actualDate: string; onDateChange: (value: string) => void;
   kind: ExitKind | null; onKindChange: (value: ExitKind) => void;
@@ -25,13 +33,21 @@ interface Props {
   returnNote: string; onReturnNoteChange: (value: string) => void;
   pending: boolean; onDefer: () => void; onContinue: () => void;
   physicalReady?: boolean; children?: ReactNode;
+  /** Thanh lý mới: ba trường hợp con dưới "Trả phòng trước hạn". */
+  early?: EarlyChoiceProps;
+  /** Hồ sơ đã ghi: lý do chưa cho quyết toán (vd chưa chọn trường hợp, chưa có hợp đồng khách nhận). */
+  continueBlocked?: ReactNode | null;
 }
 
 export function ContractReturnStep(props: Props) {
   const id = useId();
   const changingKind = !!props.exitCase && props.kind !== props.exitCase.current_kind;
+  const earlyNew = !props.exitCase && props.kind === 'EARLY_RETURN' ? props.early : undefined;
+  const earlyReady = !earlyNew || (!!earlyNew.reason && (earlyNew.reason !== 'SALE_ASSISTED' || !!earlyNew.saleName.trim()));
+  // Nhờ sale / tự tìm: đã có khách nhận ⇒ chỉ "Trả phòng, quyết toán sau"; quyết toán khi có hợp đồng khách mới.
+  const immediateHidden = !!earlyNew && isTransferReason(earlyNew.reason);
   const valid = !!props.kind && !!props.actualDate && props.physicalReady !== false
-    && (!!props.exitCase || !!props.returnNote.trim()) && (!changingKind || !!props.changeReason.trim());
+    && (!!props.exitCase || !!props.returnNote.trim()) && (!changingKind || !!props.changeReason.trim()) && earlyReady;
   return <div className="space-y-5 py-2">
     <div className="space-y-2">
       <Label htmlFor={`${id}-date`}>Ngày khách thực tế trả phòng <span className="text-destructive">*</span></Label>
@@ -41,10 +57,16 @@ export function ContractReturnStep(props: Props) {
     <fieldset disabled={props.pending} className="space-y-2">
       <legend className="mb-2 text-sm font-medium">Loại thanh lý <span className="text-destructive">*</span></legend>
       {(Object.entries(EXIT_KIND_LABELS) as [ExitKind, string][]).map(([kind, label]) =>
-        <label key={kind} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${props.kind === kind ? 'border-primary bg-primary/5' : ''}`}>
-          <input type="radio" name={`${id}-kind`} value={kind} checked={props.kind === kind}
-            onChange={() => props.onKindChange(kind)} />{label}
-        </label>)}
+        <div key={kind} className="space-y-2">
+          <label className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${props.kind === kind ? 'border-primary bg-primary/5' : ''}`}>
+            <input type="radio" name={`${id}-kind`} value={kind} checked={props.kind === kind}
+              onChange={() => props.onKindChange(kind)} />{label}
+          </label>
+          {kind === 'EARLY_RETURN' && earlyNew && <div className="ml-6">
+            <EarlyReasonChoice value={earlyNew.reason} onChange={earlyNew.onReasonChange}
+              saleName={earlyNew.saleName} onSaleNameChange={earlyNew.onSaleNameChange} disabled={props.pending} />
+          </div>}
+        </div>)}
     </fieldset>
     {!props.exitCase && <div className="space-y-2">
       <Label htmlFor={`${id}-return-note`}>Nội dung thanh lý <span className="text-destructive">*</span></Label>
@@ -77,18 +99,22 @@ export function ContractReturnStep(props: Props) {
       {!props.changeReason.trim() && <p role="alert" className="text-xs text-destructive">Nhập lý do đổi loại thanh lý trước khi tiếp tục.</p>}
     </div>}
     {props.children}
+    {props.exitCase && props.continueBlocked && <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+      {props.continueBlocked}
+    </div>}
     {!props.exitCase && <p className="rounded-md bg-muted p-3 text-sm">
       Chọn quyết toán sau: xác nhận khách đã đi, phòng trống để sale và hồ sơ chuyển sang <strong>Chờ quyết toán</strong>.
       Tiền cọc, khấu trừ và tiền hoàn sẽ xử lý khi quyết toán theo cách đang dùng. Số điện cuối nhập một lần
       ở mục <strong>Tiền điện</strong> khi quyết toán.
+      {immediateHidden && <> Khách sang nhượng: phòng giữ 3 ngày cho khách nhận, quyết toán sau khi có hợp đồng khách mới.</>}
     </p>}
     <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-      {!props.exitCase && <Button disabled={!valid || props.pending} variant="outline" onClick={props.onDefer}>
+      {!props.exitCase && <Button disabled={!valid || props.pending} variant={immediateHidden ? 'default' : 'outline'} onClick={props.onDefer}>
         {props.pending ? 'Đang lưu…' : 'Trả phòng, quyết toán sau'}
       </Button>}
-      <Button disabled={!valid || props.pending} onClick={props.onContinue}>
+      {!immediateHidden && <Button disabled={!valid || props.pending || (!!props.exitCase && !!props.continueBlocked)} onClick={props.onContinue}>
         {props.exitCase ? 'Tiếp tục quyết toán' : 'Tiếp tục quyết toán ngay'}
-      </Button>
+      </Button>}
     </div>
   </div>;
 }
