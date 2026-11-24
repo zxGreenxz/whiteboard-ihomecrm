@@ -216,6 +216,46 @@ describe('hàng đợi nhật ký chờ đẩy lên máy chủ',()=>{
  });
 });
 
+describe('đẩy nhật ký lên máy chủ (đợt 1b)',()=>{
+ function withHooks(contextOrganization:()=>string|null,onRelease:(entry:unknown)=>void){
+  const h=harness();
+  const map=h.map;const storage={getItem:(key:string)=>map.get(key)??null,setItem:(key:string,value:string)=>{if(h.failing.setItem)throw new Error('quota');map.set(key,value);}};
+  const valve=createPendingValve({storage,now:()=>new Date(T0+PENDING_SETTLE_MS),contextOrganization,onRelease});
+  return {...h,valve};
+ }
+ it('ghi kèm công ty đang mở lúc gỡ, rồi báo cho bên đẩy SAU khi đã gỡ dấu',()=>{
+  const seen:unknown[]=[];let clearedWhenNotified:boolean|null=null;
+  const h=withHooks(()=>'o-dang-mo',entry=>{seen.push(entry);clearedWhenNotified=h.store.read(scope)===null;});
+  h.store.markPending(scope,{attemptId:'a1'});
+  h.valve.report({pending:h.store.read(scope)!,store:h.store});
+  const entry=h.valve.release(h.valve.current()!);
+  expect(entry.contextOrganizationId).toBe('o-dang-mo');
+  expect(seen).toEqual([entry]);expect(clearedWhenNotified).toBe(true);
+  expect(h.valve.readLog('u1')).toEqual([entry]);
+ });
+ it('bên đẩy lỗi không làm hỏng lần gỡ; gỡ không thành thì không báo đẩy',()=>{
+  const onRelease=vi.fn(()=>{throw new Error('không nạp được module đẩy');});
+  const h=withHooks(()=>{throw new Error('localStorage bị chặn');},onRelease);
+  h.store.markPending(scope,{attemptId:'a1'});
+  h.valve.report({pending:h.store.read(scope)!,store:h.store});
+  const entry=h.valve.release(h.valve.current()!);
+  expect(entry.contextOrganizationId).toBeNull();expect(h.store.read(scope)).toBeNull();expect(onRelease).toHaveBeenCalledTimes(1);
+  h.store.markPending(scope,{attemptId:'a2'});
+  h.valve.report({pending:h.store.read(scope)!,store:h.store});
+  h.failing.setItem=true;
+  expect(()=>h.valve.release(h.valve.current()!)).toThrow(FinancialPendingStorageError);
+  expect(onRelease).toHaveBeenCalledTimes(1);
+ });
+ it('hàng đợi cũ (chưa có công ty đang mở) và mới đều đọc được',()=>{
+  const h=harness();
+  const old={id:'11111111-1111-4111-8111-111111111111',userId:'u1',organizationId:'actor-scope',namespace:'voucher-lifecycle',businessKey:'v1',operation:null,attemptId:'a1',recordIds:[],stuckAt:'2026-11-24T02:00:00.000Z',releasedAt:'2026-11-24T02:05:00.000Z'};
+  h.map.set(logStorageKey,JSON.stringify([old,{...old,id:'22222222-2222-4222-8222-222222222222',contextOrganizationId:'o1'},{...old,id:'33333333-3333-4333-8333-333333333333',contextOrganizationId:null}]));
+  expect(h.valve.readLog('u1').map(entry=>entry.contextOrganizationId)).toEqual([undefined,'o1',null]);
+  h.map.set(logStorageKey,JSON.stringify([{...old,contextOrganizationId:5}]));
+  expect(()=>h.valve.readLog('u1')).toThrow(FinancialPendingStorageError);
+ });
+});
+
 describe('tín hiệu nạp hộp cảnh báo',()=>{
  it('mỗi lời báo gọi onReport một lần; namespace silent thì không',()=>{
   const map=new Map<string,string>();const storage={getItem:(k:string)=>map.get(k)??null,setItem:(k:string,v:string)=>{map.set(k,v);},removeItem:(k:string)=>{map.delete(k);}};

@@ -137,6 +137,9 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   // Nhật ký tự gỡ dấu chờ đối chiếu: khoá `ihome:pending-valve-log:v1:<người dùng>`, chờ đẩy lên máy chủ.
   // Đăng xuất không được xoá, nếu không lần tự gỡ mất dấu vết.
   "src/lib/pendingValve.ts": "nhat-ky-chong-ghi-trung",
+  // Phần nhẹ của cùng hàng đợi đó (khoá, «còn dòng chờ đẩy», công ty đang mở `ihomecrm.selectedOrganizationId`);
+  // chỉ đọc, đợt 1b.
+  "src/lib/pendingValveLogQueue.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/persistentFinancialWorkflow.ts": "nhat-ky-chong-ghi-trung",
   "src/hooks/income-expenses/batch.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/leadConversionProgress.ts": "nhat-ky-chong-ghi-trung",
