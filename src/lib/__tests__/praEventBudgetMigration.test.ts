@@ -80,7 +80,12 @@ describe("PANALYTICS-C02 — ngân sách + retention cho analytics công khai", 
     expect(sql, file).toMatch(
       /GRANT EXECUTE ON FUNCTION public\.log_public_room_events\(text, jsonb\) TO anon, authenticated;/,
     );
-    expect(sql, file).not.toMatch(/DROP FUNCTION/);
+    // Bản sống (20261124171545) DROP bản cũ của create_public_room_token — hàm KHÁC. Logger thì không được DROP
+    // (DROP rồi CREATE làm mất ACL anon giữa chừng và đổi oid mà PostgREST đang cache).
+    expect(sql, file).not.toMatch(/DROP\s+FUNCTION\s+(IF\s+EXISTS\s+)?public\.log_public_room_events\b/i);
+    // Ghi công ty của LINK tường minh: không để trg_autofill_org_strict đoán từ owner_id (mất im lặng từ 03/09/2026).
+    expect(sql, file).toMatch(/SELECT owner_id, organization_id INTO v_owner, v_org/);
+    expect(sql, file).toMatch(/token, owner_id, organization_id, session_id, event_type,/);
   });
 
   it("retention có sàn 30 ngày, anon không gọi được hàm xoá, cron chỉ đăng ký khi nền tảng có pg_cron", () => {

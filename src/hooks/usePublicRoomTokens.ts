@@ -1,10 +1,12 @@
 import {useQuery,useMutation,useQueryClient} from '@tanstack/react-query';
 import {supabase} from '@/integrations/supabase/client';
 import type {Database} from '@/integrations/supabase/types';
+import {useOrganization} from '@/contexts/OrganizationContext';
 import {getSessionUser} from '@/lib/authSession';
 import {notifyActionError} from '@/lib/actionFeedback';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {rememberToken,unconfirmedPublicRoomReceipt} from '@/lib/publicRoomFeedback';
+import {CREATE_TOKEN_NO_ORGANIZATION,rememberToken,unconfirmedPublicRoomReceipt} from '@/lib/publicRoomFeedback';
 import {toast} from 'sonner';
 export type PublicRoomToken=Database['public']['Tables']['public_room_share_tokens']['Row'];
 const KEY=['public-room-tokens'] as const;
@@ -14,16 +16,27 @@ function validToken(data:unknown):data is PublicRoomToken{
  return typeof r.token==='string'&&!!r.token&&typeof r.owner_id==='string'&&!!r.owner_id&&(r.label===null||typeof r.label==='string')&&typeof r.revoked==='boolean'&&typeof r.created_at==='string'&&Number.isFinite(Date.parse(r.created_at))&&(r.organization_id===null||typeof r.organization_id==='string');
 }
 const writeGuard=()=>persistentFinancialWorkflow('public-room-admin',{scope:'actor'});
+/**
+ * Ranh giới kiểu TẠM cho create_public_room_token(p_label, p_organization_id) — migration
+ * 20261124171545_link_chia_se_va_thong_ke_ghi_ro_cong_ty chưa lên production nên types.ts sinh tự động còn bản một tham số.
+ * Khi đã áp production và `npm run gen:types` chạy lại: gọi thẳng
+ * `supabase.rpc('create_public_room_token',{p_label,p_organization_id})` và XOÁ hàm bọc này.
+ */
+type CreateTokenArgs={p_label?:string;p_organization_id:string};
+const goiRpcTaoLink=(args:CreateTokenArgs):PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>=>
+ (supabase.rpc as unknown as (name:'create_public_room_token',params:CreateTokenArgs)=>PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>)('create_public_room_token',args);
 const report=(error:unknown,options:Options,operation:string)=>{if(!options.inlineError)notifyActionError(error,`Chưa ${operation}.`);};
 export function usePublicRoomTokens(){return useQuery({queryKey:KEY,meta:{errorDisplay:"inline"},queryFn:async():Promise<PublicRoomToken[]>=>{
  const {data,error}=await supabase.from('public_room_share_tokens').select('*').order('created_at',{ascending:false});if(error)throw error;
  if(!Array.isArray(data)||!data.every(validToken)||new Set(data.map(row=>row.token)).size!==data.length)throw new TypeError('Invalid public room token list');return data;
 }});}
-export function useCreatePublicRoomToken(options:Options={}){const qc=useQueryClient();return useMutation({mutationFn:async(label?:string|null)=>{
+/** Link luôn thuộc công ty ĐANG CHỌN: máy chủ kiểm thành viên + quyền ở đúng công ty đó và ghi công ty vào link. */
+export function useCreatePublicRoomToken(options:Options={}){const qc=useQueryClient();const {selectedOrganizationId}=useOrganization();return useMutation({mutationFn:async(label?:string|null)=>{
+ const organizationId=selectedOrganizationId;if(!organizationId)throw new FinancialWorkflowError(CREATE_TOKEN_NO_ORGANIZATION,'failure',[]);
  const user=await getSessionUser();if(!user)throw {code:'PGRST301',message:'Not authenticated'};const expectedLabel=label?.trim()||null;
  return writeGuard().run('token-create','tạo link chia sẻ',async progress=>{
-  const {data,error}=await supabase.rpc('create_public_room_token',{p_label:label??undefined});if(error)throw error;rememberToken(progress,data);
-  if(!validToken(data)||data.owner_id!==user.id||data.label!==expectedLabel||data.revoked!==false)unconfirmedPublicRoomReceipt();return data;
+  const {data,error}=await goiRpcTaoLink({p_label:label??undefined,p_organization_id:organizationId});if(error)throw error;rememberToken(progress,data);
+  if(!validToken(data)||data.owner_id!==user.id||data.organization_id!==organizationId||data.label!==expectedLabel||data.revoked!==false)unconfirmedPublicRoomReceipt();return data;
  });
 },onSuccess:row=>{qc.invalidateQueries({queryKey:KEY});toast.success(`Đã tạo link chia sẻ ${row.token}`);},onError:error=>report(error,options,'tạo link chia sẻ')});}
 export function useUpdateTokenLabel(options:Options={}){const qc=useQueryClient();return useMutation({mutationFn:async({token,label}:{token:string;label:string|null})=>{

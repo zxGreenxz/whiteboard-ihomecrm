@@ -2,6 +2,9 @@ import {QueryRegion} from '@/components/errors/QueryRegion';
 import {LoadingState} from '@/components/loading/LoadingState';
 import {actionErrorMessage} from '@/lib/actionFeedback';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {createTokenErrorMessage,tokenRemovalWarnings} from '@/lib/publicRoomFeedback';
+import {useOrganization} from '@/contexts/OrganizationContext';
+import TokenRemovalWarnings from './TokenRemovalWarnings';
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +40,9 @@ export default function ShareTokensTab() {
   const labelMut = useUpdateTokenLabel({inlineError:true});
   const revokeMut = useSetTokenRevoked({inlineError:true});
   const deleteMut = useDeletePublicRoomToken({inlineError:true});
+  // Link thuộc công ty đang chọn; chưa chốt công ty thì không cho tạo (máy chủ cũng không đoán thay).
+  const {selectedOrganizationId}=useOrganization();
+  const orgReady=!!selectedOrganizationId;
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -58,11 +64,12 @@ export default function ShareTokensTab() {
   const [blocked,setBlocked]=useState(false);
   const canWrite=!blocked&&!tokenQuery.isError&&tokenQuery.data!==undefined;
   const busy=createMut.isPending||labelMut.isPending||revokeMut.isPending||deleteMut.isPending;
-  const perform=async(task:()=>Promise<unknown>,done:()=>void)=>{
+  const perform=async(task:()=>Promise<unknown>,done:()=>void,message:(error:unknown)=>string=error=>actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.'))=>{
     if(!canWrite||busy)return;setWriteError('');
-    try{await task();done();}catch(error){setWriteError(actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.'));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
+    try{await task();done();}catch(error){setWriteError(message(error));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
   };
-  const doCreate=()=>void perform(async()=>{const row=await createMut.mutateAsync(newLabel);await copyLink(row.token);},()=>{setCreateOpen(false);setNewLabel('');});
+  const doCreate=()=>{if(orgReady)void perform(async()=>{const row=await createMut.mutateAsync(newLabel);await copyLink(row.token);},()=>{setCreateOpen(false);setNewLabel('');},createTokenErrorMessage);};
+  const removalWarnings=(t:PublicRoomToken|null)=>t?tokenRemovalWarnings(t,tokens??[]):[];
   const doEdit=()=>{if(editing)void perform(()=>labelMut.mutateAsync({token:editing.token,label:editLabel}),()=>setEditing(null));};
   const errorNotice=writeError?<p role="alert" className="text-sm text-destructive">{writeError}</p>:null;
 
@@ -75,10 +82,11 @@ export default function ShareTokensTab() {
           Mỗi link hiển thị tất cả toà của bạn đang có phòng trống. Gửi link cho khách/sale —
           không cần đăng nhập. Thu hồi link bất cứ lúc nào.
         </p>
-        <Button size="sm" disabled={!canWrite||busy||tokens===undefined} onClick={() => {setWriteError('');setNewLabel("");setCreateOpen(true);}}>
+        <Button size="sm" disabled={!canWrite||busy||tokens===undefined||!orgReady} onClick={() => {setWriteError('');setNewLabel("");setCreateOpen(true);}}>
           <Plus className="h-4 w-4 mr-1" />Tạo link mới
         </Button>
       </div>
+      {!orgReady&&<p className="text-sm text-muted-foreground">Chọn công ty ở đầu trang để tạo link mới.</p>}
 
       {!createOpen&&!editing&&!revoking&&!deleting&&errorNotice}
       <QueryRegion label="link chia sẻ" queries={[tokenQuery]} skeleton="table" rows={4}>
@@ -163,7 +171,7 @@ export default function ShareTokensTab() {
           {errorNotice}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Hủy</Button>
-            <Button onClick={doCreate} disabled={busy||!canWrite}>Tạo link</Button>
+            <Button onClick={doCreate} disabled={busy||!canWrite||!orgReady}>Tạo link</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -194,6 +202,7 @@ export default function ShareTokensTab() {
               Khách mở link đã thu hồi sẽ thấy "Liên kết không hợp lệ". Bạn có thể khôi phục lại sau.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <TokenRemovalWarnings warnings={removalWarnings(revoking)} />
           {errorNotice}
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
@@ -213,6 +222,7 @@ export default function ShareTokensTab() {
               Link sẽ bị xoá khỏi hệ thống, không thể khôi phục. Nếu chỉ muốn tạm tắt, hãy dùng "Thu hồi".
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <TokenRemovalWarnings warnings={removalWarnings(deleting)} />
           {errorNotice}
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>

@@ -2,6 +2,9 @@ import {QueryRegion} from '@/components/errors/QueryRegion';
 import {LoadingState} from '@/components/loading/LoadingState';
 import {actionErrorMessage} from '@/lib/actionFeedback';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {createTokenErrorMessage,tokenRemovalWarnings} from '@/lib/publicRoomFeedback';
+import {useOrganization} from '@/contexts/OrganizationContext';
+import TokenRemovalWarnings from "../TokenRemovalWarnings";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -26,6 +29,9 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
   const labelMut = useUpdateTokenLabel({inlineError:true});
   const revokeMut = useSetTokenRevoked({inlineError:true});
   const deleteMut = useDeletePublicRoomToken({inlineError:true});
+  // Link thuộc công ty đang chọn; chưa chốt công ty thì không cho tạo (máy chủ cũng không đoán thay).
+  const {selectedOrganizationId}=useOrganization();
+  const orgReady=!!selectedOrganizationId;
 
   const [editing, setEditing] = useState<PublicRoomToken | null>(null); // null = create, token = edit
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -39,10 +45,10 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
   const openCreate = () => { setWriteError('');setEditing(null); setLabel(""); setSheetOpen(true); };
 
   useEffect(() => {
-    onHeaderAction(canWrite&&!busy?{label:"Tạo link",onClick:openCreate}:null);
+    onHeaderAction(canWrite&&!busy&&orgReady?{label:"Tạo link",onClick:openCreate}:null);
     return () => onHeaderAction(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onHeaderAction,canWrite,busy]);
+  }, [onHeaderAction,canWrite,busy,orgReady]);
 
   const copyLink = async (token: string) => {
     try {
@@ -53,11 +59,12 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
     }
   };
 
-  const perform=async(task:()=>Promise<unknown>,done:()=>void)=>{
+  const perform=async(task:()=>Promise<unknown>,done:()=>void,message:(error:unknown)=>string=error=>actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.'))=>{
     if(!canWrite||busy)return;setWriteError('');
-    try{await task();done();}catch(error){setWriteError(actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.'));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
+    try{await task();done();}catch(error){setWriteError(message(error));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
   };
-  const save=()=>void perform(async()=>{if(editing)return labelMut.mutateAsync({token:editing.token,label});const row=await createMut.mutateAsync(label);await copyLink(row.token);return row;},()=>setSheetOpen(false));
+  const save=()=>{if(editing){void perform(()=>labelMut.mutateAsync({token:editing.token,label}),()=>setSheetOpen(false));return;}
+    if(orgReady)void perform(async()=>{const row=await createMut.mutateAsync(label);await copyLink(row.token);return row;},()=>setSheetOpen(false),createTokenErrorMessage);};
   const errorNotice=writeError?<p role="alert" className="text-destructive">{writeError}</p>:null;
 
   return (
@@ -66,6 +73,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
         <Info size={17} stroke="var(--acc-blue)" />
         <p>Mỗi link hiển thị tất cả toà đang có phòng trống. Gửi cho khách/sale — không cần đăng nhập, thu hồi bất cứ lúc nào.</p>
       </div>
+      {!orgReady&&<p className="text-muted-foreground" style={{ fontSize: 13, margin: "0 0 12px" }}>Chọn công ty ở đầu trang để tạo link mới.</p>}
 
       {!sheetOpen&&!confirm&&errorNotice}
       {isLoading ? (
@@ -129,7 +137,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
         {errorNotice}
         <div className="sp-sheet-btns">
           <button className="cancel" onClick={() => setSheetOpen(false)}>Hủy</button>
-          <button className="ok" onClick={save} disabled={busy||!canWrite}>
+          <button className="ok" onClick={save} disabled={busy||!canWrite||(!editing&&!orgReady)}>
             {editing ? "Lưu" : "Tạo link"}
           </button>
         </div>
@@ -148,6 +156,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
                 ? "Link sẽ bị xoá khỏi hệ thống, không thể khôi phục. Nếu chỉ muốn tạm tắt, hãy dùng Thu hồi."
                 : "Khách mở link đã thu hồi sẽ thấy \"Liên kết không hợp lệ\". Bạn có thể khôi phục lại sau."}
             </p>
+            <TokenRemovalWarnings warnings={tokenRemovalWarnings(confirm.token,tokens??[])} />
             {errorNotice}
             <div className="sp-sheet-btns">
               <button className="cancel" onClick={() => setConfirm(null)}>Hủy</button>
