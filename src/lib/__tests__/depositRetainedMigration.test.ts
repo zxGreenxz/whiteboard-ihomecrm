@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { DEPOSIT_RETAINED_KIND, DEPOSIT_RETAINED_LABEL } from '@/lib/terminationSettlement';
 
 // Cọc giữ lại theo thoả thuận (plan sang nhượng phòng, đợt 4): luật sàn ở hàm lõi quyết toán rời phòng, dòng
 // DEPOSIT_RETAINED thành doanh thu đúng hạng mục, hai trường hợp sang nhượng và Bỏ cọc không nhận dòng này.
@@ -218,6 +219,10 @@ describe('migration', () => {
     const run = await defOf(db, RUN);
     expect(run.indexOf('Bỏ cọc đã giữ toàn bộ cọc')).toBeLessThan(run.indexOf('INSERT INTO app_private.contract_exit_writer_context'));
     expect(migrationSql).not.toMatch(/terminate_contract_forfeit|approve_contract_termination/);
+    // Giao diện gửi đúng tên và kind mà máy chủ kiểm (từng byte).
+    expect(DEPOSIT_RETAINED_LABEL).toBe(LABEL);
+    expect(count(impl, `<> '${DEPOSIT_RETAINED_LABEL}'`)).toBe(1);
+    expect(count(impl, `WHERE j->>'kind' = '${DEPOSIT_RETAINED_KIND}'`)).toBe(1);
     const acl = await db.query<{ a: boolean; s: boolean }>(`SELECT has_function_privilege('authenticated',$1::regprocedure,'EXECUTE') a,
       has_function_privilege('service_role',$1::regprocedure,'EXECUTE') s`, [IMPL]);
     expect(acl.rows[0]).toEqual({ a: false, s: true });

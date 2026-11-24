@@ -71,7 +71,9 @@ import {
 import { TerminationExtraCharges } from "./TerminationExtraCharges";
 import { TerminationRefundItems } from "./TerminationRefundItems";
 import type { ExtraChargeItem, RefundItem } from "@/lib/contractValidation";
-import { computeTerminationSettlement } from "@/lib/terminationSettlement";
+import {
+  DEPOSIT_RETAINED_LABEL, computeTerminationSettlement, depositFloor, resolveDepositRetention, withDepositRetainedLine,
+} from "@/lib/terminationSettlement";
 import { todayISO } from '@/lib/collect';
 import { useContractExitEarlyTerms } from '@/hooks/contracts/useContractExitEarlyTerms';
 import {
@@ -846,8 +848,8 @@ function StepMoveOut({
   // hoàn quá số khách đã đóng.
   const totalDeposit = Number(contract.total_deposit || 0);
   const depositPaid = Number(contract.deposit_paid ?? contract.total_deposit ?? 0);
-  // Nhờ sale / tự tìm: cọc đem ra quyết toán khoá ở mức cọc đã thu (phí môi giới cấn từ đó); phần giữ lại theo thoả thuận
-  // xử lý ở đợt sau. Nhờ sale có phí: đúng một dòng BROKER_FEE lấy từ hồ sơ, khoá; sửa qua "Sửa phí" kèm lý do.
+  // Nhờ sale / tự tìm: cọc đem ra quyết toán khoá ở mức cọc đã thu (phí môi giới cấn từ đó), không có dòng "Cọc giữ lại
+  // theo thoả thuận" (máy chủ từ chối). Nhờ sale có phí: đúng một dòng BROKER_FEE lấy từ hồ sơ, khoá; sửa qua "Sửa phí" kèm lý do.
   const transferCase = isTransferReason(earlyTerms?.early_reason);
   const brokerFee = earlyTerms ? brokerFeeLine(earlyTerms) : null;
   const [feeEditing, setFeeEditing] = useState(false);
@@ -860,15 +862,26 @@ function StepMoveOut({
     resolver: zodResolver(terminateMoveOutFormSchema),
     defaultValues: {
       move_out_date: actualDate,
-      deposit_refund: transferCase ? depositPaid : initialDraft.moveOut?.depositRefund ?? Math.min(totalDeposit, depositPaid),
+      deposit_refund: transferCase ? depositPaid : initialDraft.moveOut?.depositRefund ?? depositFloor(depositPaid, totalDeposit),
       excess_rent: initialDraft.moveOut?.excessRent ?? 0,
       notes: initialDraft.moveOut?.notes ?? "",
     },
   });
 
+  // Đợt 4 (cọc giữ lại theo thoả thuận): số ở ô "Tiền cọc hoàn trả" là số hoàn theo thoả thuận. Thấp hơn sàn
+  // min(cọc đã thu, cọc theo HĐ) thì cọc đem ra = sàn và phần chênh thành dòng khoá "Cọc giữ lại theo thoả thuận"
+  // (doanh thu) — áp cả cho số lấy từ bản nháp cũ. Từ sàn trở lên (sổ cọc ghi dôi) gửi đúng số nhập, không thêm dòng.
+  const depositRefund = form.watch("deposit_refund") || 0;
+  const retentionFor = useCallback((requested: number) => transferCase
+    ? { floor: depositPaid, depositSent: Number(requested) || 0, retained: 0 }
+    : resolveDepositRetention({ depositPaid, totalDeposit, requested: Number(requested) || 0 }), [transferCase, depositPaid, totalDeposit]);
+  const retention = useMemo(() => retentionFor(depositRefund), [retentionFor, depositRefund]);
+
   const [editableCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
   const [meterValid, setMeterValid] = useState(false);
-  const extraCharges = useMemo(() => withBrokerFeeLine(editableCharges, brokerFee), [editableCharges, brokerFee]);
+  const chargesFor = useCallback((retained: number) => withBrokerFeeLine(withDepositRetainedLine(editableCharges, retained), brokerFee),
+    [editableCharges, brokerFee]);
+  const extraCharges = useMemo(() => chargesFor(retention.retained), [chargesFor, retention.retained]);
   const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
 
   // Khoản MÌNH trả lại khách (tiền phòng ngày không ở…) — thêm 22/08/2026.
@@ -916,7 +929,6 @@ function StepMoveOut({
   // credit và xử lý riêng. Người dùng vẫn gõ tay được nếu tính năng được bật.
 
   // Watch values for real-time settlement calculation
-  const depositRefund = form.watch("deposit_refund") || 0;
   const excessRent = form.watch("excess_rent") || 0;
   const notesValue = form.watch("notes") || "";
   useEffect(() => {
@@ -942,14 +954,15 @@ function StepMoveOut({
     () =>
       computeTerminationSettlement({
         depositPaid,
-        depositRefundRequested: depositRefund,
+        depositRefundRequested: retention.depositSent,
         excessRent,
         outstandingDebt,
         extraChargesTotal: extraTotal,
         customerRefundTotal: refundTotal,
       }),
-    [depositPaid, depositRefund, excessRent, outstandingDebt, extraTotal, refundTotal],
+    [depositPaid, retention.depositSent, excessRent, outstandingDebt, extraTotal, refundTotal],
   );
+  const otherExtraTotal = extraTotal - retention.retained;
   const settlementAmount = settlement.net;
 
   const onSubmit = (data: TerminateMoveOutFormData) => {
@@ -961,14 +974,15 @@ function StepMoveOut({
   const doTerminate = async () => {
     if (!pendingData || !meterValid) return;
     setConfirmOpen(false);
+    const sent = retentionFor(pendingData.deposit_refund);
     try {
       await onSettle({
-        depositRefund: pendingData.deposit_refund,
+        depositRefund: sent.depositSent,
         excessRent: pendingData.excess_rent,
         outstandingDebt,
         // Không có số hỗ trợ thì gửi ghi chú đúng như trước (khoá lặp so cả ghi chú).
         notes: supportNote ? [pendingData.notes?.trim(), supportNote].filter(Boolean).join("\n") : pendingData.notes,
-        extraCharges,
+        extraCharges: chargesFor(sent.retained),
         refundItems,
         shortfallMode,
         receiptAccountId: receiptAccountId || null,
@@ -1159,6 +1173,13 @@ function StepMoveOut({
                       {formatVND(depositPaid)}đ.
                     </p>
                   )}
+                  {retention.retained > 0 && (
+                    <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900" data-testid="deposit-retained-line">
+                      <b>{DEPOSIT_RETAINED_LABEL}: {formatVND(retention.retained)}đ</b> — phần cọc không hoàn cho khách,
+                      tự thêm thành dòng thu trên hoá đơn thanh lý và ghi doanh thu. Cọc đem ra quyết toán:{" "}
+                      {formatVND(retention.depositSent)}đ.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -1297,9 +1318,9 @@ function StepMoveOut({
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Tiền cọc hoàn trả</span>
+                <span className="text-muted-foreground">Cọc đem ra quyết toán</span>
                 <span className="font-medium tabular-nums text-emerald-600">
-                  {formatVND(depositRefund)} đ
+                  {formatVND(settlement.deposit)} đ
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1498,17 +1519,23 @@ function StepMoveOut({
                 <div className="flex justify-between">
                   <span>Cọc hoàn/cấn (kẹp theo đã thu)</span>
                   <b className="tabular-nums">
-                    {formatVND(Math.min(depositRefund, depositPaid))} đ
+                    {formatVND(settlement.deposit)} đ
                   </b>
                 </div>
+                {retention.retained > 0 && (
+                  <div className="flex justify-between text-amber-900" data-testid="confirm-deposit-retained">
+                    <span>{DEPOSIT_RETAINED_LABEL} (doanh thu, không hoàn)</span>
+                    <b className="tabular-nums">{formatVND(retention.retained)} đ</b>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Công nợ được quyết toán</span>
                   <b className="tabular-nums">{formatVND(outstandingDebt)} đ</b>
                 </div>
-                {extraTotal > 0 && (
+                {otherExtraTotal > 0 && (
                   <div className="flex justify-between">
                     <span>Thu thêm</span>
-                    <b className="tabular-nums">{formatVND(extraTotal)} đ</b>
+                    <b className="tabular-nums">{formatVND(otherExtraTotal)} đ</b>
                   </div>
                 )}
                 {excessRent > 0 && (
