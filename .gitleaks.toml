@@ -132,6 +132,15 @@ regexes = [
   # mẫu vẫn cần vì lịch sử git còn và test khác dùng cùng khuôn.)
   '''0123456789abcdef''',
   '''(?i)(dummy|fake|example|placeholder|xxxx+|test-token|not-a-real)''',
+
+  # Dãy bảng chữ cái liền nhau — cùng họ "giá trị giả hiển nhiên" với dãy hex ở
+  # trên. Một credential thật không thể chứa 16 chữ cái liên tiếp đúng thứ tự
+  # a→p. Ca thật 24/11/2026: `businessKey: 'token:abcdefghijklmnop1234'` trong
+  # src/lib/__tests__/pendingValveLogSync.test.ts (nhánh
+  # claude/dot1b-nhat-ky-go-khoa, commit ffcc431f2) — test kiểm việc KHÔNG lưu mã
+  # link chia sẻ đầy đủ. Cửa quét mọi nhánh trên remote nên một nhánh có chuỗi
+  # này làm đỏ secret-scan của MỌI PR và của main, không riêng nhánh đó.
+  '''abcdefghijklmnop''',
 ]
 
 # KHÔNG miễn trừ: .env (dù chỉ chứa VITE_* publishable) — để mỗi lần nó đổi vẫn
