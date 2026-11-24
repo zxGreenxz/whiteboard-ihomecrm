@@ -164,7 +164,8 @@ it('phản hồi chưa xác nhận không báo thành công và không gọi l�
  state.goiHam.mockResolvedValue({data:null,error:null});
  const {result}=dungHook();
  await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('Chưa xác nhận');});
- await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('Chưa xác nhận');});
+ // Lần hai bị chặn bởi dấu của lần gửi trước; dấu chưa quá 2 phút nên chỉ báo đang chờ, không gửi lại.
+ await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('đang chờ kết quả');});
  expect(state.goiHam).toHaveBeenCalledTimes(1);expect(state.toastSuccess).not.toHaveBeenCalled();
 });
 
