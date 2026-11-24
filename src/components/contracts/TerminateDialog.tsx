@@ -1523,9 +1523,9 @@ function StepMoveOut({
                   </b>
                 </div>
                 {retention.retained > 0 && (
-                  <div className="flex justify-between text-amber-900" data-testid="confirm-deposit-retained">
-                    <span>{DEPOSIT_RETAINED_LABEL} (doanh thu, không hoàn)</span>
-                    <b className="tabular-nums">{formatVND(retention.retained)} đ</b>
+                  <div className="flex justify-between gap-2 text-left text-amber-900" data-testid="confirm-deposit-retained">
+                    <span>{DEPOSIT_RETAINED_LABEL} (doanh thu)</span>
+                    <b className="tabular-nums whitespace-nowrap">{formatVND(retention.retained)} đ</b>
                   </div>
                 )}
                 <div className="flex justify-between">

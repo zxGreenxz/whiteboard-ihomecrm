@@ -77,7 +77,7 @@ describe('thanh lý tách bước trả phòng', () => {
     expect(screen.getByTestId('deposit-retained-line').textContent).toContain('Cọc đem ra quyết toán: 4.500.000đ');
     fireEvent.click(screen.getByRole('button', { name: /Lập hoá đơn & thanh lý/i }));
     // Hộp xác nhận nói rõ dòng giữ lại trước khi bấm.
-    expect((await screen.findByTestId('confirm-deposit-retained')).textContent).toMatch(/Cọc giữ lại theo thoả thuận \(doanh thu, không hoàn\)2\.000\.000 đ/);
+    expect((await screen.findByTestId('confirm-deposit-retained')).textContent).toMatch(/Cọc giữ lại theo thoả thuận \(doanh thu\)2\.000\.000 đ/);
     fireEvent.click(screen.getByRole('button', { name: 'Xác nhận thanh lý' }));
     await waitFor(() => expect(spies.finalize).toHaveBeenCalledOnce());
     expect(spies.finalize.mock.calls[0][0].settlement).toMatchObject({ depositRefund: 4_500_000,
