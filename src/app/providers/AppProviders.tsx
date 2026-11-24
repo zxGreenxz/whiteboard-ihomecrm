@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import { PendingValveDialog } from "@/components/shared/PendingValveDialog";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
 import { NotificationsRealtime } from "@/hooks/useNotifications";
 import { TamTruKetQuaSync } from "@/hooks/useTamTruKetQuaSync";
@@ -49,6 +50,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <ErrorBoundary>
           <Toaster />
           <Sonner />
+          {/* Hộp cảnh báo dùng chung khi một lần ghi bị chặn bởi dấu «chờ đối chiếu» của lần
+              gửi trước. Gắn một lần ở đây để mọi màn dùng chung, không sửa từng form. */}
+          <PendingValveDialog />
           {/* Listener auth giữ cache ['auth','user'] / ['auth','session'] tươi.
               Trước đây đăng ký ở module scope ngay trong App.tsx và vứt luôn
               subscription; xem AuthCacheSync để biết vì sao phải có cleanup. */}
