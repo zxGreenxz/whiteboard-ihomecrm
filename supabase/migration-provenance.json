@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-21T02:48:54.862Z",
+  "generatedAt": "2026-11-24T08:24:35.612Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 981,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14681,6 +14681,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-21T02:47:35.261Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261124075933_tra_phong_truoc_han_ba_truong_hop.sql",
+      "version": "20261124075933",
+      "name": "tra_phong_truoc_han_ba_truong_hop",
+      "scheme": "timestamp14",
+      "sha256": "862ea0f727764a0f5bf9c20e643f31b68a53e66f073d6db14e23188c5ad80a46",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.feature_cutovers",
+        "table:public.contract_exit_early_terms",
+        "table:app_private.contract_exit_early_term_events",
+        "table:app_private.contract_exit_commission_authorizations",
+        "function:app_private.guard_contract_exit_early_terms_v1"
       ]
     },
     {
