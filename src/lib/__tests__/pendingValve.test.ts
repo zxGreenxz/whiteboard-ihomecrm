@@ -216,6 +216,44 @@ describe('hàng đợi nhật ký chờ đẩy lên máy chủ',()=>{
  });
 });
 
+describe('đẩy nhật ký lên máy chủ (đợt 1b)',()=>{
+ function withHook(onRelease:(entry:unknown)=>void){
+  const h=harness();
+  const map=h.map;const storage={getItem:(key:string)=>map.get(key)??null,setItem:(key:string,value:string)=>{if(h.failing.setItem)throw new Error('quota');map.set(key,value);}};
+  const valve=createPendingValve({storage,now:()=>new Date(T0+PENDING_SETTLE_MS),onRelease});
+  return {...h,valve};
+ }
+ it('báo cho bên đẩy SAU khi đã ghi nhật ký và gỡ dấu, với đúng dòng vừa ghi',()=>{
+  const seen:unknown[]=[];let clearedWhenNotified:boolean|null=null;let loggedWhenNotified=0;
+  const h=withHook(entry=>{seen.push(entry);clearedWhenNotified=h.store.read(scope)===null;loggedWhenNotified=h.valve.readLog('u1').length;});
+  h.store.markPending(scope,{attemptId:'a1'});
+  h.valve.report({pending:h.store.read(scope)!,store:h.store});
+  const entry=h.valve.release(h.valve.current()!);
+  expect(seen).toEqual([entry]);expect(clearedWhenNotified).toBe(true);expect(loggedWhenNotified).toBe(1);
+  expect(h.valve.readLog('u1')).toEqual([entry]);
+ });
+ it('bên đẩy lỗi không làm hỏng lần gỡ; gỡ không thành thì không báo đẩy',()=>{
+  const onRelease=vi.fn(()=>{throw new Error('không nạp được module đẩy');});
+  const h=withHook(onRelease);
+  h.store.markPending(scope,{attemptId:'a1'});
+  h.valve.report({pending:h.store.read(scope)!,store:h.store});
+  const entry=h.valve.release(h.valve.current()!);
+  expect(entry.attemptId).toBe('a1');expect(h.store.read(scope)).toBeNull();expect(onRelease).toHaveBeenCalledTimes(1);
+  h.store.markPending(scope,{attemptId:'a2'});
+  h.valve.report({pending:h.store.read(scope)!,store:h.store});
+  h.failing.setItem=true;
+  expect(()=>h.valve.release(h.valve.current()!)).toThrow(FinancialPendingStorageError);
+  expect(onRelease).toHaveBeenCalledTimes(1);
+  // Kho báo dấu đã là của lần gửi khác ngay lúc gỡ: không gỡ, dòng nhật ký bị rút lại, không báo đẩy.
+  h.failing.setItem=false;
+  const pending=h.store.read(scope)!;
+  h.valve.report({pending,store:{read:h.store.read,clearConfirmed:()=>false}});
+  expect(()=>h.valve.release(h.valve.current()!)).toThrow(/đã được xử lý ở nơi khác/);
+  expect(onRelease).toHaveBeenCalledTimes(1);
+  expect(h.valve.readLog('u1')).toHaveLength(1);
+ });
+});
+
 describe('tín hiệu nạp hộp cảnh báo',()=>{
  it('mỗi lời báo gọi onReport một lần; namespace silent thì không',()=>{
   const map=new Map<string,string>();const storage={getItem:(k:string)=>map.get(k)??null,setItem:(k:string,v:string)=>{map.set(k,v);},removeItem:(k:string)=>{map.delete(k);}};

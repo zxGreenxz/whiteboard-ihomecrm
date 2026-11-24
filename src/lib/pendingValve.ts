@@ -6,13 +6,15 @@
 //   1. Dựng câu báo gọi đúng thao tác ĐANG KẸT và giờ kẹt (đọc từ dấu), không phải thao tác đang bấm.
 //   2. Giữ hàng chờ các lần bị chặn để `PendingValveDialog` (gắn một lần ở gốc ứng dụng) hiển thị.
 //   3. Gỡ ĐÚNG dấu người dùng đã xác nhận (theo `attemptId`) và ghi một dòng nhật ký TRƯỚC khi gỡ. Nhật ký
-//      nằm tạm trong localStorage theo dạng hàng đợi, chờ đợt 1b đẩy lên máy chủ; không ghi được nhật ký thì
-//      không gỡ.
+//      nằm tạm trong localStorage theo dạng hàng đợi; không ghi được nhật ký thì không gỡ. Gỡ xong, van dùng
+//      chung gọi bên đẩy (`pendingValveLogSync.ts`, đợt 1b) đưa hàng đợi lên máy chủ ở nền; đẩy hỏng không
+//      ảnh hưởng lần gỡ.
 import {
   FinancialPendingStorageError, formatPendingTime, pendingHasSettled,
   type FinancialPendingRecord, type FinancialPendingScope, type FinancialPendingStore,
 } from './financialPending';
 import { pendingStrategyOf } from './pendingStrategies';
+import { flushPendingValveLogSoon, pendingValveLogKey } from './pendingValveLogQueue';
 import { raisePendingValveSignal } from './pendingValveSignal';
 
 /**
@@ -36,6 +38,7 @@ export interface PendingValveNotice {
 export interface PendingValveLogEntry {
   id: string;
   userId: string;
+  /** Công ty trong phạm vi của dấu; dấu phạm vi người dùng mang 'actor-scope' thay vì mã công ty. */
   organizationId: string;
   namespace: string;
   businessKey: string;
@@ -57,8 +60,7 @@ export class PendingValveError extends Error {
   }
 }
 
-const LOG_PREFIX = 'ihome:pending-valve-log:v1:';
-const logKey = (userId: string) => LOG_PREFIX + encodeURIComponent(userId);
+const logKey = pendingValveLogKey;
 const scopeOf = (pending: FinancialPendingRecord): FinancialPendingScope => ({
   namespace: pending.namespace, userId: pending.userId, organizationId: pending.organizationId, businessKey: pending.businessKey,
 });
@@ -89,7 +91,11 @@ function isLogEntry(value: unknown): value is PendingValveLogEntry {
     && Array.isArray(row.recordIds) && row.recordIds.every(id => typeof id === 'string');
 }
 
-export function createPendingValve(options: { storage?: StoragePort; now?: () => Date; onReport?: () => void } = {}) {
+export function createPendingValve(options: {
+  storage?: StoragePort; now?: () => Date; onReport?: () => void;
+  /** Gọi sau khi đã gỡ dấu thành công, với dòng nhật ký vừa ghi. Lỗi của nó không làm hỏng lần gỡ. */
+  onRelease?: (entry: PendingValveLogEntry) => void;
+} = {}) {
   const storage = () => options.storage ?? globalThis.localStorage;
   const now = () => options.now?.() ?? new Date();
   let queue: readonly PendingValveNotice[] = [];
@@ -162,12 +168,13 @@ export function createPendingValve(options: { storage?: StoragePort; now?: () =>
       finally { if (!cleared) writeLog(live.userId, before); }
       publish(queue.filter(item => item !== notice));
       if (!cleared) throw new PendingValveError('gone');
+      try { options.onRelease?.(entry); } catch { /* đẩy nhật ký là việc nền; dòng còn trong hàng đợi */ }
       return entry;
     },
 
     /** Hàng đợi nhật ký của một người dùng, cũ trước. */
     readLog,
-    /** Đợt 1b gọi sau khi máy chủ đã nhận: bỏ các dòng đã đẩy khỏi hàng đợi. */
+    /** Bên đẩy (`pendingValveLogSync.ts`) gọi sau khi máy chủ đã nhận: bỏ các dòng đã đẩy khỏi hàng đợi. */
     acknowledgeLog(userId: string, ids: readonly string[]): void {
       const drop = new Set(ids);
       writeLog(userId, readLog(userId).filter(entry => !drop.has(entry.id)));
@@ -175,5 +182,11 @@ export function createPendingValve(options: { storage?: StoragePort; now?: () =>
   };
 }
 export type PendingValve = ReturnType<typeof createPendingValve>;
-/** Van dùng chung của ứng dụng: mỗi lời báo bật tín hiệu để gốc ứng dụng nạp hộp cảnh báo. */
-export const pendingValve = createPendingValve({ onReport: raisePendingValveSignal });
+/**
+ * Van dùng chung của ứng dụng: mỗi lời báo bật tín hiệu để gốc ứng dụng nạp hộp cảnh báo; mỗi lần gỡ đẩy hàng đợi
+ * nhật ký lên máy chủ ở nền.
+ */
+export const pendingValve = createPendingValve({
+  onReport: raisePendingValveSignal,
+  onRelease: (entry) => { void flushPendingValveLogSoon(entry.userId); },
+});

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { usePendingValveLogFlushOnOpen } from '@/hooks/usePendingValveLogFlushOnOpen';
 import { companySessionToken, readLocalCompany, syncActiveCompany } from '@/lib/companyPreference';
 import type { CompanyPreferenceSession, PreferenceResult } from '@/lib/companyPreferenceRemote';
 import { OrganizationContext, parseOrganizations, resetOrgScopedQueries, resolveSelectedOrganizationId, type Organization, type OrganizationState } from './OrganizationContext';
@@ -40,6 +41,9 @@ export default function OrganizationProviderImplementation({ children }: { child
   selectedScope.current = selectedOrganizationId;
   const directory = useRef(organizations);
   directory.current = organizations;
+  // Nhật ký tự gỡ khoá chưa lên được máy chủ ở lần trước: đẩy nốt khi mở ứng dụng. Đặt ở đây (gói nạp lười chạy
+  // cho mọi phiên đã đăng nhập) chứ không ở gốc ứng dụng, để gói tải đầu không phình.
+  usePendingValveLogFlushOnOpen(userId);
 
   // Synchronous auth fence: never await Supabase inside this callback.
   useEffect(() => {
