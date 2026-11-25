@@ -3,7 +3,7 @@ import {useRef} from 'react';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialAlreadyRecordedError,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadNumber} from '@/lib/financialReadValidation';
-import {readContractNoticeOperationReceipt} from '@/lib/contractNoticeOperationReceipt';
+import {readContractNoticeOperationReceipt,type ContractNoticeOperationReceipt} from '@/lib/contractNoticeOperationReceipt';
 import { submitRoomTransfer } from '@/lib/contract-lifecycle/roomTransferQuote';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,7 +50,7 @@ export const useRenewContract = () => {
       // Cách B: renew_contract_with_notice_v1 → apply_contract_notice_transition_v1 (production 25/11/2026) khoá công ty và
       // hợp đồng FOR UPDATE TRƯỚC khi tra mã yêu cầu; cùng mã cùng nội dung ⇒ trả hợp đồng cũ, khác nội dung ⇒ 23505.
       let resend=false;
-      return workflow.current.run(params.contractId,"gia hạn hợp đồng",async progress=>{
+      return workflow.current.run<ContractNoticeOperationReceipt>(params.contractId,"gia hạn hợp đồng",async progress=>{
         const {data,error}=await supabase.rpc("renew_contract_with_notice_v1",{...args,p_request_id:progress.requestKey});
         if(error){
           if(resend&&String((error as {code?:unknown}).code??'')==='23505')throw new FinancialAlreadyRecordedError('Hợp đồng đã được gia hạn ở lần gửi trước (nội dung lúc đó khác nội dung đang gửi). Tải lại hợp đồng để kiểm tra trước khi gia hạn tiếp.',[params.contractId]);
