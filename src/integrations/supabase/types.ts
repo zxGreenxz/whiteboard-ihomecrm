@@ -24411,7 +24411,7 @@ export type Database = {
         Returns: Json
       }
       create_public_room_token: {
-        Args: { p_label?: string }
+        Args: { p_label?: string; p_organization_id?: string }
         Returns: {
           created_at: string
           label: string | null

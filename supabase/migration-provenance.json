@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T02:31:56.473Z",
+  "generatedAt": "2026-11-25T02:44:18.708Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 985,
+    "ledger-applied": 986,
     "unknown": 80,
-    "catalog-proven": 208,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -14722,10 +14722,9 @@
       "name": "link_chia_se_va_thong_ke_ghi_ro_cong_ty",
       "scheme": "timestamp14",
       "sha256": "c78a366eeae6e12442f9e4d9e6f3f7ae1ac85786a6e65a1d30d54fee6b062ab5",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.create_public_room_token",
-        "catalog:function:public.log_public_room_events"
+        "receipt:2026-11-25T02:43:56.634Z|bien-nhan-backup"
       ]
     },
     {
