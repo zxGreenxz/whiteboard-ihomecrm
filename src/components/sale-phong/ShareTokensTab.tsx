@@ -1,8 +1,7 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import {LoadingState} from '@/components/loading/LoadingState';
-import {actionErrorMessage} from '@/lib/actionFeedback';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {createTokenErrorMessage,tokenRemovalWarnings} from '@/lib/publicRoomFeedback';
+import {createTokenErrorMessage,tokenAdminErrorMessage,tokenRemovalWarnings} from '@/lib/publicRoomFeedback';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import TokenRemovalWarnings from './TokenRemovalWarnings';
 import { useState } from "react";
@@ -64,7 +63,7 @@ export default function ShareTokensTab() {
   const [blocked,setBlocked]=useState(false);
   const canWrite=!blocked&&!tokenQuery.isError&&tokenQuery.data!==undefined;
   const busy=createMut.isPending||labelMut.isPending||revokeMut.isPending||deleteMut.isPending;
-  const perform=async(task:()=>Promise<unknown>,done:()=>void,message:(error:unknown)=>string=error=>actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.'))=>{
+  const perform=async(task:()=>Promise<unknown>,done:()=>void,message:(error:unknown)=>string=error=>tokenAdminErrorMessage(error,'Không thao tác được link'))=>{
     if(!canWrite||busy)return;setWriteError('');
     try{await task();done();}catch(error){setWriteError(message(error));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
   };
@@ -79,8 +78,8 @@ export default function ShareTokensTab() {
           Nút tạo vẫn chỉ mở khi danh sách đã về — như khi còn nằm trong vùng chờ. */}
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Mỗi link hiển thị tất cả toà của bạn đang có phòng trống. Gửi link cho khách/sale —
-          không cần đăng nhập. Thu hồi link bất cứ lúc nào.
+          Mọi link của công ty hiển thị cùng một trang: tất cả toà của công ty đang có phòng trống, cùng hotline và
+          chính sách chung. Gửi link cho khách/sale — không cần đăng nhập. Thu hồi link bất cứ lúc nào.
         </p>
         <Button size="sm" disabled={!canWrite||busy||tokens===undefined||!orgReady} onClick={() => {setWriteError('');setNewLabel("");setCreateOpen(true);}}>
           <Plus className="h-4 w-4 mr-1" />Tạo link mới
@@ -105,6 +104,7 @@ export default function ShareTokensTab() {
                   <TableHead>Nhãn</TableHead>
                   <TableHead>Link</TableHead>
                   <TableHead>Trạng thái</TableHead>
+                  <TableHead>Người tạo</TableHead>
                   <TableHead>Ngày tạo</TableHead>
                   <TableHead className="w-[160px]">Thao tác</TableHead>
                 </TableRow>
@@ -123,6 +123,7 @@ export default function ShareTokensTab() {
                         ? <Badge variant="destructive">Đã thu hồi</Badge>
                         : <Badge variant="default">Đang hoạt động</Badge>}
                     </TableCell>
+                    <TableCell className="text-sm">{t.owner_name || <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{fmtDate(t.created_at)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-0.5">

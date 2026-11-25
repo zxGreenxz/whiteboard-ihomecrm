@@ -32,27 +32,57 @@ export function createTokenErrorMessage(error:unknown):string{
 /** Token của trang /phongtrong (src/app/routes/publicRoutes.tsx: <PhongTrongPage token="demo" />). */
 export const PHONG_TRONG_TOKEN='demo';
 type TokenLike={token:string;owner_id:string;organization_id:string|null;revoked:boolean;created_at:string;label?:string|null};
-const tenLink=(t:TokenLike)=>t.label?.trim()?`«${t.label.trim()}»`:`/r/${t.token}`;
 /**
- * Cảnh báo trong hộp thu hồi / xoá link CÒN HOẠT ĐỘNG (link đã thu hồi không còn nguồn nào đọc).
- * - Bot Zalo (app_private.public_sale_rooms_payload_v1) lấy phòng của MỖI người đứng tên qua link hoạt động SỚM NHẤT
- *   (created_at, rồi token) của người đó trong công ty ⇒ chỉ cảnh báo bot khi đây là link sớm nhất: còn link khác thì bot
- *   chuyển nguồn sang link kế tiếp, hết link thì bot không còn phòng của người này.
- * - Hermes (app_private.public_room_link_grants_v1) đọc phòng đã đăng của TỪNG link còn hoạt động ⇒ mọi link đều có thể
- *   đang giữ phòng đã đăng; danh sách phòng theo từng link chưa có ở đây (đợt 2 đổi bot/Hermes sang theo công ty).
- * Danh sách `all` là link mà RLS cho người dùng thấy (link của chính họ).
+ * Cảnh báo trong hộp thu hồi / xoá link CÒN HOẠT ĐỘNG (link đã thu hồi không còn nguồn nào đọc). Từ đợt 2 Sale phòng
+ * (20261125034429) trang Sale theo CÔNG TY: mọi link hoạt động của một công ty ra cùng một trang; bot Zalo
+ * (public_sale_rooms_payload_v1) và Hermes (hermes_available_rooms_page_v1) chỉ cần công ty còn ÍT NHẤT MỘT link hoạt động,
+ * không còn phụ thuộc link của ai. Nên ngoài link «demo» (/phongtrong) chỉ cảnh báo khi đây là link hoạt động cuối cùng
+ * của công ty. Danh sách `all` là mọi link của công ty (list_public_room_tokens_v1).
  */
 export function tokenRemovalWarnings(target:TokenLike,all:readonly TokenLike[]):string[]{
  const warnings:string[]=[];
  if(target.token===PHONG_TRONG_TOKEN)warnings.push('Link «demo» là nguồn của trang /phongtrong (link thương hiệu gửi khách). Thu hồi hoặc xoá thì trang /phongtrong báo «Liên kết không hợp lệ» với mọi khách.');
  if(target.revoked)return warnings;
- const cungNguon=all.filter(t=>!t.revoked&&t.owner_id===target.owner_id&&t.organization_id===target.organization_id&&t.token!==target.token);
- const truoc=(x:TokenLike,y:TokenLike)=>(Date.parse(x.created_at)-Date.parse(y.created_at))||x.token.localeCompare(y.token);
- const ke=[...cungNguon].sort(truoc)[0];
- const somNhat=!ke||truoc(target,ke)<0;
- if(somNhat)warnings.push(ke
-  ?`Bot Zalo đang lấy danh sách phòng của bạn qua link này (link hoạt động sớm nhất của bạn ở công ty này). Thu hồi hoặc xoá thì bot chuyển sang link ${tenLink(ke)}.`
-  :'Đây là link còn hoạt động cuối cùng của bạn ở công ty này. Bot Zalo lấy danh sách phòng của bạn qua link này; thu hồi hoặc xoá thì bot không còn phòng của bạn để đăng.');
- warnings.push('Link này có thể đang giữ phòng đã đăng cho Hermes; thu hồi hoặc xoá thì Hermes không còn gửi các phòng đăng qua link này.');
+ const conLai=all.some(t=>!t.revoked&&t.organization_id===target.organization_id&&t.token!==target.token);
+ if(!conLai)warnings.push('Đây là link còn hoạt động cuối cùng của công ty. Bot Zalo và Hermes chỉ gửi phòng khi công ty còn ít nhất một link hoạt động; thu hồi hoặc xoá thì bot và Hermes không còn trang Sale để gửi khách.');
  return warnings;
+}
+
+/** Chưa chọn công ty thì không gửi lời lưu cài đặt chung (cài đặt thuộc công ty). */
+export const SETTINGS_NO_ORGANIZATION='Chưa chọn công ty. Chọn công ty ở đầu trang rồi lưu cài đặt.';
+/** Lý do máy chủ trả khi lưu cài đặt chung — nguồn: save_public_room_settings_v1 (20261125034429_sale_phong_theo_cong_ty.sql). */
+export const SAVE_SETTINGS_RULES:readonly OperationErrorRule[]=[
+ {code:'PT409',message:'public_room_settings_conflict',recovery:'reload',
+  description:'Đã có người sửa cài đặt chung sau khi bạn mở. Bỏ bản nháp cài đặt để đọc lại rồi sửa tiếp.'},
+ {code:'42501',message:'public_room_settings_permission',recovery:'contact-admin',
+  description:'Tài khoản chưa được cấp quyền «Cài đặt hiển thị» ở công ty đang chọn. Nhờ chủ công ty bật quyền này trong Phân quyền.'},
+ {code:'42501',message:'public_room_settings_not_member',recovery:'reload',
+  description:'Tài khoản không phải thành viên của công ty đang chọn.'},
+ {code:'22023',message:'public_room_settings_hotline_invalid',recovery:'reload',
+  description:'Hotline đã chọn không còn là hotline đang bật của cài đặt chung. Chọn lại hotline rồi lưu.'},
+ {code:'22023',message:'public_room_settings_invalid',recovery:'reload',
+  description:'Số ngày sắp trống là số nguyên 0–365, chính sách sale chung tối đa 2000 ký tự.'},
+ {code:'55000',message:'public_room_settings_owner_ambiguous',recovery:'contact-admin',
+  description:'Công ty chưa có toà hoặc các toà đang đứng tên nhiều người, nên chưa xác định được cài đặt chung. Báo quản trị viên.'},
+];
+/** Câu báo khi lưu cài đặt chung hỏng: lý do thật của máy chủ; kết quả chưa rõ thì giữ câu đối chiếu cũ. */
+export function saveSettingsErrorMessage(error:unknown):string{
+ if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')return actionErrorMessage(error,'Chưa lưu được cài đặt chung. Bản nháp vẫn được giữ.');
+ const feedback=friendlyError(error,'Chưa lưu được cài đặt chung',{operation:'lưu cài đặt chung',rules:SAVE_SETTINGS_RULES});
+ return `${feedback.title.replace(/[.。]+$/,'')}. ${feedback.description}`;
+}
+/** Lý do máy chủ trả khi xem / đổi nhãn / thu hồi / khôi phục / xoá link — nguồn: list/manage_public_room_token_v1. */
+export const TOKEN_ADMIN_RULES:readonly OperationErrorRule[]=[
+ {code:'42501',message:'public_room_token_permission',recovery:'contact-admin',
+  description:'Tài khoản chưa được cấp quyền «Quản lý link chia sẻ» ở công ty đang chọn. Nhờ chủ công ty bật quyền này trong Phân quyền.'},
+ {code:'42501',message:'public_room_token_not_member',recovery:'reload',
+  description:'Tài khoản không phải thành viên của công ty đang chọn.'},
+ {code:'P0002',message:'public_room_token_not_found',recovery:'reload',
+  description:'Không thấy link này trong công ty đang chọn (có thể đã bị xoá). Tải lại danh sách.'},
+];
+/** Câu báo khi thao tác link hỏng: «Không … được» + lý do thật; kết quả chưa rõ thì giữ câu đối chiếu cũ. */
+export function tokenAdminErrorMessage(error:unknown,title:string):string{
+ if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')return actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.');
+ const feedback=friendlyError(error,title,{operation:'quản lý link chia sẻ',rules:TOKEN_ADMIN_RULES});
+ return `${feedback.title.replace(/[.。]+$/,'')}. ${feedback.description}`;
 }

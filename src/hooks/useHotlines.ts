@@ -38,14 +38,16 @@ export const useCreateHotline = (options?: {inlineError?:boolean}) => {
   const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
-    mutationFn: async (hotline: Omit<HotlineInsert, "user_id" | "organization_id">) => {
+    // ownerId: hotline chung của trang Sale thuộc người đứng tên chung các toà (đợt 2 Sale phòng) — người có quyền tạo
+    // hotline tạo hộ người đó; RLS vẫn đòi người đó là thành viên công ty. Bỏ trống ⇒ hotline của chính người tạo như cũ.
+    mutationFn: async ({ ownerId, ...hotline }: Omit<HotlineInsert, "user_id" | "organization_id"> & { ownerId?: string }) => {
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
       const { data, error } = await supabase
         .from("hotlines")
-        .insert(withOrg({ ...hotline, user_id: user.id }, selectedOrganizationId))
+        .insert(withOrg({ ...hotline, user_id: ownerId ?? user.id }, selectedOrganizationId))
         .select()
         .single();
 

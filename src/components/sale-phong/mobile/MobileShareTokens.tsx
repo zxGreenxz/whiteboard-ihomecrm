@@ -1,8 +1,7 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import {LoadingState} from '@/components/loading/LoadingState';
-import {actionErrorMessage} from '@/lib/actionFeedback';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {createTokenErrorMessage,tokenRemovalWarnings} from '@/lib/publicRoomFeedback';
+import {createTokenErrorMessage,tokenAdminErrorMessage,tokenRemovalWarnings} from '@/lib/publicRoomFeedback';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import TokenRemovalWarnings from "../TokenRemovalWarnings";
 import { useEffect, useState } from "react";
@@ -59,7 +58,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
     }
   };
 
-  const perform=async(task:()=>Promise<unknown>,done:()=>void,message:(error:unknown)=>string=error=>actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.'))=>{
+  const perform=async(task:()=>Promise<unknown>,done:()=>void,message:(error:unknown)=>string=error=>tokenAdminErrorMessage(error,'Không thao tác được link'))=>{
     if(!canWrite||busy)return;setWriteError('');
     try{await task();done();}catch(error){setWriteError(message(error));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
   };
@@ -71,7 +70,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
     <div style={{ padding: "14px 16px 28px" }}><QueryRegion label="link chia sẻ" queries={[tokenQuery]} skeleton="list" rows={4}>
       <div className="sp-note blue">
         <Info size={17} stroke="var(--acc-blue)" />
-        <p>Mỗi link hiển thị tất cả toà đang có phòng trống. Gửi cho khách/sale — không cần đăng nhập, thu hồi bất cứ lúc nào.</p>
+        <p>Mọi link của công ty ra cùng một trang: tất cả toà của công ty đang có phòng trống. Gửi cho khách/sale — không cần đăng nhập, thu hồi bất cứ lúc nào.</p>
       </div>
       {!orgReady&&!orgLoading&&<p className="text-muted-foreground" style={{ fontSize: 13, margin: "0 0 12px" }}>Chọn công ty ở đầu trang để tạo link mới.</p>}
 
@@ -98,7 +97,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
                 <Copy size={15} />
               </button>
               <div className="sp-tcard-f">
-                <span className="when">{fmtDate(t.created_at)}</span>
+                <span className="when">{fmtDate(t.created_at)}{t.owner_name ? ` · ${t.owner_name}` : ''}</span>
                 <span className="sp-acts">
                   <button className="sp-iconbtn" title="Mở link" onClick={() => window.open(roomShareUrl(t.token), "_blank", "noopener")}>
                     <ExternalLink size={16} />

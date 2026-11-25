@@ -156,7 +156,9 @@ test('Direct sale metadata and timed policy / real local PostgreSQL',async t=>{
    const projected=(await admin.query("SELECT app_private.room_sale_policy_overlay_v1(jsonb_build_object('rooms',jsonb_build_array(jsonb_build_object('id',$1::text,'building_id',$2::text,'sale_note','base')))) value",[f.rooms[0],f.buildings[0]])).rows[0].value;
    assert.ok(!JSON.stringify(projected).includes('created_by'));assert.ok(!JSON.stringify(projected).includes('sale_bonus_note'));
   });
-  await t.test('P22 Inventory tòa giữ đủ metadata để xuất; staff không quản settings của owner',async()=>{
+  // Đợt 2 Sale phòng (chủ chốt 24/11/2026): sửa cài đặt chung theo quyền sale_phong.manage_settings, không theo «đứng tên mọi
+  // tòa»; settings_owner_id là người đứng tên chung các tòa của công ty. Vai sale của fixture không có manage_settings.
+  await t.test('P22 Inventory tòa giữ đủ metadata để xuất; nhân viên không có quyền Cài đặt hiển thị thì không sửa cài đặt chung',async()=>{
    const data=await inv('sale');assert.equal(data.settings_owner_id,f.actors.landlord);assert.equal(data.can_manage_account_settings,false);
    for(const key of ['public_contact_name','public_contact_phone','public_map_url','public_lift_type','floor_layouts','area_ids','elec_rate'])assert.ok(key in data.buildings[0],key);
   });
