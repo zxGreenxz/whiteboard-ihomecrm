@@ -85,7 +85,7 @@ const executeAt = (buildingIds: string[]) => ({
 } as unknown as NetworkCenterController["permissionsQuery"]);
 const channelCard = (label: string) => screen.getByRole("article", { name: `Đầu ghi DEMO · ${label}` });
 const openChannelMenu = async (label: string) => {
-  const trigger = await screen.findByRole("button", { name: `Tuỳ chọn báo cho ${label}` });
+  const trigger = await screen.findByRole("button", { name: `Báo kênh: ${label}` });
   fireEvent.click(trigger);
   return screen.findByRole("group", { name: `Cách báo cho ${label}` });
 };
@@ -329,7 +329,7 @@ describe("camera tab — cảnh báo v2", () => {
     expect(alertMocks.listIncidents).toHaveBeenCalledWith(expect.objectContaining({ buildingId: scope.buildingId }));
     // Người chỉ xem: không có "Đã biết", không có menu báo kênh; không lộ mã loại sự cố.
     expect(screen.queryByRole("button", { name: /^Đã biết:/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Tuỳ chọn báo cho/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Báo kênh: / })).toBeNull();
     expect(document.body.textContent).not.toMatch(/CAMERA_|PT409/);
   });
 
@@ -365,7 +365,7 @@ describe("camera tab — cảnh báo v2", () => {
     const snoozed = channelCard("Kênh 1 “Sảnh DEMO”");
     expect(snoozed.textContent).toContain("Tạm ẩn đến hết 01/12/2026");
     expect(snoozed.textContent).toContain("Không rõ người đặt");
-    expect(screen.queryByRole("button", { name: /Tuỳ chọn báo cho/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Báo kênh: / })).toBeNull();
   });
 
   it("lets an editor mute a channel, snooze it with a valid date, and follow it again", async () => {
@@ -378,7 +378,7 @@ describe("camera tab — cảnh báo v2", () => {
     render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
     await screen.findByText("Đầu ghi kết nối");
     // Cả 4 kênh DEMO đều có trong trạng thái đầu ghi (kênh 3 trống vẫn có) ⇒ menu hiện ở cả 4.
-    await waitFor(() => expect(screen.getAllByRole("button", { name: /Tuỳ chọn báo cho/ })).toHaveLength(4));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /^Báo kênh: / })).toHaveLength(4));
 
     const menu = await openChannelMenu("Kênh 1 “Sảnh DEMO”");
     expect(within(menu).queryByRole("button", { name: "Theo dõi lại" })).toBeNull();
@@ -408,6 +408,9 @@ describe("camera tab — cảnh báo v2", () => {
     const brokenMenu = await openChannelMenu("Kênh 2 “Hành lang DEMO”");
     fireEvent.click(within(brokenMenu).getByRole("button", { name: "Theo dõi lại" }));
     await waitFor(() => expect(alertMocks.clearChannelMute).toHaveBeenCalledWith(recorderId, 2));
+    // Popover đóng và focus quay về nút "Báo kênh" của đúng kênh.
+    await waitFor(() => expect(screen.queryByRole("group", { name: /^Cách báo cho/ })).toBeNull());
+    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toBe("Báo kênh: Kênh 2 “Hành lang DEMO”"));
   });
 
   it("submits a snooze until the end of the chosen day in Vietnam time", async () => {
@@ -450,8 +453,8 @@ describe("camera tab — cảnh báo v2", () => {
       return { recorders: [{ ...recorder, channel_count: 5 }] };
     });
     render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
-    await waitFor(() => expect(screen.getAllByRole("button", { name: /Tuỳ chọn báo cho/ })).toHaveLength(4));
-    expect(within(channelCard("Kênh 5")).queryByRole("button", { name: /Tuỳ chọn báo cho/ })).toBeNull();
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /^Báo kênh: / })).toHaveLength(4));
+    expect(within(channelCard("Kênh 5")).queryByRole("button", { name: /^Báo kênh: / })).toBeNull();
   });
 
   it("shows “Đã biết” only to an executor of THIS building, not of another one", async () => {

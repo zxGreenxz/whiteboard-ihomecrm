@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Bell, BellOff, CalendarClock, Eye, EyeOff, Wrench } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -66,6 +66,9 @@ export function CameraChannelAlertMenu({ recorderId, channel, channelLabel, mute
   const choose = (next: CameraChannelMuteKind) => { setMenuOpen(false); setKind(next); };
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState("");
+  // Đóng hộp / xong "Theo dõi lại" thì trả focus về nút "Báo kênh" (không để rơi về đầu trang).
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const focusTrigger = () => setTimeout(() => triggerRef.current?.focus(), 0);
 
   const clear = async () => {
     if (clearing) return;
@@ -77,6 +80,7 @@ export function CameraChannelAlertMenu({ recorderId, channel, channelLabel, mute
       setError(cameraAlertFailure(caught, "theo dõi lại kênh").text);
     } finally {
       setClearing(false);
+      focusTrigger();
     }
   };
 
@@ -84,11 +88,11 @@ export function CameraChannelAlertMenu({ recorderId, channel, channelLabel, mute
     <div className="nc-channel-menu">
       <Popover open={menuOpen} onOpenChange={setMenuOpen}>
         <PopoverTrigger asChild>
-          <Button type="button" variant="outline" size="sm" disabled={clearing} aria-label={`Tuỳ chọn báo cho ${channelLabel}`}>
+          <Button ref={triggerRef} type="button" variant="outline" size="sm" disabled={clearing} aria-label={`Báo kênh: ${channelLabel}`}>
             <Bell className="mr-1 h-4 w-4" aria-hidden="true" />Báo kênh
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="network-center nc-select-content nc-menu-content">
+        <PopoverContent align="start" collisionPadding={8} aria-label={`Cách báo cho ${channelLabel}`} className="network-center nc-select-content nc-menu-content">
           <div role="group" aria-label={`Cách báo cho ${channelLabel}`} className="nc-menu-list">
             <p className="nc-menu-title">{channelLabel}</p>
             <button type="button" onClick={() => choose("IGNORE")}><EyeOff className="mr-2 h-4 w-4" aria-hidden="true" />Không theo dõi kênh này</button>
@@ -106,7 +110,7 @@ export function CameraChannelAlertMenu({ recorderId, channel, channelLabel, mute
           channelLabel={channelLabel}
           current={mute}
           isDemo={isDemo}
-          onClose={() => setKind(null)}
+          onClose={() => { setKind(null); focusTrigger(); }}
           onSubmit={(values) => onSet({
             recorderId, channel, kind: values.kind,
             untilAt: values.kind === "SNOOZE" ? snoozeUntilIso(values.untilDay) : null,
