@@ -1,6 +1,6 @@
 // Hộp Duyệt của Thu chi (D2.9; trước 25/11/2026 là màn Chờ duyệt): người duyệt phiếu chi theo sổ tổng thấy số dư sổ
 // tổng LÚC LẬP và BÂY GIỜ (E7), và biết trước khi nào máy chủ sẽ từ chối lệnh duyệt (chốt F1 — d1_chan_interface §2.1, §7).
-// Chỉ là lớp hiển thị: máy chủ vẫn là chốt cuối (người lập / người nhận tự duyệt, thiếu quyền, phiếu lương
+// Chỉ là lớp hiển thị: máy chủ vẫn là chốt cuối (phạm vi quyền, phiếu lương
 // cần xem lại… chỉ máy chủ biết — câu báo đi qua profitLedgerErrorMessage).
 
 import { formatVND } from '@/lib/utils';
@@ -100,14 +100,10 @@ export function ledgerApprovalNoteView(detail: LedgerPayoutDetail): LedgerApprov
 
   // Phiếu tạm ứng: người giữ sổ lập (cho mình hoặc lập hộ) và cả số tiền là tạm ứng.
   const isAdvance = at?.payout_kind === 'ADVANCE' || (at?.payout_kind == null && !!at && at.maker_kind !== 'OWNER' && at.within === 0);
-  if (at?.maker_kind === 'CUSTODIAN_ADVANCE' && at.payee_is_maker) {
-    notes.push('Người giữ sổ tự lập phiếu tạm ứng cho chính mình — người duyệt phải khác người lập.');
-  }
-  if (at?.maker_kind === 'CUSTODIAN_FOR_PAYEE') {
-    notes.push('Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt phải khác người lập và người nhận.');
-  }
-
   if (isAdvance && at) {
+    if (at.maker_kind === 'CUSTODIAN_ADVANCE' && at.payee_is_maker) notes.push('Người giữ sổ tự lập phiếu tạm ứng cho chính mình.');
+    if (at.maker_kind === 'CUSTODIAN_FOR_PAYEE') notes.push('Người giữ sổ lập phiếu tạm ứng cho cổ đông.');
+    notes.push('Với bước duyệt theo quyền, người có quyền chi lợi nhuận công ty và duyệt thu chi tại toà được duyệt, kể cả khi tự lập phiếu.');
     const overAtCreate = overBalance(at.advance, at.balance_before);
     notes.push('Tạm ứng cộng dồn; được khấu trừ khi chủ chốt chi lợi nhuận.');
     if (accountNote) notes.push(accountNote);

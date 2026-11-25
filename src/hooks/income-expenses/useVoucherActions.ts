@@ -203,19 +203,13 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   );
   // Hộp Duyệt của phiếu sổ tổng đọc E7 (cùng cache với thẻ số dư ProfitLedgerApprovalNote) và KHOÁ xác nhận khi: chưa
   // thấy số dư; máy chủ chắc chắn từ chối (sổ tổng chưa bật / đóng băng, phiếu chết, người nhận đã xoá, lương điều hành
-  // vượt — ledgerApprovalGate); hoặc người xem không được duyệt phiếu này (người lập phiếu tạm ứng, thiếu quyền duyệt
-  // thu chi ở toà — ledgerApproveBlockReason). Máy chủ vẫn là chốt cuối.
+  // vượt — ledgerApprovalGate); hoặc người xem thiếu quyền duyệt tại toà của phiếu. Máy chủ vẫn là chốt cuối.
   const approveLedgerDetail = useProfitLedgerPayoutDetail(approveLedger ? approveTarget?.id : null);
   const ledgerDetail = approveLedgerDetail.isError ? undefined : approveLedgerDetail.data;
   const approveLedgerGate = approveLedger && ledgerDetail ? ledgerApprovalGate(ledgerDetail) : null;
   const workflowBlockReason = approveLedger && !v2ApproveOnly ? "Luồng duyệt thu chi của công ty chưa mở cho phiếu sổ tổng." : null;
   const approveLedgerViewerReason = workflowBlockReason ?? (approveLedger && approveTarget
-    ? ledgerApproveBlockReason(
-        approveTarget,
-        { perms: myPerms, currentUserId: authUser?.id ?? null },
-        // Chưa đọc xong, hoặc phiếu cũ không có dòng sổ lúc lập ⇒ chưa kết luận gì về người lập.
-        ledgerDetail?.at_create?.maker_kind,
-      )
+    ? ledgerApproveBlockReason(approveTarget, myPerms)
     : null);
   const approveLedgerReason = approveLedgerViewerReason ?? approveLedgerGate?.blockReason
     ?? (approveLedger && !approveLedgerGate ? "Chưa đọc được số dư sổ tổng của phiếu." : null);

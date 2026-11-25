@@ -102,8 +102,8 @@ describe("hộp Duyệt của Thu chi — phiếu chi theo sổ tổng", () => {
     expect(spies.openApproveAndPost).toHaveBeenCalledTimes(1);
   });
 
-  it("người xem không duyệt được (vd người lập phiếu tạm ứng) ⇒ nói rõ lý do, khoá cả hai nút duyệt", () => {
-    const reason = "Phiếu tạm ứng do chính bạn lập — người lập không tự duyệt được, cần một người khác có quyền chi lợi nhuận duyệt.";
+  it("người xem không duyệt được (thiếu quyền duyệt thu chi) ⇒ nói rõ lý do, khoá cả hai nút duyệt", () => {
+    const reason = "Cần thêm quyền duyệt thu chi ở toà của phiếu mới duyệt được phiếu này.";
     render(<VoucherActionDialogs actions={actions(voucher(), { isLedger: true, blocked: true, viewerReason: reason })} />);
     expect(screen.getByRole("note").textContent).toBe(`Không duyệt được: ${reason}`);
     expect(button("Chỉ duyệt").disabled).toBe(true);

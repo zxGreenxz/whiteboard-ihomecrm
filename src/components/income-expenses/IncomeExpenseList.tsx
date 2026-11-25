@@ -55,8 +55,7 @@ import {
 } from 'lucide-react';
 import type { FlexCancelEligibility } from '@/hooks/income-expenses/flexMutations';
 import type { IncomeCancelEligibility } from '@/hooks/income-expenses/incomeVoucherCancel';
-import { isReservationLeg, needsLedgerMakerKind, voucherActionAvailability } from '@/lib/voucherActionRules';
-import { useProfitLedgerMakerKinds } from '@/hooks/profit-ledger/useProfitLedgerQueries';
+import { isReservationLeg, voucherActionAvailability } from '@/lib/voucherActionRules';
 import {
   groupReversalVouchers,
   groupNetAmount,
@@ -234,14 +233,6 @@ const IncomeExpenseList = ({
     () => ({ perms, isAdmin, isSuperAdmin, isCompanyOwner, currentUserId }),
     [perms, isAdmin, isSuperAdmin, isCompanyOwner, currentUserId],
   );
-  // Phiếu chi lợi nhuận chờ duyệt do chính mình lập: đọc loại người lập (E7) — phiếu chủ lập thì tự duyệt được, phiếu
-  // tạm ứng thì không (nút Duyệt mờ kèm lý do; hộp duyệt tự đọc lại E7 trước khi cho xác nhận).
-  const makerKindIds = useMemo(
-    () => vouchers.filter((v) => needsLedgerMakerKind(v, viewer)).map((v) => v.id),
-    [vouchers, viewer],
-  );
-  const ledgerMakerKinds = useProfitLedgerMakerKinds(makerKindIds);
-
   // --- Gộp ẩn phiếu đối ứng DI SẢN vào dòng phiếu gốc (plan Đợt 5) ---
   // Trước Đợt 5 mỗi lần hoàn tác khoản thu là sinh thêm một phiếu chi riêng, nên
   // lịch sử cũ có hai dòng rời rạc cho cùng một nghiệp vụ. Phiếu đã sinh thì
@@ -338,7 +329,6 @@ const IncomeExpenseList = ({
               canReverseSettlementRefund: voucher.system_source === 'reservation.refund',
               flexEligibility: cancelEligibility?.[voucher.id],
               incomeEligibility: incomeCancelEligibility?.[voucher.id],
-              ledgerMakerKind: ledgerMakerKinds[voucher.id],
             });
             // B4: lớp phiếu — Nội bộ (bút toán) hiển thị trung tính.
             const layer = voucherLayer({

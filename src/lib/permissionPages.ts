@@ -388,7 +388,7 @@ export const PAGE_GROUPS: PageGroup[] = [
           // dòng tỷ lệ % chỉ hiện khi có quyền. Khoá tạm ứng (tên khoá giữ nguyên) từ 18/11/2026 là quyền ĐƯỢC TẠM
           // ỨNG: tự lập từ sổ mình giữ, hoặc nhận phiếu Tạm Ứng người giữ sổ khác lập ở Thu chi.
           f("shareholder_profit", "advance_own_cashbook", "Được tạm ứng lợi nhuận", "elevated", {
-            desc: "Cấp riêng từng người ở Thành viên → Ngoại lệ. Người có quyền này được tạm ứng lợi nhuận: tự lập phiếu từ sổ quỹ mình đang giữ, hoặc nhận phiếu Tạm Ứng do người giữ sổ khác lập ở Thu chi. Mọi phiếu chờ chủ duyệt; tạm ứng cộng dồn và được khấu trừ khi chủ chốt chi lợi nhuận.",
+            desc: "Cấp riêng từng người ở Thành viên → Ngoại lệ. Người có quyền này được tạm ứng lợi nhuận: tự lập phiếu từ sổ quỹ mình đang giữ, hoặc nhận phiếu Tạm Ứng do người giữ sổ khác lập ở Thu chi. Mọi phiếu chờ người có quyền duyệt. Tạm ứng cộng dồn và được khấu trừ khi chủ chốt chi lợi nhuận.",
           }),
           f("shareholder_profit", "view_percent", "Xem tỷ lệ % chia lợi nhuận", "elevated", {
             desc: "Cổ đông thấy tỷ lệ % cổ phần của chính mình ở từng toà.",
