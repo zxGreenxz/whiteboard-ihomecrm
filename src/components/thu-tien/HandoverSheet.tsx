@@ -165,7 +165,9 @@ export function HandoverSheet({ show, onClose }: Props) {
   }, () => {setUnticked(new Set());setNote('');setTab('open');}, {
     receiver: !receiverId ? 'Chọn người nhận bàn giao.' : undefined,
     vouchers: !selectedIds.length ? 'Chọn ít nhất một phiếu để bàn giao.' : net < 0 ? 'Phần chi lớn hơn phần thu. Kiểm tra lại các phiếu được chọn.' : undefined,
-  });
+  // Lập phiên tự đối chiếu ở lần bấm sau (đọc phiên của phiếu; máy chủ không cho một phiếu vào hai phiên), nên
+  // kết quả chưa rõ không khoá cả màn bàn giao.
+  }, {retryable: true});
 
   const submitConfirm = (h: CashHandover) => {
     const toId = toAccount[h.id] || defaultToAccount || receiveBooks[0]?.id || '';
