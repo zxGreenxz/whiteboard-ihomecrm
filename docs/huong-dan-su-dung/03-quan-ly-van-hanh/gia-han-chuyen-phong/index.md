@@ -83,17 +83,19 @@ Hộp thoại hiện một dòng ghi chú ngắn cho trường hợp đang chọ
 
 **Bước 11**: Tạo hợp đồng cho khách nhận ở **chính phòng đó** (nhận cọc giữ phòng rồi ký, hoặc tạo hợp đồng mới). Ở hộp tạo cọc và form **Tạo hợp đồng mới**, một băng báo màu vàng ghi phòng đang chờ khách sang nhượng. **Hợp đồng mới đầu tiên của phòng** (bắt đầu từ ngày khách cũ trả phòng trở đi) được hệ thống **tự nối** với hồ sơ trả phòng cũ — bạn không phải chọn hay nối tay.
 
+Nếu khách cũ hỗ trợ khách mới một khoản (ví dụ nhường một phần cọc), nhập ở ô **Khách cũ hỗ trợ khách mới** trong form tạo hợp đồng (chỉ hiện khi hợp đồng này sẽ tự nối). Số đó chuyển từ cọc khách cũ sang cọc hợp đồng mới: khách mới nộp ít đi, quyết toán khách cũ trả ít đi đúng số đó; không qua quỹ, không vào doanh thu. Ô ghi rõ mức tối đa (cọc cũ đã thu trừ phí môi giới, và không vượt phần cọc còn thiếu của hợp đồng mới). Cần quyền thanh lý ở toà. Không hỗ trợ thì để trống. Mở lại bản nháp hợp đồng để ký thì nhập lại số này trước khi ký: bản nháp chưa lưu ô này.
+
 **Bước 12**: Quyết toán hồ sơ cũ. Mở từ tab **Chờ quyết toán** (nút **Quyết toán**) hoặc khối **Hồ sơ trả phòng** (**Quyết toán hồ sơ này**). Chưa có hợp đồng khách nhận thì hộp báo "Chưa có hợp đồng của khách nhận phòng" và chặn quyết toán. Khi đã có, ở bước quyết toán:
 
-- **Tiền cọc hoàn trả** bị khoá bằng **cọc đã thu** của hợp đồng cũ.
+- **Tiền cọc hoàn trả** bị khoá bằng **cọc đã thu** của hợp đồng cũ, không có dòng **Cọc giữ lại theo thoả thuận** (máy chủ từ chối). Đã có số khách cũ hỗ trợ thì cọc đã thu là phần còn lại sau khi cấn, kèm dòng **Đã cấn sang …** và ghi chú quyết toán tương ứng.
 - Trường hợp nhờ sale: dòng **Phí môi giới** tự thêm vào khu **THU THÊM** và bị khoá, cấn từ cọc như các khoản thu khác. Muốn đổi số, ấn **Sửa phí**, nhập phí mới (kể cả 0 đồng, không vượt cọc đã thu) và **Lý do sửa phí** (bắt buộc).
 
 **Bước 13**: Phiếu hoa hồng (trường hợp nhờ sale có phí). Ngay sau khi quyết toán, hộp mở tiếp **Phiếu hoa hồng môi giới** điền sẵn người nhận (tên sale) và số tiền (đúng phí môi giới đã quyết toán). Chỉ lập được khi **khách nhận đã nộp đủ cọc**; chưa đủ thì ấn **Để sau (hồ sơ sẽ nhắc)** rồi lập sau bằng nút **Lập phiếu hoa hồng** ở khối **Hồ sơ trả phòng**. Phí bằng 0 đồng thì không có phiếu.
 
-**Bước 14**: Khi khách nhận huỷ, không ký nữa. Ở Sale Phòng ấn **Mở bán lại** để rao phòng ngay; hợp đồng mới tạo sau đó **không tự nối** với hồ sơ cũ. Sau đó mở hồ sơ trả phòng cũ, ấn **Đổi trường hợp** (hoặc **Đổi sang trường hợp 3**), chọn **Chủ nhà hỗ trợ thanh lý sớm** kèm **lý do**, thì mới quyết toán được.
+**Bước 14**: Khi khách nhận huỷ, không ký nữa. Ở Sale Phòng ấn **Mở bán lại** để rao phòng ngay; hợp đồng mới tạo sau đó **không tự nối** với hồ sơ cũ. Nếu đã ghi số khách cũ hỗ trợ, trước hết ấn **Đảo số hỗ trợ** ở khối **Hồ sơ trả phòng** (bắt buộc lý do; cọc hai bên về như trước) — khi còn số hỗ trợ thì không đổi trường hợp, không xoá hay huỷ hợp đồng khách nhận được. Sau đó mở hồ sơ trả phòng cũ, ấn **Đổi trường hợp** (hoặc **Đổi sang trường hợp 3**), chọn **Chủ nhà hỗ trợ thanh lý sớm** kèm **lý do**, thì mới quyết toán được.
 
-::: warning Sang nhượng không tự chuyển tiền giữa hai hợp đồng
-Hợp đồng cũ quyết toán cọc, nợ, hoàn tiền theo đúng luồng thanh lý; phí môi giới (nếu có) trừ vào cọc cũ khi quyết toán. Hợp đồng khách nhận thu cọc riêng. Không tự cấn cọc cũ sang hợp đồng mới bằng phiếu tay.
+::: warning Tiền giữa hai hợp đồng chỉ đi qua ô "Khách cũ hỗ trợ khách mới"
+Hợp đồng cũ quyết toán cọc, nợ, hoàn tiền theo đúng luồng thanh lý; phí môi giới (nếu có) trừ vào cọc cũ khi quyết toán. Hợp đồng khách nhận thu cọc riêng, trừ đúng số khách cũ hỗ trợ (hệ thống ghi một cặp phiếu chuyển cọc trên sổ nội bộ, hai bên khớp). Không tự cấn cọc cũ sang hợp đồng mới bằng phiếu tay, và không giảm tay tiền hoàn cọc khách cũ để "nhường" cho khách mới.
 :::
 
 ## Các tính năng khác trên màn hình
@@ -109,6 +111,8 @@ Hợp đồng cũ quyết toán cọc, nợ, hoàn tiền theo đúng luồng th
 | **Đổi trường hợp** / **Đổi sang trường hợp 3** | Đổi trường hợp của hồ sơ chờ quyết toán, bắt buộc ghi lý do. |
 | **Sửa phí** | Sửa phí môi giới của ca nhờ sale trước khi quyết toán, bắt buộc ghi lý do. |
 | **Lập phiếu hoa hồng** | Lập phiếu hoa hồng môi giới cho sale sau quyết toán, khi khách nhận đã nộp đủ cọc. |
+| Ô **Khách cũ hỗ trợ khách mới** (form tạo hợp đồng) | Số khách cũ hỗ trợ khách nhận, chuyển từ cọc cũ sang cọc mới; chỉ hiện khi hợp đồng sẽ tự nối. |
+| **Đảo số hỗ trợ** (khối Hồ sơ trả phòng) | Huỷ cặp phiếu chuyển cọc khi khách nhận huỷ hoặc ghi nhầm, bắt buộc lý do; chỉ khi hồ sơ cũ còn chờ quyết toán. |
 | **Mở bán lại** / **Giữ tiếp** (Sale Phòng) | Rao phòng ngay khi khách nhận huỷ / giữ phòng thêm khi khách nhận chưa kịp ký. |
 | **Lịch sử hợp đồng** (trang chi tiết) | Dòng **GIA HẠN** / **CHUYỂN PHÒNG** theo thời gian; hợp đồng có nhượng ghi theo cách cũ vẫn hiện dòng **NHƯỢNG HĐ**. |
 
@@ -129,6 +133,8 @@ Hợp đồng cũ quyết toán cọc, nợ, hoàn tiền theo đúng luồng th
 | Đã có hợp đồng khách nhận mà hồ sơ cũ vẫn báo chưa có | Hợp đồng chỉ tự nối khi là hợp đồng mới **đầu tiên** của phòng và bắt đầu từ ngày khách cũ trả phòng trở đi. Phòng đã **Mở bán lại** thì hợp đồng mới không tự nối. |
 | Hết 3 ngày giữ phòng mà chưa có hợp đồng | Phòng tự rao lại như phòng trống, hồ sơ vẫn chờ hợp đồng khách nhận. Cần giữ thêm thì ấn **Giữ tiếp** ở Sale Phòng. |
 | Không lập được phiếu hoa hồng | Khách nhận chưa nộp đủ cọc: thu đủ rồi lập lại từ khối **Hồ sơ trả phòng**. Hoặc phí môi giới đã sửa về 0 đồng nên không có phiếu. |
+| Ô **Khách cũ hỗ trợ khách mới** bị khoá hoặc báo vượt mức | Ngày bắt đầu hợp đồng phải từ ngày khách cũ trả phòng; cần quyền thanh lý ở toà; số không vượt mức tối đa ghi dưới ô. |
+| Không **Đổi trường hợp** / không xoá được hợp đồng khách nhận | Hồ sơ đang có số khách cũ hỗ trợ. Ấn **Đảo số hỗ trợ** (kèm lý do) trước. |
 
 ## Thử trực tiếp trên sandbox
 

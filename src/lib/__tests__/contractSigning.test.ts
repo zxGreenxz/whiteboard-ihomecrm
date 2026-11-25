@@ -59,6 +59,17 @@ describe('sign exact persisted draft, without automatic money',()=>{
       invoice_template_id:id,first_invoice:{items:[{description:'Kỳ đầu đã sửa',unit_price:1234567}],discount_amount:12345}});
     expect(()=>buildPreparedSigningCreation(request,Infinity)).toThrow();
   });
+  it('carries the old tenant support amount (sang nhượng phòng) into the draft signing creation options',()=>{
+    const request:ContractCreateRequest={idempotencyKey:'contract-create-support',payload:{
+      contract:{room_id:id,signed_date:'2026-09-28',start_date:'2026-09-28',end_date:'2027-09-28',rent_price:3000000,total_deposit:3000000,payment_cycle:'MONTHLY'},
+      customers:[],services:[],transfer_support_amount:1200000}};
+    const prepared=buildPreparedSigningCreation(request,1200000);
+    expect(prepared.options).toEqual({transfer_support_amount:1200000});
+    const args=buildContractSigningArgs(id,{source:{draftId:id,revision:3,documentId:id,documentSha256:'a'.repeat(64)},
+      requestId:id,receivedOn:'2026-09-28',roomReady:true,termsConfirmed:true,boundary:{state:'VERIFIED',readings:[]},creationOptions:prepared.options});
+    expect(args.p_creation_options).toEqual({transfer_support_amount:1200000});
+    expect(buildPreparedSigningCreation({...request,payload:{...request.payload,transfer_support_amount:0}},0).options).toEqual({});
+  });
   it('binds selected reservation revision and exact source IDs, rejects duplicated sources',()=>{
     const input={source:{draftId:id,revision:3,documentId:id,documentSha256:'a'.repeat(64)},requestId:id,receivedOn:'2026-09-28',roomReady:true,termsConfirmed:true,boundary:{state:'VERIFIED' as const,readings:[]},creationOptions:{},reservationSource:{reservationId:id,revision:4,sourceVoucherIds:[id]}};
     expect(buildContractSigningArgs(id,input)).toMatchObject({p_reservation_id:id,p_reservation_revision:4,p_source_voucher_ids:[id]});

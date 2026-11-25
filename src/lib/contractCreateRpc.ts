@@ -75,6 +75,8 @@ export interface ContractCreatePayload {
   services: ContractCreateServiceInput[];
   deposit_receipts?: ContractCreateDepositReceiptInput[];
   existing_deposit_voucher_ids?: string[];
+  /** Khách cũ hỗ trợ khách mới khi sang nhượng phòng: máy chủ ghi cặp phiếu chuyển cọc từ hợp đồng cũ. */
+  transfer_support_amount?: number;
   first_invoice?: ContractCreateFirstInvoiceInput | null;
 }
 
@@ -238,6 +240,14 @@ export function buildCreateContractRpcArgs(
     })),
     existing_deposit_voucher_ids: [...(payload.existing_deposit_voucher_ids ?? [])],
   };
+
+  if (payload.transfer_support_amount !== undefined && payload.transfer_support_amount !== 0) {
+    const amount = payload.transfer_support_amount;
+    if (!Number.isFinite(amount) || amount < 0 || Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) {
+      throw new Error("transfer_support_amount must be a non-negative amount with at most 2 decimals");
+    }
+    rpcPayload.transfer_support_amount = amount;
+  }
 
   if (payload.first_invoice) {
     rpcPayload.first_invoice = {

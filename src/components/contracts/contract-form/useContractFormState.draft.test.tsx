@@ -8,6 +8,8 @@ import { buildContractDraftPayload } from '@/lib/contractDraftEditor';
 import { useContractFormState } from './useContractFormState';
 
 const defaults = vi.hoisted(() => ({ rows: [] as unknown[], buildingError: false, roomError: false, serviceError: false, accountError: false, orphanError: false }));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({ useContractExitEarlyTerms: () => ({ data: [], isError: false, error: null, refetch: () => undefined }) }));
+vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true } }) }));
 vi.mock('@/hooks/useContracts', () => ({ useCreateContract: () => ({ isPending: false }),
   useUpdateContract: () => ({ isPending: false }), useSyncContractCustomers: () => ({ isPending: false }),
   useSyncContractServices: () => ({ isPending: false }) }));

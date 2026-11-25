@@ -4,9 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import type { Database } from '@/integrations/supabase/types';
 import {
-  createExitCommission, exitEarlyTermsErrorMessage, extendExitHold, readExitEarlyTerms, reopenExitHold, setExitEarlyTerms,
+  createExitCommission, exitEarlyTermsErrorMessage, extendExitHold, readExitEarlyTerms, reopenExitHold, reverseExitSupport, setExitEarlyTerms,
   updateExitBrokerFee,
-  type ContractExitEarlyTerms, type CreateExitCommissionInput, type EarlyTermsFilter, type ExitEarlyTermsInvoker, type HoldActionInput, type SetEarlyTermsInput, type UpdateBrokerFeeInput,
+  type ContractExitEarlyTerms, type CreateExitCommissionInput, type EarlyTermsFilter, type ExitEarlyTermsInvoker, type HoldActionInput, type ReverseExitSupportInput, type SetEarlyTermsInput, type UpdateBrokerFeeInput,
 } from '@/lib/contractExitEarlyTerms';
 
 type Functions = Database['public']['Functions'];
@@ -19,13 +19,14 @@ const invoke: ExitEarlyTermsInvoker = (name, args) => {
     case 'reopen_contract_exit_hold_v1': return supabase.rpc('reopen_contract_exit_hold_v1', args as Functions['reopen_contract_exit_hold_v1']['Args']);
     case 'extend_contract_exit_hold_v1': return supabase.rpc('extend_contract_exit_hold_v1', args as Functions['extend_contract_exit_hold_v1']['Args']);
     case 'create_contract_exit_commission_v1': return supabase.rpc('create_contract_exit_commission_v1', args as Functions['create_contract_exit_commission_v1']['Args']);
+    case 'reverse_contract_exit_support_v1': return supabase.rpc('reverse_contract_exit_support_v1', args as Functions['reverse_contract_exit_support_v1']['Args']);
   }
 };
 
 export const EXIT_EARLY_TERMS_KEY = 'contract-exit-early-terms';
 /** Mọi màn đọc trạng thái phòng, hồ sơ trả phòng và hoa hồng đổi theo trường hợp trả phòng trước hạn. */
 const AFFECTED_KEYS = [EXIT_EARLY_TERMS_KEY, 'contract-exit-cases', 'contract-exit-case', 'sale-room-inventory', 'my-available-rooms',
-  'phong-trong', 'room-sale-locks', 'rooms', 'contracts', 'contract', 'income-expenses', 'contract-commission-followups'];
+  'phong-trong', 'room-sale-locks', 'rooms', 'contracts', 'contract', 'income-expenses', 'contract-commission-followups', 'deposits'];
 
 function filterKey(filter: EarlyTermsFilter | null) {
   if (!filter) return null;
@@ -83,4 +84,7 @@ export function useExtendContractExitHold() {
 }
 export function useCreateContractExitCommission() {
   return useEarlyTermsMutation((input: CreateExitCommissionInput, org) => createExitCommission(invoke, input, org), 'Đã lập phiếu hoa hồng môi giới');
+}
+export function useReverseContractExitSupport() {
+  return useEarlyTermsMutation((input: ReverseExitSupportInput, org) => reverseExitSupport(invoke, input, org), 'Đã đảo số tiền khách cũ hỗ trợ khách mới');
 }

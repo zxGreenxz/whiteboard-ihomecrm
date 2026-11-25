@@ -12,6 +12,7 @@ import { TerminateDialog } from './TerminateDialog';
 import { ContractMeterBoundaryPanel } from './ContractMeterBoundaryPanel';
 import { ExitCommissionDialog } from './ExitCommissionForm';
 import { earlyTermsStatus } from './ExitEarlyTermsPanel';
+import { ExitSupportSummary } from './ExitSupportPanel';
 import { useContractExitEarlyTerms } from '@/hooks/contracts/useContractExitEarlyTerms';
 import { EARLY_REASON_LABELS, needsExitCommission } from '@/lib/contractExitEarlyTerms';
 
@@ -55,6 +56,7 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
         {earlyTerms.sale_name && <> · Sale: <strong>{earlyTerms.sale_name}</strong></>}
         {earlyTerms.early_reason === 'SALE_ASSISTED' && <> · Phí môi giới {vnd(earlyTerms.broker_fee)} đ</>}</p>}
       {earlyTerms && exitCase.state === 'PENDING' && <p className="text-muted-foreground">{earlyTermsStatus(earlyTerms)}</p>}
+      {earlyTerms && <ExitSupportSummary terms={earlyTerms} />}
       {earlyTerms?.commission_voucher_id && <p>Phiếu hoa hồng môi giới: <strong>{earlyTerms.commission_code ?? ''}</strong>
         {earlyTerms.commission_live === false && <span className="text-amber-800"> (đã huỷ — lập lại phiếu mới)</span>}</p>}
       {!earlyTerms && !earlyQuery.isLoading && !earlyQuery.isError && exitCase.state === 'PENDING' && exitCase.current_kind === 'EARLY_RETURN'

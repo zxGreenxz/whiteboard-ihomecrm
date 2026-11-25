@@ -21,12 +21,14 @@ export interface SigningCreationOptions {
   deposit_receipts?: ContractCreateDepositReceiptInput[];
   existing_deposit_voucher_ids?: string[];
   invoice_template_id?: string | null;
+  /** Khách cũ hỗ trợ khách mới (sang nhượng phòng); sign_and_checkin_contract_draft_v1 chuyển nguyên vào create_contract_v2. */
+  transfer_support_amount?: number;
 }
 export interface PreparedSigningCreation { options: SigningCreationOptions; depositPaid: number }
 /** Carry the already validated official form request into signing unchanged; no invoice rebuild. */
 export function buildPreparedSigningCreation(request: ContractCreateRequest, depositPaid: number): PreparedSigningCreation {
   const paid = z.number().finite().nonnegative().parse(depositPaid);
-  const { contract, first_invoice, deposit_receipts, existing_deposit_voucher_ids } = request.payload;
+  const { contract, first_invoice, deposit_receipts, existing_deposit_voucher_ids, transfer_support_amount } = request.payload;
   return { depositPaid: paid, options: {
     ...(contract.deposit_debt_mode ? { deposit_debt_mode: contract.deposit_debt_mode } : {}),
     ...(contract.deposit_debt_reason ? { deposit_debt_reason: contract.deposit_debt_reason } : {}),
@@ -36,6 +38,7 @@ export function buildPreparedSigningCreation(request: ContractCreateRequest, dep
       ...(receipt.attachments ? { attachments: [...receipt.attachments] } : {}) })) } : {}),
     ...(existing_deposit_voucher_ids ? { existing_deposit_voucher_ids: [...existing_deposit_voucher_ids] } : {}),
     ...(first_invoice ? { first_invoice: { ...first_invoice, items: first_invoice.items.map(item => ({ ...item })) } } : {}),
+    ...(transfer_support_amount ? { transfer_support_amount: z.number().finite().positive().parse(transfer_support_amount) } : {}),
   } };
 }
 export interface SigningCreationChoice {
@@ -137,7 +140,8 @@ export function buildContractSigningArgs(organizationId: string, input: Contract
     ...(options.deposit_receipts ? { deposit_receipts: options.deposit_receipts.map(receipt => ({ ...receipt,
       ...(receipt.attachments ? { attachments: [...receipt.attachments] } : {}) })) } : {}),
     ...(options.existing_deposit_voucher_ids ? { existing_deposit_voucher_ids: [...options.existing_deposit_voucher_ids] } : {}),
-    ...(options.invoice_template_id !== undefined ? { invoice_template_id: options.invoice_template_id } : {}) };
+    ...(options.invoice_template_id !== undefined ? { invoice_template_id: options.invoice_template_id } : {}),
+    ...(options.transfer_support_amount ? { transfer_support_amount: options.transfer_support_amount } : {}) };
   return { p_organization_id: organizationId, p_draft_id: input.source.draftId, p_expected_revision: input.source.revision,
     p_document_id: input.source.documentId, p_document_sha256: input.source.documentSha256, p_request_id: input.requestId,
     p_received_on: input.receivedOn, p_room_ready: input.roomReady, p_terms_confirmed: input.termsConfirmed,

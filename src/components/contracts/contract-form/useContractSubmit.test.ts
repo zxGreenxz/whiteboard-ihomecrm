@@ -164,6 +164,29 @@ describe("useContractSubmit", () => {
     useContractSubmit({ state, onOpenChange: vi.fn() })({ room_id: '11111111-1111-4111-8111-111111111111', signed_date: '2026-09-20', start_date: '2026-09-20', end_date: '2027-09-20', start_billing_date: '2026-09-20', end_billing_date: '2026-10-05', rent_price: 0, total_deposit: 0, payment_cycle: 'MONTHLY', rent_support: { version: 2, start_billing_month: '2026-09', payer: 'BUILDING', sale_party_id: null, deduction_policy: 'COMMISSION_ONLY', collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: 1, monthly_amount: '300000' }] } } as ContractFormData);
     expect(mutate).not.toHaveBeenCalled();
   });
+  it('khách cũ hỗ trợ khách mới: số hỗ trợ tính như cọc đã nộp, gửi ở payload; vượt trần thì chặn trước khi gửi', () => {
+    const mutate = vi.fn(), setError = vi.fn();
+    const base = { isEditMode: false, form: { setError }, selectedCustomers: [{ id: '22222222-2222-4222-8222-222222222222' }], selectedServices: [],
+      useCustomServices: false, createContract: { mutate }, typedDepositTotal: 1_000_000, approvedOrphanTotal: 0, orphanDepositVouchers: [],
+      invoiceItems: [], firstInvoiceDiscount: { amount: 0, state: 'READY', notes: null }, depositRows: [] };
+    const values = { room_id: '11111111-1111-4111-8111-111111111111', signed_date: '2026-12-01', start_date: '2026-12-01', end_date: '2027-12-01',
+      start_billing_date: '2026-12-01', end_billing_date: '2026-12-31', rent_price: 3_000_000, total_deposit: 3_000_000, payment_cycle: 'MONTHLY',
+      deposit_debt_mode: 'DEBT', deposit_debt_reason: 'Nộp sau', deposit_topup_due_date: '2026-12-10' } as ContractFormData;
+    const blocked = { ...base, exitSupport: { applied: 2_500_000, issue: 'Vượt cọc cũ đã thu sau khi trừ phí môi giới (tối đa 2.000.000 đ).' } } as unknown as ContractFormState;
+    useContractSubmit({ state: blocked, onOpenChange: vi.fn() })(values);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(setError).toHaveBeenCalledWith('transfer_support_amount', expect.objectContaining({ message: expect.stringContaining('tối đa 2.000.000') }));
+    // Đủ cọc nhờ số hỗ trợ: không còn thiếu cọc nên không gửi chế độ nợ cọc.
+    const full = { ...base, exitSupport: { applied: 2_000_000, issue: null } } as unknown as ContractFormState;
+    useContractSubmit({ state: full, onOpenChange: vi.fn() })(values);
+    const request: ContractCreateRequest = mutate.mock.calls[0][0];
+    expect(request.payload.transfer_support_amount).toBe(2_000_000);
+    expect(request.payload.contract.deposit_debt_mode).toBeNull();
+    // Không có hồ sơ sang nhượng: không gửi khoá.
+    mutate.mockClear();
+    useContractSubmit({ state: base as unknown as ContractFormState, onOpenChange: vi.fn() })(values);
+    expect(mutate.mock.calls[0][0].payload).not.toHaveProperty('transfer_support_amount');
+  });
   it.each([false, true])('carries full partial-month support through the official form request and signing payload (draft=%s)', (draft) => {
     const mutate = vi.fn(), prepared = vi.fn();
     const plan: NonNullable<ContractFormData['rent_support']> = { version: 2, start_billing_month: '2026-09', payer: 'BUILDING', sale_party_id: null,
