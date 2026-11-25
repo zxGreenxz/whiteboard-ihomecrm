@@ -27,7 +27,11 @@ const layoutsOf = (value: unknown): FloorLayoutsMap =>
 const errorMessage = (error: unknown, operation: string) =>
   error instanceof FloorLayoutSaveError ? error.message : recordWriteMessage(error, operation);
 
-export default function FloorPlanEditorTab({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
+export default function FloorPlanEditorTab({ onDirtyChange, onBusyChange }: {
+  onDirtyChange?: (dirty: boolean) => void;
+  /** Đang lưu / đang tải bản mới: trang cha khoá đổi tab để không mất câu báo xung đột hay từ chối. */
+  onBusyChange?: (busy: boolean) => void;
+} = {}) {
   const { data: buildings } = useBuildings();
   const [buildingId, setBuildingId] = useState("");
   const { data: rooms } = useRooms(buildingId || undefined);
@@ -51,6 +55,7 @@ export default function FloorPlanEditorTab({ onDirtyChange }: { onDirtyChange?: 
 
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+  useEffect(() => { onBusyChange?.(saving); return () => onBusyChange?.(false); }, [saving, onBusyChange]);
   // Đóng / tải lại trang khi còn tầng chưa lưu hoặc đang lưu: trình duyệt hỏi trước.
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {

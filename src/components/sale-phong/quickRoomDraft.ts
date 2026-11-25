@@ -65,10 +65,22 @@ export function newQuickRoomDraft(values: QuickRoomValues, revision: string): Qu
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
-/** Compare raw fields too: invalid numeric text is still an unsaved draft. */
-export function quickRoomDraftDirty(draft: QuickRoomDraft): boolean {
+/** Ô nhập khác chữ ban đầu (kể cả chỉ đổi cách viết giá): giữ nguyên chữ người dùng đang gõ trên màn hình. */
+export function quickRoomDraftTextChanged(draft: QuickRoomDraft): boolean {
   const original = newQuickRoomDraft(draft.original, draft.revision);
   return (['price', 'area', 'roomType', 'amenities', 'saleNote', 'saleBonusNote', 'description', 'images'] as const)
+    .some(key => !same(draft[key], original[key]));
+}
+
+/**
+ * Compare raw fields too: invalid numeric text is still an unsaved draft. Giá so theo giá trị đọc được:
+ * chỉ đổi cách viết ("4250000" ⇄ "4.250.000") không phải bản nháp.
+ */
+export function quickRoomDraftDirty(draft: QuickRoomDraft): boolean {
+  const original = newQuickRoomDraft(draft.original, draft.revision);
+  const price = parseCurrencyAmount(draft.price).value;
+  if (!same(draft.price, original.price) && (price == null || price !== draft.original.rentPrice)) return true;
+  return (['area', 'roomType', 'amenities', 'saleNote', 'saleBonusNote', 'description', 'images'] as const)
     .some(key => !same(draft[key], original[key]));
 }
 
@@ -79,10 +91,11 @@ export function quickRoomChanges(draft: QuickRoomDraft, permission: { edit: bool
     const original = newQuickRoomDraft(draft.original, draft.revision);
     const changed = (field: keyof QuickRoomDraft) => !same(draft[field], original[field]);
     const price = draft.price.trim();
-    const area = draft.area.trim().replace(',', '.');
-    const priceChanged = changed('price');
     // Nhận cả kiểu app tự hiển thị ("4.250.000", "4 250 000"); số lẻ, số âm, chữ vẫn bị giữ lại để sửa.
     const rentPrice = parseCurrencyAmount(price).value;
+    const area = draft.area.trim().replace(',', '.');
+    // So theo giá trị đọc được: gõ lại "4.250.000" cho giá 4250000 không phải là sửa giá.
+    const priceChanged = changed('price') && (rentPrice == null || rentPrice !== draft.original.rentPrice);
     if (priceChanged && rentPrice == null) errors.price = 'Nhập giá nguyên không âm bằng đồng, ví dụ 4.250.000; không để trống.';
     else if (priceChanged && !saleRoomPatchSchema.safeParse({ rent_price: rentPrice }).success) errors.price = 'Giá niêm yết không vượt quá 9.999.999.999.999 đồng.';
     if (changed('area') && area && (!/^\d+(?:\.\d{1,2})?$/.test(area) || !Number.isFinite(Number(area)) || Number(area) > 1_000_000)) errors.area = 'Nhập diện tích từ 0 đến 1.000.000 m², tối đa 2 số thập phân.';
@@ -159,11 +172,15 @@ export function readQuickRoomDrafts(key: string): Record<string, QuickRoomDraft>
  * đều ra phòng đó. Dấu phân cách hiển thị ("·", "-", ngoặc, dấu phẩy) chỉ là khoảng trắng.
  */
 export function roomSearchMatches(haystack: string, query: string): boolean {
-  const words = (value: string) => roomSearchKey(value).split(/[\s·•,;:()[\]/\\|–—-]+/u).filter(Boolean);
-  const needles = words(query);
+  const needles = roomSearchWords(query);
   if (!needles.length) return true;
-  const text = words(haystack).join(' ');
+  const text = roomSearchWords(haystack).join(' ');
   return needles.every(needle => text.includes(needle));
+}
+
+/** Các từ tìm kiếm sau khi bỏ dấu và dấu phân cách hiển thị; mảng rỗng = ô tìm không có chữ. */
+export function roomSearchWords(value: string): string[] {
+  return roomSearchKey(value).split(/[\s·•,;:()[\]/\\|–—-]+/u).filter(Boolean);
 }
 
 export function roomSearchKey(value: string): string {

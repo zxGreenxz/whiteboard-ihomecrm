@@ -43,6 +43,8 @@ vi.mock('@/pages/phong-trong/LockRoomModal', () => ({ LockRoomModal: ({ action, 
 }) => <div role="dialog" aria-label={`${action.mode} ${action.room.id}`}><p>{blockedReason}</p><button disabled={!!blockedReason} onClick={() => onDone('Đã cập nhật lock')}>Xác nhận lock thử</button></div> }));
 vi.mock('@/pages/phong-trong/QuickDepositModal', () => ({ QuickDepositModal: ({ room, blockedReason }: { room: Room; blockedReason?: string }) =>
   <div role="dialog" aria-label={`Cọc ${room.id}`}><p>{blockedReason}</p><button disabled={!!blockedReason}>Lưu cọc thử</button></div> }));
+vi.mock('../SaleRoomBatchPanel', () => ({ default: ({ initialRoomIds }: { initialRoomIds: string[] }) =>
+  <div role="dialog" aria-label="Lô thử">{initialRoomIds.join(',')}</div> }));
 vi.mock('@/components/rooms/RoomTurnoverPanel', () => ({ RoomTurnoverPanel: ({ roomId, canEdit, onSaved }: {
   roomId: string; canEdit: boolean; onSaved: () => void;
 }) => <section aria-label={`Dọn sửa ${roomId}`}><button disabled={!canEdit} onClick={onSaved}>Lưu dọn sửa thử</button></section> }));
@@ -618,7 +620,7 @@ it('D5-17 — điện thoại mở sẵn phòng còn chào được, tòa + tìn
   expect(screen.getByText('2/3 phòng')).toBeTruthy();
   const toggle = screen.getByRole('button', { name: /^Bộ lọc:/ });
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
-  expect(toggle.textContent).toContain('Trống / sắp trống (trừ đã thuê) · Tất cả tòa');
+  expect(toggle.textContent).toContain('Còn chào được · Tất cả tòa');
   expect(screen.queryByLabelText('Tình trạng')).toBeNull();
   expect(screen.getByLabelText('Tìm tòa hoặc phòng')).toBeTruthy();
   fireEvent.click(toggle);
@@ -644,4 +646,60 @@ it('D5-20 — nút Chi tiết có tên đọc chứa đúng chữ hiển thị; 
   expect(detail.textContent).toBe('Chi tiết');
   expect([...(screen.getByLabelText('Tòa nhà') as HTMLSelectElement).options].map(option => option.textContent))
     .toEqual(['Tất cả tòa được giao', '45TTT', '102LVT']);
+});
+
+it('D5-17b — điện thoại: gõ tìm khi bộ lọc còn mặc định thì tìm trên mọi phòng để báo sắp trống phòng đang có khách', () => {
+  state.query.data!.rooms = [room(), room('room-b', 'building-b', 'rented')];
+  render(<QuickRoomBoard mobile />);
+  expect(screen.queryByText('Tòa Bình Minh · 101')).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('Đang ẩn 1 phòng đã thuê / giữ chỗ — đổi bộ lọc để xem.');
+  fireEvent.change(screen.getByLabelText('Tìm tòa hoặc phòng'), { target: { value: 'binh minh 101' } });
+  const row = rowOf('Tòa Bình Minh · 101', true);
+  expect(within(row).getByRole('button', { name: 'Báo sắp trống' })).toBeTruthy();
+  expect(within(row).getByRole('button', { name: 'Báo pass' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Bộ lọc:/ }).textContent).toContain('Mọi tình trạng (đang tìm)');
+  expect(screen.getByText(/tìm trên mọi tình trạng/)).toBeTruthy();
+  expect(screen.queryByText(/Đang ẩn/)).toBeNull();
+  // Người dùng tự chọn một tình trạng khác thì từ khoá chỉ lọc trong tình trạng đó.
+  openFilters(true);
+  fireEvent.change(screen.getByLabelText('Tình trạng'), { target: { value: 'free' } });
+  expect(screen.queryByText('Tòa Bình Minh · 101')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Tìm tòa hoặc phòng'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('Tình trạng'), { target: { value: 'open' } });
+  expect(screen.queryByText('Tòa Bình Minh · 101')).toBeNull();
+});
+
+it('D5-17c — bộ lọc mặc định ẩn hết phòng: câu báo rỗng nói rõ số phòng đang ẩn và cho hiện lại', () => {
+  state.query.data!.rooms = [room('room-b', 'building-b', 'rented')];
+  render(<QuickRoomBoard mobile />);
+  const empty = screen.getByText(/Không có phòng khớp bộ lọc/);
+  expect(empty.textContent).toContain('Đang ẩn 1 phòng đã thuê / giữ chỗ — đổi bộ lọc để xem.');
+  fireEvent.click(within(empty).getByRole('button', { name: 'Hiện cả phòng đã thuê' }));
+  expect(screen.getByText('Tòa Bình Minh · 101')).toBeTruthy();
+  expect(screen.queryByText(/Đang ẩn/)).toBeNull();
+  expect(screen.getByRole('button', { name: /^Bộ lọc:/ }).textContent).toContain('Mọi tình trạng · Tất cả tòa');
+});
+
+it('D5-17d — «Cập nhật nhiều phòng» theo đúng phòng đang thấy; phòng bị bộ lọc ẩn thì nói rõ không nằm trong lô', async () => {
+  state.query.data!.rooms = [room(), room('room-b', 'building-b', 'rented')];
+  const view = render(<QuickRoomBoard mobile />);
+  fireEvent.click(screen.getByRole('button', { name: 'Cập nhật nhiều phòng / chính sách' }));
+  expect((await screen.findByRole('dialog', { name: 'Lô thử' })).textContent).toBe('room-a');
+  expect(screen.getByRole('note').textContent).toMatch(/1 phòng đã thuê \/ giữ chỗ đang ẩn .* không nằm trong lô/);
+  view.unmount(); cleanup();
+  render(<QuickRoomBoard mobile />);
+  fireEvent.change(screen.getByLabelText('Tìm tòa hoặc phòng'), { target: { value: '101' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cập nhật nhiều phòng / chính sách' }));
+  expect((await screen.findByRole('dialog', { name: 'Lô thử' })).textContent).toBe('room-a,room-b');
+  expect(screen.queryByRole('note')).toBeNull();
+});
+
+it('D5-15 — chỉ đổi cách viết giá (4250000 ⇄ 4.250.000) không thành bản nháp, không ghi', () => {
+  const view = render(<QuickRoomBoard />); openFirst(); changePrice('3.000.000');
+  expect(screen.getByRole('button', { name: 'Lưu thay đổi' })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: 'Đóng' })).toBeTruthy();
+  changePrice('3.100.000');
+  expect(screen.getByRole('button', { name: 'Lưu thay đổi' })).toHaveProperty('disabled', false);
+  view.unmount();
+  expect(state.save).not.toHaveBeenCalled();
 });

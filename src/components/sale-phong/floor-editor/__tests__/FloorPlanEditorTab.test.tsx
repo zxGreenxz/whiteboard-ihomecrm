@@ -13,6 +13,7 @@ const db = vi.hoisted(() => ({
   rows: {} as Record<string, ServerRow>,
   clock: 0,
   denyUpdates: false,
+  hold: null as null | Promise<void>,
   calls: [] as Array<{ op: 'select' | 'update'; filters: Filter[]; payload?: { floor_layouts: FloorLayoutsMap } }>,
   buildings: [] as Array<{ id: string; name: string; code: string | null; floor_layouts: FloorLayoutsMap | null }>,
   rooms: {} as Record<string, Array<{ id: string; name: string; code: string; floor: number; area: number; status: string }>>,
@@ -32,6 +33,7 @@ vi.mock('@/integrations/supabase/client', () => ({
         is: (column: string, value: unknown) => { call.filters.push(['is', column, value]); return builder; },
         maybeSingle: async () => {
           db.calls.push(structuredClone(call));
+          if (call.op === 'update' && db.hold) await db.hold;
           const id = call.filters.find(([, column]) => column === 'id')?.[2] as string;
           const row = db.rows[id];
           if (!matches(row) || (call.op === 'update' && db.denyUpdates)) return { data: null, error: null };
@@ -78,7 +80,7 @@ const otherUserSaves = (id: string, floorLayouts: FloorLayoutsMap) => {
 const updates = () => db.calls.filter(call => call.op === 'update');
 
 let client: QueryClient;
-const renderTab = (props: { onDirtyChange?: (dirty: boolean) => void } = {}) =>
+const renderTab = (props: { onDirtyChange?: (dirty: boolean) => void; onBusyChange?: (busy: boolean) => void } = {}) =>
   render(<QueryClientProvider client={client}><FloorPlanEditorTab {...props} /></QueryClientProvider>);
 const pickBuilding = (id: string) => fireEvent.change(screen.getByLabelText('Chọn toà nhà'), { target: { value: id } });
 const pickFloor = (floor: string) => fireEvent.change(screen.getByLabelText('Chọn tầng'), { target: { value: floor } });
@@ -86,7 +88,7 @@ const saveButton = () => screen.getByRole('button', { name: /Lưu sơ đồ|Đan
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  db.clock = 0; db.calls = []; db.denyUpdates = false;
+  db.clock = 0; db.calls = []; db.denyUpdates = false; db.hold = null;
   db.toast.success.mockReset(); db.toast.error.mockReset();
   // Mở toà lúc máy chủ có tầng 2; tầng 1 chưa có sơ đồ (editor tự xếp tạm).
   db.buildings = [
@@ -195,6 +197,21 @@ it('tài khoản không được sửa toà: báo thiếu quyền, không báo n
   expect((await screen.findByRole('alert')).textContent).toMatch(/chưa được sửa toà nhà này/);
   expect(screen.queryByRole('button', { name: 'Tải bản mới nhất' })).toBeNull();
   expect(screen.getByText('Chưa lưu: tầng 2')).toBeTruthy();
+});
+
+it('đang lưu thì báo trang cha là bận (khoá đổi tab), lưu xong thì nhả', async () => {
+  const onBusyChange = vi.fn();
+  renderTab({ onBusyChange }); pickBuilding('b-102');
+  expect(onBusyChange).toHaveBeenLastCalledWith(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Kéo r-201 (x=10)' }));
+  let release = () => {};
+  db.hold = new Promise<void>(resolve => { release = resolve; });
+  fireEvent.click(saveButton());
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true));
+  expect(saveButton().textContent).toContain('Đang lưu');
+  release();
+  await waitFor(() => expect(db.toast.success).toHaveBeenCalled());
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
 });
 
 it('danh sách toà xếp theo tên tự nhiên', () => {

@@ -17,7 +17,9 @@ vi.mock('@/components/sale-phong/SaleImagesTab', () => ({
     <button type="button" onClick={() => onDirtyChange?.(true)}>Sửa thông tin sale thử</button>,
 }));
 vi.mock('@/components/sale-phong/floor-editor/FloorPlanEditorTab', () => ({
-  default: ({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) => <div>
+  default: ({ onDirtyChange, onBusyChange }: { onDirtyChange?: (dirty: boolean) => void; onBusyChange?: (busy: boolean) => void }) => <div>
+    <button type="button" onClick={() => onBusyChange?.(true)}>Đang lưu sơ đồ thử</button>
+    <button type="button" onClick={() => onBusyChange?.(false)}>Lưu xong sơ đồ thử</button>
     <button type="button" onClick={() => onDirtyChange?.(true)}>Kéo phòng thử</button>
     <button type="button" onClick={() => onDirtyChange?.(false)}>Lưu sơ đồ thử</button>
   </div>,
@@ -72,4 +74,17 @@ it('đã lưu xong sơ đồ thì đổi tab không hỏi', () => {
   openTab('Cập nhật phòng');
   expect(window.confirm).not.toHaveBeenCalled();
   expect(screen.getByText('Nội dung cập nhật phòng')).toBeTruthy();
+});
+
+it('sơ đồ đang lưu thì khoá đổi tab (không mất câu báo xung đột/từ chối), lưu xong mở lại', () => {
+  render(<SalePhongPage />);
+  openTab('Sơ đồ tòa nhà');
+  fireEvent.click(screen.getByRole('button', { name: 'Đang lưu sơ đồ thử' }));
+  expect(screen.getByRole('tab', { name: 'Thống kê' })).toHaveProperty('disabled', true);
+  openTab('Thống kê');
+  expect(screen.queryByText('Nội dung thống kê')).toBeNull();
+  expect(window.confirm).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu xong sơ đồ thử' }));
+  openTab('Thống kê');
+  expect(screen.getByText('Nội dung thống kê')).toBeTruthy();
 });

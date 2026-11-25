@@ -28,15 +28,16 @@ import { ExitHoldDialog, type ExitHoldAction } from './ExitHoldDialog';
 import { EXIT_HOLD_STATUS_LABEL, exitHoldActionBlockedReason, exitHoldLines, isExitHeld } from '@/pages/phong-trong/exitHold';
 import { salePolicyTimeLabel } from '@/lib/saleRoomPolicyTypes';
 import {
-  newQuickRoomDraft, quickRoomChanges, quickRoomDraftDirty, quickRoomPriceWarning, readQuickRoomDrafts, roomSearchMatches,
+  newQuickRoomDraft, quickRoomChanges, quickRoomDraftDirty, quickRoomDraftTextChanged, quickRoomPriceWarning, readQuickRoomDrafts, roomSearchMatches, roomSearchWords,
   type QuickRoomDraft,
 } from './quickRoomDraft';
 
 type StatusFilter = 'all' | 'open' | Room['status'] | 'preparing' | 'exit-hold' | 'missing-images' | 'draft';
 const SaleRoomBatchPanel = lazy(() => import('./SaleRoomBatchPanel'));
 const EMPTY_ROOMS: SaleRoomInventoryRow[] = [];
-const FILTERS: Array<{ value: StatusFilter; label: string }> = [
-  { value: 'all', label: 'Mọi tình trạng' }, { value: 'open', label: 'Trống / sắp trống (trừ đã thuê)' }, { value: 'free', label: 'Trống sẵn' },
+const FILTERS: Array<{ value: StatusFilter; label: string; short?: string }> = [
+  { value: 'all', label: 'Mọi tình trạng' },
+  { value: 'open', label: 'Còn chào được (trống, sắp trống, lock, pass, chờ sang nhượng)', short: 'Còn chào được' }, { value: 'free', label: 'Trống sẵn' },
   { value: 'soon', label: 'Sắp trống / cần xác nhận' }, { value: 'preparing', label: 'Đang chuẩn bị' },
   { value: 'locked', label: 'Đang lock' }, { value: 'pass', label: 'Khách pass' },
   { value: 'rented', label: 'Đã thuê / giữ chỗ' }, { value: 'exit-hold', label: 'Chờ khách sang nhượng' },
@@ -52,7 +53,7 @@ const depositableStatus = (room: Room) => ['free', 'soon', 'locked'].includes(ro
  * (máy chủ che tình trạng thật) và phòng giữ cho khách sang nhượng (khách cũ đã trả) không có ai để báo.
  */
 const occupiedStatus = (room: Room) => ['rented', 'soon', 'pass'].includes(room.status) && !isExitHeld(room);
-/** Bộ lọc mặc định trên điện thoại: bỏ phòng đã thuê / giữ chỗ, giữ phòng còn chào được (kể cả lock, pass, giữ sang nhượng). */
+/** Bộ lọc «Còn chào được» (mặc định trên điện thoại): mọi phòng trừ đã thuê / giữ chỗ; vẫn giữ lock, pass, chờ sang nhượng. */
 const openForSale = (room: Room) => room.status !== 'rented' || isExitHeld(room);
 const money = (value: number | null) => value == null ? 'Chưa khai giá' : `${value.toLocaleString('vi-VN')} đ`;
 const timeLabel = (value: string | null | undefined) => {
@@ -112,7 +113,10 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const blocked = inventory.isError || !inventory.data || busy || turnoverEditing || batchOpen;
   const selected = rows.find(row => row.room.id === selectedId);
   const savedDraft = selectedId ? drafts[selectedId] : undefined;
-  const draft = selected ? (savedDraft && (quickRoomDraftDirty(savedDraft) || savedDraft.request?.unknown)
+  // Giữ chữ đang gõ kể cả khi chỉ đổi cách viết giá (không phải bản nháp): ô nhập không tự nhảy về chữ cũ.
+  // Chữ chỉ đổi cách viết mà máy chủ đã có bản mới thì lấy bản mới, không báo "đối chiếu" cho thứ chưa sửa.
+  const draft = selected ? (savedDraft && (quickRoomDraftDirty(savedDraft) || savedDraft.request?.unknown
+    || (quickRoomDraftTextChanged(savedDraft) && savedDraft.revision === selected.revision))
     ? savedDraft : newQuickRoomDraft(selected, selected.revision)) : undefined;
   const dirty = !!draft && quickRoomDraftDirty(draft);
   const priceWarning = draft ? quickRoomPriceWarning(draft.price) : null;
@@ -142,10 +146,15 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
 
   const buildings = useMemo(() => [...new Map(rows.map(row => [row.buildingId, row.buildingName])).entries()]
     .sort((left, right) => compareBuildingNames(left[1], right[1])), [rows]);
+  // Đang tìm mà bộ lọc còn ở mặc định «Còn chào được» của điện thoại: tìm trên mọi phòng, vì Báo sắp trống /
+  // Báo pass chỉ có ở phòng đang có khách — gõ «101» để báo trả mà không thấy phòng là chặn mất việc.
+  const searchAll = mobile && status === 'open' && roomSearchWords(search).length > 0;
+  const effectiveStatus: StatusFilter = searchAll ? 'all' : status;
   const visible = useMemo(() => {
     return rows.filter(row => {
       if (buildingId && row.buildingId !== buildingId) return false;
       if (!roomSearchMatches(`${row.buildingName} ${row.name} ${row.code ?? ''}`, search)) return false;
+      const status = effectiveStatus;
       if (status === 'missing-images') return roomPhotoCount(row.images) === 0;
       if (status === 'draft') return !!drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]);
       if (status === 'preparing') return row.room.saleFact?.kind === 'preparing';
@@ -154,7 +163,11 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
       if (status === 'free') return row.room.status === 'free' && row.room.saleFact?.kind !== 'preparing';
       return status === 'all' || row.room.status === status;
     });
-  }, [rows, search, buildingId, status, drafts]);
+  }, [rows, search, buildingId, effectiveStatus, drafts]);
+  // Phòng đúng tòa + từ khoá nhưng đang bị bộ lọc «Còn chào được» ẩn: nói rõ số lượng, không để người dùng tưởng không có.
+  const hiddenRented = useMemo(() => effectiveStatus !== 'open' ? 0 : rows.filter(row => (!buildingId || row.buildingId === buildingId)
+    && roomSearchMatches(`${row.buildingName} ${row.name} ${row.code ?? ''}`, search) && !openForSale(row.room)).length, [rows, search, buildingId, effectiveStatus]);
+  const [batchHidden, setBatchHidden] = useState(0);
 
   const openRoom = (id: string) => {
     if (busy || turnoverEditing) return;
@@ -286,14 +299,16 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const statusField = <div className="space-y-1"><Label htmlFor="quick-status">Tình trạng</Label><select id="quick-status" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={status} onChange={event => setStatus(event.target.value as StatusFilter)}>
     {FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
   </select></div>;
-  const filterSummary = `${FILTERS.find(filter => filter.value === status)?.label ?? 'Mọi tình trạng'} · ${buildings.find(([id]) => id === buildingId)?.[1] ?? 'Tất cả tòa'}`;
+  const statusFilter = FILTERS.find(filter => filter.value === status);
+  const filterSummary = `${searchAll ? 'Mọi tình trạng (đang tìm)' : statusFilter?.short ?? statusFilter?.label ?? 'Mọi tình trạng'} · ${buildings.find(([id]) => id === buildingId)?.[1] ?? 'Tất cả tòa'}`;
+  const hiddenNote = hiddenRented > 0 && <span>Đang ẩn {hiddenRented} phòng đã thuê / giữ chỗ — đổi bộ lọc để xem. <button type="button" className="font-medium text-primary underline" onClick={() => setStatus('all')}>Hiện cả phòng đã thuê</button></span>;
 
   return <section className="space-y-4" aria-label="Bảng cập nhật phòng">
     <div className="flex flex-wrap items-start justify-between gap-3">
       {/* Điện thoại: tiêu đề màn đã nói "Cập nhật nhanh từng phòng"; giữ tiêu đề cho trình đọc, hai nút sát trái. */}
       {mobile ? <h2 className="sr-only">Bảng cập nhật phòng</h2> : <div><h2 className="text-lg font-semibold">Bảng cập nhật phòng</h2>
         <p className="text-sm text-muted-foreground">Tìm phòng, sửa thông tin và xử lý ngay trong phạm vi được giao.</p></div>}
-      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={blocked || !!selectedId} onClick={() => { setBatchRoomIds(visible.map(row => row.room.id)); setBatchOpen(true); }}>Cập nhật nhiều phòng / chính sách</Button>
+      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={blocked || !!selectedId} onClick={() => { setBatchRoomIds(visible.map(row => row.room.id)); setBatchHidden(hiddenRented); setBatchOpen(true); }}>Cập nhật nhiều phòng / chính sách</Button>
       <Button size="sm" variant="outline" disabled={inventory.isFetching || busy} onClick={() => void inventory.refetch()}
         aria-label={mobile ? 'Tải lại' : undefined} title={mobile ? 'Tải lại' : undefined}>
         {/* Điện thoại chỉ để biểu tượng cho hai nút nằm một hàng, thẻ phòng đầu tiên lên cao hơn. */}
@@ -313,6 +328,9 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
     </div> : <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-3">
       {searchField}{buildingField}{statusField}
     </div>}
+    {batchOpen && batchHidden > 0 && <p role="note" className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm text-amber-900">
+      Lô chỉ gồm các phòng đang hiện trong danh sách. {batchHidden} phòng đã thuê / giữ chỗ đang ẩn theo bộ lọc «Còn chào được» không nằm trong lô; muốn sửa cả các phòng đó thì đóng lô, chọn «Mọi tình trạng» rồi mở lại.
+    </p>}
     {batchOpen && <Suspense fallback={<LoadingState label="cập nhật nhiều phòng" />}><SaleRoomBatchPanel
       rows={rows} initialRoomIds={batchRoomIds} organizationId={organizationId} actorId={actorId}
       blocked={inventory.isError || !inventory.data} onBusyChange={setBatchBusy}
@@ -324,10 +342,11 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
     {inventory.isError && <p role="alert" className="rounded-lg border border-destructive/40 p-3 text-sm text-destructive">Chưa tải được tình trạng phòng mới nhất. Thao tác ghi tạm khóa; bấm Tải lại để tiếp tục.</p>}
     {inventory.isLoading ? <LoadingState label="danh sách phòng trong phạm vi" variant="table" rows={6} /> : <>
       <div className="flex flex-wrap justify-between gap-1 text-xs text-muted-foreground">
-        <span>{visible.length}/{rows.length} phòng{draftCount ? ` · ${draftCount} bản nháp của bạn` : ''}</span>
+        <span>{visible.length}/{rows.length} phòng{draftCount ? ` · ${draftCount} bản nháp của bạn` : ''}{searchAll ? ' · tìm trên mọi tình trạng' : ''}</span>
         <span>Đọc thành công: {inventory.dataUpdatedAt ? timeLabel(new Date(inventory.dataUpdatedAt).toISOString()) : 'Chưa xác nhận'}</span>
       </div>
-      {!visible.length ? <p className="rounded-lg border p-8 text-center text-sm text-muted-foreground">{rows.length ? 'Không có phòng khớp bộ lọc. Thử đổi tòa, tình trạng hoặc từ khóa.' : inventory.isError ? 'Chưa có dữ liệu phòng để hiển thị.' : 'Chưa có phòng trong phạm vi được giao.'}</p>
+      {hiddenNote && visible.length > 0 && <p role="status" className="text-xs text-muted-foreground">{hiddenNote}</p>}
+      {!visible.length ? <p className="rounded-lg border p-8 text-center text-sm text-muted-foreground">{rows.length ? <>Không có phòng khớp bộ lọc. Thử đổi tòa, tình trạng hoặc từ khóa.{hiddenNote && <><br />{hiddenNote}</>}</> : inventory.isError ? 'Chưa có dữ liệu phòng để hiển thị.' : 'Chưa có phòng trong phạm vi được giao.'}</p>
         : mobile ? <div className="space-y-3">{visible.map(row => <article key={row.room.id} className="space-y-3 rounded-xl border bg-card p-4">
           <div className="flex items-start justify-between gap-2"><div><h3 className="font-semibold">{rowLabel(row)}</h3><p className="mt-1 text-sm text-muted-foreground">{statusLabel(row.room)}</p></div>
             {drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]) && <Badge variant="secondary">Có nháp</Badge>}</div>

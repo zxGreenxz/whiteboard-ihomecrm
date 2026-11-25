@@ -30,9 +30,10 @@ Màn **Sale Phòng** là nơi bạn vận hành trang phòng trống công khai 
 Tab **Cập nhật phòng** liệt kê mọi phòng trong phạm vi được giao để sửa nhanh:
 
 - Ô **Tìm tòa hoặc phòng** tìm theo từng từ, không cần đúng thứ tự: gõ `111PVC · 101` (chép từ nhãn phòng) hay `101 111pvc` đều ra cùng phòng; không cần gõ dấu.
-- Ô **Giá niêm yết** nhận cả kiểu có dấu chấm như `4.250.000`. Giá 0 đ, dưới 500.000 đ hoặc trên 100.000.000 đ/tháng hiện dòng cảnh báo màu cam để bạn kiểm lại số 0 — vẫn lưu được nếu đúng ý.
+- Ô **Giá niêm yết** nhận cả kiểu có dấu chấm như `4.250.000`; chỉ đổi cách viết (`4250000` thành `4.250.000`) không tính là sửa giá. Giá 0 đ, dưới 500.000 đ hoặc trên 100.000.000 đ/tháng hiện dòng cảnh báo màu cam để bạn kiểm lại số 0 — vẫn lưu được nếu đúng ý.
 - Nút **Báo pass** và **Báo sắp trống** chỉ hiện ở phòng đang có khách (đã thuê, sắp trống, khách pass). Phòng trống, phòng đang **Lock tạm** và phòng đang giữ cho khách sang nhượng không có các nút này.
-- Trên điện thoại, danh sách mở sẵn bộ lọc **Trống / sắp trống (trừ đã thuê)**; ô tìm nằm trên cùng, chọn toà và tình trạng khác ở nút **Bộ lọc** (chạm để mở/thu gọn).
+- Trên điện thoại, danh sách mở sẵn bộ lọc **Còn chào được** (mọi phòng trừ phòng đã thuê / giữ chỗ — vẫn gồm phòng đang lock, khách pass, chờ khách sang nhượng). Dòng **Đang ẩn N phòng đã thuê / giữ chỗ** cho biết số phòng bị ẩn, bấm **Hiện cả phòng đã thuê** để xem. Ô tìm nằm trên cùng; gõ tên phòng thì tìm trên mọi tình trạng (ví dụ gõ `101` để **Báo sắp trống** phòng đang có khách). Chọn toà và tình trạng khác ở nút **Bộ lọc** (chạm để mở/thu gọn).
+- **Cập nhật nhiều phòng / chính sách** lấy đúng các phòng đang hiện trong danh sách; nếu bộ lọc đang ẩn phòng đã thuê, khung lô ghi rõ số phòng không nằm trong lô.
 
 ![Màn Sale Phòng, tab Link chia sẻ: DEMO chưa có link nào, nút Tạo link mới ở góc phải](./images/buoc-01-man-hinh.webp)
 

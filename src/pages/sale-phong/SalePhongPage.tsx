@@ -118,7 +118,7 @@ function SalePhongDesktopPage() {
           <TabsContent value="settings" className="mt-4"><DisplaySettingsTab onBusyChange={setTabBusy} /></TabsContent>
           <TabsContent value="images" className="mt-4"><SaleImagesTab onBusyChange={setTabBusy} onDirtyChange={setTabDirty} /></TabsContent>
           <TabsContent value="pass" className="mt-4"><PassListingsTab /></TabsContent>
-          <TabsContent value="floorplan" className="mt-4"><FloorPlanEditorTab onDirtyChange={setTabDirty} /></TabsContent>
+          <TabsContent value="floorplan" className="mt-4"><FloorPlanEditorTab onDirtyChange={setTabDirty} onBusyChange={setTabBusy} /></TabsContent>
           <TabsContent value="analytics" className="mt-4"><AnalyticsTab /></TabsContent>
         </Tabs>
       </div>

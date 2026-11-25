@@ -88,9 +88,16 @@ it.each([
   expect(quickRoomChanges(draft, perms)).toEqual({ patch: { rent_price: saved }, errors: {} });
 });
 
-it('re-typing the current price with separators is not a write', () => {
-  const draft = newQuickRoomDraft(values, 'a'.repeat(32)); draft.price = '3.000.000';
-  expect(quickRoomChanges(draft, perms)).toEqual({ patch: {}, errors: {} });
+it('re-typing the current price with separators is not a write and not a draft', () => {
+  const draft = newQuickRoomDraft(values, 'a'.repeat(32));
+  for (const typed of ['3.000.000', '3 000 000', ' 3000000 ']) {
+    draft.price = typed;
+    expect(quickRoomChanges(draft, perms)).toEqual({ patch: {}, errors: {} });
+    expect(quickRoomDraftDirty(draft)).toBe(false);
+  }
+  draft.price = '3.000.001';
+  expect(quickRoomDraftDirty(draft)).toBe(true);
+  expect(quickRoomChanges(draft, perms).patch).toEqual({ rent_price: 3_000_001 });
 });
 
 it.each([
