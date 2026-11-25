@@ -183,7 +183,7 @@ function TaskCard({ task, tone, actions }: {
             {task.dueDate ? "Sửa kỳ hạn" : "Đặt kỳ hạn"}
           </Button>
         )}
-        {isHold && actions.canCreateContract && task.roomId && (
+        {isHold && task.kind!=="RECONCILE" && actions.canCreateContract && task.roomId && (
           <Button size="sm" onClick={() => actions.onCreateContract(task)}>
             Tạo hợp đồng
           </Button>

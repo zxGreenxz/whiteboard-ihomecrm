@@ -220,6 +220,7 @@ export interface PreparedIncomeExpenseCreate {
 export interface ImportIncomeExpenseRow extends ExcelImportRow {
   /** Actual Excel row position, including header and rejected rows. */
   source_row?: number;
+  room_id?: string;
   building_id: string;
   income_expense_type_id: string;
 }

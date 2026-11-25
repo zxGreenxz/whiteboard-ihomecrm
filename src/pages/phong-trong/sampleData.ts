@@ -56,6 +56,7 @@ export interface Room extends Box {
   amenities: string[];
   availDate: string | null;
   saleFact?: RoomSaleFact;
+  hasDepositHold?: boolean;
   imgCount: number;
   phClass: string;
   images?: string[];   // ảnh thật từ Supabase; rỗng -> chưa có ảnh

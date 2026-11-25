@@ -1,3 +1,4 @@
+import {recordDepositIncome} from '@/lib/depositIncomeRpc';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -71,7 +72,7 @@ export async function prepareIncomeExpenseCreate(input: CreateIncomeExpenseInput
 const errorCode = (error: unknown) => String((error as { code?: unknown } | null)?.code ?? "");
 
 // Tạo phiếu thu/chi mới (phiếu + items)
-export const useCreateIncomeExpense = () => {
+export const useCreateIncomeExpense = (selectedOrganizationId?:string|null) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -80,6 +81,27 @@ export const useCreateIncomeExpense = () => {
 
       if (!user) throw new Error("User not authenticated");
 
+      let deposit=input.deposit_terms!==undefined;
+      if(!deposit && selectedOrganizationId && input.type==='INCOME' && input.room_id){
+        const classify=input.prepared?.accountingClassFor??await loadIncomeExpenseAccountingClassResolver(input.items.map(item=>item.income_expense_type_id));
+        deposit=input.items.some(item=>classify(item.income_expense_type_id)==='DEPOSIT');
+      }
+      if(input.type==='INCOME' && deposit){
+        if(!selectedOrganizationId)throw new Error('Chọn tổ chức để nhận tiền cọc.');
+        const cycle=input.repeat_cycle??'NONE';
+        return recordDepositIncome(selectedOrganizationId,input.idempotency_key??crypto.randomUUID(),{
+          ...(input.voucher_id?{id:input.voucher_id}:{}),type:input.type,name:input.name,
+          room_id:input.room_id??null,building_id:input.building_id,contract_id:input.contract_id??null,
+          payer_name:input.payer_name??null,tenant_id:input.tenant_id??null,account_id:input.account_id??null,
+          receive_bank_account:input.receive_bank_account??null,receive_bank_name:input.receive_bank_name??null,
+          business_result_accounting:input.business_result_accounting??null,attachments:input.attachments??[],
+          voucher_date:input.voucher_date,repeat_cycle:cycle,repeat_count:input.repeat_count??0,
+          repeat_infinity:!!input.repeat_infinity,repeat_auto_approve:input.repeat_auto_approve!==false,
+          repeat_remaining:input.repeat_infinity?0:input.repeat_count??0,
+          repeat_next_date:cycle==='NONE'?null:addCycle(input.voucher_date,cycle,1),
+        },input.items.map(i=>({income_expense_type_id:i.income_expense_type_id,quantity:i.quantity,unit_price:i.unit_price,
+          description:i.description??null,start_date:i.start_date??null,end_date:i.end_date??null})),{channel:'finance',...input.deposit_terms});
+      }
       // Canonical trước (phiếu thường, non-recurring): writer server-side tự
       // authorize + claim + audit hash-chain. KHÔNG còn raw-INSERT fallback
       // (Stage-7 drain): tín hiệu hợp lệ (chưa deploy / chưa bật / lớp phiếu
@@ -218,6 +240,9 @@ export const useCreateIncomeExpense = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      for (const key of ['deposit-income-hold','room-reservations','orphan-deposit-vouchers','reservation-deposits','reservation-hold-deadlines','rooms','sale-room-inventory','phong-trong']) {
+        void queryClient.invalidateQueries({queryKey:[key]});
+      }
       const feedback = createdVoucherFeedback(data);
       toast[feedback.kind](feedback.message);
     },

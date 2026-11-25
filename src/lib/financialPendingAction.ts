@@ -6,6 +6,7 @@ import {pendingBlockMessage,pendingValve,type PendingValve} from './pendingValve
 export interface FinancialPendingRunOptions<T> {
   /** Tên thao tác lưu vào dấu, để câu báo gọi đúng việc đang kẹt. Không chứa tên khách hay số tiền. */
   operation?:string;
+  requestKey?:string;
   meta?:FinancialPendingMeta;
   /** Đọc trạng thái thật trên máy chủ rồi kết luận về lần gửi trước. Không truyền thì dấu cũ chỉ gỡ được qua hộp cảnh báo. */
   reconcile?:(pending:FinancialPendingRecord)=>Promise<PendingReconciliation<T>>;
@@ -24,7 +25,7 @@ export interface FinancialPendingProgress {
 /** Domain work must validate its positive receipt before returning. No replay payload is persisted. */
 export async function runFinancialPending<T>(scope:FinancialPendingScope,work:(progress:FinancialPendingProgress)=>Promise<T>,store:FinancialPendingStore=financialPending,options:FinancialPendingRunOptions<T>={}):Promise<T>{
   const now=options.now??(()=>new Date());
-  let requestKey:string=crypto.randomUUID();
+  let requestKey:string=options.requestKey??crypto.randomUUID();
   const prior=store.read(scope);
   if(prior){
     // Bị chặn bởi dấu của lần gửi trước: nêu việc đang kẹt và giờ kẹt, rồi báo hộp cảnh báo để người dùng có lối xử lý.

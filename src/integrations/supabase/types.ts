@@ -24209,6 +24209,16 @@ export type Database = {
         Args: { p_idempotency_key: string; p_payload: Json }
         Returns: Json
       }
+      create_deposit_income_v1: {
+        Args: {
+          p_items: Json
+          p_organization_id: string
+          p_request_key: string
+          p_row: Json
+          p_terms: Json
+        }
+        Returns: Json
+      }
       create_finance_evidence_upload_intent_v2: {
         Args: { p_organization_id?: string }
         Returns: Json
@@ -25418,6 +25428,10 @@ export type Database = {
           voucher_id: string
         }[]
       }
+      get_deposit_income_hold_v1: {
+        Args: { p_organization_id: string; p_room_id: string }
+        Returns: Json
+      }
       get_deposits_report_summary: {
         Args: { p_building_ids?: string[]; p_status?: string }
         Returns: Json
@@ -25537,6 +25551,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_lead_deposit_income_v1: {
+        Args: { p_lead_id: string; p_organization_id: string }
+        Returns: string
+      }
       get_member_authorization_v1: {
         Args: { p_membership: string }
         Returns: Json
@@ -25594,7 +25612,10 @@ export type Database = {
           user_id: string
         }[]
       }
-      get_my_available_rooms: { Args: never; Returns: Json }
+      get_my_available_rooms: {
+        Args: { p_organization_id?: string }
+        Returns: Json
+      }
       get_my_context: { Args: never; Returns: Json }
       get_my_copilot_availability_v1: {
         Args: { p_organization_id: string }
@@ -25641,6 +25662,10 @@ export type Database = {
       get_overpayment_summary: {
         Args: { p_building_ids?: string[] }
         Returns: Json
+      }
+      get_own_deposit_income_v1: {
+        Args: { p_organization_id: string; p_request_key: string }
+        Returns: string
       }
       get_period_commissions: {
         Args: { p_building_ids?: string[]; p_period_month: string }
@@ -25712,6 +25737,10 @@ export type Database = {
       }
       get_public_latest_invoice_by_contract: {
         Args: { p_contract_id: string }
+        Returns: Json
+      }
+      get_public_room_settings_v1: {
+        Args: { p_organization_id: string }
         Returns: Json
       }
       get_receiving_cashbooks_v1: {
@@ -27516,6 +27545,19 @@ export type Database = {
         }
         Returns: Json
       }
+      list_deposit_income_holds_v1: {
+        Args: {
+          p_after_id: string
+          p_before_created: string
+          p_buildings: string[]
+          p_customer_id: string
+          p_limit: number
+          p_organization_id: string
+          p_room_id: string
+          p_status: string
+        }
+        Returns: Json
+      }
       list_due_contract_move_out_notices_v1: {
         Args: {
           p_building_ids?: string[]
@@ -27615,6 +27657,10 @@ export type Database = {
       }
       list_organization_members_v1: { Args: never; Returns: Json }
       list_organization_roles_v1: { Args: never; Returns: Json }
+      list_public_room_tokens_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       list_receiving_cashbook_settings_v1: {
         Args: { p_organization_id: string }
         Returns: Json
@@ -27783,6 +27829,15 @@ export type Database = {
         Returns: Json
       }
       lucky_save_payout_v1: { Args: { p: Json; p_code: string }; Returns: Json }
+      manage_public_room_token_v1: {
+        Args: {
+          p_action: string
+          p_label?: string
+          p_organization_id: string
+          p_token: string
+        }
+        Returns: Json
+      }
       manager_collection_cycle_report: {
         Args: { p_from?: string; p_manager_id?: string; p_to?: string }
         Returns: Json
@@ -30123,6 +30178,17 @@ export type Database = {
           p_expected_version: number
           p_organization_id: string
           p_payload: Json
+        }
+        Returns: Json
+      }
+      save_public_room_settings_v1: {
+        Args: {
+          p_expected_updated_at: string
+          p_hotline_id?: string
+          p_organization_id: string
+          p_sale_policy?: string
+          p_show_rented: boolean
+          p_soon_days: number
         }
         Returns: Json
       }

@@ -21,6 +21,11 @@ const incomeExpenseFormBase = z.object({
   name: z.string().min(1, 'Vui lòng nhập tên phiếu'),
   building_id: z.string().min(1, 'Chọn toà nhà cho phiếu.'),
   room_id: z.string().nullable().optional(),
+  deposit_terms: z.object({
+    expected_hold:z.string().uuid().nullable().optional(), expected_revision:z.number().int().optional(),
+    hold_until:z.string().nullable().optional(), intended_move_in_on:z.string().nullable().optional(),
+    topup_due_on:z.string().nullable().optional(),
+  }).optional(),
   tenant_id: z.string().nullable().optional(),
   // Hợp đồng liên quan — bắt buộc cho phiếu cọc nếu HĐ đã tồn tại, optional
   // cho các loại khác. Nếu phòng có HĐ ACTIVE và user tạo cọc thì sẽ tự
@@ -131,6 +136,7 @@ export const excelImportRowSchema = z.object({
   type: z.enum(['INCOME', 'EXPENSE']),
   building_name: z.string().min(1, 'Căn hộ không được trống'),
   room_name: z.string().optional(),
+  payer_name: z.string().optional(),
   name: z.string().min(1, 'Tên phiếu không được trống'),
   voucher_date: z.string().min(1, 'Ngày không được trống'),
   item_name: z.string().min(1, 'Hạng mục không được trống'),

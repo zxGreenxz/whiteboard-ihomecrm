@@ -197,6 +197,8 @@ test('nothing reachable from Hermes SQL or the connector RPCs references Copilot
   const { from, offenders } = reachableFunctions(finals, [...hermes, ...[...rpcSeeds].flatMap(name => byName.get(name) ?? [])]);
   assert.deepEqual(offenders, []);
   assert(from.has('app_private.authorized_scope_v3') && from.has('public.get_public_available_rooms'), 'shared resolver and sale page reader are reached');
+  assert(from.has('app_private.create_reservation_source_receipt_v1') && from.has(RESERVATION_RECEIPT_CALLER),
+    'historical Hermes receipts reach the unified deposit writer');
   assert(from.has('app_private.ie_compat_actor_v2'), 'ordinary writer dependencies remain scanned');
 });
 
@@ -206,10 +208,10 @@ test('canonical receipt call-site proof rejects marker, merge, variable and writ
   assert.doesNotMatch(ordinary, COPILOT);
   assert.match(writer, /app_private\.copilot_ie_writer_context_v1/, 'shared writer really retains its conditional legacy path');
   for (const [before, after] of [
-    ["jsonb_build_object('type','INCOME','name'", "jsonb_build_object('copilot_draft_marker','injected','type','INCOME','name'"],
-    ["'notes',voucher_notes),", "'notes',voucher_notes) || p_receipt,"],
-    ["public.ie_compat_insert_v2(jsonb_build_object", "public.ie_compat_insert_v2(p_receipt || jsonb_build_object"],
-    ["'description','attachments'", "'description','attachments','copilot_draft_marker'"],
+    ["'type','INCOME','name',p_row->>'name'", "'copilot_draft_marker','injected','type','INCOME','name',p_row->>'name'"],
+    ["p_row->>'repeat_next_date')),args)", "p_row->>'repeat_next_date')) || p_row,args)"],
+    ["public.ie_compat_insert_v2(jsonb_strip_nulls", "public.ie_compat_insert_v2(p_row || jsonb_strip_nulls"],
+    ["'amount','description','receive_bank_account'", "'amount','description','copilot_draft_marker','receive_bank_account'"],
   ]) {
     const changed = caller.replace(before, after); assert.notEqual(changed, caller);
     assert.throws(() => ordinaryReservationReceiptWriter(changed, writer), /exact reservation receipt builder\/allowlist call-site proof/);

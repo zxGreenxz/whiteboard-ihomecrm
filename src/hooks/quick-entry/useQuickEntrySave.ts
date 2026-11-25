@@ -43,7 +43,7 @@ const codeOf = (e: unknown) => String((e as { code?: unknown } | null)?.code ?? 
 const EXT: Record<string, string> = { "image/png": ".png", "image/webp": ".webp" };
 
 export function useQuickEntrySave(organizationId: string | null = null) {
-  const createIE = useCreateIncomeExpense();
+  const createIE = useCreateIncomeExpense(organizationId);
   const personal = usePersonalFinanceMutation();
   const createWalletVoucher = useCreateCompanyWalletVoucher(organizationId);
 
