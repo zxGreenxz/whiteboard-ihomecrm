@@ -47,9 +47,9 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'payment-receipt-upload': tien('C', 'thêm ảnh chứng từ thanh toán'), // ô ảnh của phiếu thanh toán đã có = đã gắn
 
   // Đợt 3: lập phiếu, cọc, phí (họ runFinancialPending)
-  'voucher-form-create': tien('van', 'lập phiếu thu/chi'),
-  'voucher-batch-create': tien('van', 'tạo phiếu tổng'),
-  'deposit-create': tien('van', 'tạo cọc giữ chỗ'),
+  'voucher-form-create': tien('B', 'lập phiếu thu/chi'), // create_income_expense_v1 theo khoá; đường compat: mã phiếu do trình duyệt sinh (D); dấu cũ: tra gần đúng
+  'voucher-batch-create': tien('D', 'tạo phiếu tổng'), // mã đợt = mã yêu cầu của dấu; dọn sạch sau lỗi từ chối rõ thì gỡ dấu
+  'deposit-create': tien('B', 'tạo cọc giữ chỗ'), // create_room_reservation_v1 khoá phòng rồi tra khoá; thưởng Sale ngoài vùng giữ dấu
   'period-fee-pay': tien('A', 'đóng phí kỳ'), // pay_period_fee khoá slot rồi đếm phiếu; gửi lại KHÔNG ép, "đã có phiếu" = đã ghi
   'draft-fee-pay': tien('C', 'trả phiếu phí nháp'), // đọc trạng thái phiếu; pay_draft_fee_voucher khoá dòng, đòi còn nháp
   'period-fee-cancel': tien('A', 'huỷ phiếu phí kỳ'), // cancel_period_fee khoá dòng; "đã bị hủy trước đó" khi gửi lại = xong

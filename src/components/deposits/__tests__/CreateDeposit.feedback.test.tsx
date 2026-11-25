@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { financialPending } from '@/lib/financialPending';
 
 const h = vi.hoisted(() => ({
@@ -114,13 +114,69 @@ it('thưởng Sale thiếu lý do chặn trước khi tạo cọc hoặc phiếu
   expect(await screen.findByText(/Nhập lý do cụ thể/)).toBeTruthy();
   expect(h.create).not.toHaveBeenCalled();expect(h.bonus).not.toHaveBeenCalled();
 });
-it('thưởng timeout giữ phiếu cọc và chặn gửi lại sau đóng/mở DOM mới', async () => {
+it('thưởng timeout: cọc đã xong thì xong (gỡ dấu), thưởng lỗi báo riêng kèm mã phiếu cọc; hộp khoá nút để không tạo cọc lại', async () => {
   h.bonus.mockRejectedValue(new TypeError('Failed to fetch')); await prepare(true); await screen.findByRole('alert');
+  expect(screen.getByRole('alert').textContent).toMatch(/thưởng Sale chưa hoàn tất/);
   expect(screen.getByRole('link', { name: 'Mở phiếu ' + voucherId })).toBeTruthy();
-  cleanup(); await prepare(true);
-  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain(reservationId));
-  expect(screen.getByRole('alert').textContent).toContain(voucherId);
-  expect(h.create).toHaveBeenCalledOnce(); expect(h.close).not.toHaveBeenCalled();
+  expect(financialPending.read({ namespace: 'deposit-create', userId, organizationId, businessKey: roomId })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', true);
+  expect(h.create).toHaveBeenCalledOnce(); expect(h.bonus).toHaveBeenCalledOnce(); expect(h.close).not.toHaveBeenCalled();
+});
+
+// Đợt 3: tạo cọc gửi lại cùng mã (cách B). create_room_reservation_v1 (production 24/11/2026) khoá dòng phòng
+// rồi mới tra khoá (created_by, idempotency_key): cùng khoá cùng nội dung trả kết quả cũ, khác nội dung trả
+// 23505; mỗi phòng một giữ chỗ đang sống. Máy chủ giả dưới đây làm đúng các luật đó.
+describe('tạo cọc sau rớt mạng (gửi lại cùng mã)', () => {
+  const scope = { namespace: 'deposit-create', userId, organizationId, businessKey: roomId };
+  let stored: Map<string, { payload: string; response: unknown }>;
+  let next: 'ok' | 'drop' | 'lost';
+  const submitAgain = () => fireEvent.click(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' }));
+  const keys = () => h.create.mock.calls.map(c => (c[0] as { idempotencyKey: string }).idempotencyKey);
+  beforeEach(() => {
+    stored = new Map(); next = 'ok';
+    h.create.mockImplementation(async (input: { idempotencyKey: string }) => {
+      const mode = next; next = 'ok';
+      if (mode === 'drop') throw new TypeError('Failed to fetch');
+      const { idempotencyKey, ...payload } = input; const text = JSON.stringify(payload);
+      const prior = stored.get(idempotencyKey);
+      if (prior && prior.payload !== text) throw { code: '23505', message: 'Khóa giữ chỗ đã dùng cho nội dung khác' };
+      if (!prior && stored.size) throw { code: '55000', message: 'Phòng đã có khách giữ chỗ tiếp theo' };
+      if (!prior) stored.set(idempotencyKey, { payload: text, response: result(false) });
+      if (mode === 'lost') throw new TypeError('Failed to fetch');
+      return stored.get(idempotencyKey)!.response;
+    });
+  });
+  it('lệnh không tới máy chủ: nút vẫn bấm được, bấm lại gửi cùng mã, một giữ chỗ', async () => {
+    next = 'drop'; await prepare(); await screen.findByRole('alert');
+    expect(financialPending.read(scope)).not.toBeNull();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
+    submitAgain();
+    await waitFor(() => expect(h.close).toHaveBeenCalledWith(false));
+    expect(keys()).toHaveLength(2); expect(keys()[1]).toBe(keys()[0]); expect(stored.size).toBe(1);
+    expect(financialPending.read(scope)).toBeNull();
+  });
+  it('tới nhưng mất phản hồi: bấm lại nhận lại đúng giữ chỗ cũ, không tạo thêm', async () => {
+    next = 'lost'; await prepare(); await screen.findByRole('alert');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
+    submitAgain();
+    await waitFor(() => expect(h.close).toHaveBeenCalledWith(false));
+    expect(keys()[1]).toBe(keys()[0]); expect(stored.size).toBe(1);
+  });
+  it('tới nhưng mất phản hồi, sửa số tiền rồi lưu: báo đã tạo ở lần gửi trước, không tạo thêm, gỡ dấu', async () => {
+    next = 'lost'; await prepare(); await screen.findByRole('alert');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Số tiền cọc *' }), { target: { value: '600000' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
+    submitAgain();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/lần gửi trước/));
+    expect(stored.size).toBe(1); expect(h.close).not.toHaveBeenCalled(); expect(financialPending.read(scope)).toBeNull();
+  });
+  it('dấu cũ gieo sẵn (không tên thao tác): gửi ngay đúng mã của dấu cũ', async () => {
+    const old = { ...scope, attemptId: '00000000-0000-4000-8000-0000000000aa', requestKey: 'room-reservation-00000000-0000-4000-8000-0000000000bb', completedIds: [], startedAt: '2026-11-20T01:00:00.000Z' };
+    localStorage.setItem('ihome:financial-pending:v1:' + ['deposit-create', userId, organizationId, roomId].map(encodeURIComponent).join(':'), JSON.stringify(old));
+    await prepare();
+    await waitFor(() => expect(h.close).toHaveBeenCalledWith(false));
+    expect(keys()).toEqual([old.requestKey]); expect(financialPending.read(scope)).toBeNull();
+  });
 });
 it.each([false, true])('thông báo nhận cọc dùng received=%s từ máy chủ', async received => {
   h.create.mockResolvedValue(result(received)); await prepare();

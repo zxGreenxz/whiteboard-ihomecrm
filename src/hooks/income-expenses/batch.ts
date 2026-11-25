@@ -2,6 +2,7 @@ import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,isConfirmedFinancialRejection,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadRows} from '@/lib/financialReadValidation';
 import {runFinancialPending} from '@/lib/financialPendingAction';
+import type {FinancialPendingRecord,PendingReconciliation} from '@/lib/financialPending';
 import { VoucherPartialError, voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -206,6 +207,55 @@ export const useImportIncomeExpenses = () => {
   });
 };
 
+/** Dấu ghi từ bản này: mã đợt chính là mã yêu cầu của dấu. Dấu cũ hơn chỉ biết mã đợt khi đã nhận (completedIds[0]). */
+const BATCH_ID_FROM_KEY = 'request-key';
+/** Lệch giờ trình duyệt ↔ máy chủ chấp nhận khi tra đợt "tạo sau giờ kẹt" (chỉ cho dấu cũ chưa nhận mã đợt). */
+const BATCH_CLOCK_SKEW_MS = 10 * 60_000;
+
+/**
+ * Đối chiếu lần tạo phiếu tổng chưa rõ kết quả (cách D, đợt 3). Thứ tự bước: đợt → từng phiếu con → nối phiếu vào
+ * đợt; lỗi giữa chừng thì huỷ lại phiếu con và xoá đợt. Vì vậy:
+ *  - Đợt còn trên máy chủ ⇒ lần trước đã ghi: báo mã đợt, không tạo thêm.
+ *  - Đợt chưa từng được nhận mã và không có trên máy chủ ⇒ chưa ghi (lõi chỉ nhận sau 2 phút); gửi lại cùng mã đợt.
+ *  - Đợt đã được nhận rồi bị xoá ⇒ lần trước đã tới bước phiếu con: phiếu con còn hiệu lực thì báo mã; không còn
+ *    thì vẫn có thể có một phiếu con mất phản hồi mà không biết mã ⇒ chưa kết luận (hộp cảnh báo).
+ */
+async function reconcileBatchCreate<T>(pending: FinancialPendingRecord, type: string): Promise<PendingReconciliation<T>> {
+  const keyed = pending.meta?.batchId === BATCH_ID_FROM_KEY && !!pending.requestKey;
+  const batchId = keyed ? pending.requestKey! : pending.completedIds[0];
+  if (!batchId) {
+    // Dấu cũ chưa nhận mã đợt: mã đợt do máy chủ sinh nên chỉ tra gần đúng (đợt của mình, cùng loại, sau giờ kẹt).
+    const since = new Date(Date.parse(pending.startedAt) - BATCH_CLOCK_SKEW_MS).toISOString();
+    const { data, error } = await supabase.from('income_expense_batches').select('id, created_at')
+      .eq('user_id', pending.userId).eq('type', type).gte('created_at', since).order('created_at', { ascending: true }).limit(5);
+    if (error) throw error;
+    if (!Array.isArray(data)) throw new TypeError('Chưa đọc được danh sách phiếu tổng để đối chiếu.');
+    const ids = (data as { id: string }[]).map(row => row.id);
+    if (ids.length) return { outcome: 'already-written', message: `Có thể phiếu tổng đã được tạo ở lần gửi trước (mã đợt ${ids.join(', ')}). Mở danh sách phiếu tổng để kiểm tra trước khi lập lại.`, recordIds: ids };
+    return { outcome: 'not-written' };
+  }
+  const { data: batch, error: batchError } = await supabase.from('income_expense_batches').select('id').eq('id', batchId).maybeSingle();
+  if (batchError) throw batchError;
+  if (batch) {
+    return { outcome: 'already-written', message: `Phiếu tổng đã được tạo ở lần gửi trước (mã đợt ${batchId}). Mở danh sách phiếu tổng để kiểm tra trước khi lập lại.`, recordIds: [batchId] };
+  }
+  const batchConfirmed = pending.completedIds.includes(batchId);
+  if (!batchConfirmed) return { outcome: 'not-written' };
+  const childIds = pending.completedIds.filter(id => id !== batchId);
+  if (childIds.length) {
+    const { data: rows, error } = await supabase.from('income_expenses').select('id, code, approval_status, deleted_at').in('id', childIds);
+    if (error) throw error;
+    if (!Array.isArray(rows)) throw new TypeError('Chưa đọc được phiếu con để đối chiếu.');
+    const live = (rows as { id: string; code: string | null; approval_status: string | null; deleted_at: string | null }[])
+      .filter(row => row.approval_status !== 'CANCELLED' && !row.deleted_at);
+    if (live.length) {
+      const codes = live.map(row => row.code || row.id);
+      return { outcome: 'already-written', message: `Phiếu tổng lần trước chưa hoàn tất; còn phiếu con chưa huỷ (mã ${codes.join(', ')}). Kiểm tra và huỷ các phiếu này trước khi lập lại.`, recordIds: codes };
+    }
+  }
+  return null;
+}
+
 // Tạo phiếu tổng = INSERT 1 batch + N phiếu con + N junction + N items.
 export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => {
   const queryClient = useQueryClient();
@@ -225,10 +275,12 @@ export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => 
         );
 
       return runFinancialPending({namespace:"voucher-batch-create",userId:user.id,organizationId:selectedOrganizationId ?? "",businessKey:input.type},async progress=>{
-      // 1. INSERT batch metadata
+      // 1. INSERT batch metadata. Mã đợt = mã yêu cầu của dấu (UUID do trình duyệt sinh): phép đối chiếu tra đúng
+      //    đợt theo mã này, và lần gửi lại dùng lại đúng mã nên khoá chính chặn đợt thứ hai (cách D).
       const { data: batch, error: batchError } = await supabase
         .from("income_expense_batches")
         .insert(withOrg({
+          id: progress.requestKey,
           user_id: user.id,
           name: input.shared_name,
           type: input.type,
@@ -314,11 +366,22 @@ export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => 
           if (childVouchers.length > 0) {
             const cleanup = await cancelVouchersSplitByType(childVouchers, "Rollback tạo phiếu tổng lỗi");
             cancelled = cleanup.cancelled;
-            cleanupFailed = cleanup.failures.length > 0;
+            cleanupFailed = cleanup.failures.length > 0 || cleanup.cancelled !== childVouchers.length;
           }
-          const removed = await supabase.from("income_expense_batches").delete().eq("id", (batch as any).id);
-          cleanupFailed ||= !!removed.error;
+          // Đọc lại đúng một dòng bị xoá: RLS có thể xoá 0 dòng mà không báo lỗi.
+          const removed = await supabase.from("income_expense_batches").delete().eq("id", (batch as any).id).select("id");
+          cleanupFailed ||= !!removed.error || !Array.isArray(removed.data) || removed.data.length !== 1;
         } catch { cleanupFailed = true; }
+        // Bước hỏng bị từ chối rõ (không ghi gì) và mọi bước trước đã được dọn, kiểm lại: không còn gì chờ đối chiếu.
+        // Gỡ dấu để người dùng sửa lỗi rồi lập lại ngay. Bước hỏng chưa rõ kết quả thì có thể còn một phiếu con chưa
+        // biết mã, nên vẫn giữ dấu.
+        if (!cleanupFailed && isConfirmedFinancialRejection(error)) {
+          progress.releaseCompleted();
+          throw new FinancialWorkflowError(
+            `Chưa tạo được đợt phiếu: ${voucherFailureMessage(error, "tạo đợt phiếu")} Các phiếu con đã tạo (${cancelled}) đã được huỷ lại và đợt đã được xoá; sửa lỗi rồi lập lại.`,
+            "failure", [], error,
+          );
+        }
         throw new VoucherPartialError(
           `Chưa hoàn tất đợt phiếu. Đã nhận kết quả tạo ${childVouchers.length} phiếu, đã huỷ lại ${cancelled} phiếu.${cleanupFailed ? " Chưa xác nhận được việc dọn toàn bộ đợt." : ""} Hãy kiểm tra danh sách phiếu trước khi lập đợt mới.`,
           childVouchers.map(v => v.id), (batch as any).id, error,
@@ -326,7 +389,7 @@ export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => 
       }
 
       return { batch, voucherCount: childVouchers.length, voucherIds: childVouchers.map(v=>v.id) };
-      });
+      },undefined,{operation:'tạo phiếu tổng',meta:{batchId:BATCH_ID_FROM_KEY},reconcile:pending=>reconcileBatchCreate(pending,input.type)});
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });

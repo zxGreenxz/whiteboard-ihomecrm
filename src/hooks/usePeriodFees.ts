@@ -317,7 +317,7 @@ export const usePayDraftFeeVoucher = () => {
       // pay_draft_fee_voucher (production 24/11/2026) khoá dòng phiếu rồi đòi trạng thái nháp: gửi lại khi phiếu còn
       // nháp không thể duyệt hai lần. Đối chiếu bằng cách đọc trạng thái phiếu (cách C).
       let resend=false;
-      return runFinancialPending({namespace:'draft-fee-pay',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:args.voucherId},async progress=>{
+      return runFinancialPending<CreatedVoucherReceipt>({namespace:'draft-fee-pay',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:args.voucherId},async progress=>{
       const { data, error } = await supabase.rpc('pay_draft_fee_voucher', {
         p_voucher_id: args.voucherId,
         p_account_id: args.accountId,

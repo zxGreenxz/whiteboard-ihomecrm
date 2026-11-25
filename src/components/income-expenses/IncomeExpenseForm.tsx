@@ -1,4 +1,5 @@
-import {runFinancialPending} from '@/lib/financialPendingAction';
+import {createVoucherFromForm} from '@/hooks/income-expenses/formCreatePending';
+import {FinancialPendingError} from '@/lib/financialPending';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {VoucherPartialError} from '@/lib/voucherFeedback';
 import {QueryRegion} from '@/components/errors/QueryRegion';
@@ -797,13 +798,9 @@ const IncomeExpenseFormInner = ({
           reason: revisionReason.trim() || null,
         });
       } else {
-        await runFinancialPending({namespace:"voucher-form-create",userId:authUser?.id??"",organizationId:selectedOrganizationId??"",businessKey:[data.type,data.building_id,data.room_id??""].join(":")},async progress=>{
-        // Cả hai đường ghi (create_income_expense_v1 / ie_compat_insert_v2) trả về phiếu có id.
-        const created = (await createMutation.mutateAsync(data)) as { id?: string } | null | undefined;
-        if(!created?.id)throw new TypeError("Chưa xác nhận mã phiếu vừa tạo");
-        progress.recordCompleted([created.id]);
-
-        });
+        // Có đối chiếu sau một lần chưa rõ kết quả: gửi lại cùng mã (đường chính) hoặc tra đúng phiếu theo mã do
+        // trình duyệt sinh (đường compat). Xem hooks/income-expenses/formCreatePending.ts.
+        await createVoucherFromForm(data,{userId:authUser?.id??"",organizationId:selectedOrganizationId??"",create:createMutation.mutateAsync});
         // Báo cho caller (vd ContractFormDialog) biết phiếu vừa tạo có tổng
         // bao nhiêu để cập nhật field "Đã đặt cọc" ngay tại form HĐ.
         const total = data.items.reduce(
@@ -817,9 +814,14 @@ const IncomeExpenseFormInner = ({
       // Lỗi đã được hook báo (toast). Riêng lệch phiên bản: phiếu vừa bị người
       // khác sửa/duyệt — khoá nút Lưu, bảo người dùng mở lại phiếu.
       if (isStaleVersionError(error)) setStaleVersion(true);
-      setSubmitError(voucherFailureMessage(error, isEditing ? "lưu thay đổi phiếu" : "tạo phiếu"));
+      // Tạo mới chưa rõ kết quả (rớt mạng): KHÔNG khoá nút Lưu. Lần bấm sau đi qua đối chiếu của createVoucherFromForm,
+      // gửi lại đúng mã nên máy chủ không lập phiếu thứ hai. Sửa phiếu vẫn khoá như cũ (đợt 5).
+      const retryCreate = !isEditing && voucherOutcomeUnknown(error) && !(error instanceof FinancialPendingError);
+      setSubmitError(retryCreate
+        ? "Chưa xác nhận được kết quả tạo phiếu. Bấm Lưu lại để gửi lại: hệ thống nhận ra lần gửi trước nên không lập phiếu thứ hai."
+        : voucherFailureMessage(error, isEditing ? "lưu thay đổi phiếu" : "tạo phiếu"));
       await applyFeedbackToForm(form,friendlyError(error,"Chưa lưu được phiếu",{operation:"lưu phiếu",financial:true,rules:VOUCHER_ERROR_RULES}),{root:formRef.current});
-      if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
+      if (isEditing && voucherOutcomeUnknown(error)) setReconcileRequired(true);
     }
   };
 
