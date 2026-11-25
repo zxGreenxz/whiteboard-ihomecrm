@@ -643,7 +643,8 @@ export const useUpdateContract = () => {
       suppressSuccessToast?: boolean;
     }) => {
       const user = await getSessionUser();
-      if (!user) throw new Error("Not authenticated");
+      // Đợt 7: hết phiên là từ chối rõ (chưa gửi gì), để lần sửa hợp đồng không giữ pha «đang gửi» rồi khoá.
+      if (!user) throw { code: "PGRST301", message: "Not authenticated" };
 
       const patch: ContractUpdate = { ...updates };
       if (commissionChangeReason) patch.commission_change_reason = commissionChangeReason.trim();
