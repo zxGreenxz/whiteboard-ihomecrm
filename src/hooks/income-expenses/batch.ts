@@ -440,9 +440,16 @@ export const useCancelIncomeExpenseBatch = () => {
         if (cancelledError) throw cancelledError;
         const paymentIds = financialReadRows<{type:string|null;payment_id:string|null}>(cancelledRows).filter(v => v.type !== "INCOME" && v.payment_id).map(v => v.payment_id as string);
         if (paymentIds.length === 0) return [];
-        const { data: alive, error: aliveError } = await supabase.from("payments").select("id").in("id", paymentIds);
+        // Như cửa huỷ lẻ: khoản đã đánh dấu hoàn tác (reversed_at) không còn tính vào hoá đơn, không xoá.
+        const { data: alive, error: aliveError } = await supabase.from("payments").select("id").in("id", paymentIds).is("reversed_at", null);
         if (aliveError) throw aliveError;
         return financialReadRows<{id:string}>(alive).map(row => row.id);
+      };
+      // Đọc lại số dòng đã xoá: quyền (RLS) có thể làm lệnh xoá chạm 0 dòng mà không báo lỗi.
+      const removeLeftoverPayments = async (leftover: string[]) => {
+        if (leftover.length === 0) return;
+        const { data: deleted, error: deleteError } = await supabase.from("payments").delete().in("id", leftover).select("id");
+        if (deleteError || !Array.isArray(deleted) || deleted.length !== leftover.length) throw new VoucherPartialError(`Phiếu chi đã huỷ của đợt còn ${leftover.length} khoản thanh toán hoá đơn chưa cập nhật được. Hãy kiểm tra phiếu và hoá đơn liên quan trước khi thao tác tiếp.`, [], batchId, deleteError);
       };
       const readActiveVouchers = async () => {
       const ids = await readBatchVoucherIds();
@@ -496,16 +503,15 @@ export const useCancelIncomeExpenseBatch = () => {
         // Cách A (đợt 5): đọc lại phiếu còn hiệu lực rồi chỉ huỷ phần còn. Phiếu đã huỷ không tính là lỗi. Đường huỷ phiếu
         // chi (ie_compat_cancel_v2, production 25/11/2026) không xét phiếu đã huỷ, nên phần còn lại chỉ được chạy khi lần
         // gửi trước chắc chắn đã kết thúc; phiếu thu (cancel_income_voucher_v1) khoá phiếu rồi trả «đã huỷ trước đó».
-        if ((await readActiveVouchers()).length === 0) {
-          const leftover = await readLeftoverPayments();
-          if (leftover.length === 0) return { result: { count: 0, failures: [], completedIds: [] } };
-          // Phiếu đã huỷ hết nhưng còn khoản thanh toán chưa gỡ: chỉ chạy bước đó, khi lần trước chắc chắn đã kết thúc.
-          if (!priorAttemptSettled(pending)) return null;
-          const { data: deleted, error: deleteError } = await supabase.from("payments").delete().in("id", leftover).select("id");
-          if (deleteError || !Array.isArray(deleted) || deleted.length !== leftover.length) throw new VoucherPartialError(`Các phiếu trong đợt đã huỷ nhưng chưa cập nhật được ${leftover.length} khoản thanh toán hoá đơn. Hãy kiểm tra phiếu và hoá đơn liên quan trước khi thao tác tiếp.`, [], batchId, deleteError);
-          return { result: { count: 0, failures: [], completedIds: [] } };
-        }
+        // Khoản thanh toán của phiếu CHI đã huỷ mà còn sót được dọn ở cả hai nhánh: lần trước có thể đã huỷ phiếu chi rồi
+        // hỏng ở bước xoá khoản, trong khi đợt vẫn còn phiếu khác hiệu lực (review lượt 2).
+        const active = await readActiveVouchers();
+        const leftover = await readLeftoverPayments();
+        if (active.length === 0 && leftover.length === 0) return { result: { count: 0, failures: [], completedIds: [] } };
+        // Còn phiếu hiệu lực hoặc còn khoản chưa gỡ: chỉ chạy phần còn, khi lần trước chắc chắn đã kết thúc.
         if (!priorAttemptSettled(pending)) return null;
+        await removeLeftoverPayments(leftover);
+        if (active.length === 0) return { result: { count: 0, failures: [], completedIds: [] } };
         return { result: await cancelRemaining(progress) };
       },selectedOrganizationId??undefined);
       } catch(error) {

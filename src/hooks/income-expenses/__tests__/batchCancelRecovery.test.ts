@@ -71,6 +71,30 @@ describe('huỷ đợt phiếu', () => {
     expect(compatCalls()).toHaveLength(0);
     expect(pendingKeys()).toEqual([]);
   });
+  it('còn phiếu hiệu lực VÀ còn khoản thanh toán của phiếu chi đã huỷ: sau 2 phút gỡ khoản đó rồi chỉ huỷ phần còn', async () => {
+    io.server.rows.income_expenses[0].approval_status = 'CANCELLED';
+    io.server.rows.income_expenses[0].payment_id = 'p1';
+    io.server.rows.payments = [{ id: 'p1', reversed_at: null }];
+    seedLegacyPending({ namespace: 'voucher-batch-cancel', userId: 'actor', organizationId: 'org-a', businessKey: 'b1' }, new Date(T0 - 60_000), ['c1']);
+    await expect(cancel()).rejects.toMatchObject({ message: expect.stringContaining('đang chờ kết quả') });
+    expect(io.server.rows.payments).toHaveLength(1);
+    vi.setSystemTime(T0 + 130_000);
+    await expect(cancel()).resolves.toMatchObject({ count: 1, failures: [] });
+    expect(io.server.rows.payments).toEqual([]);
+    expect(compatCalls()).toHaveLength(1);
+    expect(compatCalls()[0].args.p_ids).toEqual(['c2']);
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('khoản thanh toán đã đánh dấu hoàn tác (reversed_at) không tính là còn sót: không xoá, gỡ dấu', async () => {
+    for (const row of io.server.rows.income_expenses) row.approval_status = 'CANCELLED';
+    io.server.rows.income_expenses[0].payment_id = 'p1';
+    io.server.rows.payments = [{ id: 'p1', reversed_at: '2026-11-25T01:00:00.000Z' }];
+    seedLegacyPending({ namespace: 'voucher-batch-cancel', userId: 'actor', organizationId: 'org-a', businessKey: 'b1' }, new Date(T0 - 10 * 60_000), ['c1', 'c2']);
+    await expect(cancel()).resolves.toMatchObject({ count: 0, failures: [] });
+    expect(io.server.rows.payments).toHaveLength(1);
+    expect(compatCalls()).toHaveLength(0);
+    expect(pendingKeys()).toEqual([]);
+  });
   it('dấu cũ gieo sẵn của đợt (đã quá 2 phút): đọc lại, chỉ huỷ phiếu còn hiệu lực', async () => {
     io.server.rows.income_expenses[0].approval_status = 'CANCELLED';
     seedLegacyPending({ namespace: 'voucher-batch-cancel', userId: 'actor', organizationId: 'org-a', businessKey: 'b1' }, new Date(T0 - 10 * 60_000), ['c1']);
