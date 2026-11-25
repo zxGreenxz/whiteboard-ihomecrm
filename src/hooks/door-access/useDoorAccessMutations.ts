@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { doorAccessEdge, type CreateTempPasswordInput, type DeleteKeyInput, type DoorAccessCaller } from "@/lib/door-access/edge";
 import { doorAccessRepository, type LinkKeyInput, type SaveDeviceInput } from "@/lib/door-access/repository";
@@ -26,12 +26,26 @@ export function useRemoteUnlock(caller: DoorAccessCaller | null) {
   const client = useQueryClient();
   return useMutation({
     ...feedback,
+    mutationKey: doorKeys.remoteUnlock(caller),
     mutationFn: (deviceId: string) => doorAccessEdge(need(caller)).remoteUnlock(deviceId),
     onSettled: (_data, _error, deviceId) => {
       void client.invalidateQueries({ queryKey: doorKeys.logs(caller, deviceId) });
       void client.invalidateQueries({ queryKey: doorKeys.allRecords(caller, deviceId) });
     },
   });
+}
+
+/**
+ * Còn lệnh mở cửa nào cho máy này đang chạy không — đọc bộ đệm mutation nên vẫn thấy lệnh do một nút đã
+ * bị gỡ khỏi màn gửi (đổi tab, xoay máy qua mốc 768px…). Dùng để không cho gửi lệnh thứ hai chồng lên.
+ */
+export function useRemoteUnlockPending(caller: DoorAccessCaller | null, deviceId: string | null): boolean {
+  return (
+    useIsMutating({
+      mutationKey: doorKeys.remoteUnlock(caller),
+      predicate: (mutation) => deviceId !== null && mutation.state.variables === deviceId,
+    }) > 0
+  );
 }
 
 export function useCreateTempPassword(caller: DoorAccessCaller | null) {
