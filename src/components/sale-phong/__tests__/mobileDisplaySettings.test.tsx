@@ -6,7 +6,7 @@ import type { Building, Room } from "@/pages/phong-trong/sampleData";
 import type { HeaderAction } from "../mobile/types";
 
 const m = vi.hoisted(() => ({
-  settings: {} as Record<string, unknown>, hotlines: {} as Record<string, unknown>, rooms: {} as Record<string, unknown>,
+  settings: {} as Record<string, unknown>, rooms: {} as Record<string, unknown>,
   save: vi.fn(), sheetSave: vi.fn(), retry: vi.fn(),
 }));
 vi.mock('@tanstack/react-query', async original => ({ ...(await original<typeof import('@tanstack/react-query')>()), useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }) }));
@@ -23,8 +23,8 @@ vi.mock("@/hooks/usePublicRoomSettings", () => ({
   useUpsertPublicRoomSettings: () => ({ mutateAsync: m.save, isPending: false }),
   PUBLIC_ROOM_SETTINGS_DEFAULTS: { soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null },
 }));
+// Hotline in lên ảnh đi kèm cài đặt chung của công ty (đợt 2 Sale phòng), không đọc danh sách hotline riêng của người sửa.
 vi.mock("@/hooks/useHotlines", () => ({
-  useHotlines: () => m.hotlines,
   useCreateHotline: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateHotline: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
@@ -57,6 +57,12 @@ const hotlines = [
   { id: "h1", name: "Admin", phone_number: HOT, is_active: true, created_at: "2026-01-01" },
   { id: "h2", name: "Kho", phone_number: "0999 999 999", is_active: true, created_at: "2026-02-01" },
 ];
+const UPDATED_AT = "2026-11-25T01:00:00+00:00";
+/** usePublicRoomSettings().data: cài đặt chung của công ty + hotline của người đứng tên chung các toà. */
+const company = (settings: Record<string, unknown>, list = hotlines) => ({
+  settings: { soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null, ...settings },
+  ownerId: "owner-b", exists: true, updatedAt: UPDATED_AT, canManage: true, hotlines: list,
+});
 const query = (value: unknown) => ({ data: value, status: "success", fetchStatus: "idle", isLoading: false, isError: false, error: null, refetch: m.retry, dataUpdatedAt: Date.now() });
 
 let header: HeaderAction | null = null;
@@ -69,8 +75,7 @@ describe("MobileDisplaySettings — bảng phòng trống trên mobile", () => {
   beforeEach(() => {
     vi.clearAllMocks(); sessionStorage.clear();
     header = null;
-    m.settings = query({ soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null });
-    m.hotlines = query(hotlines);
+    m.settings = query(company({}));
     m.rooms = query(data());
     m.save.mockResolvedValue({});
     m.sheetSave.mockResolvedValue([]);
@@ -90,7 +95,7 @@ describe("MobileDisplaySettings — bảng phòng trống trên mobile", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: /Kho/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Lưu cài đặt" }));
-    await waitFor(() => expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ hotline_id: "h2" })));
+    await waitFor(() => expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ hotline_id: "h2", expectedUpdatedAt: UPDATED_AT })));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

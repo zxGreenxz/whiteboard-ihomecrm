@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { Building, Room } from "@/pages/phong-trong/sampleData";
 
 const m = vi.hoisted(() => ({
-  settings: {} as Record<string, unknown>, hotlines: {} as Record<string, unknown>, rooms: {} as Record<string, unknown>,
+  settings: {} as Record<string, unknown>, rooms: {} as Record<string, unknown>,
   save: vi.fn(), sheetSave: vi.fn(), retry: vi.fn(), createHotline: vi.fn(), updateHotline: vi.fn(),
 }));
 vi.mock('@tanstack/react-query', async original => ({ ...(await original<typeof import('@tanstack/react-query')>()), useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }) }));
@@ -22,8 +22,8 @@ vi.mock("@/hooks/usePublicRoomSettings", () => ({
   useUpsertPublicRoomSettings: () => ({ mutateAsync: m.save, isPending: false }),
   PUBLIC_ROOM_SETTINGS_DEFAULTS: { soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null },
 }));
+// Hotline in lên ảnh đi kèm cài đặt chung của công ty (đợt 2 Sale phòng), không đọc danh sách hotline riêng của người sửa.
 vi.mock("@/hooks/useHotlines", () => ({
-  useHotlines: () => m.hotlines,
   useCreateHotline: () => ({ mutateAsync: m.createHotline, isPending: false }),
   useUpdateHotline: () => ({ mutateAsync: m.updateHotline, isPending: false }),
 }));
@@ -62,6 +62,12 @@ const hotlines = [
   { id: "h1", name: "Admin", phone_number: HOT, is_active: true, created_at: "2026-01-01" },
   { id: "h2", name: "Kho", phone_number: "0999 999 999", is_active: true, created_at: "2026-02-01" },
 ];
+const UPDATED_AT = "2026-11-25T01:00:00+00:00";
+/** usePublicRoomSettings().data: cài đặt chung của công ty (người đứng tên chung owner-b) + hotline của người đó. */
+const company = (settings: Record<string, unknown>, list = hotlines) => ({
+  settings: { soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null, ...settings },
+  ownerId: "owner-b", exists: true, updatedAt: UPDATED_AT, canManage: true, hotlines: list,
+});
 const query = (value: unknown) => ({ data: value, status: "success", fetchStatus: "idle", isLoading: false, isError: false, error: null, refetch: m.retry, dataUpdatedAt: Date.now() });
 
 describe("roomListSheetDraft (thuần)", () => {
@@ -163,8 +169,7 @@ describe("roomListSheetDraft (thuần)", () => {
 describe("DisplaySettingsTab — bảng phòng trống", () => {
   beforeEach(() => {
     vi.clearAllMocks(); sessionStorage.clear();
-    m.settings = query({ soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null });
-    m.hotlines = query(hotlines);
+    m.settings = query(company({}));
     m.rooms = query(data());
     m.save.mockResolvedValue({});
     m.sheetSave.mockResolvedValue([]);
@@ -185,8 +190,8 @@ describe("DisplaySettingsTab — bảng phòng trống", () => {
     expect((screen.getByLabelText("Hotline chung cho tất cả nhà") as HTMLInputElement).value).toBe(HOT);
   });
 
-  it("chưa có hotline: ô trống báo đang in số nào; gõ số rồi Lưu → tạo hotline gắn công ty, giữ Mặc định", async () => {
-    m.hotlines = query([]);
+  it("chưa có hotline: ô trống báo đang in số nào; gõ số rồi Lưu → tạo hotline gắn công ty cho người đứng tên chung, giữ Mặc định", async () => {
+    m.settings = query(company({}, []));
     m.rooms = query(data().map((b) => ({ ...b, hotline: "" }))); // RPC cũng không có contact khi chưa có hotline
     m.createHotline.mockResolvedValue({ id: "h-new", name: "Hotline chung" });
     view();
@@ -196,7 +201,8 @@ describe("DisplaySettingsTab — bảng phòng trống", () => {
     fireEvent.change(input, { target: { value: "0909 000 111" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
     await waitFor(() => expect(m.save).toHaveBeenCalledOnce());
-    expect(m.createHotline).toHaveBeenCalledWith({ name: "Hotline chung", phone_number: "0909 000 111", is_active: true });
+    // Hotline chung thuộc người đứng tên chung các toà (owner-b), không phải người đang sửa (actor-a).
+    expect(m.createHotline).toHaveBeenCalledWith({ name: "Hotline chung", phone_number: "0909 000 111", is_active: true, ownerId: "owner-b" });
     expect(m.updateHotline).not.toHaveBeenCalled();
     expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ hotline_id: 'h-new' }));
     expect(m.createHotline.mock.invocationCallOrder[0]).toBeLessThan(m.save.mock.invocationCallOrder[0]);
@@ -243,7 +249,7 @@ describe("DisplaySettingsTab — bảng phòng trống", () => {
     fireEvent.change(phone, { target: { value: "0901 234 567" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
     await waitFor(() => expect(m.sheetSave).toHaveBeenCalledOnce());
-    expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ sale_policy: "Nước 100k/người\nXe free", hotline_id: null }));
+    expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ sale_policy: "Nước 100k/người\nXe free", hotline_id: null, expectedUpdatedAt: UPDATED_AT }));
     expect(m.save.mock.invocationCallOrder[0]).toBeLessThan(m.sheetSave.mock.invocationCallOrder[0]);
     expect(m.sheetSave).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-1', actorId: 'actor-a', buildings: [{ id: "b1", phone: "0901 234 567", originalPhone: null }], rooms: [expect.objectContaining({ input: { roomId: 'r1', expectedRevision: 'a'.repeat(32), requestId: expect.any(String), patch: { sale_note: 'Giảm 300k' } } })] }));
   });

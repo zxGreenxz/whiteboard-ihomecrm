@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Building, Room } from '@/pages/phong-trong/sampleData';
 import type { RoomListTable } from '@/pages/phong-trong/roomListTable';
 import type { SaleRoomInventory, SaleRoomRpcInvoker } from '@/lib/saleRoomOperations';
-import type { PublicRoomSettings } from '@/hooks/usePublicRoomSettings';
+import type { CompanyRoomSettings, SettingsHotline } from '@/hooks/usePublicRoomSettings';
 import { sheetInventoryFixture } from './sheetInventoryFixture';
 interface QueryFixture<T> {
   data: T;
@@ -20,22 +20,23 @@ interface QueryFixture<T> {
 }
 interface PermissionFixture {
   __superadmin?: boolean;
-  sale_phong?: { edit?: { org_wide: boolean; building_ids: string[] } };
+  sale_phong?: { edit?: { org_wide: boolean; building_ids: string[] }; manage_settings?: { org_wide: boolean; building_ids: string[] } };
 }
-interface HotlineFixture { id: string; phone_number: string; is_active: boolean }
 const ORG = '10000000-0000-4000-8000-000000000001';
 const ACTOR = '20000000-0000-4000-8000-000000000001';
 const B1 = '40000000-0000-4000-8000-000000000001';
 const R1 = '30000000-0000-4000-8000-000000000001';
 const R2 = '30000000-0000-4000-8000-000000000002';
+const OTHER = '20000000-0000-4000-8000-000000000002';
+const SETTINGS_AT = '2026-10-21T00:30:00+00:00';
 const m = vi.hoisted(() => {
   const retry = vi.fn<() => Promise<unknown>>();
   const initialQuery = <T,>(data: T): QueryFixture<T> => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, error: null, dataUpdatedAt: 0, refetch: retry });
   const perms: PermissionFixture = {};
   return {
     inventory: initialQuery<SaleRoomInventory>({ rooms: [], buildings: [], serverNow: '2026-10-21T01:00:00Z', nextPolicyBoundaryAt: null, settingsOwnerId: null, canManageAccountSettings: false }),
-    settings: initialQuery<PublicRoomSettings>({ soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null }),
-    hotlines: initialQuery<HotlineFixture[]>([]), perms, org: '', actor: '', rpc: vi.fn<SaleRoomRpcInvoker>(),
+    settings: initialQuery<CompanyRoomSettings>({ settings: { soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null }, ownerId: null, exists: false, updatedAt: null, canManage: false, hotlines: [] }),
+    perms, org: '', actor: '', rpc: vi.fn<SaleRoomRpcInvoker>(),
     saveSettings: vi.fn(), createHotline: vi.fn(), updateHotline: vi.fn(), retry,
     exportImage: vi.fn<(buildings: Building[]) => Promise<number>>(),
     drawImage: vi.fn<(table: RoomListTable) => { toDataURL: () => string }>(),
@@ -51,7 +52,8 @@ vi.mock('@/hooks/usePublicRoomSettings', () => ({
   usePublicRoomSettings: () => m.settings, useUpsertPublicRoomSettings: () => ({ mutateAsync: m.saveSettings, isPending: false }),
   PUBLIC_ROOM_SETTINGS_DEFAULTS: { soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null },
 }));
-vi.mock('@/hooks/useHotlines', () => ({ useHotlines: () => m.hotlines, useCreateHotline: () => ({ mutateAsync: m.createHotline, isPending: false }), useUpdateHotline: () => ({ mutateAsync: m.updateHotline, isPending: false }) }));
+// Hotline in lên trang đi kèm cài đặt chung của công ty (đợt 2 Sale phòng), không đọc danh sách hotline riêng của người sửa.
+vi.mock('@/hooks/useHotlines', () => ({ useCreateHotline: () => ({ mutateAsync: m.createHotline, isPending: false }), useUpdateHotline: () => ({ mutateAsync: m.updateHotline, isPending: false }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('../QuickRoomBoard', () => ({ default: () => <div>Bảng nhanh cùng danh sách phòng</div> }));
 import DisplaySettingsTab from '../DisplaySettingsTab';
@@ -60,6 +62,12 @@ import SaleRoomWorkspace from '../SaleRoomWorkspace';
 import { formatPriceInput } from '../roomListSheetDraft';
 const room = (id: string, code: string): Room => ({ id, code, no: Number(code), buildingId: B1, buildingName: 'Nhà A', buildingArea: '', buildingAddr: '123 Đường A', floor: 1, type: 'Studio', price: 4, area: 20, status: 'free', amenities: ['Máy lạnh'], availDate: null, imgCount: 0, phClass: '', saleFactKey: 'fact-a', saleNote: 'Ghi chú nền', x: 0, y: 0, w: 0, h: 0 });
 const building = (): Building => ({ id: B1, code: 'A', name: 'Nhà A', area: '', district: '', address: '123 Đường A', manager: '', phone: '0900000000', contactPhone: '', hotline: '0900000000', salePolicy: 'Chính sách của chủ nhà', lift: false, policy: '', floors: [], freeCount: 2, total: 2, rooms: [room(R1, '101'), room(R2, '102')] });
+const hotlineA: SettingsHotline = { id: 'hotline-a', name: 'Hotline chung', phone_number: '0900000000', is_active: true, created_at: '2026-10-01T00:00:00+00:00' };
+/** Cài đặt chung của công ty: dòng của người đứng tên chung các toà (ownerId) + hotline của người đó; updatedAt là khoá CAS. */
+const company = (settings: Partial<CompanyRoomSettings['settings']> = {}, ownerId = ACTOR): CompanyRoomSettings => ({
+  settings: { soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null, ...settings },
+  ownerId, exists: true, updatedAt: SETTINGS_AT, canManage: true, hotlines: [hotlineA],
+});
 const query = <T,>(data: T): QueryFixture<T> => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, error: null, dataUpdatedAt: Date.now(), refetch: m.retry });
 let cache: QueryClient;
 const wrap = (child: React.ReactNode) => <QueryClientProvider client={cache}><MemoryRouter><div className="cm-app">{child}</div></MemoryRouter></QueryClientProvider>;
@@ -72,8 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks(); sessionStorage.clear(); m.org = ORG; m.actor = ACTOR; m.perms = { __superadmin: true };
   cache = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
   m.inventory = query({ ...sheetInventoryFixture([building()]), settingsOwnerId: ACTOR });
-  m.settings = query({ soon_days: 30, show_rented: true, hotline_id: null, sale_policy: 'Chính sách của chủ nhà' });
-  m.hotlines = query([{ id: 'hotline-a', phone_number: '0900000000', is_active: true }]);
+  m.settings = query(company({ sale_policy: 'Chính sách của chủ nhà' }));
   m.retry.mockResolvedValue({ isError: false }); m.saveSettings.mockResolvedValue({});
   m.rpc.mockImplementation(async (_name, args) => ({ data: { room_id: args.p_room_id, building_id: B1, request_id: args.p_request_id, revision: 'b'.repeat(32), updated_at: '2026-10-21T01:00:00Z', fields: args.p_patch }, error: null }));
   vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -84,13 +91,33 @@ describe('Excel room operations acceptance', () => {
     ['E01', 'Chủ trọ', true], ['E02', 'Chủ công ty', true], ['E03', 'Quản lý', false], ['E04', 'Sale Admin', false], ['E05', 'Sale', false],
   ])('%s · %s: cập nhật giá trong phạm vi mà không ghi cài đặt chủ tài khoản', async (_id, _role, ownsSettings) => {
     m.inventory.data.canManageAccountSettings = ownsSettings;
-    if (!ownsSettings) { m.inventory.data.settingsOwnerId = '20000000-0000-4000-8000-000000000002'; m.perms = { sale_phong: { edit: { org_wide: false, building_ids: [B1] } } }; }
+    if (!ownsSettings) { m.inventory.data.settingsOwnerId = OTHER; m.perms = { sale_phong: { edit: { org_wide: false, building_ids: [B1] } } }; }
     render(wrap(<DisplaySettingsTab />)); expect(price()).toHaveProperty('disabled', false);
     expect(screen.getByLabelText('Hotline chung cho tất cả nhà')).toHaveProperty('disabled', !ownsSettings);
     enterPrice('4500000'); fireEvent.click(save());
     await waitFor(() => expect(m.rpc).toHaveBeenCalledOnce());
     expect(m.rpc.mock.calls[0]![1]).toMatchObject({ p_room_id: R1, p_patch: { rent_price: 4500000 }, p_expected_revision: 'a'.repeat(32) });
     expect(m.saveSettings).not.toHaveBeenCalled(); expect(m.createHotline).not.toHaveBeenCalled();
+  });
+  // Đợt 2 Sale phòng: cài đặt chung thuộc công ty — ai có quyền «Cài đặt hiển thị» (và máy chủ cho phép) đều sửa được,
+  // không còn đòi người sửa đứng tên các toà; lưu kèm updatedAt của bản đã đọc để máy chủ chặn ghi đè (PT409).
+  it('E39 · Quản lý có quyền Cài đặt hiển thị nhưng không đứng tên toà: sửa cài đặt chung, lưu kèm khoá CAS', async () => {
+    m.inventory.data.settingsOwnerId = OTHER; m.inventory.data.canManageAccountSettings = true;
+    m.settings = query(company({ sale_policy: 'Chính sách của chủ nhà' }, OTHER));
+    m.perms = { sale_phong: { edit: { org_wide: false, building_ids: [B1] }, manage_settings: { org_wide: true, building_ids: [] } } };
+    render(wrap(<DisplaySettingsTab />));
+    expect(screen.getByLabelText('Hotline chung cho tất cả nhà')).toHaveProperty('disabled', false);
+    fireEvent.change(screen.getByLabelText('Chính sách sale chung'), { target: { value: 'Chính sách mới của công ty' } }); fireEvent.click(save());
+    await waitFor(() => expect(m.saveSettings).toHaveBeenCalledOnce());
+    expect(m.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ sale_policy: 'Chính sách mới của công ty', hotline_id: null, expectedUpdatedAt: SETTINGS_AT }));
+    expect(m.createHotline).not.toHaveBeenCalled(); expect(m.updateHotline).not.toHaveBeenCalled();
+  });
+  it('E40 · Sale Admin có quyền Cài đặt hiển thị nhưng máy chủ không cho: cài đặt chung chỉ đọc', () => {
+    m.inventory.data.settingsOwnerId = OTHER; m.inventory.data.canManageAccountSettings = false;
+    m.perms = { sale_phong: { edit: { org_wide: true, building_ids: [] }, manage_settings: { org_wide: true, building_ids: [] } } };
+    render(wrap(<DisplaySettingsTab />));
+    expect(screen.getByLabelText('Hotline chung cho tất cả nhà')).toHaveProperty('disabled', true);
+    expect(price()).toHaveProperty('disabled', false);
   });
   it('E06 · Sale: phòng ngoài quyền sửa chỉ đọc, kể cả quyền cài đặt rộng', () => {
     m.inventory.data.rooms[0]!.capabilities.edit = false;

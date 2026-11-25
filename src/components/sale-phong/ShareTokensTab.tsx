@@ -1,8 +1,7 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import {LoadingState} from '@/components/loading/LoadingState';
-import {actionErrorMessage} from '@/lib/actionFeedback';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {createTokenErrorMessage,tokenRemovalWarnings} from '@/lib/publicRoomFeedback';
+import {createTokenErrorMessage,tokenAdminErrorMessage,tokenRemovalWarnings} from '@/lib/publicRoomFeedback';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import TokenRemovalWarnings from './TokenRemovalWarnings';
 import { useState } from "react";
@@ -26,8 +25,11 @@ import { toast } from "sonner";
 import { roomShareUrl } from "@/lib/publicLinks";
 import {
   usePublicRoomTokens, useCreatePublicRoomToken, useUpdateTokenLabel,
-  useSetTokenRevoked, useDeletePublicRoomToken, type PublicRoomToken,
+  useSetTokenRevoked, useDeletePublicRoomToken, useBotShareTokens, type PublicRoomToken,
 } from "@/hooks/usePublicRoomTokens";
+
+/** Link của người khác khi người xem chỉ có quyền Quản lý link theo toà/khu (máy chủ cũng từ chối, 42501). */
+const OTHERS_LINK_HINT="Link của người khác — cần quyền «Quản lý link chia sẻ» phạm vi toàn công ty";
 
 const fmtDate = (s: string) => {
   try { return new Date(s).toLocaleDateString("vi-VN"); } catch { return s; }
@@ -64,12 +66,13 @@ export default function ShareTokensTab() {
   const [blocked,setBlocked]=useState(false);
   const canWrite=!blocked&&!tokenQuery.isError&&tokenQuery.data!==undefined;
   const busy=createMut.isPending||labelMut.isPending||revokeMut.isPending||deleteMut.isPending;
-  const perform=async(task:()=>Promise<unknown>,done:()=>void,message:(error:unknown)=>string=error=>actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.'))=>{
+  const perform=async(task:()=>Promise<unknown>,done:()=>void,message:(error:unknown)=>string=error=>tokenAdminErrorMessage(error,'Không thao tác được link'))=>{
     if(!canWrite||busy)return;setWriteError('');
     try{await task();done();}catch(error){setWriteError(message(error));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
   };
   const doCreate=()=>{if(orgReady)void perform(async()=>{const row=await createMut.mutateAsync(newLabel);await copyLink(row.token);},()=>{setCreateOpen(false);setNewLabel('');},createTokenErrorMessage);};
-  const removalWarnings=(t:PublicRoomToken|null)=>t?tokenRemovalWarnings(t,tokens??[]):[];
+  const botTokens=useBotShareTokens().data;
+  const removalWarnings=(t:PublicRoomToken|null)=>t?tokenRemovalWarnings(t,tokens??[],botTokens??[]):[];
   const doEdit=()=>{if(editing)void perform(()=>labelMut.mutateAsync({token:editing.token,label:editLabel}),()=>setEditing(null));};
   const errorNotice=writeError?<p role="alert" className="text-sm text-destructive">{writeError}</p>:null;
 
@@ -79,8 +82,8 @@ export default function ShareTokensTab() {
           Nút tạo vẫn chỉ mở khi danh sách đã về — như khi còn nằm trong vùng chờ. */}
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Mỗi link hiển thị tất cả toà của bạn đang có phòng trống. Gửi link cho khách/sale —
-          không cần đăng nhập. Thu hồi link bất cứ lúc nào.
+          Mọi link của công ty hiển thị cùng một trang: tất cả toà của công ty đang có phòng trống, cùng hotline và
+          chính sách chung. Gửi link cho khách/sale — không cần đăng nhập. Thu hồi link bất cứ lúc nào.
         </p>
         <Button size="sm" disabled={!canWrite||busy||tokens===undefined||!orgReady} onClick={() => {setWriteError('');setNewLabel("");setCreateOpen(true);}}>
           <Plus className="h-4 w-4 mr-1" />Tạo link mới
@@ -105,12 +108,13 @@ export default function ShareTokensTab() {
                   <TableHead>Nhãn</TableHead>
                   <TableHead>Link</TableHead>
                   <TableHead>Trạng thái</TableHead>
+                  <TableHead>Người tạo</TableHead>
                   <TableHead>Ngày tạo</TableHead>
                   <TableHead className="w-[160px]">Thao tác</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tokens.map((t) => (
+                {tokens.map((t) => {const mayManage=t.can_manage!==false;return (
                   <TableRow key={t.token} className={t.revoked ? "opacity-60" : ""}>
                     <TableCell className="font-medium">
                       {t.label || <span className="text-muted-foreground">(chưa đặt tên)</span>}
@@ -123,6 +127,7 @@ export default function ShareTokensTab() {
                         ? <Badge variant="destructive">Đã thu hồi</Badge>
                         : <Badge variant="default">Đang hoạt động</Badge>}
                     </TableCell>
+                    <TableCell className="text-sm">{t.owner_name || <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{fmtDate(t.created_at)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-0.5">
@@ -132,25 +137,25 @@ export default function ShareTokensTab() {
                         <Button variant="ghost" size="icon" title="Mở link" onClick={() => window.open(roomShareUrl(t.token), "_blank", "noopener")}>
                           <ExternalLink className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" title="Đổi nhãn" disabled={!canWrite||busy} onClick={() => {setWriteError('');setEditing(t);setEditLabel(t.label ?? "");}}>
+                        <Button variant="ghost" size="icon" title={mayManage?"Đổi nhãn":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={() => {setWriteError('');setEditing(t);setEditLabel(t.label ?? "");}}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                         {t.revoked ? (
-                          <Button variant="ghost" size="icon" title="Khôi phục" disabled={!canWrite||busy} onClick={()=>void perform(()=>revokeMut.mutateAsync({token:t.token,revoked:false}),()=>{})}>
+                          <Button variant="ghost" size="icon" title={mayManage?"Khôi phục":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>void perform(()=>revokeMut.mutateAsync({token:t.token,revoked:false}),()=>{})}>
                             <RotateCcw className="h-4 w-4" />
                           </Button>
                         ) : (
-                          <Button variant="ghost" size="icon" title="Thu hồi" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setRevoking(t);}}>
+                          <Button variant="ghost" size="icon" title={mayManage?"Thu hồi":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>{setWriteError('');setRevoking(t);}}>
                             <Ban className="h-4 w-4 text-amber-600" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" title="Xoá" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setDeleting(t);}}>
+                        <Button variant="ghost" size="icon" title={mayManage?"Xoá":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>{setWriteError('');setDeleting(t);}}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                );})}
               </TableBody>
             </Table>
           )}

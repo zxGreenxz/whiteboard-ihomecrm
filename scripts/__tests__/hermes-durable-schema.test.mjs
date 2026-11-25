@@ -852,6 +852,11 @@ function securityContract(sql = all, registry = functions) {
   const guestPage = 'public.get_public_available_rooms(text)';
   const readyRoomWriter = 'public.set_public_room_link_ready_room_v1(text,uuid,boolean)';
   const stockWorker = 'public.zalo_phong_trong_cho_worker_v1(uuid)';
+  // Sale phòng đợt 2 (20261125034429_sale_phong_theo_cong_ty.sql) thay hàm đọc phòng nội bộ, «Phòng trống», và thêm RPC
+  // cài đặt chung / quản link có kiểm quyền cùng file với trang Hermes; các grant này không mở hàm Hermes nào.
+  const saleCompanyCaller = ['public.get_sale_room_inventory_v1(uuid,uuid,uuid)', 'public.get_my_available_rooms(uuid)',
+    'public.get_public_room_settings_v1(uuid)', 'public.save_public_room_settings_v1(uuid,timestamptz,integer,boolean,uuid,text)',
+    'public.list_public_room_tokens_v1(uuid)', 'public.manage_public_room_token_v1(uuid,text,text,text)'];
   const allowed = new Map([
     ['anon', new Set([guestPage])],
     ['authenticated', new Set([...PUBLIC.map(name => `public.${name}`), ...TASK_FUNCTIONS.filter(spec => spec.authenticated).map(spec => spec.signature),
@@ -863,10 +868,10 @@ function securityContract(sql = all, registry = functions) {
       // R2d (20261021063452): the fast reader's DEFINER count, reachable only through its bound OID (no app_private USAGE).
       'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])',
       // Shared write foundation: SQL-standard INVOKER wrappers bind these app_private OIDs at creation (no app_private USAGE).
-      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER, ...LEARNING_ACTION_CALLER, guestPage, readyRoomWriter])],
+      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER, ...LEARNING_ACTION_CALLER, guestPage, readyRoomWriter, ...saleCompanyCaller])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
-    ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER, guestPage, stockWorker])],
+    ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER, guestPage, stockWorker, 'public.get_my_available_rooms(uuid)'])],
     ['hermes_learning_ingest', new Set(LEARNING_INGEST)],
   ]);
   for (const statement of expandedStatements) {

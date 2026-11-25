@@ -17,7 +17,7 @@ const migration = slug => {
 };
 const PAGE_SQL = migration('hermes_available_rooms_page_v1'), FAST_SQL = migration('hermes_domain_read_fast_v1');
 const catalog = buildSqlCatalog({ functions: ['public.get_public_available_rooms', 'public.hermes_available_rooms_page_v1',
-  'app_private.public_room_link_grants_v1','app_private.public_sale_rooms_payload_v1','app_private.hermes_room_page_admission_v1', 'app_private.hermes_sale_listing_payload_v1', 'app_private.hermes_domain_read_scope_fast_v1'] });
+  'app_private.public_room_link_grants_v1','app_private.public_sale_rooms_payload_v1','app_private.org_building_owner_v1','app_private.hermes_room_page_admission_v1', 'app_private.hermes_sale_listing_payload_v1', 'app_private.hermes_domain_read_scope_fast_v1'] });
 const final = name => { const state = catalog.functions.get(name); assert.equal(state?.action, 'create', name); return stripSqlComments(state.statement, { deep: true }); };
 // Spacing-insensitive SQL text: the sale page writes `a = b`, the page function `a=b`.
 const norm = text => text.replace(/\s+/g, ' ').replace(/\s*([(),=<>])\s*/g, '$1').trim();
@@ -90,21 +90,21 @@ test('G2: the admission block is the FAST read admission verbatim (only the erro
   assert.doesNotMatch(PAGE_SQL, /'customers\.view'|'contracts\.view'|FOREACH k IN ARRAY/, 'no embed permissions in the room admission');
 });
 
-// Sale-page predicates the page function copies (design table §1). Left: the final
-// public.get_public_available_rooms / hermes_sale_listing_payload_v1 text; right: the page
-// function text. A change on either side turns this red together with the parity hash.
+// Sale-page predicates the page function copies (design table §1; theo công ty từ đợt 2 Sale phòng 25/11/2026). Left: the
+// final public.get_public_available_rooms / public_sale_rooms_payload_v1 / hermes_sale_listing_payload_v1 text; right: the
+// page function text. A change on either side turns this red together with the parity hash.
 const MIRRORED = [
-  ['owner link', 'app_private.public_sale_rooms_payload_v1', 'WHERE t.organization_id=p_organization_id AND t.revoked=false', 'WHERE t.organization_id=v_org AND t.revoked=false GROUP BY t.owner_id'],
-  ['owner buildings', 'public.get_public_available_rooms', 'WHERE (b.user_id = v_owner OR (',
-    'LEFT JOIN owners o ON o.owner_id=b.user_id'],
-  ['static building', 'public.get_public_available_rooms', 'AND b.is_virtual = false AND b.deleted_at IS NULL', 'AND b.is_virtual=false AND b.deleted_at IS NULL'],
+  ['company link', 'app_private.public_sale_rooms_payload_v1', 'WHERE t.organization_id=p_organization_id AND t.revoked=false', 'WHERE t.organization_id=v_org AND t.revoked=false'],
+  ['company owner', 'public.get_public_available_rooms', 'v_owner := app_private.org_building_owner_v1(v_org);', 'SELECT app_private.org_building_owner_v1(v_org) AS owner_id'],
+  ['company buildings', 'public.get_public_available_rooms', 'WHERE b.organization_id = v_org AND b.is_virtual = false AND b.deleted_at IS NULL', 'b.organization_id=v_org AND b.is_virtual=false AND b.deleted_at IS NULL'],
   ['live room', 'public.get_public_available_rooms', 'AND rm.deleted_at IS NULL', 'WHERE rm.organization_id=v_org AND rm.deleted_at IS NULL'],
   ['company', 'public.get_public_available_rooms', 'JOIN public.buildings b ON b.id = rm.building_id AND b.organization_id = rm.organization_id', 'AND b.organization_id=v_org'],
-  ['soon days default', 'public.get_public_available_rooms', 'IF v_soon IS NULL THEN v_soon := 30; END IF;', 'COALESCE(ps.soon_days,30) AS soon_days'],
-  ['settings by owner', 'public.get_public_available_rooms', 'FROM public.public_room_settings WHERE owner_id = v_owner;', 'LEFT JOIN public.public_room_settings ps ON ps.owner_id=pub.owner_id'],
-  ['pass overlay', 'public.get_public_available_rooms', 'LEFT JOIN public.room_pass_listings pl ON pl.room_id = rm.id AND pl.user_id = v_owner AND pl.active = true',
-    'LEFT JOIN public.room_pass_listings pl ON pl.room_id=rm.id AND cb.owned AND pl.user_id=cb.owner_id AND pl.active=true'],
-  ['sale fact', 'public.get_public_available_rooms', 'CROSS JOIN LATERAL app_private.room_sale_workflow_fact_v1(rm.id,rm.organization_id,rm.status::text,pl.id IS NOT NULL,v_soon) fact',
+  ['soon days by building owner', 'public.get_public_available_rooms', 'LEFT JOIN public.public_room_settings ps ON ps.owner_id = b.user_id AND ps.organization_id = b.organization_id', 'LEFT JOIN public.public_room_settings ps ON ps.owner_id=b.user_id AND ps.organization_id=b.organization_id'],
+  ['soon days default', 'public.get_public_available_rooms', 'COALESCE(ps.soon_days,30)', 'COALESCE(ps.soon_days,30) AS soon_days'],
+  ['settings by company owner', 'public.get_public_available_rooms', 'FROM public.public_room_settings\n  WHERE owner_id = v_owner AND organization_id = v_org;', 'LEFT JOIN public.public_room_settings cs ON cs.owner_id=sp.owner_id AND cs.organization_id=v_org'],
+  ['pass overlay', 'public.get_public_available_rooms', 'LEFT JOIN public.room_pass_listings pl ON pl.room_id = rm.id AND pl.organization_id = rm.organization_id AND pl.active = true',
+    'LEFT JOIN public.room_pass_listings pl ON pl.room_id=rm.id AND pl.organization_id=rm.organization_id AND pl.active=true'],
+  ['sale fact', 'public.get_public_available_rooms', 'CROSS JOIN LATERAL app_private.room_sale_workflow_fact_v1(rm.id,rm.organization_id,rm.status::text,pl.id IS NOT NULL,COALESCE(ps.soon_days,30)) fact',
     'CROSS JOIN LATERAL app_private.room_sale_workflow_fact_v1(rm.id,rm.organization_id,rm.status::text,pl.id IS NOT NULL,cb.soon_days) fact'],
   ['hidden contact name', 'public.get_public_available_rooms', "CASE WHEN fact.status_public='pass' AND NOT COALESCE(pl.contact_manager,false) THEN pl.contact_name ELSE NULL END AS pass_contact_name",
     "CASE WHEN fact.status_public='pass' AND NOT COALESCE(pl.contact_manager,false) THEN left(pl.contact_name,81) END AS pass_contact_name"],
@@ -120,12 +120,12 @@ const MIRRORED = [
     "COALESCE(fact.status_public='pass' AND pl.contact_manager,false) AS pass_contact_manager"],
   ['fact columns', 'public.get_public_available_rooms', 'fact.status_public, fact.sale_state, fact.avail_date, fact.sale_today, fact.expected_ready_on',
     'fact.status_public,fact.sale_state,fact.avail_date,fact.sale_today,fact.expected_ready_on'],
-  ['amenities', 'public.get_public_available_rooms', "COALESCE(rm.amenities, '[]'::jsonb) AS amenities", "COALESCE(rm.amenities,'[]'::jsonb) AS amenities"],
+  ['amenities', 'public.get_public_available_rooms', "COALESCE(rm.amenities, '[]'::jsonb)", "COALESCE(rm.amenities,'[]'::jsonb) AS amenities"],
   ['address', 'public.get_public_available_rooms', "CASE WHEN b.street_address IS NOT NULL AND b.street_address LIKE '%,%' THEN b.street_address ELSE concat_ws(', ', NULLIF(b.street_address, ''), NULLIF(b.ward, ''), NULLIF(b.district, ''), NULLIF(b.province, '')) END",
     "CASE WHEN b.street_address IS NOT NULL AND b.street_address LIKE '%,%' THEN b.street_address ELSE concat_ws(', ',NULLIF(b.street_address,''),NULLIF(b.ward,''),NULLIF(b.district,''),NULLIF(b.province,'')) END AS address"],
-  ['hotline', 'public.get_public_available_rooms', "FROM public.hotlines h WHERE h.user_id = v_owner AND COALESCE(h.is_active, true) = true AND (v_hotline IS NULL OR h.id = v_hotline) ORDER BY (h.id = v_hotline) DESC NULLS LAST, h.created_at LIMIT 1",
-    "FROM public.hotlines h WHERE h.user_id=pub.owner_id AND COALESCE(h.is_active,true)=true AND (ps.hotline_id IS NULL OR h.id=ps.hotline_id) ORDER BY (h.id=ps.hotline_id) DESC NULLS LAST,h.created_at LIMIT 1"],
-  ['page policy', 'public.get_public_available_rooms', "'sale_policy', NULLIF(btrim(v_sale_policy), '')", "NULLIF(btrim(ps.sale_policy),'') AS page_sale_policy"],
+  ['hotline', 'public.get_public_available_rooms', "FROM public.hotlines h WHERE h.user_id = v_owner AND h.organization_id = v_org AND COALESCE(h.is_active, true) = true AND (v_hotline IS NULL OR h.id = v_hotline) ORDER BY (h.id = v_hotline) DESC NULLS LAST, h.created_at LIMIT 1",
+    "FROM public.hotlines h WHERE h.user_id=sp.owner_id AND h.organization_id=v_org AND COALESCE(h.is_active,true)=true AND (cs.hotline_id IS NULL OR h.id=cs.hotline_id) ORDER BY (h.id=cs.hotline_id) DESC NULLS LAST,h.created_at LIMIT 1"],
+  ['page policy', 'public.get_public_available_rooms', "'sale_policy', NULLIF(btrim(v_sale_policy), '')", "NULLIF(btrim(cs.sale_policy),'') AS page_sale_policy"],
   ['listed statuses', 'app_private.hermes_sale_listing_payload_v1', "WHERE pr->>'status_public' IN ('free','soon','pass')", "WHERE f.status_public IN ('free','soon','pass') AND f.status_public=ANY(v_statuses)"],
   ['order', 'app_private.hermes_sale_listing_payload_v1', "ORDER BY bx->>'name',bx->>'id',(x->>'floor')::numeric DESC NULLS LAST,x->>'name',x->>'id'",
     'ORDER BY cb.name,cb.id,f.floor DESC NULLS LAST,f.name,f.id'],
@@ -148,9 +148,10 @@ test('page predicates mirror the final sale-page reader and listing wrapper text
   for (const key of ['id', 'name', 'code', 'address', 'public_contact_name', 'public_contact_phone']) assert(page.includes(`'${key}',`) && wrapper.includes(`'${key}',pb->'${key}'`), key);
   assert(wrapper.includes("'page_contact_name',pb->'page_contact_name','page_contact_phone',pb->'page_contact_phone'"));
   assert(body('app_private.public_sale_rooms_payload_v1').includes(norm("'page_contact_name',v_page#>'{contact,name}', 'page_contact_phone',v_page#>'{contact,phone}'")));
-  const grants = body('app_private.public_room_link_grants_v1');
-  for (const predicate of ["fact.sale_state='READY'",'r.organization_id=g.organization_id','b.organization_id=g.organization_id','NOT t.revoked']) assert(grants.includes(norm(predicate)),predicate);
-  assert(page.includes(norm("fact.sale_state='READY' AND EXISTS (SELECT 1 FROM grants g WHERE g.room_id=rm.id AND g.building_id=rm.building_id)")));
+  // Đợt 2 Sale phòng: trang theo công ty đã gồm mọi tòa thật ⇒ không còn đường «phòng sẵn sàng đăng thêm qua link».
+  for (const name of ['public.get_public_available_rooms', 'app_private.public_sale_rooms_payload_v1', 'public.hermes_available_rooms_page_v1']) {
+    assert(!sqlCalls(final(name), 'public_room_link_grants_v1') && !final(name).includes('public_room_link_ready_rooms'), name);
+  }
   assert(page.includes("'page_contact_name',left(cb.page_contact_name,121),'page_contact_phone',left(cb.page_contact_phone,65)"));
 });
 
@@ -161,7 +162,7 @@ test('G1: web-parity pins the sale page as the mirrored source of the page funct
   assert.deepEqual(entry.sql.map(item => item.function), ['public.get_public_available_rooms']);
   assert.match(entry.sql[0].sha256 ?? '', /^[0-9a-f]{64}$/, 'hash written with --write');
   const page = entry.hermes.find(item => item.sql === 'public.hermes_available_rooms_page_v1');
-  assert.deepEqual(page.calls, ['room_sale_workflow_fact_v1', 'hermes_room_page_admission_v1', 'room_sale_policy_active_text_v1', 'public_room_link_grants_v1']);
+  assert.deepEqual(page.calls, ['room_sale_workflow_fact_v1', 'hermes_room_page_admission_v1', 'room_sale_policy_active_text_v1', 'org_building_owner_v1']);
   assert(entry.hermes.some(item => item.sql === 'app_private.hermes_room_page_admission_v1'));
   assert(entry.hermes.some(item => item.path === 'infra/hermes-broker/room-read-service.mjs' && item.contains === 'hermes_available_rooms_page_v1'));
   // The legacy entry stays: group preview/send and schedules keep hermes_sale_listing_rooms_v1.

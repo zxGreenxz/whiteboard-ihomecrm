@@ -9,13 +9,13 @@
     ]
   },
   "counts": {
-    "calledRpcs": 445,
+    "calledRpcs": 449,
     "byRisk": {
-      "normal": 335,
+      "normal": 339,
       "financial": 109,
       "infrastructure": 1
     },
-    "securityDefiner": 419
+    "securityDefiner": 423
   },
   "missingOnServer": [],
   "rpcs": {
@@ -3426,6 +3426,26 @@
       ],
       "risk": "normal"
     },
+    "get_public_room_settings_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomSettings.ts"
+      ],
+      "risk": "normal"
+    },
     "get_receiving_cashbooks_v1": {
       "definitions": [
         {
@@ -4384,6 +4404,26 @@
       ],
       "risk": "normal"
     },
+    "list_public_room_tokens_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomTokens.ts"
+      ],
+      "risk": "normal"
+    },
     "list_receiving_cashbook_settings_v1": {
       "definitions": [
         {
@@ -4775,6 +4815,26 @@
       ],
       "callers": [
         "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "manage_public_room_token_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_token text, p_action text, p_label text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomTokens.ts"
       ],
       "risk": "normal"
     },
@@ -6748,6 +6808,26 @@
       ],
       "callers": [
         "src/hooks/useContractExitSettlementDrafts.ts"
+      ],
+      "risk": "normal"
+    },
+    "save_public_room_settings_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_expected_updated_at timestamp with time zone, p_soon_days integer, p_show_rented boolean, p_hotline_id uuid DEFAULT NULL::uuid, p_sale_policy text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomSettings.ts"
       ],
       "risk": "normal"
     },

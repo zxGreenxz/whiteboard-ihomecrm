@@ -166,9 +166,10 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
               {errorText("hotline_id")}
               {!hotlinePhone && (
                 <p className="text-left text-xs text-amber-700">
+                  {/* Người chỉ xem không gõ được ô trên: không bảo họ «gõ rồi Lưu» (đợt 2 Sale phòng). */}
                   {printedPhone
-                    ? `Chưa có hotline — ảnh đang in SĐT dùng nhiều nhất của các nhà (${printedPhone}). Gõ số vào ô trên rồi Lưu.`
-                    : "Chưa có số liên hệ — gõ số hotline vào ô trên rồi Lưu."}
+                    ? `Chưa có hotline chung — ảnh đang in SĐT dùng nhiều nhất của các nhà (${printedPhone}).${props.canManageSettings ? " Gõ số vào ô trên rồi Lưu." : " Người có quyền «Cài đặt hiển thị» toàn công ty điền hotline chung."}`
+                    : props.canManageSettings ? "Chưa có số liên hệ — gõ số hotline vào ô trên rồi Lưu." : "Chưa có hotline chung — người có quyền «Cài đặt hiển thị» toàn công ty điền số này."}
                 </p>
               )}
               <Link to="/settings/categories/hotlines" className="block text-left text-xs font-medium text-primary underline">
