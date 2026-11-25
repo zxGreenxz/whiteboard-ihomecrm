@@ -59,12 +59,13 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'reconciliation-propose': tien('D', 'đề nghị đối soát sổ'), // tra gần đúng (sổ, ngày, người đề nghị, sau giờ kẹt) tới đợt 10
   'invoice-cancel': tien('van', 'huỷ hoá đơn'), // huỷ hàng loạt đã đối chiếu cách C (đợt 3); huỷ lẻ (useCancelInvoice) chưa có hàm đối chiếu, đợt 5 đổi dòng này
 
-  // Đợt 4: tạo khách, khách hẹn, bàn giao
-  'customer-create': khac('van', 'tạo khách hàng'),
-  'customer-import': khac('van', 'nhập khách hàng từ Excel'),
-  'useCreateLead': khac('van', 'tạo khách hẹn'),
-  'handover-create': tien('van', 'lập phiên bàn giao tiền'),
-  'income-expense-type-create': khac('van', 'tạo loại thu chi'),
+  // Đợt 4: tạo khách, khách hẹn, bàn giao. Bốn dòng `khac` không còn ghi dấu mới (luật 5: không khoá dữ liệu không phải
+  // tiền); chỉ còn đọc MỘT LẦN dấu khoá chung bản trước để lại (`settleLegacyPending`), đối chiếu gần đúng rồi gỡ.
+  'customer-create': khac('D', 'tạo khách hàng'), // mã khách do trình duyệt sinh, gửi lại cùng mã (khoá chính chặn khách thứ hai); xe hỏng = khách đã tạo, không dấu
+  'customer-import': khac('D', 'nhập khách hàng từ Excel'), // mỗi dòng một mã khách; báo theo dòng; dòng chưa xong nhập lại đúng mã; bỏ dấu lồng với tạo khách
+  'useCreateLead': khac('D', 'tạo khách hẹn'), // như tạo khách
+  'handover-create': tien('A', 'lập phiên bàn giao tiền'), // create_cash_handover khoá phiếu FOR UPDATE rồi đòi handover_id rỗng; đọc phiên của phiếu trước khi gửi
+  'income-expense-type-create': khac('D', 'tạo loại thu chi'), // ràng buộc duy nhất (công ty, chiều, tên chuẩn hoá); trùng ⇒ trả loại đã có
 
   // Đợt 5: chuyển trạng thái phiếu, hoá đơn, bàn giao, chốt sổ
   'voucher-lifecycle': tien('van', 'duyệt, huỷ hoặc khôi phục phiếu thu chi'), // 7 thao tác phiếu chung một dấu: statusMutations, flexMutations, incomeVoucherCancel

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import {beforeEach,it,expect,vi} from 'vitest';
-const h=vi.hoisted(()=>({rpc:vi.fn()}));
+const h=vi.hoisted(()=>{const state={rpc:vi.fn(),handovers:{} as Record<string,string|null>,readChain:(table:string)=>{const q={select:()=>q,in:(_c:string,ids:string[])=>Promise.resolve({data:table==='income_expenses'?ids.map(id=>({id,handover_id:state.handovers[id]??null})):ids.map(id=>({id,code:`BG-${id}`,status:'PENDING'})),error:null})};return q;}};return state;});
 vi.mock('react',async original=>({...await original<typeof import('react')>(),useRef:(current:unknown)=>({current})}));
 vi.mock('@tanstack/react-query',()=>({useMutation:(options:unknown)=>options,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u'})}));
-vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:h.rpc}}));
+// Lập phiên bàn giao đọc phiên của các phiếu trước khi gửi (đợt 4): bảng phiếu giả theo `h.handovers`.
+vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:h.rpc,from:(table:string)=>h.readChain(table)}}));
 import {useConfirmCashbookClosing,useCancelCashbookClosing,useProposeCashbookClosing} from '../useCashbookClosing';
 import {useCreateHandover,useConfirmHandover,useRequestCancelHandover,useConfirmCancelHandover,useRejectCancelHandover} from '../useCashHandovers';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
@@ -23,10 +24,17 @@ it.each([useRequestCancelHandover,useConfirmCancelHandover,useRejectCancelHandov
  localStorage.setItem('ihomecrm.selectedOrganizationId','org-b');
  await expect(writer(next())({handoverId:'h1',reason:'Kiểm tra'})).rejects.toBeInstanceOf(FinancialWorkflowError);expect(h.rpc).toHaveBeenCalledTimes(1);
 });
-it('handover creation timeout is not bypassed by reversing voucher order or changing receiver',async()=>{
+// Đợt 4: lập phiên chưa rõ kết quả không còn chặn mãi. Lần sau đọc phiên của các phiếu: đã vào phiên ⇒ báo mã, không
+// gửi (kể cả đảo thứ tự phiếu, đổi người nhận); còn trống ⇒ gửi lại, vì máy chủ khoá phiếu rồi mới xét handover_id.
+it('handover creation timeout is resolved by reading the vouchers: taken ones are reported, free ones are resent',async()=>{
+ h.handovers={};
  h.rpc.mockResolvedValue({data:null,error:{status:504,message:'timeout'}});
  await expect(writer(useCreateHandover())({receiverId:'receiver',voucherIds:['v1','v2']})).rejects.toBeInstanceOf(FinancialWorkflowError);
- await expect(writer(useCreateHandover())({receiverId:'other',voucherIds:['v2','v1']})).rejects.toBeInstanceOf(FinancialWorkflowError);expect(h.rpc).toHaveBeenCalledTimes(1);
+ h.handovers={v1:'h1',v2:'h1'};
+ await expect(writer(useCreateHandover())({receiverId:'other',voucherIds:['v2','v1']})).rejects.toMatchObject({outcome:'failure',message:expect.stringContaining('BG-h1')});expect(h.rpc).toHaveBeenCalledTimes(1);
+ h.handovers={};
+ h.rpc.mockResolvedValue({data:{id:'h2',code:'BG2',total_amount:1,voucher_count:2},error:null});
+ await expect(writer(useCreateHandover())({receiverId:'other',voucherIds:['v2','v1']})).resolves.toMatchObject({id:'h2'});expect(h.rpc).toHaveBeenCalledTimes(2);
 });
 it.each([{request_id:'r2',closure_id:1,closed_through:'2026-09-30',status:'CONFIRMED'},{request_id:'r1',closure_id:1,closed_through:'2026-02-31',status:'CONFIRMED'}])('closing receipt must match the exact request and a real date: %j',async data=>{
  h.rpc.mockResolvedValue({data,error:null});await expect(writer(useConfirmCashbookClosing())({requestId:'r1',countedBalance:0})).rejects.toBeInstanceOf(FinancialWorkflowError);

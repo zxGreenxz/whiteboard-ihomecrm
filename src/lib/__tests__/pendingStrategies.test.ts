@@ -26,7 +26,7 @@ const DIRECT_GUARD_SITES: Record<string, string[]> = {
   "src/lib/luckyDrawApi.ts": ["lucky-public-draw"],
 };
 /** Nhà máy `persistentFinancialWorkflow`: nơi định nghĩa, không phải nơi dùng. */
-const DEFINITION_FILES = new Set(["src/lib/persistentFinancialWorkflow.ts"]);
+const DEFINITION_FILES = new Set(["src/lib/persistentFinancialWorkflow.ts", "src/lib/legacyPendingExit.ts"]);
 
 interface FileUsage { literals: string[]; dynamicCalls: number; directGuards: number }
 
@@ -42,7 +42,8 @@ function scanPendingUsage(source: string, fileName = "sample.ts"): FileUsage {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       let namespace: string | null | undefined;
       if (node.expression.text === "persistentFinancialWorkflow") namespace = literalOf(node.arguments[0]);
-      if (node.expression.text === "runFinancialPending") {
+      // `settleLegacyPending` (đợt 4) đọc dấu khoá chung bản trước để lại ở namespace đó: vẫn là nơi dùng của dòng sổ.
+      if (node.expression.text === "runFinancialPending" || node.expression.text === "settleLegacyPending") {
         const scope = node.arguments[0];
         const property = scope && ts.isObjectLiteralExpression(scope)
           ? scope.properties.find((item): item is ts.PropertyAssignment => ts.isPropertyAssignment(item) && item.name.getText(file) === "namespace")
@@ -101,7 +102,7 @@ function scanRepository() {
     if (DEFINITION_FILES.has(file)) continue;
     const source = readFileSync(full, "utf8");
     // Phân tích cú pháp chỉ những tệp có nhắc tới bộ chống ghi trùng; phần còn lại không thể là nơi dùng.
-    if (!/persistentFinancialWorkflow|runFinancialPending|FinancialWorkflowGuard/.test(source)) continue;
+    if (!/persistentFinancialWorkflow|runFinancialPending|FinancialWorkflowGuard|settleLegacyPending/.test(source)) continue;
     declared.delete(file);
     const usage = scanPendingUsage(source, file);
     const strings = stringLiterals(source, file);
@@ -163,6 +164,13 @@ describe("bộ quét nơi dùng", () => {
         namespace:'invoice-cancel',userId:user.id,
       }, work);
     `)).toEqual({ literals: ["room-create", "salary-lock", "invoice-cancel"], dynamicCalls: 0, directGuards: 0 });
+  });
+
+  it("tính cả nơi chỉ còn đọc dấu khoá chung bản trước để lại", () => {
+    expect(scanPendingUsage(`
+      await settleLegacyPending({ namespace: 'customer-create', businessKey: 'create' }, decide);
+      await settleLegacyPending(site, decide);
+    `)).toEqual({ literals: ["customer-create"], dynamicCalls: 1, directGuards: 0 });
   });
 
   it("đếm lời gọi không viết thẳng namespace và guard dựng trực tiếp", () => {
