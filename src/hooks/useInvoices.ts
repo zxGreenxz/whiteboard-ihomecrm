@@ -4,6 +4,7 @@ import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import {runFinancialPending} from '@/lib/financialPendingAction';
+import {financialPending,type FinancialPendingScope} from '@/lib/financialPending';
 import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { invoiceFailureMessage, invoiceLabel, invoiceLifecycleFeedback, confirmedInvoiceReceipt, InvoicePartialError } from '@/lib/invoiceFeedback';
 // =============================================
@@ -911,12 +912,18 @@ export const useBulkCancelInvoices = () => {
         .in('id', invoiceIds);
       if (fetchError) throw fetchError;
 
+      // Hoá đơn đã huỷ mà còn dấu của một lần huỷ chưa rõ kết quả: chính là lần huỷ trước đã xong. Cho nó đi qua
+      // phép đối chiếu (đọc thấy CANCELLED ⇒ xong, gỡ dấu) thay vì bỏ qua và để dấu nằm lại. Cùng phạm vi dấu với lời gọi dưới.
+      const hasPendingCancel=(row:{id:string;organization_id:string|null})=>{
+        const scope:FinancialPendingScope={namespace:'invoice-cancel',userId:user.id,organizationId:row.organization_id ?? selectedOrganizationId ?? '',businessKey:row.id};
+        try{return financialPending.read(scope)!==null;}catch{return false;}
+      };
       const eligible = financialReadRows(rows).filter((row) =>
         canCancelInvoice({
           status: row.status as InvoiceStatus,
           paid_amount: row.paid_amount,
           deleted_at: row.deleted_at,
-        }),
+        }) || (row.status==='CANCELLED' && !row.deleted_at && hasPendingCancel(row)),
       );
 
       const completedIds:string[]=[];
@@ -925,7 +932,6 @@ export const useBulkCancelInvoices = () => {
       let failed = 0;
       for (const row of eligible) {
         try {
-          if(invoiceLifecycleUnknown.has(row.id)) throw new TypeError("Chưa đối chiếu trạng thái hoá đơn của lần thao tác trước.");
           await runFinancialPending({
             namespace:'invoice-cancel',userId:user.id,
             organizationId:row.organization_id ?? selectedOrganizationId ?? '',businessKey:row.id,
@@ -937,10 +943,17 @@ export const useBulkCancelInvoices = () => {
             const receipt=confirmedInvoiceReceipt(await readInvoiceLifecycleReceipt(result,row.id));
             if(receipt.id!==row.id || receipt.status!=='CANCELLED') throw new TypeError('Chưa xác nhận được hoá đơn đã hủy sau thao tác.');
             progress.recordCompleted([row.id]);
-          });
+          },undefined,{operation:'huỷ hoá đơn',reconcile:async ()=>{
+            // Cách C: đọc trạng thái hoá đơn. cancel_invoice_with_credit_v1 (production 24/11/2026) khoá hoá đơn
+            // FOR UPDATE rồi trả `noop` khi đã huỷ, nên gửi lại khi còn chưa huỷ không thể huỷ hai lần.
+            const {data,error}=await supabase.from('invoices').select('id, status').eq('id',row.id).maybeSingle();
+            if(error)throw error;
+            if(!data||data.id!==row.id)return null;
+            if(data.status==='CANCELLED')return {result:undefined};
+            return {outcome:'not-written',serverDedupesRequestKey:true};
+          }});
           done += 1; completedIds.push(row.id);
         } catch (error) {
-          if(voucherOutcomeUnknown(error)) invoiceLifecycleUnknown.add(row.id);
           failures.push({id:row.id,message:invoiceFailureMessage(error,"hủy hóa đơn"),outcomeUnknown:voucherOutcomeUnknown(error)});
           failed += 1;
         }
@@ -982,7 +995,6 @@ export const useBulkCancelInvoices = () => {
 // Requirements: 4.1, 4.2
 // =============================================
 
-const invoiceLifecycleUnknown = new Set<string>();
 async function readInvoiceLifecycleReceipt(value:unknown,invoiceId:string):Promise<unknown> {
   const receipt=value && typeof value==='object'?value as Record<string,unknown>:{};
   const row=receipt.invoice && typeof receipt.invoice==='object'?receipt.invoice as Record<string,unknown>:receipt;

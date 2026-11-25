@@ -1,8 +1,10 @@
 import {runFinancialPending} from '@/lib/financialPendingAction';
+import {FinancialAlreadyRecordedError} from '@/lib/financialWorkflowError';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {getSessionUser} from '@/lib/authSession';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { readCreatedVoucherReceipt, type CreatedVoucherReceipt } from '@/lib/createdVoucherReceipt';
+import { feeVoucherCancelledBefore } from '@/lib/feeFeedback';
 // =============================================================================
 // usePeriodFees — data layer cho "Đóng tiền Tập trung theo Kỳ" (V2 — 10/07).
 //
@@ -262,6 +264,10 @@ export const usePayPeriodFee = () => {
       force?: boolean;          // true = bỏ qua cảnh báo trùng
     }): Promise<PayPeriodFeeResult> => {
       const user=await getSessionUser();
+      // Gửi lại sau một lần chưa rõ kết quả: KHÔNG ép. pay_period_fee (production 24/11/2026) khoá tư vấn theo slot
+      // (toà × hạng mục × tháng bắt đầu) rồi mới đếm phiếu chưa huỷ của slot; không ép thì slot đã có phiếu là trả
+      // cảnh báo, không ghi. Vì vậy gửi lại không thể ra phiếu thứ hai, kể cả khi lệnh cũ còn đang chạy.
+      let resend=false;
       return runFinancialPending({namespace:'period-fee-pay',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:[args.buildingId,args.categoryKey,args.periodStart,args.periodEnd].join(':')},async progress=>{
       const { data, error } = await supabase.rpc('pay_period_fee', {
         p_building_id: args.buildingId,
@@ -274,15 +280,24 @@ export const usePayPeriodFee = () => {
         p_account_holder: args.accountHolder || undefined,
         p_account_id: args.accountId ?? undefined,
         p_attachments: args.attachments && args.attachments.length ? args.attachments : null,
-        p_force: args.force ?? false,
+        p_force: resend ? false : (args.force ?? false),
       });
       if (error) throw error;
-      if ((data as {warning?:string} | null)?.warning === 'duplicate') return data as PayPeriodFeeResult;
+      if ((data as {warning?:string} | null)?.warning === 'duplicate') {
+        // Kỳ đã có phiếu: có thể chính là phiếu của lần gửi trước. Không mở hộp "Đóng thêm" từ lần gửi lại.
+        if (resend) throw new FinancialAlreadyRecordedError('Kỳ này đã có phiếu phí, có thể là phiếu của lần gửi trước. Xem danh sách phiếu của kỳ trước khi đóng thêm; vẫn cần đóng thêm thì bấm Đóng lại.');
+        return data as PayPeriodFeeResult;
+      }
       const receipt=await readCreatedVoucherReceipt(data);
       progress.recordCompleted([receipt.id]);
       if(!receipt.approval_status||!receipt.posting_status)throw new TypeError("Chưa xác nhận trạng thái phiếu phí đã tạo");
       return receipt;
-      });
+      },undefined,{operation:'đóng phí kỳ',reconcile:async pending=>{
+        // Lần trước đã nhận mã phiếu (chỉ hỏng ở bước đọc trạng thái): đã ghi.
+        if(pending.completedIds.length)return {outcome:'already-written',message:'Phiếu phí của kỳ này đã được tạo ở lần gửi trước.',recordIds:pending.completedIds};
+        resend=true;
+        return {outcome:'not-written',serverDedupesRequestKey:true};
+      }});
     },
     onSuccess: (data) => {
       // Cảnh báo trùng = CHƯA ghi gì → không cần invalidate.
@@ -299,18 +314,38 @@ export const usePayDraftFeeVoucher = () => {
     meta: {handlesFeedback: true},
     mutationFn: async (args: { voucherId: string; accountId: string; attachments?: string[] | null }) => {
       const user=await getSessionUser();
+      // pay_draft_fee_voucher (production 24/11/2026) khoá dòng phiếu rồi đòi trạng thái nháp: gửi lại khi phiếu còn
+      // nháp không thể duyệt hai lần. Đối chiếu bằng cách đọc trạng thái phiếu (cách C).
+      let resend=false;
       return runFinancialPending({namespace:'draft-fee-pay',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:args.voucherId},async progress=>{
       const { data, error } = await supabase.rpc('pay_draft_fee_voucher', {
         p_voucher_id: args.voucherId,
         p_account_id: args.accountId,
         p_attachments: args.attachments ?? null,
       });
-      if (error) throw error;
+      if (error) {
+        // Lệnh cũ chạy xong giữa lúc đối chiếu và lúc gửi lại: phiếu đã rời trạng thái nháp.
+        if (resend && /không ở trạng thái nháp/i.test(String((error as {message?:unknown}).message ?? ''))) throw new FinancialAlreadyRecordedError('Phiếu nháp này đã được thanh toán ở lần gửi trước. Mở phiếu để kiểm tra sổ quỹ và ảnh chứng từ.',[args.voucherId]);
+        throw error;
+      }
       const receipt=await readCreatedVoucherReceipt(data);
       progress.recordCompleted([receipt.id]);
       if(!receipt.approval_status||!receipt.posting_status)throw new TypeError("Chưa xác nhận trạng thái phiếu phí đã tạo");
       return receipt;
-      });
+      },undefined,{operation:'trả phiếu phí nháp',reconcile:async ()=>{
+        const {data,error}=await supabase.from('income_expenses').select('id,code,approval_status,posting_status,account_id,deleted_at').eq('id',args.voucherId).maybeSingle();
+        if(error)throw error;
+        if(!data)return null; // Không đọc được phiếu: chưa kết luận được.
+        const row=data as {id:string;code:string|null;approval_status:string|null;posting_status:string|null;account_id:string|null;deleted_at:string|null};
+        if(row.approval_status==='APPROVED'&&!row.deleted_at){
+          // Đã duyệt vào đúng sổ đang chọn: chính là lần trả trước. Sổ khác: đã duyệt ở lần trước hoặc bởi người khác.
+          if(row.account_id===args.accountId&&row.posting_status)return {result:{id:row.id,voucher_id:row.id,code:row.code??'',approval_status:row.approval_status,posting_status:row.posting_status}};
+          return {outcome:'already-written',message:`Phiếu ${row.code??row.id} đã được duyệt ở lần gửi trước hoặc bởi người khác. Mở phiếu để kiểm tra sổ quỹ trước khi làm tiếp.`,recordIds:[row.code??row.id]};
+        }
+        // Còn nháp (hoặc đã huỷ): gửi lại; máy chủ khoá dòng và xét trạng thái nên không duyệt hai lần.
+        resend=true;
+        return {outcome:'not-written',serverDedupesRequestKey:true};
+      }});
     },
     onSuccess: () => invalidateFees(qc),
   });
@@ -324,12 +359,19 @@ export const useCancelPeriodFee = () => {
     meta: {handlesFeedback: true},
     mutationFn: async (voucherId: string) => {
       const user=await getSessionUser();
+      // cancel_period_fee (production 24/11/2026) khoá dòng phiếu rồi xét deleted_at: chạy lại không huỷ hai lần, và
+      // "đã bị hủy trước đó" ở lần gửi lại nghĩa là việc đã xong (cách A).
+      let resend=false;
       return runFinancialPending({namespace:'period-fee-cancel',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:voucherId},async progress=>{
         const {data,error}=await supabase.rpc('cancel_period_fee',{p_voucher_id:voucherId});
-        if(error)throw error;
+        if(error){if(resend&&feeVoucherCancelledBefore(error)){progress.recordCompleted([voucherId]);return;}throw error;}
         if(!data || typeof data!=='object' || Array.isArray(data) || data.ok!==true || data.voucher_id!==voucherId) throw new TypeError('Chưa xác nhận được phiếu phí đã hủy.');
         progress.recordCompleted([voucherId]);
-      });
+      },undefined,{operation:'huỷ phiếu phí kỳ',reconcile:async pending=>{
+        if(pending.completedIds.includes(voucherId))return {result:undefined};
+        resend=true;
+        return {outcome:'not-written',serverDedupesRequestKey:true};
+      }});
     },
     onSuccess: () => invalidateFees(qc),
   });
