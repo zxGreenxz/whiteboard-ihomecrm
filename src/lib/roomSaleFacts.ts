@@ -77,7 +77,44 @@ export function roomSalePassLabel(contact: RoomSalePassContact): string {
   return who ? `Khách pass phòng: ${who}` : 'Khách pass phòng';
 }
 
+/**
+ * Nhịp tự đọc lại khi trang đang hiện. Mỗi lần đọc là toàn bộ kho phòng, nên đợt 4 «Tải nhẹ»
+ * (25/11/2026) giãn từ 5 giây ở mọi nơi thành 30 giây cho bảng nội bộ/điện thoại và 60 giây cho
+ * link công khai. Thao tác của chính người dùng vẫn hiện ngay vì mutation invalidate; quay lại tab
+ * và có mạng lại vẫn đọc ngay (hook đặt refetchOnWindowFocus/refetchOnReconnect 'always').
+ */
+export const ROOM_SALE_POLL_MS = { internal: 30_000, public: 60_000 } as const;
+export type RoomSalePollAudience = keyof typeof ROOM_SALE_POLL_MS;
+/** Lỗi liên tiếp giãn gấp đôi nhịp, không quá 5 phút. */
+export const ROOM_SALE_POLL_MAX_MS = 300_000;
+
 /** TanStack also suppresses background intervals; explicit visibility handles errors consistently. */
-export function roomSalePollingInterval(errorCount: number, visible = typeof document === 'undefined' || document.visibilityState !== 'hidden'): number | false {
-  return visible ? Math.min(60_000, 5_000 * 2 ** Math.min(4, Math.max(0, errorCount))) : false;
+export function roomSalePollingInterval(audience: RoomSalePollAudience, errorCount: number, visible = typeof document === 'undefined' || document.visibilityState !== 'hidden'): number | false {
+  return visible ? Math.min(ROOM_SALE_POLL_MAX_MS, ROOM_SALE_POLL_MS[audience] * 2 ** Math.min(4, Math.max(0, errorCount))) : false;
+}
+
+/** Phần state TanStack Query cần để đếm lỗi (Query thật có đủ các trường này). */
+export interface RoomSalePollQuery { state: { status: string; error: unknown; errorUpdateCount: number } }
+const errorCountAtLastSuccess = new WeakMap<object, number>();
+
+/**
+ * Số lần đọc lỗi LIÊN TIẾP kể từ lần đọc thành công gần nhất. `errorUpdateCount` của TanStack
+ * cộng dồn cả đời query (thành công không đưa về 0), nên dùng thẳng thì lỗi lẻ tẻ trong phiên
+ * cộng dồn và một lỗi đơn cũng nhảy tới trần 5 phút. TanStack gọi refetchInterval sau mọi lần
+ * cập nhật query: lúc `status === 'success'` thì ghi mốc, lúc lỗi thì đếm từ mốc đó. Không ghi mốc
+ * theo `error == null`: query chưa từng có dữ liệu bị đưa về `pending`, `error: null` mỗi lần đọc lại.
+ */
+export function roomSaleConsecutiveErrors(query: RoomSalePollQuery): number {
+  const { status, error, errorUpdateCount } = query.state;
+  if (status === 'success') {
+    errorCountAtLastSuccess.set(query, errorUpdateCount);
+    return 0;
+  }
+  if (!error) return 0;
+  return Math.max(1, errorUpdateCount - (errorCountAtLastSuccess.get(query) ?? 0));
+}
+
+/** refetchInterval dùng chung cho bảng nội bộ, «Phòng trống» trong app và link công khai. */
+export function roomSaleQueryInterval(audience: RoomSalePollAudience, query: RoomSalePollQuery): number | false {
+  return roomSalePollingInterval(audience, roomSaleConsecutiveErrors(query));
 }
