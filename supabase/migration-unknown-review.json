@@ -986,6 +986,28 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
+    },
+    "supabase/migrations/20261125034429_sale_phong_theo_cong_ty.sql": {
+      "sha256": "f4dc7021ca43dffb3a1a5bba56f0c02f2c85c38890551c3230b4ec63f429e370",
+      "missingObjects": [
+        "function:app_private.org_building_owner_v1",
+        "function:app_private.sale_org_permission_v1",
+        "function:app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1",
+        "function:app_private.public_room_settings_json_v1",
+        "function:public.get_public_room_settings_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration Sale phòng đợt 2 (trang Sale theo công ty, chuyển 45/3 TTT về đứng tên nick chủ, RPC cài đặt chung / quản link có kiểm quyền) chưa áp production. Bằng chứng: chạy trên TEST trong ROLLBACK rồi --ghi rồi lượt hai sạch (test-env:thu-sql); test PGlite 29 ca theo vai (src/lib/__tests__/salePhongTheoCongTyMigration.test.ts) chạy hai lượt; 19 đột biến đỏ đúng ca; bấm thật trên TEST. Object vắng là hàm mới của chính file này; không thay review độc lập, forward lane và backup.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261125034429_sale_phong_theo_cong_ty.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.org_building_owner_v1(p_org uuid)"
+        },
+        {
+          "duong_dan": "src/lib/__tests__/salePhongTheoCongTyMigration.test.ts",
+          "trich_doan": "chạy lại CẢ FILE sau khi đã áp: tiền kiểm nhận thân của file, hậu kiểm (thân, quyền, bảng, trigger, 45/3 TTT) đạt"
+        }
+      ]
     }
   }
 }

@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T02:44:18.708Z",
+  "generatedAt": "2026-11-25T08:55:41.009Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 986,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14736,6 +14736,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-24T21:24:15.556Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261125034429_sale_phong_theo_cong_ty.sql",
+      "version": "20261125034429",
+      "name": "sale_phong_theo_cong_ty",
+      "scheme": "timestamp14",
+      "sha256": "f4dc7021ca43dffb3a1a5bba56f0c02f2c85c38890551c3230b4ec63f429e370",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.org_building_owner_v1",
+        "function:app_private.sale_org_permission_v1",
+        "function:app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1",
+        "function:app_private.public_room_settings_json_v1",
+        "function:public.get_public_room_settings_v1"
       ]
     },
     {
