@@ -4,8 +4,7 @@ import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import {runFinancialPending} from '@/lib/financialPendingAction';
-import {financialPending,type FinancialPendingRecord,type FinancialPendingScope,type PendingReconciliation} from '@/lib/financialPending';
-import {beforeStateMeta,transitionVerdict} from '@/lib/statusTransitionPending';
+import {beforeStateMeta,financialPending,transitionVerdict,type FinancialPendingRecord,type FinancialPendingScope,type PendingReconciliation} from '@/lib/financialPending';
 import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { invoiceFailureMessage, invoiceLabel, invoiceLifecycleFeedback, confirmedInvoiceReceipt, InvoicePartialError } from '@/lib/invoiceFeedback';
 // =============================================

@@ -1,6 +1,6 @@
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialAlreadyRecordedError, FinancialWorkflowError, FinancialWorkflowGuard } from '@/lib/financialWorkflow';
-import { beforeStateMeta, transitionVerdict } from '@/lib/statusTransitionPending';
+import { beforeStateMeta, transitionVerdict } from '@/lib/financialPending';
 // =============================================
 // useCashHandovers — data layer cho Bàn giao tiền mặt (/thu-tien).
 //

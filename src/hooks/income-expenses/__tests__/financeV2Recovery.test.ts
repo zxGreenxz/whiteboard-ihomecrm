@@ -107,6 +107,14 @@ describe('ghi sổ phiếu đã duyệt V2', () => {
     expect(voucher().posting_version).toBe(2);
     expect(pendingKeys()).toEqual([]);
   });
+  it('lệnh không tới máy chủ, lần sau đổi chứng từ (trong 2 phút): phiếu còn chưa ghi sổ ⇒ gửi lại ngay đúng mã cũ', async () => {
+    io.server.failNext('post_approved_income_expense_v2', 'rpc', 'drop-before');
+    await expect(post()(input)).rejects.toBeTruthy();
+    await expect(post()({ ...input, evidenceIds: ['e2'] })).resolves.toMatchObject({ postingStatus: 'POSTED' });
+    const calls = sent('post_approved_income_expense_v2');
+    expect(calls).toHaveLength(2); expect(keyOf(calls[1].args)).toBe(keyOf(calls[0].args));
+    expect(pendingKeys()).toEqual([]);
+  });
   it('lệnh tới nhưng mất phản hồi, lần sau đổi chứng từ: đọc thấy đã ghi sổ, báo, không gửi', async () => {
     io.server.failNext('post_approved_income_expense_v2', 'rpc', 'drop-after');
     await expect(post()(input)).rejects.toBeTruthy();

@@ -240,7 +240,8 @@ describe("termination forfeit status rollout fallback", () => {
     expect(mocks.toastError).not.toHaveBeenCalled();
     mutation.onError(readError);
 
-    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    // Đợt 5: phép đọc trạng thái phiếu trước khi ghi dấu hỏng ⇒ dừng trước mọi lệnh ghi (kể cả cửa bỏ cọc).
+    expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.toastError).toHaveBeenCalledOnce();
     expect(String(mocks.toastError.mock.calls[0][0])).not.toContain(readError.message);
   });

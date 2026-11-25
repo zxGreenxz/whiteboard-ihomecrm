@@ -331,7 +331,7 @@ describe('tách khoá theo thao tác (đợt 5)',()=>{
  it('lưu `meta` của lượt ghi vào dấu để hàm đối chiếu đọc lại',async()=>{
   const options=durableOptions();
   await expect(new FinancialWorkflowGuard(options).run('v1','đổi kiểm phiếu',failedFetch,undefined,undefined,{meta:{before:'chua-kiem'}})).rejects.toMatchObject({outcome:'unknown'});
-  const reconcile=vi.fn(async()=>null);
+  const reconcile=vi.fn(async(..._args:unknown[])=>null);
   await expect(new FinancialWorkflowGuard(options).run('v1','đổi kiểm phiếu',async()=>'x',reconcile)).rejects.toMatchObject({outcome:'unknown'});
   expect(reconcile.mock.calls[0][0]).toMatchObject({meta:{before:'chua-kiem'},operation:'đổi kiểm phiếu'});
  });

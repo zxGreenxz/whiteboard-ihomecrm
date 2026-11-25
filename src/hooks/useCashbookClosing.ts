@@ -286,9 +286,8 @@ export const useProposeCashbookClosing = () => {
     }, async pending => {
       // Cách C: đọc danh sách của đúng sổ. Đã có đề nghị chờ (của lần trước, hoặc của người khác) ⇒ không gửi thêm.
       const lists = await readCashbookClosings(input.cashbookId);
-      const waiting = lists.pending.filter(row => row.cashbook_id === input.cashbookId);
-      if (waiting.length) {
-        const row = waiting[0];
+      const [row] = lists.pending.filter(item => item.cashbook_id === input.cashbookId);
+      if (row) {
         return { outcome: 'already-written', message: `Sổ ${row.cashbook_name || input.cashbookName || ''} đã có đề nghị chốt đến ngày ${closingDate(row.closed_through)} đang chờ ${row.confirmer_name ?? 'người nhận'} xác nhận. Không gửi thêm đề nghị.`, recordIds: [row.request_id] };
       }
       // Đề nghị của lần trước đã được ký ngay sau đó: biên bản chốt mới xuất hiện sau giờ gửi.

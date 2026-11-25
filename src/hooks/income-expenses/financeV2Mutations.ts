@@ -3,8 +3,7 @@ import { COMMISSION_REASON_MESSAGE, isCommissionReasonValid } from '@/lib/commis
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
-import type {FinancialPendingRecord,PendingReconciliation} from '@/lib/financialPending';
-import {payloadFingerprint,transitionVerdict} from '@/lib/statusTransitionPending';
+import {payloadFingerprint,transitionVerdict,type FinancialPendingRecord,type PendingReconciliation} from '@/lib/financialPending';
 import {financialReadRows} from '@/lib/financialReadValidation';
 // Finance V2 — mutation hooks gọi RPC canonical (Stage-5 writers, plan §7.2).
 //

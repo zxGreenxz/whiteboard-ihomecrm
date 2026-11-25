@@ -1,6 +1,6 @@
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {workflowErrorMessage} from '@/lib/financialWorkflow';
-import {beforeStateMeta,transitionVerdict} from '@/lib/statusTransitionPending';
+import {beforeStateMeta,transitionVerdict} from '@/lib/financialPending';
 import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
 import { useMemo } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

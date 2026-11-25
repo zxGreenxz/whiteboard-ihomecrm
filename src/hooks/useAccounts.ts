@@ -1,6 +1,6 @@
 import {useRef} from 'react';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {beforeStateMeta,transitionVerdict} from '@/lib/statusTransitionPending';
+import {beforeStateMeta,transitionVerdict} from '@/lib/financialPending';
 import {financialReadNumber} from '@/lib/financialReadValidation';
 import { notifyActionError } from "@/lib/actionFeedback";
 import { jsonProp } from "@/lib/jsonValue";
