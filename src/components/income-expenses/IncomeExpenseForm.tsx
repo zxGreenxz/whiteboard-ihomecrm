@@ -11,7 +11,18 @@ import { useForm, type Resolver } from 'react-hook-form';
 import { focusFirstError,applyFeedbackToForm } from '@/lib/formErrors';
 import {friendlyError} from '@/lib/friendlyError';
 import {VOUCHER_ERROR_RULES} from '@/lib/voucherErrorRules';
-import { DEPOSIT_ROOM_REQUIRED_MESSAGE, needsDepositRoom, withDepositRoomRule } from '@/lib/depositRoomRule';
+import { DEPOSIT_ROOM_REQUIRED_MESSAGE, needsDepositRoom, withDepositRoomRule, withFieldErrors, type FieldRuleError } from '@/lib/depositRoomRule';
+import {
+  choiceFromPickedContract,
+  contractIdForChoice,
+  contractLabel,
+  depositContractChoiceError,
+  depositContractChoiceRequired,
+  effectiveRoomContracts,
+  newTenantNoticeWarning,
+  type DepositContractChoice,
+} from '@/lib/depositContractChoice';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -48,6 +59,8 @@ import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
 import { useVoucherSlotWarning } from '@/hooks/useVoucherSlotWarning';
 import {
+  DEPOSIT_AMOUNT_REQUIRED_MESSAGE,
+  depositAmountErrorRows,
   incomeExpenseFormSchema,
   incomeExpenseNoAccountFormSchema,
   type IncomeExpenseFormValues,
@@ -332,6 +345,16 @@ const IncomeExpenseFormInner = ({
     { enabled: open && !!selectedRoomId },
   );
   const roomContracts=roomContractsQuery.data??[];
+  // HĐ hiệu lực của phòng (kể cả đã gia hạn) — phiếu THU có cọc ở phòng này phải chọn cọc của ai (depositContractChoice.ts).
+  const effectiveContracts = selectedRoomId ? effectiveRoomContracts(roomContracts) : [];
+  // Lựa chọn «Bổ sung cọc cho khách đang ở» / «Cọc giữ phòng của khách mới». Ref cho resolver đọc ngay trong cùng lượt
+  // bấm (state chỉ cập nhật ở lần vẽ sau).
+  const depositChoiceRef = useRef<DepositContractChoice | null>(null);
+  const [depositChoice, setDepositChoiceState] = useState<DepositContractChoice | null>(null);
+  const setDepositChoice = (choice: DepositContractChoice | null) => {
+    depositChoiceRef.current = choice;
+    setDepositChoiceState(choice);
+  };
   // Lookup is_deposit cho từng type_id → biết phiếu có cọc hay không.
   const incomeTypesQuery = useIncomeExpenseTypes('income');
   const incomeTypes=incomeTypesQuery.data??[];
@@ -368,12 +391,15 @@ const IncomeExpenseFormInner = ({
   const form = useForm<IncomeExpenseFormValues>({
     shouldFocusError: false,
     // Phiếu có hạng mục cọc phải chọn phòng — xem depositRoomRule.ts.
-    resolver: withDepositRoomRule(
-      zodResolver(accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema) as Resolver<IncomeExpenseFormValues>,
-      (values) =>
-        needsDepositRoom(values.items.map((it) => it.income_expense_type_id), values.room_id, depositTypeIds)
-          ? ['room_id']
-          : [],
+    resolver: withFieldErrors(
+      withDepositRoomRule(
+        zodResolver(accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema) as Resolver<IncomeExpenseFormValues>,
+        (values) =>
+          needsDepositRoom(values.items.map((it) => it.income_expense_type_id), values.room_id, depositTypeIds)
+            ? ['room_id']
+            : [],
+      ),
+      (values) => depositRuleErrors(values),
     ),
     defaultValues: {
       type: defaultType ?? 'INCOME',
@@ -451,6 +477,7 @@ const IncomeExpenseFormInner = ({
       setItemRows([]);
       form.setValue('items', [], { shouldValidate: false });
     }
+    if (!voucher) setDepositChoice(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voucherType]);
 
@@ -586,6 +613,7 @@ const IncomeExpenseFormInner = ({
     form.setValue('tenant_id', null);
     form.setValue('contract_id', null);
     autoLinkedContractIdRef.current = null;
+    setDepositChoice(null);
   };
 
   // Cascade: when room changes → clear tenant + contract
@@ -597,6 +625,7 @@ const IncomeExpenseFormInner = ({
     form.setValue('tenant_id', null);
     form.setValue('contract_id', null);
     autoLinkedContractIdRef.current = null;
+    setDepositChoice(null);
   };
 
   // Hoa hồng phải lập từ Hợp đồng để có căn cứ tính và lịch sử điều chỉnh.
@@ -620,19 +649,45 @@ const IncomeExpenseFormInner = ({
   // chỉ giá trị auto mới được phép tự gỡ lại khi phiếu chuyển thành phiếu cọc.
   const autoLinkedContractIdRef = useRef<string | null>(null);
 
+  // Sale phòng đợt 3 (chủ chốt 24/11/2026): phiếu THU tạo mới có hạng mục cọc ở phòng đang có HĐ hiệu lực ⇒ KHÔNG tự
+  // gắn HĐ, bắt chọn cọc của ai. Chặn lưu nằm ở resolver (depositRuleErrors), trước bước lưu có đối chiếu rớt mạng.
+  const choiceRequired = depositContractChoiceRequired({
+    creating: !isEditing,
+    voucherType,
+    hasDepositItem,
+    effectiveContractCount: effectiveContracts.length,
+  });
+  // Hết phải hỏi (bỏ hạng mục cọc, sang phiếu chi, phòng hết HĐ) thì quên lựa chọn: lần cần hỏi sau phải chọn lại.
+  useEffect(() => {
+    if (!choiceRequired) setDepositChoice(null);
+  }, [choiceRequired]);
+  const chooseDeposit = (choice: DepositContractChoice) => {
+    setDepositChoice(choice);
+    autoLinkedContractIdRef.current = null;
+    form.setValue('contract_id', contractIdForChoice(choice, effectiveContracts), { shouldValidate: form.formState.isSubmitted });
+  };
+  const newTenantWarning = choiceRequired && depositChoice === 'new' ? newTenantNoticeWarning(effectiveContracts) : null;
+
   // Auto-prefill contract_id khi:
   //  • Đang tạo mới (chưa có voucher)
   //  • Đã pick room
   //  • Có đúng 1 HĐ ACTIVE trên phòng đó
   // Tránh ghi đè khi user đang edit phiếu cũ hoặc đã chọn HĐ rồi.
-  // NGOẠI LỆ phiếu CỌC: HĐ active đã đóng ĐỦ cọc → tiền cọc mới gần như chắc
-  // là của khách KẾ TIẾP (giữ chỗ) → mặc định "-- Không gắn HĐ --" để phiếu
-  // là cọc mồ côi, trigger DB tự link khi HĐ mới được tạo. Gắn nhầm vào HĐ
-  // active làm phồng deposit_paid của khách cũ + form tạo HĐ mới báo thiếu
-  // cọc (vụ PT2607014). HĐ active còn THIẾU cọc thì vẫn auto-gắn (thu bổ
-  // sung cọc của chính khách đó).
+  // Phiếu THU có cọc ở phòng có HĐ hiệu lực: KHÔNG tự gắn, bắt chọn (choiceRequired ở trên). Đoán theo «HĐ còn thiếu
+  // cọc» cũ làm cọc khách mới thành cọc khách cũ ở phòng sắp trống (audit 24/11, ca 331PHI·201).
+  // Còn lại (phiếu CHI có hạng mục cọc): HĐ active đã đóng ĐỦ cọc → mặc định "-- Không gắn HĐ --" (vụ PT2607014);
+  // HĐ active còn thiếu cọc thì vẫn auto-gắn như cũ.
   useEffect(() => {
     if (voucher || copyFrom) return; // edit/copy mode → giữ value cũ/đã copy
+    const currentValue = form.getValues('contract_id');
+    if (choiceRequired) {
+      // Không đoán: gỡ giá trị form đã TỰ gắn trước đó; HĐ người dùng tự chọn ở ô Hợp đồng là lựa chọn rõ, giữ nguyên.
+      if (currentValue && currentValue === autoLinkedContractIdRef.current) {
+        form.setValue('contract_id', null);
+        autoLinkedContractIdRef.current = null;
+      }
+      return;
+    }
     const activeContracts = roomContracts.filter(
       (c: any) => c.status === 'ACTIVE',
     );
@@ -640,7 +695,6 @@ const IncomeExpenseFormInner = ({
     const active = activeContracts[0] as any;
     const activeFullyDeposited =
       Number(active.deposit_paid ?? 0) >= Number(active.total_deposit ?? 0);
-    const currentValue = form.getValues('contract_id');
 
     if (hasDepositItem && activeFullyDeposited) {
       // Gỡ lại giá trị đã auto-gắn trước khi user thêm item cọc; giá trị do
@@ -655,7 +709,7 @@ const IncomeExpenseFormInner = ({
       form.setValue('contract_id', active.id);
       autoLinkedContractIdRef.current = active.id;
     }
-  }, [roomContracts, voucher, form, hasDepositItem]);
+  }, [roomContracts, voucher, form, hasDepositItem, choiceRequired]);
   // Giá trị "tự động" của cờ KQKD (khi business_result_accounting = null).
   const autoBusinessResult = !hasDepositItem && !hasInternalItem;
 
@@ -856,6 +910,24 @@ const IncomeExpenseFormInner = ({
   );
 
   const canEdit = canEditNormally;
+  // Luật cọc ngoài zod (cần tập hạng mục cọc và HĐ của phòng), chạy CÙNG LƯỢT với lỗi zod trong resolver:
+  //  • phiếu THU có hạng mục cọc thì tổng dòng cọc > 0 (câu của hộp Cọc trang Sale; máy chủ chặn bằng trigger);
+  //  • phiếu THU tạo mới có cọc ở phòng có HĐ hiệu lực phải chọn cọc của ai.
+  const depositRuleErrors = (values: IncomeExpenseFormValues): FieldRuleError[] => {
+    if (forfeitKqkdMode) return [];
+    const items = values.items ?? [];
+    const errors: FieldRuleError[] = depositAmountErrorRows(values.type, items, depositTypeIds)
+      .map((index) => ({ path: `items.${index}.unit_price`, type: 'deposit_amount', message: DEPOSIT_AMOUNT_REQUIRED_MESSAGE }));
+    const required = depositContractChoiceRequired({
+      creating: !isEditing,
+      voucherType: values.type,
+      hasDepositItem: items.some((it) => depositTypeIds.has(it.income_expense_type_id)),
+      effectiveContractCount: values.room_id ? effectiveContracts.length : 0,
+    });
+    const choiceError = depositContractChoiceError({ required, choice: depositChoiceRef.current, contractId: values.contract_id });
+    if (choiceError) errors.push({ path: 'contract_id', type: 'deposit_contract_choice', message: choiceError });
+    return errors;
+  };
   const isViewing = !!voucher && !canEdit && !forfeitKqkdMode;
   const isRevising = !!voucher && canEdit;
   // Khung phiếu (Thu/Chi, toà, phòng, HĐ, KQKD, lặp, thêm/bớt hạng mục, kỳ):
@@ -1050,6 +1122,7 @@ const IncomeExpenseFormInner = ({
           <Form {...form}>
             <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, (errors) => {
               if (errors.room_id?.type === 'deposit_room') toast.error(DEPOSIT_ROOM_REQUIRED_MESSAGE);
+              if (errors.contract_id?.type === 'deposit_contract_choice' && errors.contract_id.message) toast.error(errors.contract_id.message);
               void focusFirstError(errors, { root: formRef.current });
             })} className={advanceActive ? "hidden" : "space-y-4"}>
               <QueryRegion label="danh mục lập phiếu" queries={requiredSources} skeleton="none"><></></QueryRegion>
@@ -1235,12 +1308,61 @@ const IncomeExpenseFormInner = ({
                           </label>
                         )}
                       </div>
+                      {choiceRequired && (
+                        <div
+                          role="group"
+                          aria-labelledby="ie-deposit-choice-label"
+                          data-testid="ie-deposit-contract-choice"
+                          className="space-y-2 rounded-md border border-amber-200 bg-amber-50/60 p-2"
+                        >
+                          <p id="ie-deposit-choice-label" className="text-sm font-medium text-amber-900">
+                            Phòng đang có hợp đồng hiệu lực. Cọc này của ai?
+                          </p>
+                          <RadioGroup
+                            value={depositChoice ?? ''}
+                            onValueChange={(v) => chooseDeposit(v as DepositContractChoice)}
+                            disabled={!canEditFrame}
+                            aria-labelledby="ie-deposit-choice-label"
+                            aria-invalid={form.formState.errors.contract_id?.type === 'deposit_contract_choice' || undefined}
+                          >
+                            <div className="flex items-start gap-2">
+                              <RadioGroupItem value="existing" id="ie-deposit-choice-existing" className="mt-0.5" />
+                              <label htmlFor="ie-deposit-choice-existing" className="cursor-pointer text-sm leading-snug">
+                                Bổ sung cọc cho khách đang ở
+                                <span className="block text-xs text-muted-foreground">
+                                  {effectiveContracts.length === 1
+                                    ? `Gắn vào ${contractLabel(effectiveContracts[0])}.`
+                                    : 'Chọn hợp đồng của khách ở ô dưới.'}
+                                </span>
+                              </label>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <RadioGroupItem value="new" id="ie-deposit-choice-new" className="mt-0.5" />
+                              <label htmlFor="ie-deposit-choice-new" className="cursor-pointer text-sm leading-snug">
+                                Cọc giữ phòng của khách mới
+                                <span className="block text-xs text-muted-foreground">
+                                  Không gắn hợp đồng đang ở; phòng ẩn khỏi sale, hợp đồng mới của phòng tự nhận phiếu.
+                                </span>
+                              </label>
+                            </div>
+                          </RadioGroup>
+                          {newTenantWarning && (
+                            <p role="status" className="flex items-start gap-1 text-xs text-amber-800">
+                              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                              <span>{newTenantWarning}</span>
+                            </p>
+                          )}
+                        </div>
+                      )}
                       <Select
                         onValueChange={(v) => {
                           // User tự tay chọn → không còn là giá trị auto-gắn,
                           // effect auto-link không được phép gỡ nữa.
                           autoLinkedContractIdRef.current = null;
-                          field.onChange(v === '__none__' ? null : v);
+                          const picked = v === '__none__' ? null : v;
+                          // Tự chọn ở ô Hợp đồng cũng là trả lời câu «cọc này của ai».
+                          if (!isEditing) setDepositChoice(choiceFromPickedContract(picked));
+                          field.onChange(picked);
                         }}
                         value={field.value ?? '__none__'}
                         disabled={!canEditFrame}
@@ -1274,7 +1396,7 @@ const IncomeExpenseFormInner = ({
                           })}
                         </SelectContent>
                       </Select>
-                      {hasDepositItem && !field.value && (
+                      {hasDepositItem && !field.value && !choiceRequired && (
                         <p className="text-xs text-amber-600">
                           Phiếu cọc chưa gắn HĐ — sẽ tự link khi HĐ được tạo
                           trên phòng này.

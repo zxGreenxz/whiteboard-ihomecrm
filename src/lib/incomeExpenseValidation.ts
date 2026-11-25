@@ -9,6 +9,28 @@ import { z } from 'zod';
 export const DEPOSIT_AMOUNT_SERVER_MESSAGE = 'Phiếu cọc phải có số tiền lớn hơn 0; giữ phòng không thu tiền thì dùng Lock tạm.';
 export const DEPOSIT_AMOUNT_REQUIRED_MESSAGE = 'Nhập số tiền cọc lớn hơn 0. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.';
 
+/**
+ * Phiếu THU có hạng mục cọc mà tổng tiền các dòng cọc ≤ 0 ⇒ chỉ số mọi dòng cọc (để báo lỗi ở ô Số tiền của từng dòng).
+ * Tiền dòng tính như máy chủ (auto_calc_item_amount: round(số lượng × đơn giá, 2)). Form chặn cả phiếu cọc đã chọn hợp
+ * đồng: dòng cọc 0 đ không có nghĩa ở đâu cả (máy chủ chỉ chặn phiếu chưa gắn hợp đồng — phiếu giữ phòng).
+ */
+export function depositAmountErrorRows(
+  voucherType: string | null | undefined,
+  items: readonly { income_expense_type_id?: string | null; quantity?: number | null; unit_price?: number | null }[],
+  depositTypeIds: ReadonlySet<string>,
+): number[] {
+  if (voucherType !== 'INCOME') return [];
+  const rows: number[] = [];
+  let total = 0;
+  items.forEach((it, index) => {
+    if (!it.income_expense_type_id || !depositTypeIds.has(it.income_expense_type_id)) return;
+    rows.push(index);
+    const amount = Math.round(Number(it.quantity ?? 0) * Number(it.unit_price ?? 0) * 100) / 100;
+    total += Number.isFinite(amount) ? amount : 0;
+  });
+  return rows.length === 0 || total > 0 ? [] : rows;
+}
+
 // Schema cho hạng mục (item) trong phiếu thu/chi
 export const itemSchema = z.object({
   income_expense_type_id: z.string().min(1, 'Vui lòng chọn loại hạng mục'),

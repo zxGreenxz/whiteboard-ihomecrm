@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Resolver } from 'react-hook-form';
-import { DEPOSIT_ROOM_REQUIRED_MESSAGE, depositTypeIdSet, needsDepositRoom, withDepositRoomRule } from '../depositRoomRule';
+import { DEPOSIT_ROOM_REQUIRED_MESSAGE, depositTypeIdSet, needsDepositRoom, withDepositRoomRule, withFieldErrors } from '../depositRoomRule';
+import { DEPOSIT_AMOUNT_REQUIRED_MESSAGE, DEPOSIT_AMOUNT_SERVER_MESSAGE } from '../incomeExpenseValidation';
 import { friendlyError } from '../friendlyError';
 import { VOUCHER_ERROR_RULES } from '../voucherErrorRules';
 import { voucherFailureMessage } from '../voucherFeedback';
@@ -97,5 +98,42 @@ describe('câu lỗi máy chủ khớp câu client', () => {
     const sql = readFileSync('supabase/migrations/20261006173923_phieu_coc_bat_buoc_phong.sql', 'utf8');
     expect(sql).toContain(`RAISE EXCEPTION '${DEPOSIT_ROOM_REQUIRED_MESSAGE}'`);
     expect(sql).toContain("ERRCODE = '23514'");
+  });
+});
+
+describe('máy chủ chặn phiếu cọc 0 đ (trigger zz_ie_item_deposit_amount_positive, Sale phòng đợt 3)', () => {
+  const loiMayChu = {
+    code: '23514',
+    message: DEPOSIT_AMOUNT_SERVER_MESSAGE,
+    details: 'Phiếu PT2611442 có hạng mục Tiền cọc nhưng tổng tiền cọc không lớn hơn 0 và chưa gắn hợp đồng.',
+    hint: 'Nhập số tiền cọc lớn hơn 0 hoặc bỏ hạng mục Tiền cọc.',
+  };
+  it('form phiếu lẻ / phiếu tổng / Báo chi nhanh: câu báo là nguyên nhân, cùng chữ hộp Cọc trang Sale', () => {
+    const fb = friendlyError(loiMayChu, 'Chưa lưu được phiếu', { operation: 'lưu phiếu', financial: true, rules: VOUCHER_ERROR_RULES });
+    expect(fb.description).toBe(DEPOSIT_AMOUNT_REQUIRED_MESSAGE);
+    expect(voucherFailureMessage(loiMayChu, 'tạo phiếu')).toBe(DEPOSIT_AMOUNT_REQUIRED_MESSAGE);
+  });
+  it('migration raise ĐÚNG DEPOSIT_AMOUNT_SERVER_MESSAGE với 23514', () => {
+    const sql = readFileSync('supabase/migrations/20261125094121_coc_thu_chi_chan_0d_va_khoi_dang_giu_bang_coc.sql', 'utf8');
+    expect(sql).toContain(`RAISE EXCEPTION '${DEPOSIT_AMOUNT_SERVER_MESSAGE}'`);
+    expect(sql).toContain("USING ERRCODE = '23514'");
+  });
+});
+
+describe('withFieldErrors: luật ngoài zod cùng lượt, không ghi đè lỗi zod', () => {
+  const opts = { shouldUseNativeValidation: false, fields: {} } as never;
+  const values: Values = { name: 'x', room_id: 'p1', items: [{ room_id: 'p1' }] };
+  it('thêm lỗi đúng đường dẫn; lỗi zod sẵn có ở cùng ô được giữ', async () => {
+    const resolver = withFieldErrors(zodLike({ name: { type: 'too_small', message: 'Nhập tên' } }), () => [
+      { path: 'items.0.unit_price', type: 'deposit_amount', message: 'Số tiền cọc' },
+      { path: 'name', type: 'khac', message: 'không được đè' },
+    ]);
+    const out = await resolver(values, undefined, opts);
+    expect(out.values).toEqual({});
+    expect(out.errors).toEqual({ name: { type: 'too_small', message: 'Nhập tên' }, items: [{ unit_price: { type: 'deposit_amount', message: 'Số tiền cọc' } }] });
+  });
+  it('không có lỗi thêm ⇒ trả nguyên kết quả gốc', async () => {
+    const resolver = withFieldErrors(zodLike({}), () => []);
+    expect(await resolver(values, undefined, opts)).toEqual({ values, errors: {} });
   });
 });

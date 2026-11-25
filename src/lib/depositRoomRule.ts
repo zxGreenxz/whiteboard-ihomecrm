@@ -31,13 +31,31 @@ export function withDepositRoomRule<T extends FieldValues>(
   resolver: Resolver<T>,
   missingRoomPaths: (values: T) => readonly string[],
 ): Resolver<T> {
+  return withFieldErrors(resolver, (values) =>
+    missingRoomPaths(values).map((path) => ({ path, type: 'deposit_room', message: DEPOSIT_ROOM_REQUIRED_MESSAGE })));
+}
+
+export interface FieldRuleError {
+  path: string;
+  type: string;
+  message: string;
+}
+
+/**
+ * Bọc resolver: thêm lỗi của luật ngoài zod (cần dữ liệu zod không biết, vd tập hạng mục cọc, hợp đồng của phòng) CÙNG
+ * LƯỢT với lỗi zod. Không ghi đè lỗi zod sẵn có ở cùng ô.
+ */
+export function withFieldErrors<T extends FieldValues>(
+  resolver: Resolver<T>,
+  rule: (values: T) => readonly FieldRuleError[],
+): Resolver<T> {
   return async (values, context, options) => {
     const result = await resolver(values, context, options);
-    const paths = missingRoomPaths(values);
-    if (paths.length === 0) return result;
+    const extra = rule(values);
+    if (extra.length === 0) return result;
     const errors: FieldErrors<T> = Object.assign({}, result.errors);
-    for (const path of paths) {
-      if (!get(errors, path)) set(errors, path, { type: 'deposit_room', message: DEPOSIT_ROOM_REQUIRED_MESSAGE });
+    for (const { path, type, message } of extra) {
+      if (!get(errors, path)) set(errors, path, { type, message });
     }
     return { values: {}, errors };
   };

@@ -40,6 +40,20 @@ export interface RoomExitHoldInfo {
   canManage: boolean;
 }
 
+/**
+ * Phòng đang giữ bằng phiếu cọc chờ hợp đồng (Sale phòng đợt 3) — chỉ nhân viên trong app thấy (khoá deposit_hold của
+ * get_sale_room_inventory_v1 / get_my_available_rooms). Phiếu cũ nhất của phòng; `roomOccupied` = phòng còn khách ở.
+ */
+export interface RoomDepositHoldInfo {
+  voucherId: string;
+  code: string | null;
+  voucherDate: string;
+  payerName: string | null;
+  heldDays: number;
+  voucherCount: number;
+  roomOccupied: boolean;
+}
+
 export interface Room extends Box {
   id: string;
   no: number;
@@ -72,6 +86,7 @@ export interface Room extends Box {
   passContactManager?: boolean;   // true = khách ẩn SĐT, chỉ "Liên hệ quản lý" (dùng SĐT QL tòa)
   saleLock?: RoomSaleLockInfo | null; // status === "locked"
   exitHold?: RoomExitHoldInfo | null; // chỉ reader trong app; link công khai không bao giờ có
+  depositHold?: RoomDepositHoldInfo | null; // chỉ reader trong app; link công khai không bao giờ có
 }
 
 export interface Fixture extends Box {

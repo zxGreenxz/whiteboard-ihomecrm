@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import {
+  depositAmountErrorRows,
   incomeExpenseFormSchema,
   type IncomeExpenseFormValues,
 } from '../incomeExpenseValidation';
@@ -249,5 +250,34 @@ describe('Property 7: Zod validation rejects invalid input', () => {
       ),
       { numRuns: 100 },
     );
+  });
+});
+
+/**
+ * Sale phòng đợt 3: phiếu THU có hạng mục cọc thì tổng tiền dòng cọc phải > 0 (máy chủ chặn bằng trigger
+ * zz_ie_item_deposit_amount_positive). Báo lỗi ở MỌI dòng cọc khi tổng ≤ 0; dòng không phải cọc không tính.
+ */
+describe('Property: depositAmountErrorRows — tổng dòng cọc phải > 0', () => {
+  const COC = new Set(['coc-1', 'coc-2']);
+  const lineArb = fc.record({
+    income_expense_type_id: fc.constantFrom('coc-1', 'coc-2', 'thue', 'dien'),
+    quantity: fc.integer({ min: 1, max: 5 }),
+    unit_price: fc.oneof(fc.constant(0), fc.integer({ min: 0, max: 10_000_000 })),
+  });
+  it('khớp định nghĩa: lỗi đúng các dòng cọc khi và chỉ khi phiếu THU có cọc mà tổng tiền cọc ≤ 0', () => {
+    fc.assert(fc.property(voucherTypeArb, fc.array(lineArb, { maxLength: 6 }), (type, items) => {
+      const depositRows = items.flatMap((it, i) => (COC.has(it.income_expense_type_id) ? [i] : []));
+      const total = depositRows.reduce((s, i) => s + items[i].quantity * items[i].unit_price, 0);
+      const expected = type === 'INCOME' && depositRows.length > 0 && total <= 0 ? depositRows : [];
+      expect(depositAmountErrorRows(type, items, COC)).toEqual(expected);
+    }), { numRuns: 300 });
+  });
+  it('ca cụ thể: 0 đ chặn, 1.000.000 + 0 qua, cọc 0 + tiền phòng có tiền vẫn chặn, phiếu CHI không chạm', () => {
+    expect(depositAmountErrorRows('INCOME', [{ income_expense_type_id: 'coc-1', quantity: 1, unit_price: 0 }], COC)).toEqual([0]);
+    expect(depositAmountErrorRows('INCOME', [{ income_expense_type_id: 'coc-1', quantity: 1, unit_price: 1_000_000 },
+      { income_expense_type_id: 'coc-2', quantity: 1, unit_price: 0 }], COC)).toEqual([]);
+    expect(depositAmountErrorRows('INCOME', [{ income_expense_type_id: 'thue', quantity: 1, unit_price: 500_000 },
+      { income_expense_type_id: 'coc-1', quantity: 1, unit_price: 0 }], COC)).toEqual([1]);
+    expect(depositAmountErrorRows('EXPENSE', [{ income_expense_type_id: 'coc-1', quantity: 1, unit_price: 0 }], COC)).toEqual([]);
   });
 });

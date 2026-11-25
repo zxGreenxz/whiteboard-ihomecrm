@@ -5,6 +5,8 @@ export interface RoomSaleFactInput {
   today?: string | null;
   availableOn?: string | null;
   expectedReadyOn?: string | null;
+  /** Chỉ reader trong app: phòng 'rented' vì đang giữ bằng phiếu cọc chờ hợp đồng (khoá deposit_hold). */
+  depositHold?: { payerName?: string | null; heldDays: number } | null;
 }
 
 export interface RoomSaleFact {
@@ -23,8 +25,19 @@ function dateLabel(day: string): string {
   return `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
 }
 
+/** Quá số ngày này mà phiếu cọc giữ phòng chưa thành hợp đồng thì trang Sale tô cảnh báo (không tự gỡ: tiền đã thu). */
+export const DEPOSIT_HOLD_STALE_DAYS = 14;
+
+/** «Đã cọc · người nộp · N ngày» — sale phân biệt phòng đã có người cọc với phòng đang có khách ở. */
+export function roomSaleDepositLabel(hold: { payerName?: string | null; heldDays: number }): string {
+  const days = Number.isFinite(hold.heldDays) && hold.heldDays > 0 ? `${Math.floor(hold.heldDays)} ngày` : 'hôm nay';
+  return ['Đã cọc', hold.payerName?.trim() || null, days].filter(Boolean).join(' · ');
+}
+
 export function roomSaleFacts(input: RoomSaleFactInput): RoomSaleFact {
-  if (input.status === 'rented') return { kind: 'rented', label: 'Đã thuê / giữ chỗ', availableOn: null };
+  if (input.status === 'rented') {
+    return { kind: 'rented', label: input.depositHold ? roomSaleDepositLabel(input.depositHold) : 'Đã thuê / giữ chỗ', availableOn: null };
+  }
   if (input.status === 'pass') return { kind: 'pass', label: 'Khách pass phòng', availableOn: null };
   const today = validDay(input.today) ? input.today : null;
   if (input.status === 'free' && input.state === 'PREPARING') {
