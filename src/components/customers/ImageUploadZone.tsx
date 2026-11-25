@@ -31,6 +31,23 @@ function boDauChoCu(userId: string, bucket: string, label: string) {
   }
 }
 
+/**
+ * Định dạng ảnh nhận theo đúng nơi dùng (lỗi 9 audit Sale phòng 24/11/2026): ô nào khai `accept` có WebP
+ * (ảnh phòng — ảnh lưu từ Zalo/Android thường là WebP, kho R2 nhận và bộ nén vẫn xuất WebP) thì nhận WebP;
+ * ô mặc định và mọi ô ảnh giấy tờ (`identity-original`, giữ nguyên bytes để đọc QR) chỉ nhận PNG/JPEG.
+ */
+const ANH_GIAY_TO = ['image/png', 'image/jpeg', 'image/jpg'];
+const TEN_DINH_DANG: Record<string, string> = { 'image/png': 'PNG', 'image/jpeg': 'JPG', 'image/jpg': 'JPEG', 'image/webp': 'WEBP' };
+function dinhDangAnhNhan(accept: string, imagePolicy?: UploadImagePolicy): string[] {
+  const khai = accept.split(',').map(item => item.trim().toLowerCase()).filter(item => item.startsWith('image/') && item !== 'image/*');
+  const nhan = khai.length ? khai : imageValidation.acceptedFormats;
+  return imagePolicy === 'identity-original' ? nhan.filter(type => ANH_GIAY_TO.includes(type)) : nhan;
+}
+function loiDinhDangAnh(file: Pick<File, 'type'>, nhan: string[]): string | null {
+  if (nhan.includes(file.type.toLowerCase())) return null;
+  return `Chỉ chấp nhận file ${[...new Set(nhan.map(type => TEN_DINH_DANG[type] ?? type.replace('image/', '').toUpperCase()))].join(', ')}`;
+}
+
 const CHUA_TAI_XONG = 'Chưa tải xong ảnh — mạng chập chờn hoặc bị ngắt giữa chừng. Ảnh chưa gắn vào hồ sơ; bấm "Thử lại ảnh chưa tải" hoặc chọn lại ảnh.';
 function loiTaiAnh(error: unknown): string {
   if (error instanceof FinancialWorkflowError) return error.outcome === 'failure' ? error.message : CHUA_TAI_XONG;
@@ -89,14 +106,15 @@ export default function ImageUploadZone({
         if (!/\.mp4$/i.test(file.name)) return 'Video phải có đuôi .mp4';
         return file.size > 0 && file.size <= 32 * 1024 * 1024 ? null : 'Video MP4 tối đa 32 MB';
       }
-      const result = imageValidation.validate(file);
-      if (!result.valid) return result.error || 'File không hợp lệ';
+      const formatError = loiDinhDangAnh(file, dinhDangAnhNhan(accept, imagePolicy));
+      if (formatError) return formatError;
+      if (file.size > imageValidation.maxSizeBytes) return `Kích thước file tối đa ${imageValidation.maxSizeMB}MB`;
       if (maxSizeMB !== 10 && file.size > maxSizeMB * 1024 * 1024) {
         return `Kích thước file tối đa ${maxSizeMB}MB`;
       }
       return null;
     },
-    [maxSizeMB, allowRoomVideo, bucket]
+    [maxSizeMB, allowRoomVideo, bucket, accept, imagePolicy]
   );
 
   const handleUpload = useCallback(
