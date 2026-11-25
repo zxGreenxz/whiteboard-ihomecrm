@@ -1,8 +1,8 @@
 import {supabase} from '@/integrations/supabase/client';
 import {FinancialAlreadyRecordedError,FinancialWorkflowError,isConfirmedFinancialRejection} from './financialWorkflow';
 import {confirmedRecordId,recordWriteMessage} from './recordWriteOutcome';
-import {personMatchKeys} from './clientRecordCreate';
-import {legacyWindow,settleLegacyPending} from './legacyPendingExit';
+// Nạp động: hai module của đợt 4 chỉ cần lúc tạo, nạp tĩnh từ nhiều trang làm Vite tách thành chunk dùng chung và
+// thêm tên chunk vào danh sách phụ thuộc của chunk entry (cửa bundle-inventory).
 import type {CustomerImportRow} from './customerExcelHelpers';
 export interface CustomerImportReport {
  successRows:{name:string;id:string}[];partialRows:{name:string;id:string;reason:string}[];unknownRows:{name:string;reason:string}[];failRows:{name:string;reason:string}[];
@@ -24,6 +24,7 @@ type LegacyCandidate={id:string;full_name:string|null;phone:string|null;id_numbe
  * bỏ qua kèm mã, không tự tạo lần nữa.
  */
 async function legacyImportCandidates():Promise<LegacyCandidate[]>{
+ const {legacyWindow,settleLegacyPending}=await import('./legacyPendingExit');
  const settled=await settleLegacyPending({namespace:'customer-import',businessKey:'batch'},async(pending,context)=>{
   const {from,to}=legacyWindow(pending);
   const columns='id, full_name, phone, id_number, created_at';
@@ -50,6 +51,7 @@ export async function importCustomerBatch(rows:CustomerImportRow[],steps:{create
  const result:CustomerImportReport={successRows:[],partialRows:[],unknownRows:[],failRows:[],skippedRows:[],retryRows:[]};
  // Mã khách của dòng giữ trên chính đối tượng dòng, để lần nhập lại cùng các dòng đó gửi lại đúng mã.
  for(const row of rows)row.client_id??=crypto.randomUUID();
+ const {personMatchKeys}=await import('./clientRecordCreate');
  const legacy=await legacyImportCandidates();
  for(const [index,row] of rows.entries()){
   const keys=personMatchKeys({name:row.full_name,phone:row.phone,idNumber:row.id_number});

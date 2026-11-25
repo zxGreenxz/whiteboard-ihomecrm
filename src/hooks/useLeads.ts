@@ -1,8 +1,8 @@
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialAlreadyRecordedError,FinancialWorkflowError} from '@/lib/financialWorkflow';
 import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
-import {createWithClientMemory,personMatchKeys} from '@/lib/clientRecordCreate';
-import {legacyWindow,settleLegacyPending} from '@/lib/legacyPendingExit';
+// Nạp động: hai module của đợt 4 chỉ cần lúc tạo, nạp tĩnh từ nhiều trang làm Vite tách thành chunk dùng chung và
+// thêm tên chunk vào danh sách phụ thuộc của chunk entry (cửa bundle-inventory).
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -128,6 +128,8 @@ export const useLead = (id: string) => {
  * «có thể đã tạo» kèm mã.
  */
 async function checkLegacyLeadPending(matchKeys: readonly string[]): Promise<void> {
+  const {legacyWindow,settleLegacyPending}=await import('@/lib/legacyPendingExit');
+  const {personMatchKeys}=await import('@/lib/clientRecordCreate');
   const settled = await settleLegacyPending({ namespace: 'useCreateLead', businessKey: 'create' }, async (pending, context) => {
     const { from, to } = legacyWindow(pending);
     const { data, error } = await supabase.from('leads').select('id, customer_name, phone, created_at')
@@ -154,6 +156,7 @@ export const useCreateLead = () => {
       const payload = withOrg({ ...data, user_id: user.id } as Record<string, unknown>, selectedOrganizationId);
       delete payload.id;
       const person = { name: data.customer_name, phone: data.phone };
+      const {createWithClientMemory,personMatchKeys}=await import('@/lib/clientRecordCreate');
       await checkLegacyLeadPending(personMatchKeys(person));
       const { row, replayed } = await createWithClientMemory<Lead>({
         table: 'leads', userId: user.id, organizationId: payload.organization_id, payload, person,

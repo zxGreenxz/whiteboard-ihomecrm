@@ -2,8 +2,8 @@ import { customerListArgs, parseCustomerList } from '@/lib/customerList';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialAlreadyRecordedError, FinancialWorkflowError, type CompletedFinancialStep } from '@/lib/financialWorkflow';
 import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
-import {createWithClientMemory,personMatchKeys} from '@/lib/clientRecordCreate';
-import { legacyWindow, settleLegacyPending } from '@/lib/legacyPendingExit';
+// Nạp động: hai module của đợt 4 chỉ cần lúc tạo, nạp tĩnh từ nhiều trang làm Vite tách thành chunk dùng chung và
+// thêm tên chunk vào danh sách phụ thuộc của chunk entry (cửa bundle-inventory).
 import type { FinancialPendingRecord } from '@/lib/financialPending';
 import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -228,6 +228,8 @@ export type CreateCustomerInput = CustomerFormData & { clientId?: string };
  * giấy tờ; không có SĐT thì cùng tên) thì báo «có thể đã tạo» kèm mã và không tạo; lần bấm sau là lượt mới.
  */
 async function checkLegacyCustomerPending(matchKeys: readonly string[]): Promise<void> {
+  const {settleLegacyPending}=await import('@/lib/legacyPendingExit');
+  const {personMatchKeys}=await import('@/lib/clientRecordCreate');
   const settled = await settleLegacyPending({namespace:'customer-create',businessKey:'create'}, (pending, context) => legacyCustomerCandidates(pending, context));
   const match = settled?.verdict.find(candidate => personMatchKeys({name:candidate.full_name,phone:candidate.phone,idNumber:candidate.id_number}).some(key => matchKeys.includes(key)));
   if (match) throw new FinancialAlreadyRecordedError(`Có thể khách hàng ${match.full_name || ''} đã được tạo ở lần gửi trước bị kẹt (mã ${match.id}). Mở danh sách khách để kiểm tra; bấm lưu lại nếu vẫn muốn tạo thêm.`.replace(/\s+/g, ' '), [match.id]);
@@ -236,6 +238,7 @@ async function checkLegacyCustomerPending(matchKeys: readonly string[]): Promise
 type LegacyCustomerCandidate = {id:string;full_name:string|null;phone:string|null;id_number:string|null};
 /** Khách do chính người này tạo quanh giờ kẹt (cửa sổ ±60 phút) và các mã khách dấu cũ đã nhận; mới nhất trước. */
 export async function legacyCustomerCandidates(pending: FinancialPendingRecord, context: {userId:string;organizationId:string}): Promise<LegacyCustomerCandidate[]> {
+  const {legacyWindow}=await import('@/lib/legacyPendingExit');
   const {from,to}=legacyWindow(pending);
   const columns='id, full_name, phone, id_number, created_at';
   const {data,error}=await supabase.from('customers').select(columns).eq('user_id',context.userId).eq('organization_id',context.organizationId).is('deleted_at',null).gte('created_at',from).lte('created_at',to).order('created_at',{ascending:false}).limit(50);
@@ -264,6 +267,7 @@ export const useCreateCustomer = (options: {silent?:boolean} = {}) => {
       vehicles?.forEach(vehicle=>validatedVehicleType(vehicle.vehicle_type));
       const payload=withOrg({...customerData,user_id:user.id,status_v2:'WALK_IN'} as Record<string,unknown>,selectedOrganizationId);
       const person={name:customerData.full_name,phone:customerData.phone,idNumber:customerData.id_number};
+      const {createWithClientMemory,personMatchKeys}=await import('@/lib/clientRecordCreate');
       if(!clientId)await checkLegacyCustomerPending(personMatchKeys(person));
       const {row,replayed}=await createWithClientMemory<Customer&{id:string}>({
         table:'customers',userId:user.id,organizationId:payload.organization_id,payload,person,clientId,
