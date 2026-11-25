@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ChevronDown, DoorOpen, Plus, Check, X, Images } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useBuildings, useUpdateBuilding } from "@/hooks/useBuildings";
+import { sortBuildingsByName } from "@/lib/roomSort";
 import { useRooms } from "@/hooks/useRooms";
 import SaleSheet from "./SaleSheet";
 import MobileImageGrid from "./MobileImageGrid";
@@ -254,7 +255,7 @@ export default function MobileSaleInfo({ onBusyChange }: { onBusyChange?: (busy:
       <SaleSheet open={buildingSheet} onClose={() => setBuildingSheet(false)}>
         <h3>Chọn toà nhà</h3>
         <div className="sp-picklist">
-          {(buildings ?? []).map((b) => (
+          {sortBuildingsByName(buildings ?? []).map((b) => (
             <button key={b.id} className={"sp-pickitem" + (b.id === buildingId ? " sel" : "")} style={{ padding: "11px 13px" }}
               disabled={busy} onClick={() => { if (b.id !== buildingId && !confirmSaleInfoSwitch(roomGuard.dirty || buildingGuard.dirty)) return; setBuildingId(b.id); setBuildingSheet(false); }}>
               <span className="tag">{tagOf(b.name)}</span>

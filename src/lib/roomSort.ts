@@ -46,6 +46,16 @@ export function compareBuildingThenRoom(
   return compareRoomNames(aRoom, bRoom);
 }
 
+/** So tên toà A→Z, so khớp tự nhiên ("45TTT" trước "102LVT"), không phân biệt hoa/thường, dấu. */
+export function compareBuildingNames(a: string | null | undefined, b: string | null | undefined): number {
+  return (a ?? "").localeCompare(b ?? "", "vi", { numeric: true, sensitivity: "base" });
+}
+
+/** Bản sao danh sách toà đã xếp theo tên rồi mã — cho các ô chọn toà của trang Sale phòng. */
+export function sortBuildingsByName<T extends { name?: string | null; code?: string | null }>(buildings: readonly T[]): T[] {
+  return [...buildings].sort((a, b) => compareBuildingNames(a.name, b.name) || compareBuildingNames(a.code, b.code));
+}
+
 /**
  * Gộp danh sách phòng theo tên: mỗi tên phòng chỉ còn 1 mục, đã sắp theo
  * `compareRoomNames`. Dùng cho ô lọc phòng khi CHƯA chọn toà nhà — vd nhiều
