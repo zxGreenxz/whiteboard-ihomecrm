@@ -9,40 +9,15 @@
     ]
   },
   "counts": {
-    "calledRpcs": 438,
+    "calledRpcs": 437,
     "byRisk": {
-      "normal": 328,
+      "normal": 327,
       "financial": 109,
       "infrastructure": 1
     },
-    "securityDefiner": 412
+    "securityDefiner": 411
   },
-  "missingOnServer": [
-    {
-      "name": "get_public_room_settings_v1",
-      "callers": [
-        "src/lib/publicRoomAdminRpc.ts"
-      ]
-    },
-    {
-      "name": "list_public_room_tokens_v1",
-      "callers": [
-        "src/lib/publicRoomAdminRpc.ts"
-      ]
-    },
-    {
-      "name": "manage_public_room_token_v1",
-      "callers": [
-        "src/lib/publicRoomAdminRpc.ts"
-      ]
-    },
-    {
-      "name": "save_public_room_settings_v1",
-      "callers": [
-        "src/lib/publicRoomAdminRpc.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -3014,26 +2989,6 @@
       ],
       "callers": [
         "src/hooks/useMeters.ts"
-      ],
-      "risk": "normal"
-    },
-    "get_my_available_rooms": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/lib/publicRoomAdminRpc.ts"
       ],
       "risk": "normal"
     },
