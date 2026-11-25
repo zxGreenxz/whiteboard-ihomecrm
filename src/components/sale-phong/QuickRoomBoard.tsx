@@ -290,8 +290,9 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
 
   return <section className="space-y-4" aria-label="Bảng cập nhật phòng">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className={mobile ? 'sr-only' : 'text-lg font-semibold'}>Bảng cập nhật phòng</h2>
-        {!mobile && <p className="text-sm text-muted-foreground">Tìm phòng, sửa thông tin và xử lý ngay trong phạm vi được giao.</p>}</div>
+      {/* Điện thoại: tiêu đề màn đã nói "Cập nhật nhanh từng phòng"; giữ tiêu đề cho trình đọc, hai nút sát trái. */}
+      {mobile ? <h2 className="sr-only">Bảng cập nhật phòng</h2> : <div><h2 className="text-lg font-semibold">Bảng cập nhật phòng</h2>
+        <p className="text-sm text-muted-foreground">Tìm phòng, sửa thông tin và xử lý ngay trong phạm vi được giao.</p></div>}
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={blocked || !!selectedId} onClick={() => { setBatchRoomIds(visible.map(row => row.room.id)); setBatchOpen(true); }}>Cập nhật nhiều phòng / chính sách</Button>
       <Button size="sm" variant="outline" disabled={inventory.isFetching || busy} onClick={() => void inventory.refetch()}
         aria-label={mobile ? 'Tải lại' : undefined} title={mobile ? 'Tải lại' : undefined}>
