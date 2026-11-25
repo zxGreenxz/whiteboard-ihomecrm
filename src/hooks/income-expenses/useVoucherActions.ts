@@ -6,7 +6,7 @@
 // thoại mỗi trang tự chép một bản và đã lệch nhau (điện thoại thiếu hàng rào chi cổ đông, thiếu
 // Huỷ duyệt…). Chủ chốt: "đừng để phân mảnh mất sự thống nhất" — mọi màn mở phiếu (Thu chi hai
 // khổ, Báo cáo lợi nhuận) dùng đúng bộ này; sửa luồng nào thì sửa Ở ĐÂY.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { isCommissionVoucher } from "@/lib/commissionIntervention";
 import { isCommissionReasonValid } from "@/lib/commissionAudit";
@@ -206,17 +206,28 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   // vượt — ledgerApprovalGate); hoặc người xem không được duyệt phiếu này (người lập phiếu tạm ứng, thiếu quyền duyệt
   // thu chi ở toà — ledgerApproveBlockReason). Máy chủ vẫn là chốt cuối.
   const approveLedgerDetail = useProfitLedgerPayoutDetail(approveLedger ? approveTarget?.id : null);
-  const approveLedgerGate = approveLedger && approveLedgerDetail.data ? ledgerApprovalGate(approveLedgerDetail.data) : null;
-  const approveLedgerViewerReason = approveLedger && approveTarget
+  const ledgerDetail = approveLedgerDetail.isError ? undefined : approveLedgerDetail.data;
+  const approveLedgerGate = approveLedger && ledgerDetail ? ledgerApprovalGate(ledgerDetail) : null;
+  const workflowBlockReason = approveLedger && !v2ApproveOnly ? "Luồng duyệt thu chi của công ty chưa mở cho phiếu sổ tổng." : null;
+  const approveLedgerViewerReason = workflowBlockReason ?? (approveLedger && approveTarget
     ? ledgerApproveBlockReason(
         approveTarget,
         { perms: myPerms, currentUserId: authUser?.id ?? null },
         // Chưa đọc xong, hoặc phiếu cũ không có dòng sổ lúc lập ⇒ chưa kết luận gì về người lập.
-        approveLedgerDetail.data?.at_create?.maker_kind,
+        ledgerDetail?.at_create?.maker_kind,
       )
-    : null;
-  const approveLedgerBlocked = approveLedger
-    && (!approveLedgerGate || !!approveLedgerGate.blockReason || !!approveLedgerViewerReason);
+    : null);
+  const approveLedgerReason = approveLedgerViewerReason ?? approveLedgerGate?.blockReason
+    ?? (approveLedger && !approveLedgerGate ? "Chưa đọc được số dư sổ tổng của phiếu." : null);
+  const approveLedgerBlocked = !!approveLedgerReason;
+  const postLedgerReason = approveLedgerReason
+    ?? (approveLedger && !v2ApproveAndPost ? "Chưa thể duyệt và chi từ sổ quỹ này." : null);
+  // Sau khi chờ cổng tự duyệt hoặc tải chứng từ, kiểm lại đúng phiếu và trạng thái mới nhất trước khi ghi.
+  const approvalState = useRef({ id: approveTarget?.id, approveLedgerReason, postLedgerReason });
+  useLayoutEffect(() => {
+    approvalState.current = { id: approveTarget?.id, approveLedgerReason, postLedgerReason };
+    return () => { approvalState.current.id = undefined; };
+  }, [approveTarget?.id, approveLedgerReason, postLedgerReason]);
 
   const { cancelEligibility, incomeCancelEligibility } = useVoucherCancelEligibility(vouchers);
 
@@ -312,6 +323,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     setSelfApproveChecking(true);
     const selfCheck = await checkSelfApproveBeforeApprove(queryClient, target.id);
     setSelfApproveChecking(false);
+    if (approvalState.current.id !== target.id || approvalState.current.approveLedgerReason) return;
     if (!selfCheck.ok) {
       if (selfCheck.reason === "unverified") setActionError(selfCheck.message);
       return;
@@ -384,6 +396,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     setSelfApproveChecking(true);
     const selfCheck = await checkSelfApproveBeforeApprove(queryClient, approveTarget.id);
     setSelfApproveChecking(false);
+    if (approvalState.current.id !== approveTarget.id || approvalState.current.postLedgerReason) return;
     if (!selfCheck.ok) {
       if (selfCheck.reason === "unverified") setActionError(selfCheck.message);
       return;
@@ -537,8 +550,11 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       approveAndPost: {
         open: approveAndPostOpen, setOpen: setApproveAndPostOpen,
         /** Sổ chào trong hộp Duyệt và Thu/Chi; phiếu sổ tổng: chỉ sổ lúc lập (rỗng nếu không giữ sổ đó). */
-        cashbookOptions: approveAndPostBooks, cashbookLocked: approveLedger,
+        cashbookOptions: approveAndPostBooks, cashbookLocked: approveLedger, blockReason: postLedgerReason,
         submit: async (input: Parameters<typeof approveAndPostV2Mutation.mutateAsync>[0]) => {
+          const { id, postLedgerReason: reason } = approvalState.current;
+          if (id !== input.subjectId) throw new Error("Phiếu đang duyệt đã thay đổi. Mở lại phiếu để kiểm tra.");
+          if (reason) throw new Error(reason);
           await approveAndPostV2Mutation.mutateAsync(input);
           if (approveLedger) invalidateProfitLedgerQueries(queryClient);
           setApproveAndPostOpen(false);

@@ -376,8 +376,8 @@ async function cancelPostedVoucher(page: Page, code: string, reason: string) {
  */
 async function approveAtCashbook(page: Page, voucherId: string, code: string, noteTexts: readonly string[]) {
   await page.goto('/approvals');
-  await expect(page).toHaveURL((url) => url.pathname === '/income-expense'
-    && url.searchParams.get('approval_status') === 'UNAPPROVED' && url.searchParams.get('layer') === 'PENDING', { timeout: 60_000 });
+  await expect(page).toHaveURL((url) => url.pathname === '/income-expense', { timeout: 60_000 });
+  await expect(page.getByRole('tab', { name: /^Chờ xử lý/ })).toHaveAttribute('aria-selected', 'true');
   await page.getByPlaceholder('Tìm mã phòng, tên/mã phiếu hoặc số tiền (±5.000đ)...').fill(code);
   const row = page.getByTestId(`voucher-row-${voucherId}`);
   await expect(row).toBeVisible({ timeout: 90_000 });

@@ -200,7 +200,7 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận duyệt phiếu</AlertDialogTitle>
             <AlertDialogDescription>
-              {approve.v2ApproveOnly ? (
+              {approve.v2ApproveOnly || approve.ledger.isLedger ? (
                 <>
                   <b>Duyệt</b> chỉ chuyển trạng thái phê duyệt — <b>không</b> thay
                   đổi tồn quỹ. Tiền chỉ vào/ra sổ khi thực hiện <b>Thu/Chi</b> với
@@ -242,7 +242,7 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
           {/* Phiếu đã bị sửa khi Chờ duyệt ⇒ người duyệt thấy đổi gì, ai sửa, vì sao. */}
           {approveTarget && <RevisionComparison voucherId={approveTarget.id} />}
 
-          {!approve.v2ApproveOnly && (
+          {!approve.v2ApproveOnly && !approve.ledger.isLedger && (
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="approve-account">Sổ quỹ</Label>
@@ -329,7 +329,7 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
             >
               {approve.pending || approve.selfChecking
                 ? "Đang duyệt…"
-                : approve.v2ApproveOnly
+                : approve.v2ApproveOnly || approve.ledger.isLedger
                   ? "Chỉ duyệt"
                   : "Duyệt phiếu"}
             </AlertDialogAction>
@@ -354,7 +354,7 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
             attachments: approveTarget.attachments ?? null,
             isCommission: isCommissionVoucher(approveTarget),
           }}
-          capability={{ isCustodian: approveAndPost.cashbookOptions.length > 0, canApprove: true }}
+          capability={{ isCustodian: approveAndPost.cashbookOptions.length > 0, canApprove: !approveAndPost.blockReason, blockReason: approveAndPost.blockReason }}
           cashbookOptions={approveAndPost.cashbookOptions}
           cashbookError={posting.cashbookError}
           onRetryCashbooks={posting.retryCashbooks}

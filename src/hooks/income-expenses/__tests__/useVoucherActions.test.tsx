@@ -454,8 +454,12 @@ describe('Phiếu chi theo sổ tổng', () => {
       expect(result.current.anyOpen).toBe(false);
     });
 
-    it('chưa thấy số dư sổ tổng (E7 chưa về / lỗi) ⇒ khoá cả "Chỉ duyệt" lẫn "Duyệt và Chi…", không gọi máy chủ', async () => {
-      m.ledgerDetail = { data: undefined, isError: true };
+    it.each([
+      { data: undefined, isError: false },
+      { data: undefined, isError: true },
+      { data: e7(), isError: true },
+    ])('chưa đọc được số dư sổ tổng ⇒ khoá cả hai lệnh duyệt, kể cả khi cache còn dữ liệu', async (detail) => {
+      m.ledgerDetail = detail;
       const choDuyet = soTong({ maker_user_id: 'u-giu-so' });
       const { result } = setup([choDuyet]);
       act(() => result.current.approve(choDuyet));
@@ -465,6 +469,21 @@ describe('Phiếu chi theo sổ tổng', () => {
       expect(m.approveV2).not.toHaveBeenCalled();
       expect(m.selfCheck).not.toHaveBeenCalled();
       expect(result.current.dialogs.approveAndPost.open).toBe(false);
+    });
+
+    it.each(['FROZEN', 'LEGACY'])('luồng duyệt %s ⇒ khoá phiếu sổ tổng, không chạy lệnh duyệt cũ', async (workflow) => {
+      m.routes.workflow = workflow;
+      const voucher = soTong({ maker_user_id: 'u-giu-so' });
+      const { result } = setup([voucher]);
+      act(() => result.current.approve(voucher));
+      expect(result.current.dialogs.approve.ledger.blocked).toBe(true);
+      expect(result.current.dialogs.approve.ledger.viewerReason).toMatch(/luồng duyệt thu chi/i);
+      await act(async () => { await result.current.dialogs.approve.confirm(); });
+      await act(async () => { await result.current.dialogs.approve.openApproveAndPost(); });
+      expect(result.current.dialogs.approveAndPost.open).toBe(false);
+      expect(m.revise).not.toHaveBeenCalled();
+      expect(m.approveLegacy).not.toHaveBeenCalled();
+      expect(m.approveV2).not.toHaveBeenCalled();
     });
 
     it('máy chủ chắc chắn từ chối (sổ tổng đóng băng, phiếu chết, người nhận đã xoá, lương điều hành vượt) ⇒ khoá', () => {
@@ -520,6 +539,20 @@ describe('Phiếu chi theo sổ tổng', () => {
       expect(result.current.anyOpen).toBe(true);
       expect(m.invalidateLedger).not.toHaveBeenCalled();
       expect(onChanged).not.toHaveBeenCalled();
+    });
+
+    it('số dư mất trong lúc tải ảnh ⇒ chặn cả hàm gửi đã nhận trước đó', async () => {
+      const voucher = soTong({ maker_user_id: 'u-giu-so' });
+      const { result, rerender } = setup([voucher]);
+      act(() => result.current.approve(voucher));
+      await act(async () => { await result.current.dialogs.approve.openApproveAndPost(); });
+      const submit = result.current.dialogs.approveAndPost.submit;
+      const input = { subjectId: voucher.id } as Parameters<typeof submit>[0];
+      m.ledgerDetail = { data: e7(), isError: true };
+      rerender();
+      expect(result.current.dialogs.approveAndPost.blockReason).toMatch(/số dư/);
+      await expect(submit(input)).rejects.toThrow(/số dư/);
+      expect(m.approveAndPost).not.toHaveBeenCalled();
     });
 
     it('"Duyệt và Chi…" phiếu sổ tổng xong ⇒ làm mới sổ tổng; phiếu thường thì không', async () => {
