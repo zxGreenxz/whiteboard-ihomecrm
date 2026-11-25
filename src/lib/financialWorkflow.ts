@@ -1,4 +1,4 @@
-import { financialPending, FinancialPendingError, isAttemptRunning, pendingHasSettled, trackRunningAttempt, type FinancialPendingRecord, type FinancialPendingScope, type FinancialPendingStore, type PendingReconciliation } from './financialPending';
+import { financialPending, FinancialPendingError, isAttemptRunning, pendingHasSettled, trackRunningAttempt, type FinancialPendingMeta, type FinancialPendingRecord, type FinancialPendingScope, type FinancialPendingStore, type PendingReconciliation } from './financialPending';
 import { friendlyError } from './friendlyError';
 import { hasUnconfirmedResponse as voucherOutcomeUnknown, isKnownRejectionCode } from './operationOutcome';
 import { pendingBlockMessage, pendingValve, type PendingValve } from './pendingValve';
@@ -49,7 +49,15 @@ export interface FinancialWorkflowPersistence {
   /** Nơi nhận lời báo khi một lần ghi bị chặn bởi dấu của lần gửi trước. Mặc định là hộp cảnh báo dùng chung. */
   valve?: Pick<PendingValve,'report'>;
   now?: () => Date;
+  /**
+   * Namespace CHUNG của bản trước mà namespace này được tách ra (đợt 5: tách khoá theo thao tác). Dấu cũ ở đó cùng
+   * khoá nghiệp vụ không cho biết nó thuộc thao tác nào, nên không đối chiếu tự động: chặn đúng bản ghi đó và mở hộp
+   * cảnh báo (sau 2 phút người dùng tự gỡ). Không lặng lẽ bỏ qua, vì đó có thể là một lệnh tiền chưa rõ kết quả.
+   */
+  legacyNamespace?: string;
 }
+/** Tuỳ chọn thêm của một lượt ghi. `meta`: vài giá trị nguyên thuỷ lưu vào dấu (ví dụ trạng thái trước khi bấm). */
+export interface FinancialWorkflowRunOptions { meta?: FinancialPendingMeta }
 /** Câu báo nêu thao tác ĐANG KẸT và giờ kẹt, đọc từ dấu; không dùng tên thao tác người dùng vừa bấm. */
 const pendingFailure = (pending:FinancialPendingRecord,at:Date) => new FinancialWorkflowError(
   pendingBlockMessage(pending,pendingHasSettled(pending,at)),
@@ -61,7 +69,7 @@ export class FinancialWorkflowGuard {
   /** `attemptId`: dấu bền mà khoá trong bộ nhớ này soi theo. Dấu ấy đã được gỡ thì khoá hết hiệu lực. */
   private blocked = new Map<string, {error:FinancialWorkflowError;attemptId?:string}>();
   constructor(private persistence?:FinancialWorkflowPersistence) {}
-  async run<T>(key: string, operation: string, task: (progress: FinancialWorkflowProgress) => Promise<T>, reconcile?: (pending:FinancialPendingRecord,progress:FinancialWorkflowProgress)=>Promise<PendingReconciliation<T>>, targetOrganizationId?:string|null): Promise<T> {
+  async run<T>(key: string, operation: string, task: (progress: FinancialWorkflowProgress) => Promise<T>, reconcile?: (pending:FinancialPendingRecord,progress:FinancialWorkflowProgress)=>Promise<PendingReconciliation<T>>, targetOrganizationId?:string|null, options:FinancialWorkflowRunOptions={}): Promise<T> {
     if (this.active.has(key)) throw new FinancialWorkflowError(
       `Yêu cầu ${operation} đang được xử lý. Chờ kết quả trước khi thực hiện tiếp.`, 'unknown', []);
     // Acquire synchronously, before scope resolution, to stop a double click.
@@ -77,6 +85,7 @@ export class FinancialWorkflowGuard {
     let recoveryAttempt=false;
     let resendPriorRequest=false;
     let alreadyRecorded:FinancialAlreadyRecordedError|undefined;
+    let legacyBlocked:FinancialWorkflowError|undefined;
     // Dấu đang có task chạy thì chưa thể coi là đã kết thúc, kể cả với guard khác trong tab.
     let stopTracking:(()=>void)|undefined;
     // Both initial execution and domain-verified recovery persist each new receipt immediately.
@@ -89,6 +98,14 @@ export class FinancialWorkflowGuard {
       if(this.persistence){
         scope=await this.persistence.scope(key, targetOrganizationId);
         blockedKey=JSON.stringify([scope.namespace,scope.userId,scope.organizationId,scope.businessKey]);
+        if(this.persistence.legacyNamespace){
+          const legacy=store.read({...scope,namespace:this.persistence.legacyNamespace});
+          if(legacy){
+            try{valve.report({pending:legacy,blockedOperation:operation,store});}catch{/* giữ lỗi chính */}
+            legacyBlocked=pendingFailure(legacy,now());
+            throw legacyBlocked;
+          }
+        }
         const prior=store.read(scope);
         if(prior){
           pending=prior;recoveryAttempt=true;writerStarted=true;
@@ -126,7 +143,7 @@ export class FinancialWorkflowGuard {
         this.blocked.delete(blockedKey);
       }
       if(scope){
-        pending=store.markPending(scope,{attemptId:resendPriorRequest?crypto.randomUUID():progress.requestKey,requestKey:progress.requestKey,operation});
+        pending=store.markPending(scope,{attemptId:resendPriorRequest?crypto.randomUUID():progress.requestKey,requestKey:progress.requestKey,operation,meta:options.meta});
         stopTracking=trackRunningAttempt(pending.attemptId);
       }
       writerStarted=true;
@@ -138,6 +155,8 @@ export class FinancialWorkflowGuard {
       stopTracking?.();
       // Kết luận "lần trước đã ghi" của chính lượt này: dấu đã gỡ, không còn gì để giữ hay chặn.
       if(alreadyRecorded&&error===alreadyRecorded)throw error;
+      // Bị chặn bởi dấu khoá chung bản trước: dấu đó nằm ở namespace khác, lượt này chưa ghi gì và không giữ khoá nào.
+      if(legacyBlocked&&error===legacyBlocked)throw error;
       const collided=error instanceof FinancialPendingError?error.pending:null;
       const failure=collided?pendingFailure(collided,now()):error;
       let feedback=workflowFailure(failure,operation,progress.completed,progress.stage);

@@ -1,8 +1,8 @@
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {FinancialWorkflowError,isConfirmedFinancialRejection,workflowErrorMessage} from '@/lib/financialWorkflow';
+import {FinancialWorkflowError,isConfirmedFinancialRejection,workflowErrorMessage,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
 import {financialReadRows} from '@/lib/financialReadValidation';
 import {runFinancialPending} from '@/lib/financialPendingAction';
-import type {FinancialPendingRecord,PendingReconciliation} from '@/lib/financialPending';
+import {priorAttemptSettled,type FinancialPendingRecord,type PendingReconciliation} from '@/lib/financialPending';
 import { VoucherPartialError, voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -421,22 +421,44 @@ export const useCancelIncomeExpenseBatch = () => {
     mutationFn: async (input: { batchId: string; reason: string }) => {
       const { batchId, reason } = input;
       if (reason.trim().length < 8 || reason.trim().length > 2000) throw new Error("Nhập lý do huỷ cả đợt từ 8 đến 2.000 ký tự.");
-      try {return await workflow.run(batchId,'huỷ đợt phiếu',async progress=>{
-      // 1. Lấy danh sách voucher_id thuộc batch
-      const { data: links, error: linkError } = await supabase
-        .from("income_expense_batch_items")
-        .select("income_expense_id")
-        .eq("batch_id", batchId);
-      if (linkError) {
-        throw linkError;
-      }
-      const ids = financialReadRows<any>(links).map((l) => l.income_expense_id);
-      if (ids.length === 0) return { count: 0, failures: [], completedIds: [] };
+      // 1–2. Phiếu CÒN HIỆU LỰC của đợt (đọc, không ghi): đọc lại mỗi lần, nên lần chạy sau chỉ huỷ phần còn lại.
+      const readBatchVoucherIds = async (): Promise<string[]> => {
+        const { data: links, error: linkError } = await supabase
+          .from("income_expense_batch_items")
+          .select("income_expense_id")
+          .eq("batch_id", batchId);
+        if (linkError) throw linkError;
+        return financialReadRows<{income_expense_id:string}>(links).map((l) => l.income_expense_id);
+      };
+      // Bước dọn khoản thanh toán của phiếu CHI đường cũ (đợt 5): lần trước đã huỷ phiếu nhưng chưa xoá được khoản đó thì
+      // phiếu không còn «hiệu lực» nữa, nên phải tìm riêng: phiếu chi đã huỷ của đợt mà khoản thanh toán vẫn còn.
+      const readLeftoverPayments = async (): Promise<string[]> => {
+        const ids = await readBatchVoucherIds();
+        if (ids.length === 0) return [];
+        const { data: cancelledRows, error: cancelledError } = await supabase
+          .from("income_expenses").select("id, type, payment_id").in("id", ids).eq("approval_status", "CANCELLED");
+        if (cancelledError) throw cancelledError;
+        const paymentIds = financialReadRows<{type:string|null;payment_id:string|null}>(cancelledRows).filter(v => v.type !== "INCOME" && v.payment_id).map(v => v.payment_id as string);
+        if (paymentIds.length === 0) return [];
+        // Như cửa huỷ lẻ: khoản đã đánh dấu hoàn tác (reversed_at) không còn tính vào hoá đơn, không xoá.
+        const { data: alive, error: aliveError } = await supabase.from("payments").select("id").in("id", paymentIds).is("reversed_at", null);
+        if (aliveError) throw aliveError;
+        return financialReadRows<{id:string}>(alive).map(row => row.id);
+      };
+      // Đọc lại số dòng đã xoá: quyền (RLS) có thể làm lệnh xoá chạm 0 dòng mà không báo lỗi.
+      const removeLeftoverPayments = async (leftover: string[]) => {
+        if (leftover.length === 0) return;
+        const { data: deleted, error: deleteError } = await supabase.from("payments").delete().in("id", leftover).select("id");
+        if (deleteError || !Array.isArray(deleted) || deleted.length !== leftover.length) throw new VoucherPartialError(`Phiếu chi đã huỷ của đợt còn ${leftover.length} khoản thanh toán hoá đơn chưa cập nhật được. Hãy kiểm tra phiếu và hoá đơn liên quan trước khi thao tác tiếp.`, [], batchId, deleteError);
+      };
+      const readActiveVouchers = async () => {
+      const ids = await readBatchVoucherIds();
+      if (ids.length === 0) return [];
 
-      // 2. Đọc (read-only) các phiếu còn hiệu lực để biết payment_id cần
-      //    cascade xoá; sau đó huỷ qua ie_compat_cancel_v2 (Stage-7: client
-      //    không còn UPDATE trực tiếp income_expenses). Phiếu đã POSTED (ghi
-      //    sổ V2) sẽ bị server từ chối — dùng reversal thay vì huỷ.
+      // Đọc (read-only) các phiếu còn hiệu lực để biết payment_id cần
+      // cascade xoá; sau đó huỷ qua ie_compat_cancel_v2 (Stage-7: client
+      // không còn UPDATE trực tiếp income_expenses). Phiếu đã POSTED (ghi
+      // sổ V2) sẽ bị server từ chối — dùng reversal thay vì huỷ.
       const { data: vouchers, error: readError } = await supabase
         .from("income_expenses")
         .select("id, type, payment_id")
@@ -445,7 +467,10 @@ export const useCancelIncomeExpenseBatch = () => {
       if (readError) {
         throw readError;
       }
-      const activeVouchers = financialReadRows<any>(vouchers);
+      return financialReadRows<any>(vouchers);
+      };
+      const cancelRemaining = async (progress: FinancialWorkflowProgress) => {
+      const activeVouchers = await readActiveVouchers();
       if (activeVouchers.length === 0) return { count: 0, failures: [], completedIds: [] };
 
       const { cancelled, failures, completedIds } = await cancelVouchersSplitByType(
@@ -473,7 +498,22 @@ export const useCancelIncomeExpenseBatch = () => {
       const result={count:cancelled,failures,completedIds};
       if(failures.some(failure=>failure.outcomeUnknown))throw new BatchCancelUnconfirmed(result);
       return result;
-      },undefined,selectedOrganizationId??undefined);
+      };
+      try {return await workflow.run(batchId,'huỷ đợt phiếu',cancelRemaining,async (pending,progress)=>{
+        // Cách A (đợt 5): đọc lại phiếu còn hiệu lực rồi chỉ huỷ phần còn. Phiếu đã huỷ không tính là lỗi. Đường huỷ phiếu
+        // chi (ie_compat_cancel_v2, production 25/11/2026) không xét phiếu đã huỷ, nên phần còn lại chỉ được chạy khi lần
+        // gửi trước chắc chắn đã kết thúc; phiếu thu (cancel_income_voucher_v1) khoá phiếu rồi trả «đã huỷ trước đó».
+        // Khoản thanh toán của phiếu CHI đã huỷ mà còn sót được dọn ở cả hai nhánh: lần trước có thể đã huỷ phiếu chi rồi
+        // hỏng ở bước xoá khoản, trong khi đợt vẫn còn phiếu khác hiệu lực (review lượt 2).
+        const active = await readActiveVouchers();
+        const leftover = await readLeftoverPayments();
+        if (active.length === 0 && leftover.length === 0) return { result: { count: 0, failures: [], completedIds: [] } };
+        // Còn phiếu hiệu lực hoặc còn khoản chưa gỡ: chỉ chạy phần còn, khi lần trước chắc chắn đã kết thúc.
+        if (!priorAttemptSettled(pending)) return null;
+        await removeLeftoverPayments(leftover);
+        if (active.length === 0) return { result: { count: 0, failures: [], completedIds: [] } };
+        return { result: await cancelRemaining(progress) };
+      },selectedOrganizationId??undefined);
       } catch(error) {
         let cause:unknown=error;const seen=new Set<unknown>();
         while(cause && !seen.has(cause)){

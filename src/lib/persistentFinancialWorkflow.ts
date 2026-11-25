@@ -2,9 +2,13 @@ import { getSessionUser } from './authSession';
 import { FinancialWorkflowError, FinancialWorkflowGuard } from './financialWorkflow';
 import { FinancialPendingStorageError } from './financialPending';
 
-/** Scope is resolved at submission, never frozen to the first organization render. */
-export function persistentFinancialWorkflow(namespace:string,options:{scope?:'selected'|'target'|'actor'}={}):FinancialWorkflowGuard {
-  return new FinancialWorkflowGuard({scope:async (businessKey, targetOrganizationId)=>{
+/**
+ * Scope is resolved at submission, never frozen to the first organization render.
+ * `legacy`: namespace chung của bản trước mà namespace này được tách ra; dấu cũ ở đó (cùng khoá nghiệp vụ, cùng phạm vi)
+ * chặn đúng bản ghi đó và mở hộp cảnh báo, không bị bỏ qua.
+ */
+export function persistentFinancialWorkflow(namespace:string,options:{scope?:'selected'|'target'|'actor';legacy?:string}={}):FinancialWorkflowGuard {
+  return new FinancialWorkflowGuard({legacyNamespace:options.legacy,scope:async (businessKey, targetOrganizationId)=>{
     if(options.scope==='target'||options.scope==='actor'){
       const user=await getSessionUser();if(!user)throw {code:'PGRST301',message:'Not authenticated'};
       // Some authorized actions intentionally span organizations. Their coordination scope
