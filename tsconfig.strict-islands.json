@@ -189,6 +189,7 @@
     "src/lib/profitReportFilters.ts",
     "src/lib/voucherActionRules.ts",
     "src/hooks/income-expenses/useVoucherActions.ts",
+    "src/hooks/income-expenses/formCreatePending.ts",
     "src/components/income-expenses/VoucherActionDialogs.tsx",
     "src/lib/invoiceRentSupport.ts",
     "src/lib/rentSupport.ts",

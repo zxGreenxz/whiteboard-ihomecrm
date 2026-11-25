@@ -1,4 +1,5 @@
 import {FinancialPendingError,FinancialPendingStorageError} from './financialPending';
+import {FinancialWorkflowError} from './financialWorkflowError';
 import { friendlyError } from "./friendlyError";
 import { voucherOutcomeUnknown, voucherFailureMessage } from "./voucherFeedback";
 import {z} from 'zod';
@@ -53,7 +54,7 @@ const reservationReasons = [
  'Giữ chỗ đã gắn khách trong danh bạ', 'Giữ chỗ đã thay đổi',
 ];
 export function reservationErrorMessage(error: unknown): string {
- if(error instanceof FinancialPendingError||error instanceof FinancialPendingStorageError)return voucherFailureMessage(error,'lưu giữ chỗ/cọc');
+ if(error instanceof FinancialPendingError||error instanceof FinancialPendingStorageError||error instanceof FinancialWorkflowError)return voucherFailureMessage(error,'lưu giữ chỗ/cọc');
  const e = error as {code?: string; message?: string};
  if (voucherOutcomeUnknown(error)) return 'Chưa xác nhận được kết quả lưu giữ chỗ/cọc. Tải lại Quản lý cọc và đối chiếu trước khi thực hiện lại.';
  if (e?.code === 'PT409' || e?.code === '40001') return 'Hồ sơ giữ chỗ đã thay đổi. Tải lại trước khi tiếp tục.';

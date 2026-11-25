@@ -17,6 +17,14 @@ export function feeFailureMessage(error:unknown, action:string):string {
  if (voucherOutcomeUnknown(error)) return voucherFailureMessage(error,action);
  return friendlyError(error,`Chưa ${action}`,{operation:action,financial:true,rules:reasons.map(([message,description])=>({message,description}))}).description;
 }
+/**
+ * cancel_period_fee / cancel_utility_bill (production 24/11/2026) khoá dòng phiếu rồi mới xét deleted_at; phiếu đã
+ * huỷ thì ném đúng câu này (P0001). Ở lần gửi lại của một lần huỷ chưa rõ kết quả, câu này nghĩa là việc đã xong.
+ */
+export function feeVoucherCancelledBefore(error:unknown):boolean {
+ const e=error as {code?:unknown;message?:unknown}|null;
+ return !!e && (e.code===undefined||e.code==='P0001') && String(e.message??'').trim()==='Phiếu đã bị hủy trước đó';
+}
 export function parseGeneratedFeeReceipt(value:unknown) {
  const d = value as {period?:unknown;created?:unknown;posted?:unknown;totalAmount?:unknown;voucherIds?:unknown;note?:unknown}|null;
  if (!d || typeof d.period!=='string' || ![d.created,d.posted,d.totalAmount].every(n=>typeof n==='number' && Number.isFinite(n) && n>=0)
