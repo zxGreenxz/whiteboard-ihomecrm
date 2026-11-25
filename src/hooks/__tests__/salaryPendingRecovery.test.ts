@@ -168,6 +168,41 @@ describe('chi lương (salary_payout_v1, cách B)', () => {
     expect(vouchers()).toHaveLength(1);
   });
 
+  it('cổ đông: lần gửi lại hỏng ở bước báo giá phần lợi nhuận vẫn giữ dấu và đúng mã; lần sau nhận lại phiếu cũ, một phiếu', async () => {
+    installPayout();
+    let quoteFails = false;
+    io.server.rpcHandlers.salary_profit_payout_quote_v1 = args => quoteFails
+      ? { data: null, error: { message: 'TypeError: Failed to fetch', code: '' } }
+      : { data: { quote_id: 'q-1', shareholder_id: 'sh-1', staff_id: args.p_staff_id, period_month: args.p_period_month, organization_id: 'org-1', investment_amount: args.p_investment_selected, advance_offset_amount: args.p_offset_selected, investment_month: 3_000_000, advance_offset_month: 1_200_000, paid_investment: 0, paid_offset: 0, settled_by_marker: false, sheet_status: 'DRAFT', expected_voucher_amount: args.p_expected_voucher_amount, payout_request_key: args.p_payout_idempotency_key, expires_at: '2026-11-05T00:30:00Z', voided_quote_ids: [], offset_conflict: false, needs_review_reason: null }, error: null };
+    const withQuote = payout({ profitQuote: { investmentSelected: 3_000_000, offsetSelected: 1_200_000 } });
+    io.server.failNext('salary_payout_v1', 'rpc', 'drop-after');
+    await expect(run<SalaryPayoutInput>(useSalaryPayout())(withQuote)).rejects.toBeTruthy();
+    quoteFails = true;
+    await expect(run<SalaryPayoutInput>(useSalaryPayout())(withQuote)).rejects.toMatchObject({ outcome: 'unknown' });
+    expect(pendingKeys()).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem(pendingKeys()[0]!) ?? '{}').requestKey).toBe(keysOf('salary_payout_v1')[0]);
+    quoteFails = false;
+    await expect(run<SalaryPayoutInput>(useSalaryPayout())(withQuote)).resolves.toMatchObject({ id: 'v-1' });
+    expect(new Set(keysOf('salary_payout_v1')).size).toBe(1);
+    expect(vouchers()).toHaveLength(1);
+    expect(pendingKeys()).toEqual([]);
+  });
+
+  it('nhánh có phần hỗ trợ tiền phòng: gửi lại khác nội dung ⇒ PT409 SALARY_REQUEST_CHANGED nghĩa là đã lập, báo đã lập', async () => {
+    const claims = installPayout();
+    const inner = io.server.rpcHandlers.salary_payout_v1!;
+    io.server.rpcHandlers.salary_payout_v1 = args => {
+      const claim = claims.get(String(args.p_idempotency_key));
+      if (claim && claim.hash !== JSON.stringify([args.p_staff_id, args.p_period_month, args.p_take_home, args.p_rent_invoice_id ?? null, args.p_rent_amount ?? null])) return { data: null, error: { code: 'PT409', message: 'SALARY_REQUEST_CHANGED' } };
+      return inner(args);
+    };
+    io.server.failNext('salary_payout_v1', 'rpc', 'drop-after');
+    await expect(run<SalaryPayoutInput>(useSalaryPayout())(payout())).rejects.toBeTruthy();
+    await expect(run<SalaryPayoutInput>(useSalaryPayout())(payout({ amount: 3_500_000 }))).rejects.toMatchObject({ outcome: 'failure', alreadyRecorded: true });
+    expect(vouchers()).toHaveLength(1);
+    expect(pendingKeys()).toEqual([]);
+  });
+
   it('hết phiên: không ghi dấu, không gửi', async () => {
     installPayout();
     io.user = null;
@@ -224,7 +259,7 @@ describe('chốt tháng lương (lock_salary_month_v2, cách B)', () => {
     expect(pendingKeys()).toEqual([]);
   });
 
-  it('gửi lại mà số liệu đã đổi ⇒ máy chủ báo trùng mã: báo đã chốt ở lần trước', async () => {
+  it('gửi lại mà máy chủ báo trùng mã (lần trước đã chốt với số liệu khác): báo đã chốt ở lần trước, gỡ dấu', async () => {
     installLock();
     io.server.failNext('lock_salary_month_v2', 'rpc', 'drop-after');
     await expect(run(useLockSalaryMonth())(lockArgs)).rejects.toBeTruthy();
@@ -355,6 +390,16 @@ describe('thưởng/trừ lương (sửa: A; thêm: D theo mã khoản do trình
     expect(pendingKeys()).toHaveLength(1);
   });
 
+  it('sửa, mất phản hồi rồi bấm lại với giá trị khác trong 2 phút: chờ (lệnh cũ tới muộn có thể ghi đè), không gửi', async () => {
+    installAdjustments();
+    adjustments().push({ id: 'adj-1', salary_monthly_id: 'sm1', kind: 'BONUS', label: 'Cũ', amount: 100, note: null, source: 'MANUAL' });
+    io.server.failNext('salary_adjustments', 'update', 'drop-before');
+    await expect(run<SaveAdjustmentInput>(useSaveSalaryAdjustment())(adjustment({ id: 'adj-1' }))).rejects.toBeTruthy();
+    await expect(run<SaveAdjustmentInput>(useSaveSalaryAdjustment())(adjustment({ id: 'adj-1', amount: 900_000 }))).rejects.toMatchObject({ message: expect.stringContaining('đối chiếu') });
+    expect(adjustments()[0]).toMatchObject({ label: 'Cũ', amount: 100 });
+    expect(pendingKeys()).toHaveLength(1);
+  });
+
   it('sửa, tới nhưng mất phản hồi: chạy lại ngay, cùng giá trị', async () => {
     installAdjustments();
     adjustments().push({ id: 'adj-1', salary_monthly_id: 'sm1', kind: 'BONUS', label: 'Cũ', amount: 100, note: null, source: 'MANUAL' });
@@ -365,10 +410,10 @@ describe('thưởng/trừ lương (sửa: A; thêm: D theo mã khoản do trình
     expect(pendingKeys()).toEqual([]);
   });
 
-  it('sửa, dấu cũ gieo sẵn: chạy lại ngay', async () => {
+  it('sửa, dấu cũ gieo sẵn (không mang dấu vân tay nội dung, quá 2 phút): chạy lại', async () => {
     installAdjustments();
     adjustments().push({ id: 'adj-1', salary_monthly_id: 'sm1', kind: 'BONUS', label: 'Cũ', amount: 100, note: null, source: 'MANUAL' });
-    seedLegacyPending(adjustmentScope('adj-1'), new Date(Date.now() - 30_000));
+    seedLegacyPending(adjustmentScope('adj-1'), new Date(Date.now() - 10 * 60_000));
     await expect(run<SaveAdjustmentInput>(useSaveSalaryAdjustment())(adjustment({ id: 'adj-1' }))).resolves.toMatchObject({ id: 'adj-1' });
     expect(pendingKeys()).toEqual([]);
   });

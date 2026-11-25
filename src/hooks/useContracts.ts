@@ -539,7 +539,12 @@ export const useCreateContract = () => {
       let resend=false;
       return workflow.run(roomId,'tạo hợp đồng',async progress=>{
         let response;
-        try{response=await createContractV2((fn,args)=>supabase.rpc(fn,args),{...request,idempotencyKey:progress.requestKey});}
+        try{response=await createContractV2(async(fn,args)=>{
+          const result=await supabase.rpc(fn,args);
+          const raw=result.data as unknown as {contract?:{id?:unknown;contract_number?:unknown}}|null;
+          if(!result.error&&typeof raw?.contract?.id==='string'&&raw.contract.id)progress.completed.push({id:raw.contract.id,label:`Đã nhận hợp đồng ${typeof raw.contract.contract_number==='string'?raw.contract.contract_number:raw.contract.id}`});
+          return result;
+        },{...request,idempotencyKey:progress.requestKey});}
         catch(error){
           // Gửi lại mà máy chủ báo trùng (mã đã dùng với nội dung khác, hoặc phòng đã có hợp đồng hiệu lực): lần trước đã
           // tạo. Đọc hợp đồng hiệu lực của phòng để báo mã, không tạo lần hai. Đổi ngày bắt đầu là phạm vi khoá khác của máy
@@ -553,19 +558,15 @@ export const useCreateContract = () => {
           throw error;
         }
         const receipt=response.contract;
-        // Máy chủ đã trả hợp đồng: hợp đồng đã tạo. Biên nhận lệch không còn giữ dấu (gửi lại chỉ nhận lại đúng biên nhận
-        // này): báo đã tạo kèm mã để người dùng mở hợp đồng kiểm tra, không tạo lần hai.
-        const created=typeof receipt?.id==='string'&&receipt.id?receipt.id:null;
-        const mismatch=!created||receipt.room_id!==roomId||receipt.status!=='ACTIVE'
-          ?'phòng hoặc trạng thái'
-          :!matchesContractMoneyReceipt(receipt.rent_price,request.payload.contract.rent_price)||!matchesContractMoneyReceipt(receipt.total_deposit,request.payload.contract.total_deposit)
-            ?'tiền thuê hoặc tiền cọc':null;
-        if(mismatch&&created)throw new FinancialAlreadyRecordedError(`Hợp đồng ${receipt.contract_number||created} đã được tạo nhưng ${mismatch} máy chủ trả về chưa khớp với form. Mở hợp đồng để kiểm tra; không tạo lần hai.`,[created]);
-        if(mismatch)throw new TypeError('Chưa xác nhận được đúng hợp đồng và phòng vừa tạo.');
+        // Hàng rào biên nhận giữ nguyên: lệch phòng / trạng thái / tiền ⇒ chưa xác nhận, dấu giữ mã hợp đồng. Lần bấm sau
+        // không gửi gì: hàm đối chiếu thấy mã hợp đồng trong dấu, báo đã tạo kèm mã rồi gỡ dấu (không khoá mãi).
+        if(!receipt||typeof receipt.id!=='string'||!receipt.id||receipt.room_id!==roomId||receipt.status!=='ACTIVE')throw new TypeError('Chưa xác nhận được đúng hợp đồng và phòng vừa tạo.');
+        if(!matchesContractMoneyReceipt(receipt.rent_price,request.payload.contract.rent_price)||!matchesContractMoneyReceipt(receipt.total_deposit,request.payload.contract.total_deposit))throw new TypeError('Chưa xác nhận được đúng tiền thuê và tiền cọc của hợp đồng vừa tạo.');
         return receipt;
       },async pending=>{
-        // Dấu bản trước đã nhận mã hợp đồng (rồi biên nhận lệch): hợp đồng đã tạo.
-        if(pending.completedIds.length)return {outcome:'already-written',message:'Hợp đồng của phòng này đã được tạo ở lần gửi trước. Mở hợp đồng để kiểm tra; không tạo lần hai.',recordIds:pending.completedIds};
+        // Dấu đã nhận mã hợp đồng (rồi biên nhận lệch hoặc mất bước sau): hợp đồng đã tạo; máy chủ cũng không cho phòng có hợp
+        // đồng hiệu lực thứ hai. Báo kèm mã, gỡ dấu, không gửi.
+        if(pending.completedIds.length)return {outcome:'already-written',message:'Hợp đồng của phòng này đã được tạo ở lần gửi trước (thông tin máy chủ trả về lúc đó chưa khớp form). Mở hợp đồng để kiểm tra; không tạo lần hai.',recordIds:pending.completedIds};
         resend=true;
         return {outcome:'not-written',serverDedupesRequestKey:true};
       });

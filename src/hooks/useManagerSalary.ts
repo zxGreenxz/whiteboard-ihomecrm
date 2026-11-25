@@ -755,10 +755,12 @@ export interface SaveAdjustmentInput {
 
 /** Dấu của lần THÊM khoản thưởng/trừ mang mã khoản = mã yêu cầu của dấu (đợt 6). Dấu bản trước không có. */
 const ADJUSTMENT_CLIENT_ID = 'clientId';
+/** Dấu vân tay nội dung của lần SỬA khoản thưởng/trừ. */
+const ADJUSTMENT_PAYLOAD = 'payload';
 /** Lệch giờ trình duyệt ↔ máy chủ chấp nhận khi tra khoản "tạo sau giờ kẹt" của dấu bản trước. */
 const ADJUSTMENT_CLOCK_SKEW_MS = 60 * 60_000;
 const adjustmentFingerprint = (row: { kind: unknown; label: unknown; amount: unknown; note?: unknown }) =>
-  payloadFingerprint([row.kind, row.label, financialReadNumber(row.amount), row.note ?? null]);
+  payloadFingerprint([row.kind, row.label, Math.abs(financialReadNumber(row.amount)), row.note ?? null]);
 
 /**
  * Đối chiếu một lần lưu thưởng/trừ chưa rõ kết quả (đợt 6). Ghi thẳng bảng `salary_adjustments`, không qua hàm máy chủ:
@@ -767,7 +769,9 @@ const adjustmentFingerprint = (row: { kind: unknown; label: unknown; amount: unk
  *     tra đúng khoản theo mã. Dấu bản trước không mang mã đó: tra gần đúng (cùng dòng lương, tạo sau giờ kẹt) tới đợt 10.
  */
 async function reconcileSalaryAdjustment(input: SaveAdjustmentInput, pending: FinancialPendingRecord): Promise<PendingReconciliation<{ id: string }>> {
-  if (input.id) return { outcome: 'not-written', serverDedupesRequestKey: true };
+  // Sửa ghi thẳng bảng, không mã, không so phiên bản: chỉ gửi lại ngay khi cùng nội dung với lần kẹt (lệnh cũ tới muộn cũng
+  // ghi đúng giá trị đó); nội dung khác thì chờ 2 phút để lệnh cũ không ghi đè giá trị mới.
+  if (input.id) return pending.meta?.[ADJUSTMENT_PAYLOAD] === adjustmentFingerprint(input) ? { outcome: 'not-written', serverDedupesRequestKey: true } : { outcome: 'not-written' };
   if (pending.meta?.[ADJUSTMENT_CLIENT_ID] === true && pending.requestKey) {
     const { data, error } = await supabase.from("salary_adjustments").select("id,kind,label,amount,note").eq("id", pending.requestKey).maybeSingle();
     if (error) throw error;
@@ -837,7 +841,7 @@ export const useSaveSalaryAdjustment = () => {
       const verdict = await reconcileSalaryAdjustment(input, pending);
       resend = verdict !== null && 'outcome' in verdict && verdict.outcome === 'not-written';
       return verdict;
-    }, undefined, input.id ? {} : { meta: { [ADJUSTMENT_CLIENT_ID]: true } });
+    }, undefined, { meta: input.id ? { [ADJUSTMENT_PAYLOAD]: adjustmentFingerprint(input) } : { [ADJUSTMENT_CLIENT_ID]: true } });
     },
     onSuccess: (_result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
@@ -1262,7 +1266,15 @@ export const useSalaryPayout = (options?: {silent?: boolean}) => {
       return guard.current.run(`${input.staffId}-${input.periodMonth}`, 'lập phiếu chi lương', async (progress) => {
 
       // Sổ tổng: cổ đông ⇒ báo giá phần lợi nhuận của phiếu TRƯỚC cả hai nhánh lập phiếu bên dưới.
-      if (input.profitQuote) await quoteShareholderPayout(input, input.profitQuote, progress);
+      if (input.profitQuote) {
+        try { await quoteShareholderPayout(input, input.profitQuote, progress); }
+        catch (error) {
+          // Lần gửi lại: báo giá hỏng (kể cả bị từ chối) chưa nói được gì về lần gửi trước, có thể đã lập phiếu. Giữ dấu và
+          // đúng mã yêu cầu, không để lỗi "chưa lập phiếu" của báo giá gỡ dấu rồi lần bấm sau lập phiếu thứ hai.
+          if (resend) throw new FinancialWorkflowError('Chưa gửi lại được phần lợi nhuận trong phiếu lương; lần gửi trước có thể đã lập phiếu. Bấm lại để đối chiếu (gửi lại đúng yêu cầu cũ, không lập phiếu thứ hai).', 'unknown', [], error);
+          throw error;
+        }
+      }
 
       // Canonical salary_payout_v1 (t5_12): ATOMIC toàn chuỗi — phiếu chi (tách
       // 2 dòng khi gạch nợ) + payment CT + phiếu thu đối ứng + stamp payout_voucher,
@@ -1290,7 +1302,7 @@ export const useSalaryPayout = (options?: {silent?: boolean}) => {
         // phiếu đó rồi đọc lại. Không gỡ dấu ở đây: máy chủ không chặn phiếu lương thứ hai cho cùng kỳ, gỡ dấu thì lần bấm
         // sau sẽ là lượt mới.
         if (!resend && receipt.approval_status === null && receipt.posting_status === null) {
-          throw new FinancialWorkflowError(`Đã lập phiếu chi lương${code} nhưng chưa đọc lại được trạng thái phiếu. Bấm lại để đối chiếu: hệ thống gửi lại đúng yêu cầu cũ, máy chủ trả lại đúng phiếu này, không lập phiếu thứ hai.`, 'unknown', []);
+          throw new FinancialWorkflowError(`Đã lập phiếu chi lương${code} (mã ${id}) nhưng chưa đọc lại được trạng thái phiếu. Bấm lại để đối chiếu: hệ thống gửi lại đúng yêu cầu cũ, máy chủ trả lại đúng phiếu này, không lập phiếu thứ hai.`, 'unknown', []);
         }
         // Gửi lại mà máy chủ trả phiếu cũ: máy chủ không so sổ quỹ và ngày chi, nên kiểm lại. Dấu bản trước không mang dấu vân
         // tay để chặn đổi hai trường đó từ trước.
@@ -1306,8 +1318,11 @@ export const useSalaryPayout = (options?: {silent?: boolean}) => {
         requireSalaryVoucherState(receipt);
         return receipt;
       }
-      if (resend && String(canonical.error.code ?? '') === '23505') {
-        throw new FinancialAlreadyRecordedError('Phiếu chi lương của nhân viên này trong kỳ đã được lập ở lần gửi trước (số tiền lúc đó khác số đang gửi). Mở danh sách phiếu chi lương để kiểm tra trước khi lập thêm.');
+      // Gửi lại mà máy chủ báo mã đã dùng với nội dung khác: 23505 ở nhánh thường (canonical_write_operations), PT409
+      // SALARY_REQUEST_CHANGED ở nhánh có phần hỗ trợ tiền phòng (rent_support_salary_payments). Cả hai chỉ có khi lần
+      // trước đã ghi xong trong cùng giao dịch.
+      if (resend && (String(canonical.error.code ?? '') === '23505' || (String(canonical.error.code ?? '') === 'PT409' && /SALARY_REQUEST_CHANGED/.test(String(canonical.error.message ?? ''))))) {
+        throw new FinancialAlreadyRecordedError('Phiếu chi lương của nhân viên này trong kỳ đã được lập ở lần gửi trước (nội dung lúc đó khác nội dung đang gửi). Mở danh sách phiếu chi lương để kiểm tra trước khi lập thêm.');
       }
       // Gửi lại không bao giờ rơi sang nhánh ghi cũ: nhánh đó không có mã yêu cầu nên sẽ lập phiếu thứ hai.
       if (resend || !isCanonicalFallbackSignal(canonical.error)) {

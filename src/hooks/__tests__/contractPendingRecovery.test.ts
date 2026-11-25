@@ -116,9 +116,13 @@ describe('tạo hợp đồng (cách B)', () => {
     expect(pendingKeys()).toEqual([]);
   });
 
-  it('biên nhận lệch sau khi tạo: vẫn không báo thành công, nhưng không giữ dấu; báo đã tạo kèm mã', async () => {
+  it('biên nhận lệch sau khi tạo: hàng rào giữ mã hợp đồng trong dấu; lần bấm sau báo đã tạo kèm mã, gỡ dấu, không gửi lần hai', async () => {
     installCreate((payload, contractId) => ({ id: contractId, contract_number: 'HĐ-L', room_id: (payload.contract as Row).room_id, status: 'ACTIVE', rent_price: 1, total_deposit: (payload.contract as Row).total_deposit }));
+    await expect(create(request())).rejects.toMatchObject({ outcome: 'partial', completed: [expect.objectContaining({ id: id(101) })] });
+    expect(pendingKeys()).toHaveLength(1);
     await expect(create(request())).rejects.toMatchObject({ outcome: 'failure', alreadyRecorded: true, recordIds: [id(101)] });
+    expect(createKeys()).toHaveLength(1);
+    expect(contracts()).toHaveLength(1);
     expect(pendingKeys()).toEqual([]);
   });
 });

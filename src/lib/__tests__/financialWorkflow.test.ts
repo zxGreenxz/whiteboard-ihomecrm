@@ -352,6 +352,17 @@ describe('chặn đổi trường máy chủ không so khi đối chiếu (đợ
   await expect(guard.run('staff-month','lập phiếu chi lương',task,reconcile,undefined,{meta:{rest:'so-a'},priorMismatch:pending=>pending.meta?.rest!=='so-a'?'x':null})).resolves.toBe('ok');
   expect(reconcile).toHaveBeenCalledTimes(1);expect(task).toHaveBeenCalledTimes(1);
  });
+ it('lần gửi lại cùng mã (sau `not-written`) vẫn chưa rõ kết quả: báo hộp cảnh báo với dấu mới để có lối tự gỡ',async()=>{
+  const options=durableOptions();
+  await expect(new FinancialWorkflowGuard(options).run('one','ghi tiền',failedFetch)).rejects.toMatchObject({outcome:'unknown'});
+  // Lượt đầu chưa rõ kết quả: chưa bị chặn bởi ai nên chưa mở hộp.
+  expect(options.valve.current()).toBeNull();
+  const reconcile=vi.fn(async()=>({outcome:'not-written' as const,serverDedupesRequestKey:true}));
+  await expect(new FinancialWorkflowGuard(options).run('one','ghi tiền',failedFetch,reconcile)).rejects.toMatchObject({outcome:'unknown'});
+  const current=options.store.read(await options.scope('one'));
+  expect(current).not.toBeNull();
+  expect(options.valve.current()).toMatchObject({pending:{attemptId:current?.attemptId}});
+ });
  it('không có dấu thì không gọi `priorMismatch`',async()=>{
   const options=durableOptions();const priorMismatch=vi.fn(()=>'không được gọi');
   await expect(new FinancialWorkflowGuard(options).run('one','ghi',async()=>'ok',undefined,undefined,{priorMismatch})).resolves.toBe('ok');

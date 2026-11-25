@@ -194,7 +194,9 @@ export class FinancialWorkflowGuard {
         this.blocked.set(blockedKey,{error:retainedFeedback,attemptId:scope?(pending??collided)?.attemptId:undefined});
         // Lần sau cùng khoá sẽ lại bị chặn bởi dấu này: báo hộp cảnh báo để người dùng có lối xử lý.
         // Lời báo là kênh phụ; nó hỏng thì lỗi chính của lượt ghi vẫn phải tới được nơi gọi.
-        const blocker=recoveryAttempt?pending:collided;
+        // Đợt 6: lần GỬI LẠI (cùng mã, sau `not-written`) mà vẫn chưa rõ kết quả cũng báo hộp cảnh báo với dấu mới, để một
+        // phép gửi lại hỏng lặp lại (ví dụ biên nhận luôn sai) vẫn có lối tự gỡ sau 2 phút, không vòng lặp không lối ra.
+        const blocker=recoveryAttempt?pending:(collided??(resendPriorRequest?pending:undefined));
         if(blocker){try{valve.report({pending:blocker,blockedOperation:operation,store});}catch{/* giữ lỗi chính */}}
         feedback=retainedFeedback;
       }else if(writerStarted&&!recoveryAttempt&&scope&&pending){
