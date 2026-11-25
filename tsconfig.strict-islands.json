@@ -665,6 +665,7 @@
     "src/components/sale-phong/SaleImagesTab.tsx",
     "src/components/sale-phong/SaleRoomNoticeDialog.tsx",
     "src/components/sale-phong/ShareTokensTab.tsx",
+    "src/components/sale-phong/TokenRemovalWarnings.tsx",
     "src/components/sale-phong/__tests__/analyticsUtils.test.ts",
     "src/components/sale-phong/analyticsUtils.ts",
     "src/components/sale-phong/floor-editor/DraggableResizable.tsx",
