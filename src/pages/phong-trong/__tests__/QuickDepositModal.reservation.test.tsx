@@ -9,15 +9,13 @@ vi.mock('@/hooks/useAccounts',()=>({useAccounts:()=>({data:[{id:'account1',user_
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'user1'})}));
 vi.mock('@/hooks/useIncomeExpenses',()=>({useCreateIncomeExpense:()=>({mutateAsync:m.legacy})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:m.rpc}}));
-vi.mock('@/components/contracts/CustomerSelectionDialog',()=>({CustomerSelectionDialog:({open,onSelect}:{open:boolean;onSelect:(v:unknown[])=>void})=>open?<button onClick={()=>onSelect([{id:'customer1',full_name:'Khách A',phone:'0900',id_number:null}])}>Chọn Khách A</button>:null}));
 vi.mock('../useTracking',()=>({useTrack:()=>({track:vi.fn(),trackError:vi.fn()})}));
 vi.mock('sonner',()=>({toast:{error:m.error}}));
 vi.mock('@tanstack/react-query',()=>({useQueryClient:()=>({invalidateQueries:vi.fn()})}));
 const room={id:'room1',buildingId:'building1',buildingName:'Tòa A',no:101,code:'101',price:5,status:'free'} as Room;
 const submit=()=>fireEvent.click(screen.getByRole('button',{name:'Lưu cọc & giữ phòng'}));
-const pickCustomer=()=>{fireEvent.click(screen.getByRole('button',{name:'Chọn khách trong danh bạ'}));fireEvent.click(screen.getByRole('button',{name:'Chọn Khách A'}));};
 afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();m.create.mockResolvedValue({status:'HOLD',receipts:[]});});
-describe('nhận cọc: luôn có tiền, khách trong danh bạ hoặc tên gợi nhớ',()=>{
+describe('nhận cọc: luôn có tiền, tên khách gợi nhớ',()=>{
  it('a typed reminder name is sent as customerHint with a positive receipt and no customer id',async()=>{
   const done=vi.fn();render(<QuickDepositModal room={room} onClose={vi.fn()} onDone={done}/>);
   expect(screen.queryByText(/Giữ chỗ 0 đồng/)).toBeNull();
@@ -28,16 +26,16 @@ describe('nhận cọc: luôn có tiền, khách trong danh bạ hoặc tên g�
   const input=m.create.mock.calls[0][0];
   expect(input).toMatchObject({roomId:'room1',customerHint:'anh Tuấn xem 18h',receipt:{amount:500000,accountId:'account1'}});
   expect(input).not.toHaveProperty('customerId');
-  expect(done.mock.calls[0][0]).toMatch(/nhớ gắn khách/);expect(m.legacy).not.toHaveBeenCalled();expect(m.rpc).not.toHaveBeenCalled();
+  expect(done.mock.calls[0][0]).toMatch(/anh Tuấn xem 18h/);expect(m.legacy).not.toHaveBeenCalled();expect(m.rpc).not.toHaveBeenCalled();
  });
- it('a picked customer replaces the reminder name and retry preserves the intent key',async()=>{
+ it('retry preserves the hint and intent key',async()=>{
   m.create.mockRejectedValue({message:'Timeout'});render(<QuickDepositModal room={room} onClose={vi.fn()} onDone={vi.fn()}/>);
-  fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'Chị Lan'}});pickCustomer();
-  expect(screen.queryByLabelText('Tên khách gợi nhớ')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'Chị Lan'}});
+  expect(screen.queryByRole('button',{name:'Chọn khách trong danh bạ'})).toBeNull();
   fireEvent.change(screen.getByLabelText('Số tiền cọc'),{target:{value:'100000'}});fireEvent.change(screen.getByLabelText('Sổ quỹ nhận cọc'),{target:{value:'account1'}});
   submit();await waitFor(()=>expect(m.create).toHaveBeenCalledOnce());
   submit();await waitFor(()=>expect(m.create).toHaveBeenCalledTimes(2));
-  expect(m.create.mock.calls[0][0]).toMatchObject({customerId:'customer1',receipt:{amount:100000,accountId:'account1'}});expect(m.create.mock.calls[0][0]).not.toHaveProperty('customerHint');
+  expect(m.create.mock.calls[0][0]).toMatchObject({customerHint:'Chị Lan',receipt:{amount:100000,accountId:'account1'}});expect(m.create.mock.calls[0][0]).not.toHaveProperty('customerId');
   expect(m.create.mock.calls[0][0].idempotencyKey).toBe(m.create.mock.calls[1][0].idempotencyKey);
  });
  it('tells staff that saving a deposit on a locked room releases the lock',()=>{
@@ -60,7 +58,7 @@ it('marks each required field inline and focuses the first invalid field before 
 });
 it.each(['-100000','12abc','1,5'])('retains invalid money %s and never rewrites it into another amount',async raw=>{
  render(<QuickDepositModal room={room} onClose={vi.fn()} onDone={vi.fn()}/>);
- pickCustomer();
+ fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'Chị Lan'}});
  const amount=screen.getByLabelText('Số tiền cọc');fireEvent.change(amount,{target:{value:raw}});
  submit();
  expect((amount as HTMLInputElement).value).toBe(raw);expect(amount.getAttribute('aria-invalid')).toBe('true');expect(document.activeElement).toBe(amount);expect(m.create).not.toHaveBeenCalled();
@@ -68,7 +66,7 @@ it.each(['-100000','12abc','1,5'])('retains invalid money %s and never rewrites 
 it('lets the modal own one safe inline failure and retains the entered deposit',async()=>{
  m.create.mockRejectedValue({code:'42501',message:'permission denied for relation secret_table'});
  const close=vi.fn();render(<QuickDepositModal room={room} onClose={close} onDone={vi.fn()}/>);
- pickCustomer();
+ fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'Chị Lan'}});
  fireEvent.change(screen.getByLabelText('Số tiền cọc'),{target:{value:'100000'}});
  await waitFor(()=>expect((screen.getByLabelText('Sổ quỹ nhận cọc') as HTMLSelectElement).value).toBe('account1'));
  submit();

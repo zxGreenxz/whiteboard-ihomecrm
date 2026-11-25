@@ -8,7 +8,7 @@ vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrg
 import {usePayUtilityBill} from '../useUtilityBills';
 import {usePayPeriodFee} from '../usePeriodFees';
 import {useGenerateSpecialFees} from '../useSpecialFeeBatch';
-import {useOrphanDepositVouchers} from '../useDeposits';
+import {useContractRoomDeposits} from '../useDeposits';
 type Mutation={mutationFn:(input:unknown)=>Promise<unknown>};
 beforeEach(()=>{vi.clearAllMocks();localStorage.clear();});
 it.each([
@@ -19,4 +19,4 @@ it.each([
 // máy chủ khoá slot rồi mới đếm phiếu/ô (production 24/11/2026) nên hook tạo mới gửi lại ngay mà không ra phiếu thứ hai.
 // Lần gửi lại vẫn rớt mạng thì dấu vẫn giữ. Ba kịch bản đầy đủ ở feePendingRecovery.test.ts.
 ])('timeout giữ dấu; hook tạo mới gửi lại ngay (máy chủ chống trùng theo slot), dấu không chứa số tiền',async(hook,input)=>{io.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toThrow();await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toThrow();expect(io.rpc).toHaveBeenCalledTimes(2);expect(Object.keys(localStorage).some(key=>key.startsWith('ihome:financial-pending:v1:'))).toBe(true);expect(JSON.stringify(localStorage)).not.toContain('amount');});
-it.each([null,[{id:'v1',income_expense_items:[{amount:'invalid'}],total_amount:1000}]])('không biến cọc mồ côi thiếu số liệu thành zero',async data=>{type QueryFixture={select:()=>QueryFixture;is:()=>QueryFixture;eq:()=>QueryFixture;in:()=>QueryFixture;then:(resolve:(response:{data:unknown;error:null})=>unknown)=>Promise<unknown>};const q:QueryFixture={select:()=>q,is:()=>q,eq:()=>q,in:()=>q,then:resolve=>Promise.resolve({data,error:null}).then(resolve)};io.from.mockReturnValue(q);await expect((useOrphanDepositVouchers('r1') as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).rejects.toThrow();});
+it.each([null,[{id:'v1',income_expense_items:[{amount:'invalid'}],total_amount:1000}]])('không biến cọc mồ côi thiếu số liệu thành zero',async data=>{io.rpc.mockResolvedValue({data,error:null});await expect((useContractRoomDeposits('r1') as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).rejects.toThrow();});

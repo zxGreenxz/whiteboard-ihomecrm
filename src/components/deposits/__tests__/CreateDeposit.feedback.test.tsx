@@ -67,11 +67,7 @@ function view() {
 }
 async function prepare(bonus = false, amount = '500000', hint?: string, bonusReason = 'Thưởng theo thỏa thuận cho giao dịch cọc') {
   view();
-  if (hint) fireEvent.change(screen.getByRole('textbox', { name: 'Tên khách gợi nhớ' }), { target: { value: hint } });
-  else {
-    fireEvent.click(screen.getByRole('button', { name: 'Chọn từ danh bạ' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Chọn khách Demo' }));
-  }
+  fireEvent.change(screen.getByRole('textbox', {name:'Tên khách gợi nhớ'}), {target:{value:hint ?? 'Khách Demo'}});
   fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: roomId } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Số tiền cọc *' }), { target: { value: amount } });
   const date = screen.getByRole('textbox', { name: 'Giữ phòng đến' });
@@ -233,14 +229,14 @@ it('lỗi nguồn phòng có retry và khóa gửi cọc', async () => {
 it.each(['-10','abc2','1.5'])('tiền cọc invalid %s giữ raw/đỏ/focus, không gửi writer',async amount=>{
  await prepare(false,amount);fireEvent.submit(document.querySelector('form')!);const field=screen.getByRole('textbox',{name:'Số tiền cọc *'});expect(field).toHaveProperty('value',amount);expect(field.getAttribute('aria-invalid')).toBe('true');await waitFor(()=>expect(document.activeElement).toBe(field));expect(h.create).not.toHaveBeenCalled();expect(h.close).not.toHaveBeenCalled();
 });
-it('tên khách gợi nhớ gửi customerHint, không gửi customerId, và nhắc gắn khách', async () => {
+it('tên khách gợi nhớ gửi customerHint, không gửi customerId và không yêu cầu gắn khách', async () => {
   h.create.mockResolvedValue({ ...result(false), customer_id: null, customer_phone: null, customer_name: 'anh Tuấn', customer_hint: 'anh Tuấn' });
   await prepare(false, '500000', '  anh Tuấn  ');
   await waitFor(() => expect(h.create).toHaveBeenCalledOnce());
   const input = h.create.mock.calls[0][0];
   expect(input).toMatchObject({ roomId, customerHint: 'anh Tuấn', receipt: { amount: 500000, accountId: bookId } });
   expect(input).not.toHaveProperty('customerId');
-  await waitFor(() => expect(h.success).toHaveBeenCalledWith(expect.stringContaining('gắn khách thật')));
+  await waitFor(() => expect(h.success).toHaveBeenCalledWith(expect.not.stringContaining('gắn khách thật')));
 });
 it('phòng đang chờ khách sang nhượng: báo khách cọc là khách nhận, vẫn cho cọc', async () => {
   h.exitRows = [exitTermsRow({ room_id: roomId })];
@@ -260,7 +256,7 @@ it('thiếu khách hoặc số tiền 0 thì chặn tại form, không gọi wri
   fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
   await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
   fireEvent.submit(document.querySelector('form')!);
-  await screen.findByText('Chọn khách trong danh bạ hoặc gõ tên khách gợi nhớ');
+  await screen.findByText('Nhập tên khách gợi nhớ');
   expect(await screen.findByText(/Nhập số tiền cọc lớn hơn 0/)).toBeTruthy();
   expect(h.create).not.toHaveBeenCalled();
 });
