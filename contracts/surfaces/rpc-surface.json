@@ -33,7 +33,7 @@
     {
       "name": "get_lead_deposit_income_v1",
       "callers": [
-        "src/components/leads/ConvertLeadDialog.tsx"
+        "src/lib/depositIncomeRpc.ts"
       ]
     },
     {
