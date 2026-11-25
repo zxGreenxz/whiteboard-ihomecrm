@@ -31,13 +31,15 @@ function mockLegacySalaryRpc() {
   });
 }
 describe('salary financial feedback',()=>{
-  it('does not call a zero-row adjustment update successful or repeat an unknown update',async()=>{
-    h.responses=[{data:null,error:null}];
+  // Đợt 6: sửa thưởng/trừ khớp 0 dòng (đã xoá, RLS) là chưa ghi gì: vẫn không báo thành công, nhưng là từ chối rõ nên không
+  // khoá lần sửa sau (sửa là cách A, chạy lại cho cùng kết quả).
+  it('does not call a zero-row adjustment update successful; it is a confirmed no-op that does not lock the next edit',async()=>{
+    h.responses=[{data:null,error:null},{data:null,error:null}];
     const hook=useSaveSalaryAdjustment() as unknown as {mutationFn:(input:unknown)=>Promise<unknown>};
     const args={ownerId:'owner',staffId,periodMonth:'2026-09-01',id:'adjustment',kind:'BONUS',label:'Thưởng',amount:10};
-    await expect(hook.mutationFn(args)).rejects.toBeInstanceOf(FinancialWorkflowError);
-    await expect(hook.mutationFn(args)).rejects.toBeInstanceOf(FinancialWorkflowError);
-    expect(h.writes).toEqual(['salary_adjustments:update']);
+    await expect(hook.mutationFn(args)).rejects.toMatchObject({outcome:'failure'});
+    await expect(hook.mutationFn(args)).rejects.toMatchObject({outcome:'failure'});
+    expect(h.writes).toEqual(['salary_adjustments:update','salary_adjustments:update']);
   });
   it('reports delete with no returned row as no change',async()=>{
     h.responses=[{data:[],error:null}];

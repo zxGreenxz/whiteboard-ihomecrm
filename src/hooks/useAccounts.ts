@@ -1,6 +1,7 @@
 import {useRef} from 'react';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {beforeStateMeta,transitionVerdict} from '@/lib/financialPending';
+import {beforeStateMeta,formatPendingTime,payloadFingerprint,transitionVerdict} from '@/lib/financialPending';
+import {FinancialAlreadyRecordedError} from '@/lib/financialWorkflow';
 import {financialReadNumber} from '@/lib/financialReadValidation';
 import { notifyActionError } from "@/lib/actionFeedback";
 import { jsonProp } from "@/lib/jsonValue";
@@ -217,10 +218,20 @@ export const useCreateAccount = (options?: {silent?: boolean}) => {
   const workflow=useRef(persistentFinancialWorkflow('cashbook-create',{scope:'actor'}));
   return useMutation({
     meta:{handlesFeedback:!!options?.silent},
-    mutationFn: async (values: AccountFormValues) => workflow.current.run('new','tạo sổ quỹ',async progress => {
-      const authData = { user: await getSessionUser() };
-      if (!authData.user) throw new Error("User not authenticated");
-
+    mutationFn: async (values: AccountFormValues) => {
+      // Phiên đọc TRƯỚC khi ghi dấu: hết phiên thì chưa có gì được ghi, không để lại dấu (bản trước ném Error thường
+      // bên trong vùng giữ dấu nên lần hết phiên để lại một dấu chưa rõ kết quả).
+      const user = await getSessionUser();
+      if (!user) throw { code: 'PGRST301', message: 'Not authenticated' };
+      // Cách B (đợt 6): create_cashbook_v1 (production 25/11/2026) khoá công ty TRƯỚC khi tra mã; băm tên, số dư đầu, ngày
+      // đầu kỳ, người phụ trách và công ty, KHÔNG băm mô tả, sổ mặc định và toà mặc định. Gửi lại cùng mã: cùng phần băm ⇒
+      // trả sổ cũ; khác phần băm ⇒ 23505 (mã đã dùng = lần trước đã tạo).
+      const print = {
+        hashed: payloadFingerprint([values.name, values.initial_amount, values.initial_date, values.user_id || user.id]),
+        rest: payloadFingerprint([values.description ?? null, values.is_default ?? false, values.quick_default_building_id ?? null]),
+      };
+      let resend = false;
+      return workflow.current.run('new','tạo sổ quỹ',async progress => {
       // Canonical create_cashbook_v1 (parity: description/is_default/owner giữ
       // nguyên). KHÔNG còn fallback ghi thẳng bảng: Đợt 0 đã REVOKE
       // INSERT/UPDATE/DELETE trên `accounts` khỏi authenticated
@@ -244,8 +255,20 @@ export const useCreateAccount = (options?: {silent?: boolean}) => {
         if (typeof id !== "string" || !id) throw new TypeError("Unconfirmed created cashbook");
         return {id};
       }
+      if (resend && String(canonical.error.code ?? '') === '23505') {
+        throw new FinancialAlreadyRecordedError('Sổ quỹ đã được tạo ở lần gửi trước (tên, số dư đầu, ngày đầu kỳ hoặc người phụ trách lúc đó khác). Mở danh sách sổ quỹ để kiểm tra trước khi tạo thêm.');
+      }
       throw canonical.error;
-    }),
+    }, async () => {
+      resend = true;
+      return { outcome: 'not-written', serverDedupesRequestKey: true };
+    }, undefined, {
+      meta: print,
+      priorMismatch: pending => pending.meta?.hashed === print.hashed && pending.meta?.rest !== print.rest
+        ? `Lần tạo sổ quỹ ${values.name} trước (gửi lúc ${formatPendingTime(pending.startedAt)}) chưa rõ kết quả. Máy chủ trả lại đúng sổ của lần đó mà không xét mô tả, sổ mặc định và toà mặc định, nên giữ nguyên ba ô này như lần trước rồi bấm lại để đối chiếu; sửa sau trong màn sửa sổ.`
+        : null,
+    });
+    },
     onError: (error:unknown) => { if (!options?.silent) notifyActionError(error, "Chưa tạo sổ quỹ."); },
     onSuccess: (_result, input) => {
       qc.invalidateQueries({ queryKey: ["accounts"] });
