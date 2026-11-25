@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+import { renderHook } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 const state=vi.hoisted(()=>({org:'a',queries:[] as Array<{table:string;org?:string;statuses?:string[]}>}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:state.org})}));
@@ -28,14 +30,18 @@ describe('toàn bộ tòa trong công ty đang chọn',()=>{
   it('đổi công ty đổi khóa cache, lọc mọi nguồn, tách cọc hoàn đã chi và chờ chi',async()=>{
     for(const org of ['a','b']){
       state.org=org;state.queries.length=0;
-      const held=useHeldDeposits() as unknown as Query<{contract_id:string}>;
-      const refunds=useDepositSettlementReport() as unknown as {queryKey:unknown[];queryFn:()=>Promise<unknown>};
+      const {result,unmount}=renderHook(()=>({
+        held:useHeldDeposits() as unknown as Query<{contract_id:string}>,
+        refunds:useDepositSettlementReport() as unknown as {queryKey:unknown[];queryFn:()=>Promise<unknown>},
+      }));
+      const {held,refunds}=result.current;
       expect(held.queryKey).toContain(org);expect(refunds.queryKey).toContain(org);
       expect(await held.queryFn()).toMatchObject([{contract_id:org}]);
       expect(await refunds.queryFn()).toMatchObject({settlements:[{contract_id:org,posted_refund:150,posted_deposit_refund:100,pending_deposit_refund:30}],unlinked:[{code:'PC-3',amount:45,posted:true}]});
       expect(new Set(state.queries.map(q=>q.table))).toEqual(new Set(['contracts','contract_terminations','income_expenses']));
       expect(state.queries.every(q=>q.org===org)).toBe(true);
       expect(state.queries[0].statuses).toContain('EXTENDED');
+      unmount();
     }
   });
 });

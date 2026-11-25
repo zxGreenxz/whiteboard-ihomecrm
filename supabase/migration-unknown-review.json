@@ -986,28 +986,6 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
-    },
-    "supabase/migrations/20261125133852_unified_deposit_voucher_workflow.sql": {
-      "sha256": "5547b30fd43ced8d4540a7a088d864db24d443c3b0d52530370ea7c4e1fe9856",
-      "missingObjects": [
-        "table:app_private.deposit_income_requests",
-        "function:app_private.attach_deposit_income_v1",
-        "function:app_private.write_deposit_income_v1",
-        "function:public.create_deposit_income_v1",
-        "function:app_private.close_empty_deposit_reservation_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Migration nhận cọc chưa áp dụng production. Đã kiểm hai lượt trên TEST và dry-run trên production trong giao dịch rollback. Chờ review độc lập và ghi qua forward lane.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261125133852_unified_deposit_voucher_workflow.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.deposit_income_requests ("
-        },
-        {
-          "duong_dan": "scripts/tests/test-unified-deposit-income.sql",
-          "trich_doan": "RAISE NOTICE 'PASS mixed batch, partial failure, replay, release and recurring pending receipt';"
-        }
-      ]
     }
   }
 }

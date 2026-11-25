@@ -58,7 +58,6 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePersistedState } from "@/hooks/usePersistedState";
-import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useReservationHoldDeadlines } from "@/hooks/useReservationHoldDeadlines";
 import { useApproveVoucher } from "@/hooks/income-expenses/statusMutations";
 import { vnTodayISO } from "@/lib/vnDate";
@@ -1060,20 +1059,4 @@ const DepositsDesktop = () => {
   );
 };
 
-const DepositsMobilePage = lazy(() => import("./DepositsMobilePage"));
-
-/**
- * Trang Quản lý Cọc. Trên điện thoại rẽ sang màn app full-screen (bản 2b) —
- * cùng khuôn với ContractsPage/BuildingsPage: `usePhoneViewport` khởi tạo ĐỒNG
- * BỘ nên không nháy bảng desktop trước khi effect chạy.
- */
-export default function DepositsPage() {
-  const isPhone = usePhoneViewport();
-  if (isPhone)
-    return (
-      <Suspense fallback={null}>
-        <DepositsMobilePage />
-      </Suspense>
-    );
-  return <DepositsDesktop />;
-}
+export default DepositsDesktop;

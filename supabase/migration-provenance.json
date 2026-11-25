@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T15:48:55.569Z",
+  "generatedAt": "2026-11-25T15:57:02.383Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 989,
-    "unknown": 81,
+    "ledger-applied": 990,
+    "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14777,14 +14777,9 @@
       "name": "unified_deposit_voucher_workflow",
       "scheme": "timestamp14",
       "sha256": "5547b30fd43ced8d4540a7a088d864db24d443c3b0d52530370ea7c4e1fe9856",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.deposit_income_requests",
-        "function:app_private.attach_deposit_income_v1",
-        "function:app_private.write_deposit_income_v1",
-        "function:public.create_deposit_income_v1",
-        "function:app_private.close_empty_deposit_reservation_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T15:55:43.569Z|bien-nhan-backup"
       ]
     },
     {

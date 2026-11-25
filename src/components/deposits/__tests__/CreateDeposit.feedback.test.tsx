@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -260,4 +261,14 @@ it('thiếu khách hoặc số tiền 0 thì chặn tại form, không gọi wri
   await screen.findByText('Nhập tên người gửi');
   expect(await screen.findByText(/Nhập số tiền cọc lớn hơn 0/)).toBeTruthy();
   expect(h.create).not.toHaveBeenCalled();
+});
+
+it('tiếp tục thưởng Sale theo đúng mã cọc đã xác nhận sau mất phản hồi',async()=>{
+  h.create.mockRejectedValueOnce(new ConfirmedDepositIncome(voucherId));
+  await prepare(true);
+  await waitFor(()=>expect(h.close).toHaveBeenCalledWith(false));
+  expect(h.success).toHaveBeenCalledWith(expect.stringContaining('Đã đối chiếu đúng phiếu cọc'));
+  expect(h.bonus).toHaveBeenCalledTimes(1);
+  expect(h.bonus.mock.calls[0][0]).toMatchObject({depositVoucherId:voucherId,amount:200000});
+  expect(h.create).toHaveBeenCalledTimes(1);
 });

@@ -147,7 +147,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
   const stuckRoom = useRef<string | null>(null);
   const stuckInput=useRef<Omit<CreateRoomReservationInput,'idempotencyKey'>|null>(null);
   useEffect(() => { if (!open){stuckRoom.current=null;stuckInput.current=null;} }, [open]);
-  const [completed, setCompleted] = useState<{reservationId:string;voucherIds:string[]}|null>(null);
+  const [completed, setCompleted] = useState<{reservationId:string|null;voucherIds:string[]}|null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   // Ảnh chứng từ giữ ngoài react-hook-form: AttachmentUpload đã tự quản lý
@@ -340,7 +340,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
         stuckRoom.current=null;
       }
       let resend=false;
-      const createdReservation=await runFinancialPending({namespace:"deposit-create",userId:myUserId??"",organizationId:selectedOrganizationId??"",businessKey:data.room_id},async progress=>{
+      const {reservation:createdReservation,recoveredVoucherId}=await runFinancialPending({namespace:"deposit-create",userId:myUserId??"",organizationId:selectedOrganizationId??"",businessKey:data.room_id},async progress=>{
         let reservation;
         try{reservation=await createReservation.mutateAsync({...input,idempotencyKey:receiptRequestKey??progress.requestKey});}
         catch(error){
@@ -354,10 +354,14 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
         // Dấu đã nhận mã giữ chỗ (dấu từ bản trước, khi bước thưởng Sale hỏng): giữ chỗ đã tạo.
         if(pending.completedIds.length)return {outcome:'already-written',message:'Cọc giữ chỗ của phòng này đã được tạo ở lần gửi trước. Mở Quản lý cọc để kiểm tra trước khi tạo lại.',recordIds:pending.completedIds};
         resend=true;return {outcome:'not-written',serverDedupesRequestKey:true};
-      }});
+      }}).then(reservation=>({reservation,recoveredVoucherId:null as string|null})).catch((error:unknown)=>{
+        if (!(error instanceof ConfirmedDepositIncome)) throw error;
+        return {reservation:null,recoveredVoucherId:error.voucherId};
+      });
       stuckRoom.current=null;
       // Cọc xong là xong (dấu đã gỡ). Thưởng Sale nằm ngoài vùng giữ dấu: hỏng thì báo riêng, không chặn lần tạo cọc sau.
-      const completedReceipt = {reservationId:createdReservation.id,voucherIds:createdReservation.receipts.map(r=>r.source_voucher_id)};
+      const completedReceipt = {reservationId:createdReservation?.id??null,
+        voucherIds:createdReservation?.receipts.map(r=>r.source_voucher_id)??(recoveredVoucherId?[recoveredVoucherId]:[])};
       setCompleted(completedReceipt);
       const partialMessages: string[] = [];
 
@@ -366,8 +370,8 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
       // màn hình ký hợp đồng sau này biết là "đã thưởng rồi" mà tô xám ô nhập.
       // Thưởng hỏng thì KHÔNG kéo đổ phiếu cọc — cọc là việc chính.
       const bonusAmt = selfFoundHold ? 0 : Number(data.sale_bonus_amount) || 0;
-      const depositId = ('writtenVoucherId' in createdReservation ? createdReservation.writtenVoucherId as string : null) ??
-        (createdReservation.receipts.length===1 ? createdReservation.receipts[0].source_voucher_id : null);
+      const depositId = recoveredVoucherId ?? (createdReservation && 'writtenVoucherId' in createdReservation ? createdReservation.writtenVoucherId as string : null) ??
+        (createdReservation?.receipts.length===1 ? createdReservation.receipts[0].source_voucher_id : null);
       if(onReceipt && depositId){
         try{await onReceipt(depositId);}
         catch{partialMessages.push('Đã lưu phiếu thu. Mở lại khách hẹn để hoàn tất chuyển trạng thái.');}
@@ -402,10 +406,15 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
       queryClient.invalidateQueries({ queryKey: ["orphan-deposit-vouchers"] });
 
       if (partialMessages.length) {
-        const message = partialMessages.join(" "); throw new VoucherPartialError(message,[completedReceipt.reservationId,...completedReceipt.voucherIds]);
+        const message = partialMessages.join(" "); throw new VoucherPartialError(message,[...(completedReceipt.reservationId?[completedReceipt.reservationId]:[]),...completedReceipt.voucherIds]);
       }
-      const received = createdReservation.receipts.some(r => r.source_voucher_id===depositId && r.received);
-      toast.success((received ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ." : "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn."));
+      const received = createdReservation?.receipts.some(r => r.source_voucher_id===depositId && r.received);
+      const message = recoveredVoucherId
+        ? "Đã đối chiếu đúng phiếu cọc của lần lưu trước. Mở Thu chi để xem trạng thái nhận tiền."
+        : received
+          ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ."
+          : "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn.";
+      toast.success(message);
       setCompleted(null);
       form.reset();
       setDepositAttachments([]);
@@ -413,12 +422,6 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
       intent.current=null;
       onOpenChange(false);
     } catch (error) {
-      if (error instanceof ConfirmedDepositIncome) {
-        toast.success(error.message);
-        if(onReceipt) await onReceipt(error.voucherId);
-        onOpenChange(false);
-        return;
-      }
       console.error("Failed to create reservation deposit:", error);
       // Chưa rõ kết quả tạo cọc: không khoá nút. Lần bấm sau gửi lại đúng mã của dấu, máy chủ trả lại giữ chỗ cũ
       // nếu lệnh trước đã tới, nên không tạo cọc thứ hai.
