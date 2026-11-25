@@ -532,7 +532,7 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
       advanceVoucherId = String(body.voucher_id);
       created.push(advanceVoucherId);
       const toast = page.locator('[data-sonner-toast]').filter({ hasText: 'tạm ứng' }).first();
-      await expect(toast).toContainText('chờ chủ duyệt, chưa chi tiền', { timeout: 30_000 });
+      await expect(toast).toContainText('chờ người có quyền duyệt, chưa chi tiền', { timeout: 30_000 });
       advanceCode = ((await toast.innerText()).match(/PC\d+/) ?? [''])[0];
       expect(advanceCode, 'mã phiếu tạm ứng trong thông báo').toMatch(/^PC\d+$/);
       const after = await positionOf(ownerJwt, shareholderId);
