@@ -26,6 +26,7 @@ const NOPERM = id(3); // thành viên, không có quyền Sale nào
 const VIEWER = id(4); // chỉ xem trang Sale
 const LA = id(5); // không thuộc công ty
 const CHU_B = id(6); // chủ công ty B
+const QL_TOA = id(7); // quản lý chỉ có quyền Sale theo TOÀ (không phạm vi công ty)
 const TOA_A1 = id(201), TOA_A2 = id(202), TOA_AO = id(203), TOA_XOA = id(204), TOA_B1 = id(205);
 const P_TRONG = id(301), P_THUE = id(302), P_45 = id(303), P_PASS = id(304), P_B = id(305), P_AO = id(306), P_XOA = id(307);
 const HOT_CHU = id(401), HOT_QL = id(402);
@@ -45,6 +46,10 @@ const fixture = `
   CREATE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
     SELECT EXISTS (SELECT 1 FROM public.super_admins WHERE user_id = auth.uid()) $$;
   CREATE FUNCTION public.sandbox_org_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$ SELECT '{}'::uuid[] $$;
+  CREATE FUNCTION public.is_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+  -- Tài khoản demo theo cấu hình test (test.demo_users, phân cách dấu phẩy).
+  CREATE FUNCTION public.demo_user_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$
+    SELECT COALESCE(string_to_array(NULLIF(current_setting('test.demo_users', true), ''), ',')::uuid[], '{}'::uuid[]) $$;
   CREATE FUNCTION public.can_access_building(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
   -- authorized_scope_v3 thật luôn trả đúng một dòng (không quyền ⇒ org_wide=false, building_ids rỗng).
   CREATE TABLE app_private.test_grants(user_id uuid, org uuid, permission text, org_wide boolean, building_ids uuid[]);
@@ -137,7 +142,7 @@ const seed = `
   INSERT INTO public.organizations(id) VALUES ('${ORG}'),('${ORG_B}');
   INSERT INTO public.organization_memberships VALUES
     ('${CHU}','${ORG}','ACTIVE'),('${CHU}','${ORG_B}','ACTIVE'),('${NATHAN}','${ORG}','ACTIVE'),('${QUANLY}','${ORG}','ACTIVE'),
-    ('${NOPERM}','${ORG}','ACTIVE'),('${VIEWER}','${ORG}','ACTIVE'),('${CHU_B}','${ORG_B}','ACTIVE');
+    ('${NOPERM}','${ORG}','ACTIVE'),('${VIEWER}','${ORG}','ACTIVE'),('${CHU_B}','${ORG_B}','ACTIVE'),('${QL_TOA}','${ORG}','ACTIVE');
   INSERT INTO public.super_admins VALUES ('${CHU}');
   INSERT INTO public.profiles VALUES ('${CHU}','Anh Chủ'),('${QUANLY}','Quản Lý'),('${NATHAN}','Nathan');
   INSERT INTO app_private.test_grants
@@ -145,6 +150,9 @@ const seed = `
       unnest(ARRAY['sale_phong.view','rooms.view','sale_phong.manage_settings','sale_phong.manage_tokens','sale_phong.edit']) p;
   -- Nick chủ: vai chủ công ty phạm vi công ty (xem phòng / trang Sale); quyền sửa cài đặt đi đường super admin.
   INSERT INTO app_private.test_grants VALUES ('${CHU}','${ORG}','sale_phong.view',true,'{}'),('${CHU}','${ORG}','rooms.view',true,'{}');
+  INSERT INTO app_private.test_grants SELECT '${QL_TOA}', '${ORG}', p, false, ARRAY['${TOA_A1}']::uuid[]
+    FROM unnest(ARRAY['sale_phong.view','rooms.view','sale_phong.manage_settings','sale_phong.manage_tokens']) p;
+  INSERT INTO public.profiles VALUES ('${QL_TOA}','Quản lý toà A1');
   INSERT INTO app_private.test_grants VALUES ('${VIEWER}','${ORG}','sale_phong.view',true,'{}'),
     ('${CHU_B}','${ORG_B}','sale_phong.view',true,'{}'),('${CHU_B}','${ORG_B}','sale_phong.manage_tokens',true,'{}');
   INSERT INTO public.buildings(id, organization_id, user_id, name, is_virtual, deleted_at, floor_layouts) VALUES
@@ -470,6 +478,85 @@ describe('link chia sẻ của công ty: xem / đổi nhãn / thu hồi / khôi 
   });
 });
 
+describe('sau review 25/11: cài đặt theo công ty, quyền phạm vi công ty, khoá người đứng tên, guard dữ liệu', () => {
+  it('người đứng tên chung ở HAI công ty: trang công ty B không đọc cài đặt / hotline của công ty A; lưu cho B ⇒ 55000', async () => {
+    const other = await freshDb();
+    try {
+      await other.exec(behaviourSql);
+      // Nick chủ đứng tên luôn toà công ty B (là thành viên B): dòng cài đặt của nick chủ thuộc công ty A.
+      await other.exec(`UPDATE public.buildings SET user_id='${CHU}' WHERE organization_id='${ORG_B}'`);
+      const b = await page(other, 'cong-ty-b');
+      expect(b).toMatchObject({ sale_policy: null, contact: null });
+      expect(roomIds(b)).toEqual([P_B]);
+      const inv = (await asUser<{ p: Record<string, unknown> }>(other, CHU, 'SELECT public.get_sale_room_inventory_v1($1) p', [ORG_B])).rows[0].p;
+      expect(inv).toMatchObject({ settings_owner_id: CHU, sale_policy: null, contact: null });
+      expect(await settingsOf(other, CHU, ORG_B)).toMatchObject({ owner_id: CHU, exists: false, soon_days: 30, sale_policy: null, hotlines: [] });
+      await expect(save(other, CHU, null, 10, null, 'x', ORG_B)).rejects.toThrow(/public_room_settings_owner_other_org/);
+      // Công ty A vẫn đọc đúng dòng của mình.
+      expect((await page(other, 'demo'))?.sale_policy).toBe('Điện 3.500/kWh');
+    } finally { await other.close(); }
+  });
+
+  it('quyền Cài đặt hiển thị chỉ theo TOÀ: đọc được, không lưu được cài đặt chung (cờ can_manage false)', async () => {
+    const s = await settingsOf(db, QL_TOA);
+    expect(s).toMatchObject({ owner_id: CHU, can_manage: false });
+    await expect(save(db, QL_TOA, String(s.updated_at), 12)).rejects.toThrow(/public_room_settings_permission/);
+    const inv = (await asUser<{ p: Record<string, unknown> }>(db, QL_TOA, 'SELECT public.get_sale_room_inventory_v1($1) p', [ORG])).rows[0].p;
+    expect(inv.can_manage_account_settings).toBe(false);
+  });
+
+  it('quyền Quản lý link chỉ theo TOÀ: xem mọi link, sửa link của mình; link người khác ⇒ 42501 (cờ can_manage false)', async () => {
+    await db.exec(`INSERT INTO public.public_room_share_tokens(token, owner_id, label, organization_id) VALUES ('cua-ql-toa','${QL_TOA}','Link QL toà','${ORG}')
+      ON CONFLICT (token) DO NOTHING`);
+    const list = (await asUser<{ l: Array<Record<string, unknown>> }>(db, QL_TOA, 'SELECT public.list_public_room_tokens_v1($1) l', [ORG])).rows[0].l;
+    expect(Object.fromEntries(list.map(t => [t.token, t.can_manage]))).toMatchObject({ 'cua-ql-toa': true, demo: false, 'cua-quan-ly': false });
+    expect((await manage(db, QL_TOA, 'cua-ql-toa', 'rename', 'Đổi được')).rows[0].r).toMatchObject({ label: 'Đổi được' });
+    for (const action of ['rename', 'revoke', 'delete']) {
+      await expect(manage(db, QL_TOA, 'demo', action, 'x')).rejects.toThrow(/public_room_token_permission_org/);
+    }
+    expect((await db.query<{ revoked: boolean }>("SELECT revoked FROM public.public_room_share_tokens WHERE token='demo'")).rows).toEqual([{ revoked: false }]);
+    // Quản lý có quyền phạm vi công ty: cờ true với mọi link.
+    const full = (await asUser<{ l: Array<Record<string, unknown>> }>(db, QUANLY, 'SELECT public.list_public_room_tokens_v1($1) l', [ORG])).rows[0].l;
+    expect(full.every(t => t.can_manage === true)).toBe(true);
+    expect((await manage(db, QL_TOA, 'cua-ql-toa', 'delete')).rows[0].r).toMatchObject({ removed: true });
+  });
+
+  it('client không đổi được người đứng tên toà (42501); sửa cột khác hoặc gửi lại đúng người cũ vẫn được; mã máy chủ đổi được', async () => {
+    await db.exec('GRANT USAGE ON SCHEMA public TO authenticated; GRANT SELECT, UPDATE ON public.buildings TO authenticated');
+    await expect(asAuthenticated(db, QUANLY, `UPDATE public.buildings SET user_id='${QUANLY}' WHERE id='${TOA_A1}'`)).rejects.toThrow(/building_owner_locked/);
+    await asAuthenticated(db, QUANLY, `UPDATE public.buildings SET name='A1 toà chủ', user_id='${CHU}' WHERE id='${TOA_A1}'`);
+    expect(await ownerOf(db, TOA_A1)).toBe(CHU);
+    await db.exec(`UPDATE public.buildings SET user_id='${QUANLY}' WHERE id='${TOA_A1}'; UPDATE public.buildings SET user_id='${CHU}' WHERE id='${TOA_A1}'`);
+    expect(await ownerOf(db, TOA_A1)).toBe(CHU);
+  });
+
+  it('khối dữ liệu dừng (55000) khi 45/3 TTT còn tin pass đang bật đứng tên người khác nick chủ', async () => {
+    const other = await freshDb();
+    try {
+      await other.exec(`INSERT INTO public.room_pass_listings VALUES ('${id(502)}','${P_45}','${NATHAN}','${ORG}',true,false,'Khách','0900000001',NULL,NULL,NULL)`);
+      await expect(other.exec(behaviourSql)).rejects.toThrow(/còn tin pass đang bật/);
+      expect(await ownerOf(other, TOA_45)).toBe(NATHAN);
+    } finally { await other.close(); }
+  });
+
+  it('admin/super admin tạo toà ở công ty mà người đứng tên chung là tài khoản demo ⇒ giữ người tạo', async () => {
+    await db.query("SELECT set_config('test.demo_users', $1, false)", [CHU_B]);
+    try {
+      await asUser(db, QUANLY, `INSERT INTO public.buildings(id, organization_id, name) VALUES ('${id(722)}','${ORG_B}','Toà người thường ở công ty demo')`);
+      expect(await ownerOf(db, id(722))).toBe(CHU_B);
+      await asUser(db, CHU, `INSERT INTO public.buildings(id, organization_id, name) VALUES ('${id(721)}','${ORG_B}','Toà super admin ở công ty demo')`);
+      expect(await ownerOf(db, id(721))).toBe(CHU);
+    } finally {
+      await db.query("SELECT set_config('test.demo_users', '', false)");
+      await db.exec(`DELETE FROM public.buildings WHERE id IN ('${id(721)}','${id(722)}')`);
+    }
+  });
+
+  it('«Phòng trống» người không thuộc công ty nào ⇒ 42501 my_available_rooms_not_member (không phải «nhiều công ty»)', async () => {
+    await expect(myRooms(db, LA)).rejects.toThrow(/my_available_rooms_not_member/);
+  });
+});
+
 describe('quyền gọi hàm', () => {
   const can = async (role: string, fn: string) =>
     (await db.query<{ v: boolean }>('SELECT has_function_privilege($1, $2, \'EXECUTE\') v', [role, fn])).rows[0].v;
@@ -481,7 +568,8 @@ describe('quyền gọi hàm', () => {
       expect(await can('anon', fn)).toBe(false);
     }
     for (const fn of ['app_private.org_building_owner_v1(uuid)', 'app_private.sale_org_permission_v1(uuid,text)',
-      'app_private.public_room_settings_json_v1(uuid)', 'app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1()']) {
+      'app_private.public_room_settings_json_v1(uuid)', 'app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1()',
+      'app_private.sale_org_wide_permission_v1(uuid,text)', 'app_private.buildings_khoa_nguoi_dung_ten_v1()']) {
       for (const role of ['anon', 'authenticated', 'service_role']) expect(await can(role, fn)).toBe(false);
     }
     expect((await db.query("SELECT 1 FROM pg_proc WHERE proname='get_my_available_rooms'")).rows).toHaveLength(1);
@@ -497,7 +585,7 @@ describe('tiền kiểm và hậu kiểm md5 của file migration', () => {
   it('mỗi md5 ghim trong file là md5 đúng thân của file', () => {
     const post = /DO \$sau\$[\s\S]*?\$sau\$;/.exec(sql)![0];
     const pins = [...post.matchAll(/\('((?:public|app_private)\.\w+)\([^']*\)', '([0-9a-f]{32})'\)/g)];
-    expect(pins.length).toBe(15);
+    expect(pins.length).toBe(17);
     for (const [, name, pin] of pins) expect(pin, name).toBe(bodyMd5(name));
     const pre = /DO \$truoc\$[\s\S]*?\$truoc\$;/.exec(sql)![0];
     for (const name of ['public.get_public_available_rooms', 'app_private.public_sale_rooms_payload_v1', 'public.hermes_available_rooms_page_v1',

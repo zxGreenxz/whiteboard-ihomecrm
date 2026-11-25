@@ -44,6 +44,12 @@
 --      updated_at ⇒ PT409 «đã có người sửa», gửi lại cùng giá trị sau mất phản hồi ⇒ trả như cũ, hotline phải của chủ cài
 --      đặt chung trong cùng công ty); list_public_room_tokens_v1 / manage_public_room_token_v1 (manage_tokens: xem mọi
 --      link của công ty kèm người tạo, đổi nhãn, thu hồi, khôi phục, xoá).
+--   9b. Sau review 25/11: (a) mọi chỗ đọc public_room_settings lọc thêm organization_id của trang (người đứng tên chung ở
+--      hai công ty không lẫn cài đặt; khoá bảng vẫn owner_id — tách cài đặt theo công ty là việc dài hạn); (b) lưu cài đặt
+--      chung và sửa/thu hồi/xoá link của NGƯỜI KHÁC đòi quyền PHẠM VI CÔNG TY (app_private.sale_org_wide_permission_v1);
+--      xem danh sách, tạo link, thao tác link của chính mình vẫn đủ ở mọi phạm vi; (c) trigger BEFORE UPDATE OF user_id
+--      buildings_t2_khoa_nguoi_dung_ten: client không đổi được người đứng tên toà; (d) khối dữ liệu dừng nếu 45/3 TTT còn
+--      tin pass đang bật đứng tên người khác.
 --  10. Đóng ghi thẳng bảng: REVOKE UPDATE, DELETE trên public_room_share_tokens (đợt 1 đã REVOKE INSERT) và INSERT,
 --      UPDATE, DELETE trên public_room_settings khỏi PUBLIC/anon/authenticated — web chuyển sang RPC ở cùng PR.
 --
@@ -54,8 +60,8 @@
 --
 -- LÙI (migration forward mới): UPDATE public.buildings SET user_id = before_snapshot->>'user_id' theo dòng
 --   accounting_repair_audit (repair_code SALE_PHONG_DOT2_NGUOI_DUNG_TEN_TOA); DROP TRIGGER buildings_t1_…; dựng lại sáu
---   hàm bằng nguyên văn thân ghim md5 ở tiền kiểm (get_my_available_rooms: DROP (uuid) rồi CREATE () như cũ); DROP sáu
---   hàm mới; GRANT lại UPDATE, DELETE (link) và INSERT, UPDATE, DELETE (cài đặt) cho anon, authenticated.
+--   hàm bằng nguyên văn thân ghim md5 ở tiền kiểm (get_my_available_rooms: DROP (uuid) rồi CREATE () như cũ); DROP
+--   TRIGGER buildings_t2_khoa_nguoi_dung_ten; DROP các hàm mới; GRANT lại UPDATE, DELETE (link) và INSERT, UPDATE, DELETE (cài đặt) cho anon, authenticated.
 -- =============================================================================
 
 -- 0. Tiền kiểm: đúng phụ thuộc, đúng thân đã rà (production 25/11/2026 hoặc bản của file này).
@@ -78,11 +84,11 @@ BEGIN
   END IF;
   -- [0] thân production đo 25/11/2026 · [1] thân của chính file này (lượt chạy lại).
   FOR r IN SELECT * FROM (VALUES
-      ('public.get_public_available_rooms(text)', '7842895fd40412f10f8308a392c99db5', 'a625ef754a3a17580f7fad8ca045b36a'),
+      ('public.get_public_available_rooms(text)', '7842895fd40412f10f8308a392c99db5', 'ebcf2f800783c7f54e256c57c1bf415d'),
       ('app_private.public_sale_rooms_payload_v1(uuid)', 'f4db947ac466302263911f8391bd4e5f', '5807352fc553877422588a329e758d44'),
-      ('public.hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)', '618679c7cab236ce7a63df67233f1036', 'a756a97d00b0845d7cedc8fa6dd5d0b8'),
+      ('public.hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)', '618679c7cab236ce7a63df67233f1036', '55ab23646749df866f7d573cd38c51d3'),
       ('public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb)', 'd4ed3c99ba8f9e17d67414c098c0afc4', '53626e7005c800db9077f87504cb1bd2'),
-      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '20cb562dbc7c58d98310da44c692a68e', '3b7f70293f0bae23d7906c3203ef2279')
+      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '20cb562dbc7c58d98310da44c692a68e', '850c951f467f7a6db34f8917139c4179')
     ) AS v(fn, prod_md5, file_md5) LOOP
     SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5 FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure(r.fn);
     IF v_md5 IS NULL OR NOT (v_md5 = ANY (ARRAY[r.prod_md5, r.file_md5])) THEN
@@ -102,7 +108,7 @@ BEGIN
   ELSIF to_regprocedure('public.get_my_available_rooms(uuid)') IS NOT NULL THEN
     SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5
       FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure('public.get_my_available_rooms(uuid)');
-    IF v_md5 IS DISTINCT FROM 'd7bfd2312b3ffbe68e324a9d86fcec93' THEN
+    IF v_md5 IS DISTINCT FROM 'de6dde7d22a02890612e6fa87c52a8ce' THEN
       RAISE EXCEPTION 'get_my_available_rooms(uuid) KHÁC thân của file này (md5 %) — DỪNG', v_md5 USING ERRCODE = '55000';
     END IF;
   ELSE
@@ -134,6 +140,16 @@ COMMENT ON FUNCTION app_private.sale_org_permission_v1(uuid, text) IS
 'Người gọi có quyền p_permission ở bất kỳ phạm vi nào (công ty, khu, toà) của công ty — khớp cách giao diện hiện tab Sale; super admin giữ đường cũ như get_my_permissions. Không kiểm thành viên (hàm gọi kiểm my_org_ids trước).';
 REVOKE ALL ON FUNCTION app_private.sale_org_permission_v1(uuid, text) FROM PUBLIC,anon,authenticated,service_role;
 
+CREATE OR REPLACE FUNCTION app_private.sale_org_wide_permission_v1(p_org uuid, p_permission text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private AS $fn$
+  SELECT auth.uid() IS NOT NULL AND (COALESCE(public.is_super_admin(),false) OR EXISTS (
+    SELECT 1 FROM app_private.authorized_scope_v3(p_permission,p_org) s WHERE s.org_wide))
+$fn$;
+COMMENT ON FUNCTION app_private.sale_org_wide_permission_v1(uuid, text) IS
+'Người gọi có quyền p_permission ở PHẠM VI CÔNG TY (org_wide; super admin giữ đường cũ). Dùng cho thao tác có hiệu lực cả công ty: lưu cài đặt chung, sửa/thu hồi/xoá link của người khác (điều phối chốt 25/11/2026). Không kiểm thành viên.';
+REVOKE ALL ON FUNCTION app_private.sale_org_wide_permission_v1(uuid, text) FROM PUBLIC,anon,authenticated,service_role;
+
 -- 2. Luật toà mới: đứng tên người đứng tên chung của công ty.
 CREATE OR REPLACE FUNCTION app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
@@ -142,7 +158,14 @@ DECLARE v_owner uuid;
 BEGIN
   IF NEW.organization_id IS NULL THEN RETURN NEW; END IF;
   v_owner:=app_private.org_building_owner_v1(NEW.organization_id);
-  IF v_owner IS NOT NULL THEN NEW.user_id:=v_owner; END IF;
+  IF v_owner IS NULL THEN RETURN NEW; END IF;
+  -- Admin/super admin tạo toà ở công ty mà người đứng tên chung là tài khoản demo: giữ người tạo, vì policy
+  -- buildings_hide_demo_admin ẩn toà đứng tên demo với admin (RETURNING của lệnh tạo sẽ bị 42501).
+  IF (COALESCE(public.is_super_admin(),false) OR COALESCE(public.is_admin(),false))
+     AND v_owner = ANY(COALESCE(public.demo_user_ids(),'{}'::uuid[])) THEN
+    RETURN NEW;
+  END IF;
+  NEW.user_id:=v_owner;
   RETURN NEW;
 END $fn$;
 COMMENT ON FUNCTION app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1() IS
@@ -181,6 +204,12 @@ BEGIN
   IF v_khac IS DISTINCT FROM c_moi THEN
     RAISE EXCEPTION 'sale_phong_theo_cong_ty: các toà khác của công ty không cùng đứng tên nick chủ — DỪNG' USING ERRCODE='55000';
   END IF;
+  -- lock_room_for_sale_v1, list_room_sale_locks_v1, copilot_available_rooms_v1, hermes_group_room_fact_v1,
+  -- hermes_schedule_policy_projection_v1, upsert_room_pass_listing còn nối tin pass theo pl.user_id = b.user_id.
+  IF EXISTS (SELECT 1 FROM public.room_pass_listings pl JOIN public.rooms r ON r.id=pl.room_id
+       WHERE r.building_id=c_toa AND pl.active AND pl.user_id IS DISTINCT FROM c_moi) THEN
+    RAISE EXCEPTION 'sale_phong_theo_cong_ty: 45/3 TTT còn tin pass đang bật đứng tên người khác — DỪNG' USING ERRCODE='55000';
+  END IF;
   UPDATE public.buildings SET user_id=c_moi WHERE id=c_toa AND organization_id=c_org AND user_id=c_cu;
   GET DIAGNOSTICS v_n = ROW_COUNT;
   IF v_n<>1 THEN
@@ -196,6 +225,30 @@ BEGIN
   RAISE NOTICE 'sale_phong_theo_cong_ty: đã chuyển 45/3 TTT về đứng tên nick chủ (1 dòng, có biên nhận)';
 END
 $chuyen$;
+
+-- 3b. Giữ luật «mọi toà cùng một người đứng tên» khi SỬA toà: chỉ mã máy chủ (postgres trong hàm DEFINER/migration,
+--     service_role, supabase_admin) đổi được buildings.user_id; client qua PostgREST (authenticated/anon) bị từ chối.
+--     Tra 25/11/2026: không hàm production nào UPDATE buildings.user_id; web gửi lại đúng giá trị cũ thì không chặn.
+CREATE OR REPLACE FUNCTION app_private.buildings_khoa_nguoi_dung_ten_v1()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=pg_catalog AS $fn$
+BEGIN
+  IF NEW.user_id IS NOT DISTINCT FROM OLD.user_id THEN
+    RETURN NEW;
+  END IF;
+  -- Như app_private.khoa_organization_id_v1: current_user (không phải session_user) — SET ROLE của PostgREST đổi nó.
+  IF current_user IN ('postgres','service_role','supabase_admin') THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'building_owner_locked' USING ERRCODE='42501',
+    HINT='Người đứng tên toà chỉ đổi qua migration có biên nhận: mọi toà của công ty cùng một người đứng tên.';
+END $fn$;
+COMMENT ON FUNCTION app_private.buildings_khoa_nguoi_dung_ten_v1() IS
+'BEFORE UPDATE OF user_id buildings: client (authenticated/anon) không đổi được người đứng tên toà; mã máy chủ (postgres/service_role/supabase_admin) được. Giữ luật mọi toà của công ty cùng một người đứng tên (đợt 2 Sale phòng, 25/11/2026).';
+REVOKE ALL ON FUNCTION app_private.buildings_khoa_nguoi_dung_ten_v1() FROM PUBLIC,anon,authenticated,service_role;
+DROP TRIGGER IF EXISTS buildings_t2_khoa_nguoi_dung_ten ON public.buildings;
+CREATE TRIGGER buildings_t2_khoa_nguoi_dung_ten BEFORE UPDATE OF user_id ON public.buildings
+  FOR EACH ROW EXECUTE FUNCTION app_private.buildings_khoa_nguoi_dung_ten_v1();
 
 -- 4. Trang công khai /r/:token theo công ty của link.
 CREATE OR REPLACE FUNCTION public.get_public_available_rooms(p_token text)
@@ -225,7 +278,7 @@ BEGIN
   v_owner := app_private.org_building_owner_v1(v_org);
   SELECT hotline_id, sale_policy INTO v_hotline, v_sale_policy
   FROM public.public_room_settings
-  WHERE owner_id = v_owner;
+  WHERE owner_id = v_owner AND organization_id = v_org;
 
   WITH rms AS (
     SELECT
@@ -255,7 +308,7 @@ BEGIN
     FROM public.rooms rm
     JOIN public.buildings b ON b.id = rm.building_id AND b.organization_id = rm.organization_id
     -- Số ngày sắp trống theo người đứng tên từng toà (như bảng nội bộ get_sale_room_inventory_v1).
-    LEFT JOIN public.public_room_settings ps ON ps.owner_id = b.user_id
+    LEFT JOIN public.public_room_settings ps ON ps.owner_id = b.user_id AND ps.organization_id = b.organization_id
     -- Một tin pass hoạt động mỗi phòng (room_pass_listings_room_active_uniq), đúng công ty.
     LEFT JOIN public.room_pass_listings pl
       ON pl.room_id = rm.id AND pl.organization_id = rm.organization_id AND pl.active = true
@@ -439,8 +492,8 @@ BEGIN
       h.name AS page_contact_name,h.phone_number AS page_contact_phone
     FROM public.buildings b
     CROSS JOIN sale_page sp
-    LEFT JOIN public.public_room_settings ps ON ps.owner_id=b.user_id
-    LEFT JOIN public.public_room_settings cs ON cs.owner_id=sp.owner_id
+    LEFT JOIN public.public_room_settings ps ON ps.owner_id=b.user_id AND ps.organization_id=b.organization_id
+    LEFT JOIN public.public_room_settings cs ON cs.owner_id=sp.owner_id AND cs.organization_id=v_org
     LEFT JOIN LATERAL (
       SELECT h.name,h.phone_number FROM public.hotlines h
       WHERE h.user_id=sp.owner_id AND h.organization_id=v_org AND COALESCE(h.is_active,true)=true AND (cs.hotline_id IS NULL OR h.id=cs.hotline_id)
@@ -626,7 +679,7 @@ BEGIN
       audit.updated_by_name
     FROM public.rooms r
     JOIN allowed_buildings b ON b.id=r.building_id AND b.organization_id=r.organization_id
-    LEFT JOIN public.public_room_settings settings ON settings.owner_id=b.user_id
+    LEFT JOIN public.public_room_settings settings ON settings.owner_id=b.user_id AND settings.organization_id=b.organization_id
     LEFT JOIN public.room_pass_listings pl
       ON pl.room_id=r.id AND pl.organization_id=r.organization_id AND pl.active
     CROSS JOIN LATERAL app_private.room_sale_workflow_fact_v1(
@@ -660,10 +713,10 @@ BEGIN
       JOIN inventory i ON i.id=p.room_id CROSS JOIN LATERAL (VALUES(p.starts_at),(p.ends_at)) d(boundary)
       WHERE p.organization_id=p_organization_id AND p.cancelled_at IS NULL AND boundary>statement_timestamp()),
     'settings_owner_id',v_owner,
-    'can_manage_account_settings',(v_owner IS NOT NULL AND app_private.sale_org_permission_v1(p_organization_id,'sale_phong.manage_settings')),
-    'sale_policy',(SELECT NULLIF(btrim(s.sale_policy),'') FROM public.public_room_settings s WHERE s.owner_id=v_owner),
+    'can_manage_account_settings',(v_owner IS NOT NULL AND app_private.sale_org_wide_permission_v1(p_organization_id,'sale_phong.manage_settings')),
+    'sale_policy',(SELECT NULLIF(btrim(s.sale_policy),'') FROM public.public_room_settings s WHERE s.owner_id=v_owner AND s.organization_id=p_organization_id),
     'contact',(SELECT jsonb_build_object('name',h.name,'phone',h.phone_number) FROM public.hotlines h
-      LEFT JOIN public.public_room_settings s ON s.owner_id=h.user_id
+      LEFT JOIN public.public_room_settings s ON s.owner_id=h.user_id AND s.organization_id=p_organization_id
       WHERE h.user_id=v_owner AND h.organization_id=p_organization_id
       AND COALESCE(h.is_active,true) AND (s.hotline_id IS NULL OR h.id=s.hotline_id)
       ORDER BY (h.id=s.hotline_id) DESC NULLS LAST,h.created_at LIMIT 1),
@@ -714,6 +767,9 @@ BEGIN
   IF v_org IS NULL THEN
     IF cardinality(v_orgs) = 1 THEN
       v_org := v_orgs[1];
+    ELSIF cardinality(v_orgs) = 0 THEN
+      RAISE EXCEPTION 'my_available_rooms_not_member' USING ERRCODE = '42501',
+        HINT = 'Tài khoản không còn là thành viên đang hoạt động của công ty nào.';
     ELSE
       SELECT CASE WHEN count(DISTINCT b.organization_id) = 1 THEN (array_agg(DISTINCT b.organization_id))[1] END INTO v_org
         FROM public.buildings b
@@ -732,7 +788,7 @@ BEGIN
   v_owner := app_private.org_building_owner_v1(v_org);
   SELECT hotline_id, sale_policy INTO v_hotline, v_sale_policy
   FROM public.public_room_settings
-  WHERE owner_id = v_owner;
+  WHERE owner_id = v_owner AND organization_id = v_org;
 
   WITH rms AS (
     SELECT
@@ -767,7 +823,7 @@ BEGIN
     FROM public.rooms rm
     JOIN public.buildings b ON b.id = rm.building_id AND b.organization_id = rm.organization_id
     -- Số ngày sắp trống theo người đứng tên từng toà (như bảng nội bộ).
-    LEFT JOIN public.public_room_settings ps ON ps.owner_id = b.user_id
+    LEFT JOIN public.public_room_settings ps ON ps.owner_id = b.user_id AND ps.organization_id = b.organization_id
     LEFT JOIN public.room_pass_listings pl
       ON pl.room_id = rm.id AND pl.organization_id = rm.organization_id AND pl.active = true
     CROSS JOIN LATERAL app_private.room_sale_workflow_fact_v1(rm.id,rm.organization_id,rm.status::text,pl.id IS NOT NULL,COALESCE(ps.soon_days,30)) fact
@@ -891,7 +947,7 @@ CREATE OR REPLACE FUNCTION app_private.public_room_settings_json_v1(p_org uuid)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private AS $fn$
   WITH o AS (SELECT app_private.org_building_owner_v1(p_org) AS owner_id),
-  s AS (SELECT ps.* FROM public.public_room_settings ps JOIN o ON ps.owner_id=o.owner_id)
+  s AS (SELECT ps.* FROM public.public_room_settings ps JOIN o ON ps.owner_id=o.owner_id AND ps.organization_id=p_org)
   SELECT jsonb_build_object(
     'organization_id',p_org,
     'owner_id',(SELECT owner_id FROM o),
@@ -901,7 +957,7 @@ SET search_path=pg_catalog,public,app_private AS $fn$
     'hotline_id',(SELECT hotline_id FROM s),
     'sale_policy',(SELECT sale_policy FROM s),
     'updated_at',(SELECT updated_at FROM s),
-    'can_manage',((SELECT owner_id FROM o) IS NOT NULL AND app_private.sale_org_permission_v1(p_org,'sale_phong.manage_settings')),
+    'can_manage',((SELECT owner_id FROM o) IS NOT NULL AND app_private.sale_org_wide_permission_v1(p_org,'sale_phong.manage_settings')),
     'hotlines',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',h.id,'name',h.name,'phone_number',h.phone_number,
         'is_active',h.is_active,'created_at',h.created_at) ORDER BY h.created_at DESC,h.id)
       FROM public.hotlines h, o WHERE h.user_id=o.owner_id AND h.organization_id=p_org),'[]'::jsonb))
@@ -949,9 +1005,10 @@ BEGIN
     RAISE EXCEPTION 'public_room_settings_not_member' USING ERRCODE='42501',
       HINT='Tài khoản không phải thành viên đang hoạt động của công ty này.';
   END IF;
-  IF NOT app_private.sale_org_permission_v1(p_organization_id,'sale_phong.manage_settings') THEN
+  -- Cài đặt chung có hiệu lực cả công ty ⇒ quyền ở PHẠM VI CÔNG TY (quyền theo toà/khu không đủ).
+  IF NOT app_private.sale_org_wide_permission_v1(p_organization_id,'sale_phong.manage_settings') THEN
     RAISE EXCEPTION 'public_room_settings_permission' USING ERRCODE='42501',
-      HINT='Cần quyền sale_phong.manage_settings (Cài đặt hiển thị) ở công ty này.';
+      HINT='Cần quyền sale_phong.manage_settings (Cài đặt hiển thị) ở phạm vi toàn công ty.';
   END IF;
   IF p_soon_days IS NULL OR p_soon_days NOT BETWEEN 0 AND 365 OR p_show_rented IS NULL
      OR char_length(COALESCE(v_policy,''))>2000 THEN
@@ -972,9 +1029,9 @@ BEGIN
   END IF;
   SELECT * INTO v_row FROM public.public_room_settings WHERE owner_id=v_owner FOR UPDATE;
   v_found:=FOUND;
-  IF v_found AND v_row.organization_id IS NOT NULL AND v_row.organization_id<>p_organization_id THEN
+  IF v_found AND v_row.organization_id IS DISTINCT FROM p_organization_id THEN
     RAISE EXCEPTION 'public_room_settings_owner_other_org' USING ERRCODE='55000',
-      HINT='Dòng cài đặt của người đứng tên đang thuộc công ty khác.';
+      HINT='Dòng cài đặt của người đứng tên chung đang thuộc công ty khác; cài đặt chung một người cho hai công ty chưa hỗ trợ.';
   END IF;
   -- Gửi lại sau mất phản hồi (hoặc người khác đã lưu đúng giá trị này): trả như hiện có, không báo xung đột.
   IF v_found AND v_row.soon_days=p_soon_days AND v_row.show_rented=p_show_rented
@@ -995,7 +1052,7 @@ BEGIN
 END
 $fn$;
 COMMENT ON FUNCTION public.save_public_room_settings_v1(uuid, timestamptz, integer, boolean, uuid, text) IS
-'Lưu cài đặt chung trang Sale của công ty vào dòng của người đứng tên chung các toà. Kiểm thành viên + sale_phong.manage_settings (mọi phạm vi; super admin giữ đường cũ). CAS: p_expected_updated_at phải khớp updated_at đang có (NULL khi chưa có dòng), lệch ⇒ PT409 public_room_settings_conflict; cùng giá trị ⇒ trả như cũ (changed=false). Hotline phải của người đứng tên trong công ty. Đợt 2 Sale phòng.';
+'Lưu cài đặt chung trang Sale của công ty vào dòng của người đứng tên chung các toà (dòng phải cùng công ty, khác ⇒ 55000). Kiểm thành viên + sale_phong.manage_settings ở PHẠM VI CÔNG TY (super admin giữ đường cũ). CAS: p_expected_updated_at phải khớp updated_at đang có (NULL khi chưa có dòng), lệch ⇒ PT409 public_room_settings_conflict; cùng giá trị ⇒ trả như cũ (changed=false). Hotline phải của người đứng tên trong công ty. Đợt 2 Sale phòng.';
 REVOKE ALL ON FUNCTION public.save_public_room_settings_v1(uuid, timestamptz, integer, boolean, uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.save_public_room_settings_v1(uuid, timestamptz, integer, boolean, uuid, text) TO authenticated;
 
@@ -1012,6 +1069,7 @@ REVOKE ALL ON FUNCTION app_private.public_room_token_json_v1(public.public_room_
 CREATE OR REPLACE FUNCTION public.list_public_room_tokens_v1(p_organization_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private AS $fn$
+DECLARE v_org_wide boolean;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Not authenticated' USING ERRCODE='42501';
@@ -1024,12 +1082,14 @@ BEGIN
     RAISE EXCEPTION 'public_room_token_permission' USING ERRCODE='42501',
       HINT='Cần quyền sale_phong.manage_tokens (Quản lý link chia sẻ) ở công ty này.';
   END IF;
-  RETURN COALESCE((SELECT jsonb_agg(app_private.public_room_token_json_v1(t) ORDER BY t.created_at DESC, t.token)
+  v_org_wide:=app_private.sale_org_wide_permission_v1(p_organization_id,'sale_phong.manage_tokens');
+  RETURN COALESCE((SELECT jsonb_agg(app_private.public_room_token_json_v1(t)
+      ||jsonb_build_object('can_manage',t.owner_id=auth.uid() OR v_org_wide) ORDER BY t.created_at DESC, t.token)
     FROM public.public_room_share_tokens t WHERE t.organization_id=p_organization_id),'[]'::jsonb);
 END
 $fn$;
 COMMENT ON FUNCTION public.list_public_room_tokens_v1(uuid) IS
-'Mọi link chia sẻ của công ty (kể cả do người khác tạo, kể cả đã thu hồi) kèm tên người tạo. Cần thành viên + sale_phong.manage_tokens (mọi phạm vi; super admin giữ đường cũ). Đợt 2 Sale phòng.';
+'Mọi link chia sẻ của công ty (kể cả do người khác tạo, kể cả đã thu hồi) kèm tên người tạo và can_manage (link của mình, hoặc có quyền quản link phạm vi công ty). Cần thành viên + sale_phong.manage_tokens (mọi phạm vi; super admin giữ đường cũ). Đợt 2 Sale phòng.';
 REVOKE ALL ON FUNCTION public.list_public_room_tokens_v1(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.list_public_room_tokens_v1(uuid) TO authenticated;
 
@@ -1061,6 +1121,12 @@ BEGIN
     RAISE EXCEPTION 'public_room_token_not_found' USING ERRCODE='P0002',
       HINT='Không thấy link này trong công ty đang chọn.';
   END IF;
+  -- Link của NGƯỜI KHÁC: thao tác có hiệu lực với mọi người dùng link đó ⇒ quyền ở PHẠM VI CÔNG TY.
+  IF v_row.owner_id IS DISTINCT FROM auth.uid()
+     AND NOT app_private.sale_org_wide_permission_v1(p_organization_id,'sale_phong.manage_tokens') THEN
+    RAISE EXCEPTION 'public_room_token_permission_org' USING ERRCODE='42501',
+      HINT='Sửa, thu hồi hoặc xoá link của người khác cần quyền sale_phong.manage_tokens ở phạm vi toàn công ty.';
+  END IF;
   IF p_action='delete' THEN
     DELETE FROM public.public_room_share_tokens WHERE token=v_row.token;
     RETURN app_private.public_room_token_json_v1(v_row)||jsonb_build_object('removed',true);
@@ -1073,7 +1139,7 @@ BEGIN
 END
 $fn$;
 COMMENT ON FUNCTION public.manage_public_room_token_v1(uuid, text, text, text) IS
-'Đổi nhãn (rename) / thu hồi (revoke) / khôi phục (restore) / xoá (delete) một link của công ty, kể cả link người khác tạo. Cần thành viên + sale_phong.manage_tokens (mọi phạm vi; super admin giữ đường cũ). Xoá link không còn ⇒ removed=false. Thay cho ghi thẳng bảng (đã REVOKE UPDATE, DELETE). Đợt 2 Sale phòng.';
+'Đổi nhãn (rename) / thu hồi (revoke) / khôi phục (restore) / xoá (delete) một link của công ty. Cần thành viên + sale_phong.manage_tokens (mọi phạm vi) cho link của mình; link người khác tạo cần quyền đó ở PHẠM VI CÔNG TY (super admin giữ đường cũ). Xoá link không còn ⇒ removed=false. Thay cho ghi thẳng bảng (đã REVOKE UPDATE, DELETE). Đợt 2 Sale phòng.';
 REVOKE ALL ON FUNCTION public.manage_public_room_token_v1(uuid, text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.manage_public_room_token_v1(uuid, text, text, text) TO authenticated;
 
@@ -1089,21 +1155,23 @@ DECLARE
   v_owner uuid;
 BEGIN
   FOR r IN SELECT * FROM (VALUES
-      ('public.get_public_available_rooms(text)', 'a625ef754a3a17580f7fad8ca045b36a'),
+      ('public.get_public_available_rooms(text)', 'ebcf2f800783c7f54e256c57c1bf415d'),
       ('app_private.public_sale_rooms_payload_v1(uuid)', '5807352fc553877422588a329e758d44'),
-      ('public.hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)', 'a756a97d00b0845d7cedc8fa6dd5d0b8'),
+      ('public.hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)', '55ab23646749df866f7d573cd38c51d3'),
       ('public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb)', '53626e7005c800db9077f87504cb1bd2'),
-      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '3b7f70293f0bae23d7906c3203ef2279'),
-      ('public.get_my_available_rooms(uuid)', 'd7bfd2312b3ffbe68e324a9d86fcec93'),
+      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '850c951f467f7a6db34f8917139c4179'),
+      ('public.get_my_available_rooms(uuid)', 'de6dde7d22a02890612e6fa87c52a8ce'),
       ('app_private.org_building_owner_v1(uuid)', '98019a8f321b6b8f39d98db7f487e89c'),
       ('app_private.sale_org_permission_v1(uuid,text)', '607841b199b8cd5b2383d74b67f319a4'),
-      ('app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1()', '8b6a19d2636b72f5ffcc4f62bc982f14'),
-      ('app_private.public_room_settings_json_v1(uuid)', '979942342611cd137462cb9e391ef9ea'),
+      ('app_private.sale_org_wide_permission_v1(uuid,text)', '5aae2539722de6bb26fb946f6c1af851'),
+      ('app_private.buildings_khoa_nguoi_dung_ten_v1()', '79be40681ee76380afe145f69a3a43a1'),
+      ('app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1()', '5ed46fb3685ee03bebedea0881a0f8e3'),
+      ('app_private.public_room_settings_json_v1(uuid)', '8ed5269c538970ead878883b51710136'),
       ('public.get_public_room_settings_v1(uuid)', '176ff333422f5d398c9bb4d2d106a879'),
-      ('public.save_public_room_settings_v1(uuid,timestamptz,integer,boolean,uuid,text)', '422d067b8c433dd4aaf01ca19f33419f'),
+      ('public.save_public_room_settings_v1(uuid,timestamptz,integer,boolean,uuid,text)', 'dbe22c6501911dccb682ccf1ce03dd0a'),
       ('app_private.public_room_token_json_v1(public.public_room_share_tokens)', '3803598b8ad0cc68b47bb4d327ed0e3a'),
-      ('public.list_public_room_tokens_v1(uuid)', '51ff1d57320c4524557c5a2cd14d505a'),
-      ('public.manage_public_room_token_v1(uuid,text,text,text)', '92976fab875ec3670c40f6de3478d30a')
+      ('public.list_public_room_tokens_v1(uuid)', 'fcb1fe0ba0cb590231d6f384f32db3f2'),
+      ('public.manage_public_room_token_v1(uuid,text,text,text)', '98eba795fe84c3df8629bd7b3bfc40a0')
     ) AS v(fn, file_md5) LOOP
     SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5 FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure(r.fn);
     IF v_md5 IS DISTINCT FROM r.file_md5 THEN
@@ -1127,6 +1195,7 @@ BEGIN
      OR NOT has_function_privilege('anon', 'public.get_public_available_rooms(text)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'app_private.org_building_owner_v1(uuid)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'app_private.sale_org_permission_v1(uuid,text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'app_private.sale_org_wide_permission_v1(uuid,text)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'app_private.public_room_settings_json_v1(uuid)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'app_private.public_room_token_json_v1(public.public_room_share_tokens)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'app_private.public_sale_rooms_payload_v1(uuid)', 'EXECUTE') THEN
@@ -1149,6 +1218,11 @@ BEGIN
        AND t.tgname = 'buildings_t1_nguoi_dung_ten_theo_cong_ty' AND NOT t.tgisinternal
        AND t.tgfoid = 'app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1()'::regprocedure) THEN
     RAISE EXCEPTION 'Hậu kiểm: thiếu trigger người đứng tên toà mới' USING ERRCODE = '55000';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid = 'public.buildings'::regclass
+       AND t.tgname = 'buildings_t2_khoa_nguoi_dung_ten' AND NOT t.tgisinternal
+       AND t.tgfoid = 'app_private.buildings_khoa_nguoi_dung_ten_v1()'::regprocedure) THEN
+    RAISE EXCEPTION 'Hậu kiểm: thiếu trigger khoá đổi người đứng tên toà' USING ERRCODE = '55000';
   END IF;
   SELECT b.user_id INTO v_owner FROM public.buildings b
    WHERE b.id = 'c4eb87df-758d-4e16-82dc-040f49e6adfc' AND b.organization_id = 'aaaa0000-0000-4000-8000-000000000001';
