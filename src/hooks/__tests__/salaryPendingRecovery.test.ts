@@ -347,6 +347,14 @@ describe('thưởng/trừ lương (sửa: A; thêm: D theo mã khoản do trình
     expect(adjustments()).toHaveLength(1);
   });
 
+  it('dấu cũ gieo sẵn dưới 2 phút không thấy khoản nào: chờ, chưa thêm (lệnh cũ có thể còn chạy)', async () => {
+    installAdjustments();
+    seedLegacyPending(adjustmentScope(), new Date(Date.now() - 30_000));
+    await expect(run<SaveAdjustmentInput>(useSaveSalaryAdjustment())(adjustment())).rejects.toMatchObject({ message: expect.stringContaining('đối chiếu') });
+    expect(io.server.inserts.filter(item => item.table === 'salary_adjustments')).toHaveLength(0);
+    expect(pendingKeys()).toHaveLength(1);
+  });
+
   it('sửa, tới nhưng mất phản hồi: chạy lại ngay, cùng giá trị', async () => {
     installAdjustments();
     adjustments().push({ id: 'adj-1', salary_monthly_id: 'sm1', kind: 'BONUS', label: 'Cũ', amount: 100, note: null, source: 'MANUAL' });

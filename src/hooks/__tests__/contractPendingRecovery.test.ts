@@ -38,14 +38,16 @@ function installCreate(receipt: (payload: Row, contractId: string) => Row = (pay
   io.server.rpcHandlers.create_contract_v2 = args => {
     const payload = args.p_payload as Row;
     const hash = JSON.stringify(payload);
-    const claim = claims.get(String(args.p_idempotency_key));
+    // Mã được tra trong phạm vi (phòng, ngày bắt đầu) như production: đổi ngày bắt đầu là phạm vi khác, không thấy mã cũ.
+    const scopeKey = [args.p_idempotency_key, (payload.contract as Row).room_id, (payload.contract as Row).start_date].join('|');
+    const claim = claims.get(scopeKey);
     if (claim) return claim.hash === hash ? { data: claim.response, error: null } : { data: null, error: { code: '23505', message: 'idempotency_key đã dùng với nội dung khác' } };
     // Thứ tự như production: phòng không còn trống (55000) xét trước «phòng đã có hợp đồng hiệu lực» (23505).
     if (contracts().some(row => row.room_id === (payload.contract as Row).room_id && row.status === 'ACTIVE')) return { data: null, error: { code: '55000', message: 'Trạng thái phòng không cho phép tạo hợp đồng: OCCUPIED' } };
     const contractId = id(100 + ++seq);
     contracts().push({ id: contractId, contract_number: `HĐ-${seq}`, room_id: (payload.contract as Row).room_id, status: 'ACTIVE', deleted_at: null });
     const response = { contract: receipt(payload, contractId), invoice: null, deposit_paid: 0, deposit_shortfall: 0 };
-    claims.set(String(args.p_idempotency_key), { hash, response });
+    claims.set(scopeKey, { hash, response });
     return { data: response, error: null };
   };
   return claims;

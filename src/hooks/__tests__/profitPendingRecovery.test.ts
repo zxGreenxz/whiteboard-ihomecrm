@@ -83,6 +83,9 @@ describe('chốt lợi nhuận (cách B, mã suy từ dấu)', () => {
     await expect(mutate(useCloseProfitPeriod(), closeInput())).rejects.toBeTruthy();
     await expect(mutate(useCloseProfitPeriod(), closeInput({ reclose: true, reason: 'Chốt lại sau khi sửa' }))).resolves.toMatchObject({ run_id: expect.any(String) });
     expect(keysOf('profit_reclose_v2')[0]).toMatch(/^profit-reclose-/);
+    // Chốt lại là một dấu riêng với mã riêng: dấu của chốt lần đầu còn nguyên, không bị chốt lại dùng hay gỡ.
+    expect(keysOf('profit_reclose_v2')[0]!.replace('profit-reclose-', '')).not.toBe(keysOf('profit_close_v2')[0]!.replace('profit-close-', ''));
+    expect(pendingKeys().map(key => decodeURIComponent(key.split(':')[3]!))).toEqual(['profit-first-close']);
   });
 
   it('dấu chung bản trước `profit-close` (mã máy chủ không nằm trong dấu): chặn chốt tháng đó qua hộp cảnh báo, không gửi', async () => {
