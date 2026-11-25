@@ -19,8 +19,8 @@ import { login, trackConsoleErrors } from './auth';
  * không có HĐ DEMO nào dọn sạch được sau bài — ca đó chốt bằng probe DB.
  */
 
-const CANONICAL = /\/rest\/v1\/rpc\/create_income_expense_v1\b/;
-const BUILDING = 'Tòa DEMO A';
+const CANONICAL = /\/rest\/v1\/rpc\/create_deposit_income_v1\b/;
+const BUILDING = 'DEMO Toà A';
 
 async function captureSupabaseAuth(page: Page) {
   const req = await page.waitForRequest((r) => /\/rest\/v1\//.test(r.url()), { timeout: 30_000 });
@@ -77,6 +77,16 @@ test('phieu-coc-chon-phong-trong-tao-duoc-va-khoa-phong', async ({ page }) => {
   expect(freeRooms.length, 'DEMO phải còn ít nhất 1 phòng trống').toBeGreaterThan(0);
   const room = freeRooms[0];
   roomId = room.id;
+  const accessResponse = await fetch(`${auth.base}/rest/v1/rpc/list_my_cashbook_access_v2`, {
+    method: 'POST', headers: jsonHeaders(auth), body: '{}',
+  });
+  expect(accessResponse.ok, 'đọc sổ quỹ được giao cho tài khoản DEMO').toBe(true);
+  const access = await accessResponse.json() as { cashbook_id: string; possession_kind: string }[];
+  const books = await sbGet(auth, 'accounts?select=id,name,bank_name&deleted_at=is.null&is_virtual=is.false&order=name') as { id: string; name: string; bank_name: string | null }[];
+  const book = books.find(account => access.some(binding =>
+    binding.cashbook_id === account.id && binding.possession_kind === 'CUSTODIAN'));
+  expect(book, 'DEMO cần có sổ quỹ thực thu được giao').toBeTruthy();
+  const bookLabel = book!.bank_name ? `${book!.name} (${book!.bank_name})` : book!.name;
 
   try {
     await page.getByRole('button', { name: 'Thêm phiếu' }).click();
@@ -88,13 +98,16 @@ test('phieu-coc-chon-phong-trong-tao-duoc-va-khoa-phong', async ({ page }) => {
     await page.getByRole('combobox', { name: 'Phòng' }).click();
     await page.getByRole('option', { name: room.name, exact: true }).click();
     await page.getByRole('combobox', { name: 'Sổ quỹ *' }).click();
-    await page.getByRole('option').first().click();
+    await page.getByRole('option', { name: bookLabel, exact: true }).click();
     await page.getByRole('textbox', { name: /Tên phiếu thu/i }).fill(name);
 
     await page.getByRole('button', { name: 'Thêm hạng mục' }).click();
     await page.getByRole('checkbox', { name: /Tiền cọc/i }).first().click();
     await page.getByRole('button', { name: 'Xác nhận' }).click();
     await page.getByRole('textbox', { name: 'Số tiền' }).first().fill('2000000');
+
+    await page.getByRole('textbox', { name: 'Người gửi' }).fill('Người gửi DEMO');
+    await page.getByRole('button', { name: 'Sau ngày phiếu 4 ngày' }).click();
 
     // Phòng trống thì phiếu cọc phải để trống HĐ (cọc giữ chỗ, HĐ chưa có).
     // Nếu form auto-gắn nhầm một HĐ đã xoá mềm, writer trả 42501 khó hiểu.
@@ -106,8 +119,9 @@ test('phieu-coc-chon-phong-trong-tao-duoc-va-khoa-phong', async ({ page }) => {
       resp.status(),
       `writer canonical phải nhận phiếu cọc có phòng: ${await resp.text()}`,
     ).toBe(200);
-    const row = (await resp.json()) as { id: string; approval_status: string };
+    const row = (await resp.json()) as { id: string; approval_status: string; reservation_id: string };
     voucherId = row.id;
+    expect(row.reservation_id, 'phiếu phải thuộc đợt giữ chỗ của phòng').toBeTruthy();
     expect(row.approval_status, 'phiếu thu cọc tự duyệt ngay').toBe('APPROVED');
 
     // KHÔNG được thấy đúng thông báo của án lệ này.
@@ -121,11 +135,12 @@ test('phieu-coc-chon-phong-trong-tao-duoc-va-khoa-phong', async ({ page }) => {
     expect(errs, `console: ${errs.join(' | ')}`).toEqual([]);
   } finally {
     if (voucherId && auth) {
-      await fetch(`${auth.base}/rest/v1/rpc/cancel_income_expense_v1`, {
+      const cancel = await fetch(`${auth.base}/rest/v1/rpc/cancel_income_voucher_v1`, {
         method: 'POST',
         headers: jsonHeaders(auth),
-        body: JSON.stringify({ p_voucher_id: voucherId, p_reason: 'E2E cleanup' }),
-      }).catch(() => {});
+        body: JSON.stringify({ p_voucher: voucherId, p_reason: 'E2E cleanup' }),
+      });
+      expect(cancel.ok, 'hủy phiếu TEST qua Thu chi').toBe(true);
       // Huỷ cọc → phòng phải mở lại (fixture tự dọn, không để phòng kẹt RESERVED).
       await expect
         .poll(() => roomStatus(auth!, roomId!), { timeout: 15_000 })

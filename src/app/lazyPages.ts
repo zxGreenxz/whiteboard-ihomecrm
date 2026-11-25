@@ -40,7 +40,7 @@ export const SalePhongPage = lazy(() => import("../pages/sale-phong/SalePhongPag
 
 // Khách hàng
 export const LeadsPage = lazy(() => import("../pages/leads/LeadsPage"));
-export const DepositsPage = lazy(() => import("../pages/deposits/DepositsPage"));
+export const DepositsPage = lazy(() => import("../pages/deposits/DepositsLayout"));
 export const ContractsPage = lazy(() => import("../pages/contracts/ContractsPage"));
 export const ContractDetailPage = lazy(() => import("../pages/contracts/ContractDetailPage"));
 export const VehiclesPage = lazy(() => import("../pages/vehicles/VehiclesPage"));

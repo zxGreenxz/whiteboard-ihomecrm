@@ -23,7 +23,7 @@ const OVERVIEW = "__overview__";
 // Chỉ nhân viên trong app mở hộp thoại này; link công khai không tải mã hộp thoại và hook ghi.
 const ExitHoldDialog = lazy(() => import("@/components/sale-phong/ExitHoldDialog"));
 /** Nhân viên vẫn thấy phòng đang giữ cho khách sang nhượng (máy chủ che "rented" như Lock). */
-const shownInList = (r: Room) => r.status !== "rented" || isExitHeld(r);
+const shownInList = (r: Room) => r.status !== "rented" || !!r.hasDepositHold || isExitHeld(r);
 
 /**
  * Bảng phòng cho Sale, chỉ hiển thị dữ liệu thật từ liên kết hoặc dữ liệu

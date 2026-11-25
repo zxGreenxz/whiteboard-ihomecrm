@@ -2,7 +2,8 @@
 import {renderHook,cleanup} from "@testing-library/react";
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 const io=vi.hoisted(()=>({rpc:vi.fn()}));
-vi.mock('@/integrations/supabase/client',()=>({supabase:{from:vi.fn(),rpc:io.rpc}}));
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{from:()=>{const q={select:()=>q,eq:()=>q,order:()=>q,range:async()=>({data:[],error:null})};return q;},rpc:io.rpc}}));
 vi.mock('@tanstack/react-query',()=>({useQuery:(options:unknown)=>options,useMutation:(options:unknown)=>options,useQueryClient:()=>({invalidateQueries:vi.fn()}),keepPreviousData:(value:unknown)=>value}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
 import {useMyCashbookAccessV2,useCashbookVisibilityV2,useCustodianCashbooksV2} from '../income-expenses/financeV2Mutations';
