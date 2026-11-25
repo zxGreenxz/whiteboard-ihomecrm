@@ -20,7 +20,12 @@ function need(caller: DoorAccessCaller | null): DoorAccessCaller {
   return caller;
 }
 
-const feedback = { meta: { handlesFeedback: true }, retry: false } as const;
+/**
+ * `networkMode: 'always'`: máy báo mất mạng thì vẫn gọi ngay để nhận lỗi (⇒ "chưa rõ kết quả"), KHÔNG để
+ * mutation "tạm dừng" rồi tự gửi khi có mạng lại — với lệnh mở cửa, đó là mở cửa vài phút sau lúc người
+ * dùng đã bỏ đi. Cùng lý do với useResetUserPassword.
+ */
+const feedback = { meta: { handlesFeedback: true }, retry: false, networkMode: "always" } as const;
 
 export function useRemoteUnlock(caller: DoorAccessCaller | null) {
   const client = useQueryClient();

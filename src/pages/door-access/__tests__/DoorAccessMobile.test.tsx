@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { Suspense, type ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -290,6 +290,25 @@ describe("Cửa vân tay — màn điện thoại", () => {
     sheet = await screen.findByRole("alertdialog", { name: "Mở cửa Cổng chính ngay bây giờ?" });
     fireEvent.click(within(sheet).getByRole("button", { name: "Mở cửa ngay" }));
     expect(await screen.findByText("Cửa đã mở")).toBeTruthy();
+    expect(m.edge.remoteUnlock).toHaveBeenCalledTimes(1);
+  });
+
+  it("máy báo mất mạng lúc giữ ⇒ gọi ngay và báo chưa rõ; KHÔNG treo rồi tự gửi khi có mạng lại", async () => {
+    connected("all", [device()]);
+    m.edge.remoteUnlock.mockRejectedValue(new DoorAccessError("unavailable", "Chưa rõ", { outcomeUnknown: true }));
+    renderPhone();
+    const button = await dial();
+    onlineManager.setOnline(false);
+    try {
+      fireEvent.pointerDown(button, { button: 0, pointerId: 1 });
+      await sleep(1150);
+      fireEvent.pointerUp(button, { button: 0, pointerId: 1 });
+      expect(await screen.findByText("Chưa rõ cửa đã mở chưa")).toBeTruthy();
+      expect(m.edge.remoteUnlock).toHaveBeenCalledTimes(1);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+    await sleep(50);
     expect(m.edge.remoteUnlock).toHaveBeenCalledTimes(1);
   });
 

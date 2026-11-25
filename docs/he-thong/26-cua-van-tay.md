@@ -30,6 +30,7 @@ Chủ chọn Bản A ngày 25/11/2026. Màn rộng giữ nguyên bố cục tab;
 - Thanh dưới 4 mục: **Cửa** (luôn có: chọn cửa, nút giữ để mở, ra vào gần đây), **Mã tạm** (quyền Mật khẩu tạm), **Lịch sử** (quyền Xem), **Quản lý** (Xem hoặc Quản lý máy: Đối chiếu, Thiết bị, Nhật ký, quyền của người dùng ở toà, trạng thái kết nối). Mục không có quyền ở toà của cửa đang chọn thì ẩn.
 - Giữ để mở: trạng thái và chữ ở `src/lib/door-access/holdToOpen.ts`, gắn con trỏ/bàn phím ở `useHoldToOpen`. Kết quả: đã mở (5 giây rồi sẵn sàng lại), không mở được (giữ lại được), chưa rõ (khoá nút, hiện "Xem lịch sử" và "Đã hiểu"; không tự gửi lại), quá 10 lần/10 phút. Nút khoá kèm lý do khi thiếu quyền, chỉ đọc, hoặc máy mất kết nối (chỉ biết khi đã "Tìm máy" ở Thiết bị).
 - Mã tạm: "Gửi qua Zalo" mở hộp chia sẻ của điện thoại (Web Share API) với tin soạn sẵn; người dùng tự chọn người nhận và bấm gửi. Máy không có hộp chia sẻ thì sao chép tin. Mã chỉ hiện ở màn kết quả, đóng là mất. Xoá mã hỏi lại ngay trong thẻ.
+- Mọi thao tác ghi (cả máy tính) gọi ngay kể cả khi máy báo mất mạng (`networkMode: 'always'`) để nhận lỗi "chưa rõ", không xếp hàng rồi tự gửi khi có mạng lại. Lệnh mở mang khoá mutation theo máy: còn lệnh đang chạy thì nút mở ở cả hai bố cục đều khoá; đang gửi hoặc chưa rõ thì chưa đổi cửa được.
 - Không gọi SmartLife chỉ để đếm: số "mã đang dùng" và số "cần xoá" trên thanh dưới chỉ hiện khi đã đọc mục đó.
 
 ## Dữ liệu
