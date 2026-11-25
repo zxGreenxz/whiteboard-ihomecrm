@@ -3,6 +3,8 @@ import type {
   ExcelImportRow,
 } from "@/lib/incomeExpenseValidation";
 import { AMOUNT_SEARCH_TOLERANCE } from "@/lib/roomCodeSearch";
+import type { User } from "@supabase/supabase-js";
+import type { IncomeExpenseItemAccountingClass } from "./accountingClass";
 
 // Re-export để giữ tương thích cho các nơi import từ hook này.
 export { AMOUNT_SEARCH_TOLERANCE };
@@ -198,6 +200,21 @@ export interface CreateIncomeExpenseInput extends IncomeExpenseFormValues {
    * Chỉ đi đường create_income_expense_v1; đường compat không có chống trùng.
    */
   idempotency_key?: string;
+  /**
+   * Mã phiếu do trình duyệt sinh cho đường compat: ie_compat_insert_v2 nhận `p_row.id` (production 24/11/2026). Gửi
+   * lại cùng mã thì khoá chính chặn phiếu thứ hai, và phép đối chiếu tra đúng phiếu theo mã. Vắng ⇒ máy chủ tự sinh.
+   */
+  voucher_id?: string;
+  /** Lần gửi lại của một lần lập chưa rõ kết quả: 23505 (mã đã dùng) nghĩa là lần trước đã lập. */
+  resend?: boolean;
+  /** Phiên và hạng mục đã đọc TRƯỚC khi ghi dấu chờ đối chiếu (xem prepareIncomeExpenseCreate). */
+  prepared?: PreparedIncomeExpenseCreate;
+}
+
+export interface PreparedIncomeExpenseCreate {
+  user: User;
+  /** Chỉ nạp sẵn khi chắc đi đường compat; đường chính chỉ cần khi rơi sang compat. */
+  accountingClassFor?: (typeId: string) => IncomeExpenseItemAccountingClass;
 }
 
 export interface ImportIncomeExpenseRow extends ExcelImportRow {

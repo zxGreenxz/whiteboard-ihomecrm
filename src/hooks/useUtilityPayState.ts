@@ -1,7 +1,7 @@
 import {validateInputDrafts} from '@/lib/inputDraftValidation';
 import {focusFirstError} from '@/lib/formErrors';
 import { feeFailureMessage } from "@/lib/feeFeedback";
-import { createdVoucherFeedback, voucherFailureMessage, voucherOutcomeUnknown } from '@/lib/voucherFeedback';
+import { createdVoucherFeedback, voucherFailureMessage } from '@/lib/voucherFeedback';
 // =============================================
 // useUtilityPayState — state + hành động dùng chung cho màn Đóng tiền Điện nước
 // (sheet mobile + panel desktop). Đơn vị là ĐỒNG HỒ (meter): 1 toà có thể nhiều
@@ -67,7 +67,6 @@ export interface MeterRow {
 // ── Chốt chống trùng dùng chung giữa MỌI instance (module-level) ─────────────
 /** `${kỳ}::${khoá dòng}` đang có RPC bay — chặn re-entry trước cả re-render. */
 const utilityInflight = new Set<string>();
-const utilityUncertain = new Set<string>();
 /** `${kỳ}::${meter id}` → số tiền vừa gửi, sống đến khi reader thấy phiếu. */
 const utilityJustPaid = new Map<string, number>();
 let utilityVersion = 0;
@@ -275,11 +274,9 @@ export function useUtilityPayState(
     const amount = amountOf(row.key);
     if (!Number.isFinite(amount) || amount <= 0) {const message='Nhập số tiền cần đóng lớn hơn 0.';setAmountErrors(errors=>({...errors,[row.key]:message}));void focusFirstError({[`utility_amount_${row.key}`]:message},{root});return;}
     setAmountErrors(errors=>{const next={...errors};delete next[row.key];return next;});
+    // Lần trước chưa rõ kết quả không chặn ở đây nữa: usePayUtilityBill tự đối chiếu (gửi lại; máy chủ khoá công tơ ×
+    // tháng rồi báo "ĐÃ CÓ phiếu chi …" kèm mã nếu lần trước đã ghi).
     const lock = `${billingMonth}::${row.key}`;
-    if (utilityUncertain.has(lock)) {
-      toast.error('Lần tạo phiếu trước chưa xác nhận được kết quả. Tải lại danh sách và kiểm tra phiếu trước khi đóng tiếp.');
-      return;
-    }
     if (utilityInflight.has(lock)) {
       toast.error('Đang gửi phiếu cho đồng hồ này — chờ kết quả rồi hãy bấm lại.');
       return;
@@ -304,7 +301,6 @@ export function useUtilityPayState(
       const feedback = createdVoucherFeedback(receipt);
       toast[feedback.kind](`${feedback.message} ${fmtFull(amount)} tiền ${typeText(row.type)} · ${name}`);
     } catch (ex) {
-      if (voucherOutcomeUnknown(ex)) utilityUncertain.add(lock);
       toast.error(voucherFailureMessage(ex, "tạo phiếu điện/nước"));
     } finally {
       utilityInflight.delete(lock);

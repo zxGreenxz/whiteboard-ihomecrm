@@ -93,7 +93,6 @@ const InvoicesDesktopPage = () => {
 
   // Selection
   const [cancelResults,setCancelResults]=useState<{id:string;message:string;outcomeUnknown:boolean}[]>([]);
-  const [blockedCancelIds,setBlockedCancelIds]=useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Column visibility (persisted in localStorage)
@@ -316,18 +315,17 @@ const InvoicesDesktopPage = () => {
   }, [forceDeleteTarget, forceCancelMutation]);
 
   const handleBulkCancel = useCallback(() => {
-    if (selectedIds.length === 0 || selectedIds.some(id=>blockedCancelIds.includes(id))) return;
+    if (selectedIds.length === 0) return;
     if (confirm(`Huỷ ${selectedIds.length} hoá đơn đã chọn? Chúng sẽ chuyển vào mục "Đã huỷ" và có thể phục hồi khi cần.`)) {
       bulkCancelMutation.mutate(selectedIds, {
         onSuccess: result => {
           setCancelResults(result.failures);
-          const unknown=result.failures.filter(item=>item.outcomeUnknown).map(item=>item.id);
-          setBlockedCancelIds(ids=>[...ids,...unknown]);
-          setSelectedIds(ids=>ids.filter(id=>!result.completedIds.includes(id)&&!unknown.includes(id)));
+          // Hoá đơn chưa rõ kết quả vẫn được chọn: lần bấm sau đọc trạng thái từng hoá đơn rồi mới huỷ tiếp.
+          setSelectedIds(ids=>ids.filter(id=>!result.completedIds.includes(id)));
         },
       });
     }
-  }, [selectedIds, bulkCancelMutation,blockedCancelIds]);
+  }, [selectedIds, bulkCancelMutation]);
 
   return (
     <MainLayout

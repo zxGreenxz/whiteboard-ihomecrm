@@ -1,7 +1,6 @@
 import {runFinancialPending} from '@/lib/financialPendingAction';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {getSessionUser} from '@/lib/authSession';
-import {voucherOutcomeUnknown} from '@/lib/voucherFeedback';
 // =============================================
 // useReconciliations — đối soát/chốt số sổ quỹ (dùng cho sổ chuyển khoản tkHiep).
 // 3 mutation gọi RPC SECURITY DEFINER (migration 20260701130000):
@@ -37,9 +36,10 @@ export function reconciliationReceipt(data:unknown) {
   return row as {id:string;status:'PENDING'|'CONFIRMED';system_balance:number;diff:number};
 }
 
-const uncertainReconciliations=new Set<string>();
 const reconciliationKey=(accountId:string,asOf:string)=>`${accountId}:${asOf}`;
-export const isReconciliationUncertain=(accountId:string,asOf:string)=>uncertainReconciliations.has(reconciliationKey(accountId,asOf));
+/** Cửa sổ tra đề nghị "tạo sau giờ kẹt" (giờ máy có thể lệch giờ máy chủ). Đề nghị đã gắn sổ và ngày nên cửa sổ rộng chỉ làm
+ * báo "có thể đã tạo" nhiều hơn, không làm gửi trùng. */
+const CLOCK_SKEW_MS=24*60*60_000;
 function stateReceipt(data:unknown,id:string,status:string) {
  const row=data as {id?:unknown;status?:unknown}|null;
  if(!row||row.id!==id||row.status!==status) throw new TypeError('Chưa xác nhận được trạng thái đối soát sau thao tác.');
@@ -51,7 +51,6 @@ export const useProposeReconciliation = () => {
   return useMutation({
     meta:{handlesFeedback:true},
     mutationFn: async (args: ProposeReconArgs) => {
-      if(isReconciliationUncertain(args.accountId,args.asOf)) throw new TypeError("Lần đối soát trước chưa xác nhận. Tải lại danh sách để đối chiếu trước khi tạo tiếp.");
       const user=await getSessionUser();
       return runFinancialPending({namespace:'reconciliation-propose',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:reconciliationKey(args.accountId,args.asOf)},async progress=>{
       const { data, error } = await supabase.rpc('propose_reconciliation', {
@@ -65,9 +64,22 @@ export const useProposeReconciliation = () => {
       const receipt=reconciliationReceipt(data);
       progress.recordCompleted([receipt.id]);
       return receipt;
-      });
+      },undefined,{operation:'đề nghị đối soát sổ',reconcile:async pending=>{
+        if(pending.completedIds.length)return {outcome:'already-written',message:'Đề nghị đối soát này đã được tạo ở lần gửi trước.',recordIds:pending.completedIds};
+        // propose_reconciliation (production 24/11/2026) không có khoá chống trùng: tra gần đúng theo sổ, ngày,
+        // người đề nghị, tạo sau giờ kẹt (cách D, thay bằng mã chống trùng ở đợt 10). Thấy thì chỉ báo "có thể đã
+        // tạo", không tự gửi; không thấy thì lõi chỉ cho gửi lại khi lần trước đã quá 2 phút.
+        const since=new Date(Date.parse(pending.startedAt)-CLOCK_SKEW_MS).toISOString();
+        const {data,error}=await supabase.from('cashbook_reconciliations').select('id,status,created_at')
+          .eq('account_id',args.accountId).eq('as_of_date',args.asOf).eq('proposed_by',pending.userId)
+          .gte('created_at',since).order('created_at',{ascending:false}).limit(5);
+        if(error)throw error;
+        if(!Array.isArray(data))throw new TypeError('Chưa đọc được danh sách đối soát để đối chiếu.');
+        const ids=(data as {id?:unknown}[]).map(row=>row.id).filter((id):id is string=>typeof id==='string'&&!!id);
+        if(ids.length)return {outcome:'already-written',message:`Có thể đề nghị đối soát đã được tạo ở lần gửi trước (mã ${ids.join(', ')}). Mở danh sách đối soát để kiểm tra trước khi tạo lại.`,recordIds:ids};
+        return {outcome:'not-written'};
+      }});
     },
-    onError:(error,args)=>{if(voucherOutcomeUnknown(error))uncertainReconciliations.add(reconciliationKey(args.accountId,args.asOf));},
     onSuccess: invalidate,
   });
 };

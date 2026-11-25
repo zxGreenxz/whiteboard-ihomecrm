@@ -1,4 +1,5 @@
 import {runFinancialPending} from '@/lib/financialPendingAction';
+import {FinancialAlreadyRecordedError} from '@/lib/financialWorkflowError';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {getSessionUser} from '@/lib/authSession';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
@@ -85,6 +86,10 @@ export const useGenerateSpecialFees = () => {
       a: { period: string; buildingIds: string[]; accountId?: string | null },
     ): Promise<GenerateResult> => {
       const user=await getSessionUser();
+      // generate_special_fees_v1 (production 24/11/2026) KHÔNG trả lại kết quả cũ theo khoá: nó khoá tư vấn theo
+      // (công ty, kỳ) rồi chỉ sinh các ô xem trước còn "SẼ_SINH" (ô đã có claim hoặc phiếu thì bỏ qua). Chạy lại
+      // vì thế không sinh trùng ô nào, kể cả khi lệnh cũ còn chạy (cách A).
+      let resend=false;
       return runFinancialPending({namespace:'special-fee-generate',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:[a.period,...[...a.buildingIds].sort()].join(':')},async progress=>{
       const { data, error } = await supabase.rpc('generate_special_fees_v1', {
         p_period: a.period,
@@ -95,9 +100,15 @@ export const useGenerateSpecialFees = () => {
       if (error) throw error;
       const receipt=parseGeneratedFeeReceipt(data);
       if(receipt.period!==a.period)throw new TypeError("Kỳ của biên nhận chưa khớp yêu cầu");
+      // Lần chạy lại không còn ô nào để sinh: các ô đã được sinh ở lần gửi trước (biên nhận cũ đã mất).
+      if(resend&&receipt.created===0)throw new FinancialAlreadyRecordedError('Lượt sinh phí kỳ này đã chạy ở lần gửi trước: không còn ô nào cần sinh. Xem bảng xem trước để kiểm tra các phiếu đã sinh.');
       progress.recordCompleted(receipt.voucherIds);
       return receipt;
-      });
+      },undefined,{operation:'sinh phí đặc biệt',reconcile:async pending=>{
+        if(pending.completedIds.length)return {outcome:'already-written',message:'Lượt sinh phí kỳ này đã tạo phiếu ở lần gửi trước.',recordIds:pending.completedIds};
+        resend=true;
+        return {outcome:'not-written',serverDedupesRequestKey:true};
+      }});
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['special-fee-preview'] });

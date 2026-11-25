@@ -1,6 +1,8 @@
 import {focusFirstError} from '@/lib/formErrors';
 import {friendlyError} from '@/lib/friendlyError';
-import {voucherOutcomeUnknown} from '@/lib/voucherFeedback';
+import {voucherFailureMessage,voucherOutcomeUnknown} from '@/lib/voucherFeedback';
+import {FinancialPendingError} from '@/lib/financialPending';
+import {FinancialWorkflowError} from '@/lib/financialWorkflowError';
 import { QueryRegion } from "@/components/errors/QueryRegion";
 // =============================================
 // Báo cáo Bàn giao tiền & Đối soát sổ — cho CHỦ theo dõi:
@@ -32,7 +34,7 @@ import { DateRangePicker } from '@/components/reports/DateRangePicker';
 import { format, startOfMonth } from 'date-fns';
 import { useSettlementReport, type SettlementAccount } from '@/hooks/useSettlementReport';
 import { usePersistedDateRange } from '@/hooks/usePersistedState';
-import { useProposeReconciliation,isReconciliationUncertain } from '@/hooks/useReconciliations';
+import { useProposeReconciliation } from '@/hooks/useReconciliations';
 import { fmtDateTime } from '@/lib/handover';
 import { useStaffUsers } from '@/hooks/useStaffUsers';
 import { useAuth } from '@/hooks/useAuth';
@@ -245,14 +247,13 @@ export function ReconcileDialog({
   const root=useRef<HTMLDivElement>(null);
   const [countedError,setCountedError]=useState<string|null>(null);
   const [submitError,setSubmitError]=useState<string|null>(null);
-  const [uncertain,setUncertain]=useState(()=>isReconciliationUncertain(account.account_id,asOf || format(new Date(),'yyyy-MM-dd')));
 
   const countedText=counted.replace(/[.,\s]/g,'');
   const countedNum=countedText.trim() && /^-?\d+$/.test(countedText)?Number(countedText):NaN;
   const diff = countedNum - account.current_balance;
 
   const submit = async () => {
-    if(uncertain||staffQuery.isError||staffQuery.isLoading) return;
+    if(staffQuery.isError||staffQuery.isLoading) return;
     if(!Number.isFinite(countedNum)) {const message='Nhập số dư thực tế bằng số; nhập 0 nếu sổ đã hết tiền.';setCountedError(message);void focusFirstError({counted:message},{root:root.current});return;}
     setCountedError(null);setSubmitError(null);
     try {
@@ -270,12 +271,15 @@ export function ReconcileDialog({
       );
       onClose();
     } catch (e) {
-      const message=friendlyError(e,'Chưa ghi nhận được đối soát',{operation:'ghi nhận đối soát sổ',financial:true,rules:[
+      // Câu của bộ chống ghi trùng (đang chờ kết quả, có thể đã tạo ở lần gửi trước kèm mã) hiện nguyên văn.
+      const pendingNotice=e instanceof FinancialPendingError||e instanceof FinancialWorkflowError;
+      const message=pendingNotice?voucherFailureMessage(e,'ghi nhận đối soát sổ'):friendlyError(e,'Chưa ghi nhận được đối soát',{operation:'ghi nhận đối soát sổ',financial:true,rules:[
         {message:'Bạn không có quyền đối soát sổ này',description:'Bạn chưa có quyền đối soát sổ này. Nhờ chủ sổ kiểm tra quyền.'},
         {message:'Không tìm thấy sổ quỹ',description:'Sổ quỹ không còn khả dụng. Tải lại danh sách sổ để kiểm tra.'},
       ]}).description;
-      setSubmitError(message);toast.error(message);
-      if(voucherOutcomeUnknown(e))setUncertain(true);
+      // Chưa rõ kết quả: lần bấm sau tự tra đề nghị vừa gửi (sổ, ngày, người đề nghị) trước khi tạo thêm.
+      const hint=!pendingNotice&&voucherOutcomeUnknown(e)?' Bấm lại sau ít phút: hệ thống tra đề nghị vừa gửi trước khi tạo thêm.':'';
+      setSubmitError(message+hint);toast.error(message);
     }
   };
 
@@ -350,10 +354,10 @@ export function ReconcileDialog({
           </div>
         </div>
 
-        {(submitError||uncertain)&&<p role="alert" className="text-sm text-destructive">{submitError||"Lần đối soát trước chưa xác nhận. Tải lại danh sách đối soát để đối chiếu trước khi tạo tiếp."}</p>}
+        {submitError&&<p role="alert" className="text-sm text-destructive">{submitError}</p>}
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Đóng</Button>
-          <Button onClick={submit} disabled={proposeMut.isPending||uncertain||staffQuery.isLoading||staffQuery.isError}>
+          <Button onClick={submit} disabled={proposeMut.isPending||staffQuery.isLoading||staffQuery.isError}>
             {counterparty ? 'Gửi đối soát' : 'Chốt số'}
           </Button>
         </DialogFooter>

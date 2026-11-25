@@ -1,4 +1,6 @@
 import {runFinancialPending} from '@/lib/financialPendingAction';
+import {FinancialPendingError,financialPending} from '@/lib/financialPending';
+import {FinancialAlreadyRecordedError} from '@/lib/financialWorkflowError';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {VoucherPartialError} from '@/lib/voucherFeedback';
 import {QueryRegion} from '@/components/errors/QueryRegion';
@@ -140,8 +142,11 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
   const intent = useRef<{fingerprint:string;key:string}|null>(null);
   const formRoot = useRef<HTMLFormElement>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Phòng của lần tạo cọc gần nhất chưa rõ kết quả trong phiên hộp này. Hộp ở trang Quản lý cọc luôn nằm trên trang
+  // (đóng chỉ đổi `open`), nên đóng hộp phải xoá ghi nhớ này, đúng như lối ra mà câu chặn hướng dẫn.
+  const stuckRoom = useRef<string | null>(null);
+  useEffect(() => { if (!open) stuckRoom.current = null; }, [open]);
   const [completed, setCompleted] = useState<{reservationId:string;voucherIds:string[]}|null>(null);
-  const [uncertain, setUncertain] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   // Ảnh chứng từ giữ ngoài react-hook-form: AttachmentUpload đã tự quản lý
@@ -251,7 +256,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
     !!topupDue && !!holdUntil && (diffDaysISO(topupDue, holdUntil) ?? 0) > 0;
 
   const onSubmit = async (data: DepositFormValues) => {
-    if (submitting || completed || uncertain || roomsQuery.isError || roomsQuery.isLoading || accountsQuery.isError || accountsQuery.isLoading) return;
+    if (submitting || completed || roomsQuery.isError || roomsQuery.isLoading || accountsQuery.isError || accountsQuery.isLoading) return;
     setSubmitError(null);
     setSubmitting(true);
     try {
@@ -294,9 +299,34 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       };
       const fingerprint=JSON.stringify(input);
       if(intent.current?.fingerprint!==fingerprint)intent.current={fingerprint,key:`room-reservation-${crypto.randomUUID()}`};
-      await runFinancialPending({namespace:"deposit-create",userId:myUserId??"",organizationId:selectedOrganizationId??"",businessKey:data.room_id},async progress=>{
-      const createdReservation=await createReservation.mutateAsync({...input,idempotencyKey:progress.requestKey});
-      progress.recordCompleted([createdReservation.id,...createdReservation.receipts.map(r=>r.source_voucher_id)]);
+      // Cách B: create_room_reservation_v1 (production 24/11/2026) khoá dòng phòng rồi mới tra khoá (người tạo, mã):
+      // cùng mã cùng nội dung trả lại giữ chỗ cũ, khác nội dung trả 23505; mỗi phòng một giữ chỗ đang sống. Lần gửi lại
+      // dùng đúng mã của dấu nên không thể tạo cọc thứ hai, kể cả khi lệnh cũ còn chạy.
+      // Lần trước chưa rõ kết quả ở phòng khác mà dấu còn: phòng mới là phạm vi dấu khác, không được đối chiếu. Chặn để
+      // không ra hai giữ chỗ cho cùng một khoản cọc.
+      const stuck=stuckRoom.current;
+      if(stuck&&stuck!==data.room_id&&myUserId&&selectedOrganizationId){
+        let still=false;try{still=!!financialPending.read({namespace:'deposit-create',userId:myUserId,organizationId:selectedOrganizationId,businessKey:stuck});}catch{still=false;}
+        if(still){const message='Lần tạo cọc trước chưa rõ kết quả mà phòng đã đổi. Chọn lại đúng phòng cũ rồi bấm để hệ thống đối chiếu (nếu lần trước chưa ghi, cọc sẽ được tạo cho phòng cũ); chọn nhầm phòng thì mở Quản lý cọc kiểm tra trước, rồi đóng và mở lại hộp để cọc phòng khác.';setSubmitError(message);toast.error(message);return;}
+        stuckRoom.current=null;
+      }
+      let resend=false;
+      const createdReservation=await runFinancialPending({namespace:"deposit-create",userId:myUserId??"",organizationId:selectedOrganizationId??"",businessKey:data.room_id},async progress=>{
+        let reservation;
+        try{reservation=await createReservation.mutateAsync({...input,idempotencyKey:progress.requestKey});}
+        catch(error){
+          if(resend&&String((error as {code?:unknown}|null)?.code??'')==='23505')throw new FinancialAlreadyRecordedError('Cọc giữ chỗ của phòng này đã được tạo ở lần gửi trước (nội dung lúc đó khác nội dung đang lưu). Mở Quản lý cọc để kiểm tra trước khi tạo lại.');
+          throw error;
+        }
+        progress.recordCompleted([reservation.id,...reservation.receipts.map(r=>r.source_voucher_id)]);
+        return reservation;
+      },undefined,{operation:'tạo cọc giữ chỗ',reconcile:async pending=>{
+        // Dấu đã nhận mã giữ chỗ (dấu từ bản trước, khi bước thưởng Sale hỏng): giữ chỗ đã tạo.
+        if(pending.completedIds.length)return {outcome:'already-written',message:'Cọc giữ chỗ của phòng này đã được tạo ở lần gửi trước. Mở Quản lý cọc để kiểm tra trước khi tạo lại.',recordIds:pending.completedIds};
+        resend=true;return {outcome:'not-written',serverDedupesRequestKey:true};
+      }});
+      stuckRoom.current=null;
+      // Cọc xong là xong (dấu đã gỡ). Thưởng Sale nằm ngoài vùng giữ dấu: hỏng thì báo riêng, không chặn lần tạo cọc sau.
       const completedReceipt = {reservationId:createdReservation.id,voucherIds:createdReservation.receipts.map(r=>r.source_voucher_id)};
       setCompleted(completedReceipt);
       const partialMessages: string[] = [];
@@ -324,7 +354,6 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
           });
           if (!r?.voucherId) throw new TypeError("Chưa nhận được mã phiếu thưởng Sale");
           completedReceipt.voucherIds.push(r.voucherId);
-          progress.recordCompleted([r.voucherId]);
           setCompleted({...completedReceipt});
         } catch (e) {
           partialMessages.push("Đã tạo hồ sơ cọc nhưng bước tạo thưởng Sale chưa hoàn tất. " + voucherFailureMessage(e, "tạo phiếu thưởng Sale") + " Kiểm tra các phiếu thưởng gắn với cọc này trước khi tạo bổ sung.");
@@ -343,7 +372,6 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       const received = createdReservation.receipts.some(r => r.received);
       const assignLater = createdReservation.customer_id ? "" : " Nhớ gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.";
       toast.success((received ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ." : "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn.") + assignLater);
-      });
       setCompleted(null);
       form.reset();
       setDepositAttachments([]);
@@ -353,7 +381,14 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to create reservation deposit:", error);
-      const message = error instanceof VoucherPartialError ? error.message : reservationErrorMessage(error); setSubmitError(message); toast.error(message); if (voucherOutcomeUnknown(error)) setUncertain(true);
+      // Chưa rõ kết quả tạo cọc: không khoá nút. Lần bấm sau gửi lại đúng mã của dấu, máy chủ trả lại giữ chỗ cũ
+      // nếu lệnh trước đã tới, nên không tạo cọc thứ hai.
+      const retry = voucherOutcomeUnknown(error) && !(error instanceof FinancialPendingError) && !(error instanceof VoucherPartialError);
+      if (voucherOutcomeUnknown(error) && !(error instanceof VoucherPartialError)) stuckRoom.current = data.room_id;
+      const message = error instanceof VoucherPartialError ? error.message
+        : retry ? 'Chưa xác nhận được kết quả lưu giữ chỗ/cọc. Giữ nguyên phòng rồi bấm «Tạo cọc & giữ chỗ» lần nữa để gửi lại: hệ thống nhận ra lần gửi trước nên không tạo cọc thứ hai.'
+        : reservationErrorMessage(error);
+      setSubmitError(message); toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -878,7 +913,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={submitting || !!completed || uncertain || roomsQuery.isError || roomsQuery.isLoading || accountsQuery.isError || accountsQuery.isLoading}>
+                <Button type="submit" disabled={submitting || !!completed || roomsQuery.isError || roomsQuery.isLoading || accountsQuery.isError || accountsQuery.isLoading}>
                   {submitting ? "Đang tạo..." : "Tạo cọc & giữ chỗ"}
                 </Button>
               </div>
