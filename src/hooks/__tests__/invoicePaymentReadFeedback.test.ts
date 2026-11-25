@@ -95,11 +95,13 @@ it.each([useSaveUtilityMeter,useAddUtilityMeter])('tạo/sửa đồng hồ thi�
  h.rpc.mockResolvedValue({data:null,error:null});const {result}=renderHook(()=>hook() as unknown);
  await expect((result.current as unknown as {mutationFn:(args:unknown)=>Promise<unknown>}).mutationFn({buildingId:'b1',type:'electric',code:'PE1',holder:'A'})).rejects.toThrow();
 });
-it.each([()=>useCancelUtilityBill('2026-09'),useCancelPeriodFee])('hủy phí thiếu/sai voucher receipt không nói thành công và không gửi lại',async hook=>{
+// Đợt 3 đổi: trước đây lần bấm sau không gửi lại (khoá mãi). Huỷ phiếu phí/điện nước là cách A: máy chủ khoá dòng
+// rồi xét deleted_at, nên lần sau chạy lại an toàn; biên nhận sai vẫn không được nói là đã huỷ.
+it.each([()=>useCancelUtilityBill('2026-09'),useCancelPeriodFee])('hủy phí thiếu/sai voucher receipt không nói thành công; lần sau chạy lại, vẫn không nói thành công',async hook=>{
  h.rpc.mockResolvedValue({data:{ok:true,voucher_id:'other'},error:null});const {result}=renderHook(()=>hook() as unknown);
  const mutate=(result.current as unknown as {mutationFn:(id:string)=>Promise<unknown>}).mutationFn;
  await expect(mutate('v1')).rejects.toThrow();const count=h.rpc.mock.calls.length;
- await expect(mutate('v1')).rejects.toThrow();expect(h.rpc).toHaveBeenCalledTimes(count);
+ await expect(mutate('v1')).rejects.toThrow();expect(h.rpc).toHaveBeenCalledTimes(count+1);
 });
 it('xóa đồng hồ null không xác nhận đã xóa',async()=>{
  h.rpc.mockResolvedValue({data:null,error:null});const {result}=renderHook(useDeleteUtilityMeter);
