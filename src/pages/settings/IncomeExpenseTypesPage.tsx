@@ -158,7 +158,8 @@ export default function IncomeExpenseTypesPage() {
       }
       draftKey.current=null;form.reset();setIsFormOpen(false);setEditingType(null);
     } catch (error) {
-      setBlocked(recordWriteBlocked(error));
+      // Tạo mới không khoá form (đợt 4): tên loại là duy nhất trong công ty, bấm lại tự đối chiếu theo tên. Sửa giữ như cũ.
+      setBlocked(isEditing && recordWriteBlocked(error));
       form.setError('root.server',{type:'server',message:recordWriteMessage(error,'lưu loại thu chi')});
     } finally {busy.current=false;}
   };

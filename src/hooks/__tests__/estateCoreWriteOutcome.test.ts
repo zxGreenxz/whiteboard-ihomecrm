@@ -20,23 +20,36 @@ it('new customer without a contract is a walk-in, not an asserted current renter
  expect(core.insert).toHaveBeenCalledWith(expect.objectContaining({status_v2:'WALK_IN',organization_id:'org-a'}));
  expect(io.from).toHaveBeenCalledTimes(1);
 });
-it.each([['customer',useCreateCustomer,{full_name:'An',phone:'0900000000'}],['building',useCreateBuilding,{name:'Tòa A'}]])('%s create needs an ID and blocks uncertain repeat across remount',async(_label,hook,input)=>{
+it.each([['building',useCreateBuilding,{name:'Tòa A'}]])('%s create needs an ID and blocks uncertain repeat across remount',async(_label,hook,input)=>{
  const writer=chain({data:null,error:null});io.from.mockReturnValue(writer);
  await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
  await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
  expect(writer.insert).toHaveBeenCalledTimes(1);
 });
+// Đợt 4: tạo khách không còn khoá chung. Thiếu biên nhận vẫn là chưa rõ; lần sau gửi lại ĐÚNG mã khách cũ (khoá chính
+// chặn khách thứ hai) thay vì bị chặn mãi.
+it('customer create needs an ID and repeats the uncertain create with the same client ID across remount',async()=>{
+ const writer=chain({data:null,error:null});io.from.mockReturnValue(writer);
+ const input={full_name:'An',phone:'0900000000'};
+ await expect((useCreateCustomer() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
+ await expect((useCreateCustomer() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
+ expect(writer.insert).toHaveBeenCalledTimes(2);
+ expect(writer.insert.mock.calls[1][0].id).toBe(writer.insert.mock.calls[0][0].id);
+});
 it.each([['customer',useUpdateCustomer,{id:'c1',data:{full_name:'An'}}],['building',useUpdateBuilding,{id:'b1',updates:{name:'Tòa A'}}],['building status',useUpdateBuildingStatus,{id:'b1',status:'ACTIVE'}]])('%s update needs exact target ID',async(_label,hook,input)=>{
  io.from.mockReturnValue(chain({data:{id:'other',status:'ACTIVE'},error:null}));
  await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
 });
-it('customer vehicle partial preserves core receipt and prevents a second core after remount',async()=>{
+// Đợt 4 (plan: «Bước lưu xe hỏng: khách đã tạo, báo chưa lưu được xe, không giữ dấu»): kết quả vẫn mang mã khách đã
+// tạo, nhưng không còn dấu chặn lần tạo khách sau.
+it('customer vehicle partial preserves core receipt without keeping a pending marker',async()=>{
  const core=chain({data:{id:'c1',full_name:'An'},error:null});const vehicles=chain({data:null,error:{code:'42501',message:'raw SQL'}});
  io.from.mockImplementation(table=>table==='customers'?core:vehicles);
  const input={full_name:'An',phone:'0900000000',vehicles:[{vehicle_type:'MOTORBIKE',license_plate:'59A1'}]};
  const result=await (useCreateCustomer() as unknown as Mutation).mutationFn(input);
  expect(result).toMatchObject({customer:{id:'c1'},vehicleError:{outcome:'partial',completed:[{id:'c1'}]}});
- await expect((useCreateCustomer() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial',completed:[{id:'c1'}]});expect(core.insert).toHaveBeenCalledTimes(1);
+ expect(Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'))).toEqual([]);
+ await (useCreateCustomer() as unknown as Mutation).mutationFn({full_name:'Bình',phone:'0900000009'});expect(core.insert).toHaveBeenCalledTimes(2);
 });
 it('customer vehicle read null never removes old rows',async()=>{
  const core=chain({data:{id:'c1',full_name:'An'},error:null});const vehicles=chain({data:null,error:null});io.from.mockImplementation(table=>table==='customers'?core:vehicles);

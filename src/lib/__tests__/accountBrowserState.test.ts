@@ -142,6 +142,8 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/lib/pendingValveLogQueue.ts": "nhat-ky-chong-ghi-trung",
   "src/hooks/usePendingValveLogFlushOnOpen.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/persistentFinancialWorkflow.ts": "nhat-ky-chong-ghi-trung",
+  // Đọc công ty đang chọn để tìm dấu khoá chung bản trước để lại (đợt 4), gỡ nó qua kho dấu chung.
+  "src/lib/legacyPendingExit.ts": "nhat-ky-chong-ghi-trung",
   "src/hooks/income-expenses/batch.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/leadConversionProgress.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/templateDefaultIntent.ts": "nhat-ky-chong-ghi-trung",

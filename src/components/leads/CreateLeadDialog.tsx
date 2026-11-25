@@ -1,5 +1,5 @@
-import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
-import { useRef, useState } from 'react';
+import {recordWriteMessage} from '@/lib/recordWriteOutcome';
+import { useRef } from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -59,7 +59,6 @@ interface CreateLeadDialogProps {
 
 export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [blocked,setBlocked]=useState(false);
   const busy=useRef(false);
   const createLead = useCreateLead();
   const buildingsQuery=useBuildings();const roomsQuery=useRooms();
@@ -91,7 +90,7 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
     : rooms;
 
   const onSubmit = async (data: LeadFormValues) => {
-    if(blocked || busy.current || createLead.isPending || sourceBlocked)return;
+    if(busy.current || createLead.isPending || sourceBlocked)return;
     busy.current=true;form.clearErrors('root.server');
     try {
       await createLead.mutateAsync({
@@ -109,7 +108,7 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setBlocked(recordWriteBlocked(error));
+      // Không khoá form (đợt 4): bấm lại gửi đúng mã khách hẹn cũ, máy chủ không cho ra bản ghi thứ hai.
       form.setError('root.server',{type:'server',message:recordWriteMessage(error,'tạo khách hẹn')});
     } finally {busy.current=false;}
   };
@@ -129,7 +128,7 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
             <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-destructive">{form.formState.errors.root.server.message}</p>}
               {sourceBlocked && <div role="alert" className="text-destructive">Chưa tải đủ toà nhà hoặc căn hộ. <Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void roomsQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
-              <fieldset disabled={createLead.isPending || blocked || sourceBlocked} className="space-y-4">
+              <fieldset disabled={createLead.isPending || sourceBlocked} className="space-y-4">
               {/* Tên & SĐT */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField
@@ -369,7 +368,7 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={createLead.isPending || blocked || sourceBlocked}>
+                <Button type="submit" disabled={createLead.isPending || sourceBlocked}>
                   {createLead.isPending ? "Đang tạo..." : "Tạo khách hẹn"}
                 </Button>
               </div>
