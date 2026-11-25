@@ -2,7 +2,7 @@
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({queries:{} as Record<string,Record<string,unknown>>,retry:vi.fn()}));
-vi.mock('@/hooks/usePublicRoomTokens',()=>({usePublicRoomTokens:()=>m.queries.tokens}));
+vi.mock('@/hooks/usePublicRoomTokens',()=>({usePublicRoomTokens:()=>m.queries.tokens,useOwnPublicRoomTokens:()=>m.queries.tokens}));
 vi.mock('@/hooks/usePublicRoomsAnalytics',()=>({usePraSummary:()=>m.queries.summary,usePraTimeseries:(_f:unknown,bucket:string)=>m.queries[bucket==='hour'?'hour':'day'],usePraTopRooms:()=>m.queries.rooms,usePraFunnel:()=>m.queries.funnel,usePraByToken:()=>m.queries.links,usePraErrors:()=>m.queries.timeline,usePraErrorGroups:()=>m.queries.errors}));
 vi.mock('@/hooks/usePersistedState',()=>({usePersistedState:(_key:string,initial:unknown)=>[initial,vi.fn()],usePersistedDateRange:()=>[{from:new Date(2026,8,1),to:new Date(2026,8,30)},vi.fn()]}));
 vi.mock('@/components/buildings/BuildingFilterSelect',()=>({default:()=>null}));

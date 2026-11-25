@@ -1,9 +1,8 @@
 import {useQuery,useMutation,useQueryClient} from '@tanstack/react-query';
 import {useOrganization} from '@/contexts/OrganizationContext';
-import {notifyActionError} from '@/lib/actionFeedback';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
-import {validPublicRoomSettings,unconfirmedPublicRoomReceipt,SETTINGS_NO_ORGANIZATION,saveSettingsErrorMessage} from '@/lib/publicRoomFeedback';
+import {validPublicRoomSettings,unconfirmedPublicRoomReceipt,SETTINGS_NO_ORGANIZATION,SAVE_SETTINGS_RULES,notifyRuleError} from '@/lib/publicRoomFeedback';
 import {rpcGetPublicRoomSettings,rpcSavePublicRoomSettings} from '@/lib/publicRoomAdminRpc';
 import {toast} from 'sonner';
 /** sale_policy: chính sách sale chung in ở khối đầu ảnh "DANH SÁCH PHÒNG TRỐNG" (NULL = không in). */
@@ -54,4 +53,4 @@ export function useUpsertPublicRoomSettings(options:{inlineError?:boolean}={}){c
  // Lưu theo CAS: lần gửi lại sau mất phản hồi mang đúng giá trị đã lưu ⇒ máy chủ trả như cũ (changed=false), không báo
  // xung đột; đủ biên nhận mới gỡ dấu "chờ đối chiếu" (không thì vẫn khoá như cũ).
  return persistentFinancialWorkflow('public-room-admin',{scope:'actor'}).run('settings','lưu cài đặt hiển thị',write,async(_prior,progress)=>({result:await write(progress)}));
-},onSuccess:()=>{qc.invalidateQueries({queryKey:KEY});toast.success('Đã lưu cài đặt hiển thị');},onError:error=>{if(!options.inlineError)notifyActionError(error,saveSettingsErrorMessage(error));}});}
+},onSuccess:()=>{qc.invalidateQueries({queryKey:KEY});toast.success('Đã lưu cài đặt hiển thị');},onError:error=>{if(!options.inlineError)notifyRuleError(error,'Chưa lưu được cài đặt hiển thị','lưu cài đặt chung',SAVE_SETTINGS_RULES);}});}

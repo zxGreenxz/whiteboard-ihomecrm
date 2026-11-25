@@ -1,9 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
 import {usePublicRoomSettings,useUpsertPublicRoomSettings,PUBLIC_ROOM_SETTINGS_DEFAULTS,type PublicRoomSettings} from '@/hooks/usePublicRoomSettings';
 import {focusFirstError} from '@/lib/formErrors';
-import {actionErrorMessage} from '@/lib/actionFeedback';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {SALE_POLICY_MAX} from '@/lib/publicRoomFeedback';
+import {SALE_POLICY_MAX,saveSettingsErrorMessage} from '@/lib/publicRoomFeedback';
 export function usePublicRoomSettingsDraft(){
  const settings=usePublicRoomSettings();const hotlines={data:settings.data?.hotlines,isError:settings.isError};const mutation=useUpsertPublicRoomSettings({inlineError:true});
  const root=useRef<HTMLDivElement>(null);const dirty=useRef(false);
@@ -23,7 +22,7 @@ export function usePublicRoomSettingsDraft(){
   if(salePolicy&&salePolicy.length>SALE_POLICY_MAX)next.sale_policy=`Chính sách sale chung tối đa ${SALE_POLICY_MAX} ký tự.`;
   setErrors(next);if(Object.keys(next).length){await focusFirstError(next,{root:root.current??undefined});return false;}
   setWriteError('');try{await mutation.mutateAsync({...form,hotline_id:hotlineId,soon_days:value,sale_policy:salePolicy,expectedUpdatedAt:settings.data?.updatedAt??null});dirty.current=false;setForm(current=>({...current,hotline_id:hotlineId,soon_days:value,sale_policy:salePolicy}));return true;}
-  catch(error){setWriteError(actionErrorMessage(error,'Chưa lưu được cài đặt hiển thị.'));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);return false;}
+  catch(error){setWriteError(saveSettingsErrorMessage(error));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);return false;}
  };
  return {settings,hotlines,mutation,root,form,days,errors,writeError,canSave,set,changeDays,save};
 }

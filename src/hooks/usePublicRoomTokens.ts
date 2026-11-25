@@ -3,10 +3,9 @@ import {supabase} from '@/integrations/supabase/client';
 import type {Database} from '@/integrations/supabase/types';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {getSessionUser} from '@/lib/authSession';
-import {notifyActionError} from '@/lib/actionFeedback';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {CREATE_TOKEN_NO_ORGANIZATION,rememberToken,unconfirmedPublicRoomReceipt,tokenAdminErrorMessage} from '@/lib/publicRoomFeedback';
+import {CREATE_TOKEN_NO_ORGANIZATION,rememberToken,unconfirmedPublicRoomReceipt,TOKEN_ADMIN_RULES,notifyRuleError} from '@/lib/publicRoomFeedback';
 import {rpcListPublicRoomTokens,rpcManagePublicRoomToken,type ManageTokenArgs} from '@/lib/publicRoomAdminRpc';
 import {toast} from 'sonner';
 type TokenRow=Database['public']['Tables']['public_room_share_tokens']['Row'];
@@ -21,7 +20,7 @@ function validToken(data:unknown):data is PublicRoomToken{
   &&(r.owner_name===undefined||r.owner_name===null||typeof r.owner_name==='string');
 }
 const writeGuard=()=>persistentFinancialWorkflow('public-room-admin',{scope:'actor'});
-const report=(error:unknown,options:Options,operation:string)=>{if(!options.inlineError)notifyActionError(error,tokenAdminErrorMessage(error,`Chưa ${operation}`));};
+const report=(error:unknown,options:Options,operation:string)=>{if(!options.inlineError)notifyRuleError(error,`Chưa ${operation}`,'quản lý link chia sẻ',TOKEN_ADMIN_RULES);};
 /**
  * Mọi link chia sẻ của CÔNG TY đang chọn (kể cả do người khác tạo), kèm tên người tạo. Cần quyền sale_phong.manage_tokens —
  * máy chủ kiểm (list_public_room_tokens_v1); màn không có quyền thì truyền enabled=false.

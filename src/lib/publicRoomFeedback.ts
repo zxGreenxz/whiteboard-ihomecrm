@@ -1,3 +1,4 @@
+import {toast} from 'sonner';
 import {actionErrorMessage} from './actionFeedback';
 import {FinancialWorkflowError,type FinancialWorkflowProgress} from './financialWorkflow';
 import {friendlyError,type OperationErrorRule} from './friendlyError';
@@ -85,4 +86,8 @@ export function tokenAdminErrorMessage(error:unknown,title:string):string{
  if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')return actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.');
  const feedback=friendlyError(error,title,{operation:'quản lý link chia sẻ',rules:TOKEN_ADMIN_RULES});
  return `${feedback.title.replace(/[.。]+$/,'')}. ${feedback.description}`;
+}
+/** Báo lỗi bằng toast (khi màn không hiện lỗi tại chỗ) với đúng lý do của máy chủ theo bộ luật của thao tác. */
+export function notifyRuleError(error:unknown,title:string,operation:string,rules:readonly OperationErrorRule[]):void{
+ const feedback=friendlyError(error,title,{operation,rules});toast.error(feedback.title,{description:feedback.description});
 }

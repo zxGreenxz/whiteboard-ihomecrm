@@ -12,7 +12,7 @@ import { focusFirstError } from '@/lib/formErrors';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { SaleRoomOperationError, saleRoomOperationErrorMessage, saleInventoryAtTime, saleInventoryClock } from '@/lib/saleRoomOperations';
 import { usePublicRoomSettings, useUpsertPublicRoomSettings, PUBLIC_ROOM_SETTINGS_DEFAULTS, type PublicRoomSettings } from '@/hooks/usePublicRoomSettings';
-import { SALE_POLICY_MAX } from '@/lib/publicRoomFeedback';
+import { SALE_POLICY_MAX, saveSettingsErrorMessage } from '@/lib/publicRoomFeedback';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 import {
   applySheetDraft, dropSaved, effectiveHotline, isPhone, sheetChanges, sheetErrors as validateSheet,
@@ -238,7 +238,8 @@ export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
         const cause = error.failure instanceof SaleRoomOperationError ? saleRoomOperationErrorMessage(error.failure) : actionErrorMessage(error.failure, 'Chưa xác nhận được lần lưu. Đọc lại trước khi thử tiếp.');
         setSheetWriteError(`${savedKeys.length ? `Đã lưu ${savedKeys.length}/${error.total} ô. ` : ''}${cause} Các ô chưa xác nhận vẫn được giữ.`);
       } else {
-        settle(savedKeys); setWriteError(actionErrorMessage(error, 'Chưa lưu được cài đặt chung. Bản nháp vẫn được giữ.'));
+        // Lý do thật của máy chủ (PT409 «đã có người sửa», thiếu quyền, hotline không hợp lệ…) — publicRoomFeedback.
+        settle(savedKeys); setWriteError(saveSettingsErrorMessage(error));
         if (error instanceof FinancialWorkflowError && error.outcome !== 'failure') setAccountUnknown(true);
       }
       return false;
