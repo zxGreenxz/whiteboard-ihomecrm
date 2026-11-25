@@ -137,14 +137,18 @@ describe('tạo khách: mã đã có trên máy chủ (review lượt 1)', () =>
     expect(io.server.rows.customers).toHaveLength(1);
   });
 
-  it('khách khác trùng TÊN (khác SĐT) không dùng lại mã của lần gửi chưa rõ', async () => {
+  // Review lượt 2 (N1): sửa SĐT giữa hai lần vẫn phải nhận ra cùng người theo tên; người khác trùng tên thì chỉ nhận
+  // một lần báo «đã có», bấm lại là tạo.
+  it('sửa SĐT giữa hai lần (lần trước đã ghi): không tạo khách thứ hai, báo mã; người khác trùng tên bấm lại thì tạo', async () => {
     const mutate = create();
-    io.server.failNext('customers', 'insert', 'drop-before');
+    io.server.failNext('customers', 'insert', 'drop-after');
     io.server.failNext('customers', 'read', 'drop-before');
     await expect(mutate(an)).rejects.toMatchObject({ outcome: 'unknown' });
-    await mutate({ full_name: 'Khách An', phone: '0911111111' });
-    const [first, other] = customerInserts();
-    expect(other.id).not.toBe(first.id);
+    const firstId = String(customerInserts()[0].id);
+    await expect(mutate({ ...an, phone: '0911111111' })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining(firstId) });
+    expect(io.server.rows.customers).toHaveLength(1);
+    await mutate({ ...an, phone: '0911111111' });
+    expect(io.server.rows.customers).toHaveLength(2);
   });
 });
 

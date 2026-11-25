@@ -67,6 +67,16 @@ describe('tạo khách hẹn', () => {
     expect(io.server.rows.leads).toHaveLength(1);
   });
 
+  it('sửa SĐT giữa hai lần (lần trước đã ghi): không tạo khách hẹn thứ hai, báo mã', async () => {
+    const mutate = create();
+    io.server.failNext('leads', 'insert', 'drop-after');
+    io.server.failNext('leads', 'read', 'drop-before');
+    await expect(mutate(an)).rejects.toMatchObject({ outcome: 'unknown' });
+    const firstId = String(leadInserts()[0].id);
+    await expect(mutate({ ...an, phone: '0911111111' })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining(firstId) });
+    expect(io.server.rows.leads).toHaveLength(1);
+  });
+
   it('dấu khoá chung của bản trước (không tên thao tác) không chặn; dấu được gỡ', async () => {
     const key = seedLegacyPending({ namespace: 'useCreateLead', userId: 'actor', organizationId: 'org-a', businessKey: 'create' }, new Date(Date.now() - 10 * 60_000));
     await create()(binh);

@@ -1,5 +1,5 @@
 import {supabase} from '@/integrations/supabase/client';
-import {FinancialAlreadyRecordedError,isConfirmedFinancialRejection} from './financialWorkflow';
+import {FinancialAlreadyRecordedError,FinancialWorkflowError,isConfirmedFinancialRejection} from './financialWorkflow';
 import {confirmedRecordId,recordWriteMessage} from './recordWriteOutcome';
 import {personMatchKeys} from './clientRecordCreate';
 import {legacyWindow,settleLegacyPending} from './legacyPendingExit';
@@ -62,7 +62,11 @@ export async function importCustomerBatch(rows:CustomerImportRow[],steps:{create
    const reason=recordWriteMessage(error,'nhập khách hàng');
    if(error instanceof FinancialAlreadyRecordedError){result.skippedRows.push({name:row.full_name,id:error.recordIds[0]??'',reason});continue;}
    if(isConfirmedFinancialRejection(error)){result.failRows.push({name:row.full_name,reason});continue;}
-   // Chưa rõ kết quả: dừng lượt (mạng có thể đang hỏng), báo dòng này và các dòng sau để nhập lại đúng mã.
+   // Chưa rõ kết quả: dừng lượt (mạng có thể đang hỏng), báo dòng này và các dòng sau để nhập lại đúng mã. Mã đang
+   // chờ có thể khác mã của dòng (khách cũ của dòng đã bị xoá nên vừa tạo lại bằng mã mới): nhập lại dùng đúng mã đó.
+   const pendingId=error instanceof FinancialWorkflowError?error.completed[0]?.id:undefined;
+   if(pendingId)row.client_id=pendingId;
+   row.retry_unconfirmed=true;
    result.unknownRows.push({name:row.full_name,reason});
    const rest=rows.slice(index+1);
    for(const remaining of rest)result.unknownRows.push({name:remaining.full_name,reason:'Chưa gửi dòng này vì dòng trước chưa xác nhận được kết quả. Bấm nhập lại các dòng chưa xong.'});
@@ -72,9 +76,12 @@ export async function importCustomerBatch(rows:CustomerImportRow[],steps:{create
   const id=created.id;
   // Mã thật của khách (khác mã đã gửi khi khách cũ của dòng đã bị xoá và phải tạo lại bằng mã mới).
   row.client_id=id;
-  if(created.replayed){
-   // Khách mang mã của dòng này đã có từ lượt trước (dòng chưa rõ đã ghi, hoặc nhập lại cùng file): không tạo thêm,
-   // không cập nhật theo file lần này, không tải lại ảnh.
+  const recovered=row.retry_unconfirmed===true;
+  row.retry_unconfirmed=undefined;
+  if(created.replayed&&!recovered){
+   // Khách mang mã của dòng này đã có từ một lượt nhập xong trước đó (nhập lại cùng file): không tạo thêm, không cập
+   // nhật theo file lần này, không tải lại ảnh. Dòng chưa rõ ở lượt trước thì khác: lần đó chưa tới bước ảnh, nên làm
+   // tiếp như vừa tạo xong (tải ảnh, tính thành công).
    result.skippedRows.push({name:row.full_name,id,reason:`Đã có từ lượt nhập trước (mã ${id}); không tạo thêm và không cập nhật theo file lần này. Kiểm tra ảnh CCCD của khách nếu cần.`});
    continue;
   }

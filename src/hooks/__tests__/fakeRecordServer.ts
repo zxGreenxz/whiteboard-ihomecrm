@@ -74,7 +74,7 @@ export function fakeRecordServer(): FakeRecordServer {
 
   function builder(table: string) {
     const filters: Filter[] = [];
-    let mode: 'read' | 'insert' = 'read';
+    let mode: 'read' | 'insert' | 'update' = 'read';
     let payload: Row | Row[] | undefined;
     let limit: number | undefined;
     let order: { column: string; ascending: boolean } | undefined;
@@ -88,6 +88,12 @@ export function fakeRecordServer(): FakeRecordServer {
         if (result.error) return result;
         const stored = result.data as Row[];
         return { data: shape === 'many' ? stored : stored[0] ?? null, error: null };
+      }
+      if (mode === 'update') {
+        const changed = tableRows(table).filter(row => filters.every(filter => filter(row)));
+        for (const row of changed) Object.assign(row, payload);
+        if (shape === 'many') return { data: changed, error: null };
+        return changed.length === 1 ? { data: changed[0], error: null } : { data: null, error: { code: 'PGRST116', message: 'not single' } };
       }
       const failure = takeFailure(`${table}:read`);
       if (failure) return { data: null, error: NETWORK_ERROR };
@@ -104,6 +110,7 @@ export function fakeRecordServer(): FakeRecordServer {
     };
     const query = {
       insert: (value: Row | Row[]) => { mode = 'insert'; payload = value; return query; },
+      update: (value: Row) => { mode = 'update'; payload = value; return query; },
       select: () => query,
       eq: (column: string, value: unknown) => { filters.push(row => row[column] === value); return query; },
       neq: (column: string, value: unknown) => { filters.push(row => row[column] !== value); return query; },

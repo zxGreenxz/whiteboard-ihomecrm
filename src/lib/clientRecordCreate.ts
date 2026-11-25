@@ -9,9 +9,10 @@
 //   duy nhất của hai bảng này đều nằm trên `id` (production 25/11/2026), nên 23505 tự nó chứng minh mã đã có.
 //
 // CÁCH DÙNG
-//   Mỗi lần tạo chọn mã qua `pickClientId`: lần gửi trước của CÙNG người (trùng SĐT hoặc số giấy tờ; không có SĐT
-//   thì trùng tên chuẩn hoá) trong cùng người dùng và công ty mà chưa biết chắc kết quả, kể cả lần còn đang gửi, thì
-//   dùng lại mã đó. Bộ nhớ này sống theo tab, không ghi vào trình duyệt, không chặn gì: tải lại trang là quên.
+//   Mỗi lần tạo chọn mã qua `pickClientId`: lần gửi trước của cùng người (trùng SĐT, số giấy tờ hoặc tên chuẩn hoá,
+//   để sửa SĐT hay sửa tên giữa hai lần vẫn nhận ra) trong cùng người dùng và công ty mà chưa biết chắc kết quả, kể cả
+//   lần còn đang gửi, thì dùng lại mã đó. Chọn nhầm người khác trùng tên chỉ dẫn tới MỘT lần báo «đã có» (dòng đọc
+//   lại khác người đang tạo, xem `samePerson`), không bao giờ ghi đè hay trùng. Bộ nhớ này sống theo tab, không ghi vào trình duyệt, không chặn gì: tải lại trang là quên.
 import { supabase } from '@/integrations/supabase/client';
 import { FinancialAlreadyRecordedError, FinancialWorkflowError } from './financialWorkflowError';
 import { hasUnconfirmedResponse } from './operationOutcome';
@@ -49,6 +50,13 @@ export function personMatchKeys(fields: { name?: unknown; phone?: unknown; idNum
 }
 
 /** Cùng một người theo các trường nhận dạng: tên chuẩn hoá, SĐT (chữ số), số giấy tờ (trường nào có ở cả hai bên). */
+/** Khoá để chọn lại mã trong bộ nhớ: như `personMatchKeys` nhưng luôn có tên (sửa SĐT giữa hai lần vẫn khớp). */
+export function memoryMatchKeys(fields: { name?: unknown; phone?: unknown; idNumber?: unknown }): string[] {
+  const keys = personMatchKeys(fields);
+  const name = normalizeVietnameseName(fields.name);
+  return name && !keys.includes(`n:${name}`) ? [...keys, `n:${name}`] : keys;
+}
+
 export function samePerson(a: { name?: unknown; phone?: unknown; idNumber?: unknown }, b: { name?: unknown; phone?: unknown; idNumber?: unknown }): boolean {
   const same = (x: string, y: string) => !x || !y || x === y;
   const idA = typeof a.idNumber === 'string' ? a.idNumber.trim() : '';
@@ -185,7 +193,7 @@ export type CreateWithMemoryOutcome<T> = { row: T; replayed: boolean; clientId: 
  * ném `FinancialAlreadyRecordedError` nêu mã bản ghi đã có; lần bấm sau là lượt mới. Dòng đã bị xoá: tạo lại bằng mã mới.
  */
 export async function createWithClientMemory<T extends Row>(input: CreateWithMemoryInput): Promise<CreateWithMemoryOutcome<T>> {
-  const matchKeys = personMatchKeys(input.person);
+  const matchKeys = memoryMatchKeys(input.person);
   const { table, userId, organizationId } = input;
   const choice = input.clientId ? { id: input.clientId, reused: false } : pickClientId(table, userId, organizationId, matchKeys);
   rememberUnconfirmed(table, userId, organizationId, { id: choice.id, matchKeys });

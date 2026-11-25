@@ -41,6 +41,8 @@ export interface CustomerImportRow {
   _phone_warning?: string;
   /** Mã khách do trình duyệt sinh cho dòng này lúc đọc file: nhập lại dòng đó gửi đúng mã này, không tạo khách thứ hai. */
   client_id?: string;
+  /** Lượt nhập trước chưa xác nhận được kết quả của dòng này: lần nhập lại thấy khách đã có thì làm tiếp bước ảnh. */
+  retry_unconfirmed?: boolean;
 }
 
 export interface CustomerImportResult {

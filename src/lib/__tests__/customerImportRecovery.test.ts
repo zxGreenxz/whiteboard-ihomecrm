@@ -49,6 +49,35 @@ describe('nhập khách Excel', () => {
     expect(pendingKeys()).toEqual([]);
   });
 
+  // Review lượt 2 (N2): dòng chưa rõ thật ra đã ghi ⇒ lần nhập lại máy chủ báo trùng mã, đọc lại thấy khách (replayed).
+  // Lần trước chưa tới bước ảnh, nên lần này phải tải ảnh và tính thành công, không xếp vào «bỏ qua».
+  it('nhập lại dòng chưa rõ mà khách đã có: vẫn tải ảnh CCCD và tính thành công', async () => {
+    io.server.rows.customers = [{ id: 'id-a', full_name: 'Khách A' }];
+    const create = vi.fn()
+      .mockRejectedValueOnce(unknown())
+      .mockImplementation(async (row: Row) => ({ id: row.client_id, replayed: row.client_id === 'id-a' }));
+    const uploadImages = vi.fn().mockResolvedValue({ front: 'stored/a-front.jpg' });
+    const rows: Row[] = [{ full_name: 'Khách A', phone: '0900000021', client_id: 'id-a', id_image_urls: ['https://example.com/a.jpg'] }];
+    const reports: Report[] = [];
+    await importCustomerBatch(rows as never, { create: create as never, uploadImages }, report => reports.push(report as Report));
+    expect(uploadImages).not.toHaveBeenCalled();
+    await importCustomerBatch((reports.at(-1)?.retryRows ?? rows) as never, { create: create as never, uploadImages }, report => reports.push(report as Report));
+    expect(uploadImages).toHaveBeenCalledTimes(1);
+    expect(reports.at(-1)?.successRows.map(row => row.id)).toEqual(['id-a']);
+    expect(reports.at(-1)?.skippedRows ?? []).toEqual([]);
+    expect(io.server.rows.customers[0].id_images).toEqual({ front: 'stored/a-front.jpg' });
+  });
+
+  it('dòng chưa rõ mang mã đang chờ khác mã của dòng (khách cũ đã xoá, tạo lại bằng mã mới): nhập lại dùng đúng mã đang chờ', async () => {
+    const create = vi.fn()
+      .mockRejectedValueOnce(new FinancialWorkflowError('Chưa xác nhận được kết quả tạo khách hàng.', 'unknown', [{ id: 'id-moi', label: 'Mã bản ghi đang chờ xác nhận' }]))
+      .mockImplementation(async (row: Row) => ({ id: row.client_id }));
+    const first = await runImport([{ full_name: 'Khách A', phone: '0900000021', client_id: 'id-cu' }], create);
+    expect(first.report?.retryRows?.[0].client_id).toBe('id-moi');
+    await runImport(first.report?.retryRows ?? [], create);
+    expect(create.mock.calls[1][0]).toMatchObject({ client_id: 'id-moi' });
+  });
+
   it('mọi dòng có kết quả rõ (kể cả ảnh chưa xong): không giữ dấu, lượt nhập sau không bị chặn', async () => {
     const create = vi.fn(async (row: Row) => ({ id: row.client_id }));
     const rows: Row[] = [{ full_name: 'Khách A', phone: '0900000021', client_id: 'id-a', id_image_urls: ['https://example.com/a.jpg'] }];
