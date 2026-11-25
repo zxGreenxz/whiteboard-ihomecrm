@@ -120,6 +120,12 @@ describe('reservation deposit management visibility', () => {
     expect(await query.queryFn()).toMatchObject({hold:null,vouchers:[{id,received:true,outsideWindow:true}]});
     expect(requestUrls()[0].pathname).toMatch(/get_contract_room_deposits_v1$/);
   });
+  it('rejects a duplicated source before calculating the paid room deposit', async () => {
+    const source = {...voucher('00000000-0000-4000-8000-000000000001'), received: true};
+    mocks.fetch.mockResolvedValueOnce(respond({hold: null, vouchers: [source, source]}));
+    const query = orphanQueryOptions('room-1') as unknown as {queryFn: () => Promise<unknown>};
+    await expect(query.queryFn()).rejects.toThrow('phiếu bị lặp');
+  });
   it('reports a failed exclusion read instead of presenting an empty deposit list', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.fetch.mockResolvedValueOnce(respond({

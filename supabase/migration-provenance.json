@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T10:48:14.634Z",
+  "generatedAt": "2026-11-25T11:00:13.507Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 987,
-    "unknown": 81,
+    "ledger-applied": 988,
+    "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14755,14 +14755,9 @@
       "name": "contract_room_deposit_sources",
       "scheme": "timestamp14",
       "sha256": "f00ecc40f9d910be0dff1fa8361c76c576136825f99fcf562f6f223e88ec4af2",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.contract_room_deposit_sources_v1",
-        "function:app_private.contract_hold_has_missing_deposit_v1",
-        "function:public.get_contract_room_deposits_v1",
-        "function:app_private.release_settled_room_hold_v1",
-        "trigger:public.reservation_deposit_settlements.release_settled_room_hold"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T11:00:06.764Z|bien-nhan-backup"
       ]
     },
     {

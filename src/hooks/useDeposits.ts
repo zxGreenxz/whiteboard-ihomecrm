@@ -1,7 +1,6 @@
-import {z} from 'zod';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { reservationErrorMessage } from "@/lib/reservationIdentityRpc";
-import { readReservationReceivedFacts, type ReservationReceivedInvoker } from "@/lib/reservationDepositReceived";
+import { readContractRoomDeposits, readReservationReceivedFacts, type ReservationReceivedInvoker } from "@/lib/reservationDepositReceived";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
@@ -33,19 +32,6 @@ export interface DepositWithRelations extends Deposit {
   };
 }
 
-const contractRoomDepositsSchema = z.object({
-  hold: z.object({ id: z.string().guid(), revision: z.number().int().positive(), hint: z.string().nullable() }).nullable(),
-  vouchers: z.array(z.object({
-    id: z.string().guid(), code: z.string().nullable(), name: z.string(), total_amount: z.number().finite().nonnegative(),
-    voucher_date: z.iso.date(), approval_status: z.string(), received: z.boolean(),
-  })),
-});
-
-type ReadContractRoomDeposits = (name: 'get_contract_room_deposits_v1', args: {
-  p_organization_id: string; p_room_id: string;
-}) => PromiseLike<{data: unknown; error: unknown}>;
-const readContractRoomDeposits = (supabase.rpc as unknown as ReadContractRoomDeposits).bind(supabase);
-
 export function useContractRoomDeposits(roomId?: string, startDate?: string) {
   const { selectedOrganizationId } = useOrganization();
   return useQuery({
@@ -53,11 +39,7 @@ export function useContractRoomDeposits(roomId?: string, startDate?: string) {
     enabled: !!selectedOrganizationId && !!roomId,
     queryFn: async () => {
       if (!roomId || !selectedOrganizationId) throw new Error('Chọn phòng và tổ chức để đọc cọc.');
-      const {data, error} = await readContractRoomDeposits('get_contract_room_deposits_v1', {
-        p_organization_id: selectedOrganizationId, p_room_id: roomId,
-      });
-      if (error) throw error;
-      const snapshot = contractRoomDepositsSchema.parse(data);
+      const snapshot = await readContractRoomDeposits(selectedOrganizationId, roomId);
       const cutoff = startDate ? new Date(startDate + 'T00:00:00Z') : null;
       if (cutoff) cutoff.setUTCDate(cutoff.getUTCDate() + 7);
       const latest = cutoff && Number.isFinite(cutoff.getTime()) ? cutoff.toISOString().slice(0,10) : null;
