@@ -82,6 +82,11 @@ const STAGE_30 =
 // mặt giờ thuộc về stage định nghĩa nó sau cùng, tức stage 31.
 const STAGE_31 =
   "supabase/migrations/20261110160847_network_center_camera_vendor_hikvision_v1.sql";
+// Stage 32 (24/11/2026): cảnh báo camera v2 (lọc nhiễu, chọn loại sự cố, nhóm
+// Zalo). Sinh sau phép đo 03/08/2026 nên toàn bộ descriptor và thân hàm của nó
+// vắng mặt, cùng khuôn stage 29/30.
+const STAGE_32 =
+  "supabase/migrations/20261124171943_network_center_camera_alerts_v2.sql";
 
 // Measured against production on 2026-08-03, read-only, via the Management API.
 // These are the ONLY manifest descriptors that were absent.
@@ -180,6 +185,78 @@ const MEASURED_ABSENT_STAGE_30 = [
   "table:app_private.camera_shares",
 ];
 
+// Cảnh báo camera v2 (stage 32): ghi tường minh từng descriptor như stage 28–30,
+// để bề mặt của nó đổi thì fixture này đỏ.
+const MEASURED_ABSENT_STAGE_32 = [
+  "function:app_private.camera_alert_actor_can_edit_v1(uuid)",
+  "function:app_private.camera_alert_actor_can_view_v1(uuid)",
+  "function:app_private.camera_alert_channel_label_v1(jsonb)",
+  "function:app_private.camera_alert_clock_v1(timestamp with time zone,text,timestamp with time zone)",
+  "function:app_private.camera_alert_compose_v1(text,jsonb,text)",
+  "function:app_private.camera_alert_default_types_v1()",
+  "function:app_private.camera_alert_duration_v1(numeric)",
+  "function:app_private.camera_alert_evaluate_org_v1(app_private.camera_alert_settings,timestamp with time zone)",
+  "function:app_private.camera_alert_evaluate_v1(timestamp with time zone)",
+  "function:app_private.camera_alert_event_v1(text,app_private.camera_alert_conditions,uuid,jsonb,timestamp with time zone)",
+  "function:app_private.camera_alert_line_v1(text,text,text,jsonb,text,timestamp with time zone,text)",
+  "function:app_private.camera_alert_lines_v1(jsonb,text,timestamp with time zone,text,integer)",
+  "function:app_private.camera_alert_morning_digest_v1(app_private.camera_alert_settings,boolean,timestamp with time zone,integer)",
+  "function:app_private.camera_alert_night_digest_v1(app_private.camera_alert_settings,boolean,timestamp with time zone,integer)",
+  "function:app_private.camera_alert_open_v1(app_private.camera_alert_conditions,text,boolean,uuid,jsonb,integer,text,timestamp with time zone)",
+  "function:app_private.camera_alert_pending_items_v1(uuid,boolean,timestamp with time zone)",
+  "function:app_private.camera_alert_recorder_label_v1(jsonb)",
+  "function:app_private.camera_alert_release_pending_v1(uuid,boolean,timestamp with time zone,uuid)",
+  "function:app_private.camera_alert_retire_v1(app_private.camera_alert_conditions,text,timestamp with time zone)",
+  "function:app_private.camera_alert_route_v1(jsonb,text)",
+  "function:app_private.camera_alert_router_cause_v1(uuid,uuid,uuid,timestamp with time zone)",
+  "function:app_private.camera_alert_send_bell_v1(app_private.camera_alert_settings,boolean,text,jsonb,text,timestamp with time zone)",
+  "function:app_private.camera_alert_send_zalo_v1(app_private.camera_alert_settings,boolean,text,text,uuid[],text,boolean,timestamp with time zone,jsonb)",
+  "function:app_private.camera_alert_settings_view_v1(uuid)",
+  "function:app_private.camera_alert_threshold_v1(jsonb,text)",
+  "function:app_private.camera_alert_transition_v1(uuid,text,timestamp with time zone,jsonb)",
+  "function:app_private.camera_alert_types_v1(jsonb)",
+  "function:app_private.camera_alert_zalo_enqueue_v1(uuid,uuid,uuid,text,text,uuid)",
+  "function:app_private.network_center_alert_recipient_ids_v1(uuid,uuid)",
+  "function:public.camera_alert_acknowledge_incident_v1(uuid)",
+  "function:public.camera_alert_clear_channel_mute_v1(uuid,integer)",
+  "function:public.camera_alert_get_settings_v1(uuid)",
+  "function:public.camera_alert_list_deliveries_v1(uuid,text,integer,timestamp with time zone,uuid)",
+  "function:public.camera_alert_list_zalo_groups_v1(uuid,text,integer)",
+  "function:public.camera_alert_save_settings_v1(uuid,bigint,jsonb)",
+  "function:public.camera_alert_send_test_v1(uuid)",
+  "function:public.camera_alert_set_channel_mute_v1(uuid,integer,text,timestamp with time zone,text)",
+  "function:public.camera_building_channel_mutes_v1(uuid)",
+  "function:public.camera_building_incidents_v1(uuid)",
+  "index:app_private:camera_alert_audit_org_idx",
+  "index:app_private:camera_alert_audit_pkey",
+  "index:app_private:camera_alert_channel_mutes_org_idx",
+  "index:app_private:camera_alert_channel_mutes_pkey",
+  "index:app_private:camera_alert_conditions_org_idx",
+  "index:app_private:camera_alert_conditions_pkey",
+  "index:app_private:camera_alert_deliveries_cap_idx",
+  "index:app_private:camera_alert_deliveries_dedup_key_key",
+  "index:app_private:camera_alert_deliveries_org_time_idx",
+  "index:app_private:camera_alert_deliveries_pending_idx",
+  "index:app_private:camera_alert_deliveries_pkey",
+  "index:app_private:camera_alert_events_delivery_idx",
+  "index:app_private:camera_alert_events_digest_idx",
+  "index:app_private:camera_alert_events_fingerprint_idx",
+  "index:app_private:camera_alert_events_pkey",
+  "index:app_private:camera_alert_settings_pkey",
+  "rls:app_private.camera_alert_audit",
+  "rls:app_private.camera_alert_channel_mutes",
+  "rls:app_private.camera_alert_conditions",
+  "rls:app_private.camera_alert_deliveries",
+  "rls:app_private.camera_alert_events",
+  "rls:app_private.camera_alert_settings",
+  "table:app_private.camera_alert_audit",
+  "table:app_private.camera_alert_channel_mutes",
+  "table:app_private.camera_alert_conditions",
+  "table:app_private.camera_alert_deliveries",
+  "table:app_private.camera_alert_events",
+  "table:app_private.camera_alert_settings",
+];
+
 const MEASURED_STALE_BODIES = [
   "app_private.network_center_bind_managed_interface_v1",
   "app_private.network_center_worker_inventory_legacy_impl_v1",
@@ -187,6 +264,45 @@ const MEASURED_STALE_BODIES = [
   "public.network_center_watchdog_liveness_v1",
 ];
 const MEASURED_ABSENT_BODIES = [
+  "app_private.camera_alert_actor_can_edit_v1",
+  "app_private.camera_alert_actor_can_view_v1",
+  "app_private.camera_alert_channel_label_v1",
+  "app_private.camera_alert_clock_v1",
+  "app_private.camera_alert_compose_v1",
+  "app_private.camera_alert_default_types_v1",
+  "app_private.camera_alert_duration_v1",
+  "app_private.camera_alert_evaluate_org_v1",
+  "app_private.camera_alert_evaluate_v1",
+  "app_private.camera_alert_event_v1",
+  "app_private.camera_alert_line_v1",
+  "app_private.camera_alert_lines_v1",
+  "app_private.camera_alert_morning_digest_v1",
+  "app_private.camera_alert_night_digest_v1",
+  "app_private.camera_alert_open_v1",
+  "app_private.camera_alert_pending_items_v1",
+  "app_private.camera_alert_recorder_label_v1",
+  "app_private.camera_alert_release_pending_v1",
+  "app_private.camera_alert_retire_v1",
+  "app_private.camera_alert_route_v1",
+  "app_private.camera_alert_router_cause_v1",
+  "app_private.camera_alert_send_bell_v1",
+  "app_private.camera_alert_send_zalo_v1",
+  "app_private.camera_alert_settings_view_v1",
+  "app_private.camera_alert_threshold_v1",
+  "app_private.camera_alert_transition_v1",
+  "app_private.camera_alert_types_v1",
+  "app_private.camera_alert_zalo_enqueue_v1",
+  "app_private.network_center_alert_recipient_ids_v1",
+  "public.camera_alert_acknowledge_incident_v1",
+  "public.camera_alert_clear_channel_mute_v1",
+  "public.camera_alert_get_settings_v1",
+  "public.camera_alert_list_deliveries_v1",
+  "public.camera_alert_list_zalo_groups_v1",
+  "public.camera_alert_save_settings_v1",
+  "public.camera_alert_send_test_v1",
+  "public.camera_alert_set_channel_mute_v1",
+  "public.camera_building_channel_mutes_v1",
+  "public.camera_building_incidents_v1",
   "app_private.camera_share_actor_can_v1",
   "app_private.camera_share_cleanup_v1",
   "app_private.camera_share_of_session_v1",
@@ -236,6 +352,7 @@ async function productionFixture() {
     ...MEASURED_ABSENT_STAGE_28,
     ...MEASURED_ABSENT_STAGE_29,
     ...MEASURED_ABSENT_STAGE_30,
+    ...MEASURED_ABSENT_STAGE_32,
   ]);
   const present = every.filter((descriptor) => !absent.has(descriptor));
 
@@ -257,20 +374,21 @@ async function productionFixture() {
 // testing something else.
 test("the fixture reproduces the state measured on production", async () => {
   const { manifest, expectations, present, live, every } = await productionFixture();
-  assert.equal(every.length, 505);
+  assert.equal(every.length, 572);
   assert.equal(present.length, 438);
-  assert.equal(manifest.migrations.length, 31);
+  assert.equal(manifest.migrations.length, 32);
   assert.equal(manifest.migrations[22].path, STAGE_23);
   assert.equal(manifest.migrations[24].path, STAGE_25);
   assert.equal(manifest.migrations[26].path, STAGE_27);
   assert.equal(manifest.migrations[28].path, STAGE_29);
   assert.equal(manifest.migrations[29].path, STAGE_30);
   assert.equal(manifest.migrations[30].path, STAGE_31);
+  assert.equal(manifest.migrations[31].path, STAGE_32);
   const classification = classifyCatalog(manifest, present, { expectations, live });
-  assert.equal(classification.bodyMismatches.length, 28);
+  assert.equal(classification.bodyMismatches.length, 67);
   assert.deepEqual(
     [...new Set(classification.bodyMismatches.map((item) => item.migration))].sort(),
-    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29, STAGE_30, STAGE_31].sort(),
+    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29, STAGE_30, STAGE_31, STAGE_32].sort(),
     "every stale body must belong to an unapplied stage; an earlier one would be a different bug",
   );
 });
