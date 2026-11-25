@@ -1,3 +1,7 @@
+import { createVoucherFromForm } from '@/hooks/income-expenses/formCreatePending';
+import type { CreateIncomeExpenseInput } from '@/hooks/income-expenses/types';
+import { getSessionUser } from '@/lib/authSession';
+import { voucherFailureMessage } from '@/lib/voucherFeedback';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useDepositIncomeHold } from '@/hooks/useDepositIncomeHold';
 import { DepositScheduleFields,emptyDepositSchedule } from '@/components/deposits/DepositScheduleFields';
@@ -262,9 +266,9 @@ const IncomeExpenseQuickCreateDialog = ({
   const [schedule,setSchedule]=useState(emptyDepositSchedule);
   const [payer,setPayer]=useState('');
   const seen=useRef<{id:string|null;revision?:number}>({id:null});
-  const request=useRef('');
+  const [saveError,setSaveError]=useState('');
   useEffect(()=>{
-    seen.current={id:null}; request.current=crypto.randomUUID();setSchedule(emptyDepositSchedule);setPayer('');
+    seen.current={id:null}; setSaveError('');setSchedule(emptyDepositSchedule);setPayer('');
   },[open,parsed.roomId,isDeposit]);
   useEffect(()=>{
     if(!hold.data||!isDeposit||seen.current.id===hold.data.id)return;
@@ -287,7 +291,7 @@ const IncomeExpenseQuickCreateDialog = ({
     const note = parsed.noteText.trim();
     const name = note || parsed.typeName || raw.trim();
     try {
-      await createIE.mutateAsync({
+      const input:CreateIncomeExpenseInput={
         type: mode,
         name,
         building_id: parsed.buildingId!,
@@ -295,7 +299,7 @@ const IncomeExpenseQuickCreateDialog = ({
         tenant_id: null,
         contract_id: null,
         payer_name: isDeposit?payer.trim()||null:null,
-        ...(isDeposit?{idempotency_key:request.current,deposit_terms:{expected_hold:seen.current.id,expected_revision:seen.current.revision,
+        ...(isDeposit?{deposit_terms:{expected_hold:seen.current.id,expected_revision:seen.current.revision,
           hold_until:schedule.holdUntil||null,intended_move_in_on:schedule.moveIn||null,topup_due_on:schedule.topup||null}}:{}),
         account_id: accountId,
         voucher_date: d,
@@ -314,11 +318,19 @@ const IncomeExpenseQuickCreateDialog = ({
             end_date: d,
           },
         ],
-      });
+      };
+      setSaveError('');
+      if (isDeposit) {
+        const actor=await getSessionUser();
+        if (!actor || !selectedOrganizationId) throw new Error('Đăng nhập và chọn tổ chức trước khi lưu phiếu cọc.');
+        await createVoucherFromForm(input,{userId:actor.id,organizationId:selectedOrganizationId,create:createIE.mutateAsync});
+      } else {
+        await createIE.mutateAsync(input);
+      }
       onOpenChange(false);
       onSaved?.();
-    } catch {
-      // toast handled by hook
+    } catch (error) {
+      setSaveError(voucherFailureMessage(error, "lập phiếu"));
     }
   };
 
@@ -327,6 +339,7 @@ const IncomeExpenseQuickCreateDialog = ({
 
   const formBody = (
     <>
+      {saveError && <p role="alert">{saveError}</p>}
       {isDeposit&&parsed.roomId&&<div className="space-y-2">
         <label className="block text-sm">Người gửi<input className="block w-full rounded border p-2" value={payer} onChange={e=>setPayer(e.target.value)}/></label>
         <DepositScheduleFields key={hold.data?.id??parsed.roomId} voucherDate={today()} value={schedule} onChange={setSchedule}/>

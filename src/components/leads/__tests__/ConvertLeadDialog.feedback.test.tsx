@@ -36,3 +36,12 @@ it('requires reconciliation for an uncertain historical conversion',async()=>{
   expect(await screen.findByText(/Lần chuyển khách hẹn trước cần đối chiếu/)).toBeTruthy();
   expect(io.rpc).not.toHaveBeenCalled();
 });
+
+it('resumes an old confirmed tenant with a rejected receipt, preserving the lead key',async()=>{
+  io.pending.mockReturnValue({requestKey:'old',completedIds:['tenant']});
+  io.trace.mockReturnValue({leadId:'lead',tenantId:'tenant',stage:'deposit',canResume:true});
+  const q={select:()=>q,eq:()=>q,is:()=>q,maybeSingle:async()=>({data:{id:'tenant'},error:null})};
+  io.from.mockReturnValue(q);mount();
+  expect(await screen.findByRole('button',{name:'Người gửi · room · lead-income-lead'})).toBeTruthy();
+  expect(io.from).toHaveBeenCalledWith('tenants');
+});

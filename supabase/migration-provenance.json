@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T14:27:03.274Z",
+  "generatedAt": "2026-11-25T15:48:55.569Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -14776,7 +14776,7 @@
       "version": "20261125133852",
       "name": "unified_deposit_voucher_workflow",
       "scheme": "timestamp14",
-      "sha256": "51c6b1d1003254b749ba6596bd6056e88f266dac29f6d403211dd32cd2ffd9e9",
+      "sha256": "5547b30fd43ced8d4540a7a088d864db24d443c3b0d52530370ea7c4e1fe9856",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

@@ -46,6 +46,13 @@ BEGIN
       row_data:=row_data||jsonb_build_object('name','QA topup','payer_name','Người gửi B','amount',600000);
       saved:=public.create_deposit_income_v1(org,key||'-2',row_data,'[]',jsonb_build_object('channel',second_channel,'expected_hold',hold,'expected_revision',1));
       second_source:=(saved->>'id')::uuid;
+      IF public.get_own_deposit_income_v1(org,key||'-2') IS DISTINCT FROM second_source
+         OR public.get_own_deposit_income_v1(gen_random_uuid(),key||'-2') IS NOT NULL THEN RAISE EXCEPTION 'Invalid recovery scope'; END IF;
+      BEGIN
+        PERFORM public.create_deposit_income_v1(org,key||'-stale-edit',row_data,'[]',
+          jsonb_build_object('channel',second_channel,'expected_hold',hold,'expected_revision',1,'hold_until',day+10));
+        RAISE EXCEPTION 'stale schedule edit accepted'; EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL;
+      END;
       IF (saved->>'reservation_id')::uuid<>hold OR first_source=second_source THEN RAISE EXCEPTION 'wrong topup'; END IF;
       RESET ROLE;
       IF (SELECT count(*) FROM public.income_expenses WHERE room_id=room AND type='INCOME')<>2

@@ -3,12 +3,13 @@ vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:nul
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'o1'})}));
 // "Nhập nhanh" (trang Thu chi mobile): hạng mục Tiền cọc phải có phòng — "toàn tòa nhà" không đủ,
 // vì cọc chỉ vào hợp đồng theo phòng (depositRoomRule.ts). Không cho bấm Lưu và nói rõ lý do.
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEPOSIT_ROOM_REQUIRED_MESSAGE } from '@/lib/depositRoomRule';
 
-const h = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: vi.fn(), rpc: vi.fn() } }));
+const h = vi.hoisted(() => ({ create: vi.fn(),rpc:vi.fn() }));
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'user-a'})}));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: vi.fn(), rpc: h.rpc } }));
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
 vi.mock('@/hooks/useIncomeExpenseFormScope', () => ({
   useIncomeExpenseFormBuildings: () => ({ data: [{ id: 'b1', name: '1392QT', code: '1392QT' }] }),
@@ -71,4 +72,16 @@ describe('Nhập nhanh: Tiền cọc bắt buộc phòng', () => {
     const luu = nhap('toa', 'chọn thu chi khác');
     expect(luu.disabled).toBe(false);
   });
+});
+
+it('sau mất phản hồi rồi mở lại, đối chiếu đúng mã và không thu lần hai',async()=>{
+  h.create.mockRejectedValueOnce(new Error('network error'));
+  h.rpc.mockResolvedValue({data:'11111111-1111-4111-8111-111111111111',error:null});
+  fireEvent.click(nhap('G03','chọn Tiền Cọc'));
+  await screen.findByRole('alert');
+  const key=h.create.mock.calls[0][0].idempotency_key;
+  cleanup();
+  fireEvent.click(nhap('G03','chọn Tiền Cọc'));
+  await waitFor(()=>expect(h.rpc).toHaveBeenCalledWith('get_own_deposit_income_v1',{p_organization_id:'o1',p_request_key:key}));
+  expect(h.create).toHaveBeenCalledTimes(1);
 });

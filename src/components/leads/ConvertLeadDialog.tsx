@@ -26,8 +26,14 @@ export function ConvertLeadDialog({open,onOpenChange,lead}: {
       const pending=financialPending.read({namespace:'lead-conversion',userId:user.id,organizationId:org,businessKey:lead.id});
       if(pending){
         const trace=readLeadConversionTrace(pending.requestKey);
-        if(!trace?.depositId || trace.leadId!==lead.id)throw new Error('Lần chuyển khách hẹn trước cần đối chiếu chứng từ ở Quản lý cọc.');
-        const {data,error}=await supabase.from('deposits').select('id').eq('id',trace.depositId).eq('organization_id',org).is('deleted_at',null).maybeSingle();
+        if(trace?.leadId===lead.id && trace.stage==='deposit' && trace.canResume && !trace.depositId && trace.tenantId
+          && pending.completedIds.length===1 && pending.completedIds.includes(trace.tenantId)) {
+          const {data,error}=await supabase.from('tenants').select('id').eq('id',trace.tenantId).eq('organization_id',org).is('deleted_at',null).maybeSingle();
+          if(error||!data)throw new Error('Chưa đối chiếu được khách thuê đã tạo ở lần trước.');
+          return getLeadDepositIncomeId(org,lead.id);
+        }
+        if(!trace?.depositId || trace.leadId!==lead.id || !pending.completedIds.includes(trace.depositId))throw new Error('Lần chuyển khách hẹn trước cần đối chiếu chứng từ ở Quản lý cọc.');
+        const {data,error}=await supabase.from('deposits').select('id').eq('tenant_id',trace.tenantId??'').eq('id',trace.depositId).eq('organization_id',org).is('deleted_at',null).maybeSingle();
         if(error||!data)throw new Error('Chưa xác nhận được phiếu cọc cũ của khách hẹn.');
         return data.id;
       }

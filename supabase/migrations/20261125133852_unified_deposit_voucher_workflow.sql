@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION app_private.attach_deposit_income_v1(
 DECLARE
   v public.income_expenses%ROWTYPE; rm public.rooms%ROWTYPE; h public.room_reservations%ROWTYPE;
   existing uuid; move_in date; key text := 'receipt-' || p_voucher::text;
-  snapshot jsonb; already uuid;
+  snapshot jsonb; already uuid; baseline jsonb; field text;
 BEGIN
   SELECT * INTO STRICT v FROM public.income_expenses WHERE id=p_voucher;
   IF v.type<>'INCOME' OR v.deleted_at IS NOT NULL OR v.approval_status='CANCELLED' OR v.contract_id IS NOT NULL
@@ -35,7 +35,20 @@ BEGIN
     RAISE EXCEPTION 'Đợt giữ chỗ của phòng đã đổi. Tải lại và chọn đúng lượt thu.' USING ERRCODE='PT409';
   END IF;
   IF p_terms ? 'expected_revision' AND (p_terms->>'expected_revision')::bigint IS DISTINCT FROM h.revision THEN
-    RAISE EXCEPTION 'Hồ sơ giữ chỗ đã thay đổi. Tải lại trước khi bổ sung.' USING ERRCODE='PT409';
+    SELECT response INTO baseline FROM app_private.room_reservation_history
+      WHERE reservation_id=h.id AND revision=(p_terms->>'expected_revision')::bigint;
+    IF baseline IS NULL OR NOT (p_terms ? 'expected_hold') THEN
+      RAISE EXCEPTION 'Hồ sơ giữ chỗ đã thay đổi. Tải lại trước khi bổ sung.' USING ERRCODE='PT409';
+    END IF;
+    -- Old tabs send the entire displayed schedule. Ignore unchanged fields and preserve newer dates.
+    FOREACH field IN ARRAY ARRAY['hold_until','intended_move_in_on','topup_due_on','deposit_target'] LOOP
+      IF p_terms ? field THEN
+        IF (p_terms->field) IS DISTINCT FROM (baseline->field) THEN
+          RAISE EXCEPTION 'Lịch hoặc mức cọc đã thay đổi. Tải lại trước khi sửa.' USING ERRCODE='PT409';
+        END IF;
+        p_terms:=p_terms-field;
+      END IF;
+    END LOOP;
   END IF;
   move_in:=CASE WHEN p_terms?'intended_move_in_on' THEN NULLIF(p_terms->>'intended_move_in_on','')::date ELSE h.intended_move_in_on END;
   IF existing IS NULL OR move_in IS DISTINCT FROM h.intended_move_in_on THEN
@@ -247,6 +260,28 @@ $fn$;
 REVOKE ALL ON FUNCTION public.create_deposit_income_v1(uuid,text,jsonb,jsonb,jsonb) FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION public.create_deposit_income_v1(uuid,text,jsonb,jsonb,jsonb) TO authenticated;
 
+-- Cancel and sign both acquire the room before locking a source voucher.
+DO $cancel_lock$
+DECLARE target regprocedure:='public.cancel_income_voucher_v1(uuid,text)'::regprocedure;
+ body text:=pg_get_functiondef(target);
+ marker text:='SELECT * INTO v FROM public.income_expenses';
+ prelock text:=$sql$PERFORM 1 FROM public.rooms rm JOIN public.income_expenses source
+      ON rm.id=source.room_id AND rm.organization_id=source.organization_id
+      WHERE source.id=p_voucher AND source.contract_id IS NULL AND source.type='INCOME'
+        AND source.deleted_at IS NULL AND source.organization_id=ANY(public.my_org_ids())
+        AND public.ie_has_deposit_item(source.id)
+      FOR NO KEY UPDATE OF rm;
+  IF FOUND THEN
+    PERFORM app_private.lock_org_for_decision_v1(source.organization_id) FROM public.income_expenses source WHERE source.id=p_voucher;
+  END IF;
+
+  $sql$;
+BEGIN
+ IF position(prelock in body)>0 THEN RETURN; END IF;
+ IF (length(body)-length(replace(body,marker,'')))<>length(marker) THEN RAISE EXCEPTION 'Unexpected cancellation lock precondition'; END IF;
+ EXECUTE replace(body,marker,prelock||marker);
+END $cancel_lock$;
+
 -- Release only a paid reservation whose whole set of original sources is now inactive.
 CREATE OR REPLACE FUNCTION app_private.close_empty_deposit_reservation_v1(p_hold uuid,p_actor uuid)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $fn$
@@ -254,7 +289,11 @@ DECLARE h public.room_reservations%ROWTYPE;
 BEGIN
   SELECT * INTO h FROM public.room_reservations WHERE id=p_hold;
   IF NOT FOUND OR h.status<>'HOLD' THEN RETURN false; END IF;
-  PERFORM 1 FROM public.rooms WHERE id=h.room_id AND organization_id=h.organization_id FOR NO KEY UPDATE;
+  BEGIN
+    PERFORM 1 FROM public.rooms WHERE id=h.room_id AND organization_id=h.organization_id FOR NO KEY UPDATE NOWAIT;
+  EXCEPTION WHEN lock_not_available THEN
+    RAISE EXCEPTION 'Phòng đang được xử lý. Tải lại phiếu cọc trước khi tiếp tục.' USING ERRCODE='PT409';
+  END;
   PERFORM app_private.lock_org_for_decision_v1(h.organization_id);
   SELECT * INTO h FROM public.room_reservations WHERE id=p_hold AND status='HOLD' FOR UPDATE;
   IF NOT FOUND OR coalesce(jsonb_array_length(h.initial_response->'receipts'),0)=0
@@ -326,6 +365,7 @@ BEGIN
   END LOOP;
   FOR batch IN
     SELECT v.organization_id,v.room_id,rm.name AS room_name,b.name AS building_name,
+      min(v.voucher_date) first_day, min(v.created_at) first_created,
       array_agg(v.id ORDER BY v.voucher_date,v.created_at,v.id) ids,array_agg(v.code ORDER BY v.code) codes
     FROM public.income_expenses v JOIN public.rooms rm ON rm.id=v.room_id AND rm.organization_id=v.organization_id AND rm.deleted_at IS NULL
     JOIN public.buildings b ON b.id=rm.building_id AND b.id=v.building_id AND b.deleted_at IS NULL
@@ -341,6 +381,19 @@ BEGIN
       AND NOT coalesce((app_private.reservation_settlement_basis_v1(v.id)->>'mismatch')::boolean,true)
     GROUP BY v.organization_id,v.room_id,rm.name,b.name ORDER BY v.organization_id,v.room_id
   LOOP
+    PERFORM 1 FROM public.rooms WHERE id=batch.room_id AND organization_id=batch.organization_id
+      AND status IN ('AVAILABLE','RESERVED') AND deleted_at IS NULL FOR NO KEY UPDATE;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    PERFORM app_private.lock_org_for_decision_v1(batch.organization_id);
+    IF EXISTS(SELECT 1 FROM public.room_sale_locks x WHERE x.room_id=batch.room_id AND x.organization_id=batch.organization_id
+        AND x.released_at IS NULL AND x.expires_at>clock_timestamp())
+      OR EXISTS(SELECT 1 FROM public.room_next_claims x WHERE x.room_id=batch.room_id AND x.status='LIVE')
+      OR EXISTS(SELECT 1 FROM public.contracts x WHERE x.room_id=batch.room_id AND x.deleted_at IS NULL AND x.status<>'DRAFT'
+          AND (x.status IN ('ACTIVE','EXTENDED') OR greatest(x.start_date,coalesce(x.actual_end_date,
+              (SELECT ct.actual_move_out_date FROM public.contract_terminations ct WHERE ct.contract_id=x.id AND ct.status='COMPLETED'),
+              x.end_date))>=batch.first_day))
+      OR EXISTS(SELECT 1 FROM public.room_reservations x WHERE x.room_id=batch.room_id AND x.created_at>=batch.first_created)
+      THEN CONTINUE; END IF;
     IF cardinality(batch.ids)<>1 AND NOT (batch.room_name='05' AND batch.building_name='481NVK'
       AND batch.codes::text[]=ARRAY['PT2611447','PT2611448']::text[] AND EXISTS (
         SELECT 1 FROM public.income_expenses old JOIN public.reservation_receipts rr ON rr.source_voucher_id=old.id
@@ -411,6 +464,18 @@ BEGIN
   END IF;
 END $projection$;
 
+-- Resolve an interrupted browser request by its exact actor-scoped key.
+CREATE OR REPLACE FUNCTION public.get_own_deposit_income_v1(p_organization_id uuid,p_request_key text)
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $fn$
+  SELECT req.voucher_id FROM app_private.deposit_income_requests req
+    WHERE req.organization_id=p_organization_id AND req.actor_id=auth.uid() AND req.request_key=p_request_key
+      AND p_organization_id=ANY(public.my_org_ids())
+      AND NOT (public.is_super_admin() AND p_organization_id=ANY(public.sandbox_org_ids()))
+      AND coalesce(app_private.ie_supplement_can_read_v1(req.voucher_id),false)
+$fn$;
+REVOKE ALL ON FUNCTION public.get_own_deposit_income_v1(uuid,text) FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.get_own_deposit_income_v1(uuid,text) TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.get_lead_deposit_income_v1(p_organization_id uuid,p_lead_id uuid)
 RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $fn$
   SELECT req.voucher_id FROM app_private.deposit_income_requests req
@@ -423,6 +488,21 @@ RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $fn$
 $fn$;
 REVOKE ALL ON FUNCTION public.get_lead_deposit_income_v1(uuid,uuid) FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION public.get_lead_deposit_income_v1(uuid,uuid) TO authenticated;
+
+DO $active$
+DECLARE target regprocedure; old_body text; new_body text;
+BEGIN
+  FOREACH target IN ARRAY ARRAY['public.get_held_deposit_summary(uuid[],numeric)'::regprocedure,
+      'public.deposit_held_contracts_v1(uuid,numeric,uuid[])'::regprocedure] LOOP
+    old_body:=pg_get_functiondef(target);
+    new_body:=regexp_replace(old_body,'c[.]status(::text)?[[:space:]]*=[[:space:]]*''ACTIVE''',
+      'c.status IN (''ACTIVE'',''EXTENDED'')','i');
+    IF new_body<>old_body THEN EXECUTE new_body;
+    ELSIF position('c.status IN (''ACTIVE'',''EXTENDED'')' in old_body)=0 THEN
+      RAISE EXCEPTION 'Unsupported held-deposit reader %',target;
+    END IF;
+  END LOOP;
+END $active$;
 
 -- Signing still sees unresolved vouchers, with their individual codes for reconciliation.
 DO $sign$

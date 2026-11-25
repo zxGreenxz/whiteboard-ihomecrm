@@ -1,4 +1,4 @@
-import {recordDepositIncome} from '@/lib/depositIncomeRpc';
+import {recordDepositIncome,recoverableRoomDeposit} from '@/lib/depositIncomeRpc';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {toast} from 'sonner';
 import {supabase} from '@/integrations/supabase/client';
@@ -37,19 +37,20 @@ export function useCreateRoomReservation(options:{silent?:boolean}={}){
     if(!input.receipt)return createRoomReservation(invoke,org,input);
     const {p_payload}=buildCreateRoomReservationArgs(org,input);
     const receipt=input.receipt;
-    const result=await recordDepositIncome(org,input.idempotencyKey,{
+    const save=(key:string)=>recordDepositIncome(org,key,{
       type:'INCOME',room_id:input.roomId,name:receipt.name??'Cọc giữ chỗ',
       payer_name:input.customerHint??null,amount:receipt.amount,account_id:receipt.accountId??null,
       voucher_date:receipt.voucherDate,description:receipt.description??null,attachments:receipt.attachments??[],
     },[],{
       channel:input.channel??'reservation',expected_hold:input.expectedHoldId??null,
       ...(input.expectedRevision ? {expected_revision:input.expectedRevision} : {}),
-      ...(p_payload.hold_until ? {hold_until:p_payload.hold_until} : {}),
-      ...(p_payload.intended_move_in_on ? {intended_move_in_on:p_payload.intended_move_in_on} : {}),
-      ...(p_payload.topup_due_on ? {topup_due_on:p_payload.topup_due_on} : {}),
+      ...(input.holdUntil !== undefined ? {hold_until:p_payload.hold_until} : {}),
+      ...(input.intendedMoveInOn !== undefined ? {intended_move_in_on:p_payload.intended_move_in_on} : {}),
+      ...(input.topupDueOn !== undefined ? {topup_due_on:p_payload.topup_due_on} : {}),
       ...(p_payload.deposit_target != null ? {deposit_target:p_payload.deposit_target} : {}),
       ...(p_payload.notes ? {notes:p_payload.notes} : {}),
     });
+    const result=input.channel==='sale' ? await recoverableRoomDeposit(org,input.roomId,save) : await save(input.idempotencyKey);
     if(!result.reservation)throw new TypeError('Chưa xác nhận đợt giữ chỗ của phiếu thu');
     return {...result.reservation,writtenVoucherId:result.id};
   },options);
@@ -59,7 +60,7 @@ export function useUpdateRoomReservation(){
     if(input.action!=='TOPUP'||!input.receipt)return updateRoomReservation(invoke,org,input);
     const receipt=input.receipt;
     if(!input.roomId||!input.payerName?.trim())throw new Error('Chọn phòng và nhập người gửi tiền cọc.');
-    const result=await recordDepositIncome(org,input.idempotencyKey,{
+    const result=await recoverableRoomDeposit(org,input.roomId,key=>recordDepositIncome(org,key,{
       type:'INCOME',room_id:input.roomId,name:receipt.name??'Bổ sung cọc',payer_name:input.payerName,
       amount:receipt.amount,account_id:receipt.accountId??null,voucher_date:receipt.voucherDate,
       description:receipt.description??null,attachments:receipt.attachments??[],
@@ -67,7 +68,7 @@ export function useUpdateRoomReservation(){
       ...(input.changes?.holdUntil!==undefined ? {hold_until:input.changes.holdUntil}:{}),
       ...(input.changes?.intendedMoveInOn!==undefined ? {intended_move_in_on:input.changes.intendedMoveInOn}:{}),
       ...(input.changes?.topupDueOn!==undefined ? {topup_due_on:input.changes.topupDueOn}:{}),
-    });
+    }));
     if(!result.reservation)throw new TypeError('Chưa xác nhận được phiếu bổ sung cọc');
     return result.reservation;
   });

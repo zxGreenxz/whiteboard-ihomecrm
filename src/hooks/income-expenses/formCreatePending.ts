@@ -1,3 +1,4 @@
+import { findOwnDepositIncome } from '@/lib/depositIncomeRpc';
 import { supabase } from "@/integrations/supabase/client";
 import { financialPending, type FinancialPendingRecord, type PendingReconciliation } from "@/lib/financialPending";
 import { runFinancialPending } from "@/lib/financialPendingAction";
@@ -95,7 +96,7 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
     return { id: created.id };
   }, undefined, {
     operation: "lập phiếu thu/chi",
-    meta: { dedupe: KEYED, canonical, items },
+    meta: { dedupe: KEYED, canonical, items, deposit: data.deposit_terms !== undefined },
     reconcile: async (pending) => {
       if (pending.completedIds.length) {
         return { outcome: "already-written", message: "Phiếu đã được lập ở lần gửi trước.", recordIds: pending.completedIds };
@@ -107,6 +108,10 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
         if (rows.length) return maybeWritten(rows);
         resend = true;
         return { outcome: "not-written" };
+      }
+      if (pending.meta.deposit === true) {
+        const id=await findOwnDepositIncome(ctx.organizationId,`ie-create-${pending.requestKey}`);
+        if (id) return {outcome:'already-written',message:'Đã xác nhận phiếu cọc của lần lưu trước. Mở Thu chi để xem phiếu.',recordIds:[id]};
       }
       // Đường compat của lần trước dùng đúng mã này làm mã phiếu: tra thẳng.
       const exact = await readVoucherById(pending.requestKey);

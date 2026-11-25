@@ -59,8 +59,9 @@ export default function DepositsReport() {
     }
     for(const r of settlements.data??[]){
       const base={buildingId:r.building_id,building:r.building_name,room:r.room_name,person:r.customer_name,code:r.contract_number??'—'};
-      if(r.posted_refund>0)add({...base,id:'refund-'+r.id,status:'REFUNDED',amount:r.posted_refund});
-      if(r.kind==='FORFEIT')add({...base,id:'forfeit-'+r.id,status:'RETAINED',amount:r.total_deposit});
+      if(r.pending_deposit_refund)add({...base,id:'pending-refund-'+r.id,status:'REFUND_DUE',amount:r.pending_deposit_refund});
+      if(r.posted_deposit_refund)add({...base,id:'refund-'+r.id,status:'REFUNDED',amount:r.posted_deposit_refund});
+      if(r.kind==='FORFEIT' && r.status==='COMPLETED')add({...base,id:'forfeit-'+r.id,status:'RETAINED',amount:r.total_deposit});
     }
     return [...rows.values()].filter(r=>(!buildingIds.length||buildingIds.includes(r.buildingId)) && (statusFilter==='all'||r.status===statusFilter))
       .sort((a,b)=>a.building.localeCompare(b.building,'vi')||a.room.localeCompare(b.room,'vi',{numeric:true}));
