@@ -24,7 +24,7 @@ function validToken(data:unknown):data is PublicRoomToken{
 }
 /** Mã link trong một URL /r/:token — cùng mẫu zalo_sale_advice_delivery_v1 dùng để đọc link của bot. */
 export function shareUrlToken(url:unknown):string|null{
- if(typeof url!=='string')return null;const m=/^https:\/\/[A-Za-z0-9.-]+\/r\/([A-Za-z0-9_-]+)\/?$/.exec(url.trim());return m?m[1]:null;
+ if(typeof url!=='string')return null;const m=/^https:\/\/[A-Za-z0-9.-]+\/r\/([A-Za-z0-9_-]+)\/?$/.exec(url.trim());return m?.[1]??null;
 }
 /**
  * Link bot Zalo đang gửi khách (zalo_automations «broadcast_vacant», config.template.shareUrl) của công ty đang chọn — để
