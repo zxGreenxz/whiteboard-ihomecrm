@@ -41,6 +41,9 @@ async function installLiveSaleReader() {
     if (name === 'public.get_my_available_rooms') await db.exec('DROP FUNCTION IF EXISTS public.get_my_available_rooms()');
     await db.exec(liveDefinitionOf(name).sql);
   }
+  // Đo định nghĩa SỐNG: «Phòng trống» theo công ty (đợt 2 Sale phòng). Bản () trong các file lịch sử chỉ để chúng chạy lại.
+  expect('supabase/migrations/' + liveDefinitionOf('public.get_my_available_rooms').file)
+    .toBe('supabase/migrations/20261125034429_sale_phong_theo_cong_ty.sql');
 }
 
 const org = '00000000-0000-4000-8000-000000000001';
