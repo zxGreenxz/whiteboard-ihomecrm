@@ -94,6 +94,14 @@ node infra/hermes-zalo-native/operator.mjs reconcile --profile my-assistant \
 
 Quyết định được nối vào sổ riêng tư `<config>.reconciliations.json` (mode 0600, cùng thư mục config, cùng owner). Sổ chỉ ghi thêm; lệnh không sửa journal, receipt, generation và không gửi lại. Worker đọc sổ này (qua mount config chỉ đọc) trước mỗi request ID **mới** trên kênh đang quarantine: kênh mở lại khi mọi bản ghi `outcome_unknown` của đúng profile/account/generation đều có entry khớp request ID, digest và thời điểm bắt đầu; `sent` hay `not_sent` đều tính, không cần restart. Request ID cũ vẫn chỉ đọc lại receipt `outcome_unknown`, không bao giờ gửi lại; `not_sent` không tự gửi bù, người dùng phải yêu cầu lại để tạo request mới. Sổ vắng, hỏng, sai quyền hoặc worker còn chờ provider cho chính bản ghi đó thì kênh tiếp tục chặn. CLI không có clear-unknown, sửa receipt, mark-sent, đổi generation hoặc resend.
 
+### Nhật ký sau khi CRM đổi mã tài khoản của cùng nick bot
+
+Khi mã tài khoản CRM cũ và mới cùng thuộc một công ty và có cùng UID Zalo của bot, quản trị có thể khai báo nhật ký cũ trong `<config>.account-history.json`. Trước khi ghi, đối chiếu hai mã trong CRM, kiểm mã cũ đã ngừng phục vụ Hermes và phiên cũ không còn giữ lease. Đối chiếu hồ sơ, generation, UID người ghép và biên nhận với cấu hình đang chạy. Giữ nguyên file journal cũ trong state root và sổ đối soát. Thiếu bằng chứng cho cùng nick bot thì dừng.
+
+File là JSON `{ "version": 1, "entries": [...] }`, thuộc UID/GID worker, mode 0600, cạnh config. Mỗi entry ghi `previousAccountId` và `accountId` (hai mã CRM cũ và hiện tại), `profile`, `generation`, `ownUid`, `pairedUid` của kênh hiện tại và `journalSha256` của nguyên file journal cũ. Ghi file theo cách thay thế nguyên tử khi các lệnh quản trị đang dừng. Chạy `operator.mjs inspect` trước khi lập kế hoạch thêm người. Trường `historicalJournals` cho biết số nhật ký đã đối chiếu.
+
+Công cụ kiểm lại file riêng tư, mã băm, danh tính người gửi và trạng thái từng biên nhận khi xem kế hoạch và khi áp dụng. Tin vào phải ở trạng thái `accepted` hoặc `rejected`. Mỗi lần gửi `outcome_unknown` cần quyết định đã ghi cho chính yêu cầu, mã tài khoản cũ, generation, digest và thời điểm bắt đầu. Mã tài khoản cũ được giữ riêng cho lịch sử. Nhật ký khác chưa khai báo vẫn chặn thao tác.
+
 ## Cài plugin vào profile
 
 Tạo hoặc dùng profile Hermes hiện có. Chép `plugin.yaml`, `__init__.py`, `adapter.py` vào thư mục `plugins/ihome-zalo-native/` của **đúng profile**. Giữ nguyên cấu hình model/tools/skills/memory. Trong secret scope `.env` của profile đặt:

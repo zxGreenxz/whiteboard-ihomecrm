@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1978,
   "soFileDocBangFs": 509,
-  "tongLoiGoi": 1391,
+  "tongLoiGoi": 1393,
   "khongPhanLoaiDuoc": 613,
   "theoLoai": {
     "ma-nguon": {
@@ -295,6 +295,14 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "infra/hermes-zalo-native/operator.test.mjs",
+      "soGoi": 9,
+      "loai": {
+        "manifest": 4
+      },
+      "khongPhanLoaiDuoc": 5
+    },
+    {
       "file": "scripts/__tests__/check-vault-access.test.mjs",
       "soGoi": 9,
       "loai": {},
@@ -365,14 +373,6 @@
         "sql": 7
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-zalo-native/operator.test.mjs",
-      "soGoi": 7,
-      "loai": {
-        "manifest": 2
-      },
-      "khongPhanLoaiDuoc": 5
     },
     {
       "file": "infra/hermes-zalo-native/quarantine-release.test.mjs",
