@@ -1444,3 +1444,84 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
     expect(await goi(CHU, state)).toMatchObject({ available_amount: 1000 });
   }));
 });
+
+describe("duyệt tạm ứng cổ đông theo quyền hiện tại của người bấm", () => {
+  beforeAll(async () => {
+    // Nạp đúng phần vá trigger ngày 21/11, khi người chủ tự duyệt còn phải có tên trong bước được giao.
+    const routing = readFileSync(`${DIR}/20261121014008_duyet_phieu_co_dong_theo_vai_tro.sql`, "utf8");
+    const patch = routing.match(/'app_private\.guard_profit_ledger_payout_v1\(\)'::regprocedure,\s*\$old\$([\s\S]*?)\$old\$,\s*\$new\$([\s\S]*?)\$new\$/);
+    if (!patch) throw new Error("Thiếu phần vá phân công duyệt ngày 21/11");
+    const previous = await mot<string>(`SELECT pg_get_functiondef('${F1_REGPROC}'::regprocedure) AS v`);
+    expect(previous).toContain(patch[1]);
+    await db.exec(previous.replace(patch[1], patch[2]));
+    // Fixture gửi phiếu ở trên tạo một bước ANY/1. Gắn bước đó với quy tắc duyệt theo quyền.
+    await db.exec(`
+      ALTER TABLE public.approval_requests ADD matched_rule_id uuid DEFAULT '${id(810)}';
+      ALTER TABLE public.approval_request_steps ADD rule_step_snapshot jsonb DEFAULT '{"rule_step_id":"${id(811)}"}';
+      ALTER TABLE public.approval_request_step_candidates ADD eligible_at_submit boolean DEFAULT true;
+      CREATE TABLE public.approval_rule_steps(id uuid, rule_id uuid, organization_id uuid);
+      CREATE TABLE public.approval_step_approvers(step_id uuid, organization_id uuid, approver_type text, permission_key text);
+      INSERT INTO public.approval_rule_steps VALUES ('${id(811)}','${id(810)}','${ORG_A}');
+      INSERT INTO public.approval_step_approvers VALUES ('${id(811)}','${ORG_A}','PERMISSION','income_expenses.approve');
+      CREATE FUNCTION app_private.profit_advance_maker_kind_v1(uuid,boolean) RETURNS text LANGUAGE sql AS $$ SELECT 'OWNER'::text $$;
+    `);
+    const migration = readFileSync(`${DIR}/20261125124010_duyet_tam_ung_co_dong_theo_quyen.sql`, "utf8");
+    await db.exec(migration);
+    await db.exec(migration);
+  });
+
+  it("người giữ sổ lập hộ được cấp đủ quyền sau khi lập thì tự duyệt được phiếu còn chờ", () => giaoDich(async () => {
+    const voucher = await goi<KqUng>(GIU_SO, w1({ cd: CD1, tien: 10 }));
+    expect(voucher.maker_kind).toBe("CUSTODIAN_FOR_PAYEE");
+    await capVai(GIU_SO, ["income_expenses.approve"], 401);
+    laLoi(await duyet(voucher.voucher_id, GIU_SO), "42501", "PROFIT_LEDGER_APPROVE_FORBIDDEN");
+    await capVai(GIU_SO, ["shareholder_profit.distribute"], 402);
+    expect(await duyet(voucher.voucher_id, GIU_SO)).toBeNull();
+    expect(await trangThai(voucher.voucher_id)).toEqual({ approval_status: "APPROVED", posting_status: "UNPOSTED" });
+    expect((await nhatKy(voucher.voucher_id)).map(e => e.event_kind).sort()).toEqual(["PAYOUT_APPROVED", "PAYOUT_CREATED"]);
+  }));
+
+  it("người nhận có đủ quyền duyệt phiếu do người khác lập hộ, người giữ sổ lập hộ ghi chi", () => giaoDich(async () => {
+    const voucher = await goi<KqUng>(CHU2, w1({ cd: CD_CHU, tien: 10, so: SO_QUY }));
+    laLoi(await duyetChi(voucher.voucher_id, CHU, SO_QUY), "42501", "PROFIT_LEDGER_PAYEE_SELF_POST");
+    expect(await trangThai(voucher.voucher_id)).toEqual({ approval_status: "UNAPPROVED", posting_status: "UNPOSTED" });
+    expect(await duyet(voucher.voucher_id, CHU)).toBeNull();
+    expect(await ghiSo(voucher.voucher_id, CHU2, SO_QUY)).toBeNull();
+  }));
+
+  it("phiếu chủ lập có cùng loại người lập với chốt chi nhưng sự kiện lập xác nhận đây là tạm ứng", () => giaoDich(async () => {
+    await db.exec(`CREATE FUNCTION app_private.ie_actor_is_company_owner_v1(uuid,uuid) RETURNS boolean LANGUAGE sql
+      AS $$ SELECT $1='${ORG_A}'::uuid AND $2='${CHU}'::uuid $$`);
+    const classify = readFileSync(`${DIR}/20261121004800_phan_loai_tam_ung_do_chu_lap.sql`, "utf8");
+    await db.exec(classify.replace(/^BEGIN;\s*$/m, "").replace(/^COMMIT;\s*$/m, ""));
+    const voucher = await goi<KqUng>(CHU, w1({ cd: CD1, tien: 10, so: SO_QUY }));
+    expect(await dongSo(voucher.voucher_id)).toMatchObject({ maker_kind: "OWNER" });
+    expect(await duyet(voucher.voucher_id, CHU)).toBeNull();
+  }));
+
+  it("phiếu chốt chi do chủ lập vẫn cần người đã được phân công", () => giaoDich(async () => {
+    await chotThang("2026-09-01", TOA_1, { [CD1]: 100 });
+    const voucher = await chotChi(CHU, CD1, 100);
+    laLoi(await duyet(voucher, CHU), "42501", "PROFIT_LEDGER_MAKER_SELF_APPROVE");
+    expect(await duyet(voucher, CHU2)).toBeNull();
+  }));
+
+  it.each(["MEMBER", "nhiều bước"])("phiếu tạm ứng theo quy trình %s giữ điều kiện phân công", (rule) => giaoDich(async () => {
+    const voucher = await goi<KqUng>(CHU, w1({ cd: CD1, tien: 10, so: SO_QUY }));
+    if (rule === "MEMBER") {
+      await db.exec("UPDATE public.approval_step_approvers SET approver_type='MEMBER', permission_key=NULL");
+    } else {
+      await db.exec(`INSERT INTO public.approval_request_steps(organization_id,request_id,step_no,status,mode,min_approvals)
+        SELECT organization_id,id,2,'WAITING','ANY',1 FROM public.approval_requests WHERE subject_id='${voucher.voucher_id}'`);
+    }
+    laLoi(await duyet(voucher.voucher_id, CHU), "42501", "PROFIT_LEDGER_MAKER_SELF_APPROVE");
+    expect(await trangThai(voucher.voucher_id)).toEqual({ approval_status: "UNAPPROVED", posting_status: "UNPOSTED" });
+  }));
+
+  it("người giữ sổ tự ứng, có đủ quyền thì được duyệt và chi từ sổ đang giữ", () => giaoDich(async () => {
+    const voucher = await goi<KqUng>(CHU, w1({ cd: CD_CHU, tien: 10, so: SO_QUY }));
+    expect(voucher.maker_kind).toBe("CUSTODIAN_ADVANCE");
+    expect(await duyetChi(voucher.voucher_id, CHU, SO_QUY)).toBeNull();
+    expect(await trangThai(voucher.voucher_id)).toEqual({ approval_status: "APPROVED", posting_status: "POSTED" });
+  }));
+});

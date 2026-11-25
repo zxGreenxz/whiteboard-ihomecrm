@@ -28,7 +28,7 @@
     },
     {
       "path": "src/app/capabilities/registry.ts",
-      "sha256": "0101ba26a3ff7892ffe94654ae0d669ffdae31135e6ec342223553876d7c0e9f"
+      "sha256": "64720438b56246ee880493b870d4203b564a81044894320628acd1f285329f8d"
     },
     {
       "path": "src/components/customers/CustomerListToolbar.tsx",
@@ -104,7 +104,7 @@
     },
     {
       "path": "src/copilot/tools/nghiepVuTools.ts",
-      "sha256": "070a75e750e01e43a07f79650ae0675f66343941d7a8b5005b3a99faaacdbe42"
+      "sha256": "61b6de41207626302d27739d41918af6063522be7463a07a4518dcc4ab22ecdd"
     },
     {
       "path": "src/copilot/tools/planTools.ts",
@@ -7902,7 +7902,7 @@
                 "path": "src/copilot/tools/nghiepVuTools.ts",
                 "line": 907
               },
-              "expression": "`${rows.length} ${TIEU_DE_HOP_CHO} (tối đa ${tran} dòng):\\n${dong.join('\\n')}\\n[link: /approvals]`"
+              "expression": "`${rows.length} ${TIEU_DE_HOP_CHO} (tối đa ${tran} dòng):\\n${dong.join('\\n')}\\n[link: /income-expense]`"
             }
           ],
           "coverage": "direct_body_only_helpers_and_nested_semantics_require_review"

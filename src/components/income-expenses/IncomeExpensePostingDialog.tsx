@@ -110,6 +110,7 @@ export interface PostingVoucherSummary {
 export interface PostingCapability {
   isCustodian: boolean;
   canApprove: boolean;
+  blockReason?: string | null;
 }
 
 export interface IncomeExpensePostingDialogProps {
@@ -1511,13 +1512,13 @@ export default function IncomeExpensePostingDialog({
             {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
             {!capabilityOk && (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                {mode === 'APPROVE_AND_POST'
+                {capability.blockReason ?? (mode === 'APPROVE_AND_POST'
                   ? 'Cần đồng thời quyền Duyệt và là Người giữ sổ quỹ để Duyệt và ' +
                     baseWord.toLowerCase() +
                     '.'
                   : 'Chỉ Người giữ sổ quỹ mới ghi ' +
                     baseWord.toLowerCase() +
-                    ' được.'}
+                    ' được.')}
               </p>
             )}
 

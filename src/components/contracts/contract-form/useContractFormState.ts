@@ -30,7 +30,7 @@ import {
   normalizeFirstBillingPeriod,
   type FirstInvoiceItem,
 } from "@/lib/firstInvoiceBuilder";
-import { useOrphanDepositVouchers } from "@/hooks/useDeposits";
+import { useContractRoomDeposits } from "@/hooks/useDeposits";
 import { useContractExitEarlyTerms } from '@/hooks/contracts/useContractExitEarlyTerms';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
@@ -279,11 +279,11 @@ export function useContractFormState({
   //  - chỉ tính phiếu ĐÃ DUYỆT vào "đã đặt cọc" (recompute chỉ cộng APPROVED);
   //  - KHÔNG tạo lại phiếu cho các dòng này (tránh double-count deposit_paid).
   const startDateWatch = form.watch("start_date");
-  const orphanDepositsQuery = useOrphanDepositVouchers(
+  const orphanDepositsQuery = useContractRoomDeposits(
     !isEditMode && open ? selectedRoomId || undefined : undefined,
     startDateWatch || undefined,
   );
-  const orphanDepositVouchers = orphanDepositsQuery.data ?? [];
+  const orphanDepositVouchers = orphanDepositsQuery.data?.vouchers ?? [];
   const refetchOrphanDepositVouchers = orphanDepositsQuery.refetch;
   if (open && !isEditMode && selectedRoomId && (orphanDepositsQuery.isError || orphanDepositsQuery.data === undefined)) {
     sourceIssues.push({ key: 'orphanDeposits', label: 'phiếu cọc đã thu trước của phòng', retry: () => void orphanDepositsQuery.refetch() });
@@ -291,7 +291,7 @@ export function useContractFormState({
   const approvedOrphanTotal = useMemo(
     () =>
       orphanDepositVouchers
-        .filter((v) => v.approval_status === "APPROVED")
+        .filter((v) => v.received && !v.outsideWindow)
         .reduce((sum, v) => sum + (Number(v.total_amount) || 0), 0),
     [orphanDepositVouchers],
   );
@@ -974,6 +974,7 @@ export function useContractFormState({
     authUser,
     buildingActiveServices,
     buildingServicesAsSelected,
+    roomHold: orphanDepositsQuery.data?.hold ?? null,
     orphanDepositVouchers,
     refetchOrphanDepositVouchers,
     approvedOrphanTotal,

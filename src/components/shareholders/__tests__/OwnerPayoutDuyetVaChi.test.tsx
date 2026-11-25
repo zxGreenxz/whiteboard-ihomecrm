@@ -240,15 +240,16 @@ describe('hộp chốt chi lợi nhuận: một nút lập phiếu rồi Duyệt
   });
 
   // Review chéo 19/11: từ chối vì quyền (42501) khác PAYEE_SELF_POST thì gửi lại vẫn y lỗi ⇒ khoá "Làm tiếp".
-  it('máy chủ từ chối vì quyền (42501 PROFIT_LEDGER_MAKER_SELF_APPROVE) ⇒ khoá "Làm tiếp", chỉ đường Chờ duyệt / Thu chi', async () => {
+  it('máy chủ từ chối vì quyền (42501 PROFIT_LEDGER_MAKER_SELF_APPROVE) ⇒ khoá "Làm tiếp", chỉ đường về Thu chi', async () => {
     m.approveAndPost.mockRejectedValueOnce({ code: '42501', message: 'PROFIT_LEDGER_MAKER_SELF_APPROVE: người lập phiếu không tự duyệt phiếu chi lợi nhuận của mình' });
     settleDialog();
     fireEvent.change(field('accountId'), { target: { value: 'a1' } });
     await addImage();
     fireEvent.click(button('Duyệt và Chi'));
     const failure = await screen.findByTestId('owner-payout-step-failure');
-    expect(failure.textContent).toMatch(/người được chỉ định khác người lập/);
-    expect(failure.textContent).toMatch(/vẫn sẽ bị từ chối.*Phiếu vẫn nằm ở Chờ duyệt.*Chờ duyệt \/ Thu chi/);
+    expect(failure.textContent).toMatch(/Người lập không tự duyệt được phiếu này/);
+    expect(failure.textContent).toMatch(/vẫn sẽ bị từ chối.*Phiếu vẫn nằm ở Chờ duyệt.*xử lý ở Thu chi/);
+    expect(failure.textContent).not.toMatch(/Chờ duyệt \/ Thu chi/);
     expect(button('Làm tiếp').disabled).toBe(true);
     fireEvent.click(button('Làm tiếp'));
     await new Promise((done) => setTimeout(done, 0));

@@ -1,13 +1,13 @@
 # Authorization & financial approval
 
 > **Current through:** 2026-07-20  
-> **Status:** production; 15/15 canonical writer flags ON; approval inbox live.
+> **Status:** production; 15/15 canonical writer flags ON; approval engine live (màn web Chờ duyệt đã bỏ 25/11/2026, duyệt ở Thu chi).
 
 ## Current truth
 
 - Organization, membership, role binding, scope và ALLOW/DENY override là mô hình quyền hiện hành.
 - Backend `authorize_v2`, RPC writer và RLS quyết định cuối; UI không được tự chọn canonical/legacy route.
-- Hộp thư `/approvals` dùng request/step/decision engine. Maker không tự duyệt request engine của mình.
+- Bộ máy request/step/decision phía máy chủ vẫn chạy; maker không tự duyệt request engine của mình. Màn web `/approvals` ("Hộp thư duyệt") **đã bỏ 25/11/2026**: duyệt phiếu ở Thu chi (`/income-expense`, tab Chờ xử lý) qua `approve_income_expense_v2` / `approve_and_post_income_expense_v2`; đường dẫn cũ tự chuyển về đó. Hermes vẫn đọc hộp chờ (`list_my_pending_approvals_v1`).
 - Phiếu thu/chi thường sinh `APPROVED`; hạng mục `force_approval`, payout và phiếu chi đạt ngưỡng cấu hình đi qua approval.
 - 15/15 writer route đã bật ngày 19/07. T7 drain direct DML/legacy caller vẫn là bước có điều kiện, không đồng nghĩa writer chưa live.
 

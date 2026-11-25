@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3235,
-    "catalogFunctions": 1688,
+    "sourceCallSites": 3232,
+    "catalogFunctions": 1689,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 437,
+    "calledRpcs": 438,
     "byRisk": {
-      "normal": 327,
+      "normal": 328,
       "financial": 109,
       "infrastructure": 1
     },
-    "securityDefiner": 411
+    "securityDefiner": 412
   },
   "missingOnServer": [],
   "rpcs": {
@@ -2668,6 +2668,25 @@
       ],
       "callers": [
         "src/hooks/useContractMoveOutNotice.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_contract_room_deposits_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_room_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/reservationDepositReceived.ts"
       ],
       "risk": "normal"
     },

@@ -293,9 +293,12 @@ describe('điều kiện chọn chi nhanh', () => {
     ctx.permissions = { income_expenses: { approve: true } }; ctx.cashbookIds = new Set(['other']);
     expect(quickExpenseReason(voucher(), ctx)).toMatch(/quyền chi/);
   });
-  it('phiếu chi theo sổ tổng (lợi nhuận cổ đông / lương điều hành) không vào chi nhanh — duyệt ở Chờ duyệt; nguồn cũ giữ luật thường', () => {
+  it('phiếu chi theo sổ tổng (lợi nhuận cổ đông / lương điều hành) không vào chi nhanh — duyệt từng phiếu (thấy số dư sổ tổng); nguồn cũ giữ luật thường', () => {
     for (const system_source of ['profit.ledger_payout', 'profit.manager_salary']) {
-      expect(quickExpenseReason(voucher(1, { system_source }), context())).toMatch(/Chờ duyệt/);
+      const reason = quickExpenseReason(voucher(1, { system_source }), context());
+      expect(reason).toMatch(/duyệt từng phiếu bằng nút Duyệt/);
+      // Màn Chờ duyệt đã bỏ 25/11/2026 — không chỉ người dùng sang màn không còn.
+      expect(reason).not.toMatch(/màn Chờ duyệt/);
     }
     expect(quickExpenseReason(voucher(1, { system_source: 'profit.distribution' }), context())).toBeNull();
   });

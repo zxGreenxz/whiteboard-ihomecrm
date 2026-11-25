@@ -5,7 +5,8 @@ import { nativeDirectory, nativePrivateRead } from './hermes-native-files.js';
 import { nativeId, nativeUid } from './hermes-native-config.js';
 
 export const nativeDigest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const MAX_BYTES = 16 * 1024 * 1024, MAX_RECORDS = 100000;
+export const NATIVE_JOURNAL_MAX_BYTES = 16 * 1024 * 1024;
+const MAX_RECORDS = 100000;
 const plain = value => value && Object.getPrototypeOf(value) === Object.prototype;
 const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const time = value => Number.isSafeInteger(value) && value >= 0;
@@ -36,25 +37,29 @@ function validateRecord(kind, id, record, channel) {
       Object.keys(record).some(key => !required.includes(key) && !optional.includes(key))) fail();
 }
 
+export function validateNativeJournalSnapshot(state, channel) {
+  if (!plain(state) || Object.keys(state).length !== 3 || state.version !== 1 || !plain(state.inbound) || !plain(state.outbound)) fail();
+  for (const kind of ['inbound', 'outbound']) {
+    if (Object.keys(state[kind]).length > MAX_RECORDS) fail();
+    for (const [id, record] of Object.entries(state[kind])) validateRecord(kind, id, record, channel);
+  }
+}
+
 /** Each atomic snapshot is fsynced before rename. Single worker ownership is
  * required; pending provider/dispatch work is deliberately never replayed. */
 export function createNativeJournal(root, channel, { io = fs } = {}) {
   root = nativeDirectory(root, { create: true, io });
   const file = path.join(root, `${nativeDigest([channel.accountId, channel.profile, channel.generation])}.json`);
   let state = { version: 1, inbound: {}, outbound: {} };
-  try { state = JSON.parse(nativePrivateRead(file, MAX_BYTES, { io })); }
+  try { state = JSON.parse(nativePrivateRead(file, NATIVE_JOURNAL_MAX_BYTES, { io })); }
   catch (error) { if (error.code !== 'ENOENT') throw new Error('native_journal_unreadable'); }
-  if (!plain(state) || Object.keys(state).length !== 3 || state.version !== 1 || !plain(state.inbound) || !plain(state.outbound)) fail();
-  for (const kind of ['inbound', 'outbound']) {
-    if (Object.keys(state[kind]).length > MAX_RECORDS) fail();
-    for (const [id, record] of Object.entries(state[kind])) validateRecord(kind, id, record, channel);
-  }
+  validateNativeJournalSnapshot(state, channel);
   let failed = false;
   function ready(kind) { if (failed) throw new Error('native_journal_unavailable'); if (!['inbound', 'outbound'].includes(kind)) fail(); }
   function save(next) {
     const temp = `${file}.${randomUUID()}.tmp`;
     const encoded = JSON.stringify(next);
-    if (Buffer.byteLength(encoded) > MAX_BYTES) throw new Error('native_journal_capacity');
+    if (Buffer.byteLength(encoded) > NATIVE_JOURNAL_MAX_BYTES) throw new Error('native_journal_capacity');
     try {
       nativeDirectory(root, { io });
       const fd = io.openSync(temp, 'wx', 0o600);

@@ -10,12 +10,11 @@ import { USERS, trackConsoleErrors } from './auth';
  * SỔ TỔNG LỢI NHUẬN CỔ ĐÔNG — tạm ứng cộng dồn + chủ chốt chi lợi nhuận theo tháng (migration 20261118041911).
  * Luồng chính trên dev server loopback trỏ project TEST:
  *
- *   0. Công tắc sổ tổng phải đang OFF (LEGACY): trang của chủ hiện thông báo "xem thử", nút Chi khoá.
- *   1. Bật ON tạm trên TEST bằng fixture SQL (`scripts/test-env/thu-sql.mjs --ghi`, danh tính phát hành
- *      GIẢ nhưng đúng định dạng; CAS theo phiên bản đọc trong cùng giao dịch, chỉ khi đang OFF).
+ *   0. Đọc trạng thái sổ tổng trên TEST. Nếu đang LEGACY, kiểm thông báo "xem thử" và nút Chi khoá.
+ *   1. Với LEGACY, bật ON tạm bằng fixture SQL có kiểm phiên bản. Với CANONICAL, dùng cấu hình hiện tại.
  *   2. Cổ đông (có quyền tạm ứng, đang giữ một sổ quỹ) tự lập phiếu TẠM ỨNG ở hộp "Chi tạm ứng cho tôi":
  *      không ô tick xác nhận, ghi chú không bắt buộc ⇒ phiếu chờ duyệt, "tạm ứng chờ duyệt" tăng đúng số đó.
- *   3. Chủ công ty duyệt phiếu tạm ứng ở Hộp duyệt ⇒ "Tạm ứng đang có" tăng, "Lợi nhuận chưa chi" không đổi.
+ *   3. Chủ công ty duyệt phiếu tạm ứng ở Thu chi ⇒ "Tạm ứng đang có" tăng, "Lợi nhuận chưa chi" không đổi.
  *   4. Chủ thứ hai (tài khoản hệ thống TEST) mở hộp chốt "Chi lợi nhuận cổ đông": KHÔNG có ô nhập số tiền; ba
  *      dòng máy tính khớp xem trước của máy chủ, phần khấu trừ đã gồm khoản tạm ứng vừa duyệt. Chọn một sổ quỹ
  *      mà CHÍNH chủ thứ hai đang giữ (đọc lúc chạy bằng list_cashbooks_for_expense_v2 — không ghi tên sổ vào
@@ -26,7 +25,7 @@ import { USERS, trackConsoleErrors } from './auth';
  *   6. Chủ công ty huỷ có lý do phiếu tiền ĐÃ CHI của lần chốt bằng hộp huỷ phiếu đã chi (đảo bút toán, lần chốt
  *      tự hết hiệu lực) rồi huỷ phiếu tạm ứng ⇒ hai con số về như trước.
  *   afterAll: huỷ bằng API mọi phiếu thử còn sống (phiếu tiền của lần chốt TRƯỚC, phiếu tạm ứng SAU) và trả
- *   công tắc về OFF (kiểm lại LEGACY) — phiếu đã huỷ ở lại TEST làm vết như quy ước TEST.
+ *   công tắc về OFF nếu do lượt này bật (kiểm lại LEGACY) — phiếu đã huỷ ở lại TEST làm vết như quy ước TEST.
  *
  * Phiếu tạm ứng: người duyệt là chủ công ty (chỉ thuộc công ty thật), khác người lập và khác người nhận (luật cũ của
  * phiếu người giữ sổ lập). Phiếu tiền của lần chốt: chủ thứ hai lập và tự Duyệt và Chi (phiếu chủ lập).
@@ -115,11 +114,14 @@ END $$;`;
 
 function routeOffSql(): string {
   return `DO $$
-DECLARE v_version bigint; v_mode text;
+DECLARE v_version bigint; v_mode text; v_window text;
 BEGIN
-  SELECT f.config_version, f.mode INTO v_version, v_mode
+  SELECT f.config_version, f.mode, f.maintenance_window_id INTO v_version, v_mode, v_window
     FROM app_private.server_feature_flags f WHERE f.feature_key = ${sqlText(FEATURE_KEY)} FOR UPDATE;
   IF v_mode IS DISTINCT FROM 'OFF' THEN
+    IF v_mode IS DISTINCT FROM 'ON' OR v_window IS DISTINCT FROM ${sqlText(`TEST-E2E-profit-ledger-${RUN_TAG}`)} THEN
+      RAISE EXCEPTION 'E2E profit-ledger: cấu hình đã đổi sau fixture, giữ trạng thái hiện tại';
+    END IF;
     PERFORM app_private.set_feature_route_v1(${sqlText(FEATURE_KEY)}, v_version, 'OFF', NULL, NULL, NULL, NULL, NULL,
       NULL, NULL, NULL, NULL, NULL, ${sqlText(`E2E profit-ledger ${RUN_TAG}: trả về OFF`)});
   END IF;
@@ -367,16 +369,25 @@ async function cancelPostedVoucher(page: Page, code: string, reason: string) {
   await expect(page.locator('[data-sonner-toast]').filter({ hasText: `Đã huỷ phiếu ${code} và đảo bút toán` }).first()).toBeVisible({ timeout: 30_000 });
 }
 
-/** Chủ công ty duyệt một phiếu ở Hộp duyệt sau khi đọc ghi chú sổ tổng của phiếu đó. */
-async function approveAtInbox(page: Page, code: string, noteTexts: readonly string[]) {
+/**
+ * Chủ công ty duyệt một phiếu NGAY Ở THU CHI sau khi đọc thẻ số dư sổ tổng trong hộp Duyệt.
+ * Màn Chờ duyệt đã bỏ 25/11/2026 (chủ chốt: duyệt một đường ở Thu chi) — đi từ đường dẫn cũ để kiểm luôn việc
+ * chuyển hướng về Thu chi › Chờ xử lý.
+ */
+async function approveAtCashbook(page: Page, voucherId: string, code: string, noteTexts: readonly string[]) {
   await page.goto('/approvals');
-  const row = page.locator('tbody tr').filter({ hasText: code }).first();
+  await expect(page).toHaveURL((url) => url.pathname === '/income-expense', { timeout: 60_000 });
+  await expect(page.getByRole('tab', { name: /^Chờ xử lý/ })).toHaveAttribute('aria-selected', 'true');
+  await page.getByPlaceholder('Tìm mã phòng, tên/mã phiếu hoặc số tiền (±5.000đ)...').fill(code);
+  const row = page.getByTestId(`voucher-row-${voucherId}`);
   await expect(row).toBeVisible({ timeout: 90_000 });
-  const note = row.locator('xpath=following-sibling::tr[1]');
+  await row.getByTitle('Duyệt phiếu (đã thanh toán)').click();
+  const dialog = page.getByRole('alertdialog', { name: 'Xác nhận duyệt phiếu' });
+  const note = dialog.getByTestId('ledger-approval-note');
   for (const text of noteTexts) await expect(note).toContainText(text, { timeout: 60_000 });
-  const approve = row.getByRole('button', { name: 'Duyệt', exact: true });
+  const approve = dialog.getByRole('button', { name: 'Chỉ duyệt', exact: true });
   await expect(approve).toBeEnabled({ timeout: 60_000 });
-  const response = page.waitForResponse((r) => /\/rest\/v1\/rpc\/(approve_income_expense_v2|decide_financial_request_v2)$/.test(new URL(r.url()).pathname), { timeout: 90_000 });
+  const response = page.waitForResponse((r) => /\/rest\/v1\/rpc\/approve_income_expense_v2$/.test(new URL(r.url()).pathname), { timeout: 90_000 });
   await approve.click();
   expect((await response).status()).toBe(200);
   await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Đã duyệt phiếu' }).first()).toBeVisible({ timeout: 30_000 });
@@ -451,26 +462,25 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
   expect(shareholderId, 'E3 trả mã cổ đông').toMatch(/^[0-9a-f-]{36}$/);
 
   const before = await ownerLedgerRoute(ownerJwt);
-  expect(before.route, 'TEST phải đang ở LEGACY trước khi spec bật sổ tổng').toBe('LEGACY');
+  expect(['LEGACY', 'CANONICAL'], 'trạng thái sổ tổng trước lượt thử').toContain(before.route);
   const otherNames = before.names.filter((r) => r.shareholder_id !== shareholderId).map((r) => r.name).filter((n) => n.trim().length >= 2);
 
   let owner: Session | null = null;
   let maker: Session | null = null;
   let holder: Session | null = null;
   try {
-    // 0. LEGACY: thông báo "xem thử", nút Chi khoá.
     owner = await openSession(browser, USERS.testchu, ownerPassword);
-    await test.step('LEGACY: sổ tổng chỉ xem thử, chưa chốt chi được', async () => {
-      await openOwnerOverview(owner!.page);
-      await expect(owner!.page.getByTestId('profit-ledger-route-banner')).toContainText('xem thử');
-      await expect(owner!.page.getByRole('button', { name: '＋ Chi lợi nhuận' })).toBeDisabled();
-      await expect(owner!.page.getByTestId(`ledger-row-${shareholderId}`).getByRole('button', { name: 'Chi', exact: true })).toBeDisabled();
-    });
-
-    // 1. Bật ON tạm.
-    routeTouched = true;
-    runTestSql('route-on', routeOnSql());
-    expect((await ownerLedgerRoute(ownerJwt)).route, 'sau fixture: CANONICAL').toBe('CANONICAL');
+    if (before.route === 'LEGACY') {
+      await test.step('LEGACY: sổ tổng chỉ xem thử, chưa chốt chi được', async () => {
+        await openOwnerOverview(owner!.page);
+        await expect(owner!.page.getByTestId('profit-ledger-route-banner')).toContainText('xem thử');
+        await expect(owner!.page.getByRole('button', { name: '＋ Chi lợi nhuận' })).toBeDisabled();
+        await expect(owner!.page.getByTestId(`ledger-row-${shareholderId}`).getByRole('button', { name: 'Chi', exact: true })).toBeDisabled();
+      });
+      runTestSql('route-on', routeOnSql());
+      routeTouched = true;
+    }
+    expect((await ownerLedgerRoute(ownerJwt)).route, 'sổ tổng sẵn sàng thử luồng chi').toBe('CANONICAL');
 
     // Điều kiện dữ liệu của TEST — đọc khi sổ tổng đã chạy thật, TRƯỚC mọi lệnh ghi của spec.
     const options = await readRpc<{ can_create?: boolean; accounts?: unknown[]; payees?: Array<{ shareholder_id?: string; is_self?: boolean }> }>(
@@ -522,7 +532,7 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
       advanceVoucherId = String(body.voucher_id);
       created.push(advanceVoucherId);
       const toast = page.locator('[data-sonner-toast]').filter({ hasText: 'tạm ứng' }).first();
-      await expect(toast).toContainText('chờ chủ duyệt, chưa chi tiền', { timeout: 30_000 });
+      await expect(toast).toContainText('chờ người có quyền duyệt, chưa chi tiền', { timeout: 30_000 });
       advanceCode = ((await toast.innerText()).match(/PC\d+/) ?? [''])[0];
       expect(advanceCode, 'mã phiếu tạm ứng trong thông báo').toMatch(/^PC\d+$/);
       const after = await positionOf(ownerJwt, shareholderId);
@@ -533,7 +543,7 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
 
     // 3. Chủ công ty duyệt phiếu tạm ứng.
     await test.step('chủ công ty duyệt phiếu tạm ứng ⇒ tạm ứng đang có tăng, lợi nhuận chưa chi không đổi', async () => {
-      await approveAtInbox(owner!.page, advanceCode, [
+      await approveAtCashbook(owner!.page, advanceVoucherId, advanceCode, [
         'Tạm ứng lợi nhuận', 'Lúc lập', 'Người giữ sổ tự lập phiếu tạm ứng cho chính mình', 'Chỉ chi được từ sổ đã chọn lúc lập',
       ]);
       const after = await positionOf(ownerJwt, shareholderId);

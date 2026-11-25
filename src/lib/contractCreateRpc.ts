@@ -74,6 +74,9 @@ export interface ContractCreatePayload {
   customers: ContractCreateCustomerInput[];
   services: ContractCreateServiceInput[];
   deposit_receipts?: ContractCreateDepositReceiptInput[];
+  expected_room_deposit_amount?: number;
+  reservation_id?: string;
+  reservation_revision?: number;
   existing_deposit_voucher_ids?: string[];
   /** Khách cũ hỗ trợ khách mới khi sang nhượng phòng: máy chủ ghi cặp phiếu chuyển cọc từ hợp đồng cũ. */
   transfer_support_amount?: number;
@@ -238,6 +241,8 @@ export function buildCreateContractRpcArgs(
       attachments: [...(receipt.attachments ?? [])],
       creator_name: receipt.creator_name?.trim() || null,
     })),
+    ...(payload.expected_room_deposit_amount !== undefined ? {expected_room_deposit_amount:payload.expected_room_deposit_amount} : {}),
+    ...(payload.reservation_id ? {reservation_id: payload.reservation_id, reservation_revision: payload.reservation_revision} : {}),
     existing_deposit_voucher_ids: [...(payload.existing_deposit_voucher_ids ?? [])],
   };
 

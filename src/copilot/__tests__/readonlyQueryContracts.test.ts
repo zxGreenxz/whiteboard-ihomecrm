@@ -696,7 +696,9 @@ describe('hop_cho_duyet - server RPC boundary', () => {
     const result = await tool('hop_cho_duyet').execute({ so_luong: 20 }, ctx);
     expect(result).toContain('PC-0001');
     expect(result).toContain('Ke toan A');
-    expect(result).toContain('/approvals');
+    // Màn Chờ duyệt đã bỏ 25/11/2026 (duyệt một đường ở Thu chi): hộp chờ dẫn về Thu chi.
+    expect(result).toContain('[link: /income-expense]');
+    expect(result).not.toContain('/approvals');
   });
 
   it('says the inbox is empty instead of returning nothing', async () => {

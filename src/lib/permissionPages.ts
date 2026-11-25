@@ -336,7 +336,7 @@ export const PAGE_GROUPS: PageGroup[] = [
             desc: "Thấy & chọn hạng mục đánh dấu 'hạn chế' (vd Quản Lý) trong picker khi tạo phiếu. Mặc định ẩn.",
           }),
           f("approvals", "emergency_override", "Duyệt khẩn cấp (cửa thoát chủ sở hữu)", "elevated", {
-            desc: "Gỡ kẹt phiếu do HỆ THỐNG sinh ở hạng mục đặc biệt (cọc / hoa hồng / thưởng) — nhóm này không ai tự duyệt được. Mọi lần dùng đều ghi nhật ký kèm lý do. Trang /approvals không cần quyền vì đã lọc theo người đăng nhập.",
+            desc: "Gỡ kẹt phiếu do HỆ THỐNG sinh ở hạng mục đặc biệt (cọc / hoa hồng / thưởng) — nhóm này không ai tự duyệt được. Mọi lần dùng đều ghi nhật ký kèm lý do.",
           }),
           f("income_expenses", "reverse", "Đảo bút toán phiếu đã ghi sổ", "elevated", {
             desc: "Sinh phiếu ngược để huỷ tác động của phiếu đã hạch toán. Không xoá phiếu gốc — dấu vết được giữ nguyên.",
@@ -388,7 +388,7 @@ export const PAGE_GROUPS: PageGroup[] = [
           // dòng tỷ lệ % chỉ hiện khi có quyền. Khoá tạm ứng (tên khoá giữ nguyên) từ 18/11/2026 là quyền ĐƯỢC TẠM
           // ỨNG: tự lập từ sổ mình giữ, hoặc nhận phiếu Tạm Ứng người giữ sổ khác lập ở Thu chi.
           f("shareholder_profit", "advance_own_cashbook", "Được tạm ứng lợi nhuận", "elevated", {
-            desc: "Cấp riêng từng người ở Thành viên → Ngoại lệ. Người có quyền này được tạm ứng lợi nhuận: tự lập phiếu từ sổ quỹ mình đang giữ, hoặc nhận phiếu Tạm Ứng do người giữ sổ khác lập ở Thu chi. Mọi phiếu chờ chủ duyệt; tạm ứng cộng dồn và được khấu trừ khi chủ chốt chi lợi nhuận.",
+            desc: "Cấp riêng từng người ở Thành viên → Ngoại lệ. Người có quyền này được tạm ứng lợi nhuận: tự lập phiếu từ sổ quỹ mình đang giữ, hoặc nhận phiếu Tạm Ứng do người giữ sổ khác lập ở Thu chi. Mọi phiếu chờ người có quyền duyệt. Tạm ứng cộng dồn và được khấu trừ khi chủ chốt chi lợi nhuận.",
           }),
           f("shareholder_profit", "view_percent", "Xem tỷ lệ % chia lợi nhuận", "elevated", {
             desc: "Cổ đông thấy tỷ lệ % cổ phần của chính mình ở từng toà.",

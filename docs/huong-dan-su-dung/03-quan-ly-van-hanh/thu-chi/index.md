@@ -66,7 +66,7 @@ Chỉ nhãn **Đã Chi**/**Đã Thu** nghĩa là tiền đã ra/vào sổ quỹ.
 **Hoa hồng môi giới** và **Thưởng nóng Sale** chỉ tạo từ hợp đồng, phiếu cọc, "Tạo phiếu hoa hồng" hoặc "Tạo lại" ở Cần rà soát — lập tay ở Thu chi bị từ chối với câu "Không lập tay được hạng mục này". **Chuyển tiền nội bộ** và **Chia lợi nhuận cổ đông** luôn ghi ngoài kết quả kinh doanh (không tính lãi lỗ). Một phiếu thu có thể vừa có dòng cọc vừa có dòng doanh thu; dòng cọc không vào lãi lỗ.
 :::
 
-Sau khi lưu, **máy chủ quyết** phiếu được tự duyệt hay vào **Chờ duyệt** theo luật chi của công ty (ngưỡng tiền, cam kết chi theo hạng mục ở **Tài chính → Cam kết chi**; nhóm cọc, hoa hồng, thưởng luôn phải có người duyệt). Phiếu cần người duyệt sẽ hiện ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) của người được giao.
+Sau khi lưu, **máy chủ quyết** phiếu được tự duyệt hay vào **Chờ duyệt** theo luật chi của công ty (ngưỡng tiền, cam kết chi theo hạng mục ở **Tài chính → Cam kết chi**; nhóm cọc, hoa hồng, thưởng luôn phải có người duyệt). Phiếu cần người duyệt nằm ở tab **Chờ xử lý** của màn này (xem mục [Duyệt và ghi sổ](#duyet-va-ghi-so)).
 
 ::: tip Ảnh chứng từ khi mạng chập chờn
 Ảnh chứng từ được nén và tải lên ngay khi chọn; mạng đứng thì máy tự tải lại. Trong lúc ảnh đang tải, các ô ngày, sổ quỹ và số tiền tạm khoá để không lưu nhầm.
@@ -78,7 +78,7 @@ Sau khi lưu, **máy chủ quyết** phiếu được tự duyệt hay vào **Ch
 
 ![Hộp Thông tin thu/chi của phiếu PC2609050 với các nút Bổ sung chứng từ, Huỷ phiếu, In phiếu, bảng thông tin chung, hạng mục và dòng Lịch sử thao tác](./images/buoc-03-chi-tiet-phieu.webp)
 
-Hộp có **Thông tin chung** (mã phiếu, tên, số tiền, sổ quỹ, toà, người nhận, thời gian, người tạo, hạch toán kết quả kinh doanh, ghi chú), **Hạng mục**, **Đính kèm** và **Lịch sử thao tác**. Các nút ở góc: **Bổ sung chứng từ / ghi chú**, **Huỷ phiếu**, **In phiếu**. Phiếu thu của hoá đơn có thêm dòng **Hình thức thu** và nút **Đổi hình thức thu**. Mở trang riêng của phiếu theo dạng `/income-expense/voucher/<mã>` (ví dụ bấm mã phiếu ở màn Chờ duyệt).
+Hộp có **Thông tin chung** (mã phiếu, tên, số tiền, sổ quỹ, toà, người nhận, thời gian, người tạo, hạch toán kết quả kinh doanh, ghi chú), **Hạng mục**, **Đính kèm** và **Lịch sử thao tác**. Các nút ở góc: **Bổ sung chứng từ / ghi chú**, **Huỷ phiếu**, **In phiếu**. Phiếu thu của hoá đơn có thêm dòng **Hình thức thu** và nút **Đổi hình thức thu**. Mở trang riêng của phiếu theo dạng `/income-expense/voucher/<mã>` (ví dụ bấm vào thông báo có mã phiếu, hoặc bấm mã phiếu trong danh sách).
 
 ## Duyệt và ghi sổ
 
@@ -94,7 +94,39 @@ Hộp có **Thông tin chung** (mã phiếu, tên, số tiền, sổ quỹ, toà
 - **Duyệt và Chi…** / **Duyệt và Thu…**: mở hộp thu/chi để duyệt và ghi sổ trong một lần (cần đủ ngày, sổ quỹ và chứng từ). Chỉ hiện khi bạn giữ sổ quỹ; phiếu nội bộ không bao giờ có nút này.
 - Nếu phiếu từng được sửa khi Chờ duyệt, hộp hiện **trước khi sửa → hiện tại** và từng lần sửa (ai sửa, lúc nào, lý do) để người duyệt đối chiếu.
 
-Phiếu đã duyệt nhưng chưa ghi sổ có nút **Chi tiền từ sổ (phiếu đã duyệt)** / **Thu tiền vào sổ (phiếu đã duyệt)** cho người giữ sổ. Người duyệt từ màn [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) có cùng các lựa chọn.
+Phiếu đã duyệt nhưng chưa ghi sổ có nút **Chi tiền từ sổ (phiếu đã duyệt)** / **Thu tiền vào sổ (phiếu đã duyệt)** cho người giữ sổ. Từ 25/11/2026, duyệt phiếu **chỉ còn một đường là màn Thu chi này**: màn **Chờ duyệt** cũ (menu **Tài chính → Chờ duyệt**, đường dẫn `/approvals`) đã bỏ, và đường dẫn cũ tự chuyển về **Thu chi → tab Chờ xử lý**. Mọi loại phiếu — kể cả phiếu chi lợi nhuận cổ đông, phiếu tạm ứng lợi nhuận và phiếu lương điều hành — đều duyệt ngay ở đây.
+
+### Phiếu chi theo sổ tổng lợi nhuận
+
+Phiếu **chi lợi nhuận cổ đông**, **tạm ứng lợi nhuận** và **lương điều hành** trước đây phải sang màn Chờ duyệt mới duyệt được; nay bấm **Duyệt** ngay trên dòng phiếu hoặc trong hộp chi tiết như phiếu thường. Hộp **Xác nhận duyệt phiếu** của các phiếu này có thêm **thẻ số dư sổ tổng**:
+
+- Tên loại phiếu và người nhận.
+- Dòng **Lúc lập: …** — số dư sổ tổng tại thời điểm lập phiếu.
+- Dòng **Bây giờ (không tính phiếu này): …** — số dư hiện tại, chưa trừ phiếu đang duyệt, để đối chiếu trước khi quyết.
+- Lưu ý **Chỉ chi được từ sổ đã chọn lúc lập: <tên sổ>**: **Duyệt và Chi…** của phiếu loại này chỉ chi từ đúng sổ quỹ đã chọn lúc lập, không đổi sang sổ khác.
+
+### Ai duyệt được, khi nào nút bị khoá
+
+Luật ai được duyệt **không đổi** so với màn cũ:
+
+- Cần quyền **chi lợi nhuận** (với phiếu lương điều hành thì cần quyền **trả lương điều hành**) **và** quyền duyệt thu chi ở toà của phiếu.
+- Phiếu **tạm ứng**: người lập và người nhận không tự duyệt — cần một người khác có quyền.
+- Phiếu do **chủ công ty lập** (chốt chi lợi nhuận, lương điều hành): chủ tự duyệt được.
+
+Khi hệ thống biết trước là bạn không duyệt được, nút **Duyệt** hiện **mờ nhưng vẫn bấm được**; hộp mở ra có dòng **Không duyệt được: <lý do>** và khoá nút xác nhận, ví dụ:
+
+- *Phiếu tạm ứng do chính bạn lập — người lập không tự duyệt được, cần một người khác có quyền chi lợi nhuận duyệt.*
+- *Cần thêm quyền duyệt thu chi ở toà của phiếu mới duyệt được phiếu này.*
+
+Các trường hợp khác — sổ tổng chưa bật hoặc đang đóng băng, phiếu lương điều hành vượt phần còn lại — thì thẻ số dư nói rõ lý do và nút cũng bị khoá.
+
+### Không còn nút Từ chối
+
+Nút **Từ chối** (kèm lý do) chỉ có ở màn Chờ duyệt cũ nên đã bỏ cùng màn đó. Muốn bỏ một phiếu đang chờ duyệt, dùng **Huỷ phiếu** và **ghi lý do** (xem mục [Mở lại, huỷ và khôi phục](#mo-lai-huy-va-khoi-phuc)). Phiếu sổ tổng lợi nhuận có hộp huỷ riêng, cũng bắt buộc ghi lý do. Nếu chỉ cần người lập sửa lại, dùng **Sửa phiếu chờ duyệt** hoặc báo người lập lập phiếu mới.
+
+::: info Bộ máy "yêu cầu duyệt" vẫn chạy ngầm
+Chỉ màn hình web bị bỏ. Phía máy chủ vẫn lập và theo dõi yêu cầu duyệt như trước (phiếu chi theo sổ tổng lợi nhuận chỉ duyệt được khi yêu cầu duyệt của nó còn đang chờ; trợ lý Hermes vẫn đọc được hộp chờ). Khi bạn hỏi trợ lý trong app "có gì chờ tôi duyệt", trợ lý dẫn về **Thu chi**.
+:::
 
 ## Sửa phiếu chờ duyệt (có lưu vết)
 
@@ -150,11 +182,15 @@ Màn Thu chi trên điện thoại có nút **+ Phiếu**, ô tìm, nút lọc, 
 | Báo "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa" | Đổi sang ngày ở kỳ hiện tại; kỳ đã chốt không ghi thêm được. |
 | Phiếu mới vào Chờ duyệt dù số tiền nhỏ | Hạng mục thuộc nhóm bắt buộc duyệt, vượt cam kết chi, hoặc bạn không giữ sổ đã chọn. |
 | Hộp **Xác nhận duyệt phiếu** khoá nút duyệt, kèm câu "Phiếu chi từ … trở lên cần người có quyền duyệt thu chi duyệt" | Bạn là người lập phiếu chi từ ngưỡng tự duyệt trở lên và không có quyền duyệt thu chi — chủ chốt 21/10/2026: phiếu vượt ngưỡng phải do người có quyền duyệt duyệt. Nhờ người có quyền duyệt duyệt phiếu; phiếu dưới ngưỡng vẫn vào sổ ngay như cũ. Hệ thống kiểm trước khi lưu nên sổ quỹ/ảnh vừa chọn trong hộp không bị lưu dở. |
+| Nút **Duyệt** của phiếu chi lợi nhuận / tạm ứng / lương điều hành hiện mờ, hộp báo **Không duyệt được: …** | Bạn là người lập phiếu tạm ứng đó, hoặc thiếu quyền duyệt thu chi ở toà của phiếu. Đọc lý do trong hộp rồi nhờ một người khác có đủ quyền duyệt. (Người không có quyền chi lợi nhuận / trả lương điều hành thì không thấy nút Duyệt của các phiếu này; người nhận tiền của phiếu tạm ứng bấm duyệt sẽ được máy chủ báo cần người khác duyệt.) |
+| Không còn thấy màn **Chờ duyệt** trong menu Tài chính | Màn đã bỏ từ 25/11/2026. Mở **Thu chi → Chờ xử lý**; đường dẫn `/approvals` cũ tự chuyển về đó. |
+| Muốn **Từ chối** một phiếu chờ duyệt | Không còn nút Từ chối. Dùng **Huỷ phiếu** và ghi lý do. |
 | Chi tiết phiếu báo chưa tải được | Bấm **Thử lại**; trong lúc đọc lại, các nút thao tác bị khoá để tránh thao tác trên bản cũ. |
 
 ## Quy trình liên quan
 
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/)
+- [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/)
+- [Bảng lương quản lý](/03-quan-ly-van-hanh/bang-luong/)
 - [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/)
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/)
 - [Sổ quỹ theo ngày](/04-bao-cao/so-quy-ngay/)

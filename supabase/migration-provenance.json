@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T13:44:31.289Z",
+  "generatedAt": "2026-11-25T13:56:15.129Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 987,
+    "ledger-applied": 989,
     "unknown": 81,
     "catalog-proven": 207,
     "superseded": 15
@@ -14763,6 +14763,28 @@
         "function:app_private.sale_org_wide_permission_v1",
         "function:app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1",
         "function:app_private.buildings_khoa_nguoi_dung_ten_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261125102224_contract_room_deposit_sources.sql",
+      "version": "20261125102224",
+      "name": "contract_room_deposit_sources",
+      "scheme": "timestamp14",
+      "sha256": "f00ecc40f9d910be0dff1fa8361c76c576136825f99fcf562f6f223e88ec4af2",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T11:00:06.764Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261125124010_duyet_tam_ung_co_dong_theo_quyen.sql",
+      "version": "20261125124010",
+      "name": "duyet_tam_ung_co_dong_theo_quyen",
+      "scheme": "timestamp14",
+      "sha256": "2be9363d52840e6cc02a212615589cba0e7c3935cdc3ea0108828bd939d1bb87",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T13:03:44.869Z|bien-nhan-backup"
       ]
     },
     {

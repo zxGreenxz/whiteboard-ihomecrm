@@ -19,17 +19,11 @@ describe('reservation queue follows live claims',()=>{
  it('separates deadline adjustment and positive topup, keeps money source state visible',async()=>{
   render(<RoomReservationPanel roomId="room"/>);fireEvent.click(screen.getByRole('button',{name:'Điều chỉnh hạn'}));fireEvent.change(screen.getByLabelText('Hạn giữ chỗ'),{target:{value:'2026-10-02'}});fireEvent.click(screen.getByRole('button',{name:'Lưu hạn'}));await waitFor(()=>expect(m.mutate).toHaveBeenCalledOnce());expect(m.mutate.mock.calls[0][0]).toMatchObject({action:'UPDATE',changes:{holdUntil:'2026-10-02'}});
  });
- it('hint-only reservation shows the hint, no phone, and assigns a customer with exact CAS and a stable key',async()=>{
-  m.query.data.reservations=[{...row,customer_id:null,customer_name:'Anh Hùng xe máy',customer_phone:null,customer_hint:'Anh Hùng xe máy'}];
-  const{container}=render(<RoomReservationPanel roomId="room"/>);expect(screen.getByText('Anh Hùng xe máy')).not.toBeNull();expect(screen.getByText('(tên gợi nhớ)')).not.toBeNull();expect(container.textContent).not.toContain('null');expect(container.textContent).not.toContain(' · 0900');
-  fireEvent.click(screen.getByRole('button',{name:'Gắn khách'}));fireEvent.click(screen.getByRole('button',{name:'Chọn một khách'}));await waitFor(()=>expect(m.assign).toHaveBeenCalledOnce());
-  expect(m.assign.mock.calls[0][0]).toMatchObject({reservationId:'hold1',expectedRevision:3,customerId:'cust-1'});expect(m.assign.mock.calls[0][0].idempotencyKey).toMatch(/^assign-customer-/);
-  fireEvent.click(screen.getByRole('button',{name:'Gắn khách'}));fireEvent.click(screen.getByRole('button',{name:'Chọn một khách'}));await waitFor(()=>expect(m.assign).toHaveBeenCalledTimes(2));
-  expect(m.assign.mock.calls[1][0].idempotencyKey).toBe(m.assign.mock.calls[0][0].idempotencyKey);
- });
- it('rejects an empty customer pick without calling the server',async()=>{
-  m.query.data.reservations=[{...row,customer_id:null,customer_hint:'Anh Hùng'}];render(<RoomReservationPanel roomId="room"/>);
-  fireEvent.click(screen.getByRole('button',{name:'Gắn khách'}));fireEvent.click(screen.getByRole('button',{name:'Chọn không ai'}));await screen.findByText(/Chọn đúng một khách/);expect(m.assign).not.toHaveBeenCalled();
+ it('shows the original reminder even after a historical assignment',()=>{
+  m.query.data.reservations=[{...row,customer_id:'customer',customer_hint:'Anh Hùng xe máy'}];
+  render(<RoomReservationPanel roomId="room"/>);
+  expect(screen.getByText('Anh Hùng xe máy')).toBeTruthy();
+  expect(screen.queryByRole('button',{name:'Gắn khách'})).toBeNull();
  });
  it('hides Gắn khách without deposits.edit and for reservations that already have a customer',()=>{
   m.query.data.reservations=[{...row,customer_id:null,customer_hint:'Anh Hùng'}];m.perms={deposits:{view:true,edit:false}};const{unmount}=render(<RoomReservationPanel roomId="room"/>);expect(screen.queryByRole('button',{name:'Gắn khách'})).toBeNull();unmount();

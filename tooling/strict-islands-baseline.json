@@ -1256,7 +1256,6 @@
     "src/pages/account/ProfilePage.tsx",
     "src/pages/account/SubscriptionPage.tsx",
     "src/pages/admin/UsersPage.tsx",
-    "src/pages/approvals/ApprovalsPage.tsx",
     "src/pages/assets/AssetsPage.tsx",
     "src/pages/auth/AcceptInvitation.tsx",
     "src/pages/auth/ForgotPassword.tsx",

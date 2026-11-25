@@ -92,6 +92,5 @@ Sau khi công bố, phiếu đóng phí ở **Thanh toán** đúng mức giá ch
 ## Quy trình liên quan
 
 - [Cam kết chi](/05-cai-dat/cam-ket-chi/) — bộ máy duyệt chi theo cam kết tháng.
-- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — theo dõi phiếu chi đã sinh.
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) — duyệt phiếu đóng lệch giá.
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — duyệt phiếu đóng lệch giá và theo dõi phiếu chi đã sinh.
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — kiểm tiền đã ra khỏi quỹ.

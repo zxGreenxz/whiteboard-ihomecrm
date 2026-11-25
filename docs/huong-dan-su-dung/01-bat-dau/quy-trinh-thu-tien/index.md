@@ -87,7 +87,7 @@ Trước khi bấm, đối chiếu **số tiền**, **phương thức TM/TK/TT**
 - **Đã duyệt ≠ Đã Thu**: phiếu thu từ lần thu ở trạng thái duyệt, nhưng tiền chỉ coi là vào sổ quỹ khi phiếu là **Đã Thu** (đã ghi sổ — `POSTED`). Kiểm ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) và [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) (cột **Tồn quỹ** chỉ cộng bút toán đã ghi sổ).
 - **Khách trả thiếu**: hoá đơn ở **Trả 1 phần**; phần nợ được máy kéo vào ô **Nợ cũ** của hoá đơn kỳ sau.
 - **Khách trả thừa**: nhập **Tiền thối** thực tế, hoặc tích **Nợ khách (trừ kỳ sau)** để giữ phần dư làm credit của hợp đồng. Báo cáo [Tiền thừa](/03-quan-ly-van-hanh/tien-thua/) là báo cáo legacy, không phải số dư credit chuẩn.
-- **Khoản thu/chi ngoài hoá đơn** (phí phạt, sửa chữa…) ghi ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/); phiếu cần duyệt nằm ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/).
+- **Khoản thu/chi ngoài hoá đơn** (phí phạt, sửa chữa…) ghi ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/); phiếu cần duyệt nằm ở tab **Chờ xử lý** của màn đó.
 
 **Bước 6**: **Bàn giao tiền mặt và chốt sổ.** Tiền mặt người thu đang giữ được nộp cho người nhận qua nút **Bàn giao tiền mặt** trên màn Thu tiền (hai phía xác nhận), sau đó người giữ sổ chốt sổ ở **Sổ quỹ**. Xem [Quy trình: Bàn giao & đối soát](/01-bat-dau/quy-trinh-ban-giao/).
 
@@ -144,4 +144,4 @@ Kết quả mong đợi: bạn đọc được dữ liệu mỗi bước và kh�
 - [Ghi chỉ số điện nước](/03-quan-ly-van-hanh/ghi-chi-so/) · [Sinh hoá đơn hàng loạt](/03-quan-ly-van-hanh/sinh-hoa-don/)
 - [Hoá đơn — danh sách & tạo lẻ](/03-quan-ly-van-hanh/hoa-don/) · [Chi tiết, in hoá đơn & QR tra cứu](/03-quan-ly-van-hanh/hoa-don-chi-tiet/)
 - [Thu tiền tại hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/) · [Thu tiền tại phòng (điện thoại)](/03-quan-ly-van-hanh/thu-tien-mobile/)
-- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) · [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) · [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) · [Tiền thừa](/03-quan-ly-van-hanh/tien-thua/)
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) · [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) · [Tiền thừa](/03-quan-ly-van-hanh/tien-thua/)

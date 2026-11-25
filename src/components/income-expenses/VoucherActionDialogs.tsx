@@ -29,6 +29,7 @@ import { isNonCashVoucher } from "@/lib/financeV2VoucherState";
 import { adoptVoucherAttachmentsAsEvidence, uploadFinanceEvidence } from "@/hooks/income-expenses/financeV2Mutations";
 import type { VoucherActions } from "@/hooks/income-expenses/useVoucherActions";
 import { ProfitPayoutCancelDialog } from "@/components/shareholders/ProfitPayoutCancelDialog";
+import { ProfitLedgerApprovalNote } from "@/components/approvals/ProfitLedgerApprovalNote";
 
 export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
   const d = actions.dialogs;
@@ -199,7 +200,7 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận duyệt phiếu</AlertDialogTitle>
             <AlertDialogDescription>
-              {approve.v2ApproveOnly ? (
+              {approve.v2ApproveOnly || approve.ledger.isLedger ? (
                 <>
                   <b>Duyệt</b> chỉ chuyển trạng thái phê duyệt — <b>không</b> thay
                   đổi tồn quỹ. Tiền chỉ vào/ra sổ khi thực hiện <b>Thu/Chi</b> với
@@ -225,10 +226,23 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
             </p>
           )}
 
+          {/* Phiếu chi theo sổ tổng (chi lợi nhuận / tạm ứng / lương điều hành): người duyệt thấy số dư sổ tổng lúc
+              lập và bây giờ ngay trong hộp này — một đường duyệt ở Thu chi, không còn màn Chờ duyệt riêng. */}
+          {approveTarget && approve.ledger.isLedger && <ProfitLedgerApprovalNote voucherId={approveTarget.id} />}
+          {approve.ledger.viewerReason && (
+            <p
+              id="ie-ledger-approve-note"
+              role="note"
+              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+            >
+              Không duyệt được: {approve.ledger.viewerReason}
+            </p>
+          )}
+
           {/* Phiếu đã bị sửa khi Chờ duyệt ⇒ người duyệt thấy đổi gì, ai sửa, vì sao. */}
           {approveTarget && <RevisionComparison voucherId={approveTarget.id} />}
 
-          {!approve.v2ApproveOnly && (
+          {!approve.v2ApproveOnly && !approve.ledger.isLedger && (
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="approve-account">Sổ quỹ</Label>
@@ -290,8 +304,8 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
               <Button
                 variant="outline"
                 className="border-blue-600 text-blue-700 hover:bg-blue-50"
-                disabled={approve.pending || approveAndPost.pending || approve.selfGate.blocked || approve.selfChecking}
-                aria-describedby={approve.selfGate.blocked ? "ie-self-approve-note" : undefined}
+                disabled={approve.pending || approveAndPost.pending || approve.selfGate.blocked || approve.selfChecking || approve.ledger.blocked}
+                aria-describedby={approve.selfGate.blocked ? "ie-self-approve-note" : approve.ledger.viewerReason ? "ie-ledger-approve-note" : undefined}
                 onClick={() => { void approve.openApproveAndPost(); }}
               >
                 {approveTarget?.type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
@@ -307,14 +321,15 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
                 (!approve.v2ApproveOnly && approve.isShareholderPayout && !approve.accountId) ||
                 d.blockedVoucherId === approveTarget?.id ||
                 approve.selfGate.blocked ||
-                approve.selfChecking
+                approve.selfChecking ||
+                approve.ledger.blocked
               }
-              aria-describedby={approve.selfGate.blocked ? "ie-self-approve-note" : undefined}
+              aria-describedby={approve.selfGate.blocked ? "ie-self-approve-note" : approve.ledger.viewerReason ? "ie-ledger-approve-note" : undefined}
               className="bg-green-600 hover:bg-green-700"
             >
               {approve.pending || approve.selfChecking
                 ? "Đang duyệt…"
-                : approve.v2ApproveOnly
+                : approve.v2ApproveOnly || approve.ledger.isLedger
                   ? "Chỉ duyệt"
                   : "Duyệt phiếu"}
             </AlertDialogAction>
@@ -339,7 +354,7 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
             attachments: approveTarget.attachments ?? null,
             isCommission: isCommissionVoucher(approveTarget),
           }}
-          capability={{ isCustodian: approveAndPost.cashbookOptions.length > 0, canApprove: true }}
+          capability={{ isCustodian: approveAndPost.cashbookOptions.length > 0, canApprove: !approveAndPost.blockReason, blockReason: approveAndPost.blockReason }}
           cashbookOptions={approveAndPost.cashbookOptions}
           cashbookError={posting.cashbookError}
           onRetryCashbooks={posting.retryCashbooks}

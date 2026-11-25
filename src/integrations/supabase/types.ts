@@ -25340,6 +25340,10 @@ export type Database = {
         Args: { p_contract_id: string; p_organization_id: string }
         Returns: Json
       }
+      get_contract_room_deposits_v1: {
+        Args: { p_organization_id: string; p_room_id: string }
+        Returns: Json
+      }
       get_contract_stats: {
         Args: { p_building_ids?: string[]; p_in30?: string; p_today?: string }
         Returns: Json
