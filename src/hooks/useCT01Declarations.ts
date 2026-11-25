@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { CT01Declaration, CT01FormData } from "@/types/customer";
+import type { Json } from "@/integrations/supabase/types";
 import { recordWriteMessage } from "@/lib/recordWriteOutcome";
 import { FinancialAlreadyRecordedError, FinancialWorkflowError } from "@/lib/financialWorkflowError";
 import { hasUnconfirmedResponse } from "@/lib/operationOutcome";
@@ -22,8 +23,8 @@ export const useCT01Declarations = (customerId: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data, error } = await (supabase
-        .from("ct01_declarations") as any)
+      const { data, error } = await supabase
+        .from("ct01_declarations")
         .select("*")
         .eq("customer_id", customerId)
         .order("created_at", { ascending: false });
@@ -34,7 +35,7 @@ export const useCT01Declarations = (customerId: string) => {
       }
 
       if (!Array.isArray(data)) throw new Error("Chưa tải được tờ khai CT01.");
-      return data as CT01Declaration[];
+      return data as unknown as CT01Declaration[];
     },
     enabled: !!customerId,
   });
@@ -56,10 +57,10 @@ const isUniqueViolation = (error: unknown) => !!error && typeof error === "objec
 
 async function readCt01ById(id: string): Promise<{ state: "found"; row: CT01Declaration } | { state: "missing" } | { state: "unreadable" }> {
   try {
-    const { data, error } = await (supabase.from("ct01_declarations") as any).select("*").eq("id", id).maybeSingle();
+    const { data, error } = await supabase.from("ct01_declarations").select("*").eq("id", id).maybeSingle();
     if (error) return { state: "unreadable" };
     if (!data) return { state: "missing" };
-    return data.id === id ? { state: "found", row: data as CT01Declaration } : { state: "unreadable" };
+    return data.id === id ? { state: "found", row: data as unknown as CT01Declaration } : { state: "unreadable" };
   } catch {
     return { state: "unreadable" };
   }
@@ -82,9 +83,9 @@ export const useCreateCT01Declaration = () => {
       // Dấu bản trước của khách này (khoá chung theo khách, phạm vi người dùng): đọc một lần, tra tờ khai quanh giờ kẹt.
       // Thấy thì chỉ báo «có thể đã lưu» kèm mã, mới nhất trước, rồi gỡ dấu; lần lưu sau tạo bình thường.
       const legacy = await settleLegacyPending({ namespace: "ct01-declaration-create", businessKey: customerId }, async pending => {
-        const window = legacyWindow(pending);
-        const { data, error } = await (supabase.from("ct01_declarations") as any).select("id,created_at")
-          .eq("customer_id", customerId).eq("user_id", user.id).gte("created_at", window.from).lte("created_at", window.to)
+        const range = legacyWindow(pending);
+        const { data, error } = await supabase.from("ct01_declarations").select("id,created_at")
+          .eq("customer_id", customerId).eq("user_id", user.id).gte("created_at", range.from).lte("created_at", range.to)
           .order("created_at", { ascending: false }).limit(5);
         if (error || !Array.isArray(data)) throw error ?? new TypeError("unreadable");
         return (data as { id: string }[]).map(row => row.id);
@@ -99,10 +100,11 @@ export const useCreateCT01Declaration = () => {
       unconfirmedCt01.set(memoryKey, id);
       let response: { data: unknown; error: unknown };
       try {
-        response = await (supabase
-          .from("ct01_declarations") as any)
+        response = await supabase
+          .from("ct01_declarations")
           .insert(withOrg({
             ...formData,
+            family_members: formData.family_members as unknown as Json,
             id,
             user_id: user.id,
             customer_id: customerId,
