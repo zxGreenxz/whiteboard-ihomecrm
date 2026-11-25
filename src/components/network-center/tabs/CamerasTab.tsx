@@ -1,4 +1,4 @@
-import { AlertTriangle, BellRing, Camera, CheckCheck, Clock3, HardDrive, Radio, RefreshCw, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Bell, Camera, CheckCheck, Clock3, HardDrive, Radio, RefreshCw, ShieldAlert } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { Link } from "react-router-dom";
 import { LoadingState } from "@/components/loading/LoadingState";
@@ -218,7 +218,7 @@ export function CamerasTab({ site, controller }: {
       <div className="nc-panel-heading">
         <div><p className="nc-eyebrow">{controller.isDemo ? "Dữ liệu DEMO · mô phỏng" : "Theo dõi camera theo tòa nhà"}</p><h3>Camera · {site.buildingName}</h3></div>
         <div className="nc-heading-actions">
-          <Button asChild variant="outline"><Link to="/network-center/camera-alerts" className="nc-link-button"><BellRing className="mr-2 h-4 w-4" aria-hidden="true" />Cài đặt cảnh báo</Link></Button>
+          <Button asChild variant="outline"><Link to="/network-center/camera-alerts" className="nc-link-button"><Bell className="mr-2 h-4 w-4" aria-hidden="true" />Cài đặt cảnh báo</Link></Button>
           <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching} onClick={() => { setRefreshKey((value) => value + 1); refetchAll(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
         </div>
       </div>

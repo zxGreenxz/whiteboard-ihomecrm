@@ -1,4 +1,4 @@
-import { FileText, ListFilter } from "lucide-react";
+import { FileText, Filter } from "lucide-react";
 import { useState } from "react";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ export function CameraAlertDeliveryLog({ scope, repository, buildingNames }: {
       <div className="nc-panel-heading">
         <div><p className="nc-eyebrow">7 ngày gần nhất</p><h3 id="camera-alert-log-title">Nhật ký gửi</h3></div>
         <div className="nc-field nc-log-filter">
-          <Label htmlFor="camera-alert-log-status"><ListFilter className="mr-1 inline h-4 w-4" aria-hidden="true" />Trạng thái</Label>
+          <Label htmlFor="camera-alert-log-status"><Filter className="mr-1 inline h-4 w-4" aria-hidden="true" />Trạng thái</Label>
           <Select value={status ?? ALL} onValueChange={(value) => setStatus(value === ALL ? null : value as CameraAlertDeliveryStatus)}>
             <SelectTrigger id="camera-alert-log-status" aria-label="Lọc nhật ký theo trạng thái"><SelectValue /></SelectTrigger>
             <SelectContent className="network-center nc-select-content">

@@ -86,8 +86,8 @@ const executeAt = (buildingIds: string[]) => ({
 const channelCard = (label: string) => screen.getByRole("article", { name: `Đầu ghi DEMO · ${label}` });
 const openChannelMenu = async (label: string) => {
   const trigger = await screen.findByRole("button", { name: `Tuỳ chọn báo cho ${label}` });
-  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-  return screen.findByRole("menu");
+  fireEvent.click(trigger);
+  return screen.findByRole("group", { name: `Cách báo cho ${label}` });
 };
 afterEach(() => { cleanup(); client.clear(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -381,8 +381,8 @@ describe("camera tab — cảnh báo v2", () => {
     await waitFor(() => expect(screen.getAllByRole("button", { name: /Tuỳ chọn báo cho/ })).toHaveLength(4));
 
     const menu = await openChannelMenu("Kênh 1 “Sảnh DEMO”");
-    expect(within(menu).queryByRole("menuitem", { name: "Theo dõi lại" })).toBeNull();
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Không theo dõi kênh này" }));
+    expect(within(menu).queryByRole("button", { name: "Theo dõi lại" })).toBeNull();
+    fireEvent.click(within(menu).getByRole("button", { name: "Không theo dõi kênh này" }));
     const dialog = await screen.findByRole("dialog", { name: "Không theo dõi kênh này" });
     fireEvent.change(within(dialog).getByLabelText("Ghi chú (không bắt buộc)"), { target: { value: "  chưa lắp  " } });
     const listsBefore = alertMocks.listBuildingMutes.mock.calls.length;
@@ -392,7 +392,7 @@ describe("camera tab — cảnh báo v2", () => {
     await waitFor(() => expect(alertMocks.listBuildingMutes.mock.calls.length).toBeGreaterThan(listsBefore));
 
     const snoozeMenu = await openChannelMenu("Kênh 1 “Sảnh DEMO”");
-    fireEvent.click(within(snoozeMenu).getByRole("menuitem", { name: "Tạm ẩn đến…" }));
+    fireEvent.click(within(snoozeMenu).getByRole("button", { name: "Tạm ẩn đến…" }));
     const snooze = await screen.findByRole("dialog", { name: "Tạm ẩn kênh này" });
     const day = within(snooze).getByLabelText("Tạm ẩn đến hết ngày");
     fireEvent.change(day, { target: { value: "01/01/2020" } });
@@ -406,7 +406,7 @@ describe("camera tab — cảnh báo v2", () => {
     await waitFor(() => expect(document.body.style.pointerEvents).not.toBe("none"));
 
     const brokenMenu = await openChannelMenu("Kênh 2 “Hành lang DEMO”");
-    fireEvent.click(within(brokenMenu).getByRole("menuitem", { name: "Theo dõi lại" }));
+    fireEvent.click(within(brokenMenu).getByRole("button", { name: "Theo dõi lại" }));
     await waitFor(() => expect(alertMocks.clearChannelMute).toHaveBeenCalledWith(recorderId, 2));
   });
 
@@ -418,7 +418,7 @@ describe("camera tab — cảnh báo v2", () => {
     }));
     render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
     const menu = await openChannelMenu("Kênh 2 “Hành lang DEMO”");
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Tạm ẩn đến…" }));
+    fireEvent.click(within(menu).getByRole("button", { name: "Tạm ẩn đến…" }));
     const snooze = await screen.findByRole("dialog", { name: "Tạm ẩn kênh này" });
     fireEvent.click(within(snooze).getByRole("button", { name: "Tạm ẩn" }));
     await waitFor(() => expect(alertMocks.setChannelMute).toHaveBeenCalledTimes(1));
@@ -436,7 +436,7 @@ describe("camera tab — cảnh báo v2", () => {
     alertMocks.setChannelMute.mockRejectedValue(new NetworkCenterRepositoryError("Bạn không có quyền thực hiện thao tác này với cảnh báo camera.", { code: "42501" }));
     render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
     const menu = await openChannelMenu("Kênh 1 “Sảnh DEMO”");
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Đã biết hỏng (nhắc hằng tuần)" }));
+    fireEvent.click(within(menu).getByRole("button", { name: "Đã biết hỏng (nhắc hằng tuần)" }));
     const dialog = await screen.findByRole("dialog", { name: "Đánh dấu kênh đã biết hỏng" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Đã biết hỏng" }));
     expect(await within(dialog).findByText("Chỉ chủ công ty hoặc superadmin sửa được.")).toBeTruthy();
@@ -495,7 +495,7 @@ describe("camera tab — cảnh báo v2", () => {
   it("DEMO: channel menus and acknowledgement run against the in-memory repository", async () => {
     render(<CamerasTab site={site} controller={{ ...controller, mode: "demo", isDemo: true }} />, { wrapper: Wrapper });
     const menu = await openChannelMenu("Kênh 2 “Hành lang DEMO”");
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Đã biết hỏng (nhắc hằng tuần)" }));
+    fireEvent.click(within(menu).getByRole("button", { name: "Đã biết hỏng (nhắc hằng tuần)" }));
     const dialog = await screen.findByRole("dialog", { name: "Đánh dấu kênh đã biết hỏng" });
     expect(dialog.textContent).toContain("Dữ liệu mô phỏng");
     fireEvent.click(within(dialog).getByRole("button", { name: "Đã biết hỏng" }));

@@ -1,4 +1,4 @@
-import { AlertTriangle, BellRing } from "lucide-react";
+import { AlertTriangle, Bell } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -48,7 +48,7 @@ export function FleetOverview({ controller }: { controller: NetworkCenterControl
             : "Mỗi toà dùng một MikroTik; Aruba không giới hạn tổng số và luôn chỉ hiển thị. Trạng thái bên dưới lấy trực tiếp từ control plane."}</p>
         </div>
         <div className="nc-heading-actions">
-          <Button asChild variant="outline"><Link to="/network-center/camera-alerts" className="nc-link-button"><BellRing className="mr-2 h-4 w-4" aria-hidden="true" />Cảnh báo camera</Link></Button>
+          <Button asChild variant="outline"><Link to="/network-center/camera-alerts" className="nc-link-button"><Bell className="mr-2 h-4 w-4" aria-hidden="true" />Cảnh báo camera</Link></Button>
         </div>
       </section>
 

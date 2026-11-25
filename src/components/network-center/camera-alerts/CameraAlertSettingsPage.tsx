@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, BellRing, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bell, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { LoadingState } from "@/components/loading/LoadingState";
@@ -110,7 +110,7 @@ export function CameraAlertSettingsPage({ controller, organizationId, organizati
         <div>
           <Link to="/network-center" className="nc-inline-back"><ArrowLeft aria-hidden="true" /> Danh sách mạng</Link>
           <p className="nc-eyebrow">Toàn công ty{organizationName ? ` · ${organizationName}` : ""} / {controller.isDemo ? "dữ liệu mô phỏng" : "dữ liệu trực tiếp"}</p>
-          <h2><BellRing className="mr-2 inline h-8 w-8" aria-hidden="true" />Cảnh báo camera</h2>
+          <h2><Bell className="mr-2 inline h-8 w-8" aria-hidden="true" />Cảnh báo camera</h2>
           <p>Chọn loại sự cố cần báo, cách báo và nhóm Zalo nhận tin. Cài đặt áp dụng cho mọi toà của công ty; từng kênh camera tắt báo ở tab Camera của toà.</p>
         </div>
       </section>

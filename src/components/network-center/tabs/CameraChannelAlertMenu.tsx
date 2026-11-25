@@ -1,14 +1,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { BellOff, BellRing, CalendarClock, Eye, EyeOff, Wrench } from "lucide-react";
+import { Bell, BellOff, CalendarClock, Eye, EyeOff, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
   addDaysIso, cameraAlertFailure, cameraChannelMuteText, cameraChannelMuteSchema, formatVnDate, SNOOZE_MAX_DAYS,
@@ -64,6 +62,8 @@ interface CameraChannelAlertMenuProps {
 /** Menu "báo kênh" — chỉ dựng khi người xem sửa được (chủ công ty hoặc superadmin). */
 export function CameraChannelAlertMenu({ recorderId, channel, channelLabel, mute, isDemo, onSet, onClear }: CameraChannelAlertMenuProps) {
   const [kind, setKind] = useState<CameraChannelMuteKind | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const choose = (next: CameraChannelMuteKind) => { setMenuOpen(false); setKind(next); };
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState("");
 
@@ -82,21 +82,22 @@ export function CameraChannelAlertMenu({ recorderId, channel, channelLabel, mute
 
   return (
     <div className="nc-channel-menu">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+        <PopoverTrigger asChild>
           <Button type="button" variant="outline" size="sm" disabled={clearing} aria-label={`Tuỳ chọn báo cho ${channelLabel}`}>
-            <BellRing className="mr-1 h-4 w-4" aria-hidden="true" />Báo kênh
+            <Bell className="mr-1 h-4 w-4" aria-hidden="true" />Báo kênh
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="network-center nc-select-content nc-menu-content">
-          <DropdownMenuLabel>{channelLabel}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setKind("IGNORE")}><EyeOff className="mr-2 h-4 w-4" aria-hidden="true" />Không theo dõi kênh này</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setKind("SNOOZE")}><CalendarClock className="mr-2 h-4 w-4" aria-hidden="true" />Tạm ẩn đến…</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setKind("KNOWN_BROKEN")}><Wrench className="mr-2 h-4 w-4" aria-hidden="true" />Đã biết hỏng (nhắc hằng tuần)</DropdownMenuItem>
-          {mute ? <DropdownMenuItem onSelect={() => void clear()}><Eye className="mr-2 h-4 w-4" aria-hidden="true" />Theo dõi lại</DropdownMenuItem> : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="network-center nc-select-content nc-menu-content">
+          <div role="group" aria-label={`Cách báo cho ${channelLabel}`} className="nc-menu-list">
+            <p className="nc-menu-title">{channelLabel}</p>
+            <button type="button" onClick={() => choose("IGNORE")}><EyeOff className="mr-2 h-4 w-4" aria-hidden="true" />Không theo dõi kênh này</button>
+            <button type="button" onClick={() => choose("SNOOZE")}><CalendarClock className="mr-2 h-4 w-4" aria-hidden="true" />Tạm ẩn đến…</button>
+            <button type="button" onClick={() => choose("KNOWN_BROKEN")}><Wrench className="mr-2 h-4 w-4" aria-hidden="true" />Đã biết hỏng (nhắc hằng tuần)</button>
+            {mute ? <button type="button" onClick={() => { setMenuOpen(false); void clear(); }}><Eye className="mr-2 h-4 w-4" aria-hidden="true" />Theo dõi lại</button> : null}
+          </div>
+        </PopoverContent>
+      </Popover>
       {error ? <p className="nc-form-error" role="alert">{error}</p> : null}
       {kind ? (
         <CameraChannelMuteDialog
