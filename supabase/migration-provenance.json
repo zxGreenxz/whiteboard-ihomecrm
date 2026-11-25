@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T12:50:16.461Z",
+  "generatedAt": "2026-11-25T13:04:18.368Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 988,
-    "unknown": 81,
+    "ledger-applied": 989,
+    "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14766,10 +14766,9 @@
       "name": "duyet_tam_ung_co_dong_theo_quyen",
       "scheme": "timestamp14",
       "sha256": "2be9363d52840e6cc02a212615589cba0e7c3935cdc3ea0108828bd939d1bb87",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T13:03:44.869Z|bien-nhan-backup"
       ]
     },
     {
