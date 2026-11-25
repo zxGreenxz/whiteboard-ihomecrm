@@ -41,7 +41,7 @@ export default function ShareTokensTab() {
   const revokeMut = useSetTokenRevoked({inlineError:true});
   const deleteMut = useDeletePublicRoomToken({inlineError:true});
   // Link thuộc công ty đang chọn; chưa chốt công ty thì không cho tạo (máy chủ cũng không đoán thay).
-  const {selectedOrganizationId}=useOrganization();
+  const {selectedOrganizationId,isLoading:orgLoading}=useOrganization();
   const orgReady=!!selectedOrganizationId;
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -86,7 +86,7 @@ export default function ShareTokensTab() {
           <Plus className="h-4 w-4 mr-1" />Tạo link mới
         </Button>
       </div>
-      {!orgReady&&<p className="text-sm text-muted-foreground">Chọn công ty ở đầu trang để tạo link mới.</p>}
+      {!orgReady&&!orgLoading&&<p className="text-sm text-muted-foreground">Chọn công ty ở đầu trang để tạo link mới.</p>}
 
       {!createOpen&&!editing&&!revoking&&!deleting&&errorNotice}
       <QueryRegion label="link chia sẻ" queries={[tokenQuery]} skeleton="table" rows={4}>

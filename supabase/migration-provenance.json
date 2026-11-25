@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T02:01:43.671Z",
+  "generatedAt": "2026-11-25T02:31:56.473Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -14721,7 +14721,7 @@
       "version": "20261124171545",
       "name": "link_chia_se_va_thong_ke_ghi_ro_cong_ty",
       "scheme": "timestamp14",
-      "sha256": "6558654d2595dc0fc03fc5a02d9f2fa3c9ba5effdc92b225dda9529c2c9ff275",
+      "sha256": "c78a366eeae6e12442f9e4d9e6f3f7ae1ac85786a6e65a1d30d54fee6b062ab5",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.create_public_room_token",

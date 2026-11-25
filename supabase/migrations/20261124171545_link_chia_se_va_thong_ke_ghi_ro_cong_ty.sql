@@ -10,7 +10,8 @@
 --   - log_public_room_events: mỗi dòng ghi trong khối EXCEPTION WHEN others THEN NULL ⇒ mọi sự kiện không có phòng/toà
 --     (session, error, view_mode…) của link nick chủ bị bỏ im lặng. Đo production 25/11/2026: phiên xem 298 dòng trước
 --     03/09, 0 dòng sau; lỗi 185 trước, 0 sau ⇒ «Thời gian xem TB» 0:00, tab «Lỗi» trống.
---   - Quyền sale_phong.manage_tokens chỉ ẩn tab; máy chủ cho mọi người đăng nhập tạo link.
+--   - Quyền sale_phong.manage_tokens chỉ ẩn tab; máy chủ cho mọi người đăng nhập tạo link — qua RPC, và cả qua ghi
+--     thẳng bảng: anon/authenticated có INSERT trên public_room_share_tokens, policy chỉ đòi owner_id = auth.uid().
 --
 -- LÀM GÌ
 --   1. create_public_room_token(p_label text DEFAULT NULL, p_organization_id uuid DEFAULT NULL) thay bản một tham số
@@ -24,8 +25,12 @@
 --      Giữ nguyên: chữ ký, kiểu trả về (số dòng đã ghi), quyền anon, hạn mức 5.000 dòng/link/ngày theo giờ VN, trần 50
 --      sự kiện/lô, 14 loại sự kiện, hạ cấp metadata. Dòng hỏng vẫn chỉ mất chính nó (trang công khai không gãy) nhưng
 --      KHÔNG còn im lặng: đếm vào app_private.public_room_event_budgets (so_loi, loi_cuoi_ma = SQLSTATE cuối,
---      loi_cuoi_luc) và RAISE WARNING vào log Postgres (PostgREST không chuyển WARNING tới khách).
+--      loi_cuoi_luc), dòng hỏng TÍNH VÀO hạn mức ngày (anon không bơm được savepoint lỗi vô hạn), RAISE WARNING vào log
+--      Postgres chỉ khi so_loi của ngày chuyển từ 0 lên (PostgREST không chuyển WARNING tới khách). duration_ms /
+--      dwell_ms kẹp vào [0, 86.400.000] TRƯỚC khi ép int (số lớn không còn làm mất dòng thật vì 22003).
 --   3. public_room_event_budgets: thêm ba cột trên (ADD COLUMN IF NOT EXISTS, có mặc định; bảng 53 dòng).
+--   4. REVOKE INSERT trên public_room_share_tokens khỏi PUBLIC/anon/authenticated: link chỉ sinh qua RPC đã kiểm quyền.
+--      Giữ SELECT/UPDATE/DELETE (web đổi nhãn, thu hồi, khôi phục, xoá đi thẳng bảng; đợt 2 chuyển sang RPC có kiểm quyền).
 --
 -- AN TOÀN CHẠY LẠI
 --   Tiền kiểm md5(prosrc bỏ CR) của hai hàm: thân production đo 25/11/2026 (lượt đầu) hoặc thân của chính file này
@@ -33,8 +38,9 @@
 --
 -- LÙI (migration forward mới, không phá dữ liệu): DROP create_public_room_token(text, uuid) rồi CREATE lại bản (text)
 --   bằng nguyên văn thân 20260607090300 (md5 a58a58892c46a5d5f6e3bfd2bc948134); CREATE OR REPLACE
---   log_public_room_events bằng nguyên văn thân 20260902092508 (md5 6793a043ee3eed5ab05e9f041eeeebdf). Ba cột mới để
---   lại (không hàm nào khác đọc). Link đã tạo giữ nguyên organization_id đã ghi.
+--   log_public_room_events bằng nguyên văn thân 20260902092508 (md5 6793a043ee3eed5ab05e9f041eeeebdf); GRANT INSERT ON
+--   public.public_room_share_tokens TO anon, authenticated. Ba cột mới để lại (không hàm nào khác đọc). Link đã tạo giữ
+--   nguyên organization_id đã ghi.
 -- =============================================================================
 
 -- 0. Tiền kiểm: đúng phụ thuộc, đúng thân đã rà.
@@ -78,7 +84,7 @@ BEGIN
   SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5
     FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure('public.log_public_room_events(text,jsonb)');
   -- [0] thân đang chạy production (20260902092508, đo 25/11/2026) · [1] thân của chính file này (lượt chạy lại).
-  IF v_md5 IS NULL OR NOT (v_md5 = ANY (ARRAY['6793a043ee3eed5ab05e9f041eeeebdf', 'e8f80d246c4fd5c85b882dfc5ae34aac'])) THEN
+  IF v_md5 IS NULL OR NOT (v_md5 = ANY (ARRAY['6793a043ee3eed5ab05e9f041eeeebdf', 'ea2084b47e85d65b02d6ca6e186b627f'])) THEN
     RAISE EXCEPTION 'log_public_room_events KHÁC thân đã rà (md5 %) — DỪNG, đối chiếu thân đang chạy', v_md5
       USING ERRCODE = '55000';
   END IF;
@@ -92,9 +98,9 @@ ALTER TABLE app_private.public_room_event_budgets
   ADD COLUMN IF NOT EXISTS loi_cuoi_luc timestamptz;
 
 COMMENT ON COLUMN app_private.public_room_event_budgets.so_loi IS
-'Số sự kiện log_public_room_events nhận nhưng KHÔNG ghi được trong ngày (dòng hỏng chỉ mất chính nó). Khác 0 là có lỗi cần xem; trước 25/11/2026 lỗi này bị nuốt im lặng.';
+'Số sự kiện log_public_room_events nhận nhưng KHÔNG ghi được trong ngày (dòng hỏng chỉ mất chính nó). Tính vào hạn mức 5.000 dòng/link/ngày cùng so_dong. Khác 0 là có lỗi cần xem; trước 25/11/2026 lỗi này bị nuốt im lặng.';
 COMMENT ON COLUMN app_private.public_room_event_budgets.loi_cuoi_ma IS
-'SQLSTATE của lần ghi hỏng gần nhất trong ngày (ví dụ 23502 thiếu organization_id, 22003 số quá lớn).';
+'SQLSTATE của lần ghi hỏng gần nhất trong ngày (ví dụ 23502 thiếu organization_id, 22P02 mã phòng sai dạng).';
 COMMENT ON COLUMN app_private.public_room_event_budgets.loi_cuoi_luc IS
 'Giờ của lần ghi hỏng gần nhất trong ngày.';
 
@@ -172,7 +178,11 @@ COMMENT ON FUNCTION public.create_public_room_token(text, uuid) IS
 REVOKE ALL ON FUNCTION public.create_public_room_token(text, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_public_room_token(text, uuid) TO authenticated, service_role;
 
--- 3. Ghi sự kiện trang công khai: công ty lấy từ link, lỗi từng dòng được đếm.
+-- 3. Đóng đường lách: POST thẳng /rest/v1/public_room_share_tokens (token tự đặt) bỏ qua mọi kiểm của hàm trên.
+--    Giữ SELECT/UPDATE/DELETE cho web hiện hành (đổi nhãn, thu hồi, khôi phục, xoá); service_role và hàm máy chủ vẫn ghi.
+REVOKE INSERT ON public.public_room_share_tokens FROM PUBLIC, anon, authenticated;
+
+-- 4. Ghi sự kiện trang công khai: công ty lấy từ link, lỗi từng dòng được đếm và tính vào hạn mức ngày.
 CREATE OR REPLACE FUNCTION public.log_public_room_events(p_token text, p_events jsonb)
 RETURNS integer
 LANGUAGE plpgsql
@@ -185,6 +195,8 @@ DECLARE
   v_count   int := 0;
   v_loi     int := 0;
   v_loi_ma  text;
+  v_loi_cu  int;
+  v_loi_truoc int;
   v_meta    jsonb;
   r         record;
   v_ngay    date;
@@ -215,16 +227,16 @@ BEGIN
     RETURN 0;
   END IF;
 
-  -- NGÂN SÁCH: đã dùng hết hạn mức ngày của token này thì dừng, im lặng.
+  -- NGÂN SÁCH: đã dùng hết hạn mức ngày của token này (dòng ghi + dòng hỏng) thì dừng, im lặng.
   v_ngay := (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date;
   INSERT INTO app_private.public_room_event_budgets (token, ngay, so_dong)
   VALUES (p_token, v_ngay, 0)
   ON CONFLICT (token, ngay) DO NOTHING;
 
-  SELECT b.so_dong INTO v_da_ghi
+  SELECT b.so_dong, b.so_loi INTO v_da_ghi, v_loi_cu
     FROM app_private.public_room_event_budgets b
    WHERE b.token = p_token AND b.ngay = v_ngay;
-  v_con_lai := c_tran - COALESCE(v_da_ghi, 0);
+  v_con_lai := c_tran - COALESCE(v_da_ghi, 0) - COALESCE(v_loi_cu, 0);
   IF v_con_lai <= 0 THEN
     RETURN 0;
   END IF;
@@ -271,17 +283,18 @@ BEGIN
         left(r.e->>'room_code', 64),
         CASE WHEN (r.e->>'building_id') ~ '^[0-9a-fA-F-]{36}$' THEN (r.e->>'building_id')::uuid END,
         left(r.e->>'building_name', 200),
-        CASE WHEN jsonb_typeof(r.e->'duration_ms')='number'
-             THEN LEAST(GREATEST((r.e->>'duration_ms')::numeric::int, 0), 86400000) END,
+        CASE WHEN jsonb_typeof(r.e->'duration_ms')='number'      -- kẹp TRƯỚC rồi mới ép int (số lớn không nổ 22003)
+             THEN LEAST(GREATEST((r.e->>'duration_ms')::numeric, 0), 86400000)::int END,
         CASE WHEN jsonb_typeof(r.e->'dwell_ms')='number'
-             THEN LEAST(GREATEST((r.e->>'dwell_ms')::numeric::int, 0), 86400000) END,
+             THEN LEAST(GREATEST((r.e->>'dwell_ms')::numeric, 0), 86400000)::int END,
         v_meta,
         now()                                      -- tin đồng hồ server; bỏ qua client created_at
       );
       v_count := v_count + 1;
     EXCEPTION
       WHEN others THEN
-        -- Dòng hỏng chỉ mất chính nó (không kéo theo cả batch), nhưng KHÔNG im lặng: đếm vào ngân sách ngày.
+        -- Dòng hỏng chỉ mất chính nó (không kéo theo cả batch), nhưng KHÔNG im lặng: đếm vào ngân sách ngày
+        -- (và tính vào hạn mức, để lô toàn dòng hỏng không lặp vô hạn).
         v_loi := v_loi + 1;
         v_loi_ma := SQLSTATE;
     END;
@@ -294,10 +307,12 @@ BEGIN
            loi_cuoi_ma = COALESCE(v_loi_ma, b.loi_cuoi_ma),
            loi_cuoi_luc = CASE WHEN v_loi > 0 THEN now() ELSE b.loi_cuoi_luc END,
            updated_at = now()
-     WHERE b.token = p_token AND b.ngay = v_ngay;
+     WHERE b.token = p_token AND b.ngay = v_ngay
+    RETURNING b.so_loi - v_loi INTO v_loi_truoc;          -- so_loi TRƯỚC lần cộng này (dòng đã khoá)
   END IF;
 
-  IF v_loi > 0 THEN
+  -- Báo log một lần mỗi link mỗi ngày: lúc so_loi chuyển từ 0 lên (không bơm log theo từng request).
+  IF v_loi > 0 AND v_loi_truoc = 0 THEN
     RAISE WARNING 'log_public_room_events: % sự kiện không ghi được (link %, SQLSTATE cuối %)', v_loi, p_token, v_loi_ma;
   END IF;
 
@@ -313,7 +328,8 @@ COMMENT ON FUNCTION public.log_public_room_events(text, jsonb) IS
 'Anon batch logger cho /r/:token. Validate token (chưa revoke), resolve owner_id VÀ organization_id của link
 server-side (ghi tường minh, 25/11/2026), cắt batch <=50, NGÂN SÁCH 5.000 dòng/token/ngày (VN) qua
 app_private.public_room_event_budgets, clamp string/duration, lọc event_type lạ. Ghi TỪNG DÒNG trong
-sub-transaction: dòng hỏng chỉ mất chính nó, batch vẫn sống, và được đếm vào budgets.so_loi + RAISE WARNING.
+sub-transaction: dòng hỏng chỉ mất chính nó, batch vẫn sống, được đếm vào budgets.so_loi (tính vào hạn mức ngày)
+và RAISE WARNING một lần/link/ngày khi so_loi rời 0. duration/dwell kẹp trước khi ép int.
 Metadata > 8192 ký tự bị hạ cấp còn kind/msg/fp/source/n để báo cáo vẫn gộp nhóm được. Trả số dòng ghi.
 KHÔNG tin owner_id/organization_id/created_at từ client.';
 
@@ -321,11 +337,12 @@ REVOKE ALL ON FUNCTION public.log_public_room_events(text, jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.log_public_room_events(text, jsonb) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.log_public_room_events(text, jsonb) TO service_role;
 
--- 4. Hậu kiểm: đúng một bản mỗi hàm, đúng thân của file này, đúng quyền gọi, đủ cột mới.
+-- 5. Hậu kiểm: đúng một bản mỗi hàm, đúng thân của file này, đúng quyền gọi và quyền bảng, đủ cột mới.
 DO $sau$
 DECLARE
   v_tao regprocedure := to_regprocedure('public.create_public_room_token(text,uuid)');
   v_log regprocedure := to_regprocedure('public.log_public_room_events(text,jsonb)');
+  v_bang regclass := to_regclass('public.public_room_share_tokens');
 BEGIN
   IF v_tao IS NULL OR (SELECT count(*) FROM pg_catalog.pg_proc p
        WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'create_public_room_token') <> 1 THEN
@@ -334,7 +351,7 @@ BEGIN
   IF (SELECT md5(replace(p.prosrc, chr(13), '')) FROM pg_catalog.pg_proc p WHERE p.oid = v_tao)
        IS DISTINCT FROM '9b182ad493533270469d384a4c6d986f'
      OR (SELECT md5(replace(p.prosrc, chr(13), '')) FROM pg_catalog.pg_proc p WHERE p.oid = v_log)
-       IS DISTINCT FROM 'e8f80d246c4fd5c85b882dfc5ae34aac' THEN
+       IS DISTINCT FROM 'ea2084b47e85d65b02d6ca6e186b627f' THEN
     RAISE EXCEPTION 'Hậu kiểm: thân hàm không phải bản của file này' USING ERRCODE = '55000';
   END IF;
   IF NOT has_function_privilege('authenticated', v_tao, 'EXECUTE')
@@ -348,6 +365,12 @@ BEGIN
      OR NOT has_function_privilege('authenticated', v_log, 'EXECUTE')
      OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p, aclexplode(p.proacl) AS g WHERE p.oid = v_log AND g.grantee = 0) THEN
     RAISE EXCEPTION 'Hậu kiểm: quyền gọi log_public_room_events sai (anon, authenticated; không PUBLIC)'
+      USING ERRCODE = '55000';
+  END IF;
+  IF has_table_privilege('authenticated', v_bang, 'INSERT')
+     OR has_table_privilege('anon', v_bang, 'INSERT')
+     OR NOT has_table_privilege('authenticated', v_bang, 'SELECT,UPDATE,DELETE') THEN
+    RAISE EXCEPTION 'Hậu kiểm: public_room_share_tokens phải đóng INSERT với anon/authenticated, giữ SELECT/UPDATE/DELETE'
       USING ERRCODE = '55000';
   END IF;
   IF (SELECT count(*) FROM information_schema.columns

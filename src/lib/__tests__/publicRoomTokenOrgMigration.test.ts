@@ -30,7 +30,11 @@ const BUILDING_B = id(201);
 
 const fixture = `
   CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
-  CREATE SCHEMA app_private; CREATE SCHEMA auth;
+  -- Quyền mặc định của Supabase cho đối tượng postgres tạo trong public: bảng ALL và hàm EXECUTE cấp thẳng cho
+  -- anon/authenticated/service_role. Nhờ vậy test thấy được khi ai bỏ anon khỏi REVOKE hay quên REVOKE INSERT.
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+  CREATE SCHEMA app_private; CREATE SCHEMA auth; GRANT USAGE ON SCHEMA auth TO anon, authenticated;
   CREATE TABLE auth.users(id uuid PRIMARY KEY);
   INSERT INTO auth.users VALUES ('${OWNER2}'),('${MANAGER}'),('${NOPERM}'),('${SUPER}'),('${LEFT}'),('${STRANGER}');
   CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('test.uid', true), '')::uuid $$;
@@ -70,6 +74,13 @@ const fixture = `
   CREATE TABLE public.public_room_share_tokens(
     token text PRIMARY KEY, owner_id uuid NOT NULL, label text, revoked boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now(), organization_id uuid REFERENCES public.organizations(id));
+  -- RLS production (25/11/2026): prst_owner_all PERMISSIVE + org_boundary RESTRICTIVE.
+  ALTER TABLE public.public_room_share_tokens ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY prst_owner_all ON public.public_room_share_tokens FOR ALL TO authenticated
+    USING (owner_id = auth.uid()) WITH CHECK (owner_id = auth.uid());
+  CREATE POLICY public_room_share_tokens_org_boundary ON public.public_room_share_tokens AS RESTRICTIVE FOR ALL TO authenticated
+    USING (organization_id IS NULL OR (SELECT public.is_super_admin()) OR organization_id IN (SELECT unnest(public.my_org_ids())))
+    WITH CHECK (organization_id IS NULL OR (SELECT public.is_super_admin()) OR organization_id IN (SELECT unnest(public.my_org_ids())));
   CREATE TABLE public.public_room_events(
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), token text NOT NULL, owner_id uuid NOT NULL, session_id text NOT NULL,
     event_type text NOT NULL CHECK (event_type = ANY (ARRAY['session','impression','building_select','view_mode','room_open',
@@ -114,8 +125,20 @@ const md5Of = async (db: PGlite, fn: string) =>
 const createToken = (db: PGlite, uid: string | null, org: string | null, label: string | null = 'Sale') =>
   asUser<{ token: string; owner_id: string; organization_id: string; label: string | null }>(
     db, uid, 'SELECT * FROM public.create_public_room_token($1, $2::uuid)', [label, org]);
-const logEvents = async (db: PGlite, token: string, events: unknown[]) =>
-  (await asUser<{ n: number }>(db, null, 'SELECT public.log_public_room_events($1, $2::jsonb) n', [token, JSON.stringify(events)])).rows[0].n;
+const logEvents = async (db: PGlite, token: string, events: unknown[], warnings?: string[]) => {
+  await db.query("SELECT set_config('test.uid', '', false)");
+  return (await db.query<{ n: number }>('SELECT public.log_public_room_events($1, $2::jsonb) n', [token, JSON.stringify(events)],
+    { onNotice: (notice) => { if (notice.severity === 'WARNING') warnings?.push(notice.message ?? ''); } })).rows[0].n;
+};
+/** Chạy câu lệnh với vai authenticated thật (RLS + quyền bảng), như PostgREST. */
+async function asAuthenticated<T>(db: PGlite, uid: string, text: string, params: unknown[] = []) {
+  await db.query("SELECT set_config('test.uid', $1, false)", [uid]);
+  await db.exec('SET ROLE authenticated');
+  try { return await db.query<T>(text, params); } finally { await db.exec('RESET ROLE'); }
+}
+const budget = async (db: PGlite, token: string) => (await db.query<{ so_dong: number; so_loi: number; loi_cuoi_ma: string | null; co_gio: boolean }>(
+  'SELECT so_dong, so_loi, loi_cuoi_ma, loi_cuoi_luc IS NOT NULL co_gio FROM app_private.public_room_event_budgets WHERE token=$1', [token])).rows[0];
+const BAD_ROOM = '-'.repeat(36); // khớp regex uuid lỏng của logger nhưng ép ::uuid nổ 22P02 — dòng hỏng thật
 
 let db: PGlite;
 let guard: PGlite;
@@ -189,6 +212,9 @@ describe('migration 20261124171545', () => {
       has_function_privilege('authenticated','public.create_public_room_token(text,uuid)','EXECUTE') auth,
       has_function_privilege('anon','public.create_public_room_token(text,uuid)','EXECUTE') anon`)).rows[0];
     expect(r).toEqual({ n: 1, auth: true, anon: false });
+    // Quyền mặc định kiểu Supabase cấp thẳng EXECUTE cho anon: chỉ REVOKE … FROM PUBLIC là chưa đủ.
+    expect((await db.query<{ g: string[] }>("SELECT array_agg(g.grantee::regrole::text ORDER BY 1) g FROM pg_proc p, aclexplode(p.proacl) g WHERE p.oid='public.create_public_room_token(text,uuid)'::regprocedure")).rows[0].g)
+      .not.toContain('anon');
     expect((await db.query<{ a: boolean }>("SELECT has_function_privilege('anon','public.log_public_room_events(text,jsonb)','EXECUTE') a")).rows[0].a).toBe(true);
   });
 
@@ -220,16 +246,71 @@ describe('migration 20261124171545', () => {
   it('dòng hỏng chỉ mất chính nó nhưng được đếm (so_loi, SQLSTATE cuối), trả số dòng ghi thật', async () => {
     const token = (await createToken(db, OWNER2, ORG_A)).rows[0].token;
     const n = await logEvents(db, token, [
-      { session_id: 's-2', event_type: 'session', duration_ms: 1e20 },
+      { session_id: 's-2', event_type: 'room_open', room_id: BAD_ROOM },
       { session_id: 's-2', event_type: 'impression' },
     ]);
     expect(n).toBe(1);
-    const b = (await db.query<{ so_dong: number; so_loi: number; loi_cuoi_ma: string; co_gio: boolean }>(
-      'SELECT so_dong, so_loi, loi_cuoi_ma, loi_cuoi_luc IS NOT NULL co_gio FROM app_private.public_room_event_budgets WHERE token=$1', [token])).rows[0];
-    expect(b).toEqual({ so_dong: 1, so_loi: 1, loi_cuoi_ma: '22003', co_gio: true });
+    expect(await budget(db, token)).toEqual({ so_dong: 1, so_loi: 1, loi_cuoi_ma: '22P02', co_gio: true });
     // Lô toàn dòng hỏng vẫn được đếm (trước đây không cập nhật gì).
-    expect(await logEvents(db, token, [{ session_id: 's-3', event_type: 'session', duration_ms: 1e20 }])).toBe(0);
-    expect((await db.query<{ so_loi: number }>('SELECT so_loi FROM app_private.public_room_event_budgets WHERE token=$1', [token])).rows[0].so_loi).toBe(2);
+    expect(await logEvents(db, token, [{ session_id: 's-3', event_type: 'room_open', room_id: BAD_ROOM }])).toBe(0);
+    expect((await budget(db, token)).so_loi).toBe(2);
+  });
+
+  it('thời lượng rất lớn hay âm được kẹp trước khi ép kiểu, không làm mất dòng thật', async () => {
+    const token = (await createToken(db, OWNER2, ORG_A)).rows[0].token;
+    expect(await logEvents(db, token, [
+      { session_id: 's-big', event_type: 'session', duration_ms: 1e20, dwell_ms: 1e20 },
+      { session_id: 's-neg', event_type: 'session', duration_ms: -5, dwell_ms: -1e20 },
+    ])).toBe(2);
+    const rows = (await db.query<{ session_id: string; duration_ms: number; dwell_ms: number }>(
+      'SELECT session_id, duration_ms, dwell_ms FROM public.public_room_events WHERE token=$1 ORDER BY session_id', [token])).rows;
+    expect(rows).toEqual([
+      { session_id: 's-big', duration_ms: 86400000, dwell_ms: 86400000 },
+      { session_id: 's-neg', duration_ms: 0, dwell_ms: 0 },
+    ]);
+    expect((await budget(db, token)).so_loi).toBe(0);
+  });
+
+  it('dòng hỏng tính vào hạn mức ngày: lô hỏng không lặp vô hạn', async () => {
+    const token = (await createToken(db, OWNER2, ORG_A)).rows[0].token;
+    await db.query("INSERT INTO app_private.public_room_event_budgets(token, ngay, so_dong, so_loi) VALUES ($1, (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 4990, 8)", [token]);
+    const ok = { session_id: 's-q', event_type: 'impression' };
+    expect(await logEvents(db, token, [ok, ok, ok])).toBe(2); // 5.000 − 4.990 − 8 = 2
+    expect(await logEvents(db, token, [ok])).toBe(0);
+    const bad = (await createToken(db, OWNER2, ORG_A)).rows[0].token;
+    await db.query("INSERT INTO app_private.public_room_event_budgets(token, ngay, so_dong, so_loi) VALUES ($1, (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 0, 4999)", [bad]);
+    const hong = { session_id: 's-h', event_type: 'room_open', room_id: BAD_ROOM };
+    expect(await logEvents(db, bad, [hong, hong, hong])).toBe(0);
+    expect((await budget(db, bad)).so_loi).toBe(5000); // chỉ 1 dòng hỏng được xử lý, rồi hết hạn mức
+    expect(await logEvents(db, bad, [hong])).toBe(0);
+    expect((await budget(db, bad)).so_loi).toBe(5000);
+  });
+
+  it('WARNING chỉ một lần mỗi link mỗi ngày, lúc so_loi rời 0', async () => {
+    const token = (await createToken(db, OWNER2, ORG_A)).rows[0].token;
+    const warnings: string[] = [];
+    const hong = { session_id: 's-w', event_type: 'room_open', room_id: BAD_ROOM };
+    await logEvents(db, token, [{ session_id: 's-w', event_type: 'impression' }], warnings);
+    expect(warnings).toEqual([]);
+    await logEvents(db, token, [hong, hong], warnings);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/2 sự kiện không ghi được .*22P02/);
+    await logEvents(db, token, [hong], warnings);
+    await logEvents(db, token, [hong, { session_id: 's-w', event_type: 'impression' }], warnings);
+    expect(warnings).toHaveLength(1);
+    expect((await budget(db, token)).so_loi).toBe(4);
+  });
+
+  it('ghi thẳng bảng link bị chặn (42501) kể cả thành viên đúng công ty; đổi nhãn, thu hồi, xoá link của mình vẫn được', async () => {
+    await expect(asAuthenticated(db, NOPERM, "INSERT INTO public.public_room_share_tokens(token, owner_id, organization_id) VALUES ('tu-dat-link-1', $1, $2)", [NOPERM, ORG_A]))
+      .rejects.toMatchObject({ code: '42501', message: expect.stringMatching(/permission denied for table public_room_share_tokens/) });
+    await expect(asAuthenticated(db, OWNER2, "INSERT INTO public.public_room_share_tokens(token, owner_id, organization_id) VALUES ('tu-dat-link-2', $1, $2)", [OWNER2, ORG_A]))
+      .rejects.toMatchObject({ code: '42501' });
+    const token = (await createToken(db, OWNER2, ORG_A)).rows[0].token;
+    expect((await asAuthenticated(db, OWNER2, "UPDATE public.public_room_share_tokens SET label='Đổi nhãn', revoked=true WHERE token=$1 RETURNING token", [token])).rows).toHaveLength(1);
+    expect((await asAuthenticated(db, OWNER2, 'DELETE FROM public.public_room_share_tokens WHERE token=$1 RETURNING token', [token])).rows).toHaveLength(1);
+    expect((await db.query<{ i: boolean; s: boolean }>("SELECT has_table_privilege('anon','public.public_room_share_tokens','INSERT') i, has_table_privilege('service_role','public.public_room_share_tokens','INSERT') s")).rows[0])
+      .toEqual({ i: false, s: true });
   });
 
   it('giữ hạn mức 5.000 dòng/link/ngày, trần 50/lô, lọc loại lạ, link thu hồi thì không ghi', async () => {
@@ -257,7 +338,7 @@ describe('tiền kiểm và hậu kiểm md5 của file migration', () => {
     await guard.exec(sql);
     await guard.exec(sql);
     expect(await md5Of(guard, 'public.create_public_room_token(text,uuid)')).toBe('9b182ad493533270469d384a4c6d986f');
-    expect(await md5Of(guard, 'public.log_public_room_events(text,jsonb)')).toBe('e8f80d246c4fd5c85b882dfc5ae34aac');
+    expect(await md5Of(guard, 'public.log_public_room_events(text,jsonb)')).toBe('ea2084b47e85d65b02d6ca6e186b627f');
     expect(await md5Of(guard, 'public.create_public_room_token(text)')).toBeUndefined();
   });
 });

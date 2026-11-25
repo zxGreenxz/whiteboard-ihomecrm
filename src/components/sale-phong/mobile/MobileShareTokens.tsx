@@ -30,7 +30,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
   const revokeMut = useSetTokenRevoked({inlineError:true});
   const deleteMut = useDeletePublicRoomToken({inlineError:true});
   // Link thuộc công ty đang chọn; chưa chốt công ty thì không cho tạo (máy chủ cũng không đoán thay).
-  const {selectedOrganizationId}=useOrganization();
+  const {selectedOrganizationId,isLoading:orgLoading}=useOrganization();
   const orgReady=!!selectedOrganizationId;
 
   const [editing, setEditing] = useState<PublicRoomToken | null>(null); // null = create, token = edit
@@ -73,7 +73,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
         <Info size={17} stroke="var(--acc-blue)" />
         <p>Mỗi link hiển thị tất cả toà đang có phòng trống. Gửi cho khách/sale — không cần đăng nhập, thu hồi bất cứ lúc nào.</p>
       </div>
-      {!orgReady&&<p className="text-muted-foreground" style={{ fontSize: 13, margin: "0 0 12px" }}>Chọn công ty ở đầu trang để tạo link mới.</p>}
+      {!orgReady&&!orgLoading&&<p className="text-muted-foreground" style={{ fontSize: 13, margin: "0 0 12px" }}>Chọn công ty ở đầu trang để tạo link mới.</p>}
 
       {!sheetOpen&&!confirm&&errorNotice}
       {isLoading ? (
