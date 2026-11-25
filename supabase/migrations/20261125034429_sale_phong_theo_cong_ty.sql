@@ -78,11 +78,11 @@ BEGIN
   END IF;
   -- [0] thân production đo 25/11/2026 · [1] thân của chính file này (lượt chạy lại).
   FOR r IN SELECT * FROM (VALUES
-      ('public.get_public_available_rooms(text)', '7842895fd40412f10f8308a392c99db5', 'MD5_PUBLIC_PAGE'),
-      ('app_private.public_sale_rooms_payload_v1(uuid)', 'f4db947ac466302263911f8391bd4e5f', 'MD5_BOT_PAYLOAD'),
-      ('public.hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)', '618679c7cab236ce7a63df67233f1036', 'MD5_HERMES_PAGE'),
-      ('public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb)', 'd4ed3c99ba8f9e17d67414c098c0afc4', 'MD5_ZALO_ADVICE'),
-      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '20cb562dbc7c58d98310da44c692a68e', 'MD5_INVENTORY')
+      ('public.get_public_available_rooms(text)', '7842895fd40412f10f8308a392c99db5', 'a625ef754a3a17580f7fad8ca045b36a'),
+      ('app_private.public_sale_rooms_payload_v1(uuid)', 'f4db947ac466302263911f8391bd4e5f', '5807352fc553877422588a329e758d44'),
+      ('public.hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)', '618679c7cab236ce7a63df67233f1036', 'a756a97d00b0845d7cedc8fa6dd5d0b8'),
+      ('public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb)', 'd4ed3c99ba8f9e17d67414c098c0afc4', '53626e7005c800db9077f87504cb1bd2'),
+      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '20cb562dbc7c58d98310da44c692a68e', '3b7f70293f0bae23d7906c3203ef2279')
     ) AS v(fn, prod_md5, file_md5) LOOP
     SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5 FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure(r.fn);
     IF v_md5 IS NULL OR NOT (v_md5 = ANY (ARRAY[r.prod_md5, r.file_md5])) THEN
@@ -102,7 +102,7 @@ BEGIN
   ELSIF to_regprocedure('public.get_my_available_rooms(uuid)') IS NOT NULL THEN
     SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5
       FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure('public.get_my_available_rooms(uuid)');
-    IF v_md5 IS DISTINCT FROM 'MD5_MY_ROOMS' THEN
+    IF v_md5 IS DISTINCT FROM 'd7bfd2312b3ffbe68e324a9d86fcec93' THEN
       RAISE EXCEPTION 'get_my_available_rooms(uuid) KHÁC thân của file này (md5 %) — DỪNG', v_md5 USING ERRCODE = '55000';
     END IF;
   ELSE
@@ -562,3 +562,595 @@ BEGIN
   RETURN jsonb_build_object('question',s.question,'previous',previous,'page',page,'link',link,
     'signature',signature,'viewingPhone',viewing_phone,'blockedKeywords',cfg->'blockedKeywords');
 END $fn$;
+
+-- 8. Bảng nội bộ: cài đặt chung theo công ty, quyền sửa theo phân quyền.
+CREATE OR REPLACE FUNCTION public.get_sale_room_inventory_v1(p_organization_id uuid, p_building_id uuid DEFAULT NULL, p_room_id uuid DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private AS $fn$
+DECLARE result jsonb; v_owner uuid;
+BEGIN
+  IF auth.uid() IS NULL OR NOT COALESCE(p_organization_id = ANY(public.my_org_ids()), false)
+    OR NOT EXISTS (SELECT 1 FROM public.organizations WHERE id=p_organization_id AND status='ACTIVE')
+    OR (public.is_super_admin() AND COALESCE(p_organization_id = ANY(public.sandbox_org_ids()), false)) THEN
+    RAISE EXCEPTION 'Không có quyền xem phòng trong tổ chức này' USING ERRCODE='42501';
+  END IF;
+  -- Chủ cài đặt chung = người đứng tên chung các toà của công ty (không theo tập toà người xem được giao).
+  v_owner:=app_private.org_building_owner_v1(p_organization_id);
+  WITH allowed_buildings AS MATERIALIZED (
+    SELECT b.*,
+      app_private.sale_room_can_edit_v1(b.organization_id,b.id) AS can_edit,
+      app_private.sale_room_can_v1(b.organization_id,b.id,'sale_phong.manage_images') AS can_images,
+      app_private.sale_room_can_v1(b.organization_id,b.id,'sale_phong.manage_pass_listings') AS can_pass,
+      app_private.sale_room_can_v1(b.organization_id,b.id,'sale_phong.lock_room') AS can_lock,
+      app_private.sale_room_can_v1(b.organization_id,b.id,'deposits.create') AS can_deposit
+    FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND b.deleted_at IS NULL AND NOT b.is_virtual
+      AND (p_building_id IS NULL OR b.id=p_building_id)
+      AND (app_private.sale_room_can_v1(b.organization_id,b.id,'rooms.view')
+        OR app_private.sale_room_can_v1(b.organization_id,b.id,'sale_phong.view'))
+  ), inventory AS MATERIALIZED (
+    SELECT r.id, r.building_id, r.floor, r.name, r.code, r.area, r.rent_price,
+      r.deposit_amount, r.max_occupants, r.amenities, r.images, r.description,
+      r.sale_note, CASE WHEN b.can_edit THEN r.sale_bonus_note END AS sale_bonus_note,
+      r.room_type, r.updated_at, md5(to_jsonb(r)::text) AS revision,
+      r.sale_status_note AS sale_status_note_raw,r.sale_status_note_key,
+      app_private.sale_room_fact_key_v1(r.id,r.organization_id) AS sale_fact_key,
+      CASE WHEN r.sale_status_note_key=app_private.sale_room_fact_key_v1(r.id,r.organization_id) THEN r.sale_status_note END AS sale_status_note,
+      app_private.room_sale_policy_current_v1(r.organization_id,r.id,statement_timestamp()) AS policy,
+      COALESCE((SELECT jsonb_agg(app_private.room_sale_policy_json_v1(p,statement_timestamp()) ORDER BY p.starts_at,p.id)
+        FROM app_private.room_sale_policies_v1 p WHERE p.organization_id=r.organization_id AND p.room_id=r.id
+          AND p.cancelled_at IS NULL AND p.ends_at>statement_timestamp()),'[]'::jsonb) AS policies,
+      app_private.room_sale_policy_active_text_v1(r.organization_id,r.id,statement_timestamp()) AS active_policy_text,
+      NULLIF(concat_ws(E'\n',NULLIF(btrim(r.sale_note),''),app_private.room_sale_policy_active_text_v1(r.organization_id,r.id,statement_timestamp())),'') AS effective_sale_note,
+      fact.status_public, fact.sale_state, fact.avail_date, fact.sale_today, fact.expected_ready_on,
+      CASE WHEN fact.status_public='pass' AND NOT COALESCE(pl.contact_manager,false) THEN pl.contact_name END AS pass_contact_name,
+      CASE WHEN fact.status_public='pass' AND NOT COALESCE(pl.contact_manager,false) THEN pl.contact_phone END AS pass_contact_phone,
+      CASE WHEN fact.status_public='pass' THEN pl.sale_policy END AS pass_sale_policy,
+      CASE WHEN fact.status_public='pass' THEN pl.pass_price END AS pass_price,
+      CASE WHEN fact.status_public='pass' AND pl.avail_date>=fact.sale_today THEN pl.avail_date END AS pass_avail_date,
+      COALESCE(fact.status_public='pass' AND pl.contact_manager,false) AS pass_contact_manager,
+      CASE WHEN lk.id IS NOT NULL THEN jsonb_build_object(
+        'id',lk.id,'hours',lk.hours,'note',lk.note,'locked_at',lk.locked_at,'expires_at',lk.expires_at,
+        'locked_by_name',COALESCE(NULLIF(btrim(lp.full_name),''),'Người dùng'),
+        'locked_by_me',lk.locked_by=auth.uid()) END AS sale_lock,
+      app_private.room_exit_hold_json_v1(r.organization_id,r.id) AS exit_hold,
+      jsonb_build_object(
+        'edit',b.can_edit,'images',b.can_edit OR b.can_images,'pass',b.can_pass,
+        'lock',b.can_lock AND fact.status_public IN ('free','soon') AND lk.id IS NULL,
+        'releaseLock',lk.id IS NOT NULL AND ((lk.locked_by=auth.uid() AND b.can_lock) OR b.can_deposit),
+        'deposit',b.can_deposit
+      ) AS capabilities,
+      audit.updated_by_name
+    FROM public.rooms r
+    JOIN allowed_buildings b ON b.id=r.building_id AND b.organization_id=r.organization_id
+    LEFT JOIN public.public_room_settings settings ON settings.owner_id=b.user_id
+    LEFT JOIN public.room_pass_listings pl
+      ON pl.room_id=r.id AND pl.organization_id=r.organization_id AND pl.active
+    CROSS JOIN LATERAL app_private.room_sale_workflow_fact_v1(
+      r.id,r.organization_id,r.status::text,pl.id IS NOT NULL,COALESCE(settings.soon_days,30)
+    ) fact
+    LEFT JOIN LATERAL (
+      SELECT l.* FROM public.room_sale_locks l
+      WHERE l.room_id=r.id AND l.organization_id=r.organization_id
+        AND l.released_at IS NULL AND l.expires_at>now()
+        AND fact.status_public='rented'
+        AND EXISTS (SELECT 1 FROM app_private.room_sale_workflow_base_fact_v1(
+          r.id,r.organization_id,r.status::text,pl.id IS NOT NULL,COALESCE(settings.soon_days,30)
+        ) base WHERE base.status_public IN ('free','soon'))
+      ORDER BY l.locked_at DESC LIMIT 1
+    ) lk ON true
+    LEFT JOIN public.profiles lp ON lp.id=lk.locked_by
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(NULLIF(btrim(p.full_name),''),'Người dùng') AS updated_by_name
+      FROM app_private.sale_room_change_receipts cr
+      LEFT JOIN public.profiles p ON p.id=cr.actor_id
+      WHERE cr.room_id=r.id AND cr.organization_id=r.organization_id
+        AND cr.response->>'revision'=md5(to_jsonb(r)::text)
+      ORDER BY cr.created_at DESC LIMIT 1
+    ) audit ON true
+    WHERE r.organization_id=p_organization_id AND r.deleted_at IS NULL
+      AND (p_room_id IS NULL OR r.id=p_room_id)
+  )
+  SELECT jsonb_build_object(
+    'server_now',statement_timestamp(),'areas','[]'::jsonb,
+    'next_policy_boundary_at',(SELECT min(boundary) FROM app_private.room_sale_policies_v1 p
+      JOIN inventory i ON i.id=p.room_id CROSS JOIN LATERAL (VALUES(p.starts_at),(p.ends_at)) d(boundary)
+      WHERE p.organization_id=p_organization_id AND p.cancelled_at IS NULL AND boundary>statement_timestamp()),
+    'settings_owner_id',v_owner,
+    'can_manage_account_settings',(v_owner IS NOT NULL AND app_private.sale_org_permission_v1(p_organization_id,'sale_phong.manage_settings')),
+    'sale_policy',(SELECT NULLIF(btrim(s.sale_policy),'') FROM public.public_room_settings s WHERE s.owner_id=v_owner),
+    'contact',(SELECT jsonb_build_object('name',h.name,'phone',h.phone_number) FROM public.hotlines h
+      LEFT JOIN public.public_room_settings s ON s.owner_id=h.user_id
+      WHERE h.user_id=v_owner AND h.organization_id=p_organization_id
+      AND COALESCE(h.is_active,true) AND (s.hotline_id IS NULL OR h.id=s.hotline_id)
+      ORDER BY (h.id=s.hotline_id) DESC NULLS LAST,h.created_at LIMIT 1),
+    'rooms',COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY i.building_id,i.floor,i.name,i.id) FROM inventory i),'[]'::jsonb),
+    'buildings',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+      'id',b.id,'name',b.name,'code',b.code,'district',b.district,'ward',b.ward,
+      'address',concat_ws(', ',NULLIF(b.street_address,''),NULLIF(b.ward,''),NULLIF(b.district,''),NULLIF(b.province,'')),
+      'total_floors',b.total_floors,'images',b.images,'public_contact_name',b.public_contact_name,
+      'public_contact_phone',b.public_contact_phone,'public_map_url',b.public_map_url,
+      'public_lift_type',b.public_lift_type,
+      'floor_layouts',b.floor_layouts,
+      'area_ids',COALESCE((SELECT jsonb_agg(ab.area_id ORDER BY ab.area_id) FROM public.area_buildings ab
+        JOIN public.areas a ON a.id=ab.area_id AND a.organization_id=b.organization_id AND a.deleted_at IS NULL
+        WHERE ab.building_id=b.id AND ab.organization_id=b.organization_id),'[]'::jsonb),
+      'elec_rate',(SELECT COALESCE(bs.unit_price_override,s.unit_price) FROM public.building_services bs
+        JOIN public.services s ON s.id=bs.service_id WHERE bs.building_id=b.id AND bs.is_active
+        AND s.deleted_at IS NULL AND s.unit ILIKE 'kwh' ORDER BY (s.type='FIXED') DESC,s.unit_price LIMIT 1)
+    ) ORDER BY b.name,b.id) FROM allowed_buildings b
+      WHERE EXISTS (SELECT 1 FROM inventory i WHERE i.building_id=b.id)),'[]'::jsonb)
+  ) INTO result;
+  RETURN result;
+END
+$fn$;
+
+-- 9. «Phòng trống» (điện thoại) theo công ty đang chọn và quyền xem phòng.
+DROP FUNCTION IF EXISTS public.get_my_available_rooms();
+CREATE OR REPLACE FUNCTION public.get_my_available_rooms(p_organization_id uuid DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private AS $fn$
+DECLARE
+  v_caller  uuid := auth.uid();
+  v_orgs    uuid[];
+  v_org     uuid := p_organization_id;
+  v_owner   uuid;
+  v_hotline uuid;
+  v_sale_policy text;
+  v_result  jsonb;
+BEGIN
+  IF v_caller IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  -- Công ty: công ty đang chọn. Bản web cũ không gửi ⇒ công ty duy nhất của người gọi; thuộc nhiều công ty thì công
+  -- ty có toà người gọi đứng tên nếu duy nhất (đường cũ của nick chủ), không thì bắt chọn — không đoán.
+  v_orgs := COALESCE(public.my_org_ids(), '{}'::uuid[]);
+  IF v_org IS NULL THEN
+    IF cardinality(v_orgs) = 1 THEN
+      v_org := v_orgs[1];
+    ELSE
+      SELECT CASE WHEN count(DISTINCT b.organization_id) = 1 THEN (array_agg(DISTINCT b.organization_id))[1] END INTO v_org
+        FROM public.buildings b
+       WHERE b.user_id = v_caller AND b.deleted_at IS NULL AND b.organization_id = ANY (v_orgs);
+      IF v_org IS NULL THEN
+        RAISE EXCEPTION 'my_available_rooms_org_required' USING ERRCODE = '22023',
+          HINT = 'Tài khoản thuộc nhiều công ty: gửi p_organization_id của công ty đang chọn.';
+      END IF;
+    END IF;
+  ELSIF NOT (v_org = ANY (v_orgs)) THEN
+    RAISE EXCEPTION 'my_available_rooms_not_member' USING ERRCODE = '42501',
+      HINT = 'Tài khoản không phải thành viên đang hoạt động của công ty này.';
+  END IF;
+
+  -- Hotline và chính sách chung: theo người đứng tên chung các toà của công ty (chủ cài đặt chung).
+  v_owner := app_private.org_building_owner_v1(v_org);
+  SELECT hotline_id, sale_policy INTO v_hotline, v_sale_policy
+  FROM public.public_room_settings
+  WHERE owner_id = v_owner;
+
+  WITH rms AS (
+    SELECT
+      rm.id,
+      rm.building_id,
+      rm.floor,
+      rm.name,
+      rm.code,
+      rm.area,
+      rm.rent_price,
+      rm.deposit_amount,
+      rm.max_occupants,
+      COALESCE(rm.amenities, '[]'::jsonb) AS amenities,
+      COALESCE(rm.images,    '[]'::jsonb) AS images,
+      rm.description,
+      rm.sale_note,
+      rm.sale_bonus_note,
+      rm.room_type,
+      -- 10/10 (Tình trạng gõ tay): chỉ trả chữ khi tình trạng tự tính vẫn như lúc gõ.
+      CASE WHEN rm.sale_status_note_key = fk.sale_fact_key THEN rm.sale_status_note END AS sale_status_note,
+      fk.sale_fact_key,
+      -- Phòng khách nhờ sale (overlay). Khi contact_manager → che SĐT/tên khách.
+      CASE WHEN fact.status_public='pass' AND NOT COALESCE(pl.contact_manager,false) THEN pl.contact_name ELSE NULL END AS pass_contact_name,
+      CASE WHEN fact.status_public='pass' AND NOT COALESCE(pl.contact_manager,false) THEN pl.contact_phone ELSE NULL END AS pass_contact_phone,
+      CASE WHEN fact.status_public='pass' THEN pl.sale_policy ELSE NULL END AS pass_sale_policy,
+      CASE WHEN fact.status_public='pass' THEN pl.pass_price ELSE NULL END AS pass_price,
+      CASE WHEN fact.status_public='pass' AND pl.avail_date>=fact.sale_today THEN pl.avail_date ELSE NULL END AS pass_avail_date,
+      COALESCE(fact.status_public='pass' AND pl.contact_manager,false) AS pass_contact_manager,
+      fact.status_public, fact.sale_state, fact.avail_date, fact.sale_today, fact.expected_ready_on,
+      lk.sale_lock,
+      app_private.room_exit_hold_json_v1(rm.organization_id,rm.id) AS exit_hold
+    FROM public.rooms rm
+    JOIN public.buildings b ON b.id = rm.building_id AND b.organization_id = rm.organization_id
+    -- Số ngày sắp trống theo người đứng tên từng toà (như bảng nội bộ).
+    LEFT JOIN public.public_room_settings ps ON ps.owner_id = b.user_id
+    LEFT JOIN public.room_pass_listings pl
+      ON pl.room_id = rm.id AND pl.organization_id = rm.organization_id AND pl.active = true
+    CROSS JOIN LATERAL app_private.room_sale_workflow_fact_v1(rm.id,rm.organization_id,rm.status::text,pl.id IS NOT NULL,COALESCE(ps.soon_days,30)) fact
+    CROSS JOIN LATERAL (
+      -- format giữ chỗ cho NULL (concat_ws bỏ qua NULL ⇒ hai tình trạng khác nhau có thể trùng khoá);
+      -- ngày qua to_char để khoá không phụ thuộc DateStyle của phiên.
+      SELECT md5(format('%s|%s|%s|%s|%s|%s', fact.status_public, fact.sale_state,
+                        to_char(fact.avail_date, 'YYYY-MM-DD'), to_char(fact.expected_ready_on, 'YYYY-MM-DD'),
+                        CASE WHEN fact.status_public = 'pass' THEN pl.id END,
+                        CASE WHEN fact.status_public = 'pass' THEN to_char(pl.avail_date, 'YYYY-MM-DD') END)) AS sale_fact_key
+    ) fk
+    -- 10/10: phòng bị ẩn CHỈ vì lock tạm còn hạn ⇒ nhân viên trong app thấy ai lock, còn bao lâu.
+    -- Reader công khai/Zalo/Copilot không có khoá này; trạng thái vẫn 'rented' như phòng đã cọc.
+    LEFT JOIN LATERAL (
+      SELECT jsonb_build_object('id', l.id, 'hours', l.hours, 'note', l.note,
+               'locked_at', l.locked_at, 'expires_at', l.expires_at,
+               'locked_by_name', COALESCE(NULLIF(btrim(p.full_name), ''), 'Người dùng'),
+               'locked_by_me', l.locked_by = v_caller) AS sale_lock
+      FROM public.room_sale_locks l
+      LEFT JOIN public.profiles p ON p.id = l.locked_by
+      WHERE fact.status_public = 'rented'
+        AND l.organization_id = rm.organization_id AND l.room_id = rm.id
+        AND l.released_at IS NULL AND l.expires_at > now()
+        AND EXISTS (
+          SELECT 1 FROM app_private.room_sale_workflow_base_fact_v1(rm.id,rm.organization_id,rm.status::text,pl.id IS NOT NULL,COALESCE(ps.soon_days,30)) base
+          WHERE base.status_public IN ('free','soon'))
+    ) lk ON true
+    WHERE b.organization_id = v_org
+      AND b.is_virtual = false
+      AND b.deleted_at IS NULL
+      AND rm.deleted_at IS NULL
+      -- Như bảng nội bộ: toà người xem có quyền xem phòng hoặc xem trang Sale.
+      AND (app_private.sale_room_can_v1(b.organization_id,b.id,'rooms.view')
+        OR app_private.sale_room_can_v1(b.organization_id,b.id,'sale_phong.view'))
+  ),
+  bld_ids AS (
+    SELECT DISTINCT building_id FROM rms WHERE status_public IN ('free','soon','pass') OR sale_lock IS NOT NULL OR exit_hold IS NOT NULL
+  ),
+  rooms_j AS (
+    SELECT jsonb_agg(to_jsonb(rms) ORDER BY rms.floor DESC, rms.name) AS j
+    FROM rms
+    WHERE rms.building_id IN (SELECT building_id FROM bld_ids)
+  ),
+  blds_j AS (
+    SELECT jsonb_agg(jsonb_build_object(
+      'id',           b.id,
+      'name',         b.name,
+      'code',         b.code,
+      'area_ids',     COALESCE((
+                        SELECT jsonb_agg(ab.area_id)
+                        FROM public.area_buildings ab
+                        JOIN public.areas a ON a.id = ab.area_id
+                        WHERE ab.building_id = b.id AND a.deleted_at IS NULL
+                      ), '[]'::jsonb),
+      'district',     b.district,
+      'ward',         b.ward,
+      'address',      CASE
+                        WHEN b.street_address IS NOT NULL AND b.street_address LIKE '%,%'
+                          THEN b.street_address
+                        ELSE concat_ws(', ',
+                               NULLIF(b.street_address, ''),
+                               NULLIF(b.ward, ''),
+                               NULLIF(b.district, ''),
+                               NULLIF(b.province, ''))
+                      END,
+      'total_floors', b.total_floors,
+      'floor_layouts', b.floor_layouts,
+      'images',        COALESCE(b.images, '[]'::jsonb),
+      'public_contact_name',  b.public_contact_name,
+      'public_contact_phone', b.public_contact_phone,
+      'public_map_url',       b.public_map_url,
+      'public_lift_type',     b.public_lift_type,
+      'elec_rate', (
+        SELECT COALESCE(bs.unit_price_override, s.unit_price)
+        FROM public.building_services bs
+        JOIN public.services s ON s.id = bs.service_id
+        WHERE bs.building_id = b.id
+          AND bs.is_active = true
+          AND s.deleted_at IS NULL
+          AND s.unit ILIKE 'kwh'
+        ORDER BY (s.type = 'FIXED') DESC, s.unit_price
+        LIMIT 1
+      )
+    ) ORDER BY b.name) AS j
+    FROM public.buildings b
+    WHERE b.id IN (SELECT building_id FROM bld_ids)
+  ),
+  areas_j AS (
+    SELECT jsonb_agg(jsonb_build_object('id', a.id, 'name', a.name) ORDER BY a.name) AS j
+    FROM public.areas a
+    WHERE a.organization_id = v_org AND a.deleted_at IS NULL
+  ),
+  contact_j AS (
+    SELECT jsonb_build_object('name', h.name, 'phone', h.phone_number) AS j
+    FROM public.hotlines h
+    WHERE h.user_id = v_owner AND h.organization_id = v_org
+      AND COALESCE(h.is_active, true) = true
+      AND (v_hotline IS NULL OR h.id = v_hotline)
+    ORDER BY (h.id = v_hotline) DESC NULLS LAST, h.created_at
+    LIMIT 1
+  )
+  SELECT jsonb_build_object(
+    'areas',     COALESCE((SELECT j FROM areas_j), '[]'::jsonb),
+    'buildings', COALESCE((SELECT j FROM blds_j), '[]'::jsonb),
+    'rooms',     COALESCE((SELECT j FROM rooms_j), '[]'::jsonb),
+    'contact',   (SELECT j FROM contact_j),
+    'sale_policy', NULLIF(btrim(v_sale_policy), '')
+  ) INTO v_result;
+
+  RETURN app_private.room_sale_policy_overlay_v1(v_result);
+END;
+$fn$;
+COMMENT ON FUNCTION public.get_my_available_rooms(uuid) IS
+'«Phòng trống» trong app: toà của công ty p_organization_id (NULL ⇒ công ty duy nhất; nhiều công ty ⇒ công ty có toà người gọi đứng tên nếu duy nhất, không thì 22023) mà người xem có rooms.view hoặc sale_phong.view; hotline/chính sách theo người đứng tên chung các toà. Đợt 2 Sale phòng, 25/11/2026.';
+REVOKE ALL ON FUNCTION public.get_my_available_rooms(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_available_rooms(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_my_available_rooms(uuid) TO service_role;
+
+-- 10. Cài đặt chung của công ty: đọc / lưu có kiểm quyền và CAS.
+CREATE OR REPLACE FUNCTION app_private.public_room_settings_json_v1(p_org uuid)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private AS $fn$
+  WITH o AS (SELECT app_private.org_building_owner_v1(p_org) AS owner_id),
+  s AS (SELECT ps.* FROM public.public_room_settings ps JOIN o ON ps.owner_id=o.owner_id)
+  SELECT jsonb_build_object(
+    'organization_id',p_org,
+    'owner_id',(SELECT owner_id FROM o),
+    'exists',EXISTS(SELECT 1 FROM s),
+    'soon_days',COALESCE((SELECT soon_days FROM s),30),
+    'show_rented',COALESCE((SELECT show_rented FROM s),true),
+    'hotline_id',(SELECT hotline_id FROM s),
+    'sale_policy',(SELECT sale_policy FROM s),
+    'updated_at',(SELECT updated_at FROM s),
+    'can_manage',((SELECT owner_id FROM o) IS NOT NULL AND app_private.sale_org_permission_v1(p_org,'sale_phong.manage_settings')),
+    'hotlines',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',h.id,'name',h.name,'phone_number',h.phone_number,
+        'is_active',h.is_active,'created_at',h.created_at) ORDER BY h.created_at DESC,h.id)
+      FROM public.hotlines h, o WHERE h.user_id=o.owner_id AND h.organization_id=p_org),'[]'::jsonb))
+$fn$;
+REVOKE ALL ON FUNCTION app_private.public_room_settings_json_v1(uuid) FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE OR REPLACE FUNCTION public.get_public_room_settings_v1(p_organization_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private AS $fn$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated' USING ERRCODE='42501';
+  END IF;
+  IF p_organization_id IS NULL OR NOT COALESCE(p_organization_id = ANY(public.my_org_ids()), false) THEN
+    RAISE EXCEPTION 'public_room_settings_not_member' USING ERRCODE='42501',
+      HINT='Tài khoản không phải thành viên đang hoạt động của công ty này.';
+  END IF;
+  IF NOT (app_private.sale_org_permission_v1(p_organization_id,'sale_phong.view')
+       OR app_private.sale_org_permission_v1(p_organization_id,'sale_phong.manage_settings')) THEN
+    RAISE EXCEPTION 'public_room_settings_permission' USING ERRCODE='42501',
+      HINT='Cần quyền xem trang Sale phòng ở công ty này.';
+  END IF;
+  RETURN app_private.public_room_settings_json_v1(p_organization_id);
+END
+$fn$;
+COMMENT ON FUNCTION public.get_public_room_settings_v1(uuid) IS
+'Cài đặt chung trang Sale của công ty (số ngày sắp trống, hotline, chính sách sale) = dòng public_room_settings của người đứng tên chung các toà; kèm hotline của người đó trong công ty, updated_at (khoá CAS) và can_manage. Cần thành viên + sale_phong.view hoặc manage_settings. Đợt 2 Sale phòng.';
+REVOKE ALL ON FUNCTION public.get_public_room_settings_v1(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_public_room_settings_v1(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.save_public_room_settings_v1(p_organization_id uuid, p_expected_updated_at timestamptz,
+  p_soon_days integer, p_show_rented boolean, p_hotline_id uuid DEFAULT NULL, p_sale_policy text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private AS $fn$
+DECLARE
+  v_owner uuid;
+  v_row public.public_room_settings%ROWTYPE;
+  v_found boolean;
+  v_policy text := NULLIF(btrim(COALESCE(p_sale_policy,'')),'');
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated' USING ERRCODE='42501';
+  END IF;
+  IF p_organization_id IS NULL OR NOT COALESCE(p_organization_id = ANY(public.my_org_ids()), false) THEN
+    RAISE EXCEPTION 'public_room_settings_not_member' USING ERRCODE='42501',
+      HINT='Tài khoản không phải thành viên đang hoạt động của công ty này.';
+  END IF;
+  IF NOT app_private.sale_org_permission_v1(p_organization_id,'sale_phong.manage_settings') THEN
+    RAISE EXCEPTION 'public_room_settings_permission' USING ERRCODE='42501',
+      HINT='Cần quyền sale_phong.manage_settings (Cài đặt hiển thị) ở công ty này.';
+  END IF;
+  IF p_soon_days IS NULL OR p_soon_days NOT BETWEEN 0 AND 365 OR p_show_rented IS NULL
+     OR char_length(COALESCE(v_policy,''))>2000 THEN
+    RAISE EXCEPTION 'public_room_settings_invalid' USING ERRCODE='22023',
+      HINT='Số ngày sắp trống là số nguyên 0–365, chính sách sale chung tối đa 2000 ký tự.';
+  END IF;
+  -- Một lượt lưu mỗi công ty tại một thời điểm.
+  PERFORM pg_advisory_xact_lock(hashtextextended('public_room_settings:'||p_organization_id::text,0));
+  v_owner:=app_private.org_building_owner_v1(p_organization_id);
+  IF v_owner IS NULL THEN
+    RAISE EXCEPTION 'public_room_settings_owner_ambiguous' USING ERRCODE='55000',
+      HINT='Công ty chưa có toà hoặc các toà đứng tên nhiều người; chưa xác định được cài đặt chung.';
+  END IF;
+  IF p_hotline_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.hotlines h WHERE h.id=p_hotline_id
+      AND h.user_id=v_owner AND h.organization_id=p_organization_id AND COALESCE(h.is_active,true)) THEN
+    RAISE EXCEPTION 'public_room_settings_hotline_invalid' USING ERRCODE='22023',
+      HINT='Hotline phải là hotline đang bật của cài đặt chung công ty.';
+  END IF;
+  SELECT * INTO v_row FROM public.public_room_settings WHERE owner_id=v_owner FOR UPDATE;
+  v_found:=FOUND;
+  IF v_found AND v_row.organization_id IS NOT NULL AND v_row.organization_id<>p_organization_id THEN
+    RAISE EXCEPTION 'public_room_settings_owner_other_org' USING ERRCODE='55000',
+      HINT='Dòng cài đặt của người đứng tên đang thuộc công ty khác.';
+  END IF;
+  -- Gửi lại sau mất phản hồi (hoặc người khác đã lưu đúng giá trị này): trả như hiện có, không báo xung đột.
+  IF v_found AND v_row.soon_days=p_soon_days AND v_row.show_rented=p_show_rented
+     AND v_row.hotline_id IS NOT DISTINCT FROM p_hotline_id
+     AND NULLIF(btrim(COALESCE(v_row.sale_policy,'')),'') IS NOT DISTINCT FROM v_policy THEN
+    RETURN app_private.public_room_settings_json_v1(p_organization_id)||jsonb_build_object('changed',false);
+  END IF;
+  IF (v_found AND v_row.updated_at IS DISTINCT FROM p_expected_updated_at)
+     OR (NOT v_found AND p_expected_updated_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'public_room_settings_conflict' USING ERRCODE='PT409',
+      HINT='Đã có người sửa cài đặt chung sau khi bạn mở; tải lại rồi sửa tiếp.';
+  END IF;
+  INSERT INTO public.public_room_settings(owner_id,organization_id,soon_days,show_rented,hotline_id,sale_policy,updated_at)
+  VALUES (v_owner,p_organization_id,p_soon_days,p_show_rented,p_hotline_id,v_policy,clock_timestamp())
+  ON CONFLICT (owner_id) DO UPDATE SET soon_days=EXCLUDED.soon_days, show_rented=EXCLUDED.show_rented,
+    hotline_id=EXCLUDED.hotline_id, sale_policy=EXCLUDED.sale_policy, updated_at=EXCLUDED.updated_at;
+  RETURN app_private.public_room_settings_json_v1(p_organization_id)||jsonb_build_object('changed',true);
+END
+$fn$;
+COMMENT ON FUNCTION public.save_public_room_settings_v1(uuid, timestamptz, integer, boolean, uuid, text) IS
+'Lưu cài đặt chung trang Sale của công ty vào dòng của người đứng tên chung các toà. Kiểm thành viên + sale_phong.manage_settings (mọi phạm vi; super admin giữ đường cũ). CAS: p_expected_updated_at phải khớp updated_at đang có (NULL khi chưa có dòng), lệch ⇒ PT409 public_room_settings_conflict; cùng giá trị ⇒ trả như cũ (changed=false). Hotline phải của người đứng tên trong công ty. Đợt 2 Sale phòng.';
+REVOKE ALL ON FUNCTION public.save_public_room_settings_v1(uuid, timestamptz, integer, boolean, uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.save_public_room_settings_v1(uuid, timestamptz, integer, boolean, uuid, text) TO authenticated;
+
+-- 11. Link chia sẻ của công ty: xem / đổi nhãn / thu hồi / khôi phục / xoá có kiểm quyền.
+CREATE OR REPLACE FUNCTION app_private.public_room_token_json_v1(t public.public_room_share_tokens)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private AS $fn$
+  SELECT jsonb_build_object('token',t.token,'label',t.label,'revoked',t.revoked,'created_at',t.created_at,
+    'owner_id',t.owner_id,'organization_id',t.organization_id,
+    'owner_name',(SELECT COALESCE(NULLIF(btrim(p.full_name),''),'Người dùng') FROM public.profiles p WHERE p.id=t.owner_id))
+$fn$;
+REVOKE ALL ON FUNCTION app_private.public_room_token_json_v1(public.public_room_share_tokens) FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE OR REPLACE FUNCTION public.list_public_room_tokens_v1(p_organization_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private AS $fn$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated' USING ERRCODE='42501';
+  END IF;
+  IF p_organization_id IS NULL OR NOT COALESCE(p_organization_id = ANY(public.my_org_ids()), false) THEN
+    RAISE EXCEPTION 'public_room_token_not_member' USING ERRCODE='42501',
+      HINT='Tài khoản không phải thành viên đang hoạt động của công ty này.';
+  END IF;
+  IF NOT app_private.sale_org_permission_v1(p_organization_id,'sale_phong.manage_tokens') THEN
+    RAISE EXCEPTION 'public_room_token_permission' USING ERRCODE='42501',
+      HINT='Cần quyền sale_phong.manage_tokens (Quản lý link chia sẻ) ở công ty này.';
+  END IF;
+  RETURN COALESCE((SELECT jsonb_agg(app_private.public_room_token_json_v1(t) ORDER BY t.created_at DESC, t.token)
+    FROM public.public_room_share_tokens t WHERE t.organization_id=p_organization_id),'[]'::jsonb);
+END
+$fn$;
+COMMENT ON FUNCTION public.list_public_room_tokens_v1(uuid) IS
+'Mọi link chia sẻ của công ty (kể cả do người khác tạo, kể cả đã thu hồi) kèm tên người tạo. Cần thành viên + sale_phong.manage_tokens (mọi phạm vi; super admin giữ đường cũ). Đợt 2 Sale phòng.';
+REVOKE ALL ON FUNCTION public.list_public_room_tokens_v1(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.list_public_room_tokens_v1(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.manage_public_room_token_v1(p_organization_id uuid, p_token text, p_action text, p_label text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private AS $fn$
+DECLARE v_row public.public_room_share_tokens%ROWTYPE;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated' USING ERRCODE='42501';
+  END IF;
+  IF p_organization_id IS NULL OR NOT COALESCE(p_organization_id = ANY(public.my_org_ids()), false) THEN
+    RAISE EXCEPTION 'public_room_token_not_member' USING ERRCODE='42501',
+      HINT='Tài khoản không phải thành viên đang hoạt động của công ty này.';
+  END IF;
+  IF NOT app_private.sale_org_permission_v1(p_organization_id,'sale_phong.manage_tokens') THEN
+    RAISE EXCEPTION 'public_room_token_permission' USING ERRCODE='42501',
+      HINT='Cần quyền sale_phong.manage_tokens (Quản lý link chia sẻ) ở công ty này.';
+  END IF;
+  IF p_action IS NULL OR p_action NOT IN ('rename','revoke','restore','delete') OR p_token IS NULL OR p_token=''
+     OR char_length(COALESCE(p_label,''))>200 THEN
+    RAISE EXCEPTION 'public_room_token_invalid' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_row FROM public.public_room_share_tokens
+   WHERE token=p_token AND organization_id=p_organization_id FOR UPDATE;
+  IF NOT FOUND THEN
+    -- Xoá lại một link đã xoá (mất phản hồi lần trước) là xong; thao tác khác báo không thấy link trong công ty.
+    IF p_action='delete' THEN RETURN jsonb_build_object('token',p_token,'removed',false); END IF;
+    RAISE EXCEPTION 'public_room_token_not_found' USING ERRCODE='P0002',
+      HINT='Không thấy link này trong công ty đang chọn.';
+  END IF;
+  IF p_action='delete' THEN
+    DELETE FROM public.public_room_share_tokens WHERE token=v_row.token;
+    RETURN app_private.public_room_token_json_v1(v_row)||jsonb_build_object('removed',true);
+  ELSIF p_action='rename' THEN
+    UPDATE public.public_room_share_tokens SET label=NULLIF(btrim(COALESCE(p_label,'')),'') WHERE token=v_row.token RETURNING * INTO v_row;
+  ELSE
+    UPDATE public.public_room_share_tokens SET revoked=(p_action='revoke') WHERE token=v_row.token RETURNING * INTO v_row;
+  END IF;
+  RETURN app_private.public_room_token_json_v1(v_row)||jsonb_build_object('removed',false);
+END
+$fn$;
+COMMENT ON FUNCTION public.manage_public_room_token_v1(uuid, text, text, text) IS
+'Đổi nhãn (rename) / thu hồi (revoke) / khôi phục (restore) / xoá (delete) một link của công ty, kể cả link người khác tạo. Cần thành viên + sale_phong.manage_tokens (mọi phạm vi; super admin giữ đường cũ). Xoá link không còn ⇒ removed=false. Thay cho ghi thẳng bảng (đã REVOKE UPDATE, DELETE). Đợt 2 Sale phòng.';
+REVOKE ALL ON FUNCTION public.manage_public_room_token_v1(uuid, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.manage_public_room_token_v1(uuid, text, text, text) TO authenticated;
+
+-- 12. Đóng ghi thẳng bảng: mọi thay đổi link / cài đặt chung đi qua RPC đã kiểm quyền ở trên.
+REVOKE UPDATE, DELETE ON public.public_room_share_tokens FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.public_room_settings FROM PUBLIC, anon, authenticated;
+
+-- 13. Hậu kiểm: đúng thân, đúng quyền gọi, đúng quyền bảng, có trigger, đúng người đứng tên 45/3 TTT.
+DO $sau$
+DECLARE
+  r record;
+  v_md5 text;
+  v_owner uuid;
+BEGIN
+  FOR r IN SELECT * FROM (VALUES
+      ('public.get_public_available_rooms(text)', 'a625ef754a3a17580f7fad8ca045b36a'),
+      ('app_private.public_sale_rooms_payload_v1(uuid)', '5807352fc553877422588a329e758d44'),
+      ('public.hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)', 'a756a97d00b0845d7cedc8fa6dd5d0b8'),
+      ('public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb)', '53626e7005c800db9077f87504cb1bd2'),
+      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '3b7f70293f0bae23d7906c3203ef2279'),
+      ('public.get_my_available_rooms(uuid)', 'd7bfd2312b3ffbe68e324a9d86fcec93'),
+      ('app_private.org_building_owner_v1(uuid)', '98019a8f321b6b8f39d98db7f487e89c'),
+      ('app_private.sale_org_permission_v1(uuid,text)', '607841b199b8cd5b2383d74b67f319a4'),
+      ('app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1()', '8b6a19d2636b72f5ffcc4f62bc982f14'),
+      ('app_private.public_room_settings_json_v1(uuid)', '979942342611cd137462cb9e391ef9ea'),
+      ('public.get_public_room_settings_v1(uuid)', '176ff333422f5d398c9bb4d2d106a879'),
+      ('public.save_public_room_settings_v1(uuid,timestamptz,integer,boolean,uuid,text)', '422d067b8c433dd4aaf01ca19f33419f'),
+      ('app_private.public_room_token_json_v1(public.public_room_share_tokens)', '3803598b8ad0cc68b47bb4d327ed0e3a'),
+      ('public.list_public_room_tokens_v1(uuid)', '51ff1d57320c4524557c5a2cd14d505a'),
+      ('public.manage_public_room_token_v1(uuid,text,text,text)', '92976fab875ec3670c40f6de3478d30a')
+    ) AS v(fn, file_md5) LOOP
+    SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5 FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure(r.fn);
+    IF v_md5 IS DISTINCT FROM r.file_md5 THEN
+      RAISE EXCEPTION 'Hậu kiểm: % không phải thân của file này (md5 %)', r.fn, v_md5 USING ERRCODE = '55000';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_proc p, aclexplode(p.proacl) g WHERE p.oid = to_regprocedure(r.fn) AND g.grantee = 0)
+       OR (r.fn <> 'public.get_public_available_rooms(text)' AND has_function_privilege('anon', to_regprocedure(r.fn), 'EXECUTE')) THEN
+      RAISE EXCEPTION 'Hậu kiểm: % còn cấp PUBLIC/anon', r.fn USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
+  IF to_regprocedure('public.get_my_available_rooms()') IS NOT NULL THEN
+    RAISE EXCEPTION 'Hậu kiểm: còn bản get_my_available_rooms() cũ' USING ERRCODE = '55000';
+  END IF;
+  -- Hàm gọi từ web: authenticated; hàm riêng: không vai API nào.
+  IF NOT has_function_privilege('authenticated', 'public.get_my_available_rooms(uuid)', 'EXECUTE')
+     OR NOT has_function_privilege('service_role', 'public.get_my_available_rooms(uuid)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.get_public_room_settings_v1(uuid)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.save_public_room_settings_v1(uuid,timestamptz,integer,boolean,uuid,text)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.list_public_room_tokens_v1(uuid)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.manage_public_room_token_v1(uuid,text,text,text)', 'EXECUTE')
+     OR NOT has_function_privilege('anon', 'public.get_public_available_rooms(text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'app_private.org_building_owner_v1(uuid)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'app_private.sale_org_permission_v1(uuid,text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'app_private.public_room_settings_json_v1(uuid)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'app_private.public_room_token_json_v1(public.public_room_share_tokens)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'app_private.public_sale_rooms_payload_v1(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Hậu kiểm: quyền gọi hàm sai' USING ERRCODE = '55000';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.public_room_share_tokens', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.public_room_share_tokens', 'UPDATE')
+     OR has_table_privilege('authenticated', 'public.public_room_share_tokens', 'DELETE')
+     OR has_table_privilege('anon', 'public.public_room_share_tokens', 'UPDATE')
+     OR has_table_privilege('anon', 'public.public_room_share_tokens', 'DELETE')
+     OR has_table_privilege('authenticated', 'public.public_room_settings', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.public_room_settings', 'UPDATE')
+     OR has_table_privilege('authenticated', 'public.public_room_settings', 'DELETE')
+     OR has_table_privilege('anon', 'public.public_room_settings', 'INSERT')
+     OR NOT has_table_privilege('authenticated', 'public.public_room_share_tokens', 'SELECT')
+     OR NOT has_table_privilege('authenticated', 'public.public_room_settings', 'SELECT') THEN
+    RAISE EXCEPTION 'Hậu kiểm: quyền bảng link / cài đặt sai (chỉ còn SELECT cho authenticated)' USING ERRCODE = '55000';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid = 'public.buildings'::regclass
+       AND t.tgname = 'buildings_t1_nguoi_dung_ten_theo_cong_ty' AND NOT t.tgisinternal
+       AND t.tgfoid = 'app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1()'::regprocedure) THEN
+    RAISE EXCEPTION 'Hậu kiểm: thiếu trigger người đứng tên toà mới' USING ERRCODE = '55000';
+  END IF;
+  SELECT b.user_id INTO v_owner FROM public.buildings b
+   WHERE b.id = 'c4eb87df-758d-4e16-82dc-040f49e6adfc' AND b.organization_id = 'aaaa0000-0000-4000-8000-000000000001';
+  IF FOUND AND v_owner IS DISTINCT FROM '90450d5f-29b6-4897-bdef-cdb5fb53f339'::uuid THEN
+    RAISE EXCEPTION 'Hậu kiểm: 45/3 TTT chưa đứng tên nick chủ' USING ERRCODE = '55000';
+  END IF;
+END
+$sau$;
+
+NOTIFY pgrst, 'reload schema';
