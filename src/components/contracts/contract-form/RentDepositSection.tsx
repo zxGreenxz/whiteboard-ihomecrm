@@ -68,7 +68,7 @@ type RentDepositSectionProps = Pick<
   | "addDepositRow"
   | "updateDepositRow"
   | "removeDepositRow"
-> & Partial<Pick<ContractFormState, "exitSupport">>;
+> & Partial<Pick<ContractFormState, "exitSupport" | "roomHold">>;
 
 /** ===== Section 3: Tiền thuê & Tiền cọc ===== (JSX chuyển NGUYÊN VĂN) */
 export function RentDepositSection({
@@ -97,6 +97,7 @@ export function RentDepositSection({
   updateDepositRow,
   removeDepositRow,
   exitSupport,
+  roomHold,
 }: RentDepositSectionProps) {
   const rowErrors=flattenFieldErrors(form.formState.errors);
   const { data: permissions } = useMyPermissions();
@@ -300,6 +301,7 @@ export function RentDepositSection({
 
           {/* Phiếu cọc cũ của phòng (giữ chỗ / cọc trước) — XÁM, chỉ xem.
               RPC nhận ID rõ ràng và gắn cùng transaction; không tạo lại. */}
+          {roomHold?.hint && <p className="text-sm">Tên gợi nhớ khi nhận cọc: {roomHold.hint}</p>}
           {orphanDepositVouchers.map((v) => (
             <div
               key={v.id}
@@ -314,9 +316,9 @@ export function RentDepositSection({
               </span>
               <span className="text-xs whitespace-nowrap">
                 {v.voucher_date}
-                {v.approval_status === "APPROVED"
+                {v.outsideWindow ? " · ngoài kỳ nhận cọc" : v.received
                   ? " · đã thu"
-                  : " · chưa duyệt (chưa tính)"}
+                  : " · chưa xác nhận tiền vào quỹ"}
               </span>
             </div>
           ))}

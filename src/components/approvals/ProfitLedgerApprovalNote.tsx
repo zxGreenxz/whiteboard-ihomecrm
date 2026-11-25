@@ -1,7 +1,7 @@
-// Thẻ số dư sổ tổng trong màn Chờ duyệt (D2.9) — chỉ dựng cho phiếu chi theo sổ tổng (nguồn
-// profit.ledger_payout / profit.manager_salary). Đọc E7 (profit_ledger_payout_detail_v1): lúc lập còn phải
-// trả bao nhiêu, phần nào tạm ứng; bây giờ (không tính phiếu này) ra sao; khi nào duyệt sẽ bị từ chối.
-// E7 lỗi ⇒ báo tại chỗ (không che bằng số 0), nút Duyệt của dòng tự khoá theo cùng câu hỏi.
+// Thẻ số dư sổ tổng trong hộp Duyệt của Thu chi (D2.9; trước 25/11/2026 nằm ở màn Chờ duyệt) — chỉ dựng cho phiếu
+// chi theo sổ tổng (nguồn profit.ledger_payout / profit.manager_salary). Đọc E7 (profit_ledger_payout_detail_v1): lúc
+// lập còn phải trả bao nhiêu, phần nào tạm ứng; bây giờ (không tính phiếu này) ra sao; khi nào duyệt sẽ bị từ chối.
+// E7 lỗi ⇒ báo tại chỗ (không che bằng số 0), nút duyệt của hộp tự khoá theo cùng câu hỏi (useVoucherActions).
 
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ export function ProfitLedgerApprovalNote({ voucherId, className }: ProfitLedgerA
   if (detail.isError || !detail.data) {
     return (
       <div role="alert" className={`${box} border-destructive text-destructive`} data-testid="ledger-approval-note">
-        <p>{profitLedgerErrorMessage(detail.error, 'read').message} Chưa duyệt được phiếu này ở đây.</p>
+        <p>{profitLedgerErrorMessage(detail.error, 'read').message} Chưa duyệt được phiếu này khi chưa thấy số dư sổ tổng.</p>
         <Button type="button" size="sm" variant="outline" className="mt-1.5 h-7" onClick={() => { void detail.refetch(); }}>
           Thử lại
         </Button>

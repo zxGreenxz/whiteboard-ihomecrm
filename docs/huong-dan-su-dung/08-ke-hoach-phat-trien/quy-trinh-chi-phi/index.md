@@ -4,7 +4,7 @@ description: "Artifact nghiệp vụ mô tả cách tách ghi nhận lợi nhu�
 kind: presentation-plan
 lifecycle: proposal
 decision_state: "da-chot-flow-chinh-con-quyet-dinh-trien-khai"
-routes: ["/income-expense", "/approvals", "/finance/cashbooks", "/reports/finance/profit-distribution"]
+routes: ["/income-expense", "/finance/cashbooks", "/reports/finance/profit-distribution"]
 permissions: ["income_expenses.create", "income_expenses.approve", "cashbooks.view", "cashbooks.post", "cashbooks.share", "shareholder_profit.lock"]
 viewport: responsive
 captured:
@@ -17,7 +17,7 @@ status: published
 ---
 
 ::: danger PROPOSAL — KHÔNG PHẢI RUNTIME
-Flow, trạng thái và mô hình quyền dưới đây là đề xuất thiết kế, không xác nhận hệ thống production đang vận hành như mô tả. Các route trong metadata chỉ là bề mặt runtime liên quan để đối chiếu: `/income-expense`, `/approvals`, `/finance/cashbooks` và `/reports/finance/profit-distribution`.
+Flow, trạng thái và mô hình quyền dưới đây là đề xuất thiết kế, không xác nhận hệ thống production đang vận hành như mô tả. Các route trong metadata chỉ là bề mặt runtime liên quan để đối chiếu: `/income-expense`, `/finance/cashbooks` và `/reports/finance/profit-distribution`.
 :::
 
 <div class="plan-hero">
@@ -44,7 +44,7 @@ Flow chính và phạm vi giai đoạn đầu đã được chốt là chỉ chi
 | Hạng mục của kế hoạch | Bản đang chạy | Hướng dẫn vận hành |
 |---|---|---|
 | Không còn nhãn "Nháp"; `UNAPPROVED` = **Chờ duyệt** | **Đã có.** Bảng nhãn chuẩn: Chờ duyệt, Cần bổ sung, Đang tranh chấp, Đã Duyệt - Chưa Chi/Thu (· Chờ phân sổ), Đã Chi/Thu, Đã hoàn tác, Đã hủy. | [Thuật ngữ](/07-thong-tin-khac/thuat-ngu/) |
-| **Duyệt** tách khỏi **Duyệt và Chi** nguyên tử | **Đã có.** Nút Duyệt và Thu/Chi chỉ bật khi người bấm vừa có quyền duyệt vừa là Người giữ sổ của sổ được chọn. | [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) · [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
+| **Duyệt** tách khỏi **Duyệt và Chi** nguyên tử | **Đã có.** Nút Duyệt và Thu/Chi chỉ bật khi người bấm vừa có quyền duyệt vừa là Người giữ sổ của sổ được chọn. | [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
 | Mỗi lần Chi bắt buộc **Ngày chi · Sổ quỹ · Chứng từ**, chi đủ một lần | **Đã có.** Hộp ghi sổ đòi sổ quỹ, ngày và ít nhất một ảnh/tệp chứng từ; số tiền là tổng đã duyệt. Riêng chi lương có thể chi nhiều đợt (**Số tiền đợt chi**). | [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
 | Báo cáo lợi nhuận tính cả phiếu chờ duyệt, ghi rõ số phiếu | **Đã có.** Thanh đối chiếu ghi *"Trong tổng có: n phiếu chờ duyệt (thu … · chi …)"*. | [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
 | Server từ chối chốt lợi nhuận khi kỳ còn phiếu chờ duyệt | **Đã có, khác đề xuất ở cách đếm:** máy chủ đếm **mọi** phiếu chờ duyệt của toà có **ngày phiếu** trong tháng (không lọc theo KQKD, không theo kỳ áp dụng của hạng mục) và trả *"Còn N phiếu chờ duyệt trong tháng … — duyệt hoặc huỷ trước khi chốt."* Phiếu Đã Duyệt - Chưa Chi không chặn. | [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
@@ -512,7 +512,7 @@ Các đường ghi bắt buộc phải chuyển cùng một đợt:
 
 - Tạo phiếu lẻ từng có trường hợp tự sinh trạng thái đã duyệt.
 - Phiếu hệ thống, phiếu lặp lại, import và tạo hàng loạt có đường ghi riêng.
-- Hộp thư duyệt từng có thể duyệt và ghi sổ ngay trong engine cũ.
+- Màn hộp thư duyệt (đã bỏ 25/11/2026, nay duyệt ở Thu chi) từng có thể duyệt và ghi sổ ngay trong engine cũ.
 - Form legacy từng dùng ngày nghiệp vụ như ngày thực chi và chưa bắt buộc hình ảnh.
 - Query số dư, báo cáo, thống kê và badge legacy từng coi phiếu đã duyệt là tiền thật.
 - Policy đọc/ghi theo tòa nhà và danh sách chia sẻ từng rộng hơn quyền theo từng sổ.
@@ -534,7 +534,7 @@ Không tự chuyển toàn bộ danh sách “được phép sử dụng” cũ 
   <div class="plan-phase"><strong>2 · Tách trạng thái</strong><br />Bổ sung trạng thái ghi sổ và ngày chi riêng; không còn dùng APPROVED thay cho tiền thật.</div>
   <div class="plan-phase"><strong>3 · Duyệt và Chi</strong><br />Dùng một form ba trường và RPC nguyên tử cho Duyệt, Duyệt & Chi, Chi sau duyệt.</div>
   <div class="plan-phase"><strong>4 · Báo cáo và chốt kỳ</strong><br />Tính Chờ duyệt vào lợi nhuận, chỉ chặn phiếu Chờ duyệt; theo dõi riêng khoản chưa chi.</div>
-  <div class="plan-phase"><strong>5 · Chuyển toàn bộ luồng phụ</strong><br />Sửa phiếu hệ thống, recurring, batch, import và hộp thư duyệt để không bypass flow mới.</div>
+  <div class="plan-phase"><strong>5 · Chuyển toàn bộ luồng phụ</strong><br />Sửa phiếu hệ thống, recurring, batch, import và các đường duyệt phụ để không bypass flow mới.</div>
   <div class="plan-phase"><strong>6 · Đối chiếu và cutover</strong><br />Chạy song song số dư cũ/mới, xử lý ngoại lệ rồi mới khóa đường ghi legacy.</div>
 </div>
 
@@ -599,7 +599,6 @@ Không tự chuyển toàn bộ danh sách “được phép sử dụng” cũ 
 ## Tài liệu vận hành liên quan
 
 - [Thu chi — tạo và quản lý phiếu](/03-quan-ly-van-hanh/thu-chi/)
-- [Danh sách Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/)
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/)
 - [Phân tích tài chính](/04-bao-cao/phan-tich-tai-chinh/)
 - [Quy trình chốt tháng tài chính](/01-bat-dau/quy-trinh-chot-thang/)

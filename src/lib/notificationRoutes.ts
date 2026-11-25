@@ -11,8 +11,8 @@
 //
 // KHÔNG có trong allow-list (cố ý):
 //   - `/issues/:id`  — route KHÔNG TỒN TẠI, 2 file UI cũ đang trỏ vào (→ NotFound).
-//   - `/approvals`   — `list_my_pending_approvals_v1` lọc `state='PENDING_APPROVAL'`,
-//                      rỗng ở mốc đo ⇒ bấm vào là trang trắng.
+//   - `/approvals`   — màn "Chờ duyệt" đã bỏ 25/11/2026 (duyệt phiếu một đường ở Thu chi); đường dẫn
+//                      chỉ còn chuyển hướng về Thu chi › Chờ xử lý. Thông báo trỏ thẳng E1 bên dưới.
 //
 // Ánh xạ với §B.7 (metadata.event → url):
 //   E1  → /income-expense?approval_status=UNAPPROVED&layer=PENDING
@@ -154,6 +154,14 @@ export const NOTIFICATION_URL_ALLOWLIST: readonly NotificationRoute[] = [
   // capabilities/registry.ts — trang `chat-zalo.list`, quyền chat_zalo.view. Đích của cảnh báo
   // "Zalo mất kết nối" do bộ canh gác worker gửi chủ công ty (10/2026).
   { path: "/chat-zalo", module: "chat_zalo" },
+  // NetworkCenterApp.tsx — `/network-center/buildings/:buildingId`, BuildingTabs đọc `?tab=`.
+  // Đích chuông của cảnh báo camera (migration 20261124171943, spec 2026-11-24 §6).
+  {
+    path: "/network-center/buildings",
+    idSegment: true,
+    module: "network_center",
+    params: [["tab", (v) => v === "cameras"]],
+  },
 ];
 
 /** Cắt hash + query, chuẩn hoá `/` thừa ở cuối. Trả null nếu chuỗi đáng ngờ. */

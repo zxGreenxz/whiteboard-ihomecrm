@@ -19,9 +19,8 @@ vi.mock('@/integrations/supabase/client', async () => {
 });
 
 import {
-  useOrphanDepositVouchers as orphanQueryOptions,
+  useContractRoomDeposits as orphanQueryOptions,
   useReservationDeposits as reservationQueryOptions,
-  type OrphanDepositVoucher,
   type ReservationDepositRow,
 } from './useDeposits';
 
@@ -114,25 +113,19 @@ describe('reservation deposit management visibility', () => {
     ]);
   });
 
-  it('keeps hidden management vouchers eligible for contract linking through the orphan-deposit query', async () => {
-    mocks.fetch.mockResolvedValueOnce(respond([{
-      ...voucher('hidden-hold'), management_exclusion: { voucher_id: 'hidden-hold' },
-    }]));
-
-    const query = orphanQueryOptions('room-1', '2026-09-21') as unknown as {
-      queryFn: () => Promise<OrphanDepositVoucher[]>;
-    };
-    const rows = await query.queryFn();
-
-    expect(rows).toMatchObject([{ id: 'hidden-hold', total_amount: 1000 }]);
-    const [url] = requestUrls();
-    expect(url.searchParams.has('management_exclusion')).toBe(false);
-    expect(url.searchParams.get('select')).not.toContain('deposit_management_exclusions');
-    expect(url.searchParams.get('room_id')).toBe('eq.room-1');
-    expect(url.searchParams.get('voucher_date')).toBe('lte.2026-09-28');
-    expect(url.searchParams.get('settled')).toBe('is.null');
+  it('loads the authorized room snapshot and marks vouchers outside the seven-day window', async () => {
+    const id = '00000000-0000-4000-8000-000000000003';
+    mocks.fetch.mockResolvedValueOnce(respond({hold:null, vouchers:[{...voucher(id),voucher_date:'2026-09-29',received:true}]}));
+    const query = orphanQueryOptions('room-1','2026-09-21') as unknown as {queryFn:()=>Promise<unknown>};
+    expect(await query.queryFn()).toMatchObject({hold:null,vouchers:[{id,received:true,outsideWindow:true}]});
+    expect(requestUrls()[0].pathname).toMatch(/get_contract_room_deposits_v1$/);
   });
-
+  it('rejects a duplicated source before calculating the paid room deposit', async () => {
+    const source = {...voucher('00000000-0000-4000-8000-000000000001'), received: true};
+    mocks.fetch.mockResolvedValueOnce(respond({hold: null, vouchers: [source, source]}));
+    const query = orphanQueryOptions('room-1') as unknown as {queryFn: () => Promise<unknown>};
+    await expect(query.queryFn()).rejects.toThrow('phiếu bị lặp');
+  });
   it('reports a failed exclusion read instead of presenting an empty deposit list', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.fetch.mockResolvedValueOnce(respond({

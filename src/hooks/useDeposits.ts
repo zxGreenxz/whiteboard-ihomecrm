@@ -1,6 +1,6 @@
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { reservationErrorMessage } from "@/lib/reservationIdentityRpc";
-import { readReservationReceivedFacts, type ReservationReceivedInvoker } from "@/lib/reservationDepositReceived";
+import { readContractRoomDeposits, readReservationReceivedFacts, type ReservationReceivedInvoker } from "@/lib/reservationDepositReceived";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
@@ -32,75 +32,24 @@ export interface DepositWithRelations extends Deposit {
   };
 }
 
-export interface OrphanDepositVoucher {
-  id: string;
-  code: string | null;
-  name: string;
-  total_amount: number;
-  voucher_date: string;
-  approval_status: 'UNAPPROVED' | 'APPROVED' | 'CANCELLED';
-}
-
-/**
- * Phiếu thu CỌC mồ côi (chưa gắn HĐ) của một phòng — cùng predicate với
- * trigger trg_contract_link_orphan_deposits (migration 20260529000003):
- * cùng room, contract_id NULL, type INCOME, có item is_deposit,
- * voucher_date <= start_date + 7 ngày. Khi HĐ được INSERT các phiếu này
- * tự động gắn vào HĐ và recompute deposit_paid = Σ phiếu APPROVED.
- * ContractFormDialog dùng để: (1) báo user số cọc giữ chỗ đã thu,
- * (2) auto-voucher chỉ tạo cho PHẦN CHÊNH — tránh double-count deposit_paid.
- */
-export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) => {
+export function useContractRoomDeposits(roomId?: string, startDate?: string) {
+  const { selectedOrganizationId } = useOrganization();
   return useQuery({
-    queryKey: ['orphan-deposit-vouchers', roomId, startDate],
-    enabled: !!roomId,
-    queryFn: async (): Promise<OrphanDepositVoucher[]> => {
-      if (!roomId) return [];
-      let query = supabase
-        .from('income_expenses')
-        .select(
-          `id, code, name, total_amount, voucher_date, approval_status,
-           income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) ),
-           settled:reservation_deposit_settlements!reservation_deposit_settlements_source_voucher_id_fkey ( id )`,
-        )
-        .is('contract_id', null)
-        .is('deleted_at', null)
-        .eq('type', 'INCOME')
-        .eq('room_id', roomId)
-        .in('approval_status', ['APPROVED', 'UNAPPROVED'])
-        .eq('income_expense_items.income_expense_types.is_deposit', true)
-        .is('settled', null);
-
-      if (startDate) {
-        const d = new Date(startDate);
-        if (!Number.isNaN(d.getTime())) {
-          d.setDate(d.getDate() + 7);
-          query = query.lte('voucher_date', d.toISOString().split('T')[0]);
-        }
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return financialReadRows(data).map((v: any) => {
-        if(!['UNAPPROVED','APPROVED','CANCELLED'].includes(v.approval_status)) throw new TypeError('Chưa đọc được trạng thái phiếu cọc.');
-        // Số CỌC = Σ item cọc (embed đã lọc is_deposit) — phiếu thuần cọc thì
-        // bằng total_amount; phiếu trộn (hiếm, nhập tay) không đếm thừa phần khác.
-        const depositSum = financialReadRows(v.income_expense_items).reduce<number>(
-          (s: number, it: any) => s + financialReadNumber(it.amount),
-          0,
-        );
-        return {
-          id: v.id,
-          code: v.code ?? null,
-          name: v.name,
-          total_amount: depositSum,
-          voucher_date: v.voucher_date,
-          approval_status: v.approval_status,
-        };
-      });
+    queryKey: ['orphan-deposit-vouchers', selectedOrganizationId, roomId, startDate],
+    enabled: !!selectedOrganizationId && !!roomId,
+    queryFn: async () => {
+      if (!roomId || !selectedOrganizationId) throw new Error('Chọn phòng và tổ chức để đọc cọc.');
+      const snapshot = await readContractRoomDeposits(selectedOrganizationId, roomId);
+      const cutoff = startDate ? new Date(startDate + 'T00:00:00Z') : null;
+      if (cutoff) cutoff.setUTCDate(cutoff.getUTCDate() + 7);
+      const latest = cutoff && Number.isFinite(cutoff.getTime()) ? cutoff.toISOString().slice(0,10) : null;
+      const vouchers = snapshot.vouchers.map(voucher => ({
+        ...voucher, outsideWindow: !!latest && voucher.voucher_date > latest,
+      }));
+      return {hold: snapshot.hold, vouchers};
     },
   });
-};
+}
 
 export type ReservationStatus = 'UNAPPROVED' | 'APPROVED' | 'CANCELLED';
 
@@ -141,7 +90,7 @@ export interface ReservationDepositRow {
  * (trang Phòng trống / Thu-chi / nút "Tạo đặt cọc"): phiếu thu CỌC mồ côi =
  * income_expenses type=INCOME, contract_id NULL, item có
  * income_expense_types.is_deposit=TRUE. Trường thống nhất chính là cờ
- * `is_deposit`. KHÁC useOrphanDepositVouchers ở chỗ: không giới hạn theo phòng
+ * `is_deposit`. KHÁC useContractRoomDeposits ở chỗ: không giới hạn theo phòng
  * và KHÔNG dùng cửa sổ voucher_date+7 (cửa sổ đó chỉ dành cho auto-link HĐ).
  * Lấy cả CANCELLED để hiện "Đã huỷ"; phiếu đã chuyển HĐ (contract_id != NULL)
  * tự rớt khỏi danh sách (đã thành cọc HĐ — xem tab Đủ/Thiếu cọc).

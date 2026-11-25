@@ -25,6 +25,12 @@ describe("dichThongBao — mọi đích qua allow-list + kiểm quyền", () => 
     expect(dichThongBao({ type: "CUSTOM", metadata: { v5: "leave_request", url: "//evil.tld" } }, ALL)).toBeNull();
   });
 
+  it("chuông cảnh báo camera (metadata do camera_alert_send_bell_v1 ghi) mở đúng tab Camera của toà", () => {
+    const metadata = { v5: "camera_alert", kind: "OPENED", deliveryId: INV, url: `/network-center/buildings/${CON}?tab=cameras` };
+    expect(dichThongBao({ type: "CUSTOM", metadata }, { network_center: { view: true } })).toBe(`/network-center/buildings/${CON}?tab=cameras`);
+    expect(dichThongBao({ type: "CUSTOM", metadata }, CHI_HOP_DONG)).toBe(NOTIFICATION_FALLBACK_URL);
+  });
+
   it("khoá ngoại méo không mở đường điều hướng lạ", () => {
     expect(dichThongBao({ type: "PAYMENT_REMINDER", invoice_id: "../../x" }, ALL)).toBeNull();
     expect(duongDanDuPhong({ type: "CUSTOM" })).toBeNull();

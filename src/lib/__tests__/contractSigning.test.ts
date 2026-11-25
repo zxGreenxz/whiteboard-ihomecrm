@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyContractDraftPayload, type ContractDraft } from '../contractDrafts';
-import { buildContractSigningArgs, buildPreparedSigningCreation, buildSigningCreationOptions, matchingSigningReservations, signingErrorMessage, signingReservationReady, validateSigningConfirmation } from '../contractSigning';
+import { buildContractSigningArgs, buildPreparedSigningCreation, buildSigningCreationOptions, signingErrorMessage, validateSigningConfirmation } from '../contractSigning';
 import type { ContractCreateRequest } from '../contractCreateRpc';
 
 const id = '11111111-1111-4111-8111-111111111111';
@@ -75,12 +75,6 @@ describe('sign exact persisted draft, without automatic money',()=>{
     expect(buildContractSigningArgs(id,input)).toMatchObject({p_reservation_id:id,p_reservation_revision:4,p_source_voucher_ids:[id]});
     expect(()=>buildContractSigningArgs(id,{...input,reservationSource:{...input.reservationSource,sourceVoucherIds:[id,id]}})).toThrow();
   });
-  it('selects only the current own room/party/org live claim and does not treat pending money as received',()=>{
-    const currentDraft={...draft,payload:{...payload,customers:[{id,full_name:'A',phone:'',id_number:null,is_representative:true,notes:null}]}};
-    const row={id,organization_id:id,building_id:id,room_id:id,customer_id:id,status:'HOLD',claim_status:'LIVE',revision:1,received_amount:0,source_voucher_ids:[],receipts:[]};
-    expect(matchingSigningReservations(currentDraft,[row,{...row,organization_id:'other'},{...row,customer_id:'other'},{...row,claim_status:'CONSUMED'}])).toEqual([row]);
-    expect(signingReservationReady(row)).toBe(true);expect(signingReservationReady({...row,receipts:[{received:false,approval_status:'UNAPPROVED'}]})).toBe(false);
-  });
   it('binds stable intent to revision/id/hash, never accepts mutable terms as RPC args',()=>{
     const args=buildContractSigningArgs(id,{source:{draftId:id,revision:3,documentId:id,documentSha256:'a'.repeat(64)},requestId:id,receivedOn:'2026-09-28',roomReady:true,termsConfirmed:true,boundary:{state:'VERIFIED',readings:[]},creationOptions:{}});
     expect(args).toMatchObject({p_expected_revision:3,p_document_id:id,p_document_sha256:'a'.repeat(64),p_request_id:id,p_received_on:'2026-09-28',p_boundary:{state:'VERIFIED',reason:null,readings:[]}});
@@ -99,7 +93,7 @@ describe('sign exact persisted draft, without automatic money',()=>{
     expect(signingErrorMessage({code:'55000'})).toMatch(/nhận phòng/);
     expect(signingErrorMessage({code:'55000',message:'Chưa hỗ trợ chuyển cọc giữa hai hợp đồng; lựa chọn đã lưu để đối soát.'})).toMatch(/hủy liên kết.*nộp cọc mới/);
     expect(signingErrorMessage({code:'55000',message:'Nhượng qua môi giới cần khách mới nộp đủ cọc mới theo số cọc đã thu hiện hành'})).toMatch(/phiếu thu cọc của khách mới/);
-    expect(signingErrorMessage({code:'55000',message:'Giữ chỗ mới có tên khách gợi nhớ, chưa gắn khách trong danh bạ. Gắn khách ở Quản lý cọc trước khi ký.'})).toMatch(/Gắn khách ở Quản lý cọc/);
+    expect(signingErrorMessage({code:'PT409',message:'Danh sách phiếu cọc của phòng đã thay đổi. Tải lại cọc của phòng.'})).toContain('Tải lại cọc của phòng');
   });
 });
 

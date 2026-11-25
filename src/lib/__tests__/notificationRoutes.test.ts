@@ -151,6 +151,24 @@ describe("resolveNotificationUrl — cảnh báo Zalo mất kết nối", () => 
   });
 });
 
+describe("resolveNotificationUrl — cảnh báo camera", () => {
+  it("mở đúng tab Camera của toà; chỉ giữ param tab=cameras", () => {
+    expect(resolveNotificationUrl(`/network-center/buildings/${REQ}?tab=cameras`, ALL)).toBe(
+      `/network-center/buildings/${REQ}?tab=cameras`,
+    );
+    expect(resolveNotificationUrl(`/network-center/buildings/${REQ}?tab=settings&x=1`, ALL)).toBe(
+      `/network-center/buildings/${REQ}`,
+    );
+  });
+
+  it("thiếu quyền network_center về đích dự phòng; đường lạ bị chặn", () => {
+    expect(resolveNotificationUrl(`/network-center/buildings/${REQ}?tab=cameras`, NONE)).toBe(NOTIFICATION_FALLBACK_URL);
+    expect(resolveNotificationUrl("/network-center/buildings/not-a-uuid?tab=cameras", ALL)).toBeNull();
+    expect(resolveNotificationUrl(`/network-center/buildings/${REQ}/../../x`, ALL)).toBeNull();
+    expect(resolveNotificationUrl("/network-center/buildings", ALL)).toBeNull();
+  });
+});
+
 describe("notificationRawUrl — loại nơi phát không gắn metadata.url", () => {
   it("đơn xin nghỉ (v5 leave_request, không url) mở /my-day — nơi super admin duyệt ngay", () => {
     const raw = notificationRawUrl({ v5: "leave_request", staff_id: REQ, date: "2026-11-18" });

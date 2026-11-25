@@ -7,7 +7,7 @@
 
 - **Tenant và quyền:** organization, membership, role binding, scope và override là biên hiện hành. UI chỉ phản chiếu quyền; RPC/RLS/`authorize_v2` quyết định cuối cùng. Xem [01 — Phân quyền](01-phan-quyen-nhan-su.md).
 - **Canonical writer:** 15/15 route flag đã bật từ 19/07. Một số adapter vẫn giữ fallback có kiểm soát sang writer coexistence cho tới khi hoàn tất T7 drain; client không tự chọn route bằng cờ gửi lên. Xem [Authorization](../authorization/README.md).
-- **Phê duyệt tài chính:** request thuộc engine đi qua hộp thư Chờ duyệt; maker không tự duyệt request của mình. Phiếu thu/chi thường tự duyệt, trừ hạng mục `force_approval` hoặc phiếu chi đạt ngưỡng owner cấu hình. Xem [20 — Phê duyệt tài chính](20-phe-duyet-tai-chinh.md).
+- **Phê duyệt tài chính:** request thuộc engine được duyệt ở Thu chi (màn Chờ duyệt đã bỏ 25/11/2026); maker không tự duyệt request của mình. Phiếu thu/chi thường tự duyệt, trừ hạng mục `force_approval` hoặc phiếu chi đạt ngưỡng owner cấu hình. Xem [20 — Phê duyệt tài chính](20-phe-duyet-tai-chinh.md).
 - **Tiền và báo cáo:** sổ quỹ chỉ tính phiếu hợp lệ, chưa xoá; KQKD dùng `income_expenses.kqkd_amount` để loại cọc và các khoản ngoài KQKD. Mọi thay đổi đụng tiền phải chạy đối chiếu thật.
 
 ## 2. Bản đồ luồng chính

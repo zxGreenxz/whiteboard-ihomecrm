@@ -185,7 +185,7 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
           <StChip tone="info">Đang chờ chi</StChip>
           <span style={{ flex: 1, minWidth: 200 }}><b style={{ fontSize: 13 }}>Phiếu chi lương · {salFmt(q.amount)}</b><br />
             <span style={{ fontSize: 11.5, color: MUTED }}>Lập {q.voucherDate ? q.voucherDate.split("-").reverse().join("/") : "—"} · chờ người duyệt ký. Không lập phiếu mới cho người này tới khi duyệt hoặc huỷ.</span></span>
-          <Link to="/approvals" className="sal-btn sal-btn--outline sal-btn--sm" style={{ textDecoration: "none" }}>Mở duyệt chi</Link>
+          <Link to="/income-expense?approval_status=UNAPPROVED&layer=PENDING" className="sal-btn sal-btn--outline sal-btn--sm" style={{ textDecoration: "none" }}>Mở duyệt chi</Link>
         </div>
       ))}
       {(["vh", "sale", "dh"] as GroupKey[]).map((g) => {

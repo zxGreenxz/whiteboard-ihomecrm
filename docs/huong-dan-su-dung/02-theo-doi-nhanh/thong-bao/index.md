@@ -72,6 +72,6 @@ Quan sát danh sách của chính `demo.quanly`, chuyển giữa **Tất cả**/
 
 - [Bảng tin](/02-theo-doi-nhanh/bang-tin/)
 - [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/)
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/)
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/)
 - [Thông tin cá nhân](/06-tai-khoan/thong-tin-ca-nhan/)
 - [Thêm nhân viên & phân quyền](/01-bat-dau/them-nhan-vien/)

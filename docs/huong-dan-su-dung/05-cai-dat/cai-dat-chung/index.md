@@ -122,8 +122,7 @@ Tắt một sự kiện trong **Sự kiện phát thông báo** thì không ai t
 ## Quy trình liên quan
 
 - [Cam kết chi](/05-cai-dat/cam-ket-chi/) — luật duyệt chi theo hạng mục (theo cam kết, theo trần, từng phiếu).
-- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — nơi lập phiếu và theo dõi trạng thái duyệt, ghi sổ.
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) — hàng chờ của phiếu chi từ ngưỡng trở lên.
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — nơi lập phiếu, duyệt (tab **Chờ xử lý** gom phiếu chi từ ngưỡng trở lên) và theo dõi trạng thái ghi sổ.
 - [Thông tin cá nhân](/06-tai-khoan/thong-tin-ca-nhan/) — sở thích nhận thông báo của từng người.
 - [Mẫu biểu](/05-cai-dat/mau-bieu/) — mẫu in hợp đồng, hoá đơn.
 - [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/) — luồng hoàn thành công việc chịu ảnh hưởng của geo-fence.

@@ -1,3 +1,4 @@
+import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
 
 const receivedFactSchema = z.object({
@@ -33,4 +34,25 @@ export async function readReservationReceivedFacts(
   // Missing facts may be withheld by RLS or reflect a concurrent conversion.
   // Callers must retain UNKNOWN and must never fall back to voucher face value.
   return facts;
+}
+
+const contractRoomDepositsSchema = z.object({
+  hold: z.object({ id: z.string().guid(), revision: z.number().int().positive(), hint: z.string().nullable() }).nullable(),
+  vouchers: z.array(z.object({
+    id: z.string().guid(), code: z.string().nullable(), name: z.string(), total_amount: z.number().finite().nonnegative(),
+    voucher_date: z.iso.date(), approval_status: z.string(), received: z.boolean(),
+  })),
+});
+/** Decode the complete posting snapshot before it is used to calculate a contract's paid deposit. */
+export async function readContractRoomDeposits(organizationId: string, roomId: string) {
+  const { data, error } = await supabase.rpc("get_contract_room_deposits_v1", {
+    p_organization_id: organizationId,
+    p_room_id: roomId,
+  });
+  if (error) throw error;
+  const snapshot = contractRoomDepositsSchema.parse(data);
+  if (new Set(snapshot.vouchers.map(voucher => voucher.id)).size !== snapshot.vouchers.length) {
+    throw new TypeError("Danh sách phiếu cọc của phòng có phiếu bị lặp.");
+  }
+  return snapshot;
 }

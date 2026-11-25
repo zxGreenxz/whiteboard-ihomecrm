@@ -19,7 +19,7 @@ Trang **Phòng trống** công khai là một liên kết dạng `https://ptcrm.
 ::: info Điều kiện tiên quyết
 - **Khách xem trang thì không cần quyền gì** — chỉ cần liên kết `/r/<token>` còn hiệu lực. Liên kết mở với vai trò ẩn danh, không lộ thông tin chủ nhà, hợp đồng hay công nợ.
 - Để **tạo và quản lý liên kết chia sẻ**, bạn cần quyền **Sale Phòng => Xem** (`sale_phong.view`) và **Quản lý link chia sẻ** (`manage_tokens`). Xem cách tạo ở [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/).
-- Để **nhận cọc giữ phòng ngay trên trang công khai**, bạn phải **đang đăng nhập** và có quyền **Sale Phòng => Tạo cọc nhanh** (`create_deposit`). Khách ẩn danh không bao giờ thấy nút này.
+- Để **nhận cọc giữ phòng ngay trên trang công khai**, bạn phải **đang đăng nhập** và có quyền **Đặt cọc => Tạo phiếu cọc** (`deposits.create`) ở đúng toà đó. Mục **Sale Phòng => Tạo cọc nhanh** trong Phân quyền không còn quyết định nút này. Khách ẩn danh không bao giờ thấy nút này.
 - Để **Lock tạm** phòng, bạn cần quyền **Sale Phòng => Lock tạm phòng** (`sale_phong.lock_room`). Mặc định chỉ vai Chủ sở hữu tổ chức có quyền này; chủ tự gán thêm cho người cần trong [Phân quyền](/05-cai-dat/phan-quyen/).
 - Trang chỉ hiện các toà đang có **ít nhất một phòng trống / sắp trống / khách nhờ sale**; toà đã kín phòng sẽ không xuất hiện.
 :::
@@ -76,7 +76,7 @@ Khoảng "sắp trống" (mặc định 30 ngày) và hotline hiển thị đư�
 
 ## Nhận cọc giữ phòng ngay trên trang (khi bạn đã đăng nhập)
 
-Nếu bạn — chủ nhà hoặc sale — mở **chính liên kết công khai đó** trong lúc **đang đăng nhập** và có quyền `sale_phong.create_deposit`, bạn sẽ thấy thêm nút **Tạo cọc giữ phòng** ở chi tiết phòng (phòng chưa thuê) và có thể chạm thẳng ô phòng trống ở chế độ **Tổng hợp**. Hộp thoại **Nhận cọc giữ phòng** mở ra:
+Nếu bạn — chủ nhà hoặc sale — mở **chính liên kết công khai đó** trong lúc **đang đăng nhập** và có quyền `deposits.create` ở toà đó, bạn sẽ thấy thêm nút **Tạo cọc giữ phòng** ở chi tiết phòng (phòng chưa thuê) và có thể chạm thẳng ô phòng trống ở chế độ **Tổng hợp**. Hộp thoại **Nhận cọc giữ phòng** mở ra:
 
 1. Ô **Khách hàng \***: ấn **Danh bạ** để chọn khách có sẵn, **hoặc** gõ một **tên khách gợi nhớ** (tối đa 120 ký tự, ví dụ "anh Tuấn xem phòng 18h") — không cần tạo khách mới.
 2. Nhập **Số tiền cọc** (phải lớn hơn 0) và chọn **Sổ quỹ nhận cọc** (mặc định sổ quỹ mặc định của chính bạn).
@@ -129,7 +129,7 @@ Mọi thao tác của khách trên trang — mở trang, thời gian xem, phòng
 | **Gọi Quản Lý / Gọi khách**, **Zalo** | Liên hệ theo số của toà (nếu có) hoặc hotline chung; với phòng khách nhờ sale là số khách hoặc quản lý. |
 | **Chỉ đường** | Mở bản đồ tới toà (link riêng của toà nếu có, không thì tìm theo địa chỉ). |
 | **Chia sẻ** / **Tải ảnh** (chi tiết phòng) | Gửi thông tin phòng kèm toàn bộ ảnh qua trình chia sẻ của điện thoại, hoặc lưu ảnh về máy. |
-| **Tạo cọc giữ phòng** | Chỉ hiện khi bạn đăng nhập + có quyền `create_deposit` — mở hộp **Nhận cọc giữ phòng**. |
+| **Tạo cọc giữ phòng** | Chỉ hiện khi bạn đăng nhập + có quyền `deposits.create` ở toà đó — mở hộp **Nhận cọc giữ phòng**. |
 | **Lock tạm** | Chỉ hiện khi bạn đăng nhập + có quyền `lock_room`, trên phòng Trống / Sắp trống — ẩn phòng khỏi danh sách sale 6 / 12 / 24 giờ. |
 
 ## Tình huống & lỗi thường gặp
@@ -139,7 +139,7 @@ Mọi thao tác của khách trên trang — mở trang, thời gian xem, phòng
 | Khách mở link báo **"Liên kết không hợp lệ hoặc đã hết hạn"** | Liên kết đã bị **thu hồi**, bị xoá hoặc gõ sai token. Vào **Sale Phòng => Link chia sẻ** để **Khôi phục** link đã thu hồi hoặc tạo link mới rồi gửi lại. |
 | Trang báo **"Chưa tải được danh sách phòng"** | Lỗi mạng tạm thời. Bấm **Thử lại**; trang cũng tự thử lại. |
 | **Không thấy toà nào** trên trang | Trang chỉ hiện toà có ít nhất một phòng **trống / sắp trống / khách nhờ sale**. Toà đã kín phòng sẽ không xuất hiện — đúng thiết kế. |
-| **Không thấy nút "Tạo cọc giữ phòng"** dù đang đăng nhập | Bạn thiếu quyền **Sale Phòng => Tạo cọc nhanh** (`create_deposit`), đang mở ở tab chưa đăng nhập, hoặc phòng đã thuê / là phòng khách pass. Xem [Phân quyền](/05-cai-dat/phan-quyen/). |
+| **Không thấy nút "Tạo cọc giữ phòng"** dù đang đăng nhập | Bạn thiếu quyền **Đặt cọc => Tạo phiếu cọc** (`deposits.create`) ở đúng toà đó, đang mở ở tab chưa đăng nhập, hoặc phòng đã thuê / là phòng khách pass. Xem [Phân quyền](/05-cai-dat/phan-quyen/). |
 | Hộp **Nhận cọc giữ phòng** báo "Gõ tên khách gợi nhớ hoặc chọn khách trong danh bạ." | Chọn khách bằng **Danh bạ** hoặc gõ tên gợi nhớ (tối đa 120 ký tự). |
 | Hộp **Nhận cọc giữ phòng** không cho lưu vì số tiền | Số tiền cọc phải lớn hơn 0 và phải chọn **Sổ quỹ nhận cọc**. Muốn giữ phòng không thu tiền thì dùng **Lock tạm**. |
 | Không thấy nút **Lock tạm** | Bạn thiếu quyền **Lock tạm phòng** (`sale_phong.lock_room`; mặc định chỉ vai Chủ sở hữu tổ chức có, chủ gán thêm trong [Phân quyền](/05-cai-dat/phan-quyen/)), hoặc phòng không ở trạng thái Trống / Sắp trống. |
@@ -166,5 +166,5 @@ Kết quả mong đợi: bạn biết nơi tạo link, nơi chỉnh cách trang 
 - [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — theo dõi, bổ sung, huỷ giữ chỗ và xử lý cọc sau khi tạo trên trang công khai.
 - [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — kiểm phiếu cọc đã duyệt và đã ghi sổ hay chưa.
 - [Hotline](/05-cai-dat/hotline/) — cấu hình số hotline mặc định hiển thị trên trang công khai.
-- [Phân quyền](/05-cai-dat/phan-quyen/) — cấp quyền `sale_phong.view`, `manage_tokens`, `create_deposit` cho nhân viên.
+- [Phân quyền](/05-cai-dat/phan-quyen/) — cấp quyền `sale_phong.view`, `manage_tokens` và `deposits.create` (nút Tạo cọc giữ phòng) cho nhân viên.
 - [Căn hộ / Phòng](/03-quan-ly-van-hanh/can-ho-phong/) — quản lý phòng, giá và theo dõi dọn/sửa làm nguồn cho trang công khai.

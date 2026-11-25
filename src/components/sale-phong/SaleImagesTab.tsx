@@ -12,6 +12,7 @@ import { X, Building2, DoorOpen, Images } from "lucide-react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { supabase } from "@/integrations/supabase/client";
 import { useBuildings, useUpdateBuilding } from "@/hooks/useBuildings";
+import { sortBuildingsByName } from "@/lib/roomSort";
 import { useRooms } from "@/hooks/useRooms";
 import SaleImageManager from "./SaleImageManager";
 import { confirmSaleInfoSwitch, useSaleInfoDraftGuard, type SaleInfoDraftState } from "./useSaleInfoDraftGuard";
@@ -283,7 +284,7 @@ function BuildingInfoSection({ buildingId, onBuildingChange, otherBusy, onDraftS
   });
   useEffect(() => { onDraftStateChange({ dirty: guard.dirty, busy: uploading || updateBuilding.isPending }); }, [guard.dirty, uploading, updateBuilding.isPending, onDraftStateChange]);
 
-  const buildingOpts = (buildings ?? []).map((b) => ({ value: b.id, label: `${b.name}${b.code && b.code !== b.name ? ` (${b.code})` : ""}` }));
+  const buildingOpts = sortBuildingsByName(buildings ?? []).map((b) => ({ value: b.id, label: `${b.name}${b.code && b.code !== b.name ? ` (${b.code})` : ""}` }));
 
   const save = () => {
     if (!building || uploading || updateBuilding.isPending || guard.stale) return;
@@ -360,12 +361,15 @@ function BuildingInfoSection({ buildingId, onBuildingChange, otherBusy, onDraftS
  * theo 2 cấp — Toà nhà (liên hệ quản lý + ảnh bìa) và Phòng (nội thất + ảnh).
  * Bố cục responsive (shadcn Card + grid) dùng tốt trên cả desktop lẫn mobile.
  */
-export default function SaleImagesTab({ onBusyChange }: { onBusyChange?: (busy: boolean) => void } = {}) {
+export default function SaleImagesTab({ onBusyChange, onDirtyChange }: { onBusyChange?: (busy: boolean) => void; onDirtyChange?: (dirty: boolean) => void } = {}) {
   // Toà nhà chọn 1 lần, dùng chung cho cả mục "Thông tin toà nhà" lẫn "Thông tin phòng".
   const [buildingId, setBuildingId] = useState("");
   const [roomState, setRoomState] = useState<SaleInfoDraftState>({ dirty: false, busy: false });
   const [buildingState, setBuildingState] = useState<SaleInfoDraftState>({ dirty: false, busy: false });
   useEffect(() => { onBusyChange?.(roomState.busy || buildingState.busy); return () => onBusyChange?.(false); }, [roomState.busy, buildingState.busy, onBusyChange]);
+  // Trang cha hỏi trước khi đổi tab làm mất bản nháp thông tin sale (đổi phòng/toà đã hỏi ở đây).
+  useEffect(() => { onDirtyChange?.(roomState.dirty || buildingState.dirty); }, [roomState.dirty, buildingState.dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   const changeBuilding = (id: string) => {
     if (roomState.busy || buildingState.busy) return;
     if (id === buildingId || confirmSaleInfoSwitch(roomState.dirty || buildingState.dirty)) setBuildingId(id);

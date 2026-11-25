@@ -22618,6 +22618,58 @@ export type Database = {
         }[]
       }
       calculate_lead_score: { Args: { lead_id: string }; Returns: number }
+      camera_alert_acknowledge_incident_v1: {
+        Args: { p_incident_id: string }
+        Returns: Json
+      }
+      camera_alert_clear_channel_mute_v1: {
+        Args: { p_channel: number; p_recorder_id: string }
+        Returns: Json
+      }
+      camera_alert_get_settings_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      camera_alert_list_deliveries_v1: {
+        Args: {
+          p_before?: string
+          p_before_id?: string
+          p_limit?: number
+          p_organization_id: string
+          p_status?: string
+        }
+        Returns: Json
+      }
+      camera_alert_list_zalo_groups_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_search?: string }
+        Returns: Json
+      }
+      camera_alert_save_settings_v1: {
+        Args: {
+          p_expected_version: number
+          p_organization_id: string
+          p_patch: Json
+        }
+        Returns: Json
+      }
+      camera_alert_send_test_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      camera_alert_set_channel_mute_v1: {
+        Args: {
+          p_channel: number
+          p_kind: string
+          p_note?: string
+          p_recorder_id: string
+          p_until?: string
+        }
+        Returns: Json
+      }
+      camera_building_channel_mutes_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
       camera_building_events_v1: {
         Args: {
           p_before_id?: string
@@ -22625,6 +22677,10 @@ export type Database = {
           p_building_id: string
           p_limit?: number
         }
+        Returns: Json
+      }
+      camera_building_incidents_v1: {
+        Args: { p_building_id: string }
         Returns: Json
       }
       camera_building_snapshot_v1: {
@@ -25282,6 +25338,10 @@ export type Database = {
       }
       get_contract_move_out_notice_v1: {
         Args: { p_contract_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      get_contract_room_deposits_v1: {
+        Args: { p_organization_id: string; p_room_id: string }
         Returns: Json
       }
       get_contract_stats: {

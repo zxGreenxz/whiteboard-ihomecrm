@@ -20,16 +20,19 @@ export interface SigningCreationOptions {
   first_invoice?: ContractCreateFirstInvoiceInput;
   deposit_receipts?: ContractCreateDepositReceiptInput[];
   existing_deposit_voucher_ids?: string[];
+  expected_room_deposit_amount?: number;
   invoice_template_id?: string | null;
   /** Khách cũ hỗ trợ khách mới (sang nhượng phòng); sign_and_checkin_contract_draft_v1 chuyển nguyên vào create_contract_v2. */
   transfer_support_amount?: number;
 }
-export interface PreparedSigningCreation { options: SigningCreationOptions; depositPaid: number }
+export interface PreparedSigningCreation { options: SigningCreationOptions; depositPaid: number; roomHold?: {id: string; revision: number}; roomDepositTotal?: number }
 /** Carry the already validated official form request into signing unchanged; no invoice rebuild. */
-export function buildPreparedSigningCreation(request: ContractCreateRequest, depositPaid: number): PreparedSigningCreation {
+export function buildPreparedSigningCreation(request: ContractCreateRequest, depositPaid: number, roomDepositTotal?: number): PreparedSigningCreation {
   const paid = z.number().finite().nonnegative().parse(depositPaid);
   const { contract, first_invoice, deposit_receipts, existing_deposit_voucher_ids, transfer_support_amount } = request.payload;
-  return { depositPaid: paid, options: {
+  return { depositPaid: paid, ...(roomDepositTotal !== undefined ? {roomDepositTotal} : {}),
+    ...(request.payload.reservation_id && request.payload.reservation_revision ? {roomHold:{id:request.payload.reservation_id,revision:request.payload.reservation_revision}} : {}), options: {
+    ...(roomDepositTotal !== undefined ? {expected_room_deposit_amount:roomDepositTotal} : {}),
     ...(contract.deposit_debt_mode ? { deposit_debt_mode: contract.deposit_debt_mode } : {}),
     ...(contract.deposit_debt_reason ? { deposit_debt_reason: contract.deposit_debt_reason } : {}),
     ...(contract.deposit_topup_due_date ? { deposit_topup_due_date: contract.deposit_topup_due_date } : {}),
@@ -107,20 +110,6 @@ export interface ContractSigningInput {
   reservationSource?: ReservationSigningSource;
 }
 export interface ReservationSigningSource { reservationId: string; revision: number; sourceVoucherIds: string[] }
-export interface SigningReservationIdentity {
-  id: string; organization_id: string; building_id: string; room_id: string; customer_id: string;
-  status: string; claim_status: string; revision: number; received_amount: number; source_voucher_ids: string[];
-  receipts: Array<{ received: boolean; approval_status: string | null }>;
-}
-export function matchingSigningReservations<T extends SigningReservationIdentity>(draft: ContractDraft, reservations: T[]): T[] {
-  const parties = new Set(draft.payload.customers.map(customer => customer.id));
-  return reservations.filter(reservation => reservation.organization_id === draft.organization_id
-    && reservation.building_id === draft.building_id && reservation.room_id === draft.room_id
-    && parties.has(reservation.customer_id) && reservation.status === 'HOLD' && reservation.claim_status === 'LIVE');
-}
-export function signingReservationReady(reservation: SigningReservationIdentity): boolean {
-  return reservation.receipts.every(receipt => receipt.received && receipt.approval_status === 'APPROVED');
-}
 export function buildContractSigningArgs(organizationId: string, input: ContractSigningInput) {
   uuid.parse(organizationId); uuid.parse(input.source.draftId); uuid.parse(input.source.documentId); uuid.parse(input.requestId);
   sha.parse(input.source.documentSha256); z.number().int().positive().parse(input.source.revision); dateOnly.parse(input.receivedOn);
@@ -139,6 +128,7 @@ export function buildContractSigningArgs(organizationId: string, input: Contract
       items: options.first_invoice.items.map(item => ({ ...item })) } } : {}),
     ...(options.deposit_receipts ? { deposit_receipts: options.deposit_receipts.map(receipt => ({ ...receipt,
       ...(receipt.attachments ? { attachments: [...receipt.attachments] } : {}) })) } : {}),
+    ...(options.expected_room_deposit_amount !== undefined ? {expected_room_deposit_amount:options.expected_room_deposit_amount} : {}),
     ...(options.existing_deposit_voucher_ids ? { existing_deposit_voucher_ids: [...options.existing_deposit_voucher_ids] } : {}),
     ...(options.invoice_template_id !== undefined ? { invoice_template_id: options.invoice_template_id } : {}),
     ...(options.transfer_support_amount ? { transfer_support_amount: options.transfer_support_amount } : {}) };
@@ -167,17 +157,16 @@ export type ContractSigningSnapshot = z.infer<typeof contractSigningSnapshotSche
 export function signingErrorMessage(error: unknown): string {
   if(error instanceof FinancialWorkflowError)return workflowErrorMessage(error,'ghi nhận ký hợp đồng');
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
+  const message = typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
+  if (code === 'PT409' && /phiếu cọc|hồ sơ giữ chỗ/i.test(message)) return message;
   // PT409 (HTTP 409) từ 20261116015253; 40001 là mã cũ mà PostgREST tự chạy lại tới 504.
   if (code === 'PT409' || code === '40001') return 'Phiên bản nháp, tài liệu hoặc thông tin khách đã thay đổi. Tải lại, kiểm tra và xuất lại trước khi ký.';
   if (code === '42501' || code === '28000') return 'Bạn không có quyền thực hiện thao tác này.';
   if (code === '55P03') return 'Phòng đang có cọc hoặc giữ chỗ. Nhánh ký từ nháp chưa hỗ trợ chuyển nguồn giữ chỗ này.';
   if (code === '55000') {
-    const message = typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
     if (message.startsWith('Chưa hỗ trợ chuyển cọc giữa hai hợp đồng')) return 'Liên kết nhượng đang chờ cấn cọc cũ. Để ký với khoản cọc mới, hủy liên kết rồi lập lại với lựa chọn nộp cọc mới.';
     if (message.startsWith('Nhượng qua môi giới cần khách mới nộp đủ cọc mới')) return 'Khách nhận nhượng qua môi giới cần nộp đủ cọc mới. Kiểm tra phiếu thu cọc của khách mới trước khi ký.';
     if (message.includes('RENT_SUPPORT_WRITERS_DISABLED')) return 'Chức năng lưu lịch hỗ trợ tiền thuê chưa được bật. Nội dung đang nhập vẫn được giữ; chưa ghi nhận ký.';
-    // 20261010114500: giữ chỗ chỉ có tên gợi nhớ — nói đúng việc cần làm thay cho câu chung.
-    if (message.includes('chưa gắn khách trong danh bạ')) return 'Phòng đang giữ chỗ bằng tên khách gợi nhớ, chưa gắn khách trong danh bạ. Gắn khách ở Quản lý cọc rồi ký lại.';
     return 'Phòng hoặc mốc chỉ số chưa đủ điều kiện nhận phòng. Tải lại và kiểm tra việc bàn giao.';
   }
   if (code === '23505') return 'Bản nháp hoặc lần ký đã được dùng với nội dung khác. Tải lại để xem hợp đồng đã ghi nhận.';
