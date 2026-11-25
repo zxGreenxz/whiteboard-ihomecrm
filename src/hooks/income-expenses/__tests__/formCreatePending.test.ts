@@ -123,6 +123,22 @@ describe('đường compat ie_compat_insert_v2 (cách D: mã phiếu do trình d
   });
 });
 
+describe('đổi đường giữa hai lần gửi (máy chủ không chống trùng chéo đường)',()=>{
+  it('lần trước đi đường chính và mất phản hồi, lần này là phiếu lặp: tra gần đúng thấy phiếu ⇒ báo có thể đã lập, không lập qua compat',async()=>{
+    db.lost='create_income_expense_v1';await expect(submit(form())).rejects.toThrow();
+    const error=await submit(form(repeat)).then(()=>null,(e:unknown)=>e);
+    expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);expect((error as Error).message).toMatch(/Có thể/);
+    expect(rpcCalls('ie_compat_insert_v2')).toHaveLength(0);expect(db.vouchers).toHaveLength(1);
+  });
+  it('lần trước không tới máy chủ, lần này đổi đường: không gửi ngay, chỉ gửi lại sau 2 phút',async()=>{
+    db.drop='create_income_expense_v1';await expect(submit(form())).rejects.toThrow();
+    await expect(submit(form(repeat))).rejects.toBeInstanceOf(FinancialPendingError);
+    expect(rpcCalls('ie_compat_insert_v2')).toHaveLength(0);
+    advance(PENDING_SETTLE_MS);
+    await expect(submit(form(repeat))).resolves.toMatchObject({id:expect.any(String)});expect(db.vouchers).toHaveLength(1);
+  });
+});
+
 describe('dấu cũ gieo sẵn (trước bản này: không mã gửi lại, không tên thao tác)',()=>{
   const seed=(startedAt:number)=>localStorage.setItem('ihome:financial-pending:v1:voucher-form-create:u1:o1:EXPENSE%3Ab1%3A',JSON.stringify({...scope,attemptId:'00000000-0000-4000-8000-0000000000aa',requestKey:'00000000-0000-4000-8000-0000000000bb',completedIds:[],startedAt:new Date(startedAt).toISOString()}));
   it('có phiếu của mình cùng loại, toà, phòng sau giờ kẹt ⇒ báo "có thể đã lập" kèm mã, không gửi',async()=>{

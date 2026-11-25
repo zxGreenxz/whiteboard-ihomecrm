@@ -167,7 +167,7 @@ describe('tạo cọc sau rớt mạng (gửi lại cùng mã)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Số tiền cọc *' }), { target: { value: '600000' } });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
     submitAgain();
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/lần gửi trước/));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/đã được tạo ở lần gửi trước.*Mở Quản lý cọc/));
     expect(stored.size).toBe(1); expect(h.close).not.toHaveBeenCalled(); expect(financialPending.read(scope)).toBeNull();
   });
   it('dấu cũ gieo sẵn (không tên thao tác): gửi ngay đúng mã của dấu cũ', async () => {
