@@ -227,10 +227,12 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
       // Người cọc: chỉ nhân viên trong app; link công khai / Hermes bỏ qua kể cả khi payload có.
       const depositHold = options.includeInternal && status === "rented" ? parseRoomDepositHold(rr.deposit_hold) : null;
       const hasDepositHold = options.includeInternal && rr.has_deposit_hold === true;
-      // Một luật nhãn (đợt 3 + #499): đang giữ bằng cọc ⇒ «Đã cọc · người gửi · N ngày» (thiếu khối thì «Đang giữ chỗ»),
-      // ưu tiên trước giữ cho khách sang nhượng như #499; còn lại theo tình trạng phòng.
+      // saleFact.label là nhãn CÔNG KHAI (tin «Chia sẻ» gửi khách, ảnh / xuất bảng, Copilot): phòng giữ bằng cọc chỉ ghi
+      // «Đang giữ chỗ», không tên người cọc / mã phiếu — chi tiết nằm ở depositHold cho bảng Sale nội bộ. Ưu tiên trước giữ
+      // cho khách sang nhượng như #499; phiếu cọc treo ở phòng còn khách ở thì vẫn theo tình trạng phòng.
+      const depositHeld = status === "rented" && (hasDepositHold || (depositHold !== null && !depositHold.roomOccupied));
       const saleFact = lock ? undefined
-        : status === "rented" && (depositHold || hasDepositHold) ? roomSaleFacts({ status, depositHold, hasDepositHold })
+        : depositHeld ? roomSaleFacts({ status, hasDepositHold: true })
         : isExitHeld({ status, exitHold }) ? EXIT_HOLD_SALE_FACT
         : roomSaleFacts({ status, state: rr.sale_state, today: rr.sale_today,
           availableOn: rr.avail_date, expectedReadyOn: rr.expected_ready_on });

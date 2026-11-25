@@ -8,6 +8,11 @@ import { z } from 'zod';
  */
 export const DEPOSIT_AMOUNT_SERVER_MESSAGE = 'Phiếu cọc phải có số tiền lớn hơn 0; giữ phòng không thu tiền thì dùng Lock tạm.';
 export const DEPOSIT_AMOUNT_REQUIRED_MESSAGE = 'Nhập số tiền cọc lớn hơn 0. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.';
+/** Phiếu cọc đã chọn hợp đồng (bổ sung cọc cho khách đang ở) không giữ phòng ⇒ không gợi ý Lock tạm. */
+export const DEPOSIT_AMOUNT_CONTRACT_MESSAGE = 'Nhập số tiền cọc lớn hơn 0.';
+export function depositAmountRequiredMessage(contractId: string | null | undefined): string {
+  return contractId ? DEPOSIT_AMOUNT_CONTRACT_MESSAGE : DEPOSIT_AMOUNT_REQUIRED_MESSAGE;
+}
 /**
  * Câu dễ hiểu cho 22023 «Phiếu PTxxxx thiếu dòng cọc hợp lệ» / «… chưa có dòng tiền cọc» của #499
  * (attach_deposit_income_v1, đường create_deposit_income_v1 gọi thẳng nên đến trước luật của đợt 3). Mã phiếu trong câu

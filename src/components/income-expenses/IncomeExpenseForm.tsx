@@ -51,7 +51,7 @@ import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
 import { useVoucherSlotWarning } from '@/hooks/useVoucherSlotWarning';
 import {
-  DEPOSIT_AMOUNT_REQUIRED_MESSAGE,
+  depositAmountRequiredMessage,
   depositAmountErrorRows,
   incomeExpenseFormSchema,
   incomeExpenseNoAccountFormSchema,
@@ -900,7 +900,7 @@ const IncomeExpenseFormInner = ({
   // LƯỢT với lỗi zod, trước bước lưu. Máy chủ chặn bằng trigger a1_ie_item_deposit_amount_positive (và #499).
   const depositAmountErrors = (values: IncomeExpenseFormValues): FieldRuleError[] =>
     forfeitKqkdMode ? [] : depositAmountErrorRows(values.type, values.items ?? [], depositTypeIds)
-      .map((index) => ({ path: `items.${index}.unit_price`, type: 'deposit_amount', message: DEPOSIT_AMOUNT_REQUIRED_MESSAGE }));
+      .map((index) => ({ path: `items.${index}.unit_price`, type: 'deposit_amount', message: depositAmountRequiredMessage(values.contract_id) }));
   const isViewing = !!voucher && !canEdit && !forfeitKqkdMode;
   const isRevising = !!voucher && canEdit;
   // Khung phiếu (Thu/Chi, toà, phòng, HĐ, KQKD, lặp, thêm/bớt hạng mục, kỳ):

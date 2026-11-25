@@ -22,15 +22,18 @@
 --      (đã rà 25/11: giữ chỗ Sale, cọc HĐ, chuyển cọc sang nhượng, hoàn / cấn cọc thanh lý, phiếu đảo, thu cọc theo hoá
 --      đơn, tiền mới nộp lúc ký đều đòi tiền > 0, hoặc là phiếu CHI, hoặc gắn HĐ). Không đụng luồng của #499: huỷ phiếu
 --      (approval_status = CANCELLED) và xoá phiếu không bị canh nên «huỷ phiếu cuối nhả đợt» chạy như cũ; nối phiếu vào
---      đợt không sửa dòng phiếu.
---   2. app_private.room_deposit_hold_json_v1(org, phòng): khối «đang giữ bằng cọc» theo mô hình đợt giữ chỗ của #499 —
+--      đợt không sửa dòng phiếu. Trigger trên phiếu chỉ bắt chuyển trạng thái làm phiếu «sống lại» (bỏ huỷ, khôi phục,
+--      gỡ hợp đồng, đổi sang THU); duyệt / bỏ duyệt / yêu cầu sửa phiếu cũ không bị canh.
+--   2. app_private.room_deposit_hold_json_v1(org, phòng, p_detail): khối «đang giữ bằng cọc» theo mô hình đợt giữ chỗ của #499 —
 --      đợt đang mở (room_next_claims LIVE + room_reservations HOLD): người gửi trên phiếu đầu, ngày nhận phiếu đầu, các
 --      mã phiếu còn hiệu lực, số ngày giữ (ngày của công ty); phòng không có đợt mà còn phiếu cọc treo chưa nối (cùng vị
 --      từ nhánh phiếu của room_has_holding_deposit, vd phòng đang có HĐ) thì lấy theo phiếu cũ nhất. Kèm room_occupied
---      (phòng còn khách ở) để giao diện không hiện Báo pass / Báo sắp trống ở phòng chỉ có cọc giữ chỗ.
+--      (phòng còn khách ở) để giao diện không hiện Báo pass / Báo sắp trống ở phòng chỉ có cọc giữ chỗ. p_detail = false
+--      ⇒ bỏ người gửi, mã phiếu, id: chỉ còn cờ + ngày nhận + số ngày giữ.
 --   3. get_sale_room_inventory_v1 và get_my_available_rooms(uuid): thân PRODUCTION hiện hành (đợt 2 Sale phòng
---      20261125034429 + vá has_deposit_hold của #499), giữ nguyên has_deposit_hold, chỉ thêm khoá deposit_hold cho phòng
---      'rented'. Link công khai, bot Zalo, Hermes KHÔNG đổi (không lộ tên người cọc).
+--      20261125034429 + vá has_deposit_hold của #499), giữ nguyên has_deposit_hold; thêm khoá deposit_hold cho phòng
+--      'rented', chi tiết (người gửi, mã phiếu) chỉ khi người gọi có deposits.view ở toà — phạm vi tính MỘT lần mỗi lượt
+--      gọi bằng authorized_scope_v3. Link công khai, bot Zalo, Hermes KHÔNG đổi (không lộ tên người cọc).
 --
 -- KHÔNG ĐỔI
 --   Không quét / sửa phiếu cũ: luật chỉ kiểm khi ghi. 4 phiếu Demo 0 đ (bộ mẫu 20260812010000) để nguyên. Không đổi
@@ -47,8 +50,9 @@
 -- LÙI (migration forward mới)
 --   DROP TRIGGER a1_ie_item_deposit_amount_positive ON public.income_expense_items;
 --   DROP TRIGGER a1_ie_deposit_amount_positive ON public.income_expenses;
---   dựng lại hai reader bằng thân production đã ghim md5 ở tiền kiểm (bỏ dòng deposit_hold, giữ has_deposit_hold);
---   DROP FUNCTION app_private.room_deposit_hold_json_v1(uuid,uuid), app_private.guard_deposit_voucher_amount_v1().
+--   dựng lại hai reader bằng thân production đã ghim md5 ở tiền kiểm (bỏ phạm vi deposits.view và khoá deposit_hold,
+--   giữ has_deposit_hold);
+--   DROP FUNCTION app_private.room_deposit_hold_json_v1(uuid,uuid,boolean), app_private.guard_deposit_voucher_amount_v1().
 -- =============================================================================
 
 -- 0. Tiền kiểm: đúng phụ thuộc, đúng thân đã rà.
@@ -81,8 +85,8 @@ BEGIN
   END IF;
   -- [0] thân production 25/11/2026 (đợt 2 + has_deposit_hold của #499) · [1] thân của chính file này (lượt chạy lại).
   FOR r IN SELECT * FROM (VALUES
-      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '0e3e37a193c5db71f34089c7fcb6f789', '750a25e1ce88045eb797ba73bb38741f'),
-      ('public.get_my_available_rooms(uuid)', '7a25503d7a27eff1c424e1870f132ef3', 'ebb64f53e46bc81d6ef3bb0b951e9685'),
+      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '0e3e37a193c5db71f34089c7fcb6f789', '956083b0b2d245b923c6255ad31acd3f'),
+      ('public.get_my_available_rooms(uuid)', '7a25503d7a27eff1c424e1870f132ef3', '2e858769559caa07a31f9211ef65473e'),
       -- Không bị thay: nhánh phiếu của khối giữ cọc chép đúng vị từ hàm này — đổi hàm thì phải rà lại khối.
       ('public.room_has_holding_deposit(uuid)', '969b762fdcb47c536d26874b1b193183', '969b762fdcb47c536d26874b1b193183')
     ) AS v(fn, base_md5, file_md5) LOOP
@@ -159,8 +163,9 @@ CREATE CONSTRAINT TRIGGER a1_ie_item_deposit_amount_positive
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION app_private.guard_deposit_voucher_amount_v1();
 
--- Phiếu bỏ hợp đồng, được bỏ huỷ / khôi phục, hoặc đổi sang phiếu THU. Chỉ khi cột thật sự đổi: lệnh ghi lại cùng giá
--- trị lên phiếu cũ (vd 4 phiếu Demo 0 đ) không bị coi là sửa phiếu.
+-- Phiếu «sống lại» thành phiếu cọc giữ phòng: bỏ huỷ (CANCELLED → khác), khôi phục (deleted_at → NULL), gỡ hợp đồng, đổi
+-- sang phiếu THU. KHÔNG bắt duyệt / bỏ duyệt / yêu cầu sửa giữa các trạng thái còn sống: phiếu cũ (vd 4 phiếu Demo 0 đ)
+-- và việc hàng loạt đổi trạng thái duyệt không nổ lúc COMMIT; muốn đổi tiền thì vẫn qua dòng phiếu (trigger trên).
 DROP TRIGGER IF EXISTS a1_ie_deposit_amount_positive ON public.income_expenses;
 CREATE CONSTRAINT TRIGGER a1_ie_deposit_amount_positive
   AFTER UPDATE OF contract_id, approval_status, type, deleted_at ON public.income_expenses
@@ -168,12 +173,12 @@ CREATE CONSTRAINT TRIGGER a1_ie_deposit_amount_positive
   FOR EACH ROW
   WHEN (NEW.type = 'INCOME' AND NEW.contract_id IS NULL AND NEW.deleted_at IS NULL
         AND NEW.approval_status IS DISTINCT FROM 'CANCELLED'
-        AND (OLD.type IS DISTINCT FROM NEW.type OR OLD.contract_id IS DISTINCT FROM NEW.contract_id
-             OR OLD.approval_status IS DISTINCT FROM NEW.approval_status OR OLD.deleted_at IS DISTINCT FROM NEW.deleted_at))
+        AND (OLD.approval_status = 'CANCELLED' OR OLD.deleted_at IS NOT NULL
+             OR OLD.contract_id IS NOT NULL OR OLD.type IS DISTINCT FROM 'INCOME'))
   EXECUTE FUNCTION app_private.guard_deposit_voucher_amount_v1();
 
 -- 2. Khối «đang giữ bằng cọc» cho hai reader nội bộ.
-CREATE OR REPLACE FUNCTION app_private.room_deposit_hold_json_v1(p_organization_id uuid, p_room_id uuid)
+CREATE OR REPLACE FUNCTION app_private.room_deposit_hold_json_v1(p_organization_id uuid, p_room_id uuid, p_detail boolean)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE SECURITY DEFINER
@@ -188,6 +193,7 @@ DECLARE
   v_count    integer;
   v_day      date;
   v_payer    text;
+  v_result   jsonb;
 BEGIN
   v_occupied := EXISTS (
     SELECT 1 FROM public.contracts c
@@ -221,55 +227,65 @@ BEGIN
     v_payer := COALESCE(v_first.payer,
                         NULLIF(NULLIF(btrim(v_hold.customer_hint), ''), 'Chưa ghi người gửi'),
                         (SELECT NULLIF(btrim(cu.full_name), '') FROM public.customers cu WHERE cu.id = v_hold.customer_id));
-    RETURN jsonb_build_object(
+    v_result := jsonb_build_object(
       'source', 'hold', 'hold_id', v_hold.id,
       'voucher_id', v_first.id, 'code', v_first.code, 'codes', v_codes,
       'voucher_date', v_day, 'payer_name', v_payer,
       'held_days', GREATEST(0, v_today - v_day),
       'voucher_count', v_count, 'room_occupied', v_occupied);
+  ELSE
+    -- Không có đợt: phiếu cọc treo chưa nối (dữ liệu cũ, vd phòng đang có HĐ) — cùng vị từ nhánh phiếu của
+    -- room_has_holding_deposit; lấy phiếu CŨ NHẤT (giữ lâu nhất là thứ cần dọn trước).
+    WITH holding AS (
+      SELECT ie.id, ie.code, ie.voucher_date, ie.created_at,
+        COALESCE(NULLIF(btrim(ie.payer_name), ''), NULLIF(btrim(t.full_name), '')) AS payer_name
+      FROM public.income_expenses ie
+      LEFT JOIN public.tenants t ON t.id = ie.tenant_id
+      WHERE ie.organization_id = p_organization_id
+        AND ie.room_id = p_room_id
+        AND ie.deleted_at IS NULL
+        AND ie.contract_id IS NULL
+        AND ie.type = 'INCOME'
+        AND COALESCE(ie.approval_status, '') <> 'CANCELLED'
+        AND public.ie_has_deposit_item(ie.id)
+        AND NOT app_private.reservation_deposit_is_settled_v1(ie.id)
+    )
+    SELECT jsonb_build_object(
+      'source', 'voucher', 'hold_id', NULL,
+      'voucher_id', h.id, 'code', h.code,
+      'codes', (SELECT COALESCE(jsonb_agg(x.code ORDER BY x.voucher_date, x.created_at, x.id) FILTER (WHERE x.code IS NOT NULL), '[]'::jsonb) FROM holding x),
+      'voucher_date', h.voucher_date, 'payer_name', h.payer_name,
+      'held_days', GREATEST(0, v_today - h.voucher_date),
+      'voucher_count', (SELECT count(*) FROM holding), 'room_occupied', v_occupied)
+    INTO v_result
+    FROM holding h
+    ORDER BY h.voucher_date, h.created_at, h.id
+    LIMIT 1;
   END IF;
 
-  -- Không có đợt: phiếu cọc treo chưa nối (dữ liệu cũ, vd phòng đang có HĐ) — cùng vị từ nhánh phiếu của
-  -- room_has_holding_deposit; lấy phiếu CŨ NHẤT (giữ lâu nhất là thứ cần dọn trước).
-  WITH holding AS (
-    SELECT ie.id, ie.code, ie.voucher_date, ie.created_at,
-      COALESCE(NULLIF(btrim(ie.payer_name), ''), NULLIF(btrim(t.full_name), '')) AS payer_name
-    FROM public.income_expenses ie
-    LEFT JOIN public.tenants t ON t.id = ie.tenant_id
-    WHERE ie.organization_id = p_organization_id
-      AND ie.room_id = p_room_id
-      AND ie.deleted_at IS NULL
-      AND ie.contract_id IS NULL
-      AND ie.type = 'INCOME'
-      AND COALESCE(ie.approval_status, '') <> 'CANCELLED'
-      AND public.ie_has_deposit_item(ie.id)
-      AND NOT app_private.reservation_deposit_is_settled_v1(ie.id)
-  )
-  SELECT jsonb_build_object(
-    'source', 'voucher', 'hold_id', NULL,
-    'voucher_id', h.id, 'code', h.code,
-    'codes', (SELECT COALESCE(jsonb_agg(x.code ORDER BY x.voucher_date, x.created_at, x.id) FILTER (WHERE x.code IS NOT NULL), '[]'::jsonb) FROM holding x),
-    'voucher_date', h.voucher_date, 'payer_name', h.payer_name,
-    'held_days', GREATEST(0, v_today - h.voucher_date),
-    'voucher_count', (SELECT count(*) FROM holding), 'room_occupied', v_occupied)
-  INTO v_codes
-  FROM holding h
-  ORDER BY h.voucher_date, h.created_at, h.id
-  LIMIT 1;
-  RETURN v_codes;
+  IF v_result IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF COALESCE(p_detail, false) THEN
+    RETURN v_result || jsonb_build_object('detail', true);
+  END IF;
+  -- Người gọi không xem được phiếu cọc ở toà (reader tính deposits.view một lần): bỏ người gửi, mã phiếu, id — chỉ còn
+  -- cờ + ngày nhận + số ngày giữ + số phiếu + phòng còn khách ở.
+  RETURN v_result || jsonb_build_object('detail', false, 'hold_id', NULL, 'voucher_id', NULL, 'code', NULL,
+                                        'codes', '[]'::jsonb, 'payer_name', NULL);
 END
 $fn$;
 
-COMMENT ON FUNCTION app_private.room_deposit_hold_json_v1(uuid, uuid) IS
-  'Khối «đang giữ bằng cọc» của phòng cho get_sale_room_inventory_v1 / get_my_available_rooms: đợt giữ chỗ đang mở (#499) — người gửi phiếu đầu, ngày nhận phiếu đầu, các mã phiếu, số ngày giữ, số phiếu — hoặc phiếu cọc treo chưa nối cũ nhất; kèm phòng còn khách ở. Không dùng cho link công khai / bot / Hermes. Sale phòng đợt 3, 25/11/2026.';
+COMMENT ON FUNCTION app_private.room_deposit_hold_json_v1(uuid, uuid, boolean) IS
+  'Khối «đang giữ bằng cọc» của phòng cho get_sale_room_inventory_v1 / get_my_available_rooms: đợt giữ chỗ đang mở (#499) — người gửi phiếu đầu, ngày nhận phiếu đầu, các mã phiếu, số ngày giữ, số phiếu — hoặc phiếu cọc treo chưa nối cũ nhất; kèm phòng còn khách ở. p_detail = false (người gọi không có deposits.view ở toà) ⇒ bỏ người gửi, mã phiếu, id, chỉ còn cờ + ngày. Không dùng cho link công khai / bot / Hermes. Sale phòng đợt 3, 26/11/2026.';
 
-REVOKE ALL ON FUNCTION app_private.room_deposit_hold_json_v1(uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION app_private.room_deposit_hold_json_v1(uuid, uuid, boolean) FROM PUBLIC, anon, authenticated, service_role;
 
 -- 3. Bảng nội bộ: thân production (đợt 2 + has_deposit_hold của #499) + khoá deposit_hold.
 CREATE OR REPLACE FUNCTION public.get_sale_room_inventory_v1(p_organization_id uuid, p_building_id uuid DEFAULT NULL, p_room_id uuid DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private AS $fn$
-DECLARE result jsonb; v_owner uuid;
+DECLARE result jsonb; v_owner uuid; v_dep_all boolean; v_dep_ids uuid[];
 BEGIN
   IF auth.uid() IS NULL OR NOT COALESCE(p_organization_id = ANY(public.my_org_ids()), false)
     OR NOT EXISTS (SELECT 1 FROM public.organizations WHERE id=p_organization_id AND status='ACTIVE')
@@ -278,6 +294,10 @@ BEGIN
   END IF;
   -- Chủ cài đặt chung = người đứng tên chung các toà của công ty (không theo tập toà người xem được giao).
   v_owner:=app_private.org_building_owner_v1(p_organization_id);
+  -- Sale đợt 3: người gửi / mã phiếu trong khối deposit_hold chỉ cho người xem được phiếu cọc ở toà (deposits.view).
+  SELECT COALESCE(bool_or(s.org_wide), false), COALESCE(array_agg(DISTINCT x.id) FILTER (WHERE x.id IS NOT NULL), '{}'::uuid[])
+    INTO v_dep_all, v_dep_ids
+    FROM app_private.authorized_scope_v3('deposits.view', p_organization_id) s LEFT JOIN LATERAL unnest(s.building_ids) x(id) ON true;
   WITH allowed_buildings AS MATERIALIZED (
     SELECT b.*,
       app_private.sale_room_can_edit_v1(b.organization_id,b.id) AS can_edit,
@@ -316,7 +336,7 @@ BEGIN
         'locked_by_name',COALESCE(NULLIF(btrim(lp.full_name),''),'Người dùng'),
         'locked_by_me',lk.locked_by=auth.uid()) END AS sale_lock,
       app_private.room_exit_hold_json_v1(r.organization_id,r.id) AS exit_hold, EXISTS(SELECT 1 FROM public.room_next_claims dc WHERE dc.organization_id=r.organization_id AND dc.room_id=r.id AND dc.status='LIVE') AS has_deposit_hold,
-      CASE WHEN fact.status_public='rented' THEN app_private.room_deposit_hold_json_v1(r.organization_id,r.id) END AS deposit_hold,
+      CASE WHEN fact.status_public='rented' THEN app_private.room_deposit_hold_json_v1(r.organization_id,r.id,v_dep_all OR r.building_id=ANY(v_dep_ids)) END AS deposit_hold,
       jsonb_build_object(
         'edit',b.can_edit,'images',b.can_edit OR b.can_images,'pass',b.can_pass,
         'lock',b.can_lock AND fact.status_public IN ('free','soon') AND lk.id IS NULL,
@@ -402,6 +422,8 @@ DECLARE
   v_hotline uuid;
   v_sale_policy text;
   v_result  jsonb;
+  v_dep_all boolean;
+  v_dep_ids uuid[];
 BEGIN
   IF v_caller IS NULL THEN
     RETURN NULL;
@@ -432,6 +454,10 @@ BEGIN
 
   -- Hotline và chính sách chung: theo người đứng tên chung các toà của công ty (chủ cài đặt chung).
   v_owner := app_private.org_building_owner_v1(v_org);
+  -- Sale đợt 3: người gửi / mã phiếu trong khối deposit_hold chỉ cho người xem được phiếu cọc ở toà (deposits.view).
+  SELECT COALESCE(bool_or(s.org_wide), false), COALESCE(array_agg(DISTINCT x.id) FILTER (WHERE x.id IS NOT NULL), '{}'::uuid[])
+    INTO v_dep_all, v_dep_ids
+    FROM app_private.authorized_scope_v3('deposits.view', v_org) s LEFT JOIN LATERAL unnest(s.building_ids) x(id) ON true;
   SELECT hotline_id, sale_policy INTO v_hotline, v_sale_policy
   FROM public.public_room_settings
   WHERE owner_id = v_owner AND organization_id = v_org;
@@ -466,7 +492,7 @@ BEGIN
       fact.status_public, fact.sale_state, fact.avail_date, fact.sale_today, fact.expected_ready_on,
       lk.sale_lock,
       app_private.room_exit_hold_json_v1(rm.organization_id,rm.id) AS exit_hold, EXISTS(SELECT 1 FROM public.room_next_claims dc WHERE dc.organization_id=rm.organization_id AND dc.room_id=rm.id AND dc.status='LIVE') AS has_deposit_hold,
-      CASE WHEN fact.status_public = 'rented' THEN app_private.room_deposit_hold_json_v1(rm.organization_id,rm.id) END AS deposit_hold
+      CASE WHEN fact.status_public = 'rented' THEN app_private.room_deposit_hold_json_v1(rm.organization_id,rm.id,v_dep_all OR rm.building_id=ANY(v_dep_ids)) END AS deposit_hold
     FROM public.rooms rm
     JOIN public.buildings b ON b.id = rm.building_id AND b.organization_id = rm.organization_id
     -- Số ngày sắp trống theo người đứng tên từng toà (như bảng nội bộ).
@@ -595,9 +621,9 @@ DECLARE
   v_n int;
 BEGIN
   FOR r IN SELECT * FROM (VALUES
-      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '750a25e1ce88045eb797ba73bb38741f'),
-      ('public.get_my_available_rooms(uuid)', 'ebb64f53e46bc81d6ef3bb0b951e9685'),
-      ('app_private.room_deposit_hold_json_v1(uuid,uuid)', 'aedf72d27d5a899d60acdb019b3a879c'),
+      ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', '956083b0b2d245b923c6255ad31acd3f'),
+      ('public.get_my_available_rooms(uuid)', '2e858769559caa07a31f9211ef65473e'),
+      ('app_private.room_deposit_hold_json_v1(uuid,uuid,boolean)', '957025f0b8d1070aa66426a6f0d5cfb3'),
       ('app_private.guard_deposit_voucher_amount_v1()', '8bbf344c32988686aa7c823f7073c79d')
     ) AS v(fn, file_md5) LOOP
     SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5 FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure(r.fn);
@@ -613,9 +639,18 @@ BEGIN
         'public.get_my_available_rooms(uuid)'::regprocedure) AND prosrc LIKE '%AS has_deposit_hold%') <> 2 THEN
     RAISE EXCEPTION 'coc_thu_chi: reader mất has_deposit_hold của #499' USING ERRCODE = '55000';
   END IF;
+  -- Tên người gửi / mã phiếu chỉ cho người có deposits.view ở toà: cả hai reader tính phạm vi đó một lần.
+  IF (SELECT count(*) FROM pg_proc WHERE oid IN ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)'::regprocedure,
+        'public.get_my_available_rooms(uuid)'::regprocedure)
+        AND prosrc LIKE '%authorized_scope_v3(''deposits.view''%') <> 2 THEN
+    RAISE EXCEPTION 'coc_thu_chi: reader không tính quyền deposits.view cho khối deposit_hold' USING ERRCODE = '55000';
+  END IF;
+  IF to_regprocedure('app_private.room_deposit_hold_json_v1(uuid,uuid)') IS NOT NULL THEN
+    RAISE EXCEPTION 'coc_thu_chi: bản room_deposit_hold_json_v1(uuid,uuid) không kiểm quyền không được có' USING ERRCODE = '55000';
+  END IF;
 
   IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'app_private.guard_deposit_voucher_amount_v1()'::regprocedure)
-     OR NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'app_private.room_deposit_hold_json_v1(uuid,uuid)'::regprocedure) THEN
+     OR NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'app_private.room_deposit_hold_json_v1(uuid,uuid,boolean)'::regprocedure) THEN
     RAISE EXCEPTION 'coc_thu_chi: hàm kiểm / khối giữ cọc phải SECURITY DEFINER' USING ERRCODE = '55000';
   END IF;
 
@@ -642,8 +677,8 @@ BEGIN
 
   IF has_function_privilege('anon', 'app_private.guard_deposit_voucher_amount_v1()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'app_private.guard_deposit_voucher_amount_v1()', 'EXECUTE')
-     OR has_function_privilege('anon', 'app_private.room_deposit_hold_json_v1(uuid,uuid)', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'app_private.room_deposit_hold_json_v1(uuid,uuid)', 'EXECUTE') THEN
+     OR has_function_privilege('anon', 'app_private.room_deposit_hold_json_v1(uuid,uuid,boolean)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'app_private.room_deposit_hold_json_v1(uuid,uuid,boolean)', 'EXECUTE') THEN
     RAISE EXCEPTION 'coc_thu_chi: anon/authenticated còn EXECUTE trên hàm nội bộ' USING ERRCODE = '55000';
   END IF;
   IF has_function_privilege('anon', 'public.get_sale_room_inventory_v1(uuid,uuid,uuid)', 'EXECUTE')

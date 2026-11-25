@@ -74,7 +74,7 @@ vi.mock('@/components/ui/select', () => ({
 }));
 
 import IncomeExpenseForm from '../IncomeExpenseForm';
-import { DEPOSIT_AMOUNT_REQUIRED_MESSAGE } from '@/lib/incomeExpenseValidation';
+import { DEPOSIT_AMOUNT_CONTRACT_MESSAGE, DEPOSIT_AMOUNT_REQUIRED_MESSAGE } from '@/lib/incomeExpenseValidation';
 
 if (!('ResizeObserver' in globalThis)) {
   class ResizeObserverGia { observe() {} unobserve() {} disconnect() {} }
@@ -133,6 +133,22 @@ describe('Phiếu cọc phải có số tiền lớn hơn 0 (chặn ở trình d
     fireEvent.click(nutLuu());
     await screen.findByText(DEPOSIT_AMOUNT_REQUIRED_MESSAGE);
     expect(document.querySelector('[name="items.0.unit_price"]')?.getAttribute('aria-invalid')).toBe('true');
+    expect(h.save).not.toHaveBeenCalled();
+  });
+
+  it('đã chọn hợp đồng (bổ sung cọc cho khách đang ở) ⇒ vẫn chặn 0 đ, nhưng KHÔNG gợi ý Lock tạm (phiếu không giữ phòng)', async () => {
+    moFormTao('tien-coc', 'Tiền Cọc', 0);
+    chonSo();
+    fireEvent.change(oHopDong(), { target: { value: 'hd-411' } });
+    fireEvent.click(nutLuu());
+    await screen.findByText(DEPOSIT_AMOUNT_CONTRACT_MESSAGE);
+    expect(screen.queryByText(DEPOSIT_AMOUNT_REQUIRED_MESSAGE)).toBeNull();
+    expect(document.body.textContent).not.toContain('Lock tạm');
+    expect(h.save).not.toHaveBeenCalled();
+    // Bỏ chọn hợp đồng (giữ chỗ lượt kế tiếp) ⇒ câu có gợi ý Lock tạm.
+    fireEvent.change(oHopDong(), { target: { value: '__none__' } });
+    fireEvent.click(nutLuu());
+    await screen.findByText(DEPOSIT_AMOUNT_REQUIRED_MESSAGE);
     expect(h.save).not.toHaveBeenCalled();
   });
 

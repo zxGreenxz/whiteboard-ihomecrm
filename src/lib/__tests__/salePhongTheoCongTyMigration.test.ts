@@ -623,8 +623,8 @@ describe('định nghĩa sống của hai reader (Sale đợt 3, 20261125165113)
     await live.exec(behaviourSql);
     await live.exec(`
       CREATE TABLE public.room_next_claims(organization_id uuid, room_id uuid, status text);
-      CREATE FUNCTION app_private.room_deposit_hold_json_v1(p_organization_id uuid, p_room_id uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$
-        SELECT jsonb_build_object('marker', 'khoi-coc', 'room', p_room_id) $$;
+      CREATE FUNCTION app_private.room_deposit_hold_json_v1(p_organization_id uuid, p_room_id uuid, p_detail boolean) RETURNS jsonb LANGUAGE sql STABLE AS $$
+        SELECT jsonb_build_object('marker', 'khoi-coc', 'room', p_room_id, 'detail', p_detail) $$;
       INSERT INTO public.room_next_claims VALUES ('${ORG}', '${P_THUE}', 'LIVE');`);
     await live.exec(liveReaders);
   }, 60_000);
@@ -653,7 +653,7 @@ describe('định nghĩa sống của hai reader (Sale đợt 3, 20261125165113)
     expect((await inv(VIEWER)).can_manage_account_settings).toBe(false);
     expect((await inv(QL_TOA)).can_manage_account_settings).toBe(false);
     const thue = q.rooms.find(r => r.id === P_THUE);
-    expect(thue).toMatchObject({ status_public: 'rented', has_deposit_hold: true, deposit_hold: { marker: 'khoi-coc', room: P_THUE } });
+    expect(thue).toMatchObject({ status_public: 'rented', has_deposit_hold: true, deposit_hold: { marker: 'khoi-coc', room: P_THUE, detail: false } }); // quản lý không có deposits.view
     expect(q.rooms.find(r => r.id === P_TRONG)).toMatchObject({ has_deposit_hold: false, deposit_hold: null });
     expect(JSON.stringify(await page(live, 'demo'))).not.toContain('deposit_hold');
   });

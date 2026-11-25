@@ -27,6 +27,7 @@ import PassListingsTab from './PassListingsTab';
 import { ExitHoldDialog, type ExitHoldAction } from './ExitHoldDialog';
 import { EXIT_HOLD_STATUS_LABEL, exitHoldActionBlockedReason, exitHoldLines, isExitHeld } from '@/pages/phong-trong/exitHold';
 import { depositHoldLines, depositHoldStale, isDepositHeld } from '@/pages/phong-trong/depositHold';
+import { roomSaleDepositLabel } from '@/lib/roomSaleFacts';
 import { salePolicyTimeLabel } from '@/lib/saleRoomPolicyTypes';
 import {
   newQuickRoomDraft, quickRoomChanges, quickRoomDraftDirty, quickRoomDraftTextChanged, quickRoomPriceWarning, readQuickRoomDrafts, roomSearchMatches, roomSearchWords,
@@ -44,7 +45,9 @@ const FILTERS: Array<{ value: StatusFilter; label: string; short?: string }> = [
   { value: 'rented', label: 'Đã thuê / giữ chỗ' }, { value: 'deposit-hold', label: 'Đã cọc chờ hợp đồng' }, { value: 'exit-hold', label: 'Chờ khách sang nhượng' },
   { value: 'missing-images', label: 'Thiếu ảnh' }, { value: 'draft', label: 'Có bản nháp của tôi' },
 ];
-const statusLabel = (room: Room) => room.status === 'locked' ? 'Đang lock' : isExitHeld(room) ? EXIT_HOLD_STATUS_LABEL : room.saleFact?.label ?? ({
+// Bảng nội bộ: phòng giữ bằng cọc ghi «Đã cọc · người nộp · N ngày» (nhãn riêng, KHÔNG phải saleFact.label công khai).
+const statusLabel = (room: Room) => room.status === 'locked' ? 'Đang lock' : isExitHeld(room) ? EXIT_HOLD_STATUS_LABEL
+  : isDepositHeld(room) && room.depositHold ? roomSaleDepositLabel(room.depositHold) : room.saleFact?.label ?? ({
   free: 'Trống sẵn', soon: 'Cần xác nhận ngày trống', rented: 'Đã thuê / giữ chỗ', pass: 'Khách pass phòng',
 }[room.status]);
 /** Cọc theo luật hiện có (trống / sắp trống / lock) và phòng đang giữ cho khách sang nhượng: người khác vẫn cọc được. */

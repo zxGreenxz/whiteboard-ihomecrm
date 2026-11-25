@@ -102,7 +102,7 @@ beforeAll(async () => {
       ELSE ARRAY(SELECT DISTINCT organization_id FROM public.buildings WHERE organization_id IS NOT NULL ORDER BY 1) END $$;
     CREATE FUNCTION app_private.sale_room_can_v1(uuid,uuid,text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT auth.uid() IS NOT NULL AND $1=ANY(public.my_org_ids()) $$;
     CREATE FUNCTION app_private.room_exit_hold_json_v1(uuid,uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
-    CREATE FUNCTION app_private.room_deposit_hold_json_v1(uuid,uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
+    CREATE FUNCTION app_private.room_deposit_hold_json_v1(uuid,uuid,boolean) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
     ${liveDefinitionOf('app_private.org_building_owner_v1').sql}
     -- Bản () cũ cho các file lịch sử chạy lại (chúng CREATE OR REPLACE bản này và kiểm ACL); installLiveSaleReader bỏ nó.
     CREATE FUNCTION public.get_my_available_rooms() RETURNS jsonb LANGUAGE sql AS $$ SELECT NULL::jsonb $$;

@@ -705,14 +705,16 @@ it('D5-15 — chỉ đổi cách viết giá (4250000 ⇄ 4.250.000) không thà
   expect(state.save).not.toHaveBeenCalled();
 });
 
-// Sale phòng đợt 3 (lỗi 21): phòng giữ bằng cọc chờ hợp đồng ghi «Đã cọc · người gửi · N ngày» (đợt giữ chỗ của #499 hoặc
-// phiếu treo chưa nối); quá 14 ngày tô cảnh báo; phòng chỉ có cọc giữ chỗ (chưa ai ở) không có Báo pass / Báo sắp trống.
+// Sale phòng đợt 3 (lỗi 21): bảng nội bộ ghi «Đã cọc · người gửi · N ngày» (nhãn riêng; saleFact.label công khai chỉ
+// «Đang giữ chỗ»); quá 14 ngày tô cảnh báo; phòng chỉ có cọc giữ chỗ (chưa ai ở) không có Báo pass / Báo sắp trống.
 const depositRow = (hold: Partial<RoomDepositHoldInfo> = {}, id = 'room-c', buildingId = 'building-b', hasDepositHold = true) => {
   const row = room(id, buildingId, 'rented');
   row.room.depositHold = { source: 'hold', holdId: '44444444-4444-4444-8444-444444444444', voucherId: '33333333-3333-4333-8333-333333333333',
-    code: 'PT2611443', codes: ['PT2611443'], voucherDate: '2026-11-22', payerName: 'Chị Lan', heldDays: 3, voucherCount: 1, roomOccupied: false, ...hold };
+    code: 'PT2611443', codes: ['PT2611443'], voucherDate: '2026-11-22', payerName: 'Chị Lan', heldDays: 3, voucherCount: 1, roomOccupied: false,
+    detail: true, ...hold };
   row.room.hasDepositHold = hasDepositHold;
-  row.room.saleFact = roomSaleFacts({ status: 'rented', depositHold: row.room.depositHold, hasDepositHold });
+  // Như supabaseData: nhãn công khai «Đang giữ chỗ» (đợt / phiếu treo ở phòng trống), phòng còn khách ở theo tình trạng phòng.
+  row.room.saleFact = roomSaleFacts({ status: 'rented', hasDepositHold: hasDepositHold || !row.room.depositHold.roomOccupied });
   return row;
 };
 
@@ -745,6 +747,14 @@ it('U41 — Sale: bộ lọc «Đã cọc chờ hợp đồng» gồm cả phòn
   expect(summary.className).toContain('bg-amber-50');
   expect(within(summary).getByText('Quá 14 ngày chưa có hợp đồng — kiểm lại phiếu cọc')).toBeTruthy();
   expect(within(summary).getByText('Phòng có 2 phiếu cọc chờ hợp đồng ngoài đợt giữ chỗ — kiểm trước khi ký hợp đồng mới')).toBeTruthy();
+});
+
+it('U43 — Sale không có deposits.view: bảng ghi «Đã cọc · N ngày» + số phiếu, không tên / mã phiếu', () => {
+  state.query.data!.rooms = [depositRow({ holdId: null, voucherId: null, code: null, codes: [], payerName: null, voucherCount: 2, detail: false })];
+  render(<QuickRoomBoard />); showAllStatuses(false);
+  expect(screen.getByText('Đã cọc · 3 ngày')).toBeTruthy();
+  expect(within(screen.getByTestId('deposit-hold-summary')).getByText('2 phiếu cọc · nhận đầu 22/11/2026')).toBeTruthy();
+  expect(document.body.textContent).not.toContain('chưa ghi người gửi');
 });
 
 it('U42 — Quản lý: phòng còn khách ở mà có phiếu cọc treo (ca 102LVT·104) vẫn báo trả / báo pass được, hiện «Đã cọc»', () => {

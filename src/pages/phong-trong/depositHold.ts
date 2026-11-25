@@ -2,7 +2,9 @@
 // 20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho, app_private.room_deposit_hold_json_v1) gắn khoá
 // `deposit_hold` vào phòng 'rented' của get_sale_room_inventory_v1 và get_my_available_rooms: đợt giữ chỗ đang mở của
 // #499 (người gửi phiếu đầu, ngày nhận phiếu đầu, các mã phiếu), hoặc phiếu cọc treo chưa nối đợt (dữ liệu cũ). Link công
-// khai, bot Zalo, Hermes không có khoá này (không lộ tên người cọc). Ở đây chỉ kiểm dạng dữ liệu và trình bày.
+// khai, bot Zalo, Hermes không có khoá này (không lộ tên người cọc). Người xem không có deposits.view ở toà thì máy chủ bỏ
+// người gửi / mã phiếu / id (detail = false). Ở đây chỉ kiểm dạng dữ liệu và trình bày; các dòng này chỉ cho bảng Sale nội bộ,
+// không vào saleFact.label (nhãn công khai của tin chia sẻ).
 import { z } from 'zod';
 import { DEPOSIT_HOLD_STALE_DAYS } from '@/lib/roomSaleFacts';
 import type { Room, RoomDepositHoldInfo } from './sampleData';
@@ -19,7 +21,10 @@ const depositHoldSchema = z.object({
   held_days: z.number().int().nonnegative(),
   voucher_count: z.number().int().nonnegative(),
   room_occupied: z.boolean(),
-}).refine((hold) => hold.source === 'hold' ? hold.hold_id !== null : hold.voucher_id !== null && hold.voucher_count > 0);
+  detail: z.boolean().optional(),
+}).refine((hold) => hold.detail === false
+  ? hold.payer_name == null && hold.code == null && hold.codes.length === 0 && (hold.source === 'hold' || hold.voucher_count > 0)
+  : hold.source === 'hold' ? hold.hold_id !== null : hold.voucher_id !== null && hold.voucher_count > 0);
 
 /** Lệch dạng thì coi như không có khối: một khoá phụ sai không được làm vỡ cả danh sách phòng. */
 export function parseRoomDepositHold(value: unknown): RoomDepositHoldInfo | null {
@@ -38,6 +43,7 @@ export function parseRoomDepositHold(value: unknown): RoomDepositHoldInfo | null
     heldDays: hold.held_days,
     voucherCount: hold.voucher_count,
     roomOccupied: hold.room_occupied,
+    detail: hold.detail !== false,
   };
 }
 
@@ -58,10 +64,13 @@ function dayLabel(day: string): string {
 /** Dòng chi tiết đi kèm nhãn «Đã cọc · …»: các mã phiếu + ngày nhận phiếu đầu, phiếu treo ngoài đợt, cảnh báo quá hạn. */
 export function depositHoldLines(hold: RoomDepositHoldInfo): string[] {
   const day = dayLabel(hold.voucherDate);
-  const first = hold.codes.length > 0
-    ? `Phiếu ${hold.codes.join(', ')} · nhận đầu ${day}`
-    : hold.source === 'hold' ? `Đợt giữ chỗ từ ${day} · chưa có phiếu thu` : `Phiếu ${hold.code ?? 'chưa có mã'} · lập ${day}`;
-  const lines = [hold.payerName ? first : `${first} · chưa ghi người gửi`];
+  const first = !hold.detail
+    ? hold.voucherCount > 0 ? `${hold.voucherCount} phiếu cọc · nhận đầu ${day}` : `Đợt giữ chỗ từ ${day} · chưa có phiếu thu`
+    : hold.codes.length > 0
+      ? `Phiếu ${hold.codes.join(', ')} · nhận đầu ${day}`
+      : hold.source === 'hold' ? `Đợt giữ chỗ từ ${day} · chưa có phiếu thu` : `Phiếu ${hold.code ?? 'chưa có mã'} · lập ${day}`;
+  // Không có quyền xem phiếu cọc thì tên bị ẩn chứ không phải thiếu: không nhắc «chưa ghi người gửi».
+  const lines = [hold.payerName || !hold.detail ? first : `${first} · chưa ghi người gửi`];
   // Đợt giữ chỗ gom nhiều lần thu là bình thường; phiếu treo NGOÀI đợt thì nhiều phiếu là dấu hiệu cần dọn.
   if (hold.source === 'voucher' && hold.voucherCount > 1) {
     lines.push(`Phòng có ${hold.voucherCount} phiếu cọc chờ hợp đồng ngoài đợt giữ chỗ — kiểm trước khi ký hợp đồng mới`);

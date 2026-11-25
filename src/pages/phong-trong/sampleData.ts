@@ -56,6 +56,8 @@ export interface RoomDepositHoldInfo {
   heldDays: number;
   voucherCount: number;
   roomOccupied: boolean;
+  /** false: người xem không có deposits.view ở toà — máy chủ bỏ người gửi, mã phiếu, id; chỉ còn cờ + ngày. */
+  detail: boolean;
 }
 
 export interface Room extends Box {
