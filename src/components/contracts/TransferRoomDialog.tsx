@@ -133,7 +133,9 @@ function TransferRoomForm({
     ? transferRoomFeedback(transferRoom.error).outcome : undefined;
   const pendingResult = transferOutcome === "partial" || transferOutcome === "unknown";
   const previewError = quote.isError ? transferRoomFeedback(quote.error) : null;
-  const canSubmit = !!quoteInput && !!quote.data && !transferRoom.isPending && !pendingResult;
+  // Đợt 7: kết quả chưa rõ không khoá nút. Lần bấm sau tự đối chiếu theo mã yêu cầu của lần trước (đã chuyển thì báo kết
+  // quả, chưa thì gửi lại đúng mã đó; máy chủ khoá hợp đồng rồi mới tra mã nên không chuyển hai lần).
+  const canSubmit = !!quoteInput && !!quote.data && !transferRoom.isPending;
 
   const onSubmit = (data: TransferRoomFormData) => {
     if (!canSubmit || !quote.data) return;
@@ -322,12 +324,8 @@ function TransferRoomForm({
 
           {contract.expected_move_out_date&&<p className="rounded border p-3 text-sm">Báo dọn ngày {contract.expected_move_out_date.split('-').reverse().join('/')} của phòng cũ sẽ được hủy khi chuyển phòng thành công. Phòng mới chưa có ngày báo dọn; bạn có thể ghi nhận riêng sau khi chuyển.</p>}
           {contractChanged && <p role="alert" className="text-sm text-destructive">Hợp đồng đã thay đổi. Hãy đóng biểu mẫu và mở lại để kiểm tra thông tin mới.</p>}
-          {pendingResult && <div role="alert" className="space-y-2 rounded-md border p-3 text-sm">
-            <p>Chưa xác nhận được kết quả lần chuyển trước. Kiểm tra lại biên nhận của yêu cầu đã gửi.</p>
-            <Button type="button" variant="outline" disabled={transferRoom.isPending}
-              onClick={() => { if (transferRoom.variables) transferRoom.mutate({ ...transferRoom.variables, reconcileOnly: true }, { onSuccess: () => onOpenChange(false) }); }}>
-              Kiểm tra kết quả
-            </Button>
+          {pendingResult && <div role="alert" className="rounded-md border p-3 text-sm">
+            <p>Chưa xác nhận được kết quả lần chuyển trước. Bấm «Chuyển phòng» để hệ thống đối chiếu yêu cầu đã gửi: đã chuyển thì báo kết quả, chưa thì gửi lại đúng yêu cầu đó, không chuyển hai lần.</p>
           </div>}
           <DialogFooter className={DIALOG_STICKY_FOOTER}>
             <Button
