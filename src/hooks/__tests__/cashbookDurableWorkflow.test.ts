@@ -56,7 +56,9 @@ it('proposal receipt must match the actual cashbook',async()=>{
  await expect(writer(useProposeCashbookClosing())({cashbookId:'b1',confirmerUserId:'other',countedBalance:0})).rejects.toBeInstanceOf(FinancialWorkflowError);
 });
 
-it('a cashbook create timeout retains the exact idempotency key and blocks another create after remount',async()=>{
+// Đợt 6 (cách B): lần bấm sau gửi lại ĐÚNG mã cũ (create_cashbook_v1 khoá công ty rồi tra mã); tên khác là nội dung khác nên
+// máy chủ báo trùng mã nếu lần trước đã tạo. Không bao giờ gửi mã mới khi dấu còn đó, kể cả sau khi đổi tổ chức đang chọn.
+it('a cashbook create timeout retains the exact idempotency key; the next create after remount resends that key',async()=>{
  h.rpc.mockResolvedValue(timeout);
  const {useCreateAccount}=await import('../useAccounts');
  const values={name:'Sổ A',initial_amount:0,initial_date:'2026-09-30'};
@@ -65,8 +67,10 @@ it('a cashbook create timeout retains the exact idempotency key and blocks anoth
  const saved=financialPending.read({namespace:'cashbook-create',userId:'u',organizationId:'actor-scope',businessKey:'new'});
  expect(h.rpc.mock.calls[0][1].p_idempotency_key).toBe(saved?.requestKey);
  localStorage.setItem('ihomecrm.selectedOrganizationId','org-b');
- await expect(writer(useCreateAccount())({...values,name:'Sổ B'})).rejects.toBeInstanceOf(FinancialWorkflowError);
- expect(h.rpc).toHaveBeenCalledTimes(1);
+ h.rpc.mockResolvedValue({data:null,error:{code:'23505',message:'idempotency_key đã dùng với nội dung khác'}});
+ await expect(writer(useCreateAccount())({...values,name:'Sổ B'})).rejects.toMatchObject({alreadyRecorded:true});
+ expect(h.rpc).toHaveBeenCalledTimes(2);
+ expect(h.rpc.mock.calls[1][1].p_idempotency_key).toBe(saved?.requestKey);
 });
 // Đợt 5: lưu trữ tách khỏi dấu `cashbook-lifecycle` của sửa sổ, nhưng dấu ở đó vẫn chặn lưu trữ đúng sổ đó (hộp cảnh báo).
 it('an unknown cashbook metadata update blocks archive on that cashbook after remount',async()=>{

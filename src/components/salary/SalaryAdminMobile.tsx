@@ -588,7 +588,7 @@ function PayoutSheet({ m, accounts, period, onClose, onSave }: {
       </div>
       <div className="flex gap-2.5 mt-4">
         <button onClick={() => feedback.close(onClose)} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
-        <button disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(() => onSave(numVal, acc, date, note), onClose, {amount: !numVal ? "Nhập số tiền lớn hơn 0 đồng." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})}
+        <button disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(() => onSave(numVal, acc, date, note), onClose, {amount: !numVal ? "Nhập số tiền lớn hơn 0 đồng." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined}, {retryable: true})}
           className="inline-flex items-center justify-center gap-1.5 text-[13.5px] font-bold rounded-[13px] py-3" style={{ flex: 1.5, color: "#17132A", background: "#FFD23F", border: "none", opacity: !numVal || !acc ? 0.5 : 1 }}>
           <Check size={16} />Ghi phiếu chi
         </button>
@@ -693,7 +693,7 @@ function AdjustSheet({ m, edit, onClose, onSave }: {
       </div>
       <div className="flex gap-2.5 mt-4">
         <button onClick={() => feedback.close(onClose)} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
-        <button disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(() => onSave({ id: edit?.id, kind: kind === "Trừ" ? "DEDUCTION" : "BONUS", label: label.trim(), amount: numVal, note: note.trim() || null }), onClose, {label: !label.trim() ? "Nhập tên khoản thưởng/trừ." : undefined, amount: !numVal ? "Nhập số tiền lớn hơn 0 đồng." : undefined})}
+        <button disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(() => onSave({ id: edit?.id, kind: kind === "Trừ" ? "DEDUCTION" : "BONUS", label: label.trim(), amount: numVal, note: note.trim() || null }), onClose, {label: !label.trim() ? "Nhập tên khoản thưởng/trừ." : undefined, amount: !numVal ? "Nhập số tiền lớn hơn 0 đồng." : undefined}, {retryable: true})}
           className="inline-flex items-center justify-center gap-1.5 text-[13.5px] font-bold rounded-[13px] py-3" style={{ flex: 1.5, color: "#17132A", background: "#FFD23F", border: "none", opacity: ok ? 1 : 0.5 }}>
           <Check size={16} />Lưu
         </button>
@@ -725,7 +725,7 @@ function CloseSheet({ locked, period, unpaidCount, onClose, onConfirm }: {
       )}
       <div className="flex gap-2.5 mt-3.5">
         <button onClick={() => feedback.close(onClose)} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
-        <button disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(onConfirm, onClose)}
+        <button disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(onConfirm, onClose, {}, {retryable: true})}
           className="inline-flex items-center justify-center gap-1.5 text-[13.5px] font-bold rounded-[13px] py-3"
           style={{ flex: 1.5, color: "#17132A", background: locked ? "#FFD23F" : "#34D399", border: "none" }}>
           {locked ? <><Unlock size={16} />Mở khoá</> : <><Lock size={16} />Vẫn chốt</>}

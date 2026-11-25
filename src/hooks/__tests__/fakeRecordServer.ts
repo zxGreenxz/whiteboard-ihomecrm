@@ -16,7 +16,7 @@ export interface FakeRecordServer {
   inserts: { table: string; payload: Row | Row[] }[];
   rpcCalls: { name: string; args: Row }[];
   /** Lần gọi kế tiếp của đúng loại thao tác trên bảng (hoặc RPC) sẽ hỏng theo kiểu đã chọn. */
-  failNext: (target: string, op: 'insert' | 'read' | 'rpc', failure: Failure) => void;
+  failNext: (target: string, op: 'insert' | 'update' | 'read' | 'rpc', failure: Failure) => void;
   /** Bảng nào có thêm ràng buộc duy nhất (ngoài mã) thì khai khoá ở đây. */
   uniqueBy: Record<string, (row: Row) => string>;
   /** Giả RLS khi đọc: dòng nào trả false thì người đọc không thấy (vẫn chặn trùng khi chèn). */
@@ -95,9 +95,15 @@ export function fakeRecordServer(): FakeRecordServer {
         return { data: shape === 'many' ? doomed : doomed[0] ?? null, error: null };
       }
       if (mode === 'update') {
+        // Đợt 6: sửa thẳng bảng (thưởng/trừ lương) cũng có thể rớt mạng trước hoặc sau khi ghi.
+        const failure = takeFailure(`${table}:update`);
+        if (failure === 'drop-before') return { data: null, error: NETWORK_ERROR };
         const changed = tableRows(table).filter(row => filters.every(filter => filter(row)));
         for (const row of changed) Object.assign(row, payload);
+        if (failure === 'drop-after') return { data: null, error: NETWORK_ERROR };
         if (shape === 'many') return { data: changed, error: null };
+        // `maybeSingle` khớp 0 dòng (RLS, đã xoá): PostgREST trả null, không lỗi.
+        if (shape === 'maybe' && changed.length === 0) return { data: null, error: null };
         return changed.length === 1 ? { data: changed[0], error: null } : { data: null, error: { code: 'PGRST116', message: 'not single' } };
       }
       const failure = takeFailure(`${table}:read`);
@@ -124,6 +130,7 @@ export function fakeRecordServer(): FakeRecordServer {
       neq: (column: string, value: unknown) => { filters.push(row => row[column] !== value); return query; },
       in: (column: string, values: unknown[]) => { filters.push(row => values.includes(row[column])); return query; },
       is: (column: string, value: unknown) => { filters.push(row => (row[column] ?? null) === value); return query; },
+      not: (column: string, operator: string, value: unknown) => { if (operator === 'is' && value === null) filters.push(row => (row[column] ?? null) !== null); return query; },
       gte: (column: string, value: string) => { filters.push(row => String(row[column]) >= value); return query; },
       lte: (column: string, value: string) => { filters.push(row => String(row[column]) <= value); return query; },
       order: (column: string, options?: { ascending?: boolean }) => { order = { column, ascending: options?.ascending ?? true }; return query; },

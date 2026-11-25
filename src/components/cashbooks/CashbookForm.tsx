@@ -1,6 +1,7 @@
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { FinancialWorkflowGuard, FinancialWorkflowError, workflowErrorMessage } from "@/lib/financialWorkflow";
+import { FinancialWorkflowError, workflowErrorMessage } from "@/lib/financialWorkflow";
+import { payloadFingerprint } from '@/lib/financialPending';
+import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
 import { focusFirstError } from "@/lib/formErrors";
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { LoadingState } from "@/components/loading/LoadingState";
@@ -155,6 +156,16 @@ export function useProfileLabels(userIds: string[]) {
   });
 }
 
+/**
+ * Mã yêu cầu ỔN ĐỊNH của một lần đặt phân quyền sổ (đợt 6), suy từ đúng phần set_cashbook_access_v2 băm: sổ, tập người giữ,
+ * tập người biết (đã sắp xếp) và phiên bản mong đợi. Hàm máy chủ (production 25/11/2026) khoá sổ FOR UPDATE rồi mới tra mã:
+ * bấm lại cùng lựa chọn sau một lần chưa rõ kết quả nhận lại đúng kết quả cũ; lựa chọn khác là mã khác và đi qua phép so
+ * phiên bản. Không cần dấu chờ đối chiếu: đây là phân quyền ghi lặp lại được, không phải khoản tiền.
+ */
+function cashbookAccessRequestKey(args: { cashbookId: string; custodians: readonly string[]; knowers: readonly string[]; expectedRevision: number }): string {
+  return `cashbook-access:${args.cashbookId}:${args.expectedRevision}:${payloadFingerprint([[...args.custodians].sort(), [...args.knowers].sort()])}`;
+}
+
 /** Checkbox group chọn membership cho 1 vai trò (CUSTODIAN/KNOWER). */
 function MembershipChecklist({
   title,
@@ -247,7 +258,7 @@ interface CashbookBlockedDraft {
   custodianIds: string[];
   knowerIds: string[];
   accessSnapshot: CashbookAccessAdminV2 | null;
-  failure: FinancialWorkflowError;
+  failure: unknown;
 }
 
 /** Keep unresolved drafts by cashbook identity while the page stays mounted. */
@@ -346,7 +357,7 @@ const CashbookFormEditor = ({ open, onOpenChange, account, blockedDraft, onBlock
         p_custodians: args.custodians,
         p_knowers: args.knowers,
         p_expected_revision: args.expectedRevision,
-        p_idempotency_key: crypto.randomUUID(),
+        p_idempotency_key: cashbookAccessRequestKey(args),
       });
       if (error) throw error;
       const receipt = data && typeof data === 'object' ? data as Record<string,unknown> : {};
@@ -392,18 +403,19 @@ const CashbookFormEditor = ({ open, onOpenChange, account, blockedDraft, onBlock
   }, [open, defaults, form]);
 
   const formRoot = useRef<HTMLFormElement>(null);
-  const guard = useRef(persistentFinancialWorkflow('cashbook-form'));
   const [failure, setFailure] = useState<unknown>(blockedDraft?.failure);
-  const [blocked, setBlocked] = useState(!!blockedDraft);
   useEffect(() => {
     if (blockedDraft) form.setError('root.server', {type:'server',message:workflowErrorMessage(blockedDraft.failure, `lưu sổ quỹ ${blockedDraft.values.name}`)});
   }, [blockedDraft, form]);
   const saveSources = [v2Routes, staffQuery, buildingsQuery, ...(isEditing && !orgFromAccount ? [orgIdQuery] : []), ...(v2AccessMode && canEditShared ? [accessQuery, ...(accessUserIds.length ? [profileQuery] : [])] : [])];
   const sourceBlocked = saveSources.some(query => query.isError || query.isLoading);
+  // Đợt 6: bỏ dấu ngoài bao các lệnh con. Tạo sổ (dấu `cashbook-create`) và sửa sổ (dấu `cashbook-lifecycle`) tự giữ dấu
+  // của mình; phân quyền sổ gửi mã ổn định (`cashbookAccessRequestKey`). Lần chưa rõ kết quả không khoá nút Lưu nữa: bấm
+  // lại là đối chiếu (tạo sổ gửi lại cùng mã; phân quyền cùng lựa chọn nhận lại kết quả cũ). Bản nháp vẫn được giữ.
   const onSubmit = async (values: FormValues) => {
-    if (blocked || sourceBlocked) return;
+    if (sourceBlocked) return;
     form.clearErrors("root.server");
-    try { await guard.current.run(account?.id ?? "new-cashbook", `lưu sổ quỹ ${values.name}`, async progress => {
+    try {
     const payload: AccountFormValues = {
       name: values.name,
       initial_amount: values.initial_amount,
@@ -425,8 +437,6 @@ const CashbookFormEditor = ({ open, onOpenChange, account, blockedDraft, onBlock
     }
 
     if (!accountId) throw new TypeError("Unconfirmed cashbook identity");
-    progress.completed.push({id:accountId,label:`Đã lưu thông tin sổ quỹ ${values.name}`});
-    progress.stage = "lưu người giữ và người được xem sổ";
 
     // Phân quyền sổ chỉ còn MỘT đường: set_cashbook_access_v2 (CAS revision +
     // idempotency) ghi vào cashbook_possession_bindings. Đường legacy
@@ -446,23 +456,30 @@ const CashbookFormEditor = ({ open, onOpenChange, account, blockedDraft, onBlock
         !sameSet(custodianIds, origCustodians) ||
         !sameSet(knowerIds, origKnowers)
       ) {
-        await setAccessMut.mutateAsync({
-          cashbookId: accountId,
-          custodians: custodianIds,
-          knowers: knowerIds,
-          expectedRevision: accessSnapshot.current.revision,
-        });
+        try {
+          await setAccessMut.mutateAsync({
+            cashbookId: accountId,
+            custodians: custodianIds,
+            knowers: knowerIds,
+            expectedRevision: accessSnapshot.current.revision,
+          });
+        } catch (error) {
+          if (!hasUnconfirmedResponse(error)) throw error;
+          throw new FinancialWorkflowError(
+            `Đã lưu thông tin sổ quỹ ${values.name}. Chưa xác nhận được phân quyền người giữ và người biết sổ; bấm Lưu lại để gửi lại đúng lựa chọn này (máy chủ không ghi hai lần).`,
+            'partial', [{id:accountId,label:`Đã lưu thông tin sổ quỹ ${values.name}`}], error,
+          );
+        }
       }
     }
 
-    });
     toast.success(`Đã ${isEditing ? "lưu thay đổi" : "tạo"} sổ quỹ ${values.name}.`);
     onOpenChange(false);
     } catch (error) {
       setFailure(error);
-      blockedRef.current = error instanceof FinancialWorkflowError && error.outcome !== "failure";
-      setBlocked(blockedRef.current);
-      if (blockedRef.current && error instanceof FinancialWorkflowError) onBlocked({
+      // Chưa rõ kết quả: giữ bản nháp (kể cả khi đóng/mở lại form) để lần bấm sau gửi lại đúng nội dung đó.
+      blockedRef.current = (error instanceof FinancialWorkflowError && error.outcome !== "failure") || hasUnconfirmedResponse(error);
+      if (blockedRef.current) onBlocked({
         values: {...values}, custodianIds:[...custodianIds], knowerIds:[...knowerIds], accessSnapshot:accessSnapshot.current, failure:error,
       });
       form.setError("root.server", {type:"server",message:workflowErrorMessage(error, `lưu sổ quỹ ${values.name}`)});
@@ -710,7 +727,7 @@ const CashbookFormEditor = ({ open, onOpenChange, account, blockedDraft, onBlock
               >
                 Huỷ bỏ
               </Button>
-              <Button type="submit" disabled={isPending || sourceBlocked || blocked}>
+              <Button type="submit" disabled={isPending || sourceBlocked}>
                 {isPending ? "Đang lưu..." : "Lưu"}
               </Button>
             </DialogFooter>

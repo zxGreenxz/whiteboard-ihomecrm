@@ -337,6 +337,28 @@ describe('tách khoá theo thao tác (đợt 5)',()=>{
  });
 });
 
+describe('chặn đổi trường máy chủ không so khi đối chiếu (đợt 6, `priorMismatch`)',()=>{
+ it('còn dấu mà lượt này đổi trường máy chủ không so: ném đúng câu hướng dẫn, giữ dấu, mở hộp cảnh báo, không đối chiếu, không chạy task',async()=>{
+  const options=durableOptions();
+  await expect(new FinancialWorkflowGuard(options).run('staff-month','lập phiếu chi lương',failedFetch,undefined,undefined,{meta:{rest:'so-a'}})).rejects.toMatchObject({outcome:'unknown'});
+  const prior=options.store.read(await options.scope('staff-month'));
+  const task=vi.fn(async()=>'ok');const reconcile=vi.fn(async()=>({outcome:'not-written' as const,serverDedupesRequestKey:true}));
+  const guard=new FinancialWorkflowGuard(options);
+  await expect(guard.run('staff-month','lập phiếu chi lương',task,reconcile,undefined,{meta:{rest:'so-b'},priorMismatch:pending=>pending.meta?.rest!=='so-b'?'Giữ nguyên sổ quỹ như lần trước.':null})).rejects.toMatchObject({message:'Giữ nguyên sổ quỹ như lần trước.',outcome:'unknown'});
+  expect(task).not.toHaveBeenCalled();expect(reconcile).not.toHaveBeenCalled();
+  expect(options.store.read(await options.scope('staff-month'))?.attemptId).toBe(prior?.attemptId);
+  expect(options.valve.current()).toMatchObject({pending:{attemptId:prior?.attemptId}});
+  // Trả lại đúng giá trị cũ: CHÍNH guard đó đối chiếu và gửi lại ngay (không giữ khoá trong bộ nhớ vì lần bị chặn).
+  await expect(guard.run('staff-month','lập phiếu chi lương',task,reconcile,undefined,{meta:{rest:'so-a'},priorMismatch:pending=>pending.meta?.rest!=='so-a'?'x':null})).resolves.toBe('ok');
+  expect(reconcile).toHaveBeenCalledTimes(1);expect(task).toHaveBeenCalledTimes(1);
+ });
+ it('không có dấu thì không gọi `priorMismatch`',async()=>{
+  const options=durableOptions();const priorMismatch=vi.fn(()=>'không được gọi');
+  await expect(new FinancialWorkflowGuard(options).run('one','ghi',async()=>'ok',undefined,undefined,{priorMismatch})).resolves.toBe('ok');
+  expect(priorMismatch).not.toHaveBeenCalled();
+ });
+});
+
 describe('mồi khoá chung',()=>{
  it('PGRST116 (lệnh ghi khớp 0 dòng) khi chưa bước nào hoàn tất là từ chối rõ: gỡ dấu, giữ nguyên lỗi',async()=>{
   const options=durableOptions();const rejected={code:'PGRST116',message:'JSON object requested, multiple (or no) rows returned'};

@@ -49,7 +49,7 @@ export function AdjustDialog({ m, edit, onClose, onSave }: { m: SalManager; edit
   const [note, setNote] = useState(edit?.note || "");
   const parsedAmount = parseSalaryAmount(amount);
   const numVal = parsedAmount.value ?? 0;
-  const save = () => feedback.run(() => onSave({ id: edit?.id, kind: kind === "Trừ" ? "DEDUCTION" : "BONUS", label: label.trim(), amount: numVal, note: note.trim() || null }), onClose, {label: !label.trim() ? "Nhập tên khoản thưởng/trừ." : undefined, amount: !amount.trim() ? "Nhập số tiền lớn hơn 0 đồng." : parsedAmount.error ?? (numVal <= 0 ? "Nhập số tiền lớn hơn 0 đồng." : undefined)});
+  const save = () => feedback.run(() => onSave({ id: edit?.id, kind: kind === "Trừ" ? "DEDUCTION" : "BONUS", label: label.trim(), amount: numVal, note: note.trim() || null }), onClose, {label: !label.trim() ? "Nhập tên khoản thưởng/trừ." : undefined, amount: !amount.trim() ? "Nhập số tiền lớn hơn 0 đồng." : parsedAmount.error ?? (numVal <= 0 ? "Nhập số tiền lớn hơn 0 đồng." : undefined)}, {retryable: true});
   return (
     <Modal onClose={() => feedback.close(onClose)}><div ref={feedback.root}>
       <div className="sal-modal-head">
@@ -113,7 +113,7 @@ export function PayoutDialog({ m, accounts, period, onClose, onSave }: {
       </div>
       <div className="sal-modal-foot">
         <button className="sal-btn sal-btn--ghost" onClick={() => feedback.close(onClose)}>Huỷ</button>
-        <button className="sal-btn sal-btn--primary" onClick={() => void feedback.run(() => onSave(numVal, acc, date, note), onClose, {amount: !amount.trim() ? "Nhập số tiền lớn hơn 0 đồng." : parsedAmount.error ?? (numVal <= 0 ? "Nhập số tiền lớn hơn 0 đồng." : undefined), account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})} disabled={feedback.saving || feedback.blocked}><I.Check size={16} />Ghi phiếu chi</button>
+        <button className="sal-btn sal-btn--primary" onClick={() => void feedback.run(() => onSave(numVal, acc, date, note), onClose, {amount: !amount.trim() ? "Nhập số tiền lớn hơn 0 đồng." : parsedAmount.error ?? (numVal <= 0 ? "Nhập số tiền lớn hơn 0 đồng." : undefined), account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined}, {retryable: true})} disabled={feedback.saving || feedback.blocked}><I.Check size={16} />Ghi phiếu chi</button>
       </div>
     {feedback.notice}</div></Modal>
   );
@@ -174,7 +174,7 @@ export function LockDialog({ locked, period, onClose, onConfirm }: { locked: boo
       </div>
       <div className="sal-modal-foot">
         <button className="sal-btn sal-btn--ghost" onClick={() => feedback.close(onClose)}>Huỷ</button>
-        <button className={"sal-btn " + (locked ? "sal-btn--outline" : "sal-btn--primary")} disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(onConfirm, onClose)}>
+        <button className={"sal-btn " + (locked ? "sal-btn--outline" : "sal-btn--primary")} disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(onConfirm, onClose, {}, {retryable: true})}>
           {locked ? <><I.Unlock size={16} />Mở khoá</> : <><I.Lock size={16} />Chốt tháng</>}
         </button>
       </div>

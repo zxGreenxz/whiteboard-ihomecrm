@@ -1,7 +1,8 @@
 import { financialReadNumber } from '@/lib/financialReadValidation';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { useRef } from "react";
-import { FinancialWorkflowError, workflowErrorMessage, type FinancialWorkflowProgress } from "@/lib/financialWorkflow";
+import { FinancialAlreadyRecordedError, FinancialWorkflowError, workflowErrorMessage, type FinancialWorkflowProgress, type PendingReconciliation } from "@/lib/financialWorkflow";
+import { formatPendingTime, payloadFingerprint, type FinancialPendingRecord } from "@/lib/financialPending";
 import { readCreatedVoucherReceipt } from "@/lib/createdVoucherReceipt";
 import { createdVoucherFeedback } from "@/lib/voucherFeedback";
 import { readSalarySourceParts, salaryBridgeRequired } from '@/lib/rentSupportSalary';
@@ -752,24 +753,70 @@ export interface SaveAdjustmentInput {
   note?: string | null;
 }
 
+/** Dấu của lần THÊM khoản thưởng/trừ mang mã khoản = mã yêu cầu của dấu (đợt 6). Dấu bản trước không có. */
+const ADJUSTMENT_CLIENT_ID = 'clientId';
+/** Lệch giờ trình duyệt ↔ máy chủ chấp nhận khi tra khoản "tạo sau giờ kẹt" của dấu bản trước. */
+const ADJUSTMENT_CLOCK_SKEW_MS = 60 * 60_000;
+const adjustmentFingerprint = (row: { kind: unknown; label: unknown; amount: unknown; note?: unknown }) =>
+  payloadFingerprint([row.kind, row.label, financialReadNumber(row.amount), row.note ?? null]);
+
+/**
+ * Đối chiếu một lần lưu thưởng/trừ chưa rõ kết quả (đợt 6). Ghi thẳng bảng `salary_adjustments`, không qua hàm máy chủ:
+ *   - sửa (cách A): ghi lại cùng giá trị cho cùng kết quả, chạy lại ngay;
+ *   - thêm (cách D): mã khoản do trình duyệt sinh (= mã yêu cầu của dấu); khoá chính chặn khoản thứ hai, phép đối chiếu
+ *     tra đúng khoản theo mã. Dấu bản trước không mang mã đó: tra gần đúng (cùng dòng lương, tạo sau giờ kẹt) tới đợt 10.
+ */
+async function reconcileSalaryAdjustment(input: SaveAdjustmentInput, pending: FinancialPendingRecord): Promise<PendingReconciliation<{ id: string }>> {
+  if (input.id) return { outcome: 'not-written', serverDedupesRequestKey: true };
+  if (pending.meta?.[ADJUSTMENT_CLIENT_ID] === true && pending.requestKey) {
+    const { data, error } = await supabase.from("salary_adjustments").select("id,kind,label,amount,note").eq("id", pending.requestKey).maybeSingle();
+    if (error) throw error;
+    // Chưa có khoản mang mã đó: gửi lại cùng mã ngay (khoá chính chặn khoản thứ hai nếu lệnh cũ rốt cuộc đã tới).
+    if (!data) return { outcome: 'not-written', serverDedupesRequestKey: true };
+    if (adjustmentFingerprint(data) === adjustmentFingerprint(input)) return { result: { id: data.id } };
+    return { outcome: 'already-written', message: `Khoản ${data.kind === 'DEDUCTION' ? 'trừ' : 'thưởng'} "${data.label ?? ''}" đã được lưu ở lần gửi trước (nội dung lúc đó khác nội dung đang lưu). Kiểm tra bảng lương trước khi thêm lại.`, recordIds: [data.id] };
+  }
+  // Dấu bản trước: tra gần đúng các khoản thêm tay của dòng lương này, tạo sau giờ kẹt, mới nhất trước.
+  const { data: monthly, error: monthlyError } = await supabase.from("salary_monthly").select("id")
+    .eq("staff_id", input.staffId).eq("period_month", input.periodMonth).limit(1).maybeSingle();
+  if (monthlyError) throw monthlyError;
+  if (!monthly?.id) return { outcome: 'not-written' };
+  const since = new Date(Date.parse(pending.startedAt) - ADJUSTMENT_CLOCK_SKEW_MS).toISOString();
+  const until = new Date(Date.parse(pending.activeAt ?? pending.startedAt) + ADJUSTMENT_CLOCK_SKEW_MS).toISOString();
+  const { data: rows, error } = await supabase.from("salary_adjustments").select("id,label,created_at")
+    .eq("salary_monthly_id", monthly.id).eq("source", "MANUAL").gte("created_at", since).lte("created_at", until)
+    .order("created_at", { ascending: false }).limit(5);
+  if (error) throw error;
+  if (!Array.isArray(rows)) throw new TypeError('Chưa đọc được các khoản thưởng/trừ để đối chiếu.');
+  if (!rows.length) return { outcome: 'not-written' };
+  return { outcome: 'already-written', message: 'Có thể khoản thưởng/trừ đã được lưu ở lần gửi trước. Kiểm tra bảng lương trước khi thêm lại.', recordIds: rows.map(row => row.id as string) };
+}
+
 export const useSaveSalaryAdjustment = () => {
   const qc = useQueryClient();
   const guard = useRef(persistentFinancialWorkflow('salary-adjustment',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (input: SaveAdjustmentInput) => guard.current.run(`${input.ownerId}-${input.staffId}-${input.periodMonth}-${input.id ?? 'new'}`, 'lưu khoản thưởng/trừ', async (progress) => {
+    mutationFn: async (input: SaveAdjustmentInput) => {
+      // Phiên đọc TRƯỚC khi ghi dấu: hết phiên thì chưa có gì được ghi, không để lại dấu.
       const user = await getSessionUser();
       if (!user) throw {code:"PGRST301",message:"Not authenticated"};
+      let resend = false;
+      return guard.current.run(`${input.ownerId}-${input.staffId}-${input.periodMonth}-${input.id ?? 'new'}`, 'lưu khoản thưởng/trừ', async (progress) => {
       if (input.id) {
         const { data, error } = await supabase
           .from("salary_adjustments")
           .update({ kind: input.kind, label: input.label, amount: Math.abs(input.amount), note: input.note ?? null })
           .eq("id", input.id).select('id').maybeSingle();
         if (error) throw error;
-        if (data?.id !== input.id) throw new TypeError('Unconfirmed salary adjustment update');
+        // Khớp 0 dòng (đã xoá, hoặc RLS không cho sửa) = chưa ghi gì: từ chối rõ, không giữ dấu.
+        if (!data) throw new FinancialWorkflowError('Không tìm thấy khoản thưởng/trừ này hoặc bạn không có quyền sửa. Tải lại bảng lương rồi thử lại.', 'failure', []);
+        if (data.id !== input.id) throw new TypeError('Unconfirmed salary adjustment update');
         return data;
       }
       const monthlyId = await ensureMonthly(input.ownerId, input.staffId, input.periodMonth, progress);
       const { data, error } = await supabase.from("salary_adjustments").insert({
+        // Mã khoản = mã yêu cầu của dấu: gửi lại sau một lần chưa rõ kết quả không tạo khoản thứ hai (khoá chính).
+        id: progress.requestKey,
         user_id: input.ownerId,
         salary_monthly_id: monthlyId,
         kind: input.kind,
@@ -780,10 +827,18 @@ export const useSaveSalaryAdjustment = () => {
         // thiếu nhãn org = dòng thưởng tay hiện cho mọi công ty (xem orgOfStaff)
         organization_id: await orgOfStaff(input.staffId),
       }).select('id').single();
+      if (resend && String((error as { code?: unknown } | null)?.code ?? '') === '23505') {
+        throw new FinancialAlreadyRecordedError('Khoản thưởng/trừ đã được lưu ở lần gửi trước. Kiểm tra bảng lương trước khi thêm lại.', [progress.requestKey]);
+      }
       if (error) throw error;
       if (!data?.id) throw new TypeError('Unconfirmed salary adjustment create');
       return data;
-    }),
+    }, async pending => {
+      const verdict = await reconcileSalaryAdjustment(input, pending);
+      resend = verdict !== null && 'outcome' in verdict && verdict.outcome === 'not-written';
+      return verdict;
+    }, undefined, input.id ? {} : { meta: { [ADJUSTMENT_CLIENT_ID]: true } });
+    },
     onSuccess: (_result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
       toast.success(`Đã lưu khoản ${input.kind === "BONUS" ? "thưởng" : "trừ"} ${input.label}.`);
@@ -867,9 +922,16 @@ export const useLockSalaryMonth = () => {
   const guard = useRef(persistentFinancialWorkflow('salary-lock',{scope:'actor'}));
   return useMutation({
     meta: { handlesFeedback: true },
-    mutationFn: async ({ ownerId, periodMonth, managers }: { ownerId: string; periodMonth: string; managers: SalManager[] }) => guard.current.run(`lock-${ownerId}-${periodMonth}`, `chốt bảng lương tháng ${periodMonth.slice(5,7)}/${periodMonth.slice(0,4)}`, async (progress) => {
+    mutationFn: async ({ ownerId, periodMonth, managers }: { ownerId: string; periodMonth: string; managers: SalManager[] }) => {
+      // Phiên đọc TRƯỚC khi ghi dấu: hết phiên thì chưa có gì được ghi, không để lại dấu.
       const user = await getSessionUser();
       if (!user) throw {code:"PGRST301",message:"Not authenticated"};
+      const monthLabel = `${periodMonth.slice(5,7)}/${periodMonth.slice(0,4)}`;
+      // Lần gửi lại sau một lần chưa rõ kết quả (cách B): lock_salary_month_v2 khoá công ty TRƯỚC khi tra mã yêu cầu
+      // (production 25/11/2026), cùng mã cùng nội dung ⇒ trả kết quả cũ. Gửi lại chỉ đi đường có mã, không rơi sang
+      // nhánh ghi cũ.
+      let resend = false;
+      return guard.current.run(`lock-${ownerId}-${periodMonth}`, `chốt bảng lương tháng ${monthLabel}`, async (progress) => {
       const nowIso = new Date().toISOString();
 
       // Sổ tổng: đóng băng phần lợi nhuận của cổ đông TRƯỚC cả hai nhánh chốt bên dưới.
@@ -914,7 +976,10 @@ export const useLockSalaryMonth = () => {
         if (jsonProp(canonical.data, "state") !== "LOCKED" || jsonProp(canonical.data, 'period_month') !== periodMonth || typeof count !== 'number' || !Number.isInteger(count) || count < 0) throw new TypeError("Unconfirmed salary lock");
         return {count};
       }
-      if (isMissingRpc(canonical.error)) {
+      if (resend && String(canonical.error.code ?? '') === '23505') {
+        throw new FinancialAlreadyRecordedError(`Bảng lương tháng ${monthLabel} đã được chốt ở lần gửi trước (số liệu lúc đó khác số đang chốt). Tải lại bảng lương để kiểm tra trước khi làm tiếp.`);
+      }
+      if (resend || isMissingRpc(canonical.error)) {
         throw canonical.error;
       }
       if (!isCanonicalFallbackSignal(canonical.error)) {
@@ -1021,7 +1086,11 @@ export const useLockSalaryMonth = () => {
         if(savedSnapshot.map(snapshotKey).sort().join("\n")!==m.ledger.map(snapshotKey).sort().join("\n"))throw new TypeError("Bảng kê đã lưu chưa khớp số liệu dùng để chốt lương.");
       }
       return {count:managers.length};
-    }),
+    }, async () => {
+      resend = true;
+      return { outcome: 'not-written', serverDedupesRequestKey: true };
+    });
+    },
     onError: (error: unknown) => reloadSalaryOnProfitChange(qc, error),
     onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
@@ -1037,7 +1106,12 @@ export const useUnlockSalaryMonth = () => {
   const guard = useRef(persistentFinancialWorkflow('salary-unlock',{scope:'actor'}));
   return useMutation({
     meta: { handlesFeedback: true },
-    mutationFn: async ({ periodMonth, staffIds }: { periodMonth: string; staffIds: string[] }) => guard.current.run(`unlock-${periodMonth}`, `mở khóa bảng lương tháng ${periodMonth.slice(5,7)}/${periodMonth.slice(0,4)}`, async (progress) => {
+    mutationFn: async ({ periodMonth, staffIds }: { periodMonth: string; staffIds: string[] }) => {
+      // Cách C: lần bấm sau đọc trạng thái tháng của đúng các nhân viên đó. Không còn dòng nào khoá ⇒ đã mở (có thể do lần
+      // gửi trước), không gửi; còn dòng khoá ⇒ gửi lại ngay cùng mã: unlock_salary_month_v2 khoá công ty TRƯỚC khi tra mã
+      // (production 25/11/2026) và chỉ mở dòng đang LOCKED, nên gửi lại không mở hai lần. Gửi lại không rơi sang nhánh cũ.
+      let resend = false;
+      return guard.current.run(`unlock-${periodMonth}`, `mở khóa bảng lương tháng ${periodMonth.slice(5,7)}/${periodMonth.slice(0,4)}`, async (progress) => {
       // Canonical unlock (atomic + giữ organization_id); fallback legacy. v2 gỡ luôn dấu
       // "đã tính vào lương" của kỳ này để lần chốt sau tính lại được đúng các phiếu đó.
       const canonical = await supabase.rpc("unlock_salary_month_v2", {
@@ -1050,7 +1124,10 @@ export const useUnlockSalaryMonth = () => {
         if (jsonProp(canonical.data, "state") !== "DRAFT" || jsonProp(canonical.data, 'period_month') !== periodMonth || typeof count !== 'number' || !Number.isInteger(count) || count < 0) throw new TypeError("Unconfirmed salary unlock");
         return {count};
       }
-      if (isMissingRpc(canonical.error)) {
+      if (resend && String(canonical.error.code ?? '') === '23505') {
+        throw new FinancialAlreadyRecordedError(`Bảng lương tháng ${periodMonth.slice(5,7)}/${periodMonth.slice(0,4)} đã được mở khoá ở lần gửi trước (danh sách nhân viên lúc đó khác). Tải lại bảng lương để kiểm tra.`);
+      }
+      if (resend || isMissingRpc(canonical.error)) {
         throw canonical.error;
       }
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
@@ -1077,11 +1154,21 @@ export const useUnlockSalaryMonth = () => {
         if (!Array.isArray(unlocked) || unlocked.length !== ids.length || new Set(unlocked.map(row=>row.id)).size!==ids.length || unlocked.some(row => !ids.includes(row.id))) throw new TypeError('Unconfirmed salary rows unlock');
       }
       return {count:ids.length};
-    }),
-    onSuccess: (result, input) => {
+    }, async (): Promise<PendingReconciliation<{ count: number; alreadyUnlocked?: boolean }>> => {
+      const { data, error } = await supabase.from("salary_monthly").select("id,status")
+        .eq("period_month", periodMonth).in("staff_id", staffIds);
+      if (error) throw error;
+      if (!Array.isArray(data) || data.some((row: { status?: unknown }) => typeof row?.status !== 'string')) throw new TypeError('Chưa đọc được trạng thái bảng lương để đối chiếu.');
+      if (!data.some((row: { status: string }) => row.status === 'LOCKED')) return { result: { count: 0, alreadyUnlocked: true } };
+      resend = true;
+      return { outcome: 'not-written', serverDedupesRequestKey: true };
+    });
+    },
+    onSuccess: (result: { count: number; alreadyUnlocked?: boolean }, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
       invalidateProfitLedgerQueries(qc);
-      if (result.count === 0) toast.info(`Không có bảng lương đang khóa cần mở trong tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)}.`);
+      if (result.alreadyUnlocked) toast.info(`Bảng lương tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)} đã ở trạng thái mở khoá (có thể do lần gửi trước). Không gửi lại.`);
+      else if (result.count === 0) toast.info(`Không có bảng lương đang khóa cần mở trong tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)}.`);
       else toast.success(`Đã mở khóa lương tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)} cho ${result.count} nhân viên.`);
     },
   });
@@ -1146,16 +1233,33 @@ function requireSalaryVoucherState(receipt:{approval_status:string|null;posting_
   if (!['UNAPPROVED','APPROVED','CANCELLED'].includes(receipt.approval_status ?? '') || !['UNPOSTED','POSTED','REVERSED','NOT_APPLICABLE'].includes(receipt.posting_status ?? '')) throw new TypeError("Unconfirmed salary voucher state");
 }
 
+/**
+ * Dấu vân tay của lần lập phiếu chi lương (đợt 6). salary_payout_v1 (production 25/11/2026) băm nhân viên, kỳ, thực nhận,
+ * công ty, hoá đơn và tiền phòng khấu trừ; KHÔNG băm sổ quỹ, ngày chi và ghi chú. Cùng mã gửi lại với ba trường đó đã đổi
+ * thì máy chủ trả phiếu cũ mang giá trị cũ, nên lượt đối chiếu không được đổi chúng.
+ */
+const salaryPayoutPrint = (input: SalaryPayoutInput) => ({
+  hashed: payloadFingerprint([input.staffId, input.periodMonth, input.amount, input.rentInvoice?.invoiceId ?? null, input.rentInvoice ? num(input.rentInvoice.amount) : null]),
+  rest: payloadFingerprint([input.account_id, input.voucher_date, input.note ?? null]),
+});
+
 export const useSalaryPayout = (options?: {silent?: boolean}) => {
   const qc = useQueryClient();
   const guard = useRef(persistentFinancialWorkflow('salary-payout',{scope:'actor'}));
   return useMutation({
     meta: { handlesFeedback: true },
-    mutationFn: async (input: SalaryPayoutInput) => guard.current.run(`${input.staffId}-${input.periodMonth}`, `lập phiếu chi lương cho ${input.staffName}`, async (progress) => {
+    mutationFn: async (input: SalaryPayoutInput) => {
+      // Phiên đọc TRƯỚC khi ghi dấu: hết phiên thì chưa có gì được ghi, không để lại dấu.
       const user = await getSessionUser();
       if (!user) throw {code:"PGRST301",message:"Not authenticated"};
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string = meta.full_name || meta.name || user.email || "Người dùng";
+      const print = salaryPayoutPrint(input);
+      // Cách B: gửi lại cùng mã yêu cầu. salary_payout_v1 khoá công ty TRƯỚC khi tra mã (production 25/11/2026): lệnh cũ
+      // còn chạy thì lệnh gửi lại chờ rồi nhận phiếu cũ. Lượt gửi lại chỉ đi đường có mã, không rơi sang nhánh ghi cũ.
+      let resend = false;
+      // Tên thao tác lưu vào dấu và nhật ký hộp cảnh báo: không chứa tên nhân viên.
+      return guard.current.run(`${input.staffId}-${input.periodMonth}`, 'lập phiếu chi lương', async (progress) => {
 
       // Sổ tổng: cổ đông ⇒ báo giá phần lợi nhuận của phiếu TRƯỚC cả hai nhánh lập phiếu bên dưới.
       if (input.profitQuote) await quoteShareholderPayout(input, input.profitQuote, progress);
@@ -1179,12 +1283,34 @@ export const useSalaryPayout = (options?: {silent?: boolean}) => {
       if (!canonical.error) {
         const id = jsonProp(canonical.data, "salary_voucher_id");
         if (typeof id !== "string" || !id) throw new TypeError("Unconfirmed salary payout");
-        progress.completed.push({id,label: `Đã tạo phiếu chi lương cho ${input.staffName}`});
         const receipt = await readCreatedVoucherReceipt({id});
+        const code = receipt.code ? ` ${receipt.code}` : '';
+        // Máy chủ đã trả mã phiếu nên phiếu đã lập. Đọc lại hỏng (readCreatedVoucherReceipt nuốt lỗi đọc, trả trạng thái
+        // rỗng) ở lần gửi đầu không còn khoá: dấu giữ lại KHÔNG kèm mã, lần bấm sau gửi lại đúng mã này, máy chủ trả lại đúng
+        // phiếu đó rồi đọc lại. Không gỡ dấu ở đây: máy chủ không chặn phiếu lương thứ hai cho cùng kỳ, gỡ dấu thì lần bấm
+        // sau sẽ là lượt mới.
+        if (!resend && receipt.approval_status === null && receipt.posting_status === null) {
+          throw new FinancialWorkflowError(`Đã lập phiếu chi lương${code} nhưng chưa đọc lại được trạng thái phiếu. Bấm lại để đối chiếu: hệ thống gửi lại đúng yêu cầu cũ, máy chủ trả lại đúng phiếu này, không lập phiếu thứ hai.`, 'unknown', []);
+        }
+        // Gửi lại mà máy chủ trả phiếu cũ: máy chủ không so sổ quỹ và ngày chi, nên kiểm lại. Dấu bản trước không mang dấu vân
+        // tay để chặn đổi hai trường đó từ trước.
+        if (resend && receipt.approval_status !== null) {
+          const { data: saved, error: savedError } = await supabase.from("income_expenses").select("account_id,voucher_date").eq("id", id).maybeSingle();
+          if (!savedError && saved && (saved.account_id !== input.account_id || String(saved.voucher_date ?? '').slice(0, 10) !== input.voucher_date)) {
+            throw new FinancialAlreadyRecordedError(`Phiếu chi lương${code} đã được lập ở lần gửi trước với sổ quỹ hoặc ngày chi khác lần này. Mở phiếu để kiểm tra trước khi lập thêm.`, [id]);
+          }
+        }
+        // Từ đây phiếu mang mã: trạng thái đọc được mà sai (hoặc đọc lại vẫn hỏng ở lần gửi lại) ⇒ ghi dở dang, dấu giữ mã
+        // phiếu và lần bấm sau không lập phiếu khác (hàng rào biên nhận).
+        progress.completed.push({id,label: 'Đã tạo phiếu chi lương'});
         requireSalaryVoucherState(receipt);
         return receipt;
       }
-      if (!isCanonicalFallbackSignal(canonical.error)) {
+      if (resend && String(canonical.error.code ?? '') === '23505') {
+        throw new FinancialAlreadyRecordedError('Phiếu chi lương của nhân viên này trong kỳ đã được lập ở lần gửi trước (số tiền lúc đó khác số đang gửi). Mở danh sách phiếu chi lương để kiểm tra trước khi lập thêm.');
+      }
+      // Gửi lại không bao giờ rơi sang nhánh ghi cũ: nhánh đó không có mã yêu cầu nên sẽ lập phiếu thứ hai.
+      if (resend || !isCanonicalFallbackSignal(canonical.error)) {
         throw canonical.error;
       }
 
@@ -1423,7 +1549,19 @@ export const useSalaryPayout = (options?: {silent?: boolean}) => {
       const receipt = await readCreatedVoucherReceipt(voucher);
       requireSalaryVoucherState(receipt);
       return receipt;
-    }),
+    }, async pending => {
+      // Dấu mang mã phiếu: lần trước đã nhận phiếu mà trạng thái sai hoặc đọc lại vẫn hỏng (hoặc nhánh ghi cũ dở dang): giữ
+      // dấu, không gửi, không lập phiếu khác; sau 2 phút người dùng tự xem phiếu đó và gỡ qua hộp cảnh báo.
+      if (pending.completedIds.length) return null;
+      resend = true;
+      return { outcome: 'not-written', serverDedupesRequestKey: true };
+    }, undefined, {
+      meta: print,
+      priorMismatch: pending => pending.meta?.hashed === print.hashed && pending.meta?.rest !== print.rest
+        ? `Lần lập phiếu chi lương trước cho nhân viên này (gửi lúc ${formatPendingTime(pending.startedAt)}) chưa rõ kết quả. Máy chủ trả lại đúng phiếu của lần đó mà không xét sổ quỹ, ngày chi và ghi chú, nên chọn lại đúng như lần trước rồi bấm lại để đối chiếu; cần đổi thì kiểm tra danh sách phiếu chi lương trước.`
+        : null,
+    });
+    },
     onError: (error: unknown) => reloadSalaryOnProfitChange(qc, error),
     onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });

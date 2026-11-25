@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {useRef} from 'react';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {workflowErrorMessage} from '@/lib/financialWorkflow';
+import {FinancialAlreadyRecordedError,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadNumber} from '@/lib/financialReadValidation';
 import {readContractNoticeOperationReceipt} from '@/lib/contractNoticeOperationReceipt';
 import { submitRoomTransfer } from '@/lib/contract-lifecycle/roomTransferQuote';
@@ -34,25 +34,46 @@ function showContractOperationError(error: unknown, title: string, operation: st
 export const useRenewContract = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
-  const workflow=useRef(persistentFinancialWorkflow('contract-notice-transition',{scope:'actor'}));
+  // Đợt 6: gia hạn tách khỏi dấu chung `contract-notice-transition` (chuyển phòng vẫn dùng, đợt 7). Dấu ở đó (chuyển phòng,
+  // hoặc gia hạn của bản trước) cùng hợp đồng vẫn chặn gia hạn hợp đồng đó qua hộp cảnh báo.
+  const workflow=useRef(persistentFinancialWorkflow('contract-renew',{scope:'actor',legacy:'contract-notice-transition'}));
 
   return useMutation({
     retry:false,
     meta:{handlesFeedback:true},
     mutationFn: async (params: RenewNoticeInput) => {
       if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức');
-      const args=buildRenewNoticeArgs(params,selectedOrganizationId);
+      const organizationId=selectedOrganizationId;
+      const args=buildRenewNoticeArgs(params,organizationId);
       if(params.newRentPrice!==undefined)financialReadNumber(params.newRentPrice);
       if(params.newDeposit!==undefined)financialReadNumber(params.newDeposit);
+      // Cách B: renew_contract_with_notice_v1 → apply_contract_notice_transition_v1 (production 25/11/2026) khoá công ty và
+      // hợp đồng FOR UPDATE TRƯỚC khi tra mã yêu cầu; cùng mã cùng nội dung ⇒ trả hợp đồng cũ, khác nội dung ⇒ 23505.
+      let resend=false;
       return workflow.current.run(params.contractId,"gia hạn hợp đồng",async progress=>{
         const {data,error}=await supabase.rpc("renew_contract_with_notice_v1",{...args,p_request_id:progress.requestKey});
-        if(error)throw error;
+        if(error){
+          if(resend&&String((error as {code?:unknown}).code??'')==='23505')throw new FinancialAlreadyRecordedError('Hợp đồng đã được gia hạn ở lần gửi trước (nội dung lúc đó khác nội dung đang gửi). Tải lại hợp đồng để kiểm tra trước khi gia hạn tiếp.',[params.contractId]);
+          throw error;
+        }
         const parsedId=z.string().guid().safeParse(data);
         if(parsedId.success)progress.completed.push({id:parsedId.data,label:`Hợp đồng cần đối chiếu: ${parsedId.data}`});
         if(!parsedId.success||parsedId.data!==params.contractId)throw new TypeError("Unconfirmed contract operation ID");
-        const receipt=await readContractNoticeOperationReceipt(selectedOrganizationId,progress.requestKey,params,'RENEW');
+        const receipt=await readContractNoticeOperationReceipt(organizationId,progress.requestKey,params,'RENEW');
         progress.completed.push({id:receipt.eventId,label:'Đã xác nhận sự kiện gia hạn/chuyển phòng'});
         return receipt;
+      },async pending=>{
+        const requestKey=pending.requestKey??pending.attemptId;
+        // Sự kiện của đúng mã yêu cầu đó đã có: lần trước đã gia hạn.
+        const {data:event,error:eventError}=await supabase.from('contract_notice_transition_events').select('id').eq('request_id',requestKey).eq('organization_id',organizationId).maybeSingle();
+        if(eventError)throw eventError;
+        if(event){
+          try{return {result:await readContractNoticeOperationReceipt(organizationId,requestKey,params,'RENEW')};}
+          // Sự kiện có thật nên hợp đồng đã được gia hạn; chỉ chưa dựng lại được biên nhận theo nội dung đang gửi.
+          catch{return {outcome:'already-written',message:'Hợp đồng đã được gia hạn ở lần gửi trước. Tải lại hợp đồng để xem kết quả trước khi gia hạn tiếp.',recordIds:[params.contractId]};}
+        }
+        resend=true;
+        return {outcome:'not-written',serverDedupesRequestKey:true};
       });
     },
     onSuccess: (receipt) => {

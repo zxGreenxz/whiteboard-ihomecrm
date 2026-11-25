@@ -135,7 +135,9 @@ export default function ManagerSalaryPayoutDialog({
   const busy = createMut.isPending || finishing || posting.pending;
   // Chỉ đang chờ ảnh tải thì vẫn đóng được (như hộp Thu/Chi): lượt bấm tự dừng, chưa gửi gì.
   const closeBlocked = busy && !posting.evidence.waiting;
-  const formLocked = saveBlocked || !!created;
+  // Đợt 6: lập phiếu chưa rõ kết quả không khoá form nữa: bấm lại là gửi lại đúng mã của lần đó (manager_salary_payout_v1
+  // khoá công ty rồi tra mã, trả phiếu cũ). saveBlocked chỉ còn giữ nội dung đang nhập khi đóng/mở lại hộp.
+  const formLocked = !!created;
   const selectedStep = postInDialog ? posting.stepFor(accountId) : null;
   const accountName = (id: string) => payoutAccounts.find((a) => a.id === id)?.name ?? null;
 
@@ -246,6 +248,7 @@ export default function ManagerSalaryPayoutDialog({
       if (info.kind === 'UNKNOWN_OUTCOME') setSaveBlocked(true);
       return;
     }
+    setSaveBlocked(false);
     if (!step) {
       // Route khác: hook đã báo "đã tạo phiếu". Sổ tổng chạy mà người bấm không duyệt được: hộp tự báo đúng trạng thái.
       if (postInDialog) {
@@ -357,7 +360,7 @@ export default function ManagerSalaryPayoutDialog({
             accountId={created ? created.target.accountId : accountId}
             accountName={created ? created.accountName : accountName(accountId)}
             evidenceError={evidenceError}
-            disabled={busy || saveBlocked || (!!stepFailure && !ownerPayoutCanResume(stepFailure))}
+            disabled={busy || (!!stepFailure && !ownerPayoutCanResume(stepFailure))}
             created={created ? { code: created.code, step: created.target.step } : null}
             stepFailure={stepFailure}
           />
@@ -372,7 +375,7 @@ export default function ManagerSalaryPayoutDialog({
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{OWNER_PAYOUT_RESUME_LABEL}
             </Button>
           ) : (
-            <Button onClick={() => { void handleSubmit(); }} disabled={busy || saveBlocked || locked}>
+            <Button onClick={() => { void handleSubmit(); }} disabled={busy || locked}>
               {createMut.isPending ? "Đang ghi..." : posting.evidence.waiting ? "Đang chờ ảnh tải xong…" : submitLabel}
             </Button>
           )}

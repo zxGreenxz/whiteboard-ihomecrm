@@ -1,6 +1,6 @@
 import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
 import { QuickExpenseBatchButton, QuickExpenseFeedback } from './QuickExpenseActions';
-import {VoucherPartialError,voucherFailureMessage,voucherOutcomeUnknown} from '@/lib/voucherFeedback';
+import {VoucherPartialError,voucherFailureMessage} from '@/lib/voucherFeedback';
 import {getBatchAccountIssue} from '@/hooks/income-expenses/batch';
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useVoucherWithBatch } from "@/hooks/useVoucherDetail";
@@ -84,7 +84,7 @@ function IncomeExpenseBatchDetailContent({
   const quickBusy = !!(quickExpense?.busy || quickExpense?.collecting);
   const [changeError,setChangeError]=useState<unknown>(null);
   const issue=changeError||getBatchAccountIssue(batch?.id??"");
-  const blocked=issue instanceof VoucherPartialError||voucherOutcomeUnknown(issue);
+  // Đợt 6: đổi sổ cả đợt tự chạy lại ở lần bấm sau (bỏ qua phiếu đã đúng sổ), nên lần chưa rõ kết quả không khoá nút; câu báo vẫn hiện.
   // Sổ vừa chọn, chờ người dùng gõ lý do rồi mới đổi cả đợt.
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
 
@@ -375,7 +375,7 @@ function IncomeExpenseBatchDetailContent({
         voucherCount={batch.vouchers.filter((v) => v.approval_status !== "CANCELLED").length}
         pending={updateBatchAccount.isPending}
         error={issue?voucherFailureMessage(issue,"đổi sổ quỹ cả đợt"):null}
-        blocked={blocked||accountsQuery.isError||accountsQuery.isLoading||quickBusy}
+        blocked={accountsQuery.isError||accountsQuery.isLoading||quickBusy}
         completedIds={issue instanceof VoucherPartialError?issue.completedIds:[]}
         onConfirm={(reason) => {
           if (!pendingAccountId || quickBusy) return;

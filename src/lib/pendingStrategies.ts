@@ -98,21 +98,25 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'cashbook-lifecycle': tien('van', 'sửa hoặc lưu trữ sổ quỹ'), // sửa sổ ở đợt 8; lưu trữ đã tách sang `cashbook-archive`, dấu ở đây vẫn chặn lưu trữ
   'cashbook-archive': tien('C', 'lưu trữ sổ quỹ'), // archive_cashbook_v1 khoá sổ chưa lưu trữ rồi mới xét
 
-  // Đợt 6: lương, tạo và gia hạn hợp đồng, lợi nhuận, sổ quỹ
-  'salary-payout': tien('van', 'lập phiếu chi lương'),
-  'profit-payout': tien('van', 'lập phiếu chi lương điều hành'),
-  'salary-lock': tien('van', 'chốt bảng lương'),
-  'salary-unlock': tien('van', 'mở khoá bảng lương'),
-  'salary-adjustment': tien('van', 'lưu thưởng hoặc trừ lương'),
-  'contract-create': tien('van', 'tạo hợp đồng'),
-  'contract-notice-transition': tien('van', 'gia hạn hoặc chuyển phòng hợp đồng'), // gia hạn ở đợt 6; chuyển phòng ở đợt 7
-  'cashbook-create': tien('van', 'tạo sổ quỹ'),
-  'cashbook-reopening': tien('van', 'mở lại sổ quỹ'),
-  'cashbook-form': tien('van', 'lưu sổ quỹ'),
-  'voucher-batch-account': tien('van', 'đổi sổ đợt phiếu'),
-  'profit-close': tien('van', 'chốt lợi nhuận'),
-  'profit-unlock': tien('van', 'mở khoá lợi nhuận'),
-  'profit-reset': tien('van', 'đặt lại lợi nhuận'),
+  // Đợt 6: lương, tạo và gia hạn hợp đồng, lợi nhuận, sổ quỹ. Các hàm máy chủ đều khoá (công ty / dòng / khoá tư vấn theo
+  // mã) TRƯỚC khi tra mã yêu cầu (production 25/11/2026), nên gửi lại cùng mã ngay cũng không ghi hai lần. Dấu bản trước
+  // của form sổ quỹ (`cashbook-form`) bị bỏ: hai lệnh con tự giữ dấu, phân quyền sổ gửi mã ổn định.
+  'salary-payout': tien('B', 'lập phiếu chi lương'), // salary_payout_v1 khoá công ty rồi tra mã; không băm sổ quỹ, ngày, ghi chú ⇒ không cho đổi khi đối chiếu
+  'profit-payout': tien('B', 'lập phiếu chi lương điều hành'), // manager_salary_payout_v1 khoá công ty rồi tra mã; không băm ghi chú
+  'salary-lock': tien('B', 'chốt bảng lương'), // lock_salary_month_v2 khoá công ty rồi tra mã; gửi lại không rơi sang nhánh ghi cũ
+  'salary-unlock': tien('C', 'mở khoá bảng lương'), // đọc trạng thái tháng; còn dòng khoá ⇒ gửi lại cùng mã (unlock_salary_month_v2 khoá công ty rồi tra mã)
+  'salary-adjustment': tien('D', 'lưu thưởng hoặc trừ lương'), // sửa: chạy lại (A); thêm: mã khoản = mã của dấu, khoá chính chặn khoản thứ hai; dấu bản trước tra gần đúng tới đợt 10
+  'contract-create': tien('B', 'tạo hợp đồng'), // create_contract_v2 khoá phòng + công ty rồi tra mã; 23505 khi gửi lại ⇒ đọc hợp đồng hiệu lực của phòng
+  'contract-renew': tien('B', 'gia hạn hợp đồng'), // apply_contract_notice_transition_v1 khoá công ty + hợp đồng rồi tra mã; đọc sự kiện theo mã trước khi gửi lại
+  'contract-notice-transition': tien('van', 'gia hạn hoặc chuyển phòng hợp đồng'), // chuyển phòng ở đợt 7; dấu gia hạn bản trước chỉ còn chặn qua `legacy` của gia hạn
+  'cashbook-create': tien('B', 'tạo sổ quỹ'), // create_cashbook_v1 khoá công ty rồi tra mã; không băm mô tả, sổ mặc định, toà mặc định ⇒ không cho đổi khi đối chiếu
+  'cashbook-reopening': tien('B', 'mở lại sổ quỹ'), // đọc lịch sử theo mã; chưa có ⇒ gửi lại cùng mã (reopen_cashbook_v1 khoá sổ + khoá tư vấn theo mã)
+  'voucher-batch-account': tien('A', 'đổi sổ đợt phiếu'), // revise_pending_income_expense_v1 khoá phiếu rồi so phiên bản; vòng bỏ qua phiếu đã đúng sổ
+  'profit-close': tien('van', 'chốt lợi nhuận'), // dấu chung bản trước của chốt lần đầu và chốt lại (mã máy chủ không nằm trong dấu); chỉ còn đọc
+  'profit-first-close': tien('B', 'chốt lợi nhuận lần đầu'), // _profit_write_close_v2_base khoá tư vấn theo mã rồi tra profit_close_runs
+  'profit-reclose': tien('B', 'chốt lại lợi nhuận'),
+  'profit-unlock': tien('B', 'mở khoá lợi nhuận'), // mã máy chủ suy từ mã của dấu; dấu bản trước (mã ngẫu nhiên) ⇒ hộp cảnh báo
+  'profit-reset': tien('B', 'đặt lại lợi nhuận'),
 
   // Đợt 7: hợp đồng, chuyển khách hẹn, tạm trú
   'contract-signing': tien('van', 'ký hợp đồng'),

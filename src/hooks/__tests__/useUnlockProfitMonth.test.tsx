@@ -160,13 +160,14 @@ describe("useUnlockProfitMonth — mở khoá có lý do qua profit_unlock_v2", 
   });
 });
 
-it('phản hồi chưa xác nhận không báo thành công và không gọi lại cùng tháng',async()=>{
+// Đợt 6 (cách B): lần hai gửi lại ĐÚNG mã của lần trước (máy chủ trả kết quả cũ nếu lần trước đã ghi), không mở khoá với mã mới.
+it('phản hồi chưa xác nhận không báo thành công; lần hai gửi lại đúng mã cũ, không sinh mã mới',async()=>{
  state.goiHam.mockResolvedValue({data:null,error:null});
  const {result}=dungHook();
  await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('Chưa xác nhận');});
- // Lần hai bị chặn bởi dấu của lần gửi trước; dấu chưa quá 2 phút nên chỉ báo đang chờ, không gửi lại.
- await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('đang chờ kết quả');});
- expect(state.goiHam).toHaveBeenCalledTimes(1);expect(state.toastSuccess).not.toHaveBeenCalled();
+ await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('Chưa xác nhận');});
+ expect(state.goiHam).toHaveBeenCalledTimes(2);expect(state.toastSuccess).not.toHaveBeenCalled();
+ expect(state.goiHam.mock.calls[1][1].p_idempotency_key).toBe(state.goiHam.mock.calls[0][1].p_idempotency_key);
 });
 
 describe("unlockProfitMonthErrorMessage", () => {
