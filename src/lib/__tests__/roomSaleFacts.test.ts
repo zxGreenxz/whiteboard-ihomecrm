@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ROOM_SALE_POLL_MAX_MS, ROOM_SALE_POLL_MS, roomSaleFacts, roomSalePollingInterval } from '../roomSaleFacts';
+import { ROOM_SALE_POLL_MAX_MS, ROOM_SALE_POLL_MS, roomSaleConsecutiveErrors, roomSaleFacts, roomSalePollingInterval, roomSaleQueryInterval } from '../roomSaleFacts';
 
 describe('room sale availability uses server facts', () => {
   const today = '2026-09-28';
@@ -56,5 +56,21 @@ describe('visible sale reader polling', () => {
   it('tab ẩn thì không đặt nhịp tải', () => {
     expect(roomSalePollingInterval('internal', 0, false)).toBe(false);
     expect(roomSalePollingInterval('public', 0, false)).toBe(false);
+  });
+  it('đếm lỗi liên tiếp từ lần thành công gần nhất, không dùng errorUpdateCount cộng dồn của TanStack', () => {
+    const query = { state: { status: 'pending', error: null as unknown, errorUpdateCount: 0 } };
+    const step = (status: string, error: unknown, errorUpdateCount: number) => { query.state = { status, error, errorUpdateCount }; return roomSaleConsecutiveErrors(query); };
+    expect(step('error', new Error('a'), 1)).toBe(1);
+    // Chưa có dữ liệu: TanStack đưa về pending + error null khi đọc lại — không phải thành công.
+    expect(step('pending', null, 1)).toBe(0);
+    expect(step('error', new Error('b'), 2)).toBe(2);
+    expect(step('success', null, 2)).toBe(0);
+    expect(step('error', new Error('c'), 3)).toBe(1);
+    expect(roomSaleQueryInterval('public', query)).toBe(120_000);
+    expect(roomSaleQueryInterval('internal', query)).toBe(60_000);
+    expect(step('success', null, 3)).toBe(0);
+    expect(roomSaleQueryInterval('internal', query)).toBe(30_000);
+    // Query khác không dùng chung mốc; chưa từng thành công thì đếm từ 0.
+    expect(roomSaleConsecutiveErrors({ state: { status: 'error', error: new Error('x'), errorUpdateCount: 4 } })).toBe(4);
   });
 });

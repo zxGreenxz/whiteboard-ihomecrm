@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { roomSalePollingInterval } from '@/lib/roomSaleFacts';
+import { roomSaleQueryInterval } from '@/lib/roomSaleFacts';
 import { parseTimedRoomSaleRead } from '@/lib/publicSalePolicyExpiry';
 import { useTimedRoomSaleResult } from '@/hooks/useTimedRoomSaleResult';
 
@@ -24,7 +24,7 @@ export function useMyAvailableRooms({ enabled = true }: { enabled?: boolean } = 
     refetchOnReconnect: 'always',
     refetchIntervalInBackground: false,
     retry: false,
-    refetchInterval: (query) => roomSalePollingInterval('internal', query.state.error ? query.state.errorUpdateCount : 0),
+    refetchInterval: (query) => roomSaleQueryInterval('internal', query),
     queryFn: async () => {
       const started = performance.now();
       const { data, error } = await supabase.rpc("get_my_available_rooms");

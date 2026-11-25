@@ -23,6 +23,10 @@ const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientPro
 const advance = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
 const myReads = () => rpc.mock.calls.filter(([name]) => name === 'get_my_available_rooms').length;
 const pick = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+const ok = { data: { buildings: [], rooms: [] }, error: null };
+const fail = { data: null, error: new Error('offline') };
+/** Payload hợp lệ có ranh giới chính sách sau `ms` (tính theo đồng hồ giả lúc gọi). */
+const withBoundary = (ms: number) => ({ data: { buildings: [], rooms: [], server_now: new Date(Date.now()).toISOString(), next_policy_boundary_at: new Date(Date.now() + ms).toISOString() }, error: null });
 
 // Nạp sẵn module lazy bằng đồng hồ thật để lazy() trong trang chỉ còn chờ microtask khi đồng hồ giả.
 beforeAll(async () => { await import('@/components/sale-phong/SaleRoomWorkspace'); });
@@ -62,6 +66,18 @@ describe('Sale Phòng điện thoại: một vòng tải theo chế độ đang 
     await advance(1);
     expect(myReads()).toBe(3);
   });
+
+  it('dữ liệu có ranh giới chính sách sau 40 giây: rời «Phòng trống» thì hẹn giờ ranh giới không đọc ngầm', async () => {
+    rpc.mockImplementation(async () => withBoundary(40_000));
+    render(<SalePhongMobilePage />, { wrapper });
+    await advance(1);
+    pick('Phòng trống');
+    await advance(1);
+    expect(myReads()).toBe(1);
+    pick('Cập nhật');
+    await advance(300_000);
+    expect(myReads()).toBe(1);
+  });
 });
 
 describe('useMyAvailableRooms', () => {
@@ -90,5 +106,27 @@ describe('useMyAvailableRooms', () => {
     view.rerender({ on: false });
     await advance(300_000);
     expect(myReads()).toBe(4);
+  });
+
+  it('đối chứng: đang bật thì ranh giới chính sách 10 giây vẫn đọc lại trước chu kỳ 30 giây', async () => {
+    rpc.mockImplementation(async () => withBoundary(10_000));
+    load(true);
+    await advance(1);
+    expect(myReads()).toBe(1);
+    await advance(10_000);
+    expect(myReads()).toBe(2);
+  });
+
+  it('lỗi LIÊN TIẾP giãn 60 → 120 giây; một lần đọc thành công đưa về 30 giây; lỗi lẻ sau đó chỉ giãn 60 giây', async () => {
+    rpc.mockResolvedValueOnce(fail).mockResolvedValueOnce(fail).mockResolvedValueOnce(ok).mockResolvedValueOnce(fail).mockResolvedValue(ok);
+    load(true);
+    await advance(1); expect(myReads()).toBe(1);            // t=0 lỗi 1 ⇒ 60 giây
+    await advance(59_999); expect(myReads()).toBe(2);       // t=60 lỗi 2 ⇒ 120 giây
+    await advance(119_999); expect(myReads()).toBe(2);
+    await advance(1); expect(myReads()).toBe(3);            // t=180 thành công ⇒ 30 giây
+    await advance(29_999); expect(myReads()).toBe(3);
+    await advance(1); expect(myReads()).toBe(4);            // t=210 lỗi (lần thứ 3 cả phiên) ⇒ vẫn 60 giây
+    await advance(59_999); expect(myReads()).toBe(4);
+    await advance(1); expect(myReads()).toBe(5);
   });
 });

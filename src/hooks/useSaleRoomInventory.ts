@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useSession } from '@/hooks/useAuth';
-import { roomSalePollingInterval } from '@/lib/roomSaleFacts';
+import { roomSaleQueryInterval } from '@/lib/roomSaleFacts';
 import {
   fetchSaleRoomInventory, patchSaleRoom, SaleRoomOperationError, saleInventoryAtTime, saleInventoryClock, saleInventoryBoundaryDelay,
   type PatchSaleRoomInput, type SaleRoomRpcInvoker,
@@ -35,7 +35,7 @@ export function useSaleRoomInventory() {
     refetchOnWindowFocus: 'always',
     refetchOnReconnect: 'always',
     refetchIntervalInBackground: false,
-    refetchInterval: query => roomSalePollingInterval('internal', query.state.error ? query.state.errorUpdateCount : 0),
+    refetchInterval: query => roomSaleQueryInterval('internal', query),
   });
   const [, setBoundaryTick] = useState(0);
   const clock = query.data ? saleInventoryClock(query.data) : null;

@@ -50,6 +50,16 @@ describe('live public availability refresh', () => {
     await advance(59_999);expect(rpc).toHaveBeenCalledTimes(3);
     await advance(1);expect(rpc).toHaveBeenCalledTimes(4);
   });
+  it('đếm lỗi liên tiếp: lỗi → thành công → lỗi quay về nhịp lỗi đầu (120 giây), không cộng dồn cả phiên', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: new Error('Offline') }).mockResolvedValueOnce(empty)
+      .mockResolvedValueOnce({ data: null, error: new Error('Offline again') }).mockResolvedValue(empty);
+    load();await advance(1);expect(rpc).toHaveBeenCalledTimes(1);
+    await advance(119_999);expect(rpc).toHaveBeenCalledTimes(2);
+    await advance(59_999);expect(rpc).toHaveBeenCalledTimes(2);
+    await advance(1);expect(rpc).toHaveBeenCalledTimes(3);
+    await advance(119_999);expect(rpc).toHaveBeenCalledTimes(3);
+    await advance(1);expect(rpc).toHaveBeenCalledTimes(4);
+  });
   it('does not repeatedly poll a revoked token', async () => {
     rpc.mockResolvedValue({ data: null, error: null });load();await advance(1);
     await advance(600_000);expect(rpc).toHaveBeenCalledTimes(1);

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PublicRoomLinkError } from "./supabaseData";
-import { roomSalePollingInterval } from '@/lib/roomSaleFacts';
+import { roomSaleQueryInterval } from '@/lib/roomSaleFacts';
 import { parseTimedRoomSaleRead } from '@/lib/publicSalePolicyExpiry';
 import { useTimedRoomSaleResult } from '@/hooks/useTimedRoomSaleResult';
 
@@ -9,7 +9,7 @@ import { useTimedRoomSaleResult } from '@/hooks/useTimedRoomSaleResult';
  * Đọc phòng trống công khai theo token chia sẻ (anon).
  * Giữ token/RPC hiện hành, kiểm payload rồi map public allowlist.
  * Poll 60s khi trang hiện (đợt 4 «Tải nhẹ», trước là 5s), focus/reconnect đọc lại ngay;
- * lỗi mạng backoff gấp đôi, tối đa 5 phút.
+ * lỗi LIÊN TIẾP giãn gấp đôi (về nhịp gốc sau một lần đọc thành công), tối đa 5 phút.
  * In-app dùng useMyAvailableRooms, không chạy truy vấn token song song.
  */
 export function usePhongTrong(token?: string) {
@@ -21,7 +21,7 @@ export function usePhongTrong(token?: string) {
     refetchOnReconnect: 'always',
     refetchIntervalInBackground: false,
     retry: false,
-    refetchInterval: (query) => query.state.error instanceof PublicRoomLinkError ? false : roomSalePollingInterval('public', query.state.error ? query.state.errorUpdateCount : 0),
+    refetchInterval: (query) => query.state.error instanceof PublicRoomLinkError ? false : roomSaleQueryInterval('public', query),
     queryFn: async () => {
       if (!token) throw new PublicRoomLinkError();
       const started = performance.now();
