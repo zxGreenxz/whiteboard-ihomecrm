@@ -875,7 +875,7 @@ export const hopChoDuyet = dt({
   name: 'hop_cho_duyet',
   description:
     'Hộp chờ duyệt của CHÍNH bạn: các phiếu thu chi đang đợi bạn xử lý, kèm mã phiếu, số tiền, người lập, thời điểm gửi. ' +
-    'Chỉ ĐỌC — Copilot không duyệt, không từ chối, không ghi sổ; việc đó làm bằng tay ở trang /approvals. ' +
+    'Chỉ ĐỌC — Copilot không duyệt, không ghi sổ; việc đó làm bằng tay ở trang Thu chi (/income-expense), tab Chờ xử lý. ' +
     'Dùng khi hỏi "có gì chờ tôi duyệt không", "hộp thư duyệt của tôi".',
   inputSchema: z.object({
     so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
@@ -904,7 +904,7 @@ export const hopChoDuyet = dt({
       );
     });
     const tran = data?.gioi_han ?? args.so_luong;
-    return `${rows.length} ${TIEU_DE_HOP_CHO} (tối đa ${tran} dòng):\n${dong.join('\n')}\n[link: /approvals]`;
+    return `${rows.length} ${TIEU_DE_HOP_CHO} (tối đa ${tran} dòng):\n${dong.join('\n')}\n[link: /income-expense]`;
   },
 });
 

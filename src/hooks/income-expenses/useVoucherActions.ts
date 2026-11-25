@@ -49,8 +49,14 @@ import {
 // Đợt 2 sổ tổng: phiếu chi lợi nhuận / lương điều hành lập theo sổ tổng chỉ huỷ bằng hộp riêng có lý
 // do (E6) và chỉ chi từ đúng sổ quỹ lúc lập.
 import { isProfitLedgerVoucher, type ProfitPayoutCancelTarget } from "@/lib/profitLedger/vouchers";
-import { ledgerApproveAndPostAllowed, profitCancelTargetFromVoucher } from "@/lib/voucherActionRules";
+import { ledgerApproveAndPostAllowed, ledgerApproveBlockReason, profitCancelTargetFromVoucher } from "@/lib/voucherActionRules";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
+// Một đường duyệt (chủ chốt 25/11/2026): phiếu chi theo sổ tổng duyệt ngay ở hộp Duyệt của Thu chi — hộp đọc E7 để hiện
+// số dư sổ tổng và khoá xác nhận khi máy chủ chắc chắn từ chối (trước đây chỉ màn Chờ duyệt làm việc này).
+import { useProfitLedgerPayoutDetail } from "@/hooks/profit-ledger/useProfitLedgerQueries";
+import { invalidateProfitLedgerQueries } from "@/hooks/profit-ledger/useProfitLedgerMutations";
+import { ledgerApprovalGate } from "@/lib/profitLedger/approvalGate";
+import { ledgerAwareVoucherFailure } from "@/lib/profitLedger/voucherFailure";
 
 export interface VoucherActionsOptions {
   /**
@@ -189,13 +195,28 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     () => (postApprovedLedger ? custodianBooks.filter((book) => book.id === postApprovedTarget?.account_id) : custodianBooks),
     [postApprovedLedger, custodianBooks, postApprovedTarget?.account_id],
   );
-  // Chủ tự duyệt phiếu sổ tổng mình lập ngay ở Thu chi (F1 nới 19/11/2026): "Duyệt và Chi…" cũng chỉ chi từ ĐÚNG sổ lúc
-  // lập, như nút Chi.
+  // Duyệt phiếu sổ tổng ngay ở Thu chi: "Duyệt và Chi…" cũng chỉ chi từ ĐÚNG sổ lúc lập, như nút Chi.
   const approveLedger = !!approveTarget && isProfitLedgerVoucher(approveTarget.system_source);
   const approveAndPostBooks = useMemo(
     () => (approveLedger ? custodianBooks.filter((book) => book.id === approveTarget?.account_id) : custodianBooks),
     [approveLedger, custodianBooks, approveTarget?.account_id],
   );
+  // Hộp Duyệt của phiếu sổ tổng đọc E7 (cùng cache với thẻ số dư ProfitLedgerApprovalNote) và KHOÁ xác nhận khi: chưa
+  // thấy số dư; máy chủ chắc chắn từ chối (sổ tổng chưa bật / đóng băng, phiếu chết, người nhận đã xoá, lương điều hành
+  // vượt — ledgerApprovalGate); hoặc người xem không được duyệt phiếu này (người lập phiếu tạm ứng, thiếu quyền duyệt
+  // thu chi ở toà — ledgerApproveBlockReason). Máy chủ vẫn là chốt cuối.
+  const approveLedgerDetail = useProfitLedgerPayoutDetail(approveLedger ? approveTarget?.id : null);
+  const approveLedgerGate = approveLedger && approveLedgerDetail.data ? ledgerApprovalGate(approveLedgerDetail.data) : null;
+  const approveLedgerViewerReason = approveLedger && approveTarget
+    ? ledgerApproveBlockReason(
+        approveTarget,
+        { perms: myPerms, currentUserId: authUser?.id ?? null },
+        // Chưa đọc xong, hoặc phiếu cũ không có dòng sổ lúc lập ⇒ chưa kết luận gì về người lập.
+        approveLedgerDetail.data?.at_create?.maker_kind,
+      )
+    : null;
+  const approveLedgerBlocked = approveLedger
+    && (!approveLedgerGate || !!approveLedgerGate.blockReason || !!approveLedgerViewerReason);
 
   const { cancelEligibility, incomeCancelEligibility } = useVoucherCancelEligibility(vouchers);
 
@@ -279,7 +300,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   const confirmApprove = useCallback(async () => {
     const target = approveTarget;
     if (!target) return;
-    if (blockedVoucherId === target.id || approveHistoryBlocked) return;
+    if (blockedVoucherId === target.id || approveHistoryBlocked || approveLedgerBlocked) return;
     if (!v2ApproveOnly && approveNeedsReason && !approveReasonOk) {
       setReasonError("approveReason");
       void focusFirstError({ approveReason: "Nhập lý do thay đổi có ít nhất 8 ký tự." });
@@ -303,10 +324,13 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
           voucherId: target.id,
           expectedApprovalVersion: (target as { approval_version?: number }).approval_version ?? 1,
         });
+        // Duyệt phiếu sổ tổng đổi số dư sổ tổng: làm mới cả các màn sổ tổng.
+        if (isProfitLedgerVoucher(target.system_source)) invalidateProfitLedgerQueries(queryClient);
         setApproveTarget(null);
         changed();
       } catch (error) {
-        setActionError(voucherFailureMessage(error, "duyệt phiếu"));
+        // Lỗi chốt sổ tổng (PROFIT_LEDGER_…) ra câu riêng; lỗi khác như cũ.
+        setActionError(ledgerAwareVoucherFailure(error, "duyệt phiếu"));
         if (voucherOutcomeUnknown(error)) setBlockedVoucherId(target.id);
       }
       return;
@@ -344,7 +368,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     approveAccountId,
     approveAttachments,
     approveReason,
-    approveNeedsReason, approveReasonOk, blockedVoucherId, approveHistoryBlocked,
+    approveNeedsReason, approveReasonOk, blockedVoucherId, approveHistoryBlocked, approveLedgerBlocked,
     approveMutation,
     reviseMutation,
     v2ApproveOnly,
@@ -356,7 +380,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   // "Duyệt và Thu/Chi…": kiểm cổng tự duyệt trước khi mở hộp ghi sổ (hộp đó nhận chứng từ
   // trước khi duyệt).
   const openApproveAndPost = useCallback(async () => {
-    if (!approveTarget) return;
+    if (!approveTarget || approveLedgerBlocked) return;
     setSelfApproveChecking(true);
     const selfCheck = await checkSelfApproveBeforeApprove(queryClient, approveTarget.id);
     setSelfApproveChecking(false);
@@ -365,7 +389,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       return;
     }
     setApproveAndPostOpen(true);
-  }, [approveTarget, queryClient]);
+  }, [approveTarget, approveLedgerBlocked, queryClient]);
 
   const confirmUnapprove = async () => {
     if (!unapproveTarget || unapproveMutation.isPending) return;
@@ -504,6 +528,11 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
         attachments: approveAttachments, setAttachments: setApproveAttachments,
         needsReason: approveNeedsReason, reason: approveReason, setReason: setApproveReason,
         pending: approveMutation.isPending || reviseMutation.isPending || approveV2Mutation.isPending,
+        /**
+         * Phiếu chi theo sổ tổng: hộp hiện thẻ số dư sổ tổng; `blocked` khoá "Chỉ duyệt" và "Duyệt và Chi…";
+         * `viewerReason` = vì sao NGƯỜI XEM không duyệt được (lý do của sổ tổng đã nằm trong thẻ số dư).
+         */
+        ledger: { isLedger: approveLedger, blocked: approveLedgerBlocked, viewerReason: approveLedgerViewerReason },
       },
       approveAndPost: {
         open: approveAndPostOpen, setOpen: setApproveAndPostOpen,
@@ -511,6 +540,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
         cashbookOptions: approveAndPostBooks, cashbookLocked: approveLedger,
         submit: async (input: Parameters<typeof approveAndPostV2Mutation.mutateAsync>[0]) => {
           await approveAndPostV2Mutation.mutateAsync(input);
+          if (approveLedger) invalidateProfitLedgerQueries(queryClient);
           setApproveAndPostOpen(false);
           setApproveTarget(null);
           changed();

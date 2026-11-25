@@ -72,7 +72,7 @@ Mỗi hoá đơn là một giao dịch riêng. Một số hoá đơn có thể �
 ## Hoàn tiền cho khách
 
 ::: danger Luồng hiện tại chỉ tạo phiếu chi chờ duyệt
-Với hoá đơn âm hoặc khách đã trả dư, nút thu đổi thành **Hoàn trả khách**. Hộp này có **Ngày hoàn trả** và **Sổ quỹ chi**, nhưng luồng ghi hiện hành chưa dùng hai giá trị đó; bấm **Lập phiếu chi** chỉ tạo phiếu chi hoàn trả ở trạng thái **Chờ duyệt**, chưa có tiền ra. Sau đó duyệt theo [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) và đối chiếu số tiền trước khi duyệt; tiền chỉ ra khi phiếu ở trạng thái **Đã Chi**.
+Với hoá đơn âm hoặc khách đã trả dư, nút thu đổi thành **Hoàn trả khách**. Hộp này có **Ngày hoàn trả** và **Sổ quỹ chi**, nhưng luồng ghi hiện hành chưa dùng hai giá trị đó; bấm **Lập phiếu chi** chỉ tạo phiếu chi hoàn trả ở trạng thái **Chờ duyệt**, chưa có tiền ra. Sau đó duyệt ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) (tab **Chờ xử lý**) và đối chiếu số tiền trước khi duyệt; tiền chỉ ra khi phiếu ở trạng thái **Đã Chi**.
 :::
 
 ## Tình huống & lỗi thường gặp
@@ -108,4 +108,4 @@ Với hoá đơn âm hoặc khách đã trả dư, nút thu đổi thành **Hoà
 - [Thu tiền tại phòng trên điện thoại](/03-quan-ly-van-hanh/thu-tien-mobile/)
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/)
 - [Tiền thừa](/03-quan-ly-van-hanh/tien-thua/)
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/)
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/)

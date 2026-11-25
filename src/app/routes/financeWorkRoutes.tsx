@@ -9,7 +9,6 @@
 import { Route, Navigate } from "react-router-dom";
 import { StaffDayViewerRoute } from "../../components/auth/StaffDayViewerRoute";
 import {
-  ApprovalsPage,
   BankEventsPage,
   IncomeExpensePage,
   IncomeExpensePrintPage,
@@ -60,9 +59,9 @@ export const financeWorkRoutes = (
     <Route path="/income-expense/print/:id" element={<ProtectedRoute><RequirePermission module="income_expenses" action="print"><IncomeExpensePrintPage /></RequirePermission></ProtectedRoute>} />
     <Route path="/income-expense/voucher/:id" element={<ProtectedRoute><RequirePermission module="income_expenses"><VoucherDetailPage /></RequirePermission></ProtectedRoute>} />
     <Route path="/finance/refund-log" element={<ProtectedRoute><RequirePermission module="deposits"><RefundLogPage /></RequirePermission></ProtectedRoute>} />
-    {/* Hộp thư duyệt: KHÔNG gate RequirePermission — RPC đã lọc theo auth.uid(),
-        ai vào cũng chỉ thấy yêu cầu chờ chính mình duyệt (rỗng nếu không phải người duyệt). */}
-    <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
+    {/* Màn "Chờ duyệt" đã bỏ 25/11/2026 (chủ chốt: duyệt phiếu MỘT đường ở Thu chi). Giữ đường dẫn cũ cho dấu trang /
+        liên kết cũ: chuyển thẳng về tab "Chờ xử lý" của Thu chi (cần đủ hai tham số — xem notificationRoutes.ts). */}
+    <Route path="/approvals" element={<Navigate to="/income-expense?approval_status=UNAPPROVED&layer=PENDING" replace />} />
     {/* Báo chi nhanh: KHÔNG gate RequirePermission — trang phục vụ HAI nhóm quyền
         (income_expenses.create ⇒ phiếu chi; personal_finance.create ⇒ Ví cá nhân) và tự rẽ
         bên trong; người không có quyền nào thấy câu báo. Chặn thật ở writer: phiếu chi qua

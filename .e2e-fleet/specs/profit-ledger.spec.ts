@@ -367,16 +367,25 @@ async function cancelPostedVoucher(page: Page, code: string, reason: string) {
   await expect(page.locator('[data-sonner-toast]').filter({ hasText: `Đã huỷ phiếu ${code} và đảo bút toán` }).first()).toBeVisible({ timeout: 30_000 });
 }
 
-/** Chủ công ty duyệt một phiếu ở Hộp duyệt sau khi đọc ghi chú sổ tổng của phiếu đó. */
-async function approveAtInbox(page: Page, code: string, noteTexts: readonly string[]) {
+/**
+ * Chủ công ty duyệt một phiếu NGAY Ở THU CHI sau khi đọc thẻ số dư sổ tổng trong hộp Duyệt.
+ * Màn Chờ duyệt đã bỏ 25/11/2026 (chủ chốt: duyệt một đường ở Thu chi) — đi từ đường dẫn cũ để kiểm luôn việc
+ * chuyển hướng về Thu chi › Chờ xử lý.
+ */
+async function approveAtCashbook(page: Page, code: string, noteTexts: readonly string[]) {
   await page.goto('/approvals');
-  const row = page.locator('tbody tr').filter({ hasText: code }).first();
+  await expect(page).toHaveURL(/\/income-expense(\?|$)/, { timeout: 60_000 });
+  await page.getByPlaceholder('Tìm mã phòng, tên/mã phiếu hoặc số tiền (±5.000đ)...').fill(code);
+  // Ô tìm kiếm đã lọc còn đúng phiếu này (dòng không in mã phiếu).
+  const row = page.getByRole('row').filter({ has: page.getByTitle('Duyệt phiếu (đã thanh toán)') }).first();
   await expect(row).toBeVisible({ timeout: 90_000 });
-  const note = row.locator('xpath=following-sibling::tr[1]');
+  await row.getByTitle('Duyệt phiếu (đã thanh toán)').click();
+  const dialog = page.getByRole('alertdialog', { name: 'Xác nhận duyệt phiếu' });
+  const note = dialog.getByTestId('ledger-approval-note');
   for (const text of noteTexts) await expect(note).toContainText(text, { timeout: 60_000 });
-  const approve = row.getByRole('button', { name: 'Duyệt', exact: true });
+  const approve = dialog.getByRole('button', { name: 'Chỉ duyệt', exact: true });
   await expect(approve).toBeEnabled({ timeout: 60_000 });
-  const response = page.waitForResponse((r) => /\/rest\/v1\/rpc\/(approve_income_expense_v2|decide_financial_request_v2)$/.test(new URL(r.url()).pathname), { timeout: 90_000 });
+  const response = page.waitForResponse((r) => /\/rest\/v1\/rpc\/approve_income_expense_v2$/.test(new URL(r.url()).pathname), { timeout: 90_000 });
   await approve.click();
   expect((await response).status()).toBe(200);
   await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Đã duyệt phiếu' }).first()).toBeVisible({ timeout: 30_000 });
@@ -533,7 +542,7 @@ test('sổ tổng lợi nhuận: cổ đông tạm ứng → chủ duyệt → c
 
     // 3. Chủ công ty duyệt phiếu tạm ứng.
     await test.step('chủ công ty duyệt phiếu tạm ứng ⇒ tạm ứng đang có tăng, lợi nhuận chưa chi không đổi', async () => {
-      await approveAtInbox(owner!.page, advanceCode, [
+      await approveAtCashbook(owner!.page, advanceCode, [
         'Tạm ứng lợi nhuận', 'Lúc lập', 'Người giữ sổ tự lập phiếu tạm ứng cho chính mình', 'Chỉ chi được từ sổ đã chọn lúc lập',
       ]);
       const after = await positionOf(ownerJwt, shareholderId);

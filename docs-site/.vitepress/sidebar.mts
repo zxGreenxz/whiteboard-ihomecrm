@@ -89,7 +89,6 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Bảng lương quản lý', link: '/03-quan-ly-van-hanh/bang-luong/' },
           { text: 'Lương của tôi', link: '/03-quan-ly-van-hanh/luong-cua-toi/' },
           { text: 'Ví thu chi cá nhân', link: '/03-quan-ly-van-hanh/vi-ca-nhan/' },
-          { text: 'Chờ duyệt', link: '/03-quan-ly-van-hanh/cho-duyet/' },
         ],
       },
       {

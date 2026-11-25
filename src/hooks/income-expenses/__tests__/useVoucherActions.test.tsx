@@ -19,6 +19,10 @@ const m = vi.hoisted(() => ({
   books: [] as Array<{ id: string; name: string }>,
   /** get_my_permissions_v2: chủ công ty nhận cờ __superadmin. */
   perms: { __superadmin: true } as Record<string, unknown>,
+  /** E7 (profit_ledger_payout_detail_v1) của phiếu sổ tổng đang mở hộp Duyệt; data vắng = chưa đọc xong. */
+  ledgerDetail: { data: undefined as unknown, isError: false },
+  ledgerDetailIds: [] as Array<string | null | undefined>,
+  invalidateLedger: vi.fn(),
 }));
 const mutation = (fn: ReturnType<typeof vi.fn>) => ({ mutateAsync: fn, mutate: fn, isPending: false });
 
@@ -53,6 +57,16 @@ vi.mock('@/hooks/income-expenses/financeV2Mutations', () => ({
   useCustodianCashbooksV2: () => ({ data: m.books, isError: false, refetch: vi.fn() }),
   useAttachPostingEvidence: () => vi.fn(),
   useRemovePostingAttachment: () => vi.fn(),
+}));
+// Hộp Duyệt đọc E7 cho phiếu sổ tổng — giả để KHÔNG có request thật nào rời bài kiểm.
+vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
+  useProfitLedgerPayoutDetail: (id: string | null | undefined) => {
+    m.ledgerDetailIds.push(id);
+    return id ? m.ledgerDetail : { data: undefined, isError: false };
+  },
+}));
+vi.mock('@/hooks/profit-ledger/useProfitLedgerMutations', () => ({
+  invalidateProfitLedgerQueries: (...args: unknown[]) => m.invalidateLedger(...args),
 }));
 vi.mock('@/hooks/income-expenses/flexMutations', async (orig) => ({
   ...(await orig<typeof import('@/hooks/income-expenses/flexMutations')>()),
@@ -96,7 +110,29 @@ beforeEach(() => {
   m.accounts = [];
   m.books = [];
   m.perms = { __superadmin: true };
+  m.ledgerDetail = { data: e7(), isError: false };
+  m.ledgerDetailIds = [];
+  m.invalidateLedger.mockReset();
 });
+
+/** E7 của một phiếu tạm ứng cổ đông còn chờ duyệt, sổ tổng đang chạy thật (mặc định: người khác lập hộ). */
+function e7(p: { route?: string; voucher?: Record<string, unknown>; subject?: Record<string, unknown>; makerKind?: string | null; now?: Record<string, unknown> } = {}) {
+  return {
+    organization_id: 'org-1',
+    route: p.route ?? 'CANONICAL',
+    voucher: {
+      id: 'v-1', code: 'PC-9', voucher_date: '2026-11-20', amount: 300, approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED',
+      system_source: 'profit.ledger_payout', account_id: 'acc-1', account_name: 'Quỹ tiền mặt', is_live: true,
+      created_at: '2026-11-20T09:29:00Z', ...p.voucher,
+    },
+    subject: { kind: 'SHAREHOLDER', id: 'sh-1', name: 'Cổ đông 1', is_deleted: false, has_login: true, ...p.subject },
+    at_create: p.makerKind === null ? null : {
+      balance_before: 1000, within: 0, advance: 300, warnings: [], maker_kind: p.makerKind ?? 'CUSTODIAN_FOR_PAYEE',
+      payout_kind: 'ADVANCE', payee_is_maker: false,
+    },
+    now: { balance_excluding_this: 1000, within: 0, advance: 300, ...p.now },
+  };
+}
 
 const LY_DO = 'ghi nhầm số tiền';
 
@@ -391,6 +427,115 @@ describe('Phiếu chi theo sổ tổng', () => {
     act(() => result.current.approve(phieu()));
     expect(result.current.dialogs.approveAndPost.cashbookLocked).toBe(false);
     expect(result.current.dialogs.approveAndPost.cashbookOptions.map((b) => b.id)).toEqual(['acc-1', 'acc-2']);
+  });
+
+  // Chủ chốt 25/11/2026 — duyệt MỘT đường ở Thu chi: hộp Duyệt làm việc màn Chờ duyệt từng làm cho phiếu sổ tổng.
+  describe('Duyệt phiếu sổ tổng ngay ở hộp Duyệt của Thu chi', () => {
+    it('chỉ đọc E7 cho phiếu sổ tổng; phiếu thường không đọc, không bị khoá', () => {
+      const { result } = setup([phieu()]);
+      act(() => result.current.approve(phieu()));
+      expect(m.ledgerDetailIds.every((id) => id == null)).toBe(true);
+      expect(result.current.dialogs.approve.ledger).toEqual({ isLedger: false, blocked: false, viewerReason: null });
+      act(() => result.current.dialogs.approve.close());
+      act(() => result.current.approve(soTong()));
+      expect(m.ledgerDetailIds).toContain('v-1');
+      expect(result.current.dialogs.approve.ledger.isLedger).toBe(true);
+    });
+
+    it('người khác lập (ca 3 phiếu tạm ứng kẹt 25/11): chủ duyệt được ⇒ gửi approve v2 đúng phiên bản, làm mới sổ tổng, báo làm mới', async () => {
+      const choDuyet = soTong({ maker_user_id: 'u-giu-so' });
+      const { result, onChanged } = setup([choDuyet]);
+      act(() => result.current.approve(choDuyet));
+      expect(result.current.dialogs.approve.ledger).toEqual({ isLedger: true, blocked: false, viewerReason: null });
+      await act(async () => { await result.current.dialogs.approve.confirm(); });
+      expect(m.approveV2).toHaveBeenCalledWith({ voucherId: 'v-1', expectedApprovalVersion: 3 });
+      expect(m.invalidateLedger).toHaveBeenCalledTimes(1);
+      expect(onChanged).toHaveBeenCalledTimes(1);
+      expect(result.current.anyOpen).toBe(false);
+    });
+
+    it('chưa thấy số dư sổ tổng (E7 chưa về / lỗi) ⇒ khoá cả "Chỉ duyệt" lẫn "Duyệt và Chi…", không gọi máy chủ', async () => {
+      m.ledgerDetail = { data: undefined, isError: true };
+      const choDuyet = soTong({ maker_user_id: 'u-giu-so' });
+      const { result } = setup([choDuyet]);
+      act(() => result.current.approve(choDuyet));
+      expect(result.current.dialogs.approve.ledger.blocked).toBe(true);
+      await act(async () => { await result.current.dialogs.approve.confirm(); });
+      await act(async () => { await result.current.dialogs.approve.openApproveAndPost(); });
+      expect(m.approveV2).not.toHaveBeenCalled();
+      expect(m.selfCheck).not.toHaveBeenCalled();
+      expect(result.current.dialogs.approveAndPost.open).toBe(false);
+    });
+
+    it('máy chủ chắc chắn từ chối (sổ tổng đóng băng, phiếu chết, người nhận đã xoá, lương điều hành vượt) ⇒ khoá', () => {
+      const choDuyet = soTong({ maker_user_id: 'u-giu-so' });
+      for (const detail of [
+        e7({ route: 'FROZEN' }),
+        e7({ voucher: { is_live: false } }),
+        e7({ voucher: { approval_status: 'APPROVED' } }),
+        e7({ subject: { is_deleted: true } }),
+        e7({ subject: { kind: 'MANAGER' }, now: { advance: 50, within: 250 } }),
+      ]) {
+        m.ledgerDetail = { data: detail, isError: false };
+        const { result, unmount } = setup([choDuyet]);
+        act(() => result.current.approve(choDuyet));
+        expect(result.current.dialogs.approve.ledger.blocked).toBe(true);
+        // Lý do của sổ tổng nằm trong thẻ số dư — không phải lý do của người xem.
+        expect(result.current.dialogs.approve.ledger.viewerReason).toBeNull();
+        unmount();
+      }
+    });
+
+    it('người lập phiếu TẠM ỨNG (E7: không phải phiếu chủ lập) ⇒ khoá kèm lý do, không gọi máy chủ; phiếu CHỦ lập thì tự duyệt được', async () => {
+      const tuLap = soTong({ maker_user_id: 'u-1' });
+      const { result, rerender } = setup([tuLap]);
+      act(() => result.current.approve(tuLap));
+      expect(result.current.dialogs.approve.ledger.blocked).toBe(true);
+      expect(result.current.dialogs.approve.ledger.viewerReason).toMatch(/Phiếu tạm ứng do chính bạn lập — người lập không tự duyệt được/);
+      await act(async () => { await result.current.dialogs.approve.confirm(); });
+      expect(m.approveV2).not.toHaveBeenCalled();
+      m.ledgerDetail = { data: e7({ makerKind: 'OWNER' }), isError: false };
+      rerender();
+      expect(result.current.dialogs.approve.ledger).toEqual({ isLedger: true, blocked: false, viewerReason: null });
+      await act(async () => { await result.current.dialogs.approve.confirm(); });
+      expect(m.approveV2).toHaveBeenCalledTimes(1);
+    });
+
+    it('thiếu quyền duyệt thu chi ở toà của phiếu ⇒ khoá kèm lý do (máy chủ đòi cả hai quyền)', () => {
+      m.perms = { shareholder_profit: { distribute: { org_wide: true, building_ids: [] } } };
+      const choDuyet = soTong({ maker_user_id: 'u-giu-so' });
+      const { result } = setup([choDuyet]);
+      act(() => result.current.approve(choDuyet));
+      expect(result.current.dialogs.approve.ledger.blocked).toBe(true);
+      expect(result.current.dialogs.approve.ledger.viewerReason).toMatch(/Cần thêm quyền duyệt thu chi ở toà của phiếu/);
+    });
+
+    it('máy chủ từ chối bằng mã chốt sổ tổng (vd người nhận tự duyệt) ⇒ hộp báo câu của sổ tổng, không phải câu chung', async () => {
+      m.approveV2.mockRejectedValue(Object.assign(new Error('PROFIT_LEDGER_PAYEE_SELF_APPROVE: người nhận tiền không tự duyệt'), { code: '42501' }));
+      const choDuyet = soTong({ maker_user_id: 'u-giu-so' });
+      const { result, onChanged } = setup([choDuyet]);
+      act(() => result.current.approve(choDuyet));
+      await act(async () => { await result.current.dialogs.approve.confirm(); });
+      expect(result.current.dialogs.actionError).toMatch(/Người nhận tiền không tự duyệt được phiếu này/);
+      expect(result.current.anyOpen).toBe(true);
+      expect(m.invalidateLedger).not.toHaveBeenCalled();
+      expect(onChanged).not.toHaveBeenCalled();
+    });
+
+    it('"Duyệt và Chi…" phiếu sổ tổng xong ⇒ làm mới sổ tổng; phiếu thường thì không', async () => {
+      const choDuyet = soTong({ maker_user_id: 'u-giu-so' });
+      const { result } = setup([choDuyet]);
+      act(() => result.current.approve(choDuyet));
+      await act(async () => { await result.current.dialogs.approve.openApproveAndPost(); });
+      expect(result.current.dialogs.approveAndPost.open).toBe(true);
+      const input = { subjectId: 'v-1' } as Parameters<typeof result.current.dialogs.approveAndPost.submit>[0];
+      await act(async () => { await result.current.dialogs.approveAndPost.submit(input); });
+      expect(m.invalidateLedger).toHaveBeenCalledTimes(1);
+      act(() => result.current.approve(phieu()));
+      await act(async () => { await result.current.dialogs.approve.openApproveAndPost(); });
+      await act(async () => { await result.current.dialogs.approveAndPost.submit(input); });
+      expect(m.invalidateLedger).toHaveBeenCalledTimes(1);
+    });
   });
 
   // Review chéo 19/11: người lập có thể chính là người nhận — máy chủ chỉ cho tự Chi khi quyền chi phủ CẢ CÔNG TY.

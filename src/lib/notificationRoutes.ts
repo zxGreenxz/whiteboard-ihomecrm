@@ -11,8 +11,8 @@
 //
 // KHÔNG có trong allow-list (cố ý):
 //   - `/issues/:id`  — route KHÔNG TỒN TẠI, 2 file UI cũ đang trỏ vào (→ NotFound).
-//   - `/approvals`   — `list_my_pending_approvals_v1` lọc `state='PENDING_APPROVAL'`,
-//                      rỗng ở mốc đo ⇒ bấm vào là trang trắng.
+//   - `/approvals`   — màn "Chờ duyệt" đã bỏ 25/11/2026 (duyệt phiếu một đường ở Thu chi); đường dẫn
+//                      chỉ còn chuyển hướng về Thu chi › Chờ xử lý. Thông báo trỏ thẳng E1 bên dưới.
 //
 // Ánh xạ với §B.7 (metadata.event → url):
 //   E1  → /income-expense?approval_status=UNAPPROVED&layer=PENDING

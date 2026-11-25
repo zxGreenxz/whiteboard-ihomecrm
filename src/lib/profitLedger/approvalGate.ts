@@ -1,5 +1,5 @@
-// Màn Chờ duyệt (D2.9): người duyệt phiếu chi theo sổ tổng thấy số dư sổ tổng LÚC LẬP và BÂY GIỜ (E7),
-// và biết trước khi nào máy chủ sẽ từ chối lệnh duyệt (chốt F1 — d1_chan_interface §2.1, §7).
+// Hộp Duyệt của Thu chi (D2.9; trước 25/11/2026 là màn Chờ duyệt): người duyệt phiếu chi theo sổ tổng thấy số dư sổ
+// tổng LÚC LẬP và BÂY GIỜ (E7), và biết trước khi nào máy chủ sẽ từ chối lệnh duyệt (chốt F1 — d1_chan_interface §2.1, §7).
 // Chỉ là lớp hiển thị: máy chủ vẫn là chốt cuối (người lập / người nhận tự duyệt, thiếu quyền, phiếu lương
 // cần xem lại… chỉ máy chủ biết — câu báo đi qua profitLedgerErrorMessage).
 
@@ -22,12 +22,12 @@ export function ledgerApprovalGate(detail: LedgerPayoutDetail): LedgerApprovalGa
     return {
       accountId,
       blockReason: route.route === 'FROZEN'
-        ? 'Sổ tổng đang đóng băng — chưa duyệt hay chi được phiếu này (vẫn từ chối hoặc huỷ được).'
-        : 'Sổ tổng chưa bật — chưa duyệt hay chi được phiếu này (vẫn từ chối hoặc huỷ được).',
+        ? 'Sổ tổng đang đóng băng — chưa duyệt hay chi được phiếu này (vẫn huỷ được).'
+        : 'Sổ tổng chưa bật — chưa duyệt hay chi được phiếu này (vẫn huỷ được).',
     };
   }
   if (detail.voucher.approval_status !== 'UNAPPROVED') {
-    return { accountId, blockReason: 'Phiếu không còn chờ duyệt — tải lại danh sách.' };
+    return { accountId, blockReason: 'Phiếu không còn chờ duyệt — đóng hộp này rồi tải lại danh sách.' };
   }
   if (!detail.voucher.is_live) {
     return { accountId, blockReason: 'Phiếu đã bị từ chối hoặc rút — chỉ còn Huỷ.' };
@@ -38,7 +38,7 @@ export function ledgerApprovalGate(detail: LedgerPayoutDetail): LedgerApprovalGa
   if (detail.subject.kind === 'MANAGER' && detail.now.advance > 0) {
     return {
       accountId,
-      blockReason: `Phiếu vượt lương điều hành còn lại (dư ${formatVND(detail.now.advance)}) — duyệt sẽ bị từ chối. Từ chối hoặc huỷ rồi lập lại đúng số.`,
+      blockReason: `Phiếu vượt lương điều hành còn lại (dư ${formatVND(detail.now.advance)}) — duyệt sẽ bị từ chối. Huỷ phiếu rồi lập lại đúng số.`,
     };
   }
   return { accountId, blockReason: null };
@@ -101,10 +101,10 @@ export function ledgerApprovalNoteView(detail: LedgerPayoutDetail): LedgerApprov
   // Phiếu tạm ứng: người giữ sổ lập (cho mình hoặc lập hộ) và cả số tiền là tạm ứng.
   const isAdvance = at?.payout_kind === 'ADVANCE' || (at?.payout_kind == null && !!at && at.maker_kind !== 'OWNER' && at.within === 0);
   if (at?.maker_kind === 'CUSTODIAN_ADVANCE' && at.payee_is_maker) {
-    notes.push('Người giữ sổ tự lập phiếu tạm ứng cho chính mình — người duyệt được chỉ định phải khác người lập.');
+    notes.push('Người giữ sổ tự lập phiếu tạm ứng cho chính mình — người duyệt phải khác người lập.');
   }
   if (at?.maker_kind === 'CUSTODIAN_FOR_PAYEE') {
-    notes.push('Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt được chỉ định phải khác người lập và người nhận.');
+    notes.push('Người giữ sổ lập phiếu tạm ứng cho cổ đông — người duyệt phải khác người lập và người nhận.');
   }
 
   if (isAdvance && at) {

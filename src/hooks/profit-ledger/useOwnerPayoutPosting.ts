@@ -2,12 +2,12 @@
 // hình luôn Duyệt và Chi có ảnh phía dưới luôn như bình thường", "làm đúng luồng thu chi").
 //
 // Lệnh lập phiếu (W2 shareholder_profit_settle_v1 / E11 manager_salary_payout_v1) đã LƯU phiếu ở Chờ duyệt trong giao
-// dịch riêng. Hook này làm tiếp cho ĐÚNG phiếu vừa lập, bằng đúng các lệnh của màn Chờ duyệt:
+// dịch riêng. Hook này làm tiếp cho ĐÚNG phiếu vừa lập, bằng đúng các lệnh của hộp Duyệt ở Thu chi:
 //   người bấm GIỮ sổ quỹ của phiếu ⇒ gắn ảnh chứng từ (useDeferredPostingEvidence) rồi approve_and_post_income_expense_v2
-//     (useApproveAndPostIncomeExpenseV2 — cùng hook màn Chờ duyệt dùng cho "Duyệt và Chi…");
+//     (useApproveAndPostIncomeExpenseV2 — cùng hook Thu chi dùng cho "Duyệt và Chi…");
 //   không giữ sổ ⇒ chỉ approve_income_expense_v2; người giữ sổ bấm Chi (kèm ảnh) ở Thu chi.
 // "Giữ sổ" xác định như hộp Chi: sổ nằm trong list_cashbooks_for_expense_v2 của người bấm (useCustodianCashbooksV2).
-// Trước khi duyệt: đọc lại phiếu như màn Chờ duyệt (đúng phiếu, đúng công ty, đúng sổ lúc lập, phiên bản để so-rồi-ghi).
+// Trước khi duyệt: đọc lại phiếu (đúng phiếu, đúng công ty, đúng sổ lúc lập, phiên bản để so-rồi-ghi).
 // Máy chủ (chốt F1 nới 19/11) cho người có quyền chi tự duyệt phiếu chủ lập, duyệt / chi dù mình là người nhận; vẫn đòi
 // phiếu đã lưu ở Chờ duyệt trước và chứng từ FINALIZED khi ghi sổ. Hook KHÔNG tự toast: hộp nói theo trạng thái thật.
 
@@ -77,7 +77,7 @@ export class OwnerPayoutStateError extends Error {
  *   APPROVE_ONLY — máy chủ chặn chính người nhận tự Chi (PROFIT_LEDGER_PAYEE_SELF_POST): làm tiếp chỉ Duyệt;
  *   BLOCKED — từ chối vì quyền (SQLSTATE 42501: không giữ sổ theo máy chủ, thiếu quyền duyệt thu chi ở toà của phiếu,
  *     PROFIT_LEDGER_MAKER_SELF_APPROVE khi máy chủ không thấy quyền chi…) hoặc phiếu không còn xử lý được ở hộp: gửi lại
- *     vẫn bị từ chối ⇒ khoá "Làm tiếp", chỉ đường sang Chờ duyệt / Thu chi (phiếu vẫn nằm ở Chờ duyệt);
+ *     vẫn bị từ chối ⇒ khoá "Làm tiếp", chỉ đường sang Thu chi (phiếu vẫn nằm ở Chờ duyệt);
  *   RECONCILE — chưa rõ kết quả: không làm tiếp ở hộp, đối chiếu phiếu ở Thu chi.
  */
 export type OwnerPayoutFailureKind = 'RETRY' | 'APPROVE_ONLY' | 'BLOCKED' | 'RECONCILE';
@@ -158,7 +158,7 @@ export function useOwnerPayoutPosting(open: boolean, right: OwnerPayoutRight): O
     try {
       const [detail] = await withDetailReadDeadline(loadIncomeExpenseDetails(target.organizationId, [target.voucherId]));
       if (!detail || detail.id !== target.voucherId || detail.organization_id !== target.organizationId) {
-        throw new OwnerPayoutStateError('Chưa đọc lại được phiếu vừa lập — tải lại rồi duyệt ở Chờ duyệt hoặc Thu chi.');
+        throw new OwnerPayoutStateError('Chưa đọc lại được phiếu vừa lập — tải lại rồi duyệt ở Thu chi.');
       }
       if (detail.approval_status === 'CANCELLED') {
         throw new OwnerPayoutStateError('Phiếu vừa lập đã bị huỷ — không duyệt / chi được nữa.', false);
@@ -166,7 +166,7 @@ export function useOwnerPayoutPosting(open: boolean, right: OwnerPayoutRight): O
       // Đã có người duyệt (hoặc lượt trước đã xong mà chưa nhận được kết quả): nói đúng trạng thái, không gửi lại.
       if (detail.approval_status === 'APPROVED') return detail.posting_status === 'POSTED' ? 'POSTED' : 'APPROVED';
       if (detail.account_id !== target.accountId) {
-        throw new OwnerPayoutStateError('Sổ quỹ trên phiếu khác sổ đã chọn lúc lập — tải lại rồi xử lý phiếu ở Chờ duyệt.', false);
+        throw new OwnerPayoutStateError('Sổ quỹ trên phiếu khác sổ đã chọn lúc lập — tải lại rồi xử lý phiếu ở Thu chi.', false);
       }
       if (target.step === 'APPROVE_AND_POST') {
         const evidenceIds = await commitTo(target.voucherId, target.organizationId);

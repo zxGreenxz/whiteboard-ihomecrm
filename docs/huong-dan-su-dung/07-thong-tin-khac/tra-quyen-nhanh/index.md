@@ -95,7 +95,7 @@ Các bảng dưới dùng đúng key `module.action`. Route là đường dẫn 
 | **Ghi chỉ số** · `/meter-readings` | `meter_readings.view/create/edit/delete/export`. |
 | **Hoá đơn** · `/invoices` | `invoices.view/create/edit/delete/approve/cancel/record_payment/print/export`. `approve` là nhạy cảm; `record_payment` cho phép ghi nhận thanh toán nhưng posting vẫn bị server/sổ kiểm lại. |
 | **Thu tiền mobile** · `/thu-tien` | `thu_tien.view`, `thu_tien.collect`, `thu_tien.undo`, `thu_tien.report`. Các route báo cáo debt cũ đều chuyển hướng về trang này. |
-| **Thu chi** · `/income-expense` | `income_expenses.view/create/edit/delete/approve/cancel/print/export/all_buildings/restricted_create/restricted_view/reverse/self_approve_within_limit`; thêm `approvals.emergency_override`. Các key `approve`, `all_buildings`, `restricted_*`, `reverse`, `self_approve_within_limit` và `emergency_override` là nhạy cảm. |
+| **Thu chi** · `/income-expense` | `income_expenses.view/create/edit/delete/approve/cancel/print/export/all_buildings/restricted_create/restricted_view/reverse/self_approve_within_limit`; thêm `approvals.emergency_override`. Các key `approve`, `all_buildings`, `restricted_*`, `reverse`, `self_approve_within_limit` và `emergency_override` là nhạy cảm. Từ 25/11/2026 màn Chờ duyệt đã bỏ: `/approvals` chuyển hướng về `/income-expense` (tab Chờ xử lý), mọi phiếu duyệt ở đây — phiếu chi lợi nhuận / tạm ứng / lương điều hành cần thêm quyền chi lợi nhuận (hoặc quyền trả lương điều hành) cùng `income_expenses.approve` ở toà của phiếu. |
 | **Tiền thừa** · `/reports/finance/overpayment` | `excess_amounts.view/create/edit/delete`. Lưu ý báo cáo hiện còn tính theo chênh lệch hoá đơn, không phải credit lot authoritative. |
 
 ::: danger Duyệt, ghi sổ và đảo bút toán là ba quyền khác nhau
@@ -155,7 +155,6 @@ Một số màn không có dòng riêng trong bộ chọn quyền; route của c
 | Trang · route | Cổng vào route | Ghi chú |
 |---|---|---|
 | **Bảng tin** · `/`, `/dashboard` | Chỉ đăng nhập | Dữ liệu vẫn lọc theo phạm vi. |
-| **Chờ duyệt** · `/approvals` | Chỉ đăng nhập | Máy chủ chỉ trả yêu cầu đang giao cho chính bạn. |
 | **Báo chi nhanh** · `/chi-tieu` | Chỉ đăng nhập | Trang tự rẽ: `income_expenses.create` ⇒ phiếu chi công ty, `personal_finance.create` ⇒ Ví cá nhân. Ô trên màn hình chính/menu chỉ hiện khi có `income_expenses.create`; lập phiếu vẫn bị máy chủ kiểm. |
 | **Thanh toán** · `/thanh-toan` | `thu_tien.collect` | |
 | **Phí cố định** · `/settings/finance/fixed-fees` | `thu_tien.collect` | |

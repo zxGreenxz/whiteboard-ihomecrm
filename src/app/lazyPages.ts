@@ -58,7 +58,6 @@ export const IncomeExpensePage = lazy(() => import("../pages/payments/IncomeExpe
 export const IncomeExpensePrintPage = lazy(() => import("../pages/payments/IncomeExpensePrintPage"));
 export const VoucherDetailPage = lazy(() => import("../pages/payments/VoucherDetailPage"));
 export const RefundLogPage = lazy(() => import("../pages/payments/RefundLogPage"));
-export const ApprovalsPage = lazy(() => import("../pages/approvals/ApprovalsPage"));
 
 // Tài sản & vật tư
 export const AssetsPage = lazy(() => import("../pages/assets/AssetsPage"));

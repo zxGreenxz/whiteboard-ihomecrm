@@ -205,20 +205,31 @@ describe("tấm chi tiết điện thoại — đủ nút như máy tính", () =
 });
 
 // Đợt 2 sổ tổng: phiếu chi lợi nhuận / lương điều hành (nguồn profit.ledger_payout | profit.manager_salary).
-// Máy chủ (chốt F1) chặn sửa, huỷ duyệt, hoàn tác, khôi phục, đổi sổ; duyệt đi màn Chờ duyệt; huỷ bằng hộp riêng.
+// Máy chủ (chốt F1) chặn sửa, huỷ duyệt, hoàn tác, khôi phục, đổi sổ; huỷ bằng hộp riêng. Duyệt NGAY Ở THU CHI như mọi
+// phiếu (chủ chốt 25/11/2026 — một đường duyệt, màn Chờ duyệt đã bỏ): hộp xác nhận duyệt hiện số dư sổ tổng.
 describe("phiếu chi theo sổ tổng — hai khổ cùng luật", () => {
   const soTong = (p: Record<string, unknown> = {}) => phieu({ system_source: "profit.ledger_payout", account_name: "Quỹ", ...p });
   const owner = { shareholder_profit: { distribute: { org_wide: true, building_ids: [] } }, income_expenses: { approve: { org_wide: true, building_ids: [] }, cancel: { org_wide: true, building_ids: [] }, reverse: { org_wide: true, building_ids: [] }, edit: { org_wide: true, building_ids: [] } } };
 
-  it("máy tính: chờ duyệt ⇒ không nút Duyệt thường, có lối sang Chờ duyệt; Huỷ gửi kèm phiếu", () => {
+  it("máy tính: chờ duyệt ⇒ nút Duyệt thật (không còn lối sang màn khác), bấm ⇒ mở duyệt đúng phiếu; Huỷ gửi kèm phiếu", () => {
     detail.data = soTong();
     env.perms = owner;
     const h = handlers();
     render(desktop(h));
-    expect(screen.queryByTitle("Duyệt phiếu")).toBeNull();
-    expect(screen.getByRole("link", { name: "Duyệt ở màn Chờ duyệt" }).getAttribute("href")).toBe("/approvals");
+    expect(screen.queryByRole("link", { name: /Chờ duyệt/ })).toBeNull();
+    fireEvent.click(screen.getByTitle("Duyệt phiếu"));
+    expect(h.onApprove).toHaveBeenCalledWith(expect.objectContaining({ id: "v", system_source: "profit.ledger_payout" }));
     fireEvent.click(screen.getByTitle("Huỷ phiếu chi theo sổ tổng (ghi lý do)"));
     expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE", expect.objectContaining({ id: "v", system_source: "profit.ledger_payout" }));
+  });
+
+  it("máy tính: có quyền chi lợi nhuận nhưng thiếu quyền duyệt thu chi ở toà ⇒ nút nói rõ lý do, VẪN bấm được (hộp duyệt khoá xác nhận)", () => {
+    detail.data = soTong();
+    env.perms = { shareholder_profit: owner.shareholder_profit };
+    const h = handlers();
+    render(desktop(h));
+    fireEvent.click(screen.getByTitle(/^Duyệt phiếu — Cần thêm quyền duyệt thu chi ở toà của phiếu/));
+    expect(h.onApprove).toHaveBeenCalledTimes(1);
   });
 
   it("máy tính: đã chi ⇒ không Mở lại / Huỷ duyệt; đã huỷ ⇒ không Khôi phục / Tạo bản sao; Đánh dấu đã kiểm vẫn còn", () => {
@@ -235,22 +246,23 @@ describe("phiếu chi theo sổ tổng — hai khổ cùng luật", () => {
     for (const title of [/^Khôi phục/, /^Tạo bản sao/, /^Huỷ phiếu/]) expect(screen.queryByTitle(title)).toBeNull();
   });
 
-  it("máy tính: không có quyền chi lợi nhuận ⇒ không lối duyệt, không Huỷ (kể cả có quyền huỷ thu chi)", () => {
+  it("máy tính: không có quyền chi lợi nhuận ⇒ không nút Duyệt, không Huỷ (kể cả có quyền duyệt / huỷ thu chi)", () => {
     detail.data = soTong();
     env.perms = { income_expenses: owner.income_expenses };
     render(desktop(handlers()));
-    expect(screen.queryByRole("link", { name: "Duyệt ở màn Chờ duyệt" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Chờ duyệt/ })).toBeNull();
     expect(screen.queryByTitle(/^Huỷ phiếu/)).toBeNull();
-    expect(screen.queryByTitle("Duyệt phiếu")).toBeNull();
+    expect(screen.queryByTitle(/^Duyệt phiếu/)).toBeNull();
   });
 
-  it("điện thoại: lối sang Chờ duyệt thay nút Duyệt; Huỷ gửi kèm phiếu; phiếu lương điều hành cần quyền trả lương điều hành", () => {
+  it("điện thoại: nút Duyệt thật (không còn lối sang Chờ duyệt); Huỷ gửi kèm phiếu; phiếu lương điều hành cần quyền trả lương điều hành", () => {
     detail.data = soTong();
     env.perms = owner;
     const h = handlers();
     render(mobile(h));
-    expect(screen.queryByRole("button", { name: "Duyệt" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Duyệt ở màn Chờ duyệt" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Duyệt ở màn Chờ duyệt" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Duyệt" }));
+    expect(h.onApprove).toHaveBeenCalledWith(expect.objectContaining({ id: "v", system_source: "profit.ledger_payout" }));
     fireEvent.click(screen.getByRole("button", { name: "Huỷ" }));
     expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE", expect.objectContaining({ id: "v" }));
     cleanup();

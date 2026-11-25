@@ -1,7 +1,6 @@
 import { QuickExpenseButton } from './QuickExpenseActions';
 import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Table,
   TableBody,
@@ -53,7 +52,6 @@ import {
   ChevronDown,
   ChevronRight,
   CornerDownRight,
-  ClipboardCheck,
 } from 'lucide-react';
 import type { FlexCancelEligibility } from '@/hooks/income-expenses/flexMutations';
 import type { IncomeCancelEligibility } from '@/hooks/income-expenses/incomeVoucherCancel';
@@ -236,8 +234,8 @@ const IncomeExpenseList = ({
     () => ({ perms, isAdmin, isSuperAdmin, isCompanyOwner, currentUserId }),
     [perms, isAdmin, isSuperAdmin, isCompanyOwner, currentUserId],
   );
-  // Phiếu chi lợi nhuận chờ duyệt do chính mình lập: đọc loại người lập (E7) — phiếu chủ lập thì tự duyệt được ngay ở
-  // đây (Chờ duyệt không liệt kê phiếu cho chính người lập), phiếu tạm ứng thì không.
+  // Phiếu chi lợi nhuận chờ duyệt do chính mình lập: đọc loại người lập (E7) — phiếu chủ lập thì tự duyệt được, phiếu
+  // tạm ứng thì không (nút Duyệt mờ kèm lý do; hộp duyệt tự đọc lại E7 trước khi cho xác nhận).
   const makerKindIds = useMemo(
     () => vouchers.filter((v) => needsLedgerMakerKind(v, viewer)).map((v) => v.id),
     [vouchers, viewer],
@@ -434,34 +432,23 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
-                    {/* Duyệt (chỉ khi nháp; quyền duyệt ở đúng toà của phiếu) */}
+                    {/* Duyệt (chỉ khi nháp; quyền duyệt ở đúng toà của phiếu). Phiếu chi theo sổ tổng cũng
+                        duyệt ở đây: hộp xác nhận hiện số dư sổ tổng. Biết trước máy chủ từ chối (vd người lập
+                        phiếu tạm ứng) ⇒ nút mờ nhưng VẪN bấm được, hộp xác nhận nói rõ lý do và khoá duyệt. */}
                     {can.approve && onApprove && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                        className={
+                          can.approveBlockedReason
+                            ? 'h-8 w-8 text-zinc-400 hover:text-zinc-500 hover:bg-zinc-100'
+                            : 'h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50'
+                        }
                         onClick={() => onApprove(voucher)}
-                        title="Duyệt phiếu (đã thanh toán)"
+                        title={can.approveBlockedReason ? `Duyệt phiếu — ${can.approveBlockedReason}` : 'Duyệt phiếu (đã thanh toán)'}
+                        aria-label={can.approveBlockedReason ? `Duyệt phiếu — ${can.approveBlockedReason}` : 'Duyệt phiếu'}
                       >
                         <CheckCircle2 className="h-4 w-4" />
-                      </Button>
-                    )}
-
-                    {/* Phiếu chi theo sổ tổng: duyệt ở màn Chờ duyệt (thấy số dư sổ tổng trước khi duyệt). */}
-                    {can.approveVia === 'INBOX' && (
-                      <Button
-                        asChild
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                      >
-                        <Link
-                          to="/approvals"
-                          title="Duyệt ở màn Chờ duyệt (xem số dư sổ tổng trước khi duyệt)"
-                          aria-label="Duyệt ở màn Chờ duyệt"
-                        >
-                          <ClipboardCheck className="h-4 w-4" />
-                        </Link>
                       </Button>
                     )}
 

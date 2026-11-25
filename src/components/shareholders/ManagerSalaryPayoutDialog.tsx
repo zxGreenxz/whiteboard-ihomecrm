@@ -183,7 +183,7 @@ export default function ManagerSalaryPayoutDialog({
         setCreated({ ...next, target: { ...next.target, step: 'APPROVE' } });
         setStepFailure({ ...failure, message: `${failure.message} Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để chỉ duyệt.` });
       } else {
-        // Từ chối vì quyền / chưa rõ kết quả ⇒ khoá "Làm tiếp" (gửi lại vẫn y lỗi), chỉ đường sang Chờ duyệt / Thu chi.
+        // Từ chối vì quyền / chưa rõ kết quả ⇒ khoá "Làm tiếp" (gửi lại vẫn y lỗi), chỉ đường sang Thu chi.
         setStepFailure(failure);
       }
       toast.warning(`Đã lập ${voucher} lương điều hành cho ${next.managerName}, đang chờ duyệt — chưa ${posted ? 'duyệt và chi' : 'duyệt'} được.`);
