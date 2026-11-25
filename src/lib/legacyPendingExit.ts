@@ -30,26 +30,24 @@ export async function settleLegacyPending<T>(
   options: LegacyPendingOptions = {},
 ): Promise<{ pending: FinancialPendingRecord; verdict: T } | null> {
   const store = options.store ?? financialPending;
-  let scope: FinancialPendingScope;
+  // Mỗi bước hỏng đều dẫn tới cùng một kết luận «không có gì để đối chiếu lúc này»: dấu cũ để nguyên (nó không chặn
+  // gì) và lần tạo sau đối chiếu lại. Không bước nào được làm hỏng lần tạo đang chạy.
+  let scope: FinancialPendingScope | undefined;
   try {
     const organizationId = globalThis.localStorage.getItem('ihomecrm.selectedOrganizationId');
     const user = await getSessionUser();
-    if (!user || !organizationId) return null;
-    scope = { namespace: site.namespace, businessKey: site.businessKey, userId: user.id, organizationId };
-  } catch {
-    return null;
-  }
-  let pending: FinancialPendingRecord | null;
-  try { pending = store.read(scope); } catch { return null; }
+    if (user && organizationId) scope = { namespace: site.namespace, businessKey: site.businessKey, userId: user.id, organizationId };
+  } catch { /* Không đọc được phiên hoặc công ty đang chọn. */ }
+  if (!scope) return null;
+  let pending: FinancialPendingRecord | null = null;
+  try { pending = store.read(scope); } catch { /* Dấu hỏng dạng hoặc kho không đọc được. */ }
   if (!pending || !pendingHasSettled(pending, options.now?.() ?? new Date())) return null;
-  let verdict: T;
-  try { verdict = await decide(pending, { userId: scope.userId, organizationId: scope.organizationId }); } catch { return null; }
-  try {
-    if (!store.clearConfirmed(scope, pending.attemptId)) return null;
-  } catch {
-    return null;
-  }
-  return { pending, verdict };
+  let decided: { verdict: T } | undefined;
+  try { decided = { verdict: await decide(pending, { userId: scope.userId, organizationId: scope.organizationId }) }; } catch { /* Tra máy chủ hỏng. */ }
+  if (!decided) return null;
+  let cleared = false;
+  try { cleared = store.clearConfirmed(scope, pending.attemptId); } catch { /* Không gỡ được dấu trong kho. */ }
+  return cleared ? { pending, verdict: decided.verdict } : null;
 }
 
 /** Cửa sổ thời gian quanh giờ kẹt để tra bản ghi lần kẹt có thể đã tạo (giờ máy và giờ máy chủ có thể lệch). */

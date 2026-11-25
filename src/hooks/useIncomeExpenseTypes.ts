@@ -259,18 +259,31 @@ export const useHiddenInReportTypes = () => {
 /**
  * Loại thu chi trùng ràng buộc duy nhất `income_expense_types_org_side_normalized_name_uq` của production:
  * (công ty, chiều thu/chi, `normalize_income_expense_type_name(name)` = bỏ dấu, chữ thường, đ→d, gộp khoảng trắng).
- * `null`: không thấy, hoặc đọc hỏng (RLS ẩn hạng mục hạn chế của người khác cũng là không thấy).
+ * `missing`: đọc được nhưng không thấy (RLS ẩn hạng mục hạn chế của người khác cũng là không thấy); `unreadable`: đọc hỏng.
  */
-async function findIncomeExpenseTypeByName(organizationId: string, side: 'income' | 'expense', name: string): Promise<IncomeExpenseType | null> {
+async function findIncomeExpenseTypeByName(organizationId: string, side: 'income' | 'expense', name: string): Promise<{ state: 'found'; row: IncomeExpenseType } | { state: 'missing' } | { state: 'unreadable' }> {
   try {
-    const { data, error } = await supabase.from('income_expense_types').select('*').eq('organization_id', organizationId).eq('type', side);
-    if (error || !Array.isArray(data)) return null;
+    const { data, error } = await supabase.from('income_expense_types').select('*').eq('organization_id', organizationId);
+    if (error || !Array.isArray(data)) return { state: 'unreadable' };
     const wanted = normalizeVietnameseName(name);
-    return (data as unknown as IncomeExpenseType[]).find(row => normalizeVietnameseName(row.name) === wanted) ?? null;
+    const row = (data as unknown as IncomeExpenseType[]).find(item => String(item.type ?? '').trim().toLowerCase() === side && normalizeVietnameseName(item.name) === wanted);
+    return row ? { state: 'found', row } : { state: 'missing' };
   } catch {
-    return null;
+    /* Lỗi mạng khi tra: không kết luận được. */
+    return { state: 'unreadable' };
   }
 }
+
+// Tên loại (công ty, chiều, tên chuẩn hoá) có lần tạo chưa rõ kết quả trong tab này: lần bấm sau gặp trùng tên thì đó là
+// loại của chính lần gửi trước, trả lại loại đó. Không phải lần gửi lại thì trùng tên là lỗi của người dùng như cũ.
+const unconfirmedTypeNames = new Set<string>();
+const typeNameKey = (organizationId: string, side: string, name: string) => `${organizationId}|${side}|${normalizeVietnameseName(name)}`;
+
+/**
+ * Loại đã có này trả lại cho nơi gọi được không: không lưu trữ, không gộp, không chỉ hệ thống, không ẩn khỏi ô chọn; hạn
+ * chế chỉ khi chính người dùng đang tạo một loại hạn chế.
+ */
+const usableType = (row: IncomeExpenseType, wantRestricted: boolean) => !row.archived_at && !row.merged_into_id && !row.system_only && !row.manual_hidden && (!row.is_restricted || wantRestricted);
 
 // --- Mutation Hooks ---
 
@@ -319,22 +332,38 @@ export const useCreateIncomeExpenseType = () => {
       }
       const { data, error } = response;
       const created = data as { id?: unknown; name?: unknown } | null;
-      if (!error && typeof created?.id === 'string' && created.id && created.name === input.name) return data as IncomeExpenseType;
+      const nameKey = typeNameKey(payload.organization_id, input.type, input.name);
+      if (!error && typeof created?.id === 'string' && created.id && created.name === input.name) {
+        unconfirmedTypeNames.delete(nameKey);
+        return data as IncomeExpenseType;
+      }
       const nameTaken = isUniqueViolation(error) && /normalized_name/.test(String((error as { message?: unknown }).message ?? ''));
       // Máy chủ từ chối rõ vì lý do khác (quyền, cột lạ…): lỗi thật, không có gì để đối chiếu.
       if (error && !nameTaken && !hasUnconfirmedResponse(error)) throw error;
       // Trùng tên, hoặc chưa rõ kết quả: tra đúng loại theo ràng buộc duy nhất (công ty, chiều, tên chuẩn hoá).
-      const existing = await findIncomeExpenseTypeByName(payload.organization_id, input.type, input.name);
-      if (existing) {
-        if (existing.archived_at || existing.merged_into_id) {
-          throw new FinancialWorkflowError(`Tên «${existing.name}» trùng với một loại thu chi đã lưu trữ hoặc đã gộp (mã ${existing.id}). Khôi phục loại đó ở Cài đặt › Loại thu chi, hoặc đặt tên khác.`, 'failure', []);
+      const found = await findIncomeExpenseTypeByName(payload.organization_id, input.type, input.name);
+      if (found.state === 'found') {
+        const existing = found.row;
+        const retry = unconfirmedTypeNames.has(nameKey);
+        unconfirmedTypeNames.delete(nameKey);
+        // Trùng tên mà không phải lần gửi lại: người dùng tạo trùng một loại đã có. Báo như trước (giữ nguyên form và
+        // thiết lập đang nhập), kèm mã loại đó.
+        if (nameTaken && !retry) {
+          throw new FinancialWorkflowError(`Loại thu chi «${existing.name}» đã có trong công ty (mã ${existing.id}). Chọn loại đó trong danh sách hoặc đặt tên khác.`, 'failure', []);
         }
-        // Trùng tên: loại đã có từ trước (hoặc do lần gửi trước). Chưa rõ kết quả mà thấy: chính lần gửi này đã ghi.
+        if (!usableType(existing, !!input.is_restricted)) {
+          throw new FinancialWorkflowError(`Tên «${existing.name}» trùng với một loại thu chi đã lưu trữ, đã gộp, chỉ hệ thống dùng, đang ẩn hoặc hạn chế (mã ${existing.id}). Khôi phục hoặc chọn loại đó ở Cài đặt › Loại thu chi nếu được phép, hoặc đặt tên khác.`, 'failure', []);
+        }
+        // Lần gửi trước (hoặc chính lần gửi mất phản hồi này) đã tạo loại đó: trả lại nó, không tạo thêm.
         return nameTaken ? { ...existing, existed: true } : existing;
       }
       if (nameTaken) {
-        throw new FinancialWorkflowError('Tên loại thu chi này đã có trong công ty nhưng bạn không xem được (có thể là hạng mục hạn chế). Đặt tên khác, hoặc nhờ chủ công ty kiểm tra.', 'failure', []);
+        unconfirmedTypeNames.delete(nameKey);
+        throw new FinancialWorkflowError(found.state === 'missing'
+          ? 'Tên loại thu chi này đã có trong công ty nhưng bạn không xem được (có thể là hạng mục hạn chế). Đặt tên khác, hoặc nhờ chủ công ty kiểm tra.'
+          : 'Tên loại thu chi này đã có trong công ty; chưa đọc lại được loại đó. Tải lại danh sách loại thu chi rồi chọn hoặc đặt tên khác.', 'failure', []);
       }
+      unconfirmedTypeNames.add(nameKey);
       throw new FinancialWorkflowError('Chưa xác nhận được kết quả tạo loại thu chi. Giữ nguyên thông tin rồi bấm lưu lại: tên loại là duy nhất trong công ty nên không tạo trùng.', 'unknown', [], error);
     },
     onSuccess: (data) => {
@@ -344,7 +373,7 @@ export const useCreateIncomeExpenseType = () => {
         queryKey: ["income-expense-type-categories"],
       });
       if ((data as { existed?: boolean } | null)?.existed) {
-        toast.success(`Loại thu chi ${feedbackRecordName(data)} đã có trong công ty; dùng loại này, không tạo thêm và không đổi thiết lập của nó.`);
+        toast.success(`Loại thu chi ${feedbackRecordName(data)} đã được tạo ở lần gửi trước; dùng loại này, không tạo thêm.`);
         return;
       }
       toast.success(`Đã tạo loại thu chi ${feedbackRecordName(data)}`);

@@ -207,7 +207,16 @@ export const useCreateHandover = () => {
       });
       // Ném NGUYÊN error (PostgrestError có .code) — new Error(error.message)
       // làm rơi code, friendlyError hết nhận diện được 55000/42501.
-      if (error) throw error;
+      if (error) {
+        // P0001 «phiếu không hợp lệ / đã nằm trong phiên khác»: lệnh cũ vừa chạy xong trước lần gửi này. Đọc lại để báo
+        // đúng mã phiên thay cho câu chung; đọc hỏng thì giữ lỗi gốc.
+        if (String((error as {code?:unknown}).code ?? '') === 'P0001') {
+          let now: VoucherHandover[] = [];
+          try { now = await readVoucherHandovers(voucherIds); } catch { /* đọc lại hỏng: báo lỗi gốc của máy chủ */ }
+          if (now.length) throw alreadyInHandover(now);
+        }
+        throw error;
+      }
       const value = data as {id?:unknown;code?:unknown;total_amount?:unknown;voucher_count?:unknown} | null;
       if (!value || typeof value.id !== 'string' || !value.id || typeof value.code !== 'string' || typeof value.total_amount !== 'number' || !Number.isFinite(value.total_amount) || !Number.isInteger(value.voucher_count) || value.voucher_count!==new Set(args.voucherIds).size) throw new FinancialWorkflowError('Chưa xác nhận được kết quả lập phiên bàn giao. Đối chiếu các phiếu đã chọn trước khi lập lại.', 'unknown', typeof value?.id === 'string' ? [{id:value.id,label:'Phiên cần đối chiếu'}] : []);
       return data as {

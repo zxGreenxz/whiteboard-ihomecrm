@@ -39,7 +39,7 @@ describe('nhập khách Excel', () => {
       .mockImplementation(async (row: Row) => ({ id: row.client_id }));
     const rows = rowsAB();
     const first = await runImport(rows, create);
-    expect(first.report?.unknownRows.map(row => row.name)).toEqual(['Khách A']);
+    expect(first.report?.unknownRows.map(row => row.name)).toEqual(['Khách A', 'Khách B']);
     expect(pendingKeys()).toEqual([]);
     expect(first.report?.retryRows?.map(row => row.client_id)).toEqual(['id-a', 'id-b']);
     const second = await runImport(first.report?.retryRows ?? rows, create);
@@ -82,6 +82,13 @@ describe('nhập khách Excel', () => {
     expect(create.mock.calls.map(([row]) => (row as Row).full_name)).toEqual(['Khách B']);
     expect(report?.skippedRows?.map(row => row.id)).toEqual(['c-old']);
     expect(localStorage.getItem(key)).toBeNull();
+  });
+
+  it('dòng mà khách mang mã của nó đã có (nhập lại cùng file): báo riêng «đã có từ lượt trước», không tính là tạo mới', async () => {
+    const create = vi.fn(async (row: Row) => ({ id: row.client_id, replayed: row.client_id === 'id-a' }));
+    const { report } = await runImport(rowsAB(), create);
+    expect(report?.skippedRows?.map(row => row.id)).toEqual(['id-a']);
+    expect(report?.successRows.map(row => row.id)).toEqual(['id-b']);
   });
 
   it('một dòng kẹt không chặn lượt nhập khác', async () => {

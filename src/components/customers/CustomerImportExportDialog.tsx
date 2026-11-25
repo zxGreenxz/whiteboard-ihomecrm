@@ -106,8 +106,13 @@ export function CustomerImportExportDialog({
     if (!parseResult || importing.current || isImporting) return;
     importing.current=true;
     setIsImporting(true);
+    const rememberIds = () => {
+      // Lượt nhập có thể đổi mã khách của dòng (khách cũ của dòng đã bị xoá ⇒ tạo lại bằng mã mới): nhớ mã thật.
+      for (const row of parseResult.validRows) if (row.client_id) rowIds.current.set([row.full_name, row.phone, row.id_number ?? ''].join('|'), row.client_id);
+    };
     try {
       const retryRows = await onImport(parseResult.validRows);
+      rememberIds();
       importing.current=false;setIsImporting(false);setParseError(null);
       if (retryRows && retryRows.length) {
         // Không khoá hộp: giữ đúng các dòng chưa xong (cùng mã khách của từng dòng) để người dùng bấm nhập lại.
@@ -118,6 +123,7 @@ export function CustomerImportExportDialog({
       }
       handleClose(true);
     } catch (error) {
+      rememberIds();
       setParseError(recordWriteMessage(error,'nhập khách hàng'));
     } finally {
       importing.current=false;setIsImporting(false);

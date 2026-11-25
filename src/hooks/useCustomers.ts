@@ -224,8 +224,8 @@ export type CreateCustomerInput = CustomerFormData & { clientId?: string };
 
 /**
  * Dấu khoá chung của bản trước đợt 4 (`customer-create`/`create`, một dấu cho mọi khách mới): đọc một lần, tra
- * khách người này đã tạo quanh giờ kẹt, gỡ dấu. Khách đang tạo giống một khách như thế (cùng SĐT, tên hoặc số giấy
- * tờ) thì báo «có thể đã tạo» kèm mã và không tạo; lần bấm sau là lượt mới của người dùng.
+ * khách người này đã tạo quanh giờ kẹt (chưa xoá), gỡ dấu. Khách đang tạo giống một khách như thế (cùng SĐT hoặc số
+ * giấy tờ; không có SĐT thì cùng tên) thì báo «có thể đã tạo» kèm mã và không tạo; lần bấm sau là lượt mới.
  */
 async function checkLegacyCustomerPending(matchKeys: readonly string[]): Promise<void> {
   const settled = await settleLegacyPending({namespace:'customer-create',businessKey:'create'}, (pending, context) => legacyCustomerCandidates(pending, context));
@@ -238,12 +238,12 @@ type LegacyCustomerCandidate = {id:string;full_name:string|null;phone:string|nul
 export async function legacyCustomerCandidates(pending: FinancialPendingRecord, context: {userId:string;organizationId:string}): Promise<LegacyCustomerCandidate[]> {
   const {from,to}=legacyWindow(pending);
   const columns='id, full_name, phone, id_number, created_at';
-  const {data,error}=await supabase.from('customers').select(columns).eq('user_id',context.userId).eq('organization_id',context.organizationId).gte('created_at',from).lte('created_at',to).order('created_at',{ascending:false}).limit(50);
+  const {data,error}=await supabase.from('customers').select(columns).eq('user_id',context.userId).eq('organization_id',context.organizationId).is('deleted_at',null).gte('created_at',from).lte('created_at',to).order('created_at',{ascending:false}).limit(50);
   if(error||!Array.isArray(data))throw error??new Error('Chưa đọc được khách quanh giờ kẹt.');
   const rows=[...data] as LegacyCustomerCandidate[];
   const known=pending.completedIds.filter(id=>!rows.some(row=>row.id===id));
   if(known.length){
-    const {data:byId,error:byIdError}=await supabase.from('customers').select(columns).in('id',known);
+    const {data:byId,error:byIdError}=await supabase.from('customers').select(columns).in('id',known).is('deleted_at',null);
     if(byIdError||!Array.isArray(byId))throw byIdError??new Error('Chưa đọc được khách của dấu cũ.');
     rows.push(...(byId as LegacyCustomerCandidate[]));
   }
@@ -263,17 +263,26 @@ export const useCreateCustomer = (options: {silent?:boolean} = {}) => {
       const {vehicles,...customerData}=formData;
       vehicles?.forEach(vehicle=>validatedVehicleType(vehicle.vehicle_type));
       const payload=withOrg({...customerData,user_id:user.id,status_v2:'WALK_IN'} as Record<string,unknown>,selectedOrganizationId);
-      const matchKeys=personMatchKeys({name:customerData.full_name,phone:customerData.phone,idNumber:customerData.id_number});
-      if(!clientId)await checkLegacyCustomerPending(matchKeys);
+      const person={name:customerData.full_name,phone:customerData.phone,idNumber:customerData.id_number};
+      if(!clientId)await checkLegacyCustomerPending(personMatchKeys(person));
       const {row,replayed}=await createWithClientMemory<Customer&{id:string}>({
-        table:'customers',userId:user.id,organizationId:payload.organization_id,payload,matchKeys,clientId,
+        table:'customers',userId:user.id,organizationId:payload.organization_id,payload,person,clientId,
+        personOf:row=>({name:row.full_name,phone:row.phone,idNumber:row.id_number}),
         operation:'tạo khách hàng',describe:row=>`Khách hàng ${String(row.full_name ?? '')}`.trim(),
+        alreadyNote:vehicles?.length?'Xe nhập ở lần này chưa được lưu; thêm xe trong trang khách.':undefined,
       });
       const customer=row as Customer;
       if(!vehicles?.length)return {customer,replayed};
       // Khách đã có. Bước lưu xe hỏng thì báo «chưa lưu được xe» kèm mã khách, không giữ dấu nào: người dùng mở
-      // khách để thêm xe. Lần gửi trước đã tạo khách (mất phản hồi) thì nó chưa tới bước xe, nên lưu xe ở đây.
+      // khách để thêm xe.
       try{
+        if(replayed){
+          // Khách do một lần gửi trước tạo. Lần đó có thể đã (hoặc đang) lưu xe: khách mới tinh mà đã có xe thì xe là của
+          // lần đó, không lưu thêm.
+          const {data:existing,error:readError}=await supabase.from('vehicles').select('id').eq('customer_id',customer.id).is('deleted_at',null);
+          if(readError||!Array.isArray(existing))throw readError??new Error('Chưa đọc được xe hiện có của khách.');
+          if(existing.length)return {customer,replayed};
+        }
         const inserts=vehicles.map(v=>({user_id:user.id,customer_id:customer.id,vehicle_type:validatedVehicleType(v.vehicle_type),vehicle_name:v.vehicle_name,color:v.color||null,license_plate:v.license_plate}));
         const {data:rows,error:vehicleError}=await supabase.from('vehicles').insert(withOrgAll(inserts,payload.organization_id) as never).select('id');
         if(vehicleError)throw vehicleError;
@@ -287,7 +296,7 @@ export const useCreateCustomer = (options: {silent?:boolean} = {}) => {
       refresh();if(options.silent)return;
       if(result.vehicleError){toast.error(`Khách hàng ${result.customer.full_name || result.customer.id} đã tạo, phương tiện chưa hoàn tất.`,{description:recordWriteMessage(result.vehicleError,'lưu phương tiện')});return;}
       toast.success(result.replayed
-        ? `Khách hàng ${result.customer.full_name || result.customer.id} đã được tạo ở lần gửi trước; không tạo thêm.`
+        ? `Khách hàng ${result.customer.full_name || result.customer.id} đã có trên máy chủ (lần gửi trước hoặc lần gửi mất phản hồi đã tạo); không tạo thêm.`
         : `Đã tạo khách hàng ${result.customer.full_name || result.customer.id}`);
     },
     onError:error=>{refresh();if(!options.silent)toast.error('Chưa tạo được khách hàng',{description:recordWriteMessage(error,'tạo khách hàng')});},

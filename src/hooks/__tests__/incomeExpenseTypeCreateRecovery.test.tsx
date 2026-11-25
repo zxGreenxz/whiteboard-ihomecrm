@@ -77,16 +77,34 @@ describe('tạo loại thu chi', () => {
     expect(io.server.rows.income_expense_types).toHaveLength(1);
   });
 
-  it('tên đã có trong công ty (khác hoa thường, dấu, khoảng trắng): trả loại đã có, không tạo thêm', async () => {
+  it('tên đã có trong công ty (khác hoa thường, dấu, khoảng trắng), không phải lần gửi lại: báo trùng kèm mã, không tạo thêm', async () => {
     io.server.rows.income_expense_types = [{ id: 't-old', organization_id: 'org-a', type: 'expense', name: 'Vệ Sinh  Phòng' }];
-    const existing = await create()({ name: 've sinh phong', type: 'expense' });
-    expect(existing).toMatchObject({ id: 't-old', existed: true });
+    await expect(create()({ name: 've sinh phong', type: 'expense' })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('t-old') });
     expect(io.server.rows.income_expense_types).toHaveLength(1);
   });
 
-  it('tên trùng loại đã lưu trữ: báo rõ, không trả loại đó để dùng', async () => {
-    io.server.rows.income_expense_types = [{ id: 't-arch', organization_id: 'org-a', type: 'expense', name: 'Vệ sinh', archived_at: '2026-10-01T00:00:00Z' }];
-    await expect(create()({ name: 'Vệ sinh', type: 'expense' })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('lưu trữ') });
+  it('lần gửi lại sau chưa rõ: gặp trùng tên thì trả đúng loại đó (existed), không tạo thêm', async () => {
+    const mutate = create();
+    io.server.failNext('income_expense_types', 'insert', 'drop-after');
+    io.server.failNext('income_expense_types', 'read', 'drop-before');
+    await expect(mutate({ name: 'Vệ sinh', type: 'expense' })).rejects.toMatchObject({ outcome: 'unknown' });
+    await expect(mutate({ name: 'VỆ SINH', type: 'expense' })).resolves.toMatchObject({ existed: true });
+    expect(io.server.rows.income_expense_types).toHaveLength(1);
+  });
+
+  it.each([['đã lưu trữ', { archived_at: '2026-10-01T00:00:00Z' }], ['chỉ hệ thống', { system_only: true }], ['ẩn khỏi ô chọn', { manual_hidden: true }]])('lần gửi lại gặp loại trùng tên %s: báo rõ, không trả loại đó để dùng', async (_label, flags) => {
+    const mutate = create();
+    io.server.failNext('income_expense_types', 'insert', 'drop-before');
+    io.server.failNext('income_expense_types', 'read', 'drop-before');
+    await expect(mutate({ name: 'Vệ sinh', type: 'expense' })).rejects.toMatchObject({ outcome: 'unknown' });
+    io.server.rows.income_expense_types = [{ id: 't-arch', organization_id: 'org-a', type: 'expense', name: 'Vệ sinh', ...flags }];
+    await expect(mutate({ name: 'Vệ sinh', type: 'expense' })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('lưu trữ') });
+  });
+
+  it('trùng tên mà tra lại hỏng: báo trùng tên và chưa đọc được, không đổ cho quyền xem', async () => {
+    io.server.rows.income_expense_types = [{ id: 't-old', organization_id: 'org-a', type: 'expense', name: 'Vệ sinh' }];
+    io.server.failNext('income_expense_types', 'read', 'drop-before');
+    await expect(create()({ name: 'Vệ sinh', type: 'expense' })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('chưa đọc lại được') });
   });
 
   it('tên trùng nhưng không đọc thấy loại đó (hạng mục hạn chế của người khác): báo trùng tên, không coi là chưa rõ', async () => {

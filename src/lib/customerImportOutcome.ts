@@ -27,12 +27,12 @@ async function legacyImportCandidates():Promise<LegacyCandidate[]>{
  const settled=await settleLegacyPending({namespace:'customer-import',businessKey:'batch'},async(pending,context)=>{
   const {from,to}=legacyWindow(pending);
   const columns='id, full_name, phone, id_number, created_at';
-  const {data,error}=await supabase.from('customers').select(columns).eq('user_id',context.userId).eq('organization_id',context.organizationId).gte('created_at',from).lte('created_at',to).order('created_at',{ascending:false}).limit(500);
+  const {data,error}=await supabase.from('customers').select(columns).eq('user_id',context.userId).eq('organization_id',context.organizationId).is('deleted_at',null).gte('created_at',from).lte('created_at',to).order('created_at',{ascending:false}).limit(500);
   if(error||!Array.isArray(data))throw error??new Error('Chưa đọc được khách quanh giờ kẹt.');
   const rows=[...data] as LegacyCandidate[];
   const known=pending.completedIds.filter(id=>!rows.some(row=>row.id===id));
   if(known.length){
-   const {data:byId,error:byIdError}=await supabase.from('customers').select(columns).in('id',known);
+   const {data:byId,error:byIdError}=await supabase.from('customers').select(columns).in('id',known).is('deleted_at',null);
    if(byIdError||!Array.isArray(byId))throw byIdError??new Error('Chưa đọc được khách của dấu cũ.');
    rows.push(...(byId as LegacyCandidate[]));
   }
@@ -65,11 +65,19 @@ export async function importCustomerBatch(rows:CustomerImportRow[],steps:{create
    // Chưa rõ kết quả: dừng lượt (mạng có thể đang hỏng), báo dòng này và các dòng sau để nhập lại đúng mã.
    result.unknownRows.push({name:row.full_name,reason});
    const rest=rows.slice(index+1);
-   for(const remaining of rest)result.failRows.push({name:remaining.full_name,reason:'Chưa gửi dòng này vì dòng trước chưa xác nhận được kết quả. Bấm nhập lại các dòng chưa xong.'});
+   for(const remaining of rest)result.unknownRows.push({name:remaining.full_name,reason:'Chưa gửi dòng này vì dòng trước chưa xác nhận được kết quả. Bấm nhập lại các dòng chưa xong.'});
    result.retryRows.push(row,...rest);
    break;
   }
   const id=created.id;
+  // Mã thật của khách (khác mã đã gửi khi khách cũ của dòng đã bị xoá và phải tạo lại bằng mã mới).
+  row.client_id=id;
+  if(created.replayed){
+   // Khách mang mã của dòng này đã có từ lượt trước (dòng chưa rõ đã ghi, hoặc nhập lại cùng file): không tạo thêm,
+   // không cập nhật theo file lần này, không tải lại ảnh.
+   result.skippedRows.push({name:row.full_name,id,reason:`Đã có từ lượt nhập trước (mã ${id}); không tạo thêm và không cập nhật theo file lần này. Kiểm tra ảnh CCCD của khách nếu cần.`});
+   continue;
+  }
   if(row.id_image_urls?.length){
    try{
     const images=await steps.uploadImages(id,row.id_image_urls);await saveImportedCustomerImages(id,images);

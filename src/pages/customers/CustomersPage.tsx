@@ -358,7 +358,7 @@ function CustomersDesktopPage() {
                   {importResult.skippedRows.length > 0 && (
                     <div className="flex items-center gap-2 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex-1">
                       <AlertTriangle className="h-5 w-5 shrink-0" />
-                      <span className="text-sm font-medium">{importResult.skippedRows.length} bỏ qua, có thể đã có</span>
+                      <span className="text-sm font-medium">{importResult.skippedRows.length} bỏ qua vì đã có hoặc có thể đã có</span>
                     </div>
                   )}
                 </div>

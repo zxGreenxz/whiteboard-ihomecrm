@@ -124,13 +124,14 @@ export const useLead = (id: string) => {
 
 /**
  * Dấu khoá chung của bản trước đợt 4 (`useCreateLead`/`create`): đọc một lần, tra khách hẹn người này tạo quanh giờ
- * kẹt, gỡ dấu. Khách hẹn đang tạo giống một khách hẹn như thế (cùng SĐT hoặc tên) thì báo «có thể đã tạo» kèm mã.
+ * kẹt (chưa xoá), gỡ dấu. Khách hẹn đang tạo giống một khách hẹn như thế (cùng SĐT; không có SĐT thì cùng tên) thì báo
+ * «có thể đã tạo» kèm mã.
  */
 async function checkLegacyLeadPending(matchKeys: readonly string[]): Promise<void> {
   const settled = await settleLegacyPending({ namespace: 'useCreateLead', businessKey: 'create' }, async (pending, context) => {
     const { from, to } = legacyWindow(pending);
     const { data, error } = await supabase.from('leads').select('id, customer_name, phone, created_at')
-      .eq('user_id', context.userId).eq('organization_id', context.organizationId)
+      .eq('user_id', context.userId).eq('organization_id', context.organizationId).is('deleted_at', null)
       .gte('created_at', from).lte('created_at', to).order('created_at', { ascending: false }).limit(50);
     if (error || !Array.isArray(data)) throw error ?? new Error('Chưa đọc được khách hẹn quanh giờ kẹt.');
     return data as { id: string; customer_name: string | null; phone: string | null }[];
@@ -152,10 +153,11 @@ export const useCreateLead = () => {
       if (!user) throw new Error('Not authenticated');
       const payload = withOrg({ ...data, user_id: user.id } as Record<string, unknown>, selectedOrganizationId);
       delete payload.id;
-      const matchKeys = personMatchKeys({ name: data.customer_name, phone: data.phone });
-      await checkLegacyLeadPending(matchKeys);
+      const person = { name: data.customer_name, phone: data.phone };
+      await checkLegacyLeadPending(personMatchKeys(person));
       const { row, replayed } = await createWithClientMemory<Lead>({
-        table: 'leads', userId: user.id, organizationId: payload.organization_id, payload, matchKeys,
+        table: 'leads', userId: user.id, organizationId: payload.organization_id, payload, person,
+        personOf: row => ({ name: row.customer_name, phone: row.phone }),
         operation: 'tạo khách hẹn', describe: row => `Khách hẹn ${String(row.customer_name ?? '')}`.trim(),
       });
       return replayed ? { ...row, replayed } : row;
@@ -163,7 +165,7 @@ export const useCreateLead = () => {
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       toast.success(lead.replayed
-        ? `Khách hẹn ${lead.customer_name || ''} đã được tạo ở lần gửi trước; không tạo thêm.`.replace(/\s+/g, ' ')
+        ? `Khách hẹn ${lead.customer_name || ''} đã có trên máy chủ (lần gửi trước hoặc lần gửi mất phản hồi đã tạo); không tạo thêm.`.replace(/\s+/g, ' ')
         : `Đã tạo khách hẹn ${lead.customer_name || ''}`.trim());
     },
     onError: (error: Error) => {

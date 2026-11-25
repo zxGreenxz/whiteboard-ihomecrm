@@ -8,7 +8,7 @@ import { fakeRecordServer, pendingKeys, seedLegacyPending, type FakeRecordServer
 
 const io = vi.hoisted(() => ({ server: undefined as unknown as FakeRecordServer }));
 vi.mock('@tanstack/react-query', () => ({ useMutation: (config: unknown) => config, useQuery: (config: unknown) => config, useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), rpc: (name: string, args: Record<string, unknown>) => io.server.rpc(name, args) } }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), get rpc() { return io.server.rpc; } } }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor' }) }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'actor' } }) }));
 vi.mock('@/hooks/useReceivingCashbooks', () => ({ useReceivingCashbooks: () => ({ data: null }) }));
@@ -95,6 +95,19 @@ describe('lập phiên bàn giao tiền', () => {
     io.server.failNext('income_expenses', 'read', 'drop-before');
     await expect(create()({ receiverId: 'boss', voucherIds: ['v1'] })).rejects.toBeTruthy();
     expect(rpcCount()).toBe(0);
+    expect(pendingKeys()).toEqual([]);
+  });
+
+  it('lệnh cũ chạy xong ngay trước lần gửi lại (máy chủ trả P0001): đọc lại, báo đúng mã phiên thay cho câu chung', async () => {
+    const mutate = create();
+    io.server.failNext('create_cash_handover', 'rpc', 'drop-before');
+    await expect(mutate({ receiverId: 'boss', voucherIds: ['v1', 'v2'] })).rejects.toMatchObject({ outcome: 'unknown' });
+    io.server.rpcHandlers.create_cash_handover = () => {
+      (io.server.rows.cash_handovers ??= []).push({ id: 'h-race', code: 'BG2511077', status: 'PENDING', giver_id: 'actor' });
+      for (const row of io.server.rows.income_expenses) if (['v1', 'v2'].includes(row.id as string)) row.handover_id = 'h-race';
+      return { data: null, error: { code: 'P0001', message: 'Có phiếu không hợp lệ (đã xoá / đã nằm trong phiên bàn giao khác / chưa duyệt)' } };
+    };
+    await expect(mutate({ receiverId: 'boss', voucherIds: ['v1', 'v2'] })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('BG2511077') });
     expect(pendingKeys()).toEqual([]);
   });
 

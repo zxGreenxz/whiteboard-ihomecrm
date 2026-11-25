@@ -7,7 +7,7 @@ import { fakeRecordServer, pendingKeys, seedLegacyPending, type FakeRecordServer
 
 const io = vi.hoisted(() => ({ server: undefined as unknown as FakeRecordServer }));
 vi.mock('@tanstack/react-query', () => ({ useMutation: (config: unknown) => config, useQuery: (config: unknown) => config, useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }) }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), rpc: (name: string, args: Record<string, unknown>) => io.server.rpc(name, args) } }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table) } }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor' }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
@@ -96,6 +96,55 @@ describe('tạo khách: lệnh tới nhưng mất phản hồi', () => {
     // Đã báo xong: lần bấm sau là lượt mới của người dùng.
     await mutate({ ...an, full_name: 'Khách An Nguyễn' });
     expect(io.server.rows.customers).toHaveLength(2);
+  });
+});
+
+describe('tạo khách: mã đã có trên máy chủ (review lượt 1)', () => {
+  it('khách của lần gửi chưa rõ đã bị xoá: lần bấm sau tạo lại bằng mã MỚI, không báo «đã tạo»', async () => {
+    const mutate = create();
+    io.server.failNext('customers', 'insert', 'drop-after');
+    io.server.failNext('customers', 'read', 'drop-before');
+    await expect(mutate(an)).rejects.toMatchObject({ outcome: 'unknown' });
+    io.server.rows.customers[0].deleted_at = '2026-11-25T01:00:00Z';
+    const result = await mutate(an);
+    expect(result.replayed).toBe(false);
+    expect(result.customer.id).not.toBe(customerInserts()[0].id);
+    expect(io.server.rows.customers.filter(row => !row.deleted_at)).toHaveLength(1);
+  });
+
+  it('trùng mã mà đọc lại không thấy (RLS ẩn): báo đã có kèm mã, không coi là máy chủ từ chối; lần sau là lượt mới', async () => {
+    const mutate = create();
+    io.server.failNext('customers', 'insert', 'drop-after');
+    io.server.failNext('customers', 'read', 'drop-before');
+    await expect(mutate(an)).rejects.toMatchObject({ outcome: 'unknown' });
+    const firstId = String(customerInserts()[0].id);
+    io.server.visible.customers = () => false;
+    await expect(mutate(an)).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining(firstId) });
+    io.server.visible.customers = () => true;
+    await mutate(an);
+    expect(customerInserts()[2].id).not.toBe(firstId);
+  });
+
+  it('trùng mã mà đọc lại hỏng: vẫn là chưa rõ (giữ mã), không phải lỗi bị từ chối', async () => {
+    const mutate = create();
+    io.server.failNext('customers', 'insert', 'drop-after');
+    io.server.failNext('customers', 'read', 'drop-before');
+    await expect(mutate(an)).rejects.toMatchObject({ outcome: 'unknown' });
+    io.server.failNext('customers', 'read', 'drop-before');
+    await expect(mutate(an)).rejects.toMatchObject({ outcome: 'unknown' });
+    const result = await mutate(an);
+    expect(result.customer.id).toBe(customerInserts()[0].id);
+    expect(io.server.rows.customers).toHaveLength(1);
+  });
+
+  it('khách khác trùng TÊN (khác SĐT) không dùng lại mã của lần gửi chưa rõ', async () => {
+    const mutate = create();
+    io.server.failNext('customers', 'insert', 'drop-before');
+    io.server.failNext('customers', 'read', 'drop-before');
+    await expect(mutate(an)).rejects.toMatchObject({ outcome: 'unknown' });
+    await mutate({ full_name: 'Khách An', phone: '0911111111' });
+    const [first, other] = customerInserts();
+    expect(other.id).not.toBe(first.id);
   });
 });
 
