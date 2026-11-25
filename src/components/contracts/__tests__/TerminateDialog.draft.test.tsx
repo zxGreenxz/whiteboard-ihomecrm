@@ -101,6 +101,8 @@ describe('lưu nháp ở bước quyết toán', () => {
     await waitFor(() => expect(screen.getByText('Quyết toán — Khách rời phòng')).toBeTruthy());
     expect((screen.getByPlaceholderText('Ghi chú thanh lý...') as HTMLTextAreaElement).value).toBe('Đã trừ tiền vệ sinh');
     expect((screen.getByLabelText('Tiền cọc hoàn trả') as HTMLInputElement).value).toBe('3.000.000');
+    // Nháp cũ có số hoàn thấp hơn cọc đã thu: áp luật mới ngay khi mở (dòng giữ lại hiện trước khi bấm quyết toán).
+    expect(screen.getByTestId('deposit-retained-line').textContent).toContain('Cọc giữ lại theo thoả thuận: 1.000.000đ');
     expect(lastExtra()).toMatchObject({ initialDraft: extra });
     expect(lastExtra().meterOptional).toBeFalsy();
     expect(lastRefund()).toMatchObject({ initialDraft: refund });

@@ -14,7 +14,7 @@ const fixtures = vi.hoisted(() => {
 });
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:fixtures.id})}));
 const exitTerms=vi.hoisted(()=>({fetch:vi.fn(async():Promise<unknown[]>=>[])}));
-vi.mock('@/hooks/contracts/useContractExitEarlyTerms',()=>({fetchContractExitEarlyTerms:exitTerms.fetch}));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms',()=>({fetchContractExitEarlyTerms:exitTerms.fetch,useContractExitEarlyTerms:()=>({data:[],isError:false,error:null,refetch:()=>undefined})}));
 vi.mock('sonner',()=>({toast:{info:vi.fn(),error:vi.fn(),success:vi.fn()}}));
 vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{__superadmin:true}})}));
 vi.mock('@/hooks/useMyBuildingScope',()=>({useMyBuildingScope:()=>({hasAnyScope:true})}));

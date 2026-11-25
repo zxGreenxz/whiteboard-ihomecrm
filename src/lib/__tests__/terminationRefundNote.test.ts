@@ -108,7 +108,7 @@ describe("buildTerminationCard — khung tổng hợp khớp màn thanh lý", ()
     expect(card.warning).toBeNull();
     const byLabel = Object.fromEntries(card.rows.map((r) => [r.label, r]));
     expect(byLabel["Tổng công nợ"].amount).toBe(0);
-    expect(byLabel["Tiền cọc hoàn trả"].amount).toBe(4_200_000);
+    expect(byLabel["Cọc đem ra quyết toán"].amount).toBe(4_200_000);
     expect(byLabel["Tiền phòng thừa"].amount).toBe(0);
     expect(byLabel["Hoàn lại khách"].amount).toBe(700_000);
     expect(byLabel["Hoàn lại khách"].sub).toEqual([

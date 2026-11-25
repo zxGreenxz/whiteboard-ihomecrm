@@ -14,7 +14,9 @@ vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({
   useSetContractExitEarlyTerms: () => ({ mutateAsync: early.setTerms, isPending: false }),
   useUpdateContractExitBrokerFee: () => ({ mutateAsync: early.updateFee, isPending: false }),
   useCreateContractExitCommission: () => ({ mutateAsync: early.createCommission, isPending: false }),
+  useReverseContractExitSupport: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true } }) }));
 vi.mock('@/hooks/useMeters', () => ({ useMeters: () => meters }));
 vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({
   useContractExitSettlementDraft: () => ({ data: null, isPending: false, isError: false, isSuccess: true, isFetching: false, isFetchedAfterMount: true, refetch: vi.fn() }),
@@ -59,6 +61,45 @@ describe('thanh lý tách bước trả phòng', () => {
     expect((field as HTMLInputElement).value).toBe('2.000.000');
     fireEvent.change(field,{target:{value:'4000000'}});
     expect((field as HTMLInputElement).value).toBe('4.000.000');
+  });
+
+  it('chủ nhà hỗ trợ, hoàn một phần cọc: tự thêm dòng "Cọc giữ lại theo thoả thuận", gửi cọc đem ra bằng cọc đã thu', async () => {
+    early.data = [landlordRow()];
+    spies.finalize.mockResolvedValue({ state: 'FINALIZED' });
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={{ ...contract, total_deposit: 4_500_000, deposit_paid: 4_500_000 }}
+      exitCase={{id:EXIT_FIXTURE_IDS.exitCase,current_kind:'EARLY_RETURN',initial_kind:'EARLY_RETURN',actual_move_out_on:'2026-12-01',version:1,state:'PENDING',kind_history:[]} as import('@/lib/contractExitCases').ContractExitCase} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Tiếp tục quyết toán' }));
+    const field = screen.getByLabelText('Tiền cọc hoàn trả') as HTMLInputElement;
+    expect(field.value).toBe('4.500.000');
+    expect(screen.queryByTestId('deposit-retained-line')).toBeNull();
+    fireEvent.change(field, { target: { value: '2500000' } });
+    expect(screen.getByTestId('deposit-retained-line').textContent).toContain('Cọc giữ lại theo thoả thuận: 2.000.000đ');
+    expect(screen.getByTestId('deposit-retained-line').textContent).toContain('Cọc đem ra quyết toán: 4.500.000đ');
+    fireEvent.click(screen.getByRole('button', { name: /Lập hoá đơn & thanh lý/i }));
+    // Hộp xác nhận nói rõ dòng giữ lại trước khi bấm.
+    expect((await screen.findByTestId('confirm-deposit-retained')).textContent).toMatch(/Cọc giữ lại theo thoả thuận \(doanh thu\)2\.000\.000 đ/);
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận thanh lý' }));
+    await waitFor(() => expect(spies.finalize).toHaveBeenCalledOnce());
+    expect(spies.finalize.mock.calls[0][0].settlement).toMatchObject({ depositRefund: 4_500_000,
+      extraCharges: [{ kind: 'DEPOSIT_RETAINED', description: 'Cọc giữ lại theo thoả thuận', amount: 2_000_000 }] });
+  });
+
+  it('sổ cọc ghi dôi: nhập từ cọc HĐ trở lên không thêm dòng giữ lại; dưới cọc HĐ chỉ phần dưới thành dòng giữ lại', async () => {
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={{ ...contract, total_deposit: 2_000_000, deposit_paid: 4_000_000 }} />);
+    fireEvent.click(screen.getByLabelText('Hết hạn hợp đồng'));
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng nội dung mẫu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tiếp tục quyết toán ngay' }));
+    const field = await screen.findByLabelText('Tiền cọc hoàn trả') as HTMLInputElement;
+    expect(screen.getByText(/Sổ cọc ghi nhận cao hơn mức thỏa thuận/)).toBeTruthy();
+    fireEvent.change(field, { target: { value: '3000000' } });
+    expect(screen.queryByTestId('deposit-retained-line')).toBeNull();
+    fireEvent.change(field, { target: { value: '1500000' } });
+    expect(screen.getByTestId('deposit-retained-line').textContent).toContain('Cọc giữ lại theo thoả thuận: 500.000đ');
+    fireEvent.click(screen.getByRole('button', { name: /Lập hoá đơn & thanh lý/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Xác nhận thanh lý' }));
+    await waitFor(() => expect(spies.confirm).toHaveBeenCalledOnce());
+    expect(spies.confirm.mock.calls[0][0]).toMatchObject({ initialKind: 'NATURAL_EXPIRY', settlementMode: 'IMMEDIATE',
+      settlement: { depositRefund: 2_000_000, extraCharges: [{ kind: 'DEPOSIT_RETAINED', description: 'Cọc giữ lại theo thoả thuận', amount: 500_000 }] } });
   });
 
   it('không mở quyết toán tiền khi truy vấn công nợ hoặc credit lỗi', () => {
@@ -150,6 +191,25 @@ describe('thanh lý tách bước trả phòng', () => {
     await waitFor(() => expect(close).toHaveBeenCalledWith(false));
     expect(spies.finalize.mock.calls[0][0].settlement.extraCharges).toEqual([]);
     expect(early.createCommission).not.toHaveBeenCalled();
+  });
+  it('có số khách cũ hỗ trợ: bước 1 hiện số và khoá Đổi trường hợp; quyết toán dùng cọc còn lại, báo đã cấn và ghi vào ghi chú', async () => {
+    early.data = [linkedExitTermsRow({ early_reason: 'SELF_FOUND', sale_name: null, broker_fee: 0, support_amount: 1_200_000,
+      support_out_code: 'PC2611012', support_in_code: 'PT2611003', old_contract_deposit_paid: 2_800_000 })];
+    spies.finalize.mockResolvedValue({ state: 'FINALIZED' });
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={{ ...contract, deposit_paid: 2_800_000 }} exitCase={{id:EXIT_FIXTURE_IDS.exitCase,current_kind:'EARLY_RETURN',initial_kind:'EARLY_RETURN',actual_move_out_on:'2026-12-01',version:1,state:'PENDING',kind_history:[]} as import('@/lib/contractExitCases').ContractExitCase} />);
+    expect(screen.getByTestId('exit-support-summary').textContent).toContain('1.200.000 đ');
+    expect(screen.getByRole('button', { name: 'Đổi trường hợp' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Đảo số hỗ trợ' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tiếp tục quyết toán' }));
+    expect(screen.getByTestId('exit-support-line').textContent).toContain('Đã cấn sang HD-0202: 1.200.000đ');
+    expect((screen.getByLabelText('Tiền cọc hoàn trả') as HTMLInputElement).value).toBe('2.800.000');
+    fireEvent.change(screen.getByPlaceholderText('Ghi chú thanh lý...'), { target: { value: 'Bàn giao đủ' } });
+    fireEvent.click(screen.getByRole('button', { name: /Lập hoá đơn & thanh lý/i }));
+    expect((await screen.findByText('Đã cấn sang cọc hợp đồng khách nhận (khách cũ hỗ trợ)')).parentElement?.textContent).toContain('1.200.000 đ');
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận thanh lý' }));
+    await waitFor(() => expect(spies.finalize).toHaveBeenCalledOnce());
+    expect(spies.finalize.mock.calls[0][0].settlement).toMatchObject({ depositRefund: 2_800_000,
+      notes: 'Bàn giao đủ\nKhách cũ hỗ trợ khách nhận phòng 1.200.000đ: đã cấn sang cọc hợp đồng mới HD-0202 (phiếu PC2611012 / PT2611003).' });
   });
   it('hồ sơ sang nhượng mà đổi loại khỏi trước hạn thì chặn, chỉ đường đổi trường hợp', () => {
     early.data = [linkedExitTermsRow()];
