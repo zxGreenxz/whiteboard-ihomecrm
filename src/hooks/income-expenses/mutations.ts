@@ -7,8 +7,10 @@ import { createdVoucherFeedback, voucherFailureMessage } from "@/lib/voucherFeed
 import { SYSTEM_ONLY_MANUAL_BLOCKED_FEEDBACK, isSystemOnlyManualBlocked } from "@/lib/friendlyError";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
 import { isIeCreateFallbackSignal } from "@/lib/canonicalFallback";
+import { FinancialAlreadyRecordedError } from "@/lib/financialWorkflowError";
 import type {
   CreateIncomeExpenseInput,
+  PreparedIncomeExpenseCreate,
 } from "./types";
 import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 
@@ -54,13 +56,27 @@ export const isCanonicalCreateEligible = (input: CreateIncomeExpenseInput): bool
   return true;
 };
 
+/**
+ * Đọc phiên và (khi chắc đi đường compat) hạng mục TRƯỚC khi ghi dấu chờ đối chiếu: hai bước này hỏng thì chưa có
+ * gì được ghi, nên phải báo lỗi ngay chứ không để lại dấu. Hết phiên ⇒ PGRST301 (mã từ chối đã biết).
+ */
+export async function prepareIncomeExpenseCreate(input: CreateIncomeExpenseInput): Promise<PreparedIncomeExpenseCreate> {
+  const user = await getSessionUser();
+  if (!user) throw { code: "PGRST301", message: "Phiên đăng nhập đã hết. Đăng nhập lại rồi lưu phiếu." };
+  if (isCanonicalCreateEligible(input)) return { user };
+  const accountingClassFor = await loadIncomeExpenseAccountingClassResolver(input.items.map((item) => item.income_expense_type_id));
+  return { user, accountingClassFor };
+}
+
+const errorCode = (error: unknown) => String((error as { code?: unknown } | null)?.code ?? "");
+
 // Tạo phiếu thu/chi mới (phiếu + items)
 export const useCreateIncomeExpense = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (input: CreateIncomeExpenseInput) => {
-      const user = await getSessionUser();
+      const user = input.prepared?.user ?? await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
@@ -112,6 +128,11 @@ export const useCreateIncomeExpense = () => {
         // im rồi rơi sang compat (ép UNAPPROVED, KHÔNG chạy thang ngưỡng) nên
         // phiếu chi 250k < ngưỡng 300k vẫn nằm "Chờ duyệt" mà không báo gì.
         // canonicalFallback.ts đã ghi rõ: 42501 là từ chối THẬT, phải nổi lên.
+        // Gửi lại cùng khoá mà máy chủ báo "khoá đã dùng với nội dung khác": lần trước ĐÃ lập phiếu (claim chỉ còn khi
+        // giao dịch của nó đã commit). Không lập thêm; người dùng mở danh sách để xem phiếu đó.
+        if (input.resend && errorCode(canonical.error) === "23505") {
+          throw new FinancialAlreadyRecordedError("Lần gửi trước đã lập phiếu này (nội dung lúc đó khác nội dung đang lưu). Mở danh sách phiếu để kiểm tra trước khi lập lại.");
+        }
         const msg = canonical.error.message ?? "";
         const v1CashbookPermission =
           canonical.error.code === "42501" && V1_CASHBOOK_FALLBACK_MESSAGE.test(msg);
@@ -132,13 +153,15 @@ export const useCreateIncomeExpense = () => {
       // "Tòa nhà chưa được gắn tổ chức" dù server cho phép tạo. ie_compat_insert_v2
       // là SECURITY DEFINER và tự suy organization_id (accounts → buildings →
       // membership), đồng thời STRIP organization_id do client gửi.
-      const accountingClassFor =
+      const accountingClassFor = input.prepared?.accountingClassFor ??
         await loadIncomeExpenseAccountingClassResolver(
           input.items.map((item) => item.income_expense_type_id),
         );
 
       const compat = await compatRpc("ie_compat_insert_v2", {
         p_row: {
+          // Mã phiếu do trình duyệt sinh (chỉ khi người gọi đưa): ie_compat_insert_v2 giữ `id` cho người gọi thường.
+          ...(input.voucher_id ? { id: input.voucher_id } : {}),
           user_id: user.id,
           creator_name: creatorName,
           type: input.type,
@@ -183,6 +206,10 @@ export const useCreateIncomeExpense = () => {
       // gọi gửi lại y nguyên (Báo chi nhanh) có thể ra phiếu đôi. Chỉ gắn nhãn, không đổi hành vi.
       const viaCompat = <E extends object>(e: E): E => Object.assign(e, { ieCreatePath: "compat" as const });
       if (compat.error) {
+        // Gửi lại đúng mã phiếu mà máy chủ báo trùng khoá: phiếu mang mã đó đã có (lần trước đã lập).
+        if (input.resend && input.voucher_id && errorCode(compat.error) === "23505") {
+          throw new FinancialAlreadyRecordedError("Có thể phiếu đã được lập ở lần gửi trước. Kiểm tra danh sách phiếu trước khi lập lại.", [input.voucher_id]);
+        }
         throw viaCompat(compat.error);
       }
 

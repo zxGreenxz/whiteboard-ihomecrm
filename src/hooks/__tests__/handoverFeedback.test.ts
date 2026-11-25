@@ -1,8 +1,9 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const h=vi.hoisted(()=>({rpc:vi.fn()}));
+const h=vi.hoisted(()=>({rpc:vi.fn(),freeVouchers:()=>{const q={select:()=>q,in:(_c:string,ids:string[])=>Promise.resolve({data:ids.map(id=>({id,handover_id:null})),error:null})};return q;}}));
 vi.mock('react',async original=>({...await original<typeof import('react')>(),useRef:(value:unknown)=>({current:value})}));
 vi.mock('@tanstack/react-query',()=>({useQuery:(options:unknown)=>options,useMutation:(options:unknown)=>options,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
-vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:h.rpc}}));
+// Lập phiên đọc phiên của các phiếu trước khi gửi (đợt 4): phiếu giả đều còn trống.
+vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:h.rpc,from:()=>h.freeVouchers()}}));
 vi.mock('@/hooks/useAuth',()=>({useAuth:()=>({data:{id:'u'}})}));
 vi.mock('@/hooks/useReceivingCashbooks',()=>({useReceivingCashbooks:()=>({data:{}})}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'o'})}));

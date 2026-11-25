@@ -51,4 +51,44 @@ describe('ImageUploadZone upload policy', () => {
     await waitFor(() => expect(boundary.uploadFile).toHaveBeenCalledOnce());
     expect(boundary.uploadFile.mock.calls[0]).toHaveLength(3);
   });
+
+  const ROOM_ACCEPT = 'image/png,image/jpeg,image/jpg,image/webp';
+  const pick = (view: ReturnType<typeof render>, file: File) =>
+    fireEvent.change(view.container.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
+  const webp = () => new File(['RIFF0000WEBP'], 'zalo.webp', { type: 'image/webp' });
+
+  it('ảnh phòng khai WebP thì nhận ảnh WebP lưu từ Zalo/Android', async () => {
+    const view = render(<ImageUploadZone label="Thêm ảnh" bucket="room-sale-images" accept={ROOM_ACCEPT} onChange={vi.fn()} />);
+    pick(view, webp());
+    await waitFor(() => expect(boundary.uploadFile).toHaveBeenCalledOnce());
+    expect(boundary.uploadFile.mock.calls[0][2].type).toBe('image/webp');
+    expect(view.queryByRole('alert')).toBeNull();
+  });
+
+  it('ô mặc định (CCCD, xe…) vẫn chỉ nhận PNG/JPEG và báo đúng định dạng nhận', async () => {
+    const view = render(<ImageUploadZone label="CCCD mặt sau" onChange={vi.fn()} />);
+    pick(view, webp());
+    expect((await view.findByRole('alert')).textContent).toContain('zalo.webp: Chỉ chấp nhận file PNG, JPG, JPEG');
+    expect(boundary.uploadFile).not.toHaveBeenCalled();
+  });
+
+  it('ô giấy tờ giữ nguyên bytes không nhận WebP kể cả khi nơi gọi lỡ khai accept có WebP', async () => {
+    const view = render(<ImageUploadZone label="CCCD mặt trước" imagePolicy="identity-original" accept={ROOM_ACCEPT} onChange={vi.fn()} />);
+    pick(view, webp());
+    expect((await view.findByRole('alert')).textContent).toContain('Chỉ chấp nhận file PNG, JPG, JPEG');
+    expect(boundary.uploadFile).not.toHaveBeenCalled();
+    pick(view, new File(['image'], 'front.jpg', { type: 'image/jpeg' }));
+    await waitFor(() => expect(boundary.uploadFile).toHaveBeenCalledOnce());
+  });
+
+  it('ảnh phòng vẫn chặn định dạng ngoài danh sách (HEIC) và ảnh quá 10 MB', async () => {
+    const view = render(<ImageUploadZone label="Thêm ảnh" bucket="room-sale-images" accept={ROOM_ACCEPT} maxSizeMB={5} onChange={vi.fn()} />);
+    pick(view, new File(['x'], 'iphone.heic', { type: 'image/heic' }));
+    expect((await view.findByRole('alert')).textContent).toContain('Chỉ chấp nhận file PNG, JPG, JPEG, WEBP');
+    const big = new File(['x'], 'big.webp', { type: 'image/webp' });
+    Object.defineProperty(big, 'size', { value: 6 * 1024 * 1024 });
+    pick(view, big);
+    await waitFor(() => expect(view.getByRole('alert').textContent).toContain('big.webp: Kích thước file tối đa 5MB'));
+    expect(boundary.uploadFile).not.toHaveBeenCalled();
+  });
 });

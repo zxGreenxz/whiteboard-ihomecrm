@@ -117,3 +117,21 @@ describe('lượt đang chạy và kết luận lạ dạng',()=>{
   expect(work).not.toHaveBeenCalled();expect(h.store.read(scope)?.attemptId).toBe(prior.attemptId);
  });
 });
+
+describe('releaseCompleted: các bước đã hoàn tất đã được dọn sạch và kiểm lại (đợt 3, phiếu tổng)',()=>{
+ it('dọn sạch rồi ném lỗi từ chối rõ ⇒ gỡ dấu như chưa ghi gì',async()=>{
+  const h=harness();
+  await expect(runFinancialPending(scope,async ctx=>{ctx.recordCompleted(['batch1','v1']);ctx.releaseCompleted();throw {code:'55000',message:'Sổ quỹ đã khoá'};},h.store)).rejects.toMatchObject({code:'55000'});
+  expect(h.store.read(scope)).toBeNull();
+ });
+ it('dọn sạch nhưng lỗi chưa rõ kết quả ⇒ vẫn giữ dấu',async()=>{
+  const h=harness();
+  await expect(runFinancialPending(scope,async ctx=>{ctx.recordCompleted(['batch1']);ctx.releaseCompleted();throw new TypeError('Failed to fetch');},h.store)).rejects.toThrow();
+  expect(h.store.read(scope)?.completedIds).toEqual(['batch1']);
+ });
+ it('không gọi releaseCompleted ⇒ lỗi từ chối rõ sau bước đã hoàn tất vẫn giữ dấu (như cũ)',async()=>{
+  const h=harness();
+  await expect(runFinancialPending(scope,async ctx=>{ctx.recordCompleted(['batch1']);throw {code:'55000'};},h.store)).rejects.toMatchObject({code:'55000'});
+  expect(h.store.read(scope)?.completedIds).toEqual(['batch1']);
+ });
+});

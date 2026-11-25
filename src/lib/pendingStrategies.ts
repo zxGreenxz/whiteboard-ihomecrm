@@ -47,24 +47,25 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'payment-receipt-upload': tien('C', 'thêm ảnh chứng từ thanh toán'), // ô ảnh của phiếu thanh toán đã có = đã gắn
 
   // Đợt 3: lập phiếu, cọc, phí (họ runFinancialPending)
-  'voucher-form-create': tien('van', 'lập phiếu thu/chi'),
-  'voucher-batch-create': tien('van', 'tạo phiếu tổng'),
-  'deposit-create': tien('van', 'tạo cọc giữ chỗ'),
-  'period-fee-pay': tien('van', 'đóng phí kỳ'),
-  'draft-fee-pay': tien('van', 'trả phiếu phí nháp'),
-  'period-fee-cancel': tien('van', 'huỷ phiếu phí kỳ'),
-  'utility-pay': tien('van', 'đóng điện nước'),
-  'utility-cancel': tien('van', 'huỷ phiếu điện nước'),
-  'special-fee-generate': tien('van', 'sinh phí đặc biệt'),
-  'reconciliation-propose': tien('van', 'đề nghị đối soát sổ'),
-  'invoice-cancel': tien('van', 'huỷ hoá đơn'), // huỷ hàng loạt ở đợt 3; huỷ lẻ (useInvoices) ở đợt 5
+  'voucher-form-create': tien('B', 'lập phiếu thu/chi'), // create_income_expense_v1 theo khoá; đường compat: mã phiếu do trình duyệt sinh (D); dấu cũ: tra gần đúng
+  'voucher-batch-create': tien('D', 'tạo phiếu tổng'), // mã đợt = mã yêu cầu của dấu; dọn sạch sau lỗi từ chối rõ thì gỡ dấu
+  'deposit-create': tien('B', 'tạo cọc giữ chỗ'), // create_room_reservation_v1 khoá phòng rồi tra khoá; thưởng Sale ngoài vùng giữ dấu
+  'period-fee-pay': tien('A', 'đóng phí kỳ'), // pay_period_fee khoá slot rồi đếm phiếu; gửi lại KHÔNG ép, "đã có phiếu" = đã ghi
+  'draft-fee-pay': tien('C', 'trả phiếu phí nháp'), // đọc trạng thái phiếu; pay_draft_fee_voucher khoá dòng, đòi còn nháp
+  'period-fee-cancel': tien('A', 'huỷ phiếu phí kỳ'), // cancel_period_fee khoá dòng; "đã bị hủy trước đó" khi gửi lại = xong
+  'utility-pay': tien('A', 'đóng điện nước'), // pay_utility_bill khoá công tơ × tháng, trùng ⇒ 55000 kèm mã phiếu
+  'utility-cancel': tien('A', 'huỷ phiếu điện nước'), // như huỷ phiếu phí kỳ
+  'special-fee-generate': tien('A', 'sinh phí đặc biệt'), // khoá theo kỳ, chỉ sinh ô còn thiếu (không trả kết quả cũ theo khoá)
+  'reconciliation-propose': tien('D', 'đề nghị đối soát sổ'), // tra gần đúng (sổ, ngày, người đề nghị, sau giờ kẹt) tới đợt 10
+  'invoice-cancel': tien('van', 'huỷ hoá đơn'), // huỷ hàng loạt đã đối chiếu cách C (đợt 3); huỷ lẻ (useCancelInvoice) chưa có hàm đối chiếu, đợt 5 đổi dòng này
 
-  // Đợt 4: tạo khách, khách hẹn, bàn giao
-  'customer-create': khac('van', 'tạo khách hàng'),
-  'customer-import': khac('van', 'nhập khách hàng từ Excel'),
-  'useCreateLead': khac('van', 'tạo khách hẹn'),
-  'handover-create': tien('van', 'lập phiên bàn giao tiền'),
-  'income-expense-type-create': khac('van', 'tạo loại thu chi'),
+  // Đợt 4: tạo khách, khách hẹn, bàn giao. Bốn dòng `khac` không còn ghi dấu mới (luật 5: không khoá dữ liệu không phải
+  // tiền); chỉ còn đọc MỘT LẦN dấu khoá chung bản trước để lại (`settleLegacyPending`), đối chiếu gần đúng rồi gỡ.
+  'customer-create': khac('D', 'tạo khách hàng'), // mã khách do trình duyệt sinh, gửi lại cùng mã (khoá chính chặn khách thứ hai); xe hỏng = khách đã tạo, không dấu
+  'customer-import': khac('D', 'nhập khách hàng từ Excel'), // mỗi dòng một mã khách; báo theo dòng; dòng chưa xong nhập lại đúng mã; bỏ dấu lồng với tạo khách
+  'useCreateLead': khac('D', 'tạo khách hẹn'), // như tạo khách
+  'handover-create': tien('A', 'lập phiên bàn giao tiền'), // create_cash_handover khoá phiếu FOR UPDATE rồi đòi handover_id rỗng; đọc phiên của phiếu trước khi gửi
+  'income-expense-type-create': khac('D', 'tạo loại thu chi'), // ràng buộc duy nhất (công ty, chiều, tên chuẩn hoá); trùng ⇒ trả loại đã có
 
   // Đợt 5: chuyển trạng thái phiếu, hoá đơn, bàn giao, chốt sổ
   'voucher-lifecycle': tien('van', 'duyệt, huỷ hoặc khôi phục phiếu thu chi'), // 7 thao tác phiếu chung một dấu: statusMutations, flexMutations, incomeVoucherCancel

@@ -39,6 +39,10 @@ export interface CustomerImportRow {
   building_name?: string;
   // Internal warning (not blocking)
   _phone_warning?: string;
+  /** Mã khách do trình duyệt sinh cho dòng này lúc đọc file: nhập lại dòng đó gửi đúng mã này, không tạo khách thứ hai. */
+  client_id?: string;
+  /** Lượt nhập trước chưa xác nhận được kết quả của dòng này: lần nhập lại thấy khách đã có thì làm tiếp bước ảnh. */
+  retry_unconfirmed?: boolean;
 }
 
 export interface CustomerImportResult {
@@ -467,6 +471,7 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
               id_image_urls:        row.id_image_urls,
               building_name:        row.building_name?.trim() || undefined,
               room_name:            row.room_name?.trim() || undefined,
+              client_id:            crypto.randomUUID(),
             });
           }
         });

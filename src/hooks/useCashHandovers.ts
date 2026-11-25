@@ -1,5 +1,5 @@
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { FinancialWorkflowError, FinancialWorkflowGuard } from '@/lib/financialWorkflow';
+import { FinancialAlreadyRecordedError, FinancialWorkflowError, FinancialWorkflowGuard } from '@/lib/financialWorkflow';
 // =============================================
 // useCashHandovers — data layer cho Bàn giao tiền mặt (/thu-tien).
 //
@@ -144,20 +144,79 @@ const useInvalidateHandover = () => {
   };
 };
 
+interface VoucherHandover { id: string; code: string | null; status: string | null }
+
+/** Đọc mỗi lần tối đa chừng này mã phiếu, để đường dẫn PostgREST không quá dài khi chọn cả trăm phiếu. */
+const VOUCHER_READ_CHUNK = 100;
+
+/**
+ * Phiên bàn giao đang chứa các phiếu đã chọn (đọc TRƯỚC khi ghi dấu, không ghi gì). Thiếu phiếu nào trong kết quả đọc
+ * thì không kết luận được: ném lỗi, không gửi lệnh.
+ */
+export async function readVoucherHandovers(voucherIds: readonly string[]): Promise<VoucherHandover[]> {
+  const handoverIds = new Set<string>();
+  for (let start = 0; start < voucherIds.length; start += VOUCHER_READ_CHUNK) {
+    const chunk = voucherIds.slice(start, start + VOUCHER_READ_CHUNK);
+    const { data, error } = await supabase.from('income_expenses').select('id, handover_id').in('id', chunk);
+    if (error) throw error;
+    const rows = Array.isArray(data) ? data as { id?: unknown; handover_id?: unknown }[] : null;
+    if (!rows || chunk.some(id => !rows.some(row => row.id === id))) {
+      throw new FinancialWorkflowError('Chưa đọc được trạng thái bàn giao của các phiếu đã chọn. Tải lại danh sách phiếu rồi thử lại.', 'failure', []);
+    }
+    for (const row of rows) if (typeof row.handover_id === 'string' && row.handover_id) handoverIds.add(row.handover_id);
+  }
+  if (!handoverIds.size) return [];
+  const ids = [...handoverIds];
+  const { data, error } = await supabase.from('cash_handovers').select('id, code, status').in('id', ids);
+  if (error) throw error;
+  const rows = Array.isArray(data) ? data as { id?: unknown; code?: unknown; status?: unknown }[] : [];
+  return ids.map(id => {
+    const row = rows.find(item => item.id === id);
+    return { id, code: typeof row?.code === 'string' ? row.code : null, status: typeof row?.status === 'string' ? row.status : null };
+  });
+}
+
+const handoverLabel = (handovers: readonly VoucherHandover[]) => handovers.map(item => item.code ?? item.id).join(', ');
+const alreadyInHandover = (handovers: readonly VoucherHandover[]) => new FinancialAlreadyRecordedError(
+  `Phiếu đã chọn đã nằm trong phiên bàn giao ${handoverLabel(handovers)} (có thể do lần gửi trước). Mở danh sách phiên để kiểm tra; tải lại danh sách phiếu chưa bàn giao trước khi lập phiên mới.`,
+  handovers.map(item => item.code ?? item.id),
+);
+
+/**
+ * Lập phiên bàn giao tiền (cách A, đợt 4). `create_cash_handover` (production, md5 e88b4358…) khoá các phiếu
+ * `FOR UPDATE` TRƯỚC khi đòi `handover_id IS NULL` cho từng phiếu, nên gửi lại một tập phiếu, kể cả khi lệnh cũ còn
+ * chạy, không thể đưa một phiếu vào hai phiên (lần sau P0001). Vì vậy dấu của lần gửi trước luôn kết luận được:
+ * phiếu đang chọn đã nằm trong phiên ⇒ báo mã phiên, không gửi; dấu đã nhận mã phiên ⇒ báo phiên đó; còn lại ⇒ gửi lại
+ * ngay. Dấu khoá chung của bản trước (`new`, không tên thao tác) đi đúng đường này nên không chặn phiên khác.
+ */
 export const useCreateHandover = () => {
   const invalidate = useInvalidateHandover();
   const guard = useRef(persistentFinancialWorkflow('handover-create',{scope:'actor'}));
   return useMutation({
     meta: {handlesFeedback: true},
-    mutationFn: async (args: { receiverId: string; voucherIds: string[]; note?: string }) => guard.current.run('new', 'xử lý phiên bàn giao', async () => {
+    mutationFn: async (args: { receiverId: string; voucherIds: string[]; note?: string }) => {
+      const voucherIds = [...new Set(args.voucherIds)];
+      // Đọc trước khi ghi dấu: lỗi đọc (hết phiên, mất mạng) không để lại dấu nào.
+      const taken = await readVoucherHandovers(voucherIds);
+      return guard.current.run('new', 'lập phiên bàn giao tiền', async () => {
+      if (taken.length) throw alreadyInHandover(taken);
       const { data, error } = await supabase.rpc('create_cash_handover', {
         p_receiver_id: args.receiverId,
-        p_voucher_ids: args.voucherIds,
+        p_voucher_ids: voucherIds,
         p_note: args.note ?? undefined,
       });
       // Ném NGUYÊN error (PostgrestError có .code) — new Error(error.message)
       // làm rơi code, friendlyError hết nhận diện được 55000/42501.
-      if (error) throw error;
+      if (error) {
+        // P0001 «phiếu không hợp lệ / đã nằm trong phiên khác»: lệnh cũ vừa chạy xong trước lần gửi này. Đọc lại để báo
+        // đúng mã phiên thay cho câu chung; đọc hỏng thì giữ lỗi gốc.
+        if (String((error as {code?:unknown}).code ?? '') === 'P0001') {
+          let now: VoucherHandover[] = [];
+          try { now = await readVoucherHandovers(voucherIds); } catch { /* đọc lại hỏng: báo lỗi gốc của máy chủ */ }
+          if (now.length) throw alreadyInHandover(now);
+        }
+        throw error;
+      }
       const value = data as {id?:unknown;code?:unknown;total_amount?:unknown;voucher_count?:unknown} | null;
       if (!value || typeof value.id !== 'string' || !value.id || typeof value.code !== 'string' || typeof value.total_amount !== 'number' || !Number.isFinite(value.total_amount) || !Number.isInteger(value.voucher_count) || value.voucher_count!==new Set(args.voucherIds).size) throw new FinancialWorkflowError('Chưa xác nhận được kết quả lập phiên bàn giao. Đối chiếu các phiếu đã chọn trước khi lập lại.', 'unknown', typeof value?.id === 'string' ? [{id:value.id,label:'Phiên cần đối chiếu'}] : []);
       return data as {
@@ -168,10 +227,38 @@ export const useCreateHandover = () => {
         expense_amount?: number;
         voucher_count: number;
       };
-    }),
+      }, async pending => {
+        // Phiếu đang chọn đã nằm trong phiên: lần trước (hoặc ai đó) đã lập. Báo mã phiên, không gửi lần mới.
+        if (taken.length) return { outcome: 'already-written', message: alreadyInHandover(taken).message, recordIds: taken.map(item => item.code ?? item.id) };
+        // Dấu cũ đã nhận mã phiên từ máy chủ: phiên đó có thật. Báo một lần rồi gỡ dấu; lần bấm sau là lượt mới.
+        if (pending.completedIds.length) {
+          const codes = await handoverCodes(pending.completedIds);
+          return { outcome: 'already-written', message: `Lần gửi trước đã lập phiên bàn giao ${codes.join(', ')}. Mở danh sách phiên để kiểm tra trước khi lập thêm.`, recordIds: codes };
+        }
+        // Phiếu đang chọn còn trống: máy chủ khoá phiếu rồi mới xét `handover_id`, nên gửi lại ngay không thể đưa
+        // phiếu nào vào hai phiên, kể cả khi lệnh cũ vẫn đang chạy hoặc dấu là của một tập phiếu khác.
+        return { outcome: 'not-written', serverDedupesRequestKey: true };
+      });
+    },
     onSuccess: invalidate,
+    // Lỗi hoặc chưa rõ kết quả: tải lại danh sách phiếu để phiếu đã vào phiên không còn được chọn.
+    onError: invalidate,
   });
 };
+
+/** Mã phiên (BG…) của các phiên theo id; đọc hỏng thì dùng id. */
+async function handoverCodes(ids: readonly string[]): Promise<string[]> {
+  try {
+    const { data, error } = await supabase.from('cash_handovers').select('id, code').in('id', [...ids]);
+    const rows = !error && Array.isArray(data) ? data as { id?: unknown; code?: unknown }[] : [];
+    return ids.map(id => {
+      const code = rows.find(row => row.id === id)?.code;
+      return typeof code === 'string' && code ? code : id;
+    });
+  } catch {
+    return [...ids];
+  }
+}
 
 export const useConfirmHandover = () => {
   const invalidate = useInvalidateHandover();

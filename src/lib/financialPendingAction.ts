@@ -13,8 +13,16 @@ export interface FinancialPendingRunOptions<T> {
   now?:()=>Date;
 }
 
+export interface FinancialPendingProgress {
+  attemptId:string;requestKey:string;recordCompleted:(ids:readonly string[])=>void;
+  /**
+   * Mọi bước đã báo hoàn tất đều đã được dọn sạch VÀ đọc lại xác nhận (ví dụ phiếu con đã huỷ lại, đợt đã xoá).
+   * Sau lời gọi này, một lỗi từ chối rõ ném ra được xử lý như chưa ghi gì: gỡ dấu. Lỗi chưa rõ kết quả vẫn giữ dấu.
+   */
+  releaseCompleted:()=>void;
+}
 /** Domain work must validate its positive receipt before returning. No replay payload is persisted. */
-export async function runFinancialPending<T>(scope:FinancialPendingScope,work:(progress:{attemptId:string;requestKey:string;recordCompleted:(ids:readonly string[])=>void})=>Promise<T>,store:FinancialPendingStore=financialPending,options:FinancialPendingRunOptions<T>={}):Promise<T>{
+export async function runFinancialPending<T>(scope:FinancialPendingScope,work:(progress:FinancialPendingProgress)=>Promise<T>,store:FinancialPendingStore=financialPending,options:FinancialPendingRunOptions<T>={}):Promise<T>{
   const now=options.now??(()=>new Date());
   let requestKey:string=crypto.randomUUID();
   const prior=store.read(scope);
@@ -49,7 +57,7 @@ export async function runFinancialPending<T>(scope:FinancialPendingScope,work:(p
   let completed=false;
   const stopTracking=trackRunningAttempt(pending.attemptId);
   try{
-    const result=await work({attemptId:pending.attemptId,requestKey,recordCompleted:ids=>{completed ||= ids.length>0;store.recordCompleted(scope,pending.attemptId,ids);}});
+    const result=await work({attemptId:pending.attemptId,requestKey,recordCompleted:ids=>{completed ||= ids.length>0;store.recordCompleted(scope,pending.attemptId,ids);},releaseCompleted:()=>{completed=false;}});
     if(!store.clearConfirmed(scope,pending.attemptId))throw new FinancialPendingError(store.read(scope));
     return result;
   }catch(error){

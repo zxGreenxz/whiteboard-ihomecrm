@@ -1,4 +1,4 @@
-import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {recordWriteMessage} from '@/lib/recordWriteOutcome';
 /**
  * CustomerImportExportDialog
  * Dialog for importing customers from Excel and exporting customer list.
@@ -38,7 +38,8 @@ import { Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2, 
 interface CustomerImportExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImport: (validRows: CustomerImportRow[]) => Promise<void>;
+  /** Trả các dòng cần nhập lại (chưa rõ kết quả, chưa gửi); rỗng hoặc không trả là xong. */
+  onImport: (validRows: CustomerImportRow[]) => Promise<CustomerImportRow[] | void>;
 }
 
 // =============================================
@@ -54,19 +55,24 @@ export function CustomerImportExportDialog({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [blocked,setBlocked]=useState(false);
   const importing=useRef(false);
   const [parseResult, setParseResult] = useState<CustomerImportResult | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  // Lượt nhập trước còn dòng chưa xong: nút nhập chỉ gửi lại đúng các dòng đó (mỗi dòng giữ mã khách riêng).
+  const [retryPending,setRetryPending]=useState(false);
+  // Mã khách đã cấp cho từng dòng trong phiên mở trang này: đọc lại cùng file (hoặc file sửa một phần) thì dòng cùng
+  // tên, SĐT, số giấy tờ giữ đúng mã cũ, nên dòng đã tạo ở lượt trước không bị tạo trùng.
+  const rowIds=useRef(new Map<string,string>());
 
   // ---- handlers ----
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    if(blocked || importing.current)return;
+    if(importing.current)return;
     const file = e.target.files?.[0] ?? null;
     setSelectedFile(file);
     setParseResult(null);
     setParseError(null);
+    setRetryPending(false);
   }
 
   function handleSelectFile() {
@@ -74,13 +80,21 @@ export function CustomerImportExportDialog({
   }
 
   async function handleParse() {
-    if (!selectedFile || blocked || importing.current) return;
+    if (!selectedFile || importing.current) return;
     setIsParsing(true);
     setParseResult(null);
     setParseError(null);
+    setRetryPending(false);
     try {
       const result = await parseCustomerExcel(selectedFile);
-      setParseResult(result);
+      const validRows = result.validRows.map(row => {
+        const key = [row.full_name, row.phone, row.id_number ?? ''].join('|');
+        const known = rowIds.current.get(key);
+        if (known) return { ...row, client_id: known };
+        if (row.client_id) rowIds.current.set(key, row.client_id);
+        return row;
+      });
+      setParseResult({ ...result, validRows });
     } catch (err) {
       setParseError(err instanceof Error ? err.message : 'Lỗi không xác định');
     } finally {
@@ -89,16 +103,28 @@ export function CustomerImportExportDialog({
   }
 
   async function handleConfirmImport() {
-    if (!parseResult || blocked || importing.current || isImporting) return;
+    if (!parseResult || importing.current || isImporting) return;
     importing.current=true;
     setIsImporting(true);
+    const rememberIds = () => {
+      // Lượt nhập có thể đổi mã khách của dòng (khách cũ của dòng đã bị xoá ⇒ tạo lại bằng mã mới): nhớ mã thật.
+      for (const row of parseResult.validRows) if (row.client_id) rowIds.current.set([row.full_name, row.phone, row.id_number ?? ''].join('|'), row.client_id);
+    };
     try {
-      await onImport(parseResult.validRows);
+      const retryRows = await onImport(parseResult.validRows);
+      rememberIds();
       importing.current=false;setIsImporting(false);setParseError(null);
+      if (retryRows && retryRows.length) {
+        // Không khoá hộp: giữ đúng các dòng chưa xong (cùng mã khách của từng dòng) để người dùng bấm nhập lại.
+        setParseResult({ ...parseResult, validRows: retryRows, errors: [], warnings: [] });
+        setRetryPending(true);
+        setParseError(`Còn ${retryRows.length} dòng chưa xác nhận được kết quả hoặc chưa gửi. Bấm «Nhập lại» để gửi lại đúng các dòng này; dòng nào lần trước đã tạo sẽ không bị tạo trùng.`);
+        return;
+      }
       handleClose(true);
     } catch (error) {
+      rememberIds();
       setParseError(recordWriteMessage(error,'nhập khách hàng'));
-      setBlocked(recordWriteBlocked(error));
     } finally {
       importing.current=false;setIsImporting(false);
     }
@@ -107,7 +133,8 @@ export function CustomerImportExportDialog({
   function handleClose(confirmed=false) {
     if(!confirmed && (importing.current || isImporting))return;
     onOpenChange(false);
-    if(!confirmed && (parseError || blocked))return;
+    if(!confirmed && (parseError || retryPending))return;
+    setRetryPending(false);
     // Reset state after dialog closes
     setTimeout(() => {
       setSelectedFile(null);
@@ -123,7 +150,7 @@ export function CustomerImportExportDialog({
   const validCount = parseResult?.validRows.length ?? 0;
   const errorCount = parseResult?.errors.length ?? 0;
   const warningCount = parseResult?.warnings.length ?? 0;
-  const canConfirm = hasResult && validCount > 0 && !blocked;
+  const canConfirm = hasResult && validCount > 0;
 
   return (
     <Dialog open={open} onOpenChange={value => { if (!value && !isImporting) handleClose(); }}>
@@ -202,7 +229,7 @@ export function CustomerImportExportDialog({
             {/* Parse button */}
             <Button
               onClick={handleParse}
-              disabled={!selectedFile || isParsing || blocked || isImporting}
+              disabled={!selectedFile || isParsing || isImporting}
               className="w-full"
             >
               {isParsing ? (
@@ -303,7 +330,7 @@ export function CustomerImportExportDialog({
                 {canConfirm && (
                   <Button onClick={() => { void handleConfirmImport(); }} disabled={isImporting} className="w-full">
                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                    {isImporting ? 'Đang nhập và kiểm tra từng dòng...' : `Xác nhận nhập (${validCount} dòng)`}
+                    {isImporting ? 'Đang nhập và kiểm tra từng dòng...' : retryPending ? `Nhập lại (${validCount} dòng chưa xong)` : `Xác nhận nhập (${validCount} dòng)`}
                   </Button>
                 )}
               </div>

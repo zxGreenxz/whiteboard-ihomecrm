@@ -395,11 +395,9 @@ export function usePeriodFeeState(
   const doPay = async (bId: string, force: boolean) => {
     // Chốt đồng bộ: chặn cú bấm thứ hai (bề mặt kia, hoặc double-click) NGAY,
     // không chờ re-render như `disabled` của nút.
+    // Lần trước chưa rõ kết quả không chặn ở đây nữa: usePayPeriodFee tự đối chiếu (gửi lại KHÔNG ép; máy chủ khoá
+    // slot rồi đếm phiếu nên không ra phiếu thứ hai) và báo "đã có phiếu" khi lần trước đã ghi.
     const lock = `${scope}::${bId}`;
-    if (uncertainFeePays.has(lock)) {
-      toast.error('Lần tạo phiếu trước chưa xác nhận được kết quả. Tải lại danh sách và kiểm tra phiếu trước khi đóng tiếp.');
-      return;
-    }
     if (inflightPays.has(lock)) {
       toast.error('Đang gửi phiếu cho ô này — chờ kết quả rồi hãy bấm lại.');
       return;
@@ -464,7 +462,6 @@ export function usePeriodFeeState(
       const feedback = createdVoucherFeedback(res);
       toast[feedback.kind](`${feedback.message} ${fmtFull(amount)} — ${category.label} · ${buildingName(bId)}`);
     } catch (ex) {
-      if (voucherOutcomeUnknown(ex)) uncertainFeePays.add(lock);
       toast.error(voucherFailureMessage(ex, "tạo phiếu phí định kỳ"));
     }
     finally {
@@ -513,7 +510,7 @@ export function usePeriodFeeState(
       if (res.posting_status !== 'POSTED') { uncertainFeePays.add(`draft::${draftTarget.voucher.id}`); return; }
       setDraftTarget(null);
       setDraftPayAttachments([]);
-    } catch (ex) { if(voucherOutcomeUnknown(ex))uncertainFeePays.add(`draft::${draftTarget.voucher.id}`); toast.error(feeFailureMessage(ex,"chi phiếu phí")); }
+    } catch (ex) { toast.error(feeFailureMessage(ex,"chi phiếu phí")); }
   };
 
   // ── Hủy phiếu (per-voucher) ──

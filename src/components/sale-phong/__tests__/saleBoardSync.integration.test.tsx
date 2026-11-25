@@ -109,7 +109,7 @@ describe('Old sheet / Quick / embedded Excel with real query and mutation hooks'
       fireEvent.change(await priceField(mobile), { target: { value: '3500000' } });
       await saveOld(); expect(stored.rent_price).toBe(3_500_000);
       fireEvent.click(screen.getByRole('button', { name: 'Đổi lối vào' }));
-      fireEvent.click(await screen.findByRole('button', { name: 'Mở Nhà đồng bộ · 101' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Chi tiết Nhà đồng bộ · 101' }));
       expect(screen.getByLabelText('Giá niêm yết (đ/tháng)')).toHaveProperty('value', '3500000');
       fireEvent.change(screen.getByLabelText('Giá niêm yết (đ/tháng)'), { target: { value: '3700000' } });
       fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
@@ -198,7 +198,7 @@ describe('Old sheet / Quick / embedded Excel with real query and mutation hooks'
     await screen.findByText(/Bấm Lưu để đối chiếu/);
     expect(stored.rent_price).toBe(4_400_000); expect(receipts.size).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: 'Đổi lối vào' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Mở Nhà đồng bộ · 101' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Chi tiết Nhà đồng bộ · 101' }));
     expect(screen.getByLabelText('Giá niêm yết (đ/tháng)')).toHaveProperty('value', '4400000');
     fireEvent.click(screen.getByRole('button', { name: 'Đóng' }));
     fireEvent.click(screen.getByRole('button', { name: 'Đổi lối vào' }));
@@ -210,7 +210,7 @@ describe('Old sheet / Quick / embedded Excel with real query and mutation hooks'
   it('bảng Nhanh đã commit nhưng mất phản hồi: thu hồi quyền trước replay vẫn giữ yêu cầu chưa xác nhận', async () => {
     lostAck = true;
     render(<SaleRoomWorkspace />, { wrapper: wrapper(client()) });
-    fireEvent.click(await screen.findByRole('button', { name: 'Mở Nhà đồng bộ · 101' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Chi tiết Nhà đồng bộ · 101' }));
     fireEvent.change(screen.getByLabelText('Giá niêm yết (đ/tháng)'), { target: { value: '4600000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
     await screen.findByRole('button', { name: 'Đối chiếu lần lưu' });
