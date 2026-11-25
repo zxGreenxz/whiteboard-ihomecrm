@@ -1,9 +1,11 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Bell } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import type { NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
 import type { FleetFilters as FilterState } from "@/lib/network-center/contracts";
 import { deriveFleetView } from "@/lib/network-center/model";
+import { Button } from "@/components/ui/button";
 import { FleetFilters } from "./FleetFilters";
 import { FleetTable } from "./FleetTable";
 import { IncidentRail } from "./IncidentRail";
@@ -44,6 +46,9 @@ export function FleetOverview({ controller }: { controller: NetworkCenterControl
           <p>{controller.isDemo
             ? "Mỗi toà dùng một MikroTik; dữ liệu Aruba chỉ để theo dõi. Mọi số liệu bên dưới đều là mô phỏng cục bộ."
             : "Mỗi toà dùng một MikroTik; Aruba không giới hạn tổng số và luôn chỉ hiển thị. Trạng thái bên dưới lấy trực tiếp từ control plane."}</p>
+        </div>
+        <div className="nc-heading-actions">
+          <Button asChild variant="outline"><Link to="/network-center/camera-alerts" className="nc-link-button"><Bell className="mr-2 h-4 w-4" aria-hidden="true" />Cảnh báo camera</Link></Button>
         </div>
       </section>
 

@@ -1,13 +1,18 @@
-import { AlertTriangle, Camera, Clock3, HardDrive, Radio, RefreshCw, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Bell, Camera, CheckCheck, Clock3, HardDrive, Radio, RefreshCw, ShieldAlert } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
+import { Link } from "react-router-dom";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { isTemporaryCameraError, useBuildingCameras } from "@/hooks/network-center/useBuildingCameras";
+import { useCameraChannelAlertActions } from "@/hooks/network-center/useCameraAlerts";
 import type { NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
-import { cameraRecorderStatus, type CameraEvent, type CameraRecorder } from "@/lib/network-center/cameraContracts";
+import { cameraAlertFailure } from "@/lib/network-center/cameraAlertForm";
+import { canUse } from "@/lib/permissionCheck";
+import { cameraRecorderStatus, type CameraChannelMuteInput, type CameraEvent, type CameraIncident, type CameraRecorder } from "@/lib/network-center/cameraContracts";
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
 import { NetworkCenterRepositoryError } from "@/lib/network-center/supabaseRepository";
+import { CameraChannelAlertMenu, CameraChannelMuteBadge, type CameraChannelMute } from "./CameraChannelAlertMenu";
 
 const CameraLiveWall = lazy(() => import("./CameraLiveWall"));
 const CameraArchivePanel = lazy(() => import("./CameraArchivePanel"));
@@ -41,11 +46,68 @@ function CameraError({ error, retry }: { error: unknown; retry: () => void }) {
   );
 }
 
-function RecorderCard({ recorder, now }: { recorder: CameraRecorder; now: number }) {
+const incidentSeverityLabels: Record<CameraIncident["severity"], string> = { CRITICAL: "Nghiêm trọng", WARNING: "Cảnh báo", INFO: "Thông tin" };
+const incidentStatusLabels: Record<CameraIncident["status"], string> = { OPEN: "Đang mở", ACKNOWLEDGED: "Đã biết", RECOVERING: "Đang hồi phục" };
+
+/** Thao tác cảnh báo của tab: chỉ có khi người xem được phép (canEdit / được bấm "Đã biết"). */
+interface CameraAlertControls {
+  canEditChannels: boolean;
+  canAcknowledge: boolean;
+  isDemo: boolean;
+  mutes: Map<string, CameraChannelMute>;
+  setMute: (input: CameraChannelMuteInput) => Promise<unknown>;
+  clearMute: (recorderId: string, channel: number) => Promise<unknown>;
+  acknowledge: (incidentId: string) => Promise<unknown>;
+}
+const muteKey = (recorderId: string, channel: number) => `${recorderId}:${channel}`;
+
+function CameraIncidentList({ incidents, label, controls }: { incidents: CameraIncident[]; label: string; controls: CameraAlertControls }) {
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  if (incidents.length === 0) return null;
+  const acknowledge = async (incidentId: string) => {
+    if (pending) return;
+    setError("");
+    setPending(incidentId);
+    try {
+      await controls.acknowledge(incidentId);
+    } catch (caught) {
+      setError(cameraAlertFailure(caught, "ghi nhận sự cố", "Bạn không có quyền bấm “Đã biết” ở toà này.").text);
+    } finally {
+      setPending(null);
+    }
+  };
+  return (
+    <section className="border-l-4 border-red-600 bg-red-50 p-3 text-sm text-red-950" aria-label={label}>
+      <h4 className="mb-2 flex items-center gap-2 font-bold"><AlertTriangle className="h-4 w-4" aria-hidden="true" />{label} ({incidents.length})</h4>
+      <ul className="space-y-2">
+        {incidents.map((incident) => (
+          <li key={incident.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className={`nc-status nc-status-${incident.severity === "CRITICAL" ? "bad" : "warn"}`}>{incidentSeverityLabels[incident.severity]}</span>
+            <strong className="min-w-0 break-words">{incident.title}</strong>
+            <span>{incident.acknowledged_at ? "Đã biết" : incidentStatusLabels[incident.status]} · từ {timeLabel(incident.opened_at)}</span>
+            {controls.canAcknowledge && !incident.acknowledged_at ? (
+              <Button type="button" variant="outline" size="sm" disabled={pending !== null} onClick={() => void acknowledge(incident.id)}
+                aria-label={`Đã biết: ${incident.title}`}>
+                <CheckCheck className="mr-1 h-4 w-4" aria-hidden="true" />{pending === incident.id ? "Đang ghi…" : "Đã biết"}
+              </Button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {controls.canAcknowledge && incidents.some((incident) => !incident.acknowledged_at) ? <p className="mt-2 text-xs">Bấm “Đã biết” thì bản tin sáng thôi nhắc sự cố đó.</p> : null}
+      {error ? <p className="nc-form-error mt-2" role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
+function RecorderCard({ recorder, now, incidents, controls }: { recorder: CameraRecorder; now: number; incidents: CameraIncident[]; controls: CameraAlertControls }) {
   const snapshot = recorder.snapshot;
   const status = cameraRecorderStatus(recorder, now);
   const historical = status !== "ONLINE";
   const channels = new Map(snapshot?.channels.map((channel) => [channel.channel, channel]));
+  // B1: ổ lỗi thì đầu ghi VẪN ONLINE — một badge nhỏ trong danh sách ổ là quá dễ bỏ sót.
+  const failedDisks = status === "ONLINE" ? (snapshot?.storage ?? []).filter((disk) => disk.state === "ERROR") : [];
   return (
     <section className="nc-panel" aria-label={recorder.display_name}>
       <div className="nc-panel-heading">
@@ -53,6 +115,13 @@ function RecorderCard({ recorder, now }: { recorder: CameraRecorder; now: number
         <StateBadge state={status} />
       </div>
       <div className="space-y-4 p-4">
+        {failedDisks.length > 0 && (
+          <div role="alert" className="flex items-start gap-2 border-2 border-red-700 bg-red-100 p-3 font-bold text-red-950">
+            <HardDrive className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>Ổ cứng {failedDisks.map((disk) => disk.slot).join(", ")} báo lỗi — đầu ghi có thể không lưu được video. Cần kiểm tra hoặc thay ổ.</p>
+          </div>
+        )}
+        <CameraIncidentList incidents={incidents} label="Sự cố đang mở" controls={controls} />
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
           <p><Clock3 className="mr-1 inline h-4 w-4" aria-hidden="true" />Lần kiểm tra: {snapshot ? timeLabel(snapshot.checked_at) : "Chưa có dữ liệu"}</p>
           <p><Radio className="mr-1 inline h-4 w-4" aria-hidden="true" />{snapshot?.event_coverage === "EVENT_STREAM" ? "Luồng sự kiện" : "Theo lần kiểm tra"}</p>
@@ -63,11 +132,21 @@ function RecorderCard({ recorder, now }: { recorder: CameraRecorder; now: number
           {Array.from({ length: recorder.channel_count }, (_, index) => {
             const number = index + 1;
             const channel = channels.get(number);
+            const mute = controls.mutes.get(muteKey(recorder.id, number));
+            const channelLabel = channel?.name ? `Kênh ${number} “${channel.name}”` : `Kênh ${number}`;
             return (
-              <article key={number} className="flex min-w-0 flex-col gap-3 border-2 border-black p-4">
+              <article key={number} className="flex min-w-0 flex-col gap-3 border-2 border-black p-4" aria-label={`${recorder.display_name} · ${channelLabel}`}>
                 <div className="flex items-start gap-2"><Camera className="h-5 w-5 shrink-0" aria-hidden="true" /><strong className="break-words">{channel?.name || `Kênh ${number}`}</strong></div>
                 {channel?.name && <span className="text-sm">Kênh {number}</span>}
                 <StateBadge state={channel?.state ?? "UNKNOWN"} historical={historical} />
+                {mute ? <CameraChannelMuteBadge mute={mute} /> : null}
+                {/* Máy chủ chỉ nhận kênh có trong trạng thái đầu ghi. */}
+                {controls.canEditChannels && channel ? (
+                  <CameraChannelAlertMenu
+                    recorderId={recorder.id} channel={number} channelLabel={channelLabel} mute={mute} isDemo={controls.isDemo}
+                    onSet={controls.setMute} onClear={() => controls.clearMute(recorder.id, number)}
+                  />
+                ) : null}
               </article>
             );
           })}
@@ -83,6 +162,18 @@ function RecorderCard({ recorder, now }: { recorder: CameraRecorder; now: number
   );
 }
 
+/** Sự cố và trạng thái tắt báo đọc riêng: lỗi của chúng hiện một lần, tại chỗ. */
+function CameraAlertDataError({ errors, retry }: { errors: Error[]; retry: () => void }) {
+  const messages = [...new Set(errors.map((error) => error instanceof NetworkCenterRepositoryError ? error.message : "Không thể tải cảnh báo camera. Vui lòng thử lại."))];
+  return (
+    <div className="nc-locked-note nc-display-note" role="alert">
+      <AlertTriangle aria-hidden="true" />
+      <p className="flex-1">Chưa đọc được sự cố hoặc cách báo của kênh: {messages.join(" ")}</p>
+      <Button type="button" variant="outline" onClick={retry}>Thử lại</Button>
+    </div>
+  );
+}
+
 function eventTarget(event: CameraEvent, recorders: CameraRecorder[]) {
   const name = recorders.find((recorder) => recorder.id === event.recorder_id)?.display_name ?? "Đầu ghi đã lưu trong lịch sử";
   return `${name}${event.channel !== null ? ` · Kênh ${event.channel}` : ""}${event.slot !== null ? ` · Ổ ${event.slot}` : ""}`;
@@ -90,31 +181,52 @@ function eventTarget(event: CameraEvent, recorders: CameraRecorder[]) {
 
 export function CamerasTab({ site, controller }: {
   site: NetworkBuilding;
-  controller: Pick<NetworkCenterController, "actor" | "physicalBuildings" | "canView" | "mode" | "isDemo">;
+  controller: Pick<NetworkCenterController, "actor" | "physicalBuildings" | "canView" | "mode" | "isDemo"> & Partial<Pick<NetworkCenterController, "permissionsQuery">>;
 }) {
   const organizationId = controller.physicalBuildings.find((building) => building.id === site.buildingId)?.organizationId ?? "";
   const cameras = useBuildingCameras({
     actorId: controller.actor.id, organizationId, buildingId: site.buildingId,
     canView: controller.canView, mode: controller.mode,
   });
-  const { snapshotQuery, eventsQuery } = cameras;
+  const { snapshotQuery, eventsQuery, incidentsQuery, mutesQuery } = cameras;
+  const actions = useCameraChannelAlertActions(controller.mode, cameras.key);
   const [refreshKey, setRefreshKey] = useState(0);
   if (!controller.canView) return <p role="alert" className="nc-empty-copy">Bạn không có quyền xem camera của tòa nhà này.</p>;
   if (!cameras.enabled) return <p role="alert" className="nc-empty-copy">Chưa xác định được phạm vi camera của tòa nhà.</p>;
   const keepSnapshot = snapshotQuery.isError && snapshotQuery.data !== undefined && isTemporaryCameraError(snapshotQuery.error);
-  if (cameras.blockingError || (snapshotQuery.isError && !keepSnapshot)) return <CameraError error={cameras.blockingError ?? snapshotQuery.error} retry={() => { void snapshotQuery.refetch(); void eventsQuery.refetch(); }} />;
+  const refetchAll = () => { void snapshotQuery.refetch(); void eventsQuery.refetch(); void incidentsQuery.refetch(); void mutesQuery.refetch(); };
+  if (cameras.blockingError || (snapshotQuery.isError && !keepSnapshot)) return <CameraError error={cameras.blockingError ?? snapshotQuery.error} retry={refetchAll} />;
   if (snapshotQuery.isPending) return <LoadingState label="trạng thái camera" variant="cards" rows={4} />;
+  const recorderIds = new Set(cameras.recorders.map((recorder) => recorder.id));
+  const unattachedIncidents = cameras.incidents.filter((incident) => !incident.recorder_id || !recorderIds.has(incident.recorder_id));
+  const controls: CameraAlertControls = {
+    canEditChannels: cameras.canEditAlerts,
+    // "Đã biết": chủ công ty/superadmin, hoặc network_center.execute Ở ĐÚNG TOÀ NÀY (máy chủ kiểm lại).
+    canAcknowledge: cameras.canEditAlerts || canUse(controller.permissionsQuery?.data, "network_center", "execute", site.buildingId),
+    isDemo: controller.isDemo,
+    mutes: new Map(cameras.mutes.map((mute) => [muteKey(mute.recorderId, mute.channel), mute])),
+    setMute: (input) => actions.setMute.mutateAsync(input),
+    clearMute: (recorderId, channel) => actions.clearMute.mutateAsync({ recorderId, channel }),
+    acknowledge: (incidentId) => actions.acknowledge.mutateAsync(incidentId),
+  };
+  const alertErrors = [incidentsQuery.isError ? incidentsQuery.error : null, mutesQuery.isError ? mutesQuery.error : null]
+    .filter((error): error is Error => error !== null);
 
   return (
     <div className="nc-tab-stack">
       {keepSnapshot && <div className="space-y-2"><CameraError error={snapshotQuery.error} retry={() => void snapshotQuery.refetch()} /><p className="text-sm">Đang giữ trạng thái ghi nhận trước đó. Đoạn đang xem và video đã cắt vẫn được giữ trong trang này.</p></div>}
       <div className="nc-panel-heading">
         <div><p className="nc-eyebrow">{controller.isDemo ? "Dữ liệu DEMO · mô phỏng" : "Theo dõi camera theo tòa nhà"}</p><h3>Camera · {site.buildingName}</h3></div>
-        <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching} onClick={() => { setRefreshKey((value) => value + 1); void snapshotQuery.refetch(); void eventsQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
+        <div className="nc-heading-actions">
+          <Button asChild variant="outline"><Link to="/network-center/camera-alerts" className="nc-link-button"><Bell className="mr-2 h-4 w-4" aria-hidden="true" />Cài đặt cảnh báo</Link></Button>
+          <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching} onClick={() => { setRefreshKey((value) => value + 1); refetchAll(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
+        </div>
       </div>
+      {alertErrors.length > 0 && !cameras.blockingError ? <CameraAlertDataError errors={alertErrors} retry={() => { void incidentsQuery.refetch(); void mutesQuery.refetch(); }} /> : null}
+      <CameraIncidentList incidents={unattachedIncidents} label="Sự cố camera đang mở của tòa nhà" controls={controls} />
       {controller.isDemo ? <p className="nc-empty-copy">DEMO chỉ mô phỏng trạng thái; không kết nối video thật.</p> : cameras.recorders.map((recorder) => <Suspense key={`${controller.actor.id}:${organizationId}:${recorder.id}`} fallback={<LoadingState label="trình xem camera" variant="cards" rows={1} />}><CameraLiveWall recorder={recorder} refreshKey={refreshKey} /><CameraArchivePanel recorder={recorder} buildingName={site.buildingName} /><CameraSharePanel recorder={recorder} buildingName={site.buildingName} scope={{ actorId: controller.actor.id, organizationId, buildingId: site.buildingId }} /></Suspense>)}
       {cameras.recorders.length === 0 ? <section className="nc-panel p-6"><h3>Chưa cấu hình đầu ghi</h3><p>Tòa nhà chưa có đầu ghi được đăng ký theo dõi.</p></section>
-        : cameras.recorders.map((recorder) => <RecorderCard key={recorder.id} recorder={recorder} now={cameras.now} />)}
+        : cameras.recorders.map((recorder) => <RecorderCard key={recorder.id} recorder={recorder} now={cameras.now} controls={controls} incidents={cameras.incidents.filter((incident) => incident.recorder_id === recorder.id)} />)}
       <section className="nc-panel" aria-labelledby="camera-events-title">
         <div className="nc-panel-heading"><div><p className="nc-eyebrow">Lịch sử đã nhận</p><h3 id="camera-events-title">Sự kiện camera</h3></div></div>
         <p className="p-4 text-sm">Theo lần kiểm tra chỉ ghi nhận thay đổi đã quan sát. Luồng sự kiện ghi nhận thông báo đầu ghi gửi đến; không đảm bảo lấy lại mọi sự kiện trong thời gian mất kết nối.</p>

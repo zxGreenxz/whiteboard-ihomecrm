@@ -154,6 +154,14 @@ export const NOTIFICATION_URL_ALLOWLIST: readonly NotificationRoute[] = [
   // capabilities/registry.ts — trang `chat-zalo.list`, quyền chat_zalo.view. Đích của cảnh báo
   // "Zalo mất kết nối" do bộ canh gác worker gửi chủ công ty (10/2026).
   { path: "/chat-zalo", module: "chat_zalo" },
+  // NetworkCenterApp.tsx — `/network-center/buildings/:buildingId`, BuildingTabs đọc `?tab=`.
+  // Đích chuông của cảnh báo camera (migration 20261124171943, spec 2026-11-24 §6).
+  {
+    path: "/network-center/buildings",
+    idSegment: true,
+    module: "network_center",
+    params: [["tab", (v) => v === "cameras"]],
+  },
 ];
 
 /** Cắt hash + query, chuẩn hoá `/` thừa ở cuối. Trả null nếu chuỗi đáng ngờ. */

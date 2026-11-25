@@ -75,7 +75,7 @@ Các bảng dưới dùng đúng key `module.action`. Route là đường dẫn 
 | **Toà nhà & Khu vực** · `/buildings` | `buildings.view/create/edit/delete`; `areas.view/create/edit/delete`. |
 | **Căn hộ / Phòng** · `/apartments` | `rooms.view/create/edit/delete`. |
 | **Dịch vụ** · `/services` | `services.view/create/edit/delete`. |
-| **Sale Phòng** · `/sale-phong` | `sale_phong.view`, `edit`, `manage_tokens`, `manage_settings`, `manage_images`, `edit_floor_plan`, `manage_pass_listings`, `create_deposit`, `view_analytics`. `create_deposit` là quyền nhạy cảm. |
+| **Sale Phòng** · `/sale-phong` | `sale_phong.view`, `edit`, `manage_tokens`, `manage_settings`, `manage_images`, `edit_floor_plan`, `manage_pass_listings`, `create_deposit`, `lock_room`, `view_analytics`. Nút **Tạo cọc giữ phòng** (link công khai) và nút **Cọc** ở tab Cập nhật phòng theo `deposits.create` ở toà đó; mục `create_deposit` còn trong danh sách nhưng không gác nút nào. |
 
 ### Khách hàng & hợp đồng
 

@@ -364,7 +364,7 @@ const IncomeExpenseList = ({
               .join(' ');
 
             return (
-              <TableRow key={voucher.id} className={rowClass}>
+              <TableRow key={voucher.id} data-testid={`voucher-row-${voucher.id}`} className={rowClass}>
                 {quickExpense && <TableCell><span title={quickExpense.reason(voucher) ?? 'Chọn để duyệt và chi nhanh'}><input type="checkbox"
                   aria-label={`Chọn phiếu ${voucher.code || voucher.name}`} className="disabled:opacity-30 disabled:cursor-not-allowed"
                   disabled={!!quickExpense.reason(voucher) || quickExpense.busy || quickExpense.collecting}
