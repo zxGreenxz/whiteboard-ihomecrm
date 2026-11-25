@@ -1,7 +1,10 @@
 import { customerListArgs, parseCustomerList } from '@/lib/customerList';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { FinancialWorkflowError, type CompletedFinancialStep } from '@/lib/financialWorkflow';
+import { FinancialAlreadyRecordedError, FinancialWorkflowError, type CompletedFinancialStep } from '@/lib/financialWorkflow';
 import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import {createWithClientMemory,personMatchKeys} from '@/lib/clientRecordCreate';
+import { legacyWindow, settleLegacyPending } from '@/lib/legacyPendingExit';
+import type { FinancialPendingRecord } from '@/lib/financialPending';
 import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -212,46 +215,80 @@ export interface CreateCustomerResult {
   customer: Customer;
   /** Có giá trị ⇒ khách ĐÃ tạo, phương tiện kèm theo CHƯA lưu được. */
   vehicleError?: { message?: string; code?: string } | null;
+  /** Khách đã được tạo ở lần gửi trước (mất phản hồi); lần này chỉ đọc lại đúng mã, không tạo thêm. */
+  replayed?: boolean;
+}
+
+/** Đầu vào tạo khách. `clientId`: nơi gọi tự giữ mã khách cho từng dòng (nhập Excel), để gửi lại đúng mã đó. */
+export type CreateCustomerInput = CustomerFormData & { clientId?: string };
+
+/**
+ * Dấu khoá chung của bản trước đợt 4 (`customer-create`/`create`, một dấu cho mọi khách mới): đọc một lần, tra
+ * khách người này đã tạo quanh giờ kẹt, gỡ dấu. Khách đang tạo giống một khách như thế (cùng SĐT, tên hoặc số giấy
+ * tờ) thì báo «có thể đã tạo» kèm mã và không tạo; lần bấm sau là lượt mới của người dùng.
+ */
+async function checkLegacyCustomerPending(matchKeys: readonly string[]): Promise<void> {
+  const settled = await settleLegacyPending({namespace:'customer-create',businessKey:'create'}, (pending, context) => legacyCustomerCandidates(pending, context));
+  const match = settled?.verdict.find(candidate => personMatchKeys({name:candidate.full_name,phone:candidate.phone,idNumber:candidate.id_number}).some(key => matchKeys.includes(key)));
+  if (match) throw new FinancialAlreadyRecordedError(`Có thể khách hàng ${match.full_name || ''} đã được tạo ở lần gửi trước bị kẹt (mã ${match.id}). Mở danh sách khách để kiểm tra; bấm lưu lại nếu vẫn muốn tạo thêm.`.replace(/\s+/g, ' '), [match.id]);
+}
+
+type LegacyCustomerCandidate = {id:string;full_name:string|null;phone:string|null;id_number:string|null};
+/** Khách do chính người này tạo quanh giờ kẹt (cửa sổ ±60 phút) và các mã khách dấu cũ đã nhận; mới nhất trước. */
+export async function legacyCustomerCandidates(pending: FinancialPendingRecord, context: {userId:string;organizationId:string}): Promise<LegacyCustomerCandidate[]> {
+  const {from,to}=legacyWindow(pending);
+  const columns='id, full_name, phone, id_number, created_at';
+  const {data,error}=await supabase.from('customers').select(columns).eq('user_id',context.userId).eq('organization_id',context.organizationId).gte('created_at',from).lte('created_at',to).order('created_at',{ascending:false}).limit(50);
+  if(error||!Array.isArray(data))throw error??new Error('Chưa đọc được khách quanh giờ kẹt.');
+  const rows=[...data] as LegacyCustomerCandidate[];
+  const known=pending.completedIds.filter(id=>!rows.some(row=>row.id===id));
+  if(known.length){
+    const {data:byId,error:byIdError}=await supabase.from('customers').select(columns).in('id',known);
+    if(byIdError||!Array.isArray(byId))throw byIdError??new Error('Chưa đọc được khách của dấu cũ.');
+    rows.push(...(byId as LegacyCustomerCandidate[]));
+  }
+  return rows;
 }
 
 export const useCreateCustomer = (options: {silent?:boolean} = {}) => {
   const queryClient = useQueryClient();
   const {selectedOrganizationId} = useOrganization();
-  const guard = persistentFinancialWorkflow('customer-create');
   const refresh = () => {for(const key of ['customers','vehicles']) queryClient.invalidateQueries({queryKey:[key]});};
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn:async(formData:CustomerFormData):Promise<CreateCustomerResult>=>{
+    // Không còn khoá chung (đợt 4): mã khách do trình duyệt sinh, gửi lại cùng mã cho cùng khách; khoá chính của
+    // `customers` chặn khách thứ hai. Một lần kẹt chỉ liên quan đúng khách đó.
+    mutationFn:async({clientId,...formData}:CreateCustomerInput):Promise<CreateCustomerResult>=>{
       const user=await getSessionUser(); if(!user)throw new Error('Not authenticated');
       const {vehicles,...customerData}=formData;
       vehicles?.forEach(vehicle=>validatedVehicleType(vehicle.vehicle_type));
-      const payload=withOrg({...customerData,user_id:user.id,status_v2:'WALK_IN'} as any,selectedOrganizationId);
-      let saved:Customer|undefined;
-      try{return await guard.run('create','tạo khách hàng',async progress=>{
-        const {data,error}=await supabase.from('customers').insert(withOrg(payload,selectedOrganizationId)).select().single();
-        if(error)throw error;const id=confirmedRecordId(data,'tạo khách hàng');
-        saved=data as unknown as Customer;
-        progress.completed.push({id,label:'Đã tạo khách hàng'});
-        if(vehicles?.length){
-          progress.stage='lưu phương tiện của khách';
-          const inserts=vehicles.map(v=>({user_id:user.id,customer_id:id,vehicle_type:validatedVehicleType(v.vehicle_type),vehicle_name:v.vehicle_name,color:v.color||null,license_plate:v.license_plate}));
-          const {data:rows,error:vehicleError}=await supabase.from('vehicles').insert(withOrgAll(inserts,selectedOrganizationId) as any).select('id');
-          if(vehicleError)throw vehicleError;
-          const ids=confirmedRecordBatch(rows,inserts.length,'lưu phương tiện của khách');
-          progress.completed.push(...ids.map(id=>({id,label:'Đã lưu phương tiện'})));
-        }
-        return {customer:saved};
-      },undefined,payload.organization_id);}
-      catch(error){
-        // Keep the established partial result contract while the durable guard remains blocked.
-        if(saved&&error instanceof FinancialWorkflowError&&error.outcome==='partial')return {customer:saved,vehicleError:error};
-        throw error;
+      const payload=withOrg({...customerData,user_id:user.id,status_v2:'WALK_IN'} as Record<string,unknown>,selectedOrganizationId);
+      const matchKeys=personMatchKeys({name:customerData.full_name,phone:customerData.phone,idNumber:customerData.id_number});
+      if(!clientId)await checkLegacyCustomerPending(matchKeys);
+      const {row,replayed}=await createWithClientMemory<Customer&{id:string}>({
+        table:'customers',userId:user.id,organizationId:payload.organization_id,payload,matchKeys,clientId,
+        operation:'tạo khách hàng',describe:row=>`Khách hàng ${String(row.full_name ?? '')}`.trim(),
+      });
+      const customer=row as Customer;
+      if(!vehicles?.length)return {customer,replayed};
+      // Khách đã có. Bước lưu xe hỏng thì báo «chưa lưu được xe» kèm mã khách, không giữ dấu nào: người dùng mở
+      // khách để thêm xe. Lần gửi trước đã tạo khách (mất phản hồi) thì nó chưa tới bước xe, nên lưu xe ở đây.
+      try{
+        const inserts=vehicles.map(v=>({user_id:user.id,customer_id:customer.id,vehicle_type:validatedVehicleType(v.vehicle_type),vehicle_name:v.vehicle_name,color:v.color||null,license_plate:v.license_plate}));
+        const {data:rows,error:vehicleError}=await supabase.from('vehicles').insert(withOrgAll(inserts,payload.organization_id) as never).select('id');
+        if(vehicleError)throw vehicleError;
+        confirmedRecordBatch(rows,inserts.length,'lưu phương tiện của khách');
+      }catch(error){
+        return {customer,replayed,vehicleError:new FinancialWorkflowError(`Khách hàng đã tạo (mã ${customer.id}) nhưng chưa lưu được xe: ${recordWriteMessage(error,'lưu phương tiện')} Mở khách để kiểm tra và thêm xe; không tạo lại khách.`,'partial',[{id:customer.id,label:'Khách đã tạo'}],error)};
       }
+      return {customer,replayed};
     },
     onSuccess:result=>{
       refresh();if(options.silent)return;
       if(result.vehicleError){toast.error(`Khách hàng ${result.customer.full_name || result.customer.id} đã tạo, phương tiện chưa hoàn tất.`,{description:recordWriteMessage(result.vehicleError,'lưu phương tiện')});return;}
-      toast.success(`Đã tạo khách hàng ${result.customer.full_name || result.customer.id}`);
+      toast.success(result.replayed
+        ? `Khách hàng ${result.customer.full_name || result.customer.id} đã được tạo ở lần gửi trước; không tạo thêm.`
+        : `Đã tạo khách hàng ${result.customer.full_name || result.customer.id}`);
     },
     onError:error=>{refresh();if(!options.silent)toast.error('Chưa tạo được khách hàng',{description:recordWriteMessage(error,'tạo khách hàng')});},
   });
