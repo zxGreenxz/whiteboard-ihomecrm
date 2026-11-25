@@ -25,8 +25,8 @@
     "sampling": "Với bucket catalog-proven: duyệt quy tắc một lần + random sample n≈30."
   },
   "knownLimits": [
-    "55/81 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
-    "26 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
+    "55/80 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
+    "25 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
     "catalog-proven yếu hơn ledger-applied: nó chứng minh object TỒN TẠI, không chứng minh CHÍNH FILE NÀY tạo ra nó. Một file khác cùng tạo object trùng tên sẽ cho kết quả giống hệt.",
     "42 version bị trùng (94 file) — vì vậy khoá định danh là (version, name, sha256), không phải version.",
     "Ledger dừng ở 20260727095000 trong khi production có thay đổi muộn hơn. Đừng dùng max(version) của ledger làm trạng thái schema."
@@ -830,18 +830,18 @@
       "file": "20261125034429_sale_phong_theo_cong_ty.sql",
       "sha256": "216eecfdbc7e89df8e358a64cfa715c8efc572049107331111cb5c3d7a05b2e0",
       "expectedSqlState": "55000",
-      "expectedMessage": "public.get_sale_room_inventory_v1(uuid,uuid,uuid) KHÁC thân đã rà (md5 0e3e37a193c5db71f34089c7fcb6f789) — DỪNG, đối chiếu thân đang chạy",
+      "expectedMessage": "public.get_sale_room_inventory_v1(uuid,uuid,uuid) KHÁC thân đã rà (md5 956083b0b2d245b923c6255ad31acd3f) — DỪNG, đối chiếu thân đang chạy",
       "appliedEvidencePath": "docs/generated/schema-change-evidence/20261125034429_sale_phong_theo_cong_ty.json",
       "supersededBy": {
-        "file": "20261125133852_unified_deposit_voucher_workflow.sql",
-        "sha256": "5547b30fd43ced8d4540a7a088d864db24d443c3b0d52530370ea7c4e1fe9856",
-        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261125133852_unified_deposit_voucher_workflow.json"
+        "file": "20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql",
+        "sha256": "aa8a0e414362ac56c5b34fac57220f5bb2da7e72955c39f5664215157a9abdcd",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.json"
       },
-      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/45656592563",
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/502",
       "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
-      "why": "File 034429 (Sale phòng đợt 2, #494, áp production 25/11 15:51Z) thay thân get_sale_room_inventory_v1 và get_my_available_rooms(uuid) và ghim md5 thân production trước nó (hoặc thân của chính file) trong khối tiền kiểm. File 133852 (#499 «Thống nhất nhận cọc qua Thu chi», áp production 25/11 sau đó) vá thêm has_deposit_hold vào chính hai thân đó. Chạy lại file gốc trên trạng thái production gặp thân của 133852 nên tiền kiểm ném 55000 đúng thiết kế (không ghi đè thân mới bằng thân cũ).",
-      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/11); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
-      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+      "why": "File 034429 (Sale phòng đợt 2, #494, áp production 25/11 15:51Z) thay thân get_sale_room_inventory_v1 và get_my_available_rooms(uuid) và ghim md5 thân production trước nó (hoặc thân của chính file) trong khối tiền kiểm. Sau nó hai migration đã áp production vá tiếp chính hai thân đó: 133852 (#499 «Thống nhất nhận cọc qua Thu chi», 25/11) nối has_deposit_hold vào thân bằng khối DO tự nhận biết đã vá, rồi 165113 (Sale phòng đợt 3, #502, áp 25/11 19:24Z, biên nhận backup 5cd5a53dc9a5a366) dựng lại hai thân từ thân production sau 133852, thêm phạm vi deposits.view và khoá deposit_hold. Chạy lại file gốc trên trạng thái production gặp thân của 165113 nên tiền kiểm ném 55000 đúng thiết kế (không ghi đè thân mới bằng thân cũ). Đo thật 25/11 bằng check-forward-migration-idempotent.mjs --file sau khi áp 165113; 133852 và 165113 replay đơn lẻ đều sạch.",
+      "heQua": "Mục này ghim file gốc, câu lỗi có md5 thân của 165113 và migration thay thế cuối chuỗi (165113) đã áp production có biên nhận backup; lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ. Migration sau này thay lại hai reader thì câu lỗi đổi md5 ⇒ phải sửa mục này cùng lúc áp migration đó (và khai mục tương tự cho 165113, vì tiền kiểm của nó cũng ghim md5 hai reader và room_has_holding_deposit).",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự (034429 → 133852 → 165113) trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",

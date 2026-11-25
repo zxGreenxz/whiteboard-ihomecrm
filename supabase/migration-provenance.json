@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T18:43:56.515Z",
+  "generatedAt": "2026-11-25T19:26:23.959Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 991,
-    "unknown": 81,
+    "ledger-applied": 992,
+    "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14799,13 +14799,9 @@
       "name": "coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho",
       "scheme": "timestamp14",
       "sha256": "aa8a0e414362ac56c5b34fac57220f5bb2da7e72955c39f5664215157a9abdcd",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.guard_deposit_voucher_amount_v1",
-        "function:app_private.room_deposit_hold_json_v1",
-        "trigger:public.income_expense_items.a1_ie_item_deposit_amount_positive",
-        "trigger:public.income_expenses.a1_ie_deposit_amount_positive"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T19:24:46.476Z|bien-nhan-backup"
       ]
     },
     {
