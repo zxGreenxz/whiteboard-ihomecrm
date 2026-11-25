@@ -7,6 +7,9 @@ import {withOrg} from '@/lib/orgPayload';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 import { confirmedRecordId, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { isUniqueViolation, normalizeVietnameseName } from '@/lib/clientRecordCreate';
+import { settleLegacyPending } from '@/lib/legacyPendingExit';
+import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -253,6 +256,22 @@ export const useHiddenInReportTypes = () => {
   });
 };
 
+/**
+ * Loại thu chi trùng ràng buộc duy nhất `income_expense_types_org_side_normalized_name_uq` của production:
+ * (công ty, chiều thu/chi, `normalize_income_expense_type_name(name)` = bỏ dấu, chữ thường, đ→d, gộp khoảng trắng).
+ * `null`: không thấy, hoặc đọc hỏng (RLS ẩn hạng mục hạn chế của người khác cũng là không thấy).
+ */
+async function findIncomeExpenseTypeByName(organizationId: string, side: 'income' | 'expense', name: string): Promise<IncomeExpenseType | null> {
+  try {
+    const { data, error } = await supabase.from('income_expense_types').select('*').eq('organization_id', organizationId).eq('type', side);
+    if (error || !Array.isArray(data)) return null;
+    const wanted = normalizeVietnameseName(name);
+    return (data as unknown as IncomeExpenseType[]).find(row => normalizeVietnameseName(row.name) === wanted) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Mutation Hooks ---
 
 export const useCreateIncomeExpenseType = () => {
@@ -274,10 +293,7 @@ export const useCreateIncomeExpenseType = () => {
       if (!user) throw new Error("User not authenticated");
 
       // Trigger strict yêu cầu tổ chức được chọn trong payload; không suy từ toà.
-      return persistentFinancialWorkflow('income-expense-type-create').run('create', 'tạo loại thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_types" as any)
-        .insert(withOrg({
+      const payload = withOrg({
           user_id: user.id,
           name: input.name,
           type: input.type,
@@ -291,17 +307,35 @@ export const useCreateIncomeExpenseType = () => {
           ...(input.keywords && input.keywords.length ? { keywords: input.keywords } : {}),
           ...(input.sort_order != null ? { sort_order: input.sort_order } : {}),
           ...(input.quick_entry_hidden ? { quick_entry_hidden: true } : {}),
-        },selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      const created = data as unknown as { id?: string; name?: string } | null;
-      if (!created?.id || created.name !== input.name) {
-        throw new FinancialWorkflowError('Chưa xác nhận được loại thu chi vừa tạo. Giữ bản nháp và đối chiếu danh sách trước khi tạo tiếp.', 'unknown', created?.id ? [{id:created.id,label:'Loại thu chi cần đối chiếu'}] : []);
+        },selectedOrganizationId);
+      // Đợt 4: không còn khoá chung. Dấu khoá chung của bản trước chỉ được gỡ: tên loại là duy nhất trong công ty
+      // nên mọi lần tạo sau đều tự đối chiếu được theo tên, không cần tra gì thêm cho dấu cũ.
+      await settleLegacyPending({ namespace: 'income-expense-type-create', businessKey: 'create' }, async () => true);
+      let response: { data: unknown; error: unknown };
+      try {
+        response = await supabase.from("income_expense_types" as any).insert(payload).select().single();
+      } catch (thrown) {
+        response = { data: null, error: thrown };
       }
-      return data;
-      },undefined,selectedOrganizationId);
+      const { data, error } = response;
+      const created = data as { id?: unknown; name?: unknown } | null;
+      if (!error && typeof created?.id === 'string' && created.id && created.name === input.name) return data as IncomeExpenseType;
+      const nameTaken = isUniqueViolation(error) && /normalized_name/.test(String((error as { message?: unknown }).message ?? ''));
+      // Máy chủ từ chối rõ vì lý do khác (quyền, cột lạ…): lỗi thật, không có gì để đối chiếu.
+      if (error && !nameTaken && !hasUnconfirmedResponse(error)) throw error;
+      // Trùng tên, hoặc chưa rõ kết quả: tra đúng loại theo ràng buộc duy nhất (công ty, chiều, tên chuẩn hoá).
+      const existing = await findIncomeExpenseTypeByName(payload.organization_id, input.type, input.name);
+      if (existing) {
+        if (existing.archived_at || existing.merged_into_id) {
+          throw new FinancialWorkflowError(`Tên «${existing.name}» trùng với một loại thu chi đã lưu trữ hoặc đã gộp (mã ${existing.id}). Khôi phục loại đó ở Cài đặt › Loại thu chi, hoặc đặt tên khác.`, 'failure', []);
+        }
+        // Trùng tên: loại đã có từ trước (hoặc do lần gửi trước). Chưa rõ kết quả mà thấy: chính lần gửi này đã ghi.
+        return nameTaken ? { ...existing, existed: true } : existing;
+      }
+      if (nameTaken) {
+        throw new FinancialWorkflowError('Tên loại thu chi này đã có trong công ty nhưng bạn không xem được (có thể là hạng mục hạn chế). Đặt tên khác, hoặc nhờ chủ công ty kiểm tra.', 'failure', []);
+      }
+      throw new FinancialWorkflowError('Chưa xác nhận được kết quả tạo loại thu chi. Giữ nguyên thông tin rồi bấm lưu lại: tên loại là duy nhất trong công ty nên không tạo trùng.', 'unknown', [], error);
     },
     onSuccess: (data) => {
       invalidateIeTypesCache();
@@ -309,6 +343,10 @@ export const useCreateIncomeExpenseType = () => {
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],
       });
+      if ((data as { existed?: boolean } | null)?.existed) {
+        toast.success(`Loại thu chi ${feedbackRecordName(data)} đã có trong công ty; dùng loại này, không tạo thêm và không đổi thiết lập của nó.`);
+        return;
+      }
       toast.success(`Đã tạo loại thu chi ${feedbackRecordName(data)}`);
     },
     onError: (error) => {
