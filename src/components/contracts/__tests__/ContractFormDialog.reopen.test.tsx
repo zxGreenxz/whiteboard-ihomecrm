@@ -6,6 +6,7 @@ import type { ContractFormState } from '../contract-form/useContractFormState';
 import { ContractFormDialog } from '../ContractFormDialog';
 
 const fixtures = vi.hoisted(() => ({ rows: [], save: vi.fn(), submit: vi.fn() }));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({ useContractExitEarlyTerms: () => ({ data: [], isError: false, error: null, refetch: () => undefined }) }));
 vi.mock('@/hooks/useContracts', () => ({ useCreateContract: () => ({ isPending: false }),
   useUpdateContract: () => ({ isPending: false }), useSyncContractCustomers: () => ({ isPending: false }),
   useSyncContractServices: () => ({ isPending: false }) }));

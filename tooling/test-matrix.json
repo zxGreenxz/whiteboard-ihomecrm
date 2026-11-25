@@ -36,6 +36,34 @@
       ]
     },
     {
+      "id": "contract-exit-support",
+      "sourcePaths": [
+        "supabase/migrations/*_so_ho_tro_sang_nhuong_chuyen_coc.sql",
+        "src/lib/__tests__/fixtures/exit-support-before.sql",
+        "src/lib/__tests__/contractExitSupportMigration.test.ts",
+        "scripts/tests/test-exit-support-live.sql"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/lib/__tests__/contractExitSupportMigration.test.ts",
+        "src/lib/__tests__/contractExitEarlyTermsMigration.test.ts"
+      ]
+    },
+    {
+      "id": "contract-exit-deposit-retained",
+      "sourcePaths": [
+        "supabase/migrations/*_coc_giu_lai_theo_thoa_thuan.sql",
+        "src/lib/__tests__/fixtures/deposit-retained-before.sql",
+        "src/lib/__tests__/depositRetainedMigration.test.ts",
+        "scripts/tests/test-deposit-retained-live.sql"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/lib/__tests__/depositRetainedMigration.test.ts",
+        "src/lib/__tests__/terminationSettlement.test.ts"
+      ]
+    },
+    {
       "id": "navigation",
       "sourcePaths": [
         "src/components/layout/**",

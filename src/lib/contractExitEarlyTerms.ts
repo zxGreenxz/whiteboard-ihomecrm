@@ -45,7 +45,10 @@ export const earlyTermsSchema = z.object({
   new_contract_id: uuid.nullable(), new_contract_number: z.string().nullable(), linked_at: z.string().nullable(),
   new_contract_deposit_paid: money.nullable(), new_contract_total_deposit: money.nullable(),
   new_contract_start_date: z.string().nullable(), new_contract_billing_start: z.string().nullable(),
-  support_amount: money, commission_voucher_id: uuid.nullable(), commission_code: z.string().nullable(),
+  support_amount: money, support_out_voucher_id: uuid.nullable().optional(), support_in_voucher_id: uuid.nullable().optional(),
+  /** Mã hai phiếu chuyển cọc (khách cũ hỗ trợ khách nhận); có từ migration 20261124154554. */
+  support_out_code: z.string().nullable().optional(), support_in_code: z.string().nullable().optional(),
+  commission_voucher_id: uuid.nullable(), commission_code: z.string().nullable(),
   /** Phiếu hoa hồng đã nối còn hiệu lực (chưa huỷ/xoá). false: lập lại được phiếu mới. */
   commission_live: z.boolean().nullable().optional(),
   commission_approval_status: z.string().nullable(),
@@ -77,7 +80,8 @@ export function buildEarlyTermsPayload(choice: EarlyTermsChoice): Json {
 
 export type ExitEarlyTermsRpcName =
   | 'read_contract_exit_early_terms_v1' | 'set_contract_exit_early_terms_v1' | 'update_contract_exit_broker_fee_v1'
-  | 'reopen_contract_exit_hold_v1' | 'extend_contract_exit_hold_v1' | 'create_contract_exit_commission_v1';
+  | 'reopen_contract_exit_hold_v1' | 'extend_contract_exit_hold_v1' | 'create_contract_exit_commission_v1'
+  | 'reverse_contract_exit_support_v1';
 export interface ExitEarlyTermsRpcError { code?: string; message?: string; details?: string | null; hint?: string | null }
 export type ExitEarlyTermsInvoker = (name: ExitEarlyTermsRpcName, args: Record<string, Json | undefined>) =>
   PromiseLike<{ data: unknown; error: ExitEarlyTermsRpcError | null }>;
@@ -158,6 +162,21 @@ export async function createExitCommission(invoke: ExitEarlyTermsInvoker, input:
     p_request_id: value.requestId, p_account_id: value.accountId ?? null,
     p_recipient_bank: value.recipientBank?.trim() || null, p_recipient_account: value.recipientAccount?.trim() || null,
   }));
+}
+
+export interface ReverseExitSupportInput { caseId: string; expectedVersion: number; requestId: string; reason: string }
+/** Đảo số tiền khách cũ hỗ trợ khách mới: huỷ đúng cặp phiếu chuyển cọc, cọc hai bên về như trước (hồ sơ còn chờ quyết toán). */
+export async function reverseExitSupport(invoke: ExitEarlyTermsInvoker, input: ReverseExitSupportInput, organizationId: string) {
+  const value = z.object({ caseId: uuid, expectedVersion: z.number().int().positive(), requestId: requestIdSchema,
+    reason: z.string().trim().min(1, 'Ghi lý do đảo số tiền khách cũ hỗ trợ').max(2000) }).strict().parse(input);
+  return earlyTermsSchema.parse(await call(invoke, 'reverse_contract_exit_support_v1', {
+    p_organization_id: uuid.parse(organizationId), p_exit_case_id: value.caseId, p_expected_version: value.expectedVersion,
+    p_request_id: value.requestId, p_reason: value.reason,
+  }));
+}
+/** Hồ sơ có số hỗ trợ còn đảo được (chưa quyết toán khách cũ). */
+export function canReverseExitSupport(terms: Pick<ContractExitEarlyTerms, 'support_amount' | 'exit_state'> | null | undefined) {
+  return !!terms && terms.support_amount > 0 && terms.exit_state === 'PENDING';
 }
 
 /** Phí mặc định của máy chủ: 50% cọc theo hợp đồng cũ (làm tròn đồng), không vượt cọc đã thu. */

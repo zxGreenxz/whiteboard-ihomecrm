@@ -2,7 +2,11 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
+  DEPOSIT_RETAINED_LABEL,
   computeTerminationSettlement,
+  depositFloor,
+  resolveDepositRetention,
+  withDepositRetainedLine,
   type TerminationSettlementInput,
 } from "@/lib/terminationSettlement";
 
@@ -201,5 +205,64 @@ describe("quyết toán thanh lý — ca cụ thể", () => {
     });
     expect(s.deposit).toBe(2_000_000);
     expect(s.totalRefund).toBe(2_500_000);
+  });
+});
+
+describe("cọc giữ lại theo thoả thuận (đợt 4) — sàn và dòng giữ lại", () => {
+  it("sàn = min(cọc đã thu, cọc theo hợp đồng); cọc HĐ 0/NULL, chưa thu hoặc âm ⇒ 0", () => {
+    expect(depositFloor(4_500_000, 4_500_000)).toBe(4_500_000);
+    expect(depositFloor(5_000_000, 4_000_000)).toBe(4_000_000);
+    expect(depositFloor(3_000_000, 4_000_000)).toBe(3_000_000);
+    expect(depositFloor(4_000_000, 0)).toBe(0);
+    expect(depositFloor(4_000_000, null)).toBe(0);
+    expect(depositFloor(0, 4_000_000)).toBe(0);
+    expect(depositFloor(-100_000, 4_000_000)).toBe(0);
+  });
+
+  it("ca 4 của báo cáo: hoàn 2.500.000 trên cọc 4.500.000 ⇒ đem đủ cọc, giữ lại 2.000.000, khách nhận như cũ", () => {
+    const r = resolveDepositRetention({ depositPaid: 4_500_000, totalDeposit: 4_500_000, requested: 2_500_000 });
+    expect(r).toEqual({ floor: 4_500_000, depositSent: 4_500_000, retained: 2_000_000 });
+    const before = computeTerminationSettlement({ depositPaid: 4_500_000, depositRefundRequested: 2_500_000, extraChargesTotal: 200_000 });
+    const after = computeTerminationSettlement({ depositPaid: 4_500_000, depositRefundRequested: r.depositSent,
+      extraChargesTotal: 200_000 + r.retained });
+    expect(after.totalRefund).toBe(before.totalRefund);
+    expect(after.totalRefund).toBe(2_300_000);
+    expect(after.appliedDeposit).toBe(2_200_000);
+    // Toàn bộ cọc đem ra đều có chứng từ: cấn (doanh thu) + hoàn = cọc đã thu.
+    expect(after.appliedDeposit + after.refundDeposit).toBe(4_500_000);
+  });
+
+  it("từ sàn trở lên (kể cả sổ cọc ghi dôi) gửi đúng số nhập, không có dòng giữ lại", () => {
+    expect(resolveDepositRetention({ depositPaid: 4_500_000, totalDeposit: 4_500_000, requested: 4_500_000 }))
+      .toEqual({ floor: 4_500_000, depositSent: 4_500_000, retained: 0 });
+    expect(resolveDepositRetention({ depositPaid: 5_000_000, totalDeposit: 4_000_000, requested: 4_600_000 }))
+      .toEqual({ floor: 4_000_000, depositSent: 4_600_000, retained: 0 });
+    // Sổ ghi dôi mà nhập dưới cọc HĐ: chỉ phần dưới cọc HĐ thành dòng giữ lại.
+    expect(resolveDepositRetention({ depositPaid: 5_000_000, totalDeposit: 4_000_000, requested: 3_000_000 }))
+      .toEqual({ floor: 4_000_000, depositSent: 4_000_000, retained: 1_000_000 });
+    expect(resolveDepositRetention({ depositPaid: 4_000_000, totalDeposit: 0, requested: 0 }))
+      .toEqual({ floor: 0, depositSent: 0, retained: 0 });
+  });
+
+  it("mọi số nhập: cọc đem ra không dưới sàn, giữ lại + số nhập = sàn khi nhập dưới sàn", () => {
+    fc.assert(fc.property(vnd, vnd, vnd, (paid, total, requested) => {
+      const r = resolveDepositRetention({ depositPaid: paid, totalDeposit: total, requested });
+      expect(r.depositSent).toBeGreaterThanOrEqual(r.floor);
+      expect(r.retained).toBeGreaterThanOrEqual(0);
+      if (requested < r.floor) expect(r.retained + requested).toBe(r.floor);
+      else expect(r.retained).toBe(0);
+      // Máy chủ đòi dòng giữ lại không vượt sàn (nên không vượt cọc đem ra sau khi kẹp theo cọc đã thu).
+      expect(r.retained).toBeLessThanOrEqual(r.floor);
+      expect(r.retained).toBeLessThanOrEqual(Math.min(r.depositSent, paid));
+    }));
+  });
+
+  it("dòng giữ lại: đúng một dòng đúng tên, bỏ dòng tự thêm, không có khi số 0", () => {
+    const manual = [{ kind: "CUSTOM" as const, description: "Vệ sinh", amount: 200_000 },
+      { kind: "DEPOSIT_RETAINED" as const, description: "tự thêm", amount: 1 }];
+    expect(withDepositRetainedLine(manual, 2_000_000)).toEqual([manual[0],
+      { kind: "DEPOSIT_RETAINED", description: DEPOSIT_RETAINED_LABEL, amount: 2_000_000 }]);
+    expect(withDepositRetainedLine(manual, 0)).toEqual([manual[0]]);
+    expect(DEPOSIT_RETAINED_LABEL).toBe("Cọc giữ lại theo thoả thuận");
   });
 });

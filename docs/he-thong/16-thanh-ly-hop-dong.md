@@ -10,7 +10,7 @@
 
 Quyết toán cũ sau khi khách mới vào **không thay đổi hợp đồng mới hoặc tình trạng phòng của khách mới**. Chọn Bỏ cọc vẫn dùng luồng bỏ cọc hiện hành; chỉ nhận bàn giao trước chưa tự thực hiện việc đó.
 
-Nhượng liên kết không có nghĩa tiền đã chuyển. Lựa chọn cấn cọc cũ sang hợp đồng mới chưa hỗ trợ chuyển/cấn phiếu và chặn ký; phải đối soát chứng từ hiện hành. Xem [05 — Nháp/ký và nhượng](05-hop-dong.md), [04 — Giữ chỗ](04-coc-giu-cho.md), [06 — Chỉ số bàn giao](06-cong-to-chi-so.md).
+Sang nhượng phòng (24–25/11/2026) ghi trong hộp Thanh lý (ba trường hợp trả phòng trước hạn). Tiền giữa hai hợp đồng chỉ đi qua số **Khách cũ hỗ trợ khách mới** (cặp phiếu chuyển cọc trên sổ nội bộ, xem §4.6); liên kết nhượng cũ không chuyển tiền. Xem [05 — Nháp/ký và nhượng](05-hop-dong.md), [04 — Giữ chỗ](04-coc-giu-cho.md), [06 — Chỉ số bàn giao](06-cong-to-chi-so.md).
 
 ## Hỗ trợ tiền thuê theo lịch v2 (từ 01/10/2026)
 
@@ -283,7 +283,7 @@ Dòng lịch sử: [20260603000022 — deposit book transfer](../../supabase/mig
 [`_termination_pick_account`](../../supabase/migrations/20260603000021_termination_pick_account_building_cashbook.sql).
 
 Tham số do UI tính sẵn (`StepMoveOut` trong [TerminateDialog.tsx](../../src/components/contracts/TerminateDialog.tsx)):
-`deposit_refund` mặc định = `total_deposit`; `excess_rent` auto-fill = credit dư; `outstanding_debt`
+`deposit_refund` mặc định = sàn `min(deposit_paid, total_deposit)`, nhập dưới sàn thì gửi sàn + dòng `DEPOSIT_RETAINED` (§4.5); `excess_rent` mặc định 0 (không auto-fill credit nữa); `outstanding_debt`
 = Σ `(total − paid)` các HĐ chưa thanh toán; `extra_charges` từ khu "Thu thêm" (§2.5).
 ⚠️ **Ô "Phí phạt" đã bị BỎ khỏi form** (2026-06-27) — hook luôn gửi `p_penalty_fee = 0`, tham số
 chỉ còn tồn tại ở chữ ký RPC; vai trò phạt/thu vét chuyển hết sang "Thu thêm".
@@ -375,12 +375,28 @@ flowchart TD
 
 ---
 
+### 4.5. Cọc giữ lại theo thoả thuận và luật sàn (25/11/2026)
+
+Migration [20261124201133](../../supabase/migrations/20261124201133_coc_giu_lai_theo_thoa_thuan.sql) (plan sang nhượng phòng, đợt 4). Mục tiêu: không còn cọc treo trên hợp đồng đã thanh lý mà không có chứng từ (đo 24/11: 8/90 thanh lý thường từ 01/07 còn cọc ghi trên hợp đồng mà không còn phiếu hoàn chờ duyệt).
+
+- **Sàn** = `LEAST(GREATEST(deposit_paid,0), GREATEST(total_deposit,0))` (NULL tính 0; `deposit_paid` hiện hành, đã trừ số hỗ trợ sang nhượng). `terminate_contract_move_out_impl` từ chối (`22023`) khi `deposit_refund` < sàn. Kiểm ở hàm lõi nên mọi đường (quyết toán ngay, quyết toán sau, ảnh đồng hồ, gọi thẳng RPC cũ) đều bị kiểm.
+- Phần cọc **không hoàn theo thoả thuận** là một dòng `extra_charges` `kind = DEPOSIT_RETAINED`, mô tả đúng `Cọc giữ lại theo thoả thuận`, tối đa một dòng, > 0, không vượt sàn (nên phần sổ cọc ghi dôi không thành doanh thu kể cả khi gọi thẳng máy chủ). Nó là khoản thu thêm như mọi khoản khác: dòng hoá đơn thanh lý, cấn từ cọc qua cặp `termination.offset` / `termination.revenue`. Trên phiếu `termination.revenue`, phần đó đứng hạng mục riêng **Cọc giữ lại theo thoả thuận** (income, `is_deposit = false` ⇒ PNL); phần còn lại giữ hạng mục **Doanh thu thanh lý**. Tổng phiếu, số phiếu, `contract_terminations` và phép tính khác không đổi. Ghi chú quyết toán thêm dòng "Trong đó cọc giữ lại theo thoả thuận".
+- **Sổ cọc ghi dôi** (`deposit_paid > total_deposit`): `deposit_refund` từ sàn tới `deposit_paid` cho qua như trước; phần dôi trên cọc hợp đồng là lệch sổ (thường phiếu cọc đếm trùng), không thành doanh thu và còn trên hợp đồng để xử lý phiếu cọc. Đo 25/11: 3/90 thanh lý thường từ 01/07 và 4/298 hợp đồng đang hiệu lực rơi vào ca này. Có chặn hẳn ca này như Bỏ cọc (A9) hay không: chờ chủ quyết.
+- Giao diện (`StepMoveOut`): ô **Tiền cọc hoàn trả** là số hoàn theo thoả thuận, mặc định bằng sàn. Nhập dưới sàn ⇒ gửi `deposit_refund` = sàn và tự nối dòng `DEPOSIT_RETAINED` = sàn − số nhập (khoá, hiện dưới ô và trong hộp xác nhận); bản nháp quyết toán cũ áp cùng luật khi mở lại. Phép tính ở [terminationSettlement.ts](../../src/lib/terminationSettlement.ts) (`depositFloor`, `resolveDepositRetention`, `withDepositRetainedLine`).
+- Không áp dụng: **Bỏ cọc** (`run_contract_exit_settlement_v1` từ chối dòng `DEPOSIT_RETAINED` khi `FORFEIT` ở luồng hồ sơ trả phòng; hàm bỏ cọc không đổi, nên gọi thẳng RPC cũ `terminate_contract_forfeit` / `terminate_contract_forfeit_with_credit_v1` vẫn nhận dòng này như một khoản thu thêm chờ thu — giao diện không gọi hai RPC đó) và hai trường hợp sang nhượng nhờ sale / tự tìm (`assert_exit_early_terms_settlement_v1` từ chối dòng này; ô hoàn khoá ở cọc đã thu như đợt 2).
+- Hạn chế đã biết: (1) cọc theo hợp đồng bằng 0 thì sàn = 0, cọc đã thu có thể vẫn còn trên hợp đồng (ca sổ ghi dôi); (2) Ghi nợ (DEBT) khi nợ vượt số hoàn: vòng gạch nợ trả hoá đơn cũ trước, nên phần khách còn nợ nằm trên hoá đơn thanh lý (có dòng giữ lại) trong khi phiếu doanh thu đã ghi đủ phần giữ lại; tiền và tổng doanh thu đúng, chỉ nhãn theo hoá đơn lệch nhãn theo phiếu.
+- Còn hở: đường duyệt hồ sơ thanh lý kiểu cũ `approve_contract_termination_v1` (và `copilot_execute_contract_duyet_thanh_ly_v1` gọi nó) không đi qua hàm lõi nên không có luật sàn; không có nút giao diện nào gọi, production có 1 hồ sơ thường từ 01/07 không mang phiếu của đường quyết toán mới (chưa xác minh là đường này).
+
+### 4.6. Số khách cũ hỗ trợ khách mới (24/11/2026)
+
+Migration [20261124154554](../../supabase/migrations/20261124154554_so_ho_tro_sang_nhuong_chuyen_coc.sql) (đợt 3). Ô **Khách cũ hỗ trợ khách mới** ở form tạo hợp đồng khách nhận (hồ sơ nhờ sale / tự tìm đang chờ nối). `create_contract_v2` ghi một cặp phiếu **đã duyệt** trên sổ nội bộ cùng số tiền, ngày hôm nay của công ty: `exit.support_out` (chi, dòng cọc) trên hợp đồng cũ và `exit.support_in` (thu, dòng cọc) trên hợp đồng mới. `deposit_paid` hai bên đổi đúng số đó, không qua quỹ, không vào KQKD. Trần: ≤ cọc cũ đã thu − phí môi giới và ≤ phần cọc còn thiếu của hợp đồng mới. Hai phiếu không huỷ/sửa/xoá được; khi còn số hỗ trợ không đổi trường hợp, không xoá hợp đồng khách nhận; đảo bằng `reverse_contract_exit_support_v1` (lý do, chỉ khi hồ sơ cũ còn chờ quyết toán). Quyết toán khách cũ dùng cọc còn lại, ghi dòng "Đã cấn sang …" vào ghi chú. Phiếu `exit.support_in` không làm nguồn thưởng Sale theo phiếu cọc. Chưa lưu được vào bản nháp hợp đồng (`editor_state` bị máy chủ kiểm khoá chặt); mở lại nháp phải nhập lại trước khi ký.
+
 ## 5. So sánh 2 trường hợp
 
 | Tiêu chí | BỎ CỌC (FORFEIT) | RỜI PHÒNG (MOVE_OUT) |
 |---|---|---|
 | Hoá đơn nợ cũ | **HUỶ** (giữ phần đã thu, xoá phần nợ) | **Payment `TM` "Quyết toán khi thanh lý" → PAID** (không huỷ) |
-| Số cọc xử lý | `LEAST(total_deposit, deposit_paid)` (thực thu) | `deposit_refund` (UI, mặc định total_deposit) |
+| Số cọc xử lý | `LEAST(total_deposit, deposit_paid)` (thực thu) | `deposit_refund` (không thấp hơn sàn `min(deposit_paid, total_deposit)` từ 25/11/2026; phần không hoàn = dòng `DEPOSIT_RETAINED`, §4.5) |
 | Thu thêm (`p_extra_charges`) | **HĐ AR RIÊNG chờ thu** (tháng trống kế) — không cấn vào cọc | **GỘP vào HĐ thanh lý** + cộng vào `charges` (cấn vào cọc) |
 | Doanh thu KQKD | = cọc bị bỏ (phí phạt) | = `applied` (+ `\|S\|` nếu khách trả thêm) |
 | Hoàn tiền cho khách | Không | Có, nếu `S > 0` (chi từ sổ CỌC) |

@@ -8,6 +8,7 @@ import {
   EARLY_REASONS, EARLY_REASON_LABELS, EARLY_REASON_NOTES, contractNumberLabel, isTransferReason,
   type ContractExitEarlyTerms, type EarlyReason,
 } from '@/lib/contractExitEarlyTerms';
+import { ExitSupportSummary } from './ExitSupportPanel';
 
 const vnd = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
 const dateTime = (value: string) => new Date(value).toLocaleString('vi-VN', {
@@ -103,8 +104,11 @@ export function ExitEarlyTermsPanel(props: {
         {terms.early_reason === 'SALE_ASSISTED' && terms.sale_name && <> · Sale: <strong>{terms.sale_name}</strong></>}</p>
       {terms.early_reason === 'SALE_ASSISTED' && <p>Phí môi giới: <strong>{vnd(terms.broker_fee)} đ</strong></p>}
       <p className="text-muted-foreground">{earlyTermsStatus(terms)}</p>
-      {terms.exit_state === 'PENDING' && <Button type="button" size="sm" variant="outline" disabled={props.disabled}
+      <ExitSupportSummary terms={terms} disabled={props.disabled} />
+      {terms.exit_state === 'PENDING' && <Button type="button" size="sm" variant="outline" disabled={props.disabled || terms.support_amount > 0}
         onClick={() => startEdit()}>Đổi trường hợp</Button>}
+      {terms.exit_state === 'PENDING' && terms.support_amount > 0 && <p className="text-xs text-muted-foreground">
+        Đã ghi số khách cũ hỗ trợ: đảo số hỗ trợ trước khi đổi trường hợp.</p>}
     </>}
     {formOpen && <div className="space-y-3">
       {!terms && <p className="font-medium text-amber-800">Hồ sơ chưa chọn trường hợp trả phòng trước hạn (ghi từ Hermes hoặc trước khi có tính năng này). Chọn trường hợp trước khi quyết toán.</p>}
