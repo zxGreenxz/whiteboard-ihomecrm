@@ -61,7 +61,8 @@ export default function SalePhongMobilePage() {
   const { data: perms } = useMyPermissions();
   const [mode, setMode] = useState<Mode>('update');
   const { data: buildings, isLoading, isError, refetch, readFresh } = useMyAvailableRooms({ enabled: mode === 'browse' });
-  const tokenQuery=usePublicRoomTokens();
+  // Danh sách link của công ty cần quyền Quản lý link (máy chủ kiểm); không có quyền thì không đọc.
+  const tokenQuery=usePublicRoomTokens({ enabled: canUse(perms, 'sale_phong', 'manage_tokens') });
   const tokens=tokenQuery.data;
   const passQuery = usePassListings();
   const { data: passListings } = passQuery;

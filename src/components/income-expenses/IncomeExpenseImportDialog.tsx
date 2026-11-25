@@ -20,6 +20,7 @@ import { parseExcelFile } from '@/lib/excelHelpers';
 import { type ExcelImportRow } from '@/lib/incomeExpenseValidation';
 import { validateImportRows } from '@/hooks/useIncomeExpensesHelpers';
 import { useImportIncomeExpenses, type ImportIncomeExpenseRow } from '@/hooks/useIncomeExpenses';
+import { supabase } from '@/integrations/supabase/client';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useIncomeExpenseTypes } from '@/hooks/useIncomeExpenseTypes';
 import { resolveImportIeType } from '@/lib/ieTypeLookup';
@@ -66,6 +67,7 @@ const HEADER_MAPPING: Record<string, keyof ExcelImportRow> = {
   'Loại phiếu (*)': 'type',
   'Căn hộ (*)': 'building_name',
   'Phòng': 'room_name',
+  'Người gửi': 'payer_name',
   'Tên phiếu (*)': 'name',
   'Ngày (*)': 'voucher_date',
   'Hạng mục (*)': 'item_name',
@@ -80,6 +82,7 @@ async function downloadIncomeExpenseImportTemplate(): Promise<void> {
       'Loại phiếu (*)': 'Thu',
       'Căn hộ (*)': 'Tòa nhà ABC',
       'Phòng': 'Phòng 101',
+      'Người gửi': '',
       'Tên phiếu (*)': 'Thu tiền điện tháng 1',
       'Ngày (*)': '2025-01-15',
       'Hạng mục (*)': 'Tiền điện',
@@ -281,6 +284,7 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
       const allTypes = [...(incomeTypes || []), ...(expenseTypes || [])];
       const resolvedRows: ImportIncomeExpenseRow[] = [];
       const sourceRows: number[] = [];
+      const roomLookups=new Map<string,{id:string;name:string;code:string|null}[]>();
       const resolveErrors: Array<{ row: number; message: string }> = [];
 
       for (const row of validRows) {
@@ -305,10 +309,23 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
         }
         const expenseType = resolved.type;
 
+        let roomId:string|undefined;
+        if(matchType==='income'&&expenseType.is_deposit){
+          const label=row.data.room_name?.trim().toLocaleLowerCase('vi');
+          if(!label){resolveErrors.push({row:row.rowIndex,message:'Phiếu thu cọc cần tên hoặc mã phòng.'});continue;}
+          if(!roomLookups.has(building.id)){
+            const {data,error}=await supabase.from('rooms').select('id,name,code').eq('building_id',building.id).is('deleted_at',null);
+            if(error)throw error;
+            roomLookups.set(building.id,data??[]);
+          }
+          const matches=roomLookups.get(building.id)!.filter(r=>[r.name,r.code].some(v=>v?.trim().toLocaleLowerCase('vi')===label));
+          if(matches.length!==1){resolveErrors.push({row:row.rowIndex,message:'Cần một phòng khớp đúng tên hoặc mã trong tòa đã chọn.'});continue;}
+          roomId=matches[0].id;
+        }
         sourceRows.push(row.rowIndex);
         resolvedRows.push({
           ...row.data,
-          building_id: building.id,
+          building_id: building.id, room_id:roomId,
           income_expense_type_id: expenseType.id,
           source_row: row.rowIndex,
         });

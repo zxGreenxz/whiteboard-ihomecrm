@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3231,
-    "catalogFunctions": 1689,
+    "sourceCallSites": 3246,
+    "catalogFunctions": 1698,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 439,
+    "calledRpcs": 449,
     "byRisk": {
-      "normal": 329,
+      "normal": 339,
       "financial": 109,
       "infrastructure": 1
     },
-    "securityDefiner": 413
+    "securityDefiner": 423
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1813,6 +1813,25 @@
       ],
       "risk": "normal"
     },
+    "create_deposit_income_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_request_key text, p_row jsonb, p_items jsonb, p_terms jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/depositIncomeRpc.ts"
+      ],
+      "risk": "normal"
+    },
     "create_income_expense_v1": {
       "definitions": [
         {
@@ -2575,6 +2594,25 @@
       ],
       "risk": "normal"
     },
+    "get_approval_request_detail_compat_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useApprovals.ts"
+      ],
+      "risk": "normal"
+    },
     "get_change_breakdown_v2": {
       "definitions": [
         {
@@ -2806,6 +2844,25 @@
       ],
       "risk": "normal"
     },
+    "get_deposit_income_hold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_room_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useDepositIncomeHold.ts"
+      ],
+      "risk": "normal"
+    },
     "get_deposits_report_summary": {
       "definitions": [
         {
@@ -2949,6 +3006,25 @@
       ],
       "risk": "normal"
     },
+    "get_lead_deposit_income_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_lead_id uuid",
+          "returns": "uuid",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/depositIncomeRpc.ts"
+      ],
+      "risk": "normal"
+    },
     "get_member_authorization_v1": {
       "definitions": [
         {
@@ -3015,7 +3091,7 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "",
+          "args": "p_organization_id uuid DEFAULT NULL::uuid",
           "returns": "jsonb",
           "volatility": "STABLE",
           "securityDefiner": true,
@@ -3250,6 +3326,25 @@
       ],
       "risk": "financial"
     },
+    "get_own_deposit_income_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_request_key text",
+          "returns": "uuid",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/depositIncomeRpc.ts"
+      ],
+      "risk": "normal"
+    },
     "get_period_commissions": {
       "definitions": [
         {
@@ -3328,6 +3423,26 @@
       ],
       "callers": [
         "src/pages/phong-trong/usePhongTrong.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_public_room_settings_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomSettings.ts"
       ],
       "risk": "normal"
     },
@@ -4151,6 +4266,25 @@
       ],
       "risk": "normal"
     },
+    "list_deposit_income_holds_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_room_id uuid, p_customer_id uuid, p_status text, p_limit integer, p_before_created timestamp with time zone, p_after_id uuid, p_buildings uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useRoomReservations.ts"
+      ],
+      "risk": "normal"
+    },
     "list_due_contract_move_out_notices_v1": {
       "definitions": [
         {
@@ -4267,6 +4401,26 @@
       ],
       "callers": [
         "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_public_room_tokens_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomTokens.ts"
       ],
       "risk": "normal"
     },
@@ -4661,6 +4815,26 @@
       ],
       "callers": [
         "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "manage_public_room_token_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_token text, p_action text, p_label text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomTokens.ts"
       ],
       "risk": "normal"
     },
@@ -6634,6 +6808,26 @@
       ],
       "callers": [
         "src/hooks/useContractExitSettlementDrafts.ts"
+      ],
+      "risk": "normal"
+    },
+    "save_public_room_settings_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_expected_updated_at timestamp with time zone, p_soon_days integer, p_show_rented boolean, p_hotline_id uuid DEFAULT NULL::uuid, p_sale_policy text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomSettings.ts"
       ],
       "risk": "normal"
     },

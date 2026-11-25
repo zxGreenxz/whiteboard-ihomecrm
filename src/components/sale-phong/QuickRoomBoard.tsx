@@ -47,14 +47,14 @@ const statusLabel = (room: Room) => room.status === 'locked' ? 'Đang lock' : is
   free: 'Trống sẵn', soon: 'Cần xác nhận ngày trống', rented: 'Đã thuê / giữ chỗ', pass: 'Khách pass phòng',
 }[room.status]);
 /** Cọc theo luật hiện có (trống / sắp trống / lock) và phòng đang giữ cho khách sang nhượng: người khác vẫn cọc được. */
-const depositableStatus = (room: Room) => ['free', 'soon', 'locked'].includes(room.status) || isExitHeld(room);
+const depositableStatus = (room: Room) => ['free', 'soon', 'locked'].includes(room.status) || !!room.hasDepositHold || isExitHeld(room);
 /**
  * Phòng đang có khách ở: đã thuê, sắp trống (khách báo trả) hoặc khách đã nhờ pass. Phòng trống, đang lock
  * (máy chủ che tình trạng thật) và phòng giữ cho khách sang nhượng (khách cũ đã trả) không có ai để báo.
  */
 const occupiedStatus = (room: Room) => ['rented', 'soon', 'pass'].includes(room.status) && !isExitHeld(room);
 /** Bộ lọc «Còn chào được» (mặc định trên điện thoại): mọi phòng trừ đã thuê / giữ chỗ; vẫn giữ lock, pass, chờ sang nhượng. */
-const openForSale = (room: Room) => room.status !== 'rented' || isExitHeld(room);
+const openForSale = (room: Room) => room.status !== 'rented' || !!room.hasDepositHold || isExitHeld(room);
 const money = (value: number | null) => value == null ? 'Chưa khai giá' : `${value.toLocaleString('vi-VN')} đ`;
 const timeLabel = (value: string | null | undefined) => {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Chưa có thời điểm';

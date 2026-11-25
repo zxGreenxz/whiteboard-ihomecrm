@@ -33,7 +33,7 @@ import { formatCurrency } from "@/lib/utils";
 import { formatISODateVN, formatISODayMonth, vnTodayISO } from "@/lib/vnDate";
 import {
   buildDepositWorkQueue,
-  countTasks,
+  countTasks, summarizeOpenHolds,
   formatMoneyShort,
   type DepositTask,
   type DepositTaskTone,
@@ -164,16 +164,14 @@ export default function DepositsMobilePage() {
     () => reservations.filter((r) => r.approval_status !== "CANCELLED"),
     [reservations],
   );
-  const holdTotal = useMemo(
-    () => holdRows.reduce((s, r) => s + r.total_amount, 0),
-    [holdRows],
-  );
+  const openHolds=useMemo(()=>summarizeOpenHolds(reservations),[reservations]);
+  const holdTotal=openHolds.paid;
 
   const groups = useMemo(
-    () => buildDepositWorkQueue({ today: vnTodayISO(), held, reservations, holdTerms }),
+    () => buildDepositWorkQueue({ today: vnTodayISO(), held, flagUnlinked:true, reservations:reservations.filter(v=>!v.reservation_id), holdTerms }),
     [held, reservations, holdTerms],
   );
-  const todoCount = countTasks(groups);
+  const todoCount = countTasks(groups)+openHolds.count;
 
   const openTask = useMemo(() => {
     if (!openTaskKey) return null;
@@ -283,7 +281,9 @@ export default function DepositsMobilePage() {
           <div className="mbody dp-body" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <DepositRefundMobilePanel />
             <RoomSaleLocksPanel enabled={view === 'work'} />
-            <RoomReservationPanel enabled={view === 'work'} />
+            <RoomReservationPanel enabled={view === 'work'} rows={reservations}
+              onContract={canConvert?(buildingId,roomId)=>{setPrefill({buildingId,roomId});setContractOpen(true);}:undefined}
+              onApprove={canApprove?v=>approveVoucher.mutate({id:v.id,expectedApprovalVersion:v.approval_version}):undefined}/>
             {/* Màn tiền: dải KPI cộng từ nhiều nguồn nên vẫn chờ đủ nguồn (thiếu một nguồn
                 không được thành số 0); lúc chờ là khối xám dạng thẻ (chủ chốt 02/10/2026). */}
             <QueryRegion label="cọc và kỳ hạn xử lý" queries={[heldDepositsQuery, reservationDepositsQuery, heldDepositSummaryQuery, refundForfeitSummaryQuery, reservationDepositSettlementSummaryQuery, reservationHoldDeadlinesQuery]} skeleton="list" rows={5}>

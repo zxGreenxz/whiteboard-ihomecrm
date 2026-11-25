@@ -9,8 +9,11 @@ import SalePhongMobilePage from '../SalePhongMobilePage';
 import { useMyAvailableRooms } from '@/hooks/useMyAvailableRooms';
 
 const rpc = vi.hoisted(() => vi.fn());
+// Đợt 2 Sale phòng: «Phòng trống» trong app đọc theo CÔNG TY đang chọn (get_my_available_rooms(p_organization_id)).
+const org = vi.hoisted(() => ({ id: 'org-1' as string | null }));
 const idle = vi.hoisted(() => ({ data: [], status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, error: null, refetch: () => undefined, dataUpdatedAt: 0 }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc } }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: org.id }) }));
 vi.mock('@/lib/permissionPages', () => ({ canUse: () => true }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: null }) }));
 vi.mock('@/hooks/usePublicRoomTokens', () => ({ usePublicRoomTokens: () => idle }));
@@ -31,7 +34,7 @@ const withBoundary = (ms: number) => ({ data: { buildings: [], rooms: [], server
 // Nạp sẵn module lazy bằng đồng hồ thật để lazy() trong trang chỉ còn chờ microtask khi đồng hồ giả.
 beforeAll(async () => { await import('@/components/sale-phong/SaleRoomWorkspace'); });
 beforeEach(() => {
-  vi.useFakeTimers(); rpc.mockReset(); focusManager.setFocused(true); onlineManager.setOnline(true);
+  vi.useFakeTimers(); rpc.mockReset(); org.id = 'org-1'; focusManager.setFocused(true); onlineManager.setOnline(true);
   rpc.mockResolvedValue({ data: { buildings: [], rooms: [] }, error: null });
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
@@ -94,6 +97,7 @@ describe('useMyAvailableRooms', () => {
     const view = load(true);
     await advance(1);
     expect(myReads()).toBe(1);
+    expect(rpc).toHaveBeenCalledWith('get_my_available_rooms', { p_organization_id: 'org-1' });
     expect(view.result.current.isSuccess).toBe(true);
     await advance(5_000);
     expect(myReads()).toBe(1);
@@ -106,6 +110,18 @@ describe('useMyAvailableRooms', () => {
     view.rerender({ on: false });
     await advance(300_000);
     expect(myReads()).toBe(4);
+  });
+
+  it('chưa chọn công ty thì không đọc dù đang bật; đổi công ty thì đọc ngay theo công ty mới', async () => {
+    org.id = null;
+    const view = load(true);
+    await advance(300_000);
+    expect(myReads()).toBe(0);
+    org.id = 'org-2';
+    view.rerender({ on: true });
+    await advance(1);
+    expect(myReads()).toBe(1);
+    expect(rpc).toHaveBeenLastCalledWith('get_my_available_rooms', { p_organization_id: 'org-2' });
   });
 
   it('đối chứng: đang bật thì ranh giới chính sách 10 giây vẫn đọc lại trước chu kỳ 30 giây', async () => {

@@ -170,7 +170,7 @@
         {
           "path": "src/hooks/useDepositDashboard.ts",
           "region": "deposits-held",
-          "sha256": "af414d0a54b8fcc531a8b48de6fcc422ba5951064ab6f2e84609089d20f0e5aa"
+          "sha256": "c668d040103f12603e6c44cbd2013251b6bca324e4b0088f883258c0e15bec79"
         }
       ],
       "webCalls": [
@@ -224,17 +224,16 @@
         {
           "sql": "app_private.public_sale_rooms_payload_v1",
           "calls": [
-            "get_public_available_rooms",
-            "public_room_link_grants_v1"
+            "get_public_available_rooms"
           ],
-          "note": "Danh sách chung của các link đang công khai và từng phòng đã bật."
+          "note": "Trang Sale của công ty (đợt 2 Sale phòng 25/11/2026): đọc qua link hoạt động sớm nhất, mọi link của công ty ra cùng trang."
         },
         {
           "sql": "app_private.hermes_sale_listing_payload_v1",
           "calls": [
             "public_sale_rooms_payload_v1"
           ],
-          "note": "đọc trang của từng chủ có link"
+          "note": "đọc trang Sale của công ty"
         },
         {
           "sql": "public.hermes_sale_listing_rooms_v1",
@@ -2312,7 +2311,7 @@
         {
           "path": "src/hooks/useDepositDashboard.ts",
           "region": "deposit-held-rows",
-          "sha256": "bbfd19455ce0594c6c020989769178551253a21e21069f71932009e3eeff47f1"
+          "sha256": "3bdf283e298eb7ff95ed74f1df8355ff8aa371d533a88fa46c093a6b5ec9de36"
         }
       ],
       "webCalls": [
@@ -2356,7 +2355,7 @@
         {
           "path": "src/hooks/useDepositDashboard.ts",
           "region": "deposit-refunds",
-          "sha256": "f391faf000d1c4914b5082db908b5a7bff605379060bc0aaebb90d6858938473"
+          "sha256": "b8bb78b67abcf42e5466f3ab9de6fc617acb160274b4b65b68d51bbb9f120813"
         }
       ],
       "webCalls": [
@@ -2554,7 +2553,7 @@
     {
       "id": "sale-listing-page",
       "kind": "mirrored",
-      "description": "Trang Sale Phòng công khai, bản lọc tòa/trạng thái và phân trang trong SQL (B3, 20/10/2026): hermes_available_rooms_page_v1 chép vị từ chọn trang của get_public_available_rooms (chủ có link còn hiệu lực, tòa thật của chủ, soon_days/hotline/chính sách theo chủ, overlay pass đúng chủ, che liên hệ khi contact_manager, địa chỉ) và gọi nguyên room_sale_workflow_fact_v1; connector dùng khi roomRead=page (crm_available_rooms). Group preview/send và lịch vẫn đi hermes_sale_listing_rooms_v1 (mục sale-listing).",
+      "description": "Trang Sale Phòng công khai, bản lọc tòa/trạng thái và phân trang trong SQL (B3, 20/10/2026; theo công ty từ đợt 2 Sale phòng 25/11/2026): hermes_available_rooms_page_v1 chép vị từ chọn trang của get_public_available_rooms (công ty còn link hoạt động, tòa thật của công ty, soon_days theo người đứng tên tòa, hotline/chính sách theo người đứng tên chung các tòa, tin pass theo phòng, che liên hệ khi contact_manager, địa chỉ) và gọi nguyên room_sale_workflow_fact_v1; connector dùng khi roomRead=page (crm_available_rooms). Group preview/send và lịch vẫn đi hermes_sale_listing_rooms_v1 (mục sale-listing).",
       "webCalls": [
         {
           "path": "src/pages/phong-trong/usePhongTrong.ts",
@@ -2564,7 +2563,7 @@
       "sql": [
         {
           "function": "public.get_public_available_rooms",
-          "sha256": "105333eac0bfc204c0e286dd25f209f35f62914dec3b2d5040ca47a7e28de1d8"
+          "sha256": "01ede68ba6bb01033e59024572154b89535d5dc20b8e334cb54e81a025cc4def"
         }
       ],
       "hermes": [
@@ -2574,7 +2573,7 @@
             "room_sale_workflow_fact_v1",
             "hermes_room_page_admission_v1",
             "room_sale_policy_active_text_v1",
-            "public_room_link_grants_v1"
+            "org_building_owner_v1"
           ],
           "note": "trang phòng đã lọc; không gọi get_public_available_rooms"
         },

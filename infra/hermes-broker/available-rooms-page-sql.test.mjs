@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { localCluster, setup, jwt, settings, live, id, ORG, FOREIGN, USER, BUILDING, OTHER_BUILDING, ROOM } from './crm-shared-read-sql-fixture.mjs';
+import { localCluster, setup, jwt, settings, live, latestLive, id, ORG, FOREIGN, USER, BUILDING, OTHER_BUILDING, ROOM } from './crm-shared-read-sql-fixture.mjs';
 import { projectAvailableRooms, projectAvailableRoomsPage } from './room-read-projection.mjs';
 
 // B3 candidate SQL (hermes_available_rooms_page_v1) against the REAL oracle on a disposable
@@ -390,5 +390,61 @@ test('B3: hermes_available_rooms_page_v1 equals the legacy sale-page read slice 
     await assert.rejects(pageRaw(pool, binding, { buildingIds: [B.b] }), code('42501'), 'narrowing restored');
     await reconfigure();
     await assert.rejects(pageRaw(pool, { ...binding, expectedEpoch: binding.expectedEpoch + 1 }), code('PT409'), 'epoch restored');
+  });
+
+  await t.test('Sale đợt 2 (bản SỐNG 20261125034429): trang Hermes và trang /r/:token theo CÔNG TY — mọi toà thật của công ty, tin pass theo phòng, cài đặt của người đứng tên chung, publishedPages 1/0', async () => {
+    const original = name => { const match = pageSql.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}\\([\\s\\S]*?END \\$fn\\$;`)); assert(match, name); return match[0]; };
+    const livePage = latestLive('public.hermes_available_rooms_page_v1'), liveWeb = latestLive('public.get_public_available_rooms');
+    assert.notEqual(livePage.file, migrationName[0], 'bản sống của trang Hermes đã forward-fix sau file B3');
+    const owners = (await pool.query('SELECT id,user_id FROM public.buildings WHERE organization_id=$1', [ORG])).rows;
+    // Phụ thuộc ra đời sau mốc của cluster (chính sách theo khung giờ): bản rút gọn trung tính, không phải đối tượng đo.
+    await pool.query(`CREATE OR REPLACE FUNCTION app_private.room_sale_policy_active_text_v1(p_org uuid,p_room uuid,p_at timestamptz) RETURNS text LANGUAGE sql STABLE AS $x$ SELECT NULL::text $x$;
+      CREATE OR REPLACE FUNCTION app_private.room_sale_policy_overlay_v1(p_payload jsonb) RETURNS jsonb LANGUAGE sql STABLE AS $x$ SELECT p_payload $x$;`);
+    await pool.query(latestLive('app_private.org_building_owner_v1').sql);
+    await pool.query(livePage.sql); await pool.query(liveWeb.sql);
+    const pageOf = async () => (await pageRaw(pool, binding, { limit: 100 })).result;
+    const webOffered = async token => {
+      const value = (await pool.query('SELECT public.get_public_available_rooms($1) value', [token])).rows[0].value;
+      return value.rooms.filter(room => ['free', 'soon', 'pass'].includes(room.status_public)).map(room => room.id).sort();
+    };
+    try {
+      // Công ty đang lẫn người đứng tên (A/B: USER, C: USER2, D: USER3).
+      const mixed = await pageOf();
+      const mixedIds = mixed.rooms.map(room => room.id).sort();
+      assert.equal(mixed.publishedPages, 1);
+      assert(mixedIds.includes(R(28)), 'toà D vẫn lên trang dù link của người đứng tên D đã thu hồi');
+      assert.equal(mixed.rooms.find(room => room.id === R(15))?.status_public, 'pass', 'tin pass theo phòng của công ty, không theo người đứng tên toà');
+      for (const absent of [R(17), R(29), R(30), R(31), R(34)]) assert(!mixedIds.includes(absent), `${absent}: phòng xoá / toà ảo / toà xoá / công ty khác / không công ty`);
+      assert.deepEqual(mixed.salePolicies, [], 'chưa xác định người đứng tên chung ⇒ không lấy chính sách của ai');
+      assert(!JSON.stringify(mixed).includes(HIDDEN_PHONE), 'SĐT khách pass giao quản lý vẫn ẩn');
+      // Link nào của công ty cũng ra cùng một trang; Hermes chào đúng các phòng trang chào.
+      assert.deepEqual(await webOffered('tok-PRIVATE-fake-c'), await webOffered('tok-PRIVATE-fake-a1'));
+      assert.deepEqual(await webOffered('tok-PRIVATE-fake-a1'), mixedIds);
+      assert.equal((await pool.query('SELECT public.get_public_available_rooms($1) value', ['tok-PRIVATE-fake-d'])).rows[0].value, null, 'link đã thu hồi');
+      assert.equal((await pool.query('SELECT public.get_public_available_rooms($1) value', ['tok-PRIVATE-fake-f'])).rows[0].value.rooms.some(room => room.id === R(1)), false, 'link công ty khác');
+
+      // Cả công ty một người đứng tên: chính sách + hotline của người đó cho mọi toà; toà C đổi sang số ngày sắp trống
+      // của người đứng tên mới (30 thay vì 10 ngày) nên R(23) trống sau 22 ngày thành «sắp trống».
+      await pool.query('UPDATE public.buildings SET user_id=$1 WHERE organization_id=$2', [USER, ORG]);
+      const uniform = await pageOf();
+      assert(!mixedIds.includes(R(23)));
+      assert.deepEqual(uniform.rooms.map(room => room.id).sort(), [...mixedIds, R(23)].sort());
+      assert.deepEqual(uniform.salePolicies, ['Chính sách A']);
+      const contact = Object.fromEntries(projectAvailableRoomsPage(uniform, { offset: 0, limit: 100, readAt: NOW }).buildings.map(b => [b.id, b.contact]));
+      assert.deepEqual(contact[B.c], { name: 'Hotline A1', phone: '0900000001' }, 'toà C dùng hotline chung, không còn hotline riêng của USER2');
+      // Dòng cài đặt của người đứng tên chung thuộc công ty khác: không đọc sang (lọc organization_id).
+      await pool.query('UPDATE public.public_room_settings SET organization_id=$1 WHERE owner_id=$2', [FOREIGN, USER]);
+      try { assert.deepEqual((await pageOf()).salePolicies, []); }
+      finally { await pool.query('UPDATE public.public_room_settings SET organization_id=$1 WHERE owner_id=$2', [ORG, USER]); }
+
+      // Hết link hoạt động của công ty ⇒ publishedPages 0, không chào phòng nào.
+      await pool.query('UPDATE public.public_room_share_tokens SET revoked=true WHERE organization_id=$1', [ORG]);
+      try { assert.deepEqual([(await pageOf()).publishedPages, (await pageOf()).rooms], [0, []]); }
+      finally { await pool.query("UPDATE public.public_room_share_tokens SET revoked=false WHERE organization_id=$1 AND token<>'tok-PRIVATE-fake-d'", [ORG]); }
+    } finally {
+      for (const { id: building, user_id } of owners) await pool.query('UPDATE public.buildings SET user_id=$2 WHERE id=$1', [building, user_id]);
+      await pool.query(original('public.hermes_available_rooms_page_v1'));
+      await pool.query(live.get('public.get_public_available_rooms'));
+    }
   });
 });

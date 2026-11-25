@@ -49,6 +49,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   // Đợt 3: lập phiếu, cọc, phí (họ runFinancialPending)
   'voucher-form-create': tien('B', 'lập phiếu thu/chi'), // create_income_expense_v1 theo khoá; đường compat: mã phiếu do trình duyệt sinh (D); dấu cũ: tra gần đúng
   'voucher-batch-create': tien('D', 'tạo phiếu tổng'), // mã đợt = mã yêu cầu của dấu; dọn sạch sau lỗi từ chối rõ thì gỡ dấu
+  'room-deposit-receipt': tien('D', 'thu cọc theo phòng'), // Tra đúng phiếu của mã yêu cầu, gửi lại cùng mã khi chưa ghi.
   'deposit-create': tien('B', 'tạo cọc giữ chỗ'), // create_room_reservation_v1 khoá phòng rồi tra khoá; thưởng Sale ngoài vùng giữ dấu
   'period-fee-pay': tien('A', 'đóng phí kỳ'), // pay_period_fee khoá slot rồi đếm phiếu; gửi lại KHÔNG ép, "đã có phiếu" = đã ghi
   'draft-fee-pay': tien('C', 'trả phiếu phí nháp'), // đọc trạng thái phiếu; pay_draft_fee_voucher khoá dòng, đòi còn nháp
@@ -121,7 +122,6 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   // Đợt 7: hợp đồng, chuyển khách hẹn, tạm trú
   'contract-signing': tien('van', 'ký hợp đồng'),
   'contract-excel-import': tien('van', 'nhập hợp đồng từ Excel'),
-  'lead-conversion': tien('van', 'chuyển khách hẹn thành cọc'),
   'tenant-legacy-create': khac('van', 'tạo khách thuê'),
   'residence-registration-save': khac('van', 'lưu mã hồ sơ tạm trú'),
   'ct01-declaration-create': khac('van', 'tạo tờ khai CT01'),

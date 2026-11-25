@@ -1,3 +1,4 @@
+import { ConfirmedDepositIncome, findOwnDepositIncome } from '@/lib/depositIncomeRpc';
 import { supabase } from "@/integrations/supabase/client";
 import { financialPending, type FinancialPendingRecord, type PendingReconciliation } from "@/lib/financialPending";
 import { runFinancialPending } from "@/lib/financialPendingAction";
@@ -81,7 +82,7 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
   const canonical = isCanonicalCreateEligible(data);
   const items = itemsSignature(data);
   let resend = false;
-  return runFinancialPending({ namespace: "voucher-form-create", userId: ctx.userId, organizationId: ctx.organizationId, businessKey: voucherFormCreateKey(data) }, async (progress) => {
+  const receipt=await runFinancialPending<{id:string} | ConfirmedDepositIncome>({ namespace: "voucher-form-create", userId: ctx.userId, organizationId: ctx.organizationId, businessKey: voucherFormCreateKey(data) }, async (progress) => {
     // Cả hai đường ghi (create_income_expense_v1 / ie_compat_insert_v2) trả về phiếu có id.
     const created = (await ctx.create({
       ...data,
@@ -95,7 +96,7 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
     return { id: created.id };
   }, undefined, {
     operation: "lập phiếu thu/chi",
-    meta: { dedupe: KEYED, canonical, items },
+    meta: { dedupe: KEYED, canonical, items, deposit: data.deposit_terms !== undefined },
     reconcile: async (pending) => {
       if (pending.completedIds.length) {
         return { outcome: "already-written", message: "Phiếu đã được lập ở lần gửi trước.", recordIds: pending.completedIds };
@@ -107,6 +108,10 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
         if (rows.length) return maybeWritten(rows);
         resend = true;
         return { outcome: "not-written" };
+      }
+      if (pending.meta.deposit === true) {
+        const id=await findOwnDepositIncome(ctx.organizationId,`ie-create-${pending.requestKey}`);
+        if (id) return {result:new ConfirmedDepositIncome(id)};
       }
       // Đường compat của lần trước dùng đúng mã này làm mã phiếu: tra thẳng.
       const exact = await readVoucherById(pending.requestKey);
@@ -128,4 +133,6 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
       return { outcome: "not-written", serverDedupesRequestKey: true };
     },
   });
+  if (receipt instanceof ConfirmedDepositIncome) throw receipt;
+  return receipt;
 }

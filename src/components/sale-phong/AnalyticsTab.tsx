@@ -27,7 +27,7 @@ import { ExportButtons } from "@/components/reports/ExportButtons";
 import BuildingFilterSelect from "@/components/buildings/BuildingFilterSelect";
 import { KpiCard } from "@/components/finance-analysis/KpiCard";
 import { ChartCard } from "@/components/finance-analysis/ChartCard";
-import { usePublicRoomTokens } from "@/hooks/usePublicRoomTokens";
+import { useOwnPublicRoomTokens } from "@/hooks/usePublicRoomTokens";
 import { fmtDuration } from "./analyticsUtils";
 import ErrorsSection from "./ErrorsSection";
 import {
@@ -56,7 +56,7 @@ export default function AnalyticsTab() {
   const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:sale-phong-analytics:buildingIds", []);
   const [excludeStaff, setExcludeStaff] = usePersistedState("flt:sale-phong-analytics:excludeStaff", false);
 
-  const tokenQuery=usePublicRoomTokens();
+  const tokenQuery=useOwnPublicRoomTokens();
   const tokens=tokenQuery.data??[];
   const tokenOptions = useMemo(
     () => [

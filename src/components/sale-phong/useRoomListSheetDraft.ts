@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useSaleRoomInventory } from '@/hooks/useSaleRoomInventory';
-import { useCreateHotline, useHotlines, useUpdateHotline } from '@/hooks/useHotlines';
+import { useCreateHotline, useUpdateHotline } from '@/hooks/useHotlines';
 import { RoomListSheetSaveError, sheetCellKeys, sheetRoomPatch, useSaveRoomListSheet, type SheetSaveRequest } from '@/hooks/useSaveRoomListSheet';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useSession } from '@/hooks/useAuth';
@@ -12,7 +12,7 @@ import { focusFirstError } from '@/lib/formErrors';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { SaleRoomOperationError, saleRoomOperationErrorMessage, saleInventoryAtTime, saleInventoryClock } from '@/lib/saleRoomOperations';
 import { usePublicRoomSettings, useUpsertPublicRoomSettings, PUBLIC_ROOM_SETTINGS_DEFAULTS, type PublicRoomSettings } from '@/hooks/usePublicRoomSettings';
-import { SALE_POLICY_MAX } from '@/lib/publicRoomFeedback';
+import { SALE_POLICY_MAX, saveSettingsErrorMessage } from '@/lib/publicRoomFeedback';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 import {
   applySheetDraft, dropSaved, effectiveHotline, isPhone, sheetChanges, sheetErrors as validateSheet,
@@ -27,7 +27,6 @@ const removeKeys = <T,>(record: Record<string, T>, ids: Set<string>) => Object.f
 export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
   const rooms = useSaleRoomInventory();
   const settings = usePublicRoomSettings();
-  const hotlineQuery = useHotlines();
   const upsertMut = useUpsertPublicRoomSettings({ inlineError: true });
   const sheetSave = useSaveRoomListSheet();
   const createHotline = useCreateHotline({ inlineError: true });
@@ -67,10 +66,13 @@ export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
   const rows = rooms.data?.rooms ?? [];
   const byId = new Map(rows.map(row => [row.room.id, row]));
   const inventoryBlocked = rooms.isError || !rooms.data || !actorId || !selectedOrganizationId;
+  // Cài đặt chung thuộc CÔNG TY (đợt 2 Sale phòng): ai có quyền «Cài đặt hiển thị» PHẠM VI CÔNG TY sửa được — máy chủ trả cờ theo
+  // quyền (get_sale_room_inventory_v1) và kiểm lại khi lưu; không còn đòi người sửa đứng tên mọi toà.
   const canManageSettings = !inventoryBlocked && !permissions.isError && !!rooms.data?.canManageAccountSettings
-    && rooms.data.settingsOwnerId === actorId && canUse(permissions.data, 'sale_phong', 'manage_settings');
-  const hotlines = hotlineQuery.data ?? [];
-  const savedForm = settings.data ?? PUBLIC_ROOM_SETTINGS_DEFAULTS;
+    && canUse(permissions.data, 'sale_phong', 'manage_settings');
+  // Chỉ hotline của người đứng tên chung các toà (chủ cài đặt chung) mới in được lên trang — máy chủ trả kèm cài đặt.
+  const hotlines = settings.data?.hotlines ?? [];
+  const savedForm = settings.data?.settings ?? PUBLIC_ROOM_SETTINGS_DEFAULTS;
   const form = state.account?.form ?? savedForm;
   const days = state.account?.days ?? String(savedForm.soon_days);
   const edits = state.edits;
@@ -147,7 +149,7 @@ export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
     setSheetWriteError('');
   };
   const canSave = !inventoryBlocked && !busy && dirty && !accountUnknown
-    && (!(state.account || state.hotline !== undefined) || (!settings.isError && !hotlineQuery.isError));
+    && (!(state.account || state.hotline !== undefined) || !settings.isError);
   const saveAll = async (): Promise<boolean> => {
     if (!canSave || submitting.current || !actorId || !selectedOrganizationId) return false;
     const snapshot = state;
@@ -164,8 +166,8 @@ export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
     const accountInvalid: Record<string, string> = {};
     const accountChanged = !!snapshot.account || snapshot.hotline !== undefined;
     if (accountChanged) {
-      if (!canManageSettings || settings.isError || hotlineQuery.isError || !settings.data || !hotlineQuery.data) accountInvalid.account = 'Chưa đủ quyền hoặc dữ liệu để lưu cài đặt chung.';
-      if (snapshot.account && !same(snapshot.account.original, settings.data)) accountInvalid.account = 'Cài đặt chung đã thay đổi. Bỏ bản nháp cài đặt để đọc lại trước khi lưu.';
+      if (!canManageSettings || settings.isError || !settings.data) accountInvalid.account = 'Chưa đủ quyền hoặc dữ liệu để lưu cài đặt chung.';
+      if (snapshot.account && !same(snapshot.account.original, settings.data?.settings)) accountInvalid.account = 'Cài đặt chung đã thay đổi. Bỏ bản nháp cài đặt để đọc lại trước khi lưu.';
       if (!/^\d+$/.test(days) || Number(days) > 365) accountInvalid.soon_days = 'Nhập số ngày nguyên từ 0 đến 365.';
       if ((form.sale_policy?.trim().length ?? 0) > SALE_POLICY_MAX) accountInvalid.sale_policy = `Chính sách sale chung tối đa ${SALE_POLICY_MAX} ký tự.`;
       if (form.hotline_id && !hotlines.some(hotline => hotline.id === form.hotline_id)) accountInvalid.hotline_id = 'Chọn hotline hiện có hoặc dùng mặc định.';
@@ -218,10 +220,11 @@ export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
         let hotlineId = form.hotline_id;
         if (snapshot.hotline !== undefined && snapshot.hotline.trim() !== currentHotline?.phone_number) {
           if (currentHotline) await updateHotline.mutateAsync({ id: currentHotline.id, updates: { phone_number: snapshot.hotline.trim() } });
-          else { const created = await createHotline.mutateAsync({ name: 'Hotline chung', phone_number: snapshot.hotline.trim(), is_active: true }); hotlineId = created.id; }
+          else { const created = await createHotline.mutateAsync({ name: 'Hotline chung', phone_number: snapshot.hotline.trim(), is_active: true, ownerId: settings.data?.ownerId ?? undefined }); hotlineId = created.id; }
         }
         if (operationScope !== scope.current) throw new SaleRoomOperationError('Đã đổi tài khoản hoặc tổ chức; dừng lưu phần còn lại.', 'rejected', '42501');
-        await upsertMut.mutateAsync({ ...form, hotline_id: hotlineId, soon_days: Number(days), sale_policy: form.sale_policy?.trim() || null });
+        await upsertMut.mutateAsync({ ...form, hotline_id: hotlineId, soon_days: Number(days), sale_policy: form.sale_policy?.trim() || null,
+          expectedUpdatedAt: settings.data?.updatedAt ?? null });
         prepared.account = undefined; prepared.hotline = undefined;
         await Promise.all(['public-room-settings', 'hotlines', 'sale-room-inventory', 'my-available-rooms', 'phong-trong'].map(key => cache.invalidateQueries({ queryKey: [key] })));
       }
@@ -235,7 +238,8 @@ export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
         const cause = error.failure instanceof SaleRoomOperationError ? saleRoomOperationErrorMessage(error.failure) : actionErrorMessage(error.failure, 'Chưa xác nhận được lần lưu. Đọc lại trước khi thử tiếp.');
         setSheetWriteError(`${savedKeys.length ? `Đã lưu ${savedKeys.length}/${error.total} ô. ` : ''}${cause} Các ô chưa xác nhận vẫn được giữ.`);
       } else {
-        settle(savedKeys); setWriteError(actionErrorMessage(error, 'Chưa lưu được cài đặt chung. Bản nháp vẫn được giữ.'));
+        // Lý do thật của máy chủ (PT409 «đã có người sửa», thiếu quyền, hotline không hợp lệ…) — publicRoomFeedback.
+        settle(savedKeys); setWriteError(saveSettingsErrorMessage(error));
         if (error instanceof FinancialWorkflowError && error.outcome !== 'failure') setAccountUnknown(true);
       }
       return false;
@@ -244,7 +248,7 @@ export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
   const discardAccount = () => {
     if (busy || !window.confirm('Bỏ bản nháp cài đặt chung và đọc lại dữ liệu?')) return;
     changeState(current => ({ ...current, account: undefined, hotline: undefined }));
-    setAccountUnknown(false); setWriteError(''); setErrors({}); void settings.refetch(); void hotlineQuery.refetch();
+    setAccountUnknown(false); setWriteError(''); setErrors({}); void settings.refetch();
   };
   const readPreview = async () => {
       if (inventoryBlocked) throw new Error('Inventory unavailable');
@@ -275,7 +279,7 @@ export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
     finally { setExporting(false); }
   };
   return {
-    settings, hotlines: hotlineQuery, mutation: upsertMut, root, form, days, errors, writeError, canSave, set, changeDays,
+    settings, mutation: upsertMut, root, form, days, errors, writeError, canSave, set, changeDays,
     rooms, buildings, preview, hotlineList: hotlines, currentHotline, hotlinePhone, salePolicy, edits, cellErrors, sheetWriteError,
     busy, exporting, setPhone, setPolicy, setRoomField, setHotlinePhone, pickHotline, saveAll, exportPreview, readPreview,
     roomWritable, phoneWritable, canManageSettings, inventoryBlocked, issues, discardRoom, discardAccount,

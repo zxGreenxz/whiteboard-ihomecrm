@@ -12,10 +12,14 @@ const BEFORE_FIXTURE = 'src/lib/__tests__/fixtures/exit-support-before.sql';
 const migrationSql = readFileSync(MIGRATION, 'utf8');
 const migrationCorpus = readdirSync('supabase/migrations').filter(file => file.endsWith('.sql')).sort().reverse()
   .map(file => ({ file, sql: readFileSync(join('supabase/migrations', file), 'utf8') }));
+// Fixture dựng lại trạng thái NGAY TRƯỚC đợt 2 (20261124075933 vá thân đang chạy, không CREATE lại) rồi chạy đợt 2 và
+// đợt 3, nên định nghĩa nền là bản cuối ở các file TRƯỚC đợt 2. Migration sau có thể thay hẳn hàm (đợt 2 Sale phòng
+// 20261125034429 thay get_my_available_rooms() bằng bản (uuid); bản sống đo ở contractExitEarlyTermsMigration.test.ts).
+const MIGRATION_D2_FILE = MIGRATION_D2.split('/').pop()!;
 function liveDefinitionOf(qualified: string): string {
   const pattern = new RegExp('CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+' + qualified.replace(/\./g, '\\.')
     + '\\s*\\([\\s\\S]*?\\bAS\\s+(\\$[a-zA-Z_]*\\$)[\\s\\S]*?\\1\\s*;', 'i');
-  for (const migration of migrationCorpus) {
+  for (const migration of migrationCorpus.filter(m => m.file < MIGRATION_D2_FILE)) {
     const match = migration.sql.match(pattern);
     if (match) return match[0].replace(/^CREATE FUNCTION/i, 'CREATE OR REPLACE FUNCTION');
   }

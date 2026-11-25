@@ -1,3 +1,4 @@
+import {recordDepositIncome} from '@/lib/depositIncomeRpc';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,isConfirmedFinancialRejection,workflowErrorMessage,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
 import {financialReadRows} from '@/lib/financialReadValidation';
@@ -131,7 +132,7 @@ export const useImportIncomeExpenses = () => {
           // strip field client gửi) — không đọc buildings ở client vì RLS chỉ mở
           // cho ai có scope buildings.view, còn Thu/Chi cho phép all_buildings.
           // Phiếu + item trong MỘT call server-side (birth UNAPPROVED — §8).
-          const { data: created, error: compatError } = await compatRpc("ie_compat_insert_v2", {
+          const args = {
             p_row: {
               user_id: user.id,
               type: row.type,
@@ -150,8 +151,14 @@ export const useImportIncomeExpenses = () => {
                 unit_price: row.amount,
               },
             ],
-          });
-
+          };
+          const incomeDeposit=row.type==='INCOME' && accountingClassFor(row.income_expense_type_id)==='DEPOSIT';
+          if(incomeDeposit && !row.room_id)throw {code:'22023',message:'Chọn phòng cho dòng thu cọc trước khi nhập.'};
+          const {data:created,error:compatError}=incomeDeposit ?
+            {data:await recordDepositIncome(selectedOrganizationId!,progress.requestKey+':'+snapshotRows[i].sourceRow,{
+              type:row.type,name:row.name,building_id:row.building_id,room_id:row.room_id,
+              payer_name:row.payer_name??null,voucher_date:row.voucher_date,batch_child:true,
+            },args.p_items,{channel:'finance'}),error:null}:await compatRpc('ie_compat_insert_v2',args);
           if (compatError) throw compatError;
 
           const receipt = created as {id?: string; code?: string} | null;
@@ -305,10 +312,8 @@ export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => 
       // đường compat cũ (cả đợt cùng một type nên gán thẳng từ input).
       const childVouchers: { id: string; type?: string | null }[] = [];
       try {
-        for (const item of input.items) {
-          const { data: created, error: voucherError } = await compatRpc(
-            "ie_compat_insert_v2",
-            {
+        for (const [itemIndex,item] of input.items.entries()) {
+          const args={
               p_row: {
                 user_id: user.id,
                 creator_name: creatorName,
@@ -337,8 +342,12 @@ export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => 
                   end_date: item.end_date ?? null,
                 },
               ],
-            },
-          );
+          };
+          const isDeposit=input.type==='INCOME' && accountingClassFor(item.income_expense_type_id)==='DEPOSIT';
+          const {data:created,error:voucherError}=isDeposit
+            ? {data:await recordDepositIncome(selectedOrganizationId!,progress.requestKey+':'+itemIndex,
+                {...args.p_row,user_id:undefined,creator_name:undefined,batch_child:true},args.p_items,{channel:'finance'}),error:null}
+            : await compatRpc('ie_compat_insert_v2',args);
 
           const voucherId = (created as { id?: string } | null)?.id;
           if (voucherError || !voucherId) {

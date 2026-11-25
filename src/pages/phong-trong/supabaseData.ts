@@ -74,6 +74,7 @@ export interface RpcRoom {
   // Chỉ hai reader trong app: hồ sơ trả phòng trước hạn còn chờ khách nhận sang nhượng (xem exitHold.ts).
   // Để `unknown`: khoá lệch dạng bị bỏ khi ánh xạ chứ không làm hỏng cả danh sách.
   exit_hold?: unknown;
+  has_deposit_hold?:boolean;
 }
 export interface RpcContact { name: string | null; phone: string | null }
 export interface RpcPayload {
@@ -120,7 +121,7 @@ const payloadSchema = z.object({
     pass_price: z.number().nullable().optional(), pass_avail_date: optionalText, pass_contact_manager: z.boolean().nullable().optional(),
     sale_lock: z.object({ id: z.string(), hours: z.number(), note: nullableText, locked_at: z.string(), expires_at: z.string(),
       locked_by_name: z.string(), locked_by_me: z.boolean() }).nullable().optional(),
-    exit_hold: z.unknown().optional(),
+    exit_hold: z.unknown().optional(), has_deposit_hold:z.boolean().optional(),
   })),
   contact: z.object({ name: nullableText, phone: nullableText }).nullable().optional(),
   sale_policy: optionalText,
@@ -238,7 +239,8 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         status,
         amenities: toAmenities(rr.amenities),
         availDate: status === "soon" ? fmtAvail(saleFact?.availableOn) : null,
-        saleFact,
+        hasDepositHold:options.includeInternal && rr.has_deposit_hold===true,
+        saleFact:options.includeInternal && rr.has_deposit_hold ? {kind:"rented" as const,label:"Đang giữ chỗ",availableOn:null} : saleFact,
         // Thiếu ảnh không tự thêm ảnh mẫu.
         imgCount: roomPhotoCount(imgs),
         phClass: "",
@@ -266,7 +268,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
     // Chỉ giữ tầng có ≥1 phòng trống/sắp trống/khách-pass (ẩn tầng đã full khỏi Sơ đồ); trong app thêm phòng
     // chốt tạm và phòng đang giữ cho khách sang nhượng.
     const floorNums = Array.from(new Set(rooms.map((r) => r.floor)))
-      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || isExitHeld(r))))
+      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || isExitHeld(r) || r.hasDepositHold)))
       .sort((a, z) => z - a);
     const floors = floorNums.map((f) => {
       const floorRooms = rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no);

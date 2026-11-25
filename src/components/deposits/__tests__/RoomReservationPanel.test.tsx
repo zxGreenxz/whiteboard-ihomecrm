@@ -17,7 +17,7 @@ describe('reservation queue follows live claims',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Hủy giữ chỗ'}));await waitFor(()=>expect(m.mutate).toHaveBeenCalledOnce());expect(m.mutate.mock.calls[0][0]).toMatchObject({reservationId:'hold1',expectedRevision:3,action:'CANCEL'});expect(m.mutate.mock.calls[0][0]).not.toHaveProperty('receipt');
  });
  it('separates deadline adjustment and positive topup, keeps money source state visible',async()=>{
-  render(<RoomReservationPanel roomId="room"/>);fireEvent.click(screen.getByRole('button',{name:'Điều chỉnh hạn'}));fireEvent.change(screen.getByLabelText('Hạn giữ chỗ'),{target:{value:'2026-10-02'}});fireEvent.click(screen.getByRole('button',{name:'Lưu hạn'}));await waitFor(()=>expect(m.mutate).toHaveBeenCalledOnce());expect(m.mutate.mock.calls[0][0]).toMatchObject({action:'UPDATE',changes:{holdUntil:'2026-10-02'}});
+  render(<RoomReservationPanel roomId="room"/>);fireEvent.click(screen.getByRole('button',{name:'Điều chỉnh hạn'}));const hold=screen.getByLabelText('Giữ chỗ đến');fireEvent.change(hold,{target:{value:'02102026'}});fireEvent.blur(hold);fireEvent.click(screen.getByRole('button',{name:'Lưu hạn'}));await waitFor(()=>expect(m.mutate).toHaveBeenCalledOnce());expect(m.mutate.mock.calls[0][0]).toMatchObject({action:'UPDATE',changes:{holdUntil:'2026-10-02'}});
  });
  it('shows the original reminder even after a historical assignment',()=>{
   m.query.data.reservations=[{...row,customer_id:'customer',customer_hint:'Anh Hùng xe máy'}];

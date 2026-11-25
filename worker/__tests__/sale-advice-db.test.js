@@ -1,5 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { it, expect } from 'vitest';
 
@@ -11,9 +11,31 @@ const unlinkedDmMigration = readFileSync(
   new URL('../../supabase/migrations/20261121010106_hermes_sale_dm_unlinked_v1.sql', import.meta.url),
   'utf8',
 );
+// Thân SỐNG (lần CREATE cuối theo thứ tự timestamp trên mọi migration) của hàm đã forward-fix sau hai file trên:
+// đợt 2 Sale phòng (20261125034429) đổi SĐT / chính sách đã đăng sang người đứng tên chung các toà của công ty,
+// không theo người tạo link. Cùng khuôn liveDefinitionOf() của repo.
+const migrationsDir = new URL('../../supabase/migrations/', import.meta.url);
+function liveDefinitionOf(name) {
+  const head = `CREATE OR REPLACE FUNCTION ${name}(`;
+  let hit = null;
+  for (const file of readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort()) {
+    const sql = readFileSync(new URL(file, migrationsDir), 'utf8').replaceAll('\r\n', '\n');
+    const start = sql.lastIndexOf(head);
+    if (start < 0) continue;
+    const tag = /\bAS\s+(\$[A-Za-z_]*\$)/.exec(sql.slice(start));
+    const close = sql.indexOf(tag[1], start + tag.index + tag[0].length);
+    hit = { file, sql: sql.slice(start, sql.indexOf(';', close) + 1) };
+  }
+  if (!hit) throw new Error('Không tìm thấy định nghĩa nào của ' + name);
+  return hit;
+}
+const liveOwner = liveDefinitionOf('app_private.org_building_owner_v1');
+const liveDelivery = liveDefinitionOf('public.zalo_sale_advice_delivery_v1');
+
 it('xếp tin theo phiên bot, liên kết CRM, nhóm môi giới, trang Sale và người vừa hỏi', async () => {
   const db = new PGlite();
-  const [org, other, account, owner, instance, generation] = Array.from({ length: 6 }, () => randomUUID());
+  // manager tạo link; owner đứng tên mọi toà (chủ cài đặt chung): SĐT / chính sách đã đăng là của owner.
+  const [org, other, account, owner, instance, generation, manager] = Array.from({ length: 7 }, () => randomUUID());
   const [b1, b2, room1, room2, hidden] = Array.from({ length: 5 }, () => randomUUID());
   const one = async (q, p = []) => Object.values((await db.query(q, p)).rows[0])[0];
   try {
@@ -32,7 +54,7 @@ it('xếp tin theo phiên bot, liên kết CRM, nhóm môi giới, trang Sale v�
       CREATE TABLE public_room_settings(owner_id uuid,organization_id uuid);
       CREATE TABLE hotlines(user_id uuid,organization_id uuid,phone_number text,is_active boolean);
       CREATE TABLE areas(id uuid,organization_id uuid);
-      CREATE TABLE buildings(id uuid,organization_id uuid,user_id uuid);
+      CREATE TABLE buildings(id uuid,organization_id uuid,user_id uuid,deleted_at timestamptz);
       CREATE TABLE rooms(id uuid,building_id uuid,organization_id uuid);
       CREATE TABLE test_page(value jsonb);
       CREATE FUNCTION get_public_available_rooms(text) RETURNS jsonb LANGUAGE sql AS 'SELECT value FROM test_page';
@@ -42,6 +64,9 @@ it('xếp tin theo phiên bot, liên kết CRM, nhóm môi giới, trang Sale v�
     await db.exec(migration);
     await db.exec(unlinkedDmMigration);
     await db.exec(unlinkedDmMigration);
+    expect([liveOwner.file, liveDelivery.file].every((file) => file > '20261121010106')).toBe(true);
+    await db.exec(liveOwner.sql);
+    await db.exec(liveDelivery.sql);
     expect(
       await one(
         "select has_function_privilege('authenticated','public.zalo_sale_advice_intake_v1(jsonb)','EXECUTE')",
@@ -70,7 +95,7 @@ it('xếp tin theo phiên bot, liên kết CRM, nhóm môi giới, trang Sale v�
       "INSERT INTO zalo_automations VALUES($1,'auto_reply',true,$2),($1,'broadcast_vacant',true,$3)",
       [org, { saleAdvisor: true }, { template: { shareUrl: 'https://example.test/r/published' } }],
     );
-    await db.query("INSERT INTO public_room_share_tokens VALUES('published',$1,false,$2)", [org, owner]);
+    await db.query("INSERT INTO public_room_share_tokens VALUES('published',$1,false,$2)", [org, manager]);
     await db.query("INSERT INTO hotlines VALUES($1,$2,'0900000000',true)", [owner, org]);
     await db.query('INSERT INTO public_room_settings VALUES($1,$2)', [owner, org]);
     await db.query('INSERT INTO buildings VALUES($1,$2,$5),($3,$4,$5)', [b1, org, b2, other, owner]);
