@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it } from 'vitest';
-import { newQuickRoomDraft, quickRoomChanges, quickRoomDraftDirty, readQuickRoomDrafts } from '../quickRoomDraft';
+import { newQuickRoomDraft, quickRoomChanges, quickRoomDraftDirty, quickRoomPriceWarning, readQuickRoomDrafts, roomSearchMatches } from '../quickRoomDraft';
 
 const values = {
   rentPrice: 3_000_000, area: 24.5, roomType: 'Studio', amenities: ['Máy lạnh'],
@@ -19,7 +19,7 @@ it('sends only changed fields and distinguishes keeping from explicitly clearing
   expect(draft.original.images).toEqual(values.images);
 });
 
-it.each(['', '-1', '2.5', 'abc3000', '9007199254740992'])('retains invalid price %j as a draft and blocks validation', price => {
+it.each(['', '-1', '2.5', '4.25', '0.000', '04.250.000', '4.2500.000', '4,25tr', 'abc3000', '9007199254740992'])('retains invalid price %j as a draft and blocks validation', price => {
   const draft = newQuickRoomDraft(values, 'a'.repeat(32)); draft.price = price;
   expect(quickRoomDraftDirty(draft)).toBe(true);
   expect(quickRoomChanges(draft, perms).errors.price).toBeTruthy();
@@ -79,4 +79,36 @@ it('reads only well-shaped scoped drafts and preserves a pending request identit
   expect(readQuickRoomDrafts('different-actor')).toEqual({});
   sessionStorage.setItem('actor-org', '{broken');
   expect(readQuickRoomDrafts('actor-org')).toEqual({});
+});
+
+it.each([
+  ['4.250.000', 4_250_000], ['4,250,000', 4_250_000], ['4 250 000', 4_250_000], ['4250000', 4_250_000], [' 3.200.000 ', 3_200_000],
+])('accepts the grouped price %j the app itself displays', (typed, saved) => {
+  const draft = newQuickRoomDraft(values, 'a'.repeat(32)); draft.price = typed;
+  expect(quickRoomChanges(draft, perms)).toEqual({ patch: { rent_price: saved }, errors: {} });
+});
+
+it('re-typing the current price with separators is not a write', () => {
+  const draft = newQuickRoomDraft(values, 'a'.repeat(32)); draft.price = '3.000.000';
+  expect(quickRoomChanges(draft, perms)).toEqual({ patch: {}, errors: {} });
+});
+
+it.each([
+  ['0', /Giá 0 đ/], ['499.999', /dưới 500.000/], ['100.000.001', /trên 100.000.000/],
+])('warns without blocking on an unusual price %j', (typed, warning) => {
+  expect(quickRoomPriceWarning(typed)).toMatch(warning);
+  const draft = newQuickRoomDraft(values, 'a'.repeat(32)); draft.price = typed;
+  expect(quickRoomChanges(draft, perms).errors).toEqual({});
+});
+
+it.each(['', 'abc', '4.25', '500.000', '4.250.000', '100.000.000'])('stays quiet for %j (invalid input has its own error)', typed => {
+  expect(quickRoomPriceWarning(typed)).toBeNull();
+});
+
+it('matches every typed word in any order, ignoring accents and display separators', () => {
+  const label = 'Tòa Ánh Dương 101 P-101';
+  for (const query of ['', '  ', ' · ', 'Tòa Ánh Dương · 101', '101 anh duong', 'ANH-DUONG (101)', 'p 101', 'duong, toa']) {
+    expect(roomSearchMatches(label, query)).toBe(true);
+  }
+  for (const query of ['anh duong 102', 'binh', 'p101x']) expect(roomSearchMatches(label, query)).toBe(false);
 });

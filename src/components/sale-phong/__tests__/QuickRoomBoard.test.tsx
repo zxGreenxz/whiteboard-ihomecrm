@@ -59,7 +59,10 @@ function room(id = 'room-a', buildingId = 'building-a', status: Room['status'] =
     capabilities: { edit: true, images: true, pass: true, lock: true, releaseLock: false, deposit: true },
   };
 }
-const openFirst = () => fireEvent.click(screen.getByRole('button', { name: 'Mở Tòa Ánh Dương · 101' }));
+const openFirst = () => fireEvent.click(screen.getByRole('button', { name: 'Chi tiết Tòa Ánh Dương · 101' }));
+/** Điện thoại gộp tòa + tình trạng vào nút Bộ lọc (thu gọn sẵn); máy tính hiện thẳng. */
+const openFilters = (mobile: boolean) => { if (mobile) fireEvent.click(screen.getByRole('button', { name: /^Bộ lọc:/ })); };
+const showAllStatuses = (mobile: boolean) => { openFilters(mobile); fireEvent.change(screen.getByLabelText('Tình trạng'), { target: { value: 'all' } }); };
 const price = () => screen.getByLabelText('Giá niêm yết (đ/tháng)');
 const changePrice = (value: string) => fireEvent.change(price(), { target: { value } });
 beforeEach(() => {
@@ -72,7 +75,7 @@ afterEach(cleanup);
 
 it.each([false, true])('mở báo sắp trống đúng phòng và quyền theo tòa, mobile=%s', mobile => {
   state.query.data!.rooms = [room('unassigned', 'building-a', 'rented'), room('vacant', 'building-b'), room('soon', 'building-b', 'soon'), room('occupied', 'building-b', 'rented')];
-  render(<QuickRoomBoard mobile={mobile} />);
+  render(<QuickRoomBoard mobile={mobile} />); showAllStatuses(mobile);
   expect(screen.getAllByRole('button', { name: 'Báo sắp trống' })).toHaveLength(1);
   expect(screen.getByRole('button', { name: 'Cập nhật ngày sắp trống' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Báo sắp trống' }));
@@ -81,7 +84,7 @@ it.each([false, true])('mở báo sắp trống đúng phòng và quyền theo t
 });
 
 it.each([false, true])('U01 — Chủ trọ: cho tôi tìm không dấu đúng tòa và cả phòng đã thuê trên máy tính/điện thoại, mobile=%s', mobile => {
-  render(<QuickRoomBoard mobile={mobile} />);
+  render(<QuickRoomBoard mobile={mobile} />); showAllStatuses(mobile);
   expect(screen.getByText('Tòa Bình Minh · 101')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Tìm tòa hoặc phòng'), { target: { value: 'anh duong' } });
   expect(screen.queryByText('Tòa Bình Minh · 101')).toBeNull();
@@ -205,6 +208,7 @@ it('U08 — Quản lý: mất kết nối đọc thì vẫn xem dữ liệu cũ 
 });
 
 it('U09 — Sale Admin: bấm pass/lock/cọc trên dòng nào phải mở đúng phòng đó, không nhầm phòng trùng tên', () => {
+  state.query.data!.rooms = [room('room-a', 'building-a', 'soon'), room('room-b', 'building-b', 'rented')];
   const view = render(<QuickRoomBoard />);
   const first = screen.getByText('Tòa Ánh Dương · 101').closest('tr')!;
   fireEvent.click(within(first).getByRole('button', { name: 'Báo pass' }));
@@ -323,7 +327,7 @@ it('U18 — Quản lý: cập nhật dọn sửa phải dùng quy trình có l�
 
 it('U19 — Quản lý: báo trả phải mở hồ sơ đúng phòng và hợp đồng, không đoán hợp đồng từ số phòng', () => {
   render(<QuickRoomBoard />);
-  fireEvent.click(screen.getByRole('button', { name: 'Mở Tòa Bình Minh · 101' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Chi tiết Tòa Bình Minh · 101' }));
   const link = screen.getByRole('link', { name: 'Mở hồ sơ phòng và hợp đồng để báo trả' });
   expect(link.getAttribute('href')).toBe('/rooms/room-b');
   expect(link.getAttribute('target')).toBe('_blank');
@@ -362,7 +366,7 @@ it('U22 — Chủ trọ: phòng khách pass hiển thị giá pass riêng và kh
 it('U23 — Sale: tôi chỉ xem các tòa được giao, không tìm ra tòa ngoài phạm vi hay được mở sửa nội bộ', () => {
   const scoped = room();
   scoped.capabilities = { edit: false, images: false, pass: false, lock: false, releaseLock: false, deposit: false };
-  state.query.data!.rooms = [scoped]; render(<QuickRoomBoard mobile />);
+  state.query.data!.rooms = [scoped]; render(<QuickRoomBoard mobile />); openFilters(true);
   expect(screen.getByLabelText('Tòa nhà').textContent).not.toContain('Bình Minh');
   fireEvent.change(screen.getByLabelText('Tìm tòa hoặc phòng'), { target: { value: 'Binh Minh 101' } });
   expect(screen.getByText(/Không có phòng khớp bộ lọc/)).toBeTruthy();
@@ -410,13 +414,15 @@ it.each([
   ['Cọc', 'Lưu cọc thử', 'deposit'],
   ['Báo pass', 'Lưu pass thử', 'pass'],
 ] as const)('U27 — Chủ công ty: form %s đang mở phải khóa ghi ngay khi dữ liệu lỗi hoặc bị thu quyền', (open, submit, capability) => {
+  const soon = () => room('room-a', 'building-a', 'soon');
+  state.query.data!.rooms = [soon(), room('room-b', 'building-b', 'rented')];
   const view = render(<QuickRoomBoard />);
   const row = screen.getByText('Tòa Ánh Dương · 101').closest('tr')!;
   fireEvent.click(within(row).getByRole('button', { name: open }));
   state.query.isError = true; view.rerender(<QuickRoomBoard />);
   expect(screen.getByRole('button', { name: submit })).toHaveProperty('disabled', true);
   state.query.isError = false;
-  state.query.data = { ...state.query.data!, rooms: [{ ...room(), capabilities: { ...room().capabilities, [capability]: false } }] };
+  state.query.data = { ...state.query.data!, rooms: [{ ...soon(), capabilities: { ...soon().capabilities, [capability]: false } }] };
   view.rerender(<QuickRoomBoard />);
   expect(screen.getByRole('button', { name: submit })).toHaveProperty('disabled', true);
   state.query.data!.rooms = []; view.rerender(<QuickRoomBoard />);
@@ -534,4 +540,108 @@ it('U28 — Quản lý: giữ giao diện cha ở nguyên tab khi đang sửa/t�
   fireEvent.click(screen.getByRole('button', { name: 'Hoàn tất ảnh thử' }));
   fireEvent.click(screen.getByRole('button', { name: 'Đóng, giữ bản nháp' }));
   expect(changed).toHaveBeenLastCalledWith(false);
+});
+
+const named = (row: SaleRoomInventoryRow, name: string) => { row.name = name; row.code = name; row.room.code = name; return row; };
+const rowOf = (label: string, mobile: boolean) => screen.getByText(label).closest(mobile ? 'article' : 'tr') as HTMLElement;
+
+it.each([false, true])('D5-14 — Báo pass / Báo sắp trống chỉ ở phòng đang có khách; phòng trống, đang lock, giữ sang nhượng thì không, mobile=%s', mobile => {
+  const locked = named(room('locked', 'building-b', 'locked'), 'L1');
+  locked.room.saleLock = { id: 'lock-1', hours: 6, lockedAt: '2026-10-21T05:00:00Z', expiresAt: '2026-10-21T11:00:00Z', lockedByName: 'Sale khác', lockedByMe: false, note: null };
+  state.query.data!.rooms = [
+    named(room('vacant', 'building-b'), 'T1'), locked, named(room('rented', 'building-b', 'rented'), 'R1'),
+    named(room('soon', 'building-b', 'soon'), 'S1'), named(room('pass', 'building-b', 'pass'), 'P1'), named(heldRow(), 'H1'),
+  ];
+  render(<QuickRoomBoard mobile={mobile} />); showAllStatuses(mobile);
+  const buttons = (name: string) => within(rowOf(`Tòa Bình Minh · ${name}`, mobile)).queryAllByRole('button').map(button => button.textContent);
+  for (const name of ['T1', 'L1', 'H1']) {
+    expect(buttons(name)).not.toContain('Báo pass');
+    expect(buttons(name)).not.toContain('Báo sắp trống');
+    expect(buttons(name)).not.toContain('Cập nhật ngày sắp trống');
+  }
+  expect(buttons('R1')).toEqual(expect.arrayContaining(['Báo pass', 'Báo sắp trống']));
+  expect(buttons('S1')).toEqual(expect.arrayContaining(['Báo pass', 'Cập nhật ngày sắp trống']));
+  expect(buttons('P1')).toEqual(expect.arrayContaining(['Sửa pass', 'Báo sắp trống']));
+});
+
+it('D5-15 — ô giá nhận đúng kiểu app hiển thị «4.250.000» và lưu thành số đồng', async () => {
+  render(<QuickRoomBoard />); openFirst(); changePrice('4.250.000');
+  expect(screen.queryByText(/Nhập giá nguyên/)).toBeNull();
+  expect(screen.queryByText(/kiểm tra có (thiếu|thừa) số 0/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+  await waitFor(() => expect(state.save).toHaveBeenCalledTimes(1));
+  expect(state.save.mock.calls[0][0].patch).toEqual({ rent_price: 4_250_000 });
+});
+
+it.each([
+  ['0', /Giá 0 đ sẽ hiện đúng như vậy/, 0],
+  ['42.500', /Giá dưới 500.000 đ\/tháng/, 42_500],
+  ['100.000.000.000', /Giá trên 100.000.000 đ\/tháng/, 100_000_000_000],
+] as const)('D5-15 — giá %s chỉ cảnh báo, không chặn lưu', async (typed, warning, saved) => {
+  render(<QuickRoomBoard />); openFirst(); changePrice(typed);
+  expect(screen.getByText(warning)).toBeTruthy();
+  expect(price().getAttribute('aria-describedby')).toBe('quick-price-warning');
+  expect(screen.getByRole('button', { name: 'Lưu thay đổi' })).toHaveProperty('disabled', false);
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+  await waitFor(() => expect(state.save).toHaveBeenCalledTimes(1));
+  expect(state.save.mock.calls[0][0].patch).toEqual({ rent_price: saved });
+});
+
+it('D5-15 — giá sai định dạng vẫn chặn và chỉ đúng ô, không kèm cảnh báo', () => {
+  render(<QuickRoomBoard />); openFirst(); changePrice('4.25');
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+  expect(screen.getByText(/ví dụ 4.250.000/)).toBeTruthy();
+  expect(price().getAttribute('aria-describedby')).toBe('quick-price-error');
+  expect(screen.queryByText(/kiểm tra có (thiếu|thừa) số 0/)).toBeNull();
+  expect(state.save).not.toHaveBeenCalled();
+});
+
+it('D5-16 — tìm theo từng từ: chép nguyên nhãn «Tòa · phòng» hay đảo thứ tự vẫn ra đúng phòng', () => {
+  render(<QuickRoomBoard />);
+  const search = screen.getByLabelText('Tìm tòa hoặc phòng');
+  for (const query of ['Tòa Ánh Dương · 101', '101 anh duong', 'ANH-DUONG (101)']) {
+    fireEvent.change(search, { target: { value: query } });
+    expect(screen.getByText('Tòa Ánh Dương · 101')).toBeTruthy();
+    expect(screen.queryByText('Tòa Bình Minh · 101')).toBeNull();
+  }
+  fireEvent.change(search, { target: { value: 'anh duong · 102' } });
+  expect(screen.getByText(/Không có phòng khớp bộ lọc/)).toBeTruthy();
+  fireEvent.change(search, { target: { value: ' · ' } });
+  expect(screen.getByText('2/2 phòng')).toBeTruthy();
+});
+
+it('D5-17 — điện thoại mở sẵn phòng còn chào được, tòa + tình trạng gộp trong một nút thu gọn; máy tính giữ mọi tình trạng', () => {
+  state.query.data!.rooms = [room(), room('room-b', 'building-b', 'rented'), named(room('room-c', 'building-b', 'soon'), '102')];
+  render(<QuickRoomBoard mobile />);
+  expect(screen.queryByText('Tòa Bình Minh · 101')).toBeNull();
+  expect(screen.getByText('Tòa Bình Minh · 102')).toBeTruthy();
+  expect(screen.getByText('2/3 phòng')).toBeTruthy();
+  const toggle = screen.getByRole('button', { name: /^Bộ lọc:/ });
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle.textContent).toContain('Trống / sắp trống (trừ đã thuê) · Tất cả tòa');
+  expect(screen.queryByLabelText('Tình trạng')).toBeNull();
+  expect(screen.getByLabelText('Tìm tòa hoặc phòng')).toBeTruthy();
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.change(screen.getByLabelText('Tòa nhà'), { target: { value: 'building-b' } });
+  fireEvent.change(screen.getByLabelText('Tình trạng'), { target: { value: 'all' } });
+  expect(screen.getByText('2/3 phòng')).toBeTruthy();
+  expect(toggle.textContent).toContain('Mọi tình trạng · Tòa Bình Minh');
+  fireEvent.click(toggle);
+  expect(screen.queryByLabelText('Tình trạng')).toBeNull();
+  cleanup(); render(<QuickRoomBoard />);
+  expect(screen.getByText('3/3 phòng')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /^Bộ lọc:/ })).toBeNull();
+  expect(screen.getByLabelText('Tình trạng')).toHaveProperty('value', 'all');
+});
+
+it('D5-20 — nút Chi tiết có tên đọc chứa đúng chữ hiển thị; ô tòa xếp theo tên tự nhiên', () => {
+  const far = room('r-102', 'b-102'); far.buildingName = '102LVT'; far.room.buildingName = '102LVT';
+  const near = room('r-45', 'b-45'); near.buildingName = '45TTT'; near.room.buildingName = '45TTT';
+  state.query.data!.rooms = [far, near];
+  render(<QuickRoomBoard />);
+  const detail = screen.getByRole('button', { name: 'Chi tiết 45TTT · 101' });
+  expect(detail.textContent).toBe('Chi tiết');
+  expect([...(screen.getByLabelText('Tòa nhà') as HTMLSelectElement).options].map(option => option.textContent))
+    .toEqual(['Tất cả tòa được giao', '45TTT', '102LVT']);
 });

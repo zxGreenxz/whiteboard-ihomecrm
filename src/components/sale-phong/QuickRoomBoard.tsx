@@ -1,6 +1,7 @@
 import { roomPhotoCount } from '@/lib/roomMedia';
+import { compareBuildingNames } from '@/lib/roomSort';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { DoorOpen, ImagePlus, LockKeyhole, Megaphone, RefreshCw, Search, TimerReset, Wallet } from 'lucide-react';
+import { ChevronDown, DoorOpen, ImagePlus, LockKeyhole, Megaphone, RefreshCw, Search, SlidersHorizontal, TimerReset, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,15 +28,15 @@ import { ExitHoldDialog, type ExitHoldAction } from './ExitHoldDialog';
 import { EXIT_HOLD_STATUS_LABEL, exitHoldActionBlockedReason, exitHoldLines, isExitHeld } from '@/pages/phong-trong/exitHold';
 import { salePolicyTimeLabel } from '@/lib/saleRoomPolicyTypes';
 import {
-  newQuickRoomDraft, quickRoomChanges, quickRoomDraftDirty, readQuickRoomDrafts, roomSearchKey,
+  newQuickRoomDraft, quickRoomChanges, quickRoomDraftDirty, quickRoomPriceWarning, readQuickRoomDrafts, roomSearchMatches,
   type QuickRoomDraft,
 } from './quickRoomDraft';
 
-type StatusFilter = 'all' | Room['status'] | 'preparing' | 'exit-hold' | 'missing-images' | 'draft';
+type StatusFilter = 'all' | 'open' | Room['status'] | 'preparing' | 'exit-hold' | 'missing-images' | 'draft';
 const SaleRoomBatchPanel = lazy(() => import('./SaleRoomBatchPanel'));
 const EMPTY_ROOMS: SaleRoomInventoryRow[] = [];
 const FILTERS: Array<{ value: StatusFilter; label: string }> = [
-  { value: 'all', label: 'Mọi tình trạng' }, { value: 'free', label: 'Trống sẵn' },
+  { value: 'all', label: 'Mọi tình trạng' }, { value: 'open', label: 'Trống / sắp trống (trừ đã thuê)' }, { value: 'free', label: 'Trống sẵn' },
   { value: 'soon', label: 'Sắp trống / cần xác nhận' }, { value: 'preparing', label: 'Đang chuẩn bị' },
   { value: 'locked', label: 'Đang lock' }, { value: 'pass', label: 'Khách pass' },
   { value: 'rented', label: 'Đã thuê / giữ chỗ' }, { value: 'exit-hold', label: 'Chờ khách sang nhượng' },
@@ -46,6 +47,13 @@ const statusLabel = (room: Room) => room.status === 'locked' ? 'Đang lock' : is
 }[room.status]);
 /** Cọc theo luật hiện có (trống / sắp trống / lock) và phòng đang giữ cho khách sang nhượng: người khác vẫn cọc được. */
 const depositableStatus = (room: Room) => ['free', 'soon', 'locked'].includes(room.status) || isExitHeld(room);
+/**
+ * Phòng đang có khách ở: đã thuê, sắp trống (khách báo trả) hoặc khách đã nhờ pass. Phòng trống, đang lock
+ * (máy chủ che tình trạng thật) và phòng giữ cho khách sang nhượng (khách cũ đã trả) không có ai để báo.
+ */
+const occupiedStatus = (room: Room) => ['rented', 'soon', 'pass'].includes(room.status) && !isExitHeld(room);
+/** Bộ lọc mặc định trên điện thoại: bỏ phòng đã thuê / giữ chỗ, giữ phòng còn chào được (kể cả lock, pass, giữ sang nhượng). */
+const openForSale = (room: Room) => room.status !== 'rented' || isExitHeld(room);
 const money = (value: number | null) => value == null ? 'Chưa khai giá' : `${value.toLocaleString('vi-VN')} đ`;
 const timeLabel = (value: string | null | undefined) => {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Chưa có thời điểm';
@@ -69,8 +77,9 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const inventory = useSaleRoomInventory();
   const { data: permissions } = useMyPermissions();
   const [noticeRoomId, setNoticeRoomId] = useState<string | null>(null);
-  // Phòng đang giữ cho khách sang nhượng đã trả phòng (hợp đồng cũ không còn ở) nên không báo sắp trống.
-  const canReport = (row: SaleRoomInventoryRow) => row.room.status !== 'free' && !isExitHeld(row.room)
+  // Chỉ phòng đang có khách mới báo được sắp trống: phòng giữ cho khách sang nhượng đã trả phòng (hợp đồng
+  // cũ không còn ở), phòng đang lock thì máy chủ che tình trạng thật nên không biết có hợp đồng nào để báo.
+  const canReport = (row: SaleRoomInventoryRow) => occupiedStatus(row.room)
     && canUse(permissions, 'contracts', 'view', row.buildingId)
     && canUse(permissions, 'contracts', 'edit', row.buildingId)
     && canUse(permissions, 'contracts', 'terminate', row.buildingId);
@@ -78,7 +87,9 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const rows = inventory.data?.rooms ?? EMPTY_ROOMS;
   const [search, setSearch] = useState('');
   const [buildingId, setBuildingId] = useState('');
-  const [status, setStatus] = useState<StatusFilter>('all');
+  // Điện thoại mở sẵn phòng còn chào được; phòng đã thuê chỉ hiện khi chọn bộ lọc khác.
+  const [status, setStatus] = useState<StatusFilter>(mobile ? 'open' : 'all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, QuickRoomDraft>>(() => readQuickRoomDrafts(storageKey));
   const [uploading, setUploading] = useState(false);
@@ -104,6 +115,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const draft = selected ? (savedDraft && (quickRoomDraftDirty(savedDraft) || savedDraft.request?.unknown)
     ? savedDraft : newQuickRoomDraft(selected, selected.revision)) : undefined;
   const dirty = !!draft && quickRoomDraftDirty(draft);
+  const priceWarning = draft ? quickRoomPriceWarning(draft.price) : null;
   const stale = !!selected && !!draft && (selected.revision !== draft.revision || !!draft.request?.conflict);
   const unknown = !!draft?.request?.unknown;
   const draftCount = rows.filter(row => drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id])).length;
@@ -129,16 +141,16 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   }, [busy, turnoverEditing, draftCount]);
 
   const buildings = useMemo(() => [...new Map(rows.map(row => [row.buildingId, row.buildingName])).entries()]
-    .sort((left, right) => left[1].localeCompare(right[1], 'vi')), [rows]);
+    .sort((left, right) => compareBuildingNames(left[1], right[1])), [rows]);
   const visible = useMemo(() => {
-    const query = roomSearchKey(search);
     return rows.filter(row => {
       if (buildingId && row.buildingId !== buildingId) return false;
-      if (query && !roomSearchKey(`${row.buildingName} ${row.name} ${row.code ?? ''}`).includes(query)) return false;
+      if (!roomSearchMatches(`${row.buildingName} ${row.name} ${row.code ?? ''}`, search)) return false;
       if (status === 'missing-images') return roomPhotoCount(row.images) === 0;
       if (status === 'draft') return !!drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]);
       if (status === 'preparing') return row.room.saleFact?.kind === 'preparing';
       if (status === 'exit-hold') return !!row.room.exitHold;
+      if (status === 'open') return openForSale(row.room);
       if (status === 'free') return row.room.status === 'free' && row.room.saleFact?.kind !== 'preparing';
       return status === 'all' || row.room.status === status;
     });
@@ -237,7 +249,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
     {exitHoldLines(room.exitHold).map(line => <p key={line}>{line}</p>)}
   </div> : null;
   const actions = (row: SaleRoomInventoryRow) => <div className="flex flex-wrap gap-1.5">
-    <Button size="sm" variant="outline" disabled={blocked} onClick={() => openRoom(row.room.id)} aria-label={`Mở ${rowLabel(row)}`}>
+    <Button size="sm" variant="outline" disabled={blocked} onClick={() => openRoom(row.room.id)} aria-label={`Chi tiết ${rowLabel(row)}`}>
       <DoorOpen className="mr-1.5 h-3.5 w-3.5" />Chi tiết
     </Button>
     {canReport(row) && <Button size="sm" variant="outline" disabled={blocked} onClick={() => setNoticeRoomId(row.room.id)}>
@@ -256,7 +268,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
     {row.room.exitHold?.canManage && <Button size="sm" variant="outline" disabled={blocked} onClick={() => openHold(row, 'extend')}>
       <TimerReset className="mr-1.5 h-3.5 w-3.5" />Giữ tiếp
     </Button>}
-    {row.capabilities.pass && <Button size="sm" variant="outline" disabled={blocked} onClick={() => setPassRoomId(row.room.id)}>{row.room.status === 'pass' ? 'Sửa pass' : 'Báo pass'}</Button>}
+    {row.capabilities.pass && occupiedStatus(row.room) && <Button size="sm" variant="outline" disabled={blocked} onClick={() => setPassRoomId(row.room.id)}>{row.room.status === 'pass' ? 'Sửa pass' : 'Báo pass'}</Button>}
   </div>;
   const fieldError = (name: string) => errors[name] ? <p id={`quick-${name}-error`} role="alert" className="text-sm text-destructive">{errors[name]}</p> : null;
   const policySummary = (row: SaleRoomInventoryRow) => row.policy && row.policy.status !== 'CANCELLED' ? <div className="mt-2 rounded-md bg-muted/40 p-2 text-xs">
@@ -265,26 +277,41 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
     {row.activePolicyText && <p className="mt-1 whitespace-pre-wrap">{row.activePolicyText}</p>}
   </div> : null;
 
+  const searchField = <div className="space-y-1"><Label htmlFor="quick-room-search" className={mobile ? 'sr-only' : undefined}>Tìm tòa hoặc phòng</Label><div className="relative">
+    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="quick-room-search" className="pl-8" placeholder={mobile ? 'Tìm tòa hoặc phòng, ví dụ: Tòa A 101' : 'Ví dụ: Tòa A 101'} value={search} onChange={event => setSearch(event.target.value)} />
+  </div></div>;
+  const buildingField = <div className="space-y-1"><Label htmlFor="quick-building">Tòa nhà</Label><select id="quick-building" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={buildingId} onChange={event => setBuildingId(event.target.value)}>
+    <option value="">Tất cả tòa được giao</option>{buildings.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+  </select></div>;
+  const statusField = <div className="space-y-1"><Label htmlFor="quick-status">Tình trạng</Label><select id="quick-status" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={status} onChange={event => setStatus(event.target.value as StatusFilter)}>
+    {FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+  </select></div>;
+  const filterSummary = `${FILTERS.find(filter => filter.value === status)?.label ?? 'Mọi tình trạng'} · ${buildings.find(([id]) => id === buildingId)?.[1] ?? 'Tất cả tòa'}`;
+
   return <section className="space-y-4" aria-label="Bảng cập nhật phòng">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-lg font-semibold">Bảng cập nhật phòng</h2>
-        <p className="text-sm text-muted-foreground">Tìm phòng, sửa thông tin và xử lý ngay trong phạm vi được giao.</p></div>
+      <div><h2 className={mobile ? 'sr-only' : 'text-lg font-semibold'}>Bảng cập nhật phòng</h2>
+        {!mobile && <p className="text-sm text-muted-foreground">Tìm phòng, sửa thông tin và xử lý ngay trong phạm vi được giao.</p>}</div>
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={blocked || !!selectedId} onClick={() => { setBatchRoomIds(visible.map(row => row.room.id)); setBatchOpen(true); }}>Cập nhật nhiều phòng / chính sách</Button>
-      <Button size="sm" variant="outline" disabled={inventory.isFetching || busy} onClick={() => void inventory.refetch()}>
-        <RefreshCw className={`mr-1.5 h-4 w-4 ${inventory.isFetching ? 'animate-spin' : ''}`} />Tải lại
+      <Button size="sm" variant="outline" disabled={inventory.isFetching || busy} onClick={() => void inventory.refetch()}
+        aria-label={mobile ? 'Tải lại' : undefined} title={mobile ? 'Tải lại' : undefined}>
+        {/* Điện thoại chỉ để biểu tượng cho hai nút nằm một hàng, thẻ phòng đầu tiên lên cao hơn. */}
+        <RefreshCw className={`${mobile ? '' : 'mr-1.5 '}h-4 w-4 ${inventory.isFetching ? 'animate-spin' : ''}`} />{!mobile && 'Tải lại'}
       </Button></div>
     </div>
-    <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-3">
-      <div className="space-y-1"><Label htmlFor="quick-room-search">Tìm tòa hoặc phòng</Label><div className="relative">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="quick-room-search" className="pl-8" placeholder="Ví dụ: Tòa A 101" value={search} onChange={event => setSearch(event.target.value)} />
-      </div></div>
-      <div className="space-y-1"><Label htmlFor="quick-building">Tòa nhà</Label><select id="quick-building" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={buildingId} onChange={event => setBuildingId(event.target.value)}>
-        <option value="">Tất cả tòa được giao</option>{buildings.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-      </select></div>
-      <div className="space-y-1"><Label htmlFor="quick-status">Tình trạng</Label><select id="quick-status" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={status} onChange={event => setStatus(event.target.value as StatusFilter)}>
-        {FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
-      </select></div>
-    </div>
+    {mobile ? <div className="space-y-2 rounded-lg border bg-muted/20 p-2.5">
+      {searchField}
+      {/* Điện thoại: tòa + tình trạng gộp vào một nút thu gọn để thẻ phòng đầu tiên lên gần đầu màn. */}
+      <Button type="button" variant="outline" size="sm" className="h-9 w-full justify-between gap-2 px-3 font-normal"
+        aria-expanded={filtersOpen} aria-controls="quick-room-filters" onClick={() => setFiltersOpen(open => !open)}>
+        <span className="flex min-w-0 items-center gap-1.5"><SlidersHorizontal className="h-4 w-4 shrink-0" />
+          <span className="truncate">Bộ lọc: {filterSummary}</span></span>
+        <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
+      </Button>
+      {filtersOpen && <div id="quick-room-filters" className="grid gap-3 pt-1">{buildingField}{statusField}</div>}
+    </div> : <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-3">
+      {searchField}{buildingField}{statusField}
+    </div>}
     {batchOpen && <Suspense fallback={<LoadingState label="cập nhật nhiều phòng" />}><SaleRoomBatchPanel
       rows={rows} initialRoomIds={batchRoomIds} organizationId={organizationId} actorId={actorId}
       blocked={inventory.isError || !inventory.data} onBusyChange={setBatchBusy}
@@ -339,7 +366,9 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
           {!selected.capabilities.edit && <p className="rounded-lg bg-muted p-3 text-sm">Bạn chưa có quyền sửa thông tin phòng này. Liên hệ quản lý để được cấp đúng quyền.</p>}
           <fieldset disabled={!selected.capabilities.edit || busy || turnoverEditing || unknown} className="space-y-4 disabled:opacity-75">
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label htmlFor="quick-price">Giá niêm yết (đ/tháng)</Label><Input id="quick-price" name="price" inputMode="numeric" value={draft.price} onChange={event => change('price', event.target.value)} aria-invalid={!!errors.price} />{fieldError('price')}
+              <div className="space-y-1.5"><Label htmlFor="quick-price">Giá niêm yết (đ/tháng)</Label><Input id="quick-price" name="price" inputMode="numeric" value={draft.price} onChange={event => change('price', event.target.value)} aria-invalid={!!errors.price}
+                aria-describedby={errors.price ? 'quick-price-error' : priceWarning ? 'quick-price-warning' : undefined} />{fieldError('price')}
+                {!errors.price && priceWarning && <p id="quick-price-warning" className="text-xs text-amber-700">{priceWarning}</p>}
                 {selected.room.status === 'pass' && <p className="text-xs text-muted-foreground">Giá pass riêng được sửa ở Báo pass.</p>}</div>
               <div className="space-y-1.5"><Label htmlFor="quick-area">Diện tích (m²)</Label><Input id="quick-area" name="area" inputMode="decimal" value={draft.area} onChange={event => change('area', event.target.value)} aria-invalid={!!errors.area} />{fieldError('area')}</div>
             </div>
@@ -378,7 +407,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
     {holdAction && <ExitHoldDialog key={`${holdAction.roomId}:${holdAction.mode}`} action={{ ...holdAction, hold: currentHold ?? holdAction.hold }}
       blockedReason={holdBlockedReason} onClose={() => setHoldAction(null)} />}
     {passRoomId && <div className="space-y-2 rounded-lg border p-3">
-      <PassListingsTab key={passRoomId} focusRoomId={passRoomId} blockedReason={actionBlockedReason(passRoomId, 'pass')} onFocusedClose={() => { setPassRoomId(null); void inventory.refetch(); }} />
+      <PassListingsTab key={passRoomId} focusRoomId={passRoomId} blockedReason={actionBlockedReason(passRoomId, 'pass', occupiedStatus)} onFocusedClose={() => { setPassRoomId(null); void inventory.refetch(); }} />
     </div>}
   </section>;
 }

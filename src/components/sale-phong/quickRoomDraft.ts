@@ -1,4 +1,12 @@
 import { saleRoomPatchSchema } from '@/lib/saleRoomOperations';
+import { parseCurrencyAmount } from '@/lib/currencyAmountInput';
+
+/**
+ * Giá thuê/tháng ngoài khoảng này thường là gõ thiếu/thừa số 0. Chỉ cảnh báo, không chặn:
+ * phòng cao cấp hoặc giá tượng trưng vẫn lưu được khi người sửa cố ý.
+ */
+export const QUICK_ROOM_PRICE_LOW = 500_000;
+export const QUICK_ROOM_PRICE_HIGH = 100_000_000;
 
 export interface QuickRoomValues {
   rentPrice: number | null;
@@ -73,8 +81,10 @@ export function quickRoomChanges(draft: QuickRoomDraft, permission: { edit: bool
     const price = draft.price.trim();
     const area = draft.area.trim().replace(',', '.');
     const priceChanged = changed('price');
-    if (priceChanged && (!/^\d+$/.test(price) || !Number.isSafeInteger(Number(price)))) errors.price = 'Nhập giá nguyên không âm bằng đồng; không để trống.';
-    else if (priceChanged && !saleRoomPatchSchema.safeParse({ rent_price: Number(price) }).success) errors.price = 'Giá niêm yết không vượt quá 9.999.999.999.999 đồng.';
+    // Nhận cả kiểu app tự hiển thị ("4.250.000", "4 250 000"); số lẻ, số âm, chữ vẫn bị giữ lại để sửa.
+    const rentPrice = parseCurrencyAmount(price).value;
+    if (priceChanged && rentPrice == null) errors.price = 'Nhập giá nguyên không âm bằng đồng, ví dụ 4.250.000; không để trống.';
+    else if (priceChanged && !saleRoomPatchSchema.safeParse({ rent_price: rentPrice }).success) errors.price = 'Giá niêm yết không vượt quá 9.999.999.999.999 đồng.';
     if (changed('area') && area && (!/^\d+(?:\.\d{1,2})?$/.test(area) || !Number.isFinite(Number(area)) || Number(area) > 1_000_000)) errors.area = 'Nhập diện tích từ 0 đến 1.000.000 m², tối đa 2 số thập phân.';
     if (changed('roomType') && draft.roomType.trim().length > 200) errors.roomType = 'Loại phòng tối đa 200 ký tự.';
     if (changed('saleNote') && draft.saleNote.trim().length > 2000) errors.saleNote = 'Thông tin công khai tối đa 2000 ký tự.';
@@ -83,7 +93,7 @@ export function quickRoomChanges(draft: QuickRoomDraft, permission: { edit: bool
     const amenities = [...new Set(draft.amenities.split('\n').map(value => value.trim()).filter(Boolean))];
     if (changed('amenities') && (amenities.length > 50 || amenities.some(value => value.length > 200))) errors.amenities = 'Tối đa 50 nội thất, mỗi dòng không quá 200 ký tự.';
     const fields = {
-      ...(priceChanged ? { rent_price: Number(price) } : {}),
+      ...(priceChanged && rentPrice != null ? { rent_price: rentPrice } : {}),
       ...(changed('area') ? { area: area ? Number(area) : null } : {}),
       ...(changed('roomType') ? { room_type: draft.roomType.trim() || null } : {}),
       ...(changed('amenities') ? { amenities } : {}),
@@ -111,6 +121,16 @@ export function quickRoomChanges(draft: QuickRoomDraft, permission: { edit: bool
   return { patch, errors };
 }
 
+/** Cảnh báo (không chặn lưu) khi giá đọc được là 0 đ hoặc lệch hẳn mức thuê phòng thường gặp. */
+export function quickRoomPriceWarning(price: string): string | null {
+  const value = parseCurrencyAmount(price).value;
+  if (value == null) return null;
+  if (value === 0) return 'Giá 0 đ sẽ hiện đúng như vậy cho sale và khách. Kiểm tra lại nếu không cố ý.';
+  if (value < QUICK_ROOM_PRICE_LOW) return 'Giá dưới 500.000 đ/tháng — kiểm tra có thiếu số 0 không. Vẫn lưu được nếu đúng.';
+  if (value > QUICK_ROOM_PRICE_HIGH) return 'Giá trên 100.000.000 đ/tháng — kiểm tra có thừa số 0 không. Vẫn lưu được nếu đúng.';
+  return null;
+}
+
 /** Persist only well-shaped drafts from this actor/org session, never trust stored JSON. */
 export function readQuickRoomDrafts(key: string): Record<string, QuickRoomDraft> {
   try {
@@ -132,6 +152,18 @@ export function readQuickRoomDrafts(key: string): Record<string, QuickRoomDraft>
     // Optional local cache can be unavailable or malformed; never trust it or block reading fresh rooms.
   }
   return {};
+}
+
+/**
+ * Tìm theo từng từ, không cần đúng thứ tự: "111PVC · 101" (chép từ nhãn phòng) và "101 111pvc"
+ * đều ra phòng đó. Dấu phân cách hiển thị ("·", "-", ngoặc, dấu phẩy) chỉ là khoảng trắng.
+ */
+export function roomSearchMatches(haystack: string, query: string): boolean {
+  const words = (value: string) => roomSearchKey(value).split(/[\s·•,;:()[\]/\\|–—-]+/u).filter(Boolean);
+  const needles = words(query);
+  if (!needles.length) return true;
+  const text = words(haystack).join(' ');
+  return needles.every(needle => text.includes(needle));
 }
 
 export function roomSearchKey(value: string): string {
