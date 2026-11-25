@@ -19,7 +19,7 @@ const decide = (): Decide => {
   const { result } = renderHook(() => useDecideApproval());
   return (result.current as unknown as { mutationFn: Decide }).mutationFn;
 };
-const request = { id: 'r1', state: 'PENDING_APPROVAL', version: 3, step: 'PENDING', decisions: 0 };
+const request = { id: 'r1', state: 'PENDING_APPROVAL', version: 3, step: 'PENDING', decisions: 0, mode: 'ANY' };
 const decisions = () => io.server.rpcCalls.filter(call => call.name === 'decide_financial_request_v2').length;
 const T0 = Date.parse('2026-11-25T02:00:00.000Z');
 
@@ -28,14 +28,16 @@ beforeEach(() => {
   vi.setSystemTime(T0);
   localStorage.clear();
   io.server = fakeRecordServer();
-  Object.assign(request, { state: 'PENDING_APPROVAL', version: 3, step: 'PENDING', decisions: 0 });
+  Object.assign(request, { state: 'PENDING_APPROVAL', version: 3, step: 'PENDING', decisions: 0, mode: 'ANY' });
   io.server.rpcHandlers.get_approval_request_detail_compat_v2 = () => ({ data: {
     id: request.id, state: request.state, version: request.version, can_decide: request.state === 'PENDING_APPROVAL',
-    steps: [{ step_no: 1, status: request.step, mode: 'ANY', current_generation: 1 }],
+    steps: [{ step_no: 1, status: request.step, mode: request.mode, min_approvals: 1, candidate_count: request.mode === 'ALL' ? 2 : 1, current_generation: 1 }],
   }, error: null });
   io.server.rpcHandlers.decide_financial_request_v2 = args => {
     if (request.state !== 'PENDING_APPROVAL') return { data: null, error: { code: '42501', message: 'Bạn không nằm trong danh sách người duyệt của yêu cầu này' } };
     request.decisions += 1;
+    // Bước ALL hai người: một lần duyệt chưa đủ người ⇒ ghi quyết định, KHÔNG đổi trạng thái / phiên bản / bước.
+    if (request.mode === 'ALL' && args.p_decision === 'APPROVE') return { data: { request_id: request.id, state: request.state }, error: null };
     Object.assign(request, args.p_decision === 'APPROVE' ? { state: 'POSTED', step: 'APPROVED' } : { state: 'REJECTED', step: 'REJECTED' }, { version: request.version + 1 });
     return { data: { request_id: request.id, state: request.state }, error: null };
   };
@@ -80,6 +82,25 @@ describe('quyết định yêu cầu duyệt', () => {
     vi.setSystemTime(T0 + 130_000);
     await expect(decide()({ requestId: 'r1', decision: 'APPROVE' })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('chuyển bước') });
     expect(decisions()).toBe(1);
+  });
+  it('bước cần nhiều người, duyệt tới nhưng mất phản hồi: ảnh không đổi KHÔNG chứng minh chưa ghi ⇒ không gửi lại, giữ dấu cho hộp cảnh báo', async () => {
+    request.mode = 'ALL';
+    io.server.failNext('decide_financial_request_v2', 'rpc', 'drop-after');
+    await expect(decide()({ requestId: 'r1', decision: 'APPROVE' })).rejects.toMatchObject({ outcome: 'unknown' });
+    expect(request.decisions).toBe(1);
+    vi.setSystemTime(T0 + 130_000);
+    await expect(decide()({ requestId: 'r1', decision: 'APPROVE' })).rejects.toMatchObject({ message: expect.stringContaining('đối chiếu') });
+    expect(request.decisions).toBe(1);
+    expect(pendingKeys()).toHaveLength(1);
+  });
+  it('bước cần nhiều người, từ chối không tới máy chủ: quá 2 phút yêu cầu vẫn như lúc bấm ⇒ gửi lại (từ chối luôn đổi trạng thái)', async () => {
+    request.mode = 'ALL';
+    io.server.failNext('decide_financial_request_v2', 'rpc', 'drop-before');
+    await expect(decide()({ requestId: 'r1', decision: 'REJECT' })).rejects.toMatchObject({ outcome: 'unknown' });
+    vi.setSystemTime(T0 + 130_000);
+    await expect(decide()({ requestId: 'r1', decision: 'REJECT' })).resolves.toMatchObject({ state: 'REJECTED' });
+    expect(request.decisions).toBe(1);
+    expect(pendingKeys()).toEqual([]);
   });
   it('đọc trạng thái hỏng trước khi bấm: không ghi dấu, không gửi', async () => {
     io.server.failNext('get_approval_request_detail_compat_v2', 'rpc', 'drop-before');

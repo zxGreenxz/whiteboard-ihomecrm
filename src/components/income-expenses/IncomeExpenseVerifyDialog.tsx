@@ -1,4 +1,5 @@
 import { voucherFailureMessage } from "@/lib/voucherFeedback";
+import { FinancialAlreadyRecordedError } from "@/lib/financialWorkflow";
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -58,8 +59,10 @@ export function IncomeExpenseVerifyDialog({
       onOpenChange(false);
     } catch(error) {
       // Đợt 5: lần bấm sau tự so trạng thái đã kiểm với lúc bấm (đã đổi thì không gửi lần hai, vì gửi lại là đảo ngược),
-      // nên kết quả chưa rõ không khoá hộp nữa; câu báo vẫn hiện.
+      // nên kết quả chưa rõ không khoá hộp nữa; câu báo vẫn hiện. Khi máy đã kết luận «đã ở trạng thái …», hộp đang giữ
+      // ảnh phiếu cũ: khoá nút tới khi mở lại, kẻo lần bấm sau (không còn dấu) đảo ngược trạng thái vừa xác nhận.
       setSubmitError(voucherFailureMessage(error,"cập nhật trạng thái đã kiểm"));
+      if (error instanceof FinancialAlreadyRecordedError) setReconcileRequired(true);
     }
   };
 

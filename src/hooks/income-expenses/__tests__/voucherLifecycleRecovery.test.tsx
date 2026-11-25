@@ -271,4 +271,22 @@ describe('huỷ phiếu đường cũ, nhiều bước (cách C)', () => {
     await expect(cancel()('v1')).rejects.toMatchObject({ message: expect.stringContaining('đối chiếu') });
     expect(calls('cancel_income_expense_v1')).toBe(0);
   });
+  it('phiếu thu đường cũ đã huỷ nhưng khoản thanh toán còn sống: chỉ gỡ khoản đó (sau 2 phút), không huỷ lại phiếu', async () => {
+    Object.assign(voucher(), { type: 'INCOME', payment_id: 'p1', approval_status: 'CANCELLED' });
+    io.server.rows.payments = [{ id: 'p1', reversed_at: null }];
+    seedLegacyPending({ namespace: 'voucher-cancel', userId: 'actor', organizationId: 'actor-scope', businessKey: 'v1' }, new Date(T0 - 60_000), ['v1']);
+    await expect(cancel()('v1')).rejects.toMatchObject({ message: expect.stringContaining('đang chờ kết quả') });
+    later(130_000);
+    await expect(cancel()('v1')).resolves.toBe(false);
+    expect(io.server.rows.payments).toEqual([]);
+    expect(calls('cancel_income_expense_v1')).toBe(0);
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('phiếu thu đã huỷ mà khoản thanh toán đã đánh dấu hoàn tác: không xoá gì, báo «không thay đổi»', async () => {
+    Object.assign(voucher(), { type: 'INCOME', payment_id: 'p1', approval_status: 'CANCELLED' });
+    io.server.rows.payments = [{ id: 'p1', reversed_at: '2026-11-25T01:00:00Z' }];
+    seedLegacyPending({ namespace: 'voucher-cancel', userId: 'actor', organizationId: 'actor-scope', businessKey: 'v1' }, new Date(T0 - 10 * 60_000), ['v1']);
+    await expect(cancel()('v1')).resolves.toBe('unchanged');
+    expect(io.server.rows.payments).toHaveLength(1);
+  });
 });

@@ -206,7 +206,7 @@ export const usePendingApprovalSources = (rows: readonly PendingApproval[]) => {
  * phiên bản, từng bước). `null` khi không đọc thấy (không thuộc công ty, không từng là người duyệt).
  * Không đọc được quyết định của riêng mình: approval_decisions chỉ có chính sách RESTRICTIVE nên không ai SELECT được.
  */
-interface ApprovalRequestState { state: string; version: number; signature: string; canDecide: boolean }
+interface ApprovalRequestState { state: string; version: number; signature: string; canDecide: boolean; multiApprover: boolean }
 async function readApprovalRequestState(requestId: string): Promise<ApprovalRequestState | null> {
   const { data, error } = await supabase.rpc("get_approval_request_detail_compat_v2", { p_request_id: requestId });
   if (error) throw error;
@@ -214,8 +214,14 @@ async function readApprovalRequestState(requestId: string): Promise<ApprovalRequ
   if (!row || row.id !== requestId || typeof row.state !== "string") return null;
   const steps = Array.isArray(row.steps) ? row.steps as Record<string, unknown>[] : [];
   const version = Number(row.version);
+  // Bước đang chờ cần nhiều người duyệt (ALL nhiều người, QUORUM > 1): một lần duyệt chưa đủ người thì máy chủ ghi quyết
+  // định mà KHÔNG đổi trạng thái, phiên bản hay bước. Không rõ cách duyệt của bước thì coi như nhiều người (phía an toàn).
+  const waiting = steps.find(step => step.status === "PENDING");
+  const multiApprover = !waiting || !(waiting.mode === "ANY"
+    || (waiting.mode === "QUORUM" && Number(waiting.min_approvals) <= 1)
+    || (waiting.mode === "ALL" && Number(waiting.candidate_count) <= 1));
   return {
-    state: row.state, version, canDecide: row.can_decide === true,
+    state: row.state, version, canDecide: row.can_decide === true, multiApprover,
     signature: [row.state, Number.isFinite(version) ? version : "", ...steps.map(step => `${step.step_no}:${step.status}:${step.current_generation}`)].join("|"),
   };
 }
@@ -237,8 +243,9 @@ export const useDecideApproval = () => {
     }) => {
       // Cách C (đợt 5): decide_financial_request_v2 → app_private.decide_financial_request_v1 (production 25/11/2026)
       // khoá yêu cầu FOR UPDATE rồi đòi đúng phiên bản và trạng thái chờ duyệt; nhưng một phiếu duyệt bước cần nhiều
-      // người (ALL/QUORUM) chưa đủ người thì không đổi phiên bản, nên gửi lại sớm có thể ghi thêm một dòng quyết định
-      // của chính mình. Vì vậy đọc ảnh trạng thái TRƯỚC khi ghi dấu, lần bấm sau so lại, chỉ gửi lại sau 2 phút.
+      // người (ALL/QUORUM) chưa đủ người thì ghi quyết định mà không đổi phiên bản, trạng thái hay bước, và trình duyệt không
+      // đọc được approval_decisions. Vì vậy đọc ảnh trạng thái TRƯỚC khi ghi dấu, lần bấm sau so lại: ảnh không đổi chỉ chứng
+      // minh «chưa ghi» khi bước chỉ cần một người (hoặc quyết định là từ chối); bước nhiều người thì giữ dấu cho hộp cảnh báo.
       const before = await readApprovalRequestState(input.requestId);
       return workflow.run(input.requestId,'xử lý yêu cầu duyệt',async progress=>{
       const { data, error } = await supabase.rpc("decide_financial_request_v2", {
@@ -258,6 +265,8 @@ export const useDecideApproval = () => {
         const label = APPROVAL_STATE_LABEL[now.state] ?? now.state;
         // Yêu cầu đã rời trạng thái chờ duyệt (do quyết định của mình hoặc người khác): không gửi lại.
         if (now.state !== "PENDING_APPROVAL") return { outcome: "already-written", message: `Yêu cầu duyệt đã ở trạng thái ${label}. Không gửi lại quyết định; tải lại hộp duyệt để kiểm tra.`, recordIds: [input.requestId] };
+        // Duyệt ở bước cần nhiều người: ảnh không đổi KHÔNG chứng minh lần trước chưa ghi (quyết định chưa đủ người không đổi ảnh).
+        if (now.signature === pending.meta?.before && pending.meta?.decision === "APPROVE" && pending.meta?.multi !== false) return null;
         return transitionVerdict({
           // Dấu không có ảnh trước khi bấm (bản trước): chưa biết bước có đổi hay không, nên giữ dấu cho hộp cảnh báo.
           pending, current: now.signature, reached: false, onReached: () => null,
@@ -266,7 +275,7 @@ export const useDecideApproval = () => {
             : "Bạn không còn là người duyệt của bước đang chờ. Không gửi lại; tải lại hộp duyệt để kiểm tra.",
           recordIds: [input.requestId],
         });
-      },input.organizationId,before ? { meta: beforeStateMeta(before.signature) } : {});
+      },input.organizationId,before ? { meta: beforeStateMeta(before.signature, { decision: input.decision, multi: before.multiApprover }) } : {});
     },
     onSuccess: (_data, input) => {
       invalidateAfterDecision(queryClient);

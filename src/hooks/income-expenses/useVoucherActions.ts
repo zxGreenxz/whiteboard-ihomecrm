@@ -14,6 +14,7 @@ import { useIncomeExpenseRevisions, useReviseIncomeExpense } from "@/hooks/incom
 import { checkSelfApproveBeforeApprove, useSelfApproveGate } from "@/hooks/income-expenses/selfApproveGate";
 import { focusFirstError } from "@/lib/formErrors";
 import { voucherFailureMessage } from "@/lib/voucherFeedback";
+import { FinancialAlreadyRecordedError } from "@/lib/financialWorkflow";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -375,7 +376,12 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       await unapproveMutation.mutateAsync({ id: unapproveTarget, reason: unapproveNeedsReason ? lifecycleReason : undefined });
       setUnapproveTarget(null);
       changed();
-    } catch (error) { setActionError(voucherFailureMessage(error, "bỏ duyệt phiếu")); }
+    } catch (error) {
+      // Đợt 5: máy đã kết luận phiếu «đã ở trạng thái …» (hook đã báo): đóng hộp đang giữ ảnh cũ và làm mới, vì bỏ duyệt
+      // không xét trạng thái hiện tại nên bấm lại sẽ lên phiên bản phiếu thêm lần nữa.
+      if (error instanceof FinancialAlreadyRecordedError) { setUnapproveTarget(null); changed(); return; }
+      setActionError(voucherFailureMessage(error, "bỏ duyệt phiếu"));
+    }
   };
 
   const confirmRestore = async () => {
@@ -385,7 +391,10 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       await restoreMutation.mutateAsync({ id: restoreTarget, reason: restoreNeedsReason ? lifecycleReason : undefined });
       setRestoreTarget(null);
       changed();
-    } catch (error) { setActionError(voucherFailureMessage(error, "khôi phục phiếu")); }
+    } catch (error) {
+      if (error instanceof FinancialAlreadyRecordedError) { setRestoreTarget(null); changed(); return; }
+      setActionError(voucherFailureMessage(error, "khôi phục phiếu"));
+    }
   };
 
   const confirmCancel = async () => {

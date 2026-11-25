@@ -59,6 +59,18 @@ describe('huỷ đợt phiếu', () => {
     expect(compatCalls()).toHaveLength(1);
     expect(pendingKeys()).toEqual([]);
   });
+  it('lần trước đã huỷ hết phiếu nhưng chưa gỡ khoản thanh toán của phiếu chi: chỉ chạy bước gỡ (sau 2 phút), không huỷ lại', async () => {
+    for (const row of io.server.rows.income_expenses) row.approval_status = 'CANCELLED';
+    io.server.rows.income_expenses[0].payment_id = 'p1';
+    io.server.rows.payments = [{ id: 'p1' }];
+    seedLegacyPending({ namespace: 'voucher-batch-cancel', userId: 'actor', organizationId: 'org-a', businessKey: 'b1' }, new Date(T0 - 60_000), ['c1', 'c2']);
+    await expect(cancel()).rejects.toMatchObject({ message: expect.stringContaining('đang chờ kết quả') });
+    vi.setSystemTime(T0 + 130_000);
+    await expect(cancel()).resolves.toMatchObject({ count: 0, failures: [] });
+    expect(io.server.rows.payments).toEqual([]);
+    expect(compatCalls()).toHaveLength(0);
+    expect(pendingKeys()).toEqual([]);
+  });
   it('dấu cũ gieo sẵn của đợt (đã quá 2 phút): đọc lại, chỉ huỷ phiếu còn hiệu lực', async () => {
     io.server.rows.income_expenses[0].approval_status = 'CANCELLED';
     seedLegacyPending({ namespace: 'voucher-batch-cancel', userId: 'actor', organizationId: 'org-a', businessKey: 'b1' }, new Date(T0 - 10 * 60_000), ['c1']);

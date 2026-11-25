@@ -83,6 +83,9 @@ const getInvalidatedRoots = () =>
   );
 
 let readbackPostingStatus: string | null = 'UNPOSTED';
+// Đợt 5: phép đọc trạng thái phiếu TRƯỚC khi ghi dấu (readVoucherState). Mặc định thấy phiếu; ca nào cần nó hỏng thì đặt.
+const STATE_COLUMNS = 'id,code,type,payment_id,approval_status,posting_status,approval_version,posting_version,verified_at';
+let stateReadError: Record<string, unknown> | null = null;
 const mockVoucherRead = (result: {
   data: Record<string, unknown> | null;
   error: Record<string, unknown> | null;
@@ -92,6 +95,7 @@ const mockVoucherRead = (result: {
   builder.select=vi.fn((value:string)=>{columns=value;return builder;});
   builder.eq=vi.fn((_column:string,value:string)=>{id=value;return builder;});
   builder.maybeSingle=vi.fn(async()=>{
+    if(columns===STATE_COLUMNS)return stateReadError?{data:null,error:stateReadError}:{data:{id,code:'PT01',type:'EXPENSE',payment_id:null,approval_status:'APPROVED',posting_status:'UNPOSTED',approval_version:2,posting_version:1,verified_at:null},error:null};
     if(columns==='id,code,approval_status,posting_status,verified_at'){
       const status=[...mocks.rpc.mock.calls].reverse().find(([name])=>name==='set_termination_forfeit_status_v1')?.[1]?.p_status??'UNAPPROVED';
       return {data:{id,code:'PT01',approval_status:status,posting_status:readbackPostingStatus,verified_at:null},error:null};
@@ -103,7 +107,7 @@ const mockVoucherRead = (result: {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();localStorage.clear();readbackPostingStatus='UNPOSTED';
+  vi.clearAllMocks();localStorage.clear();readbackPostingStatus='UNPOSTED';stateReadError=null;
   mocks.from.mockReset();
   mocks.rpc.mockReset();mockVoucherRead({data:{},error:null});
 });
@@ -240,10 +244,20 @@ describe("termination forfeit status rollout fallback", () => {
     expect(mocks.toastError).not.toHaveBeenCalled();
     mutation.onError(readError);
 
-    // Đợt 5: phép đọc trạng thái phiếu trước khi ghi dấu hỏng ⇒ dừng trước mọi lệnh ghi (kể cả cửa bỏ cọc).
-    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
     expect(mocks.toastError).toHaveBeenCalledOnce();
     expect(String(mocks.toastError.mock.calls[0][0])).not.toContain(readError.message);
+  });
+
+  // Đợt 5: phép đọc trạng thái phiếu TRƯỚC khi ghi dấu hỏng ⇒ dừng trước mọi lệnh ghi (kể cả cửa bỏ cọc), không để dấu.
+  it("fails closed before any write when the pre-marker state read fails", async () => {
+    const readError = { code: "", message: "Failed to fetch" };
+    stateReadError = readError;
+    mockVoucherRead({ data: { system_source: null, notes: null, approval_version: 2 }, error: null });
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
+    await expect(mutation.mutationFn("voucher-1")).rejects.toEqual(readError);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(Object.keys(localStorage).filter(key => key.startsWith("ihome:financial-pending:"))).toEqual([]);
   });
 
   it("fails closed when the voucher is missing or hidden by RLS", async () => {

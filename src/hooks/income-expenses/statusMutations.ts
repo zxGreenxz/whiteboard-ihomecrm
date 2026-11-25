@@ -538,8 +538,9 @@ export const useCancelIncomeExpense = () => {
             if(paymentError)throw paymentError;
             if(payment&&!(payment as {reversed_at?:unknown}).reversed_at){
               if(!priorAttemptSettled(pending))return null;
-              const {error:deleteError}=await supabase.from('payments').delete().eq('id',row.payment_id);
-              if(deleteError)throw new VoucherPartialError("Phiếu đã huỷ nhưng chưa cập nhật được thanh toán hoá đơn. Hãy kiểm tra phiếu và hoá đơn liên quan; không huỷ lại phiếu.", [id], undefined, deleteError);
+              // Đọc lại số dòng đã xoá: quyền (RLS) có thể làm lệnh xoá chạm 0 dòng mà không báo lỗi.
+              const {data:deleted,error:deleteError}=await supabase.from('payments').delete().eq('id',row.payment_id).select('id');
+              if(deleteError||!Array.isArray(deleted)||deleted.length!==1)throw new VoucherPartialError("Phiếu đã huỷ nhưng chưa cập nhật được thanh toán hoá đơn. Hãy kiểm tra phiếu và hoá đơn liên quan; không huỷ lại phiếu.", [id], undefined, deleteError);
               return {result:false};
             }
           }

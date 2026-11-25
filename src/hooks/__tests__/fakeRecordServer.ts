@@ -74,7 +74,7 @@ export function fakeRecordServer(): FakeRecordServer {
 
   function builder(table: string) {
     const filters: Filter[] = [];
-    let mode: 'read' | 'insert' | 'update' = 'read';
+    let mode: 'read' | 'insert' | 'update' | 'delete' = 'read';
     let payload: Row | Row[] | undefined;
     let limit: number | undefined;
     let order: { column: string; ascending: boolean } | undefined;
@@ -88,6 +88,11 @@ export function fakeRecordServer(): FakeRecordServer {
         if (result.error) return result;
         const stored = result.data as Row[];
         return { data: shape === 'many' ? stored : stored[0] ?? null, error: null };
+      }
+      if (mode === 'delete') {
+        const doomed = tableRows(table).filter(row => filters.every(filter => filter(row)));
+        server.rows[table] = tableRows(table).filter(row => !doomed.includes(row));
+        return { data: shape === 'many' ? doomed : doomed[0] ?? null, error: null };
       }
       if (mode === 'update') {
         const changed = tableRows(table).filter(row => filters.every(filter => filter(row)));
@@ -113,6 +118,7 @@ export function fakeRecordServer(): FakeRecordServer {
     const query = {
       insert: (value: Row | Row[]) => { mode = 'insert'; payload = value; return query; },
       update: (value: Row) => { mode = 'update'; payload = value; return query; },
+      delete: () => { mode = 'delete'; return query; },
       select: () => query,
       eq: (column: string, value: unknown) => { filters.push(row => row[column] === value); return query; },
       neq: (column: string, value: unknown) => { filters.push(row => row[column] !== value); return query; },
