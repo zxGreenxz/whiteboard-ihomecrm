@@ -1,3 +1,4 @@
+import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
 import type {ReservationDepositRow} from '@/hooks/useDeposits';
 import {DepositScheduleFields} from './DepositScheduleFields';
 import {useRef,useState} from 'react';
@@ -45,7 +46,7 @@ function ReservationRow({reservation:r,onMoneyClosed,onContract,onApprove,rows=[
   if(action==='UPDATE'){if(!schedule.holdUntil&&!r.receipts.length){setError('Giữ chỗ chưa nhận tiền phải chọn hạn.');return;}input.changes={holdUntil:schedule.holdUntil||null,intendedMoveInOn:schedule.moveIn||null,topupDueOn:schedule.topup||null};}
   if(action==='TOPUP'){const money=Number(amount);if(!Number.isSafeInteger(money)||money<=0||!accountId){setError('Nhập tiền cọc dương và chọn sổ quỹ.');return;}input.roomId=r.room_id;input.payerName=payer;input.changes={holdUntil:schedule.holdUntil||null,intendedMoveInOn:schedule.moveIn||null,topupDueOn:schedule.topup||null};input.receipt={amount:money,accountId,voucherDate,name:`Bổ sung cọc phòng ${r.room_name} · ${r.customer_name}`};}
   const fingerprint=JSON.stringify(input);if(intent.current?.fingerprint!==fingerprint)intent.current={fingerprint,key:`reservation-change-${crypto.randomUUID()}`};setError('');
-  try{await mutation.mutateAsync({...input,idempotencyKey:intent.current.key});setEdit(null);}catch(e){setError(reservationErrorMessage(e));}
+  try{await mutation.mutateAsync({...input,idempotencyKey:intent.current.key});setEdit(null);}catch(e){if(e instanceof ConfirmedDepositIncome){setEdit(null);onMoneyClosed();return;}setError(reservationErrorMessage(e));}
  }
  const byVoucher=new Map<string,RoomReservation['receipts'][number]>();
  for(const line of r.receipts){

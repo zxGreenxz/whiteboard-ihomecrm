@@ -1,8 +1,10 @@
+import { ConfirmedDepositIncome, recoverableRoomDeposit } from '@/lib/depositIncomeRpc';
 // @vitest-environment jsdom
 vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:null,isError:false,isLoading:false,refetch:vi.fn()})}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'o1'})}));
 // "Nhập nhanh" (trang Thu chi mobile): hạng mục Tiền cọc phải có phòng — "toàn tòa nhà" không đủ,
 // vì cọc chỉ vào hợp đồng theo phòng (depositRoomRule.ts). Không cho bấm Lưu và nói rõ lý do.
+import { useState } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEPOSIT_ROOM_REQUIRED_MESSAGE } from '@/lib/depositRoomRule';
@@ -47,7 +49,8 @@ vi.stubGlobal('ResizeObserver', ResizeObserverFake);
 afterEach(cleanup);
 
 const nhap = (phong: string, chon: string) => {
-  render(<IncomeExpenseQuickCreateDialog open onOpenChange={() => {}} defaultType="INCOME" />);
+  function Host(){const [open,setOpen]=useState(true);return <IncomeExpenseQuickCreateDialog open={open} onOpenChange={setOpen} defaultType="INCOME" />;}
+  render(<Host/>);
   const o = screen.getByLabelText('Nhập nhanh');
   fireEvent.change(o, { target: { value: `${phong} 1392QT ` } });
   fireEvent.click(screen.getByText(chon));
@@ -83,5 +86,20 @@ it('sau mất phản hồi rồi mở lại, đối chiếu đúng mã và khôn
   cleanup();
   fireEvent.click(nhap('G03','chọn Tiền Cọc'));
   await waitFor(()=>expect(h.rpc).toHaveBeenCalledWith('get_own_deposit_income_v1',{p_organization_id:'o1',p_request_key:key}));
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'Lưu phiếu thu'})).toBeNull());
   expect(h.create).toHaveBeenCalledTimes(1);
+});
+
+it('giữ đúng mã do Sale cấp khi gọi lại và khi khôi phục lần thu sau mất mạng',async()=>{
+  const key='sale-caller-key';
+  const id='11111111-1111-4111-8111-111111111111';
+  const save=vi.fn(async(request:string)=>{expect(request).toBe(key);return {id};});
+  await recoverableRoomDeposit('o1','g03',key,save);
+  await recoverableRoomDeposit('o1','g03',key,save);
+  save.mockRejectedValueOnce(new Error('network error'));
+  await expect(recoverableRoomDeposit('o1','g03',key,save)).rejects.toThrow('network error');
+  h.rpc.mockResolvedValueOnce({data:id,error:null});
+  await expect(recoverableRoomDeposit('o1','g03','new-on-remount',save)).rejects.toBeInstanceOf(ConfirmedDepositIncome);
+  expect(h.rpc).toHaveBeenLastCalledWith('get_own_deposit_income_v1',{p_organization_id:'o1',p_request_key:key});
+  expect(save).toHaveBeenCalledTimes(3);
 });

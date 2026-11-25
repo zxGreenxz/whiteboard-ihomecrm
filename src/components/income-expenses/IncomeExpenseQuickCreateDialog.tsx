@@ -1,3 +1,4 @@
+import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
 import { createVoucherFromForm } from '@/hooks/income-expenses/formCreatePending';
 import type { CreateIncomeExpenseInput } from '@/hooks/income-expenses/types';
 import { getSessionUser } from '@/lib/authSession';
@@ -330,6 +331,11 @@ const IncomeExpenseQuickCreateDialog = ({
       onOpenChange(false);
       onSaved?.();
     } catch (error) {
+      if (error instanceof ConfirmedDepositIncome) {
+        onOpenChange(false);
+        onSaved?.();
+        return;
+      }
       setSaveError(voucherFailureMessage(error, "lập phiếu"));
     }
   };

@@ -1,3 +1,4 @@
+import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
 import {useDepositIncomeHold} from '@/hooks/useDepositIncomeHold';
 import { DepositScheduleFields } from './DepositScheduleFields';
 import {runFinancialPending} from '@/lib/financialPendingAction';
@@ -412,6 +413,12 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
       intent.current=null;
       onOpenChange(false);
     } catch (error) {
+      if (error instanceof ConfirmedDepositIncome) {
+        toast.success(error.message);
+        if(onReceipt) await onReceipt(error.voucherId);
+        onOpenChange(false);
+        return;
+      }
       console.error("Failed to create reservation deposit:", error);
       // Chưa rõ kết quả tạo cọc: không khoá nút. Lần bấm sau gửi lại đúng mã của dấu, máy chủ trả lại giữ chỗ cũ
       // nếu lệnh trước đã tới, nên không tạo cọc thứ hai.

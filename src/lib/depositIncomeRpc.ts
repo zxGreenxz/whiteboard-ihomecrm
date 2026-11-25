@@ -15,6 +15,12 @@ const confirmation = z.object({
   reservation_id: z.string().uuid().nullable(), reservation: roomReservationSchema.nullable(),
 });
 
+export class ConfirmedDepositIncome extends FinancialAlreadyRecordedError {
+  constructor(readonly voucherId:string) {
+    super('Đã xác nhận phiếu cọc của lần lưu trước. Mở Thu chi để xem phiếu.',[voucherId]);
+  }
+}
+
 export async function recordDepositIncome(org: string, key: string, row: Json, items: Json, terms: Json) {
   const client = supabase as unknown as { rpc: IncomeRpc };
   const { data, error } = await client.rpc('create_deposit_income_v1', {
@@ -22,7 +28,7 @@ export async function recordDepositIncome(org: string, key: string, row: Json, i
   });
   if (error?.code==='PT409' && error.message==='Mã yêu cầu đã dùng cho nội dung khác') {
     const saved=await findOwnDepositIncome(org,key);
-    if (saved) throw new FinancialAlreadyRecordedError('Phiếu cọc của lần lưu trước đã được xác nhận. Mở Thu chi để xem phiếu.',[saved]);
+    if (saved) throw new ConfirmedDepositIncome(saved);
   }
   if (error) throw error;
   return confirmation.parse(data);
@@ -48,16 +54,18 @@ export async function findOwnDepositIncome(org: string, requestKey: string): Pro
 }
 
 // The durable marker stores identifiers only. After a reload, ask the server about that exact request.
-export async function recoverableRoomDeposit<T extends {id:string}>(org:string, roomId:string, save:(key:string)=>Promise<T>):Promise<T> {
+export async function recoverableRoomDeposit<T extends {id:string}>(org:string, roomId:string, requestKey:string, save:(key:string)=>Promise<T>):Promise<T> {
   const actor=await getSessionUser();
   if (!actor) throw new Error('Đăng nhập lại để lưu phiếu cọc.');
-  return runFinancialPending({namespace:'room-deposit-receipt',userId:actor.id,organizationId:org,businessKey:roomId},async progress=>{
+  const result=await runFinancialPending<T | ConfirmedDepositIncome>({namespace:'room-deposit-receipt',userId:actor.id,organizationId:org,businessKey:roomId},async progress=>{
     const result=await save(progress.requestKey);
     progress.recordCompleted([result.id]);
     return result;
-  }, undefined, {operation:'thu cọc',reconcile:async pending=>{
+  }, undefined, {operation:'thu cọc',requestKey,reconcile:async pending=>{
     const id=await findOwnDepositIncome(org,pending.requestKey??pending.attemptId);
-    return id ? {outcome:'already-written',message:'Đã xác nhận phiếu cọc của lần lưu trước. Mở Thu chi để xem phiếu.',recordIds:[id]}
+    return id ? {result:new ConfirmedDepositIncome(id)}
       : {outcome:'not-written',serverDedupesRequestKey:true};
   }});
+  if (result instanceof ConfirmedDepositIncome) throw result;
+  return result;
 }

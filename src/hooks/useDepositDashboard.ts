@@ -456,13 +456,28 @@ export function summarizeByBuilding(rows: HeldDepositRow[]): BuildingDepositSumm
  * Hai query chạy song song trong CÙNG một queryFn (không phải hai hook) để bảng
  * và ô KPI luôn đọc một ảnh chụp dữ liệu, không bao giờ lệch pha nhau.
  */
+interface UnlinkedRefund {
+  id:string; code:string; buildingId:string; building:string; room:string; person:string;
+  amount:number; posted:boolean;
+}
+interface DepositRefundRead { settlements:RefundForfeitRow[]; unlinked:UnlinkedRefund[] }
+
 export function useDepositRefundsForfeits() {
+  return useDepositRefundRead(result=>result.settlements);
+}
+
+export function useDepositSettlementReport() {
+  return useDepositRefundRead(result=>result);
+}
+
+function useDepositRefundRead<T>(select:(result:DepositRefundRead)=>T) {
   const {selectedOrganizationId}=useOrganization();
   return useQuery({
     enabled: !!selectedOrganizationId,
     meta:{errorDisplay:'inline',label:'thống kê cọc'},
     queryKey: ['deposit-dashboard', 'refunds-forfeits', selectedOrganizationId],
-    queryFn: async (): Promise<RefundForfeitRow[]> => {
+    select,
+    queryFn: async (): Promise<DepositRefundRead> => {
       if (!selectedOrganizationId) throw new Error('Chưa chọn công ty để xem cọc.');
       // hermes-parity:begin deposit-refunds — Hermes chép vùng này (public.deposit_refunds_forfeits_v1)
       // PAGED cả hai nhánh: thanh lý và phiếu hoàn đều tích luỹ mãi → phân trang
@@ -496,12 +511,11 @@ export function useDepositRefundsForfeits() {
         fetchAllRows<any>(
           (from, to) => supabase
             .from('income_expenses')
-            .select('id, code, contract_id, total_amount, approval_status, posting_status, active_posting_id_v2, income_expense_items(accounting_class,amount)')
+            .select('id, code, contract_id, total_amount, approval_status, posting_status, active_posting_id_v2, building_id, payer_name, room:rooms!income_expenses_room_id_fkey(name), building:buildings!income_expenses_building_id_fkey(name), income_expense_items(accounting_class,amount)')
             .eq('organization_id',selectedOrganizationId)
             .eq('type', 'EXPENSE')
             .eq('system_source', TERMINATION_REFUND_SOURCE)
             .in('approval_status', ['APPROVED','UNAPPROVED'])
-            .not('contract_id', 'is', null)
             .is('deleted_at', null)
             .order('id', { ascending: true })
             .range(from, to),
@@ -532,7 +546,7 @@ export function useDepositRefundsForfeits() {
       const deposits=indexPostedRefunds(vouchers.filter(isPosted).map(depositPart));
       const pending=indexPostedRefunds(vouchers.filter(v=>!isPosted(v) && v.posting_status!=='REVERSED').map(depositPart));
 
-      return data.map((t: any): RefundForfeitRow => {
+      const settlements=data.map((t: any): RefundForfeitRow => {
         const kind: RefundForfeitKind =
           t.termination_type === 'FORFEIT' ? 'FORFEIT' : 'REFUND';
         const agg = posted.get(t.contract_id) ?? { total: 0, count: 0, codes: [] };
@@ -561,6 +575,12 @@ export function useDepositRefundsForfeits() {
           refund_drift: settlementNet > 0 ? settlementNet - agg.total : 0,
         };
       });
+      const linked=new Set(data.map(t=>t.contract_id));
+      const unlinked=vouchers.filter(v=>!linked.has(v.contract_id) && v.posting_status!=='REVERSED')
+        .map(v=>({id:v.id,code:v.code??'—',buildingId:v.building_id,building:v.building?.name??'—',
+          room:v.room?.name??'—',person:v.payer_name??'—',amount:depositPart(v).amount,posted:isPosted(v)}))
+        .filter(v=>v.amount>0);
+      return {settlements,unlinked};
       // hermes-parity:end deposit-refunds
     },
   });

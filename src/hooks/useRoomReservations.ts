@@ -50,7 +50,7 @@ export function useCreateRoomReservation(options:{silent?:boolean}={}){
       ...(p_payload.deposit_target != null ? {deposit_target:p_payload.deposit_target} : {}),
       ...(p_payload.notes ? {notes:p_payload.notes} : {}),
     });
-    const result=input.channel==='sale' ? await recoverableRoomDeposit(org,input.roomId,save) : await save(input.idempotencyKey);
+    const result=input.channel==='sale' ? await recoverableRoomDeposit(org,input.roomId,input.idempotencyKey,save) : await save(input.idempotencyKey);
     if(!result.reservation)throw new TypeError('Chưa xác nhận đợt giữ chỗ của phiếu thu');
     return {...result.reservation,writtenVoucherId:result.id};
   },options);
@@ -60,7 +60,7 @@ export function useUpdateRoomReservation(){
     if(input.action!=='TOPUP'||!input.receipt)return updateRoomReservation(invoke,org,input);
     const receipt=input.receipt;
     if(!input.roomId||!input.payerName?.trim())throw new Error('Chọn phòng và nhập người gửi tiền cọc.');
-    const result=await recoverableRoomDeposit(org,input.roomId,key=>recordDepositIncome(org,key,{
+    const result=await recoverableRoomDeposit(org,input.roomId,input.idempotencyKey,key=>recordDepositIncome(org,key,{
       type:'INCOME',room_id:input.roomId,name:receipt.name??'Bổ sung cọc',payer_name:input.payerName,
       amount:receipt.amount,account_id:receipt.accountId??null,voucher_date:receipt.voucherDate,
       description:receipt.description??null,attachments:receipt.attachments??[],

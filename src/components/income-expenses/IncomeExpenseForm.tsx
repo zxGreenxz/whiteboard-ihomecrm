@@ -1,3 +1,4 @@
+import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
 import {DepositScheduleFields,emptyDepositSchedule} from '@/components/deposits/DepositScheduleFields';
 import {useDepositIncomeHold} from '@/hooks/useDepositIncomeHold';
 import {createVoucherFromForm,pendingCreateElsewhere,voucherFormCreateKey} from '@/hooks/income-expenses/formCreatePending';
@@ -846,6 +847,11 @@ const IncomeExpenseFormInner = ({
       }
       onOpenChange(false);
     } catch (error) {
+      if (error instanceof ConfirmedDepositIncome) {
+        toast.success(error.message);
+        onOpenChange(false);
+        return;
+      }
       // Lỗi đã được hook báo (toast). Riêng lệch phiên bản: phiếu vừa bị người
       // khác sửa/duyệt — khoá nút Lưu, bảo người dùng mở lại phiếu.
       if (isStaleVersionError(error)) setStaleVersion(true);

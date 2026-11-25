@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { useReservationDeposits } from '@/hooks/useDeposits';
-import { useHeldDeposits, useDepositRefundsForfeits } from '@/hooks/useDepositDashboard';
+import { useHeldDeposits, useDepositSettlementReport } from '@/hooks/useDepositDashboard';
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
@@ -33,7 +33,7 @@ export default function DepositsReport() {
 
   const vouchers=useReservationDeposits(buildingIds);
   const contracts=useHeldDeposits();
-  const settlements=useDepositRefundsForfeits();
+  const settlements=useDepositSettlementReport();
   const filtered=useMemo(()=>{
     const rows=new Map<string,ReportRow>();
     const add=(row:ReportRow)=>{
@@ -57,11 +57,15 @@ export default function DepositsReport() {
       add({id:h.contract_id,buildingId:h.building_id,building:h.building_name,room:h.room_name,
         person:h.customer_name,code:h.contract_number??'—',status:'CONTRACT',amount:h.deposit_paid});
     }
-    for(const r of settlements.data??[]){
+    for(const r of settlements.data?.settlements??[]){
       const base={buildingId:r.building_id,building:r.building_name,room:r.room_name,person:r.customer_name,code:r.contract_number??'—'};
       if(r.pending_deposit_refund)add({...base,id:'pending-refund-'+r.id,status:'REFUND_DUE',amount:r.pending_deposit_refund});
       if(r.posted_deposit_refund)add({...base,id:'refund-'+r.id,status:'REFUNDED',amount:r.posted_deposit_refund});
       if(r.kind==='FORFEIT' && r.status==='COMPLETED')add({...base,id:'forfeit-'+r.id,status:'RETAINED',amount:r.total_deposit});
+    }
+    for(const v of settlements.data?.unlinked??[]){
+      add({id:'unlinked-'+v.id,code:v.code,buildingId:v.buildingId,building:v.building,room:v.room,
+        person:v.person,amount:v.amount,status:v.posted?'REFUNDED':'REFUND_DUE'});
     }
     return [...rows.values()].filter(r=>(!buildingIds.length||buildingIds.includes(r.buildingId)) && (statusFilter==='all'||r.status===statusFilter))
       .sort((a,b)=>a.building.localeCompare(b.building,'vi')||a.room.localeCompare(b.room,'vi',{numeric:true}));

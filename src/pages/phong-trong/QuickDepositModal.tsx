@@ -1,3 +1,4 @@
+import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
 import {useDepositIncomeHold} from '@/hooks/useDepositIncomeHold';
 import { DepositScheduleFields } from '@/components/deposits/DepositScheduleFields';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
@@ -53,7 +54,7 @@ export function QuickDepositModal({room,onClose,onDone,blockedReason}:{room:Room
   setSubmitting(true);setError('');try{
    await create.mutateAsync({...input,idempotencyKey:intent.current.key});track.track('deposit_dialog',{room_id:room.id,room_code:room.code,room_name:String(room.no),building_id:room.buildingId,building_name:room.buildingName,metadata:{created:true,amount:money}});
    onDone(`Đã lưu cọc phòng ${label} cho “${name}”`);onClose();
-  }catch(e){const message=reservationErrorMessage(e);setError(message);}finally{setSubmitting(false);}
+  }catch(e){if(e instanceof ConfirmedDepositIncome){onDone(e.message);onClose();return;}const message=reservationErrorMessage(e);setError(message);}finally{setSubmitting(false);}
  }
  return<><div className="qd-scrim show" onClick={submitting?undefined:onClose}/><div ref={modalRef} className="qd-modal show" role="dialog" aria-modal="true" aria-label="Nhận cọc giữ phòng">
   <div className="qd-head"><div className="qd-title"><Icon.Money/><span>Nhận cọc giữ phòng</span></div><button className="qd-x" onClick={onClose} aria-label="Đóng" disabled={submitting}><Icon.Close/></button></div>
