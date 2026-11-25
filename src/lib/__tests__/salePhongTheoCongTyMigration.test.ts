@@ -608,3 +608,53 @@ describe('tiền kiểm và hậu kiểm md5 của file migration', () => {
     expect(await ownerOf(db, TOA_45)).toBe(CHU);
   });
 });
+
+// Định nghĩa SỐNG của get_sale_room_inventory_v1 và get_my_available_rooms(uuid) nay ở migration Sale đợt 3
+// 20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql: thân production (thân của file đợt 2 này + vá
+// has_deposit_hold của #499) thêm một khoá deposit_hold. Chạy lại các khẳng định công ty / quyền ở trên trên đúng hai thân
+// đó (bảng room_next_claims tối thiểu cho has_deposit_hold, khối deposit_hold giả có dấu để thấy khoá đi đâu).
+describe('định nghĩa sống của hai reader (Sale đợt 3, 20261125165113) giữ nguyên ranh giới công ty / quyền của đợt 2', () => {
+  const LIVE_FILE = 'supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql';
+  const liveSql = readFileSync(LIVE_FILE, 'utf8').replace(/\r\n/g, '\n');
+  const liveReaders = /-- 3\. Bảng nội bộ[\s\S]*?(?=-- 5\. Hậu kiểm)/.exec(liveSql)![0];
+  let live: PGlite;
+  beforeAll(async () => {
+    live = await freshDb();
+    await live.exec(behaviourSql);
+    await live.exec(`
+      CREATE TABLE public.room_next_claims(organization_id uuid, room_id uuid, status text);
+      CREATE FUNCTION app_private.room_deposit_hold_json_v1(p_organization_id uuid, p_room_id uuid, p_detail boolean) RETURNS jsonb LANGUAGE sql STABLE AS $$
+        SELECT jsonb_build_object('marker', 'khoi-coc', 'room', p_room_id, 'detail', p_detail) $$;
+      INSERT INTO public.room_next_claims VALUES ('${ORG}', '${P_THUE}', 'LIVE');`);
+    await live.exec(liveReaders);
+  }, 60_000);
+  afterAll(async () => { await live?.close(); });
+
+  it('hai reader trong file đợt 3 là bản thay thế của hai reader trong file này', () => {
+    expect(liveReaders).toContain('CREATE OR REPLACE FUNCTION public.get_sale_room_inventory_v1(');
+    expect(liveReaders).toContain('CREATE OR REPLACE FUNCTION public.get_my_available_rooms(p_organization_id uuid DEFAULT NULL)');
+  });
+
+  it('«Phòng trống»: cùng phòng chào được theo công ty; không quyền ⇒ rỗng; công ty khác ⇒ 42501; chưa đăng nhập ⇒ NULL', async () => {
+    const ql = await myRooms(live, QUANLY, ORG);
+    expect(offered(ql)).toEqual([P_TRONG, P_45, P_PASS].sort());
+    expect(offered(await myRooms(live, CHU, ORG))).toEqual(offered(ql));
+    expect(offered(await myRooms(live, VIEWER, ORG))).toEqual(offered(ql));
+    expect((await myRooms(live, NOPERM, ORG))?.rooms).toEqual([]);
+    await expect(myRooms(live, QUANLY, ORG_B)).rejects.toThrow(/my_available_rooms_not_member/);
+    expect((await asUser<{ p: unknown }>(live, null, 'SELECT public.get_my_available_rooms() p')).rows[0].p).toBeNull();
+  });
+
+  it('bảng nội bộ: cài đặt chung + cờ quyền như đợt 2; phòng rented có has_deposit_hold và khối deposit_hold, link công khai không có', async () => {
+    const inv = async (uid: string) => (await asUser<{ p: Record<string, unknown> & { rooms: Room[] } }>(live, uid, 'SELECT public.get_sale_room_inventory_v1($1) p', [ORG])).rows[0].p;
+    const q = await inv(QUANLY);
+    expect(q).toMatchObject({ settings_owner_id: CHU, can_manage_account_settings: true, sale_policy: 'Điện 3.500/kWh',
+      contact: { name: 'Hotline chung', phone: '0911111111' } });
+    expect((await inv(VIEWER)).can_manage_account_settings).toBe(false);
+    expect((await inv(QL_TOA)).can_manage_account_settings).toBe(false);
+    const thue = q.rooms.find(r => r.id === P_THUE);
+    expect(thue).toMatchObject({ status_public: 'rented', has_deposit_hold: true, deposit_hold: { marker: 'khoi-coc', room: P_THUE, detail: false } }); // quản lý không có deposits.view
+    expect(q.rooms.find(r => r.id === P_TRONG)).toMatchObject({ has_deposit_hold: false, deposit_hold: null });
+    expect(JSON.stringify(await page(live, 'demo'))).not.toContain('deposit_hold');
+  });
+});

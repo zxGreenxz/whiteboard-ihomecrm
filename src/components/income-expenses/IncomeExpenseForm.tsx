@@ -14,7 +14,7 @@ import { useForm, type Resolver } from 'react-hook-form';
 import { focusFirstError,applyFeedbackToForm } from '@/lib/formErrors';
 import {friendlyError} from '@/lib/friendlyError';
 import {VOUCHER_ERROR_RULES} from '@/lib/voucherErrorRules';
-import { DEPOSIT_ROOM_REQUIRED_MESSAGE, needsDepositRoom, withDepositRoomRule } from '@/lib/depositRoomRule';
+import { DEPOSIT_ROOM_REQUIRED_MESSAGE, needsDepositRoom, withDepositRoomRule, withFieldErrors, type FieldRuleError } from '@/lib/depositRoomRule';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -51,6 +51,8 @@ import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
 import { useVoucherSlotWarning } from '@/hooks/useVoucherSlotWarning';
 import {
+  depositAmountRequiredMessage,
+  depositAmountErrorRows,
   incomeExpenseFormSchema,
   incomeExpenseNoAccountFormSchema,
   type IncomeExpenseFormValues,
@@ -371,12 +373,15 @@ const IncomeExpenseFormInner = ({
   const form = useForm<IncomeExpenseFormValues>({
     shouldFocusError: false,
     // Phiếu có hạng mục cọc phải chọn phòng — xem depositRoomRule.ts.
-    resolver: withDepositRoomRule(
-      zodResolver(accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema) as Resolver<IncomeExpenseFormValues>,
-      (values) =>
-        needsDepositRoom(values.items.map((it) => it.income_expense_type_id), values.room_id, depositTypeIds)
-          ? ['room_id']
-          : [],
+    resolver: withFieldErrors(
+      withDepositRoomRule(
+        zodResolver(accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema) as Resolver<IncomeExpenseFormValues>,
+        (values) =>
+          needsDepositRoom(values.items.map((it) => it.income_expense_type_id), values.room_id, depositTypeIds)
+            ? ['room_id']
+            : [],
+      ),
+      (values) => depositAmountErrors(values),
     ),
     defaultValues: {
       type: defaultType ?? 'INCOME',
@@ -484,7 +489,9 @@ const IncomeExpenseFormInner = ({
         building_id: src.building_id ?? undefined,
         room_id: src.room_id ?? null,
         tenant_id: src.tenant_id ?? null,
-        contract_id: src.contract_id ?? null,
+        // Sale phòng đợt 3: BẢN SAO phiếu thu cọc không mang hợp đồng của phiếu gốc — người lập chọn lại «bổ sung cho
+        // hợp đồng đang thuê» hay «giữ chỗ cho lượt thuê kế tiếp» (điểm chủ chốt 4, 24/11/2026). Sửa phiếu giữ nguyên.
+        contract_id: !voucher && src.type === 'INCOME' && src.items.some((item) => item.is_deposit) ? null : src.contract_id ?? null,
         payer_name: src.payer_name ?? '',
         receive_bank_account: src.receive_bank_account ?? '',
         // Bank cũ là text gõ tay ("VIETTINBANK") → chuẩn hoá về shortName
@@ -889,6 +896,11 @@ const IncomeExpenseFormInner = ({
   );
 
   const canEdit = canEditNormally;
+  // Sale phòng đợt 3: phiếu THU có hạng mục cọc thì tổng dòng cọc > 0 (câu của hộp Cọc trang Sale), báo ở ô Số tiền CÙNG
+  // LƯỢT với lỗi zod, trước bước lưu. Máy chủ chặn bằng trigger a1_ie_item_deposit_amount_positive (và #499).
+  const depositAmountErrors = (values: IncomeExpenseFormValues): FieldRuleError[] =>
+    forfeitKqkdMode ? [] : depositAmountErrorRows(values.type, values.items ?? [], depositTypeIds)
+      .map((index) => ({ path: `items.${index}.unit_price`, type: 'deposit_amount', message: depositAmountRequiredMessage(values.contract_id) }));
   const isViewing = !!voucher && !canEdit && !forfeitKqkdMode;
   const isRevising = !!voucher && canEdit;
   // Khung phiếu (Thu/Chi, toà, phòng, HĐ, KQKD, lặp, thêm/bớt hạng mục, kỳ):

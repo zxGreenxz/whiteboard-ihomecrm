@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1995,
-  "soFileDocBangFs": 510,
-  "tongLoiGoi": 1395,
+  "tongSoFileTest": 1999,
+  "soFileDocBangFs": 511,
+  "tongLoiGoi": 1400,
   "khongPhanLoaiDuoc": 614,
   "theoLoai": {
     "ma-nguon": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 221,
+      "soFile": 222,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -1188,6 +1188,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/cocThuChiMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/commissionFailureRetryMigration.test.ts",
       "soGoi": 3,
       "loai": {
@@ -1938,6 +1946,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/depositRoomRule.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/forfeitVoucherKqkdMigration.test.ts",
       "soGoi": 2,
       "loai": {},
@@ -2040,6 +2056,14 @@
     },
     {
       "file": "src/lib/__tests__/roomReservationMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/salePhongTheoCongTyMigration.test.ts",
       "soGoi": 2,
       "loai": {
         "sql": 2
@@ -3311,14 +3335,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/lib/__tests__/depositRoomRule.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/lib/__tests__/docsDemoSeedP3.test.ts",
       "soGoi": 1,
       "loai": {
@@ -3742,14 +3758,6 @@
     },
     {
       "file": "src/lib/__tests__/saleBonusDepositAuthorizeBeforeLock.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/salePhongTheoCongTyMigration.test.ts",
       "soGoi": 1,
       "loai": {
         "sql": 1

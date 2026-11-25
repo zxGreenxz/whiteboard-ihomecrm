@@ -39,7 +39,8 @@ async function installLiveSaleReader() {
   }
   // Đo định nghĩa SỐNG: «Phòng trống» theo công ty (đợt 2 Sale phòng). Bản () trong các file lịch sử chỉ để chúng chạy lại.
   expect('supabase/migrations/' + liveDefinitionOf('public.get_my_available_rooms').file)
-    .toBe('supabase/migrations/20261125034429_sale_phong_theo_cong_ty.sql');
+    // Đợt 3 Sale phòng: bản sống thêm khoá deposit_hold (khối «đang giữ bằng cọc», đo ở cocThuChiMigration.test.ts).
+    .toBe('supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql');
 }
 
 const db = new PGlite();
@@ -101,6 +102,7 @@ beforeAll(async () => {
       ELSE ARRAY(SELECT DISTINCT organization_id FROM public.buildings WHERE organization_id IS NOT NULL ORDER BY 1) END $$;
     CREATE FUNCTION app_private.sale_room_can_v1(uuid,uuid,text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT auth.uid() IS NOT NULL AND $1=ANY(public.my_org_ids()) $$;
     CREATE FUNCTION app_private.room_exit_hold_json_v1(uuid,uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
+    CREATE FUNCTION app_private.room_deposit_hold_json_v1(uuid,uuid,boolean) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
     ${liveDefinitionOf('app_private.org_building_owner_v1').sql}
     -- Bản () cũ cho các file lịch sử chạy lại (chúng CREATE OR REPLACE bản này và kiểm ACL); installLiveSaleReader bỏ nó.
     CREATE FUNCTION public.get_my_available_rooms() RETURNS jsonb LANGUAGE sql AS $$ SELECT NULL::jsonb $$;
@@ -319,7 +321,10 @@ describe('actual sale reader SQL', () => {
   });
   it('hides a pure next-customer hold on every sale channel until explicitly released', async () => {
     await db.exec(`INSERT INTO public.room_next_claims VALUES('${org}','${room}','LIVE');`);
-    for (const kind of ['public', 'app', 'copilot', 'zalo']) expect((await read(kind))?.rooms).toEqual([]);
+    for (const kind of ['public', 'copilot', 'zalo']) expect((await read(kind))?.rooms).toEqual([]);
+    // «Phòng trống» trong app (#499, bản sống ở file đợt 3): phòng đang giữ chỗ vẫn hiện để nhận cọc bổ sung, nhưng là
+    // 'rented' kèm cờ has_deposit_hold — không chào khách.
+    expect((await read('app'))?.rooms).toEqual([expect.objectContaining({ id: room, status_public: 'rented', has_deposit_hold: true })]);
     await db.exec(`UPDATE public.room_next_claims SET status='CANCELLED';`);
     for (const kind of ['public', 'app', 'copilot', 'zalo']) expect(await roomFact(kind)).toMatchObject({ sale_state: 'READY' });
     await db.exec(`UPDATE public.room_next_claims SET status='LIVE',organization_id='${other}';`);

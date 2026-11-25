@@ -26,13 +26,15 @@ import { canUse } from '@/lib/permissionPages';
 import PassListingsTab from './PassListingsTab';
 import { ExitHoldDialog, type ExitHoldAction } from './ExitHoldDialog';
 import { EXIT_HOLD_STATUS_LABEL, exitHoldActionBlockedReason, exitHoldLines, isExitHeld } from '@/pages/phong-trong/exitHold';
+import { depositHoldLines, depositHoldStale, isDepositHeld } from '@/pages/phong-trong/depositHold';
+import { roomSaleDepositLabel } from '@/lib/roomSaleFacts';
 import { salePolicyTimeLabel } from '@/lib/saleRoomPolicyTypes';
 import {
   newQuickRoomDraft, quickRoomChanges, quickRoomDraftDirty, quickRoomDraftTextChanged, quickRoomPriceWarning, readQuickRoomDrafts, roomSearchMatches, roomSearchWords,
   type QuickRoomDraft,
 } from './quickRoomDraft';
 
-type StatusFilter = 'all' | 'open' | Room['status'] | 'preparing' | 'exit-hold' | 'missing-images' | 'draft';
+type StatusFilter = 'all' | 'open' | Room['status'] | 'preparing' | 'exit-hold' | 'deposit-hold' | 'missing-images' | 'draft';
 const SaleRoomBatchPanel = lazy(() => import('./SaleRoomBatchPanel'));
 const EMPTY_ROOMS: SaleRoomInventoryRow[] = [];
 const FILTERS: Array<{ value: StatusFilter; label: string; short?: string }> = [
@@ -40,19 +42,23 @@ const FILTERS: Array<{ value: StatusFilter; label: string; short?: string }> = [
   { value: 'open', label: 'Còn chào được (trống, sắp trống, lock, pass, chờ sang nhượng)', short: 'Còn chào được' }, { value: 'free', label: 'Trống sẵn' },
   { value: 'soon', label: 'Sắp trống / cần xác nhận' }, { value: 'preparing', label: 'Đang chuẩn bị' },
   { value: 'locked', label: 'Đang lock' }, { value: 'pass', label: 'Khách pass' },
-  { value: 'rented', label: 'Đã thuê / giữ chỗ' }, { value: 'exit-hold', label: 'Chờ khách sang nhượng' },
+  { value: 'rented', label: 'Đã thuê / giữ chỗ' }, { value: 'deposit-hold', label: 'Đã cọc chờ hợp đồng' }, { value: 'exit-hold', label: 'Chờ khách sang nhượng' },
   { value: 'missing-images', label: 'Thiếu ảnh' }, { value: 'draft', label: 'Có bản nháp của tôi' },
 ];
-const statusLabel = (room: Room) => room.status === 'locked' ? 'Đang lock' : isExitHeld(room) ? EXIT_HOLD_STATUS_LABEL : room.saleFact?.label ?? ({
+// Bảng nội bộ: phòng giữ bằng cọc ghi «Đã cọc · người nộp · N ngày» (nhãn riêng, KHÔNG phải saleFact.label công khai).
+const statusLabel = (room: Room) => room.status === 'locked' ? 'Đang lock' : isExitHeld(room) ? EXIT_HOLD_STATUS_LABEL
+  : isDepositHeld(room) && room.depositHold ? roomSaleDepositLabel(room.depositHold) : room.saleFact?.label ?? ({
   free: 'Trống sẵn', soon: 'Cần xác nhận ngày trống', rented: 'Đã thuê / giữ chỗ', pass: 'Khách pass phòng',
 }[room.status]);
 /** Cọc theo luật hiện có (trống / sắp trống / lock) và phòng đang giữ cho khách sang nhượng: người khác vẫn cọc được. */
 const depositableStatus = (room: Room) => ['free', 'soon', 'locked'].includes(room.status) || !!room.hasDepositHold || isExitHeld(room);
 /**
  * Phòng đang có khách ở: đã thuê, sắp trống (khách báo trả) hoặc khách đã nhờ pass. Phòng trống, đang lock
- * (máy chủ che tình trạng thật) và phòng giữ cho khách sang nhượng (khách cũ đã trả) không có ai để báo.
+ * (máy chủ che tình trạng thật), phòng giữ cho khách sang nhượng (khách cũ đã trả) và phòng chỉ có cọc giữ chỗ của
+ * khách mới (chưa có ai ở — máy chủ báo room_occupied) không có ai để báo.
  */
-const occupiedStatus = (room: Room) => ['rented', 'soon', 'pass'].includes(room.status) && !isExitHeld(room);
+const occupiedStatus = (room: Room) => ['rented', 'soon', 'pass'].includes(room.status) && !isExitHeld(room)
+  && !(isDepositHeld(room) && room.depositHold?.roomOccupied === false);
 /** Bộ lọc «Còn chào được» (mặc định trên điện thoại): mọi phòng trừ đã thuê / giữ chỗ; vẫn giữ lock, pass, chờ sang nhượng. */
 const openForSale = (room: Room) => room.status !== 'rented' || !!room.hasDepositHold || isExitHeld(room);
 const money = (value: number | null) => value == null ? 'Chưa khai giá' : `${value.toLocaleString('vi-VN')} đ`;
@@ -159,6 +165,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
       if (status === 'draft') return !!drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]);
       if (status === 'preparing') return row.room.saleFact?.kind === 'preparing';
       if (status === 'exit-hold') return !!row.room.exitHold;
+      if (status === 'deposit-hold') return isDepositHeld(row.room);
       if (status === 'open') return openForSale(row.room);
       if (status === 'free') return row.room.status === 'free' && row.room.saleFact?.kind !== 'preparing';
       return status === 'all' || row.room.status === status;
@@ -258,6 +265,11 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
   const openHold = (row: SaleRoomInventoryRow, mode: ExitHoldAction['mode']) => {
     if (row.room.exitHold) setHoldAction({ mode, roomId: row.room.id, roomLabel: rowLabel(row), hold: row.room.exitHold });
   };
+  // Đã cọc chờ hợp đồng: mã phiếu, ngày lập; quá 14 ngày tô cảnh báo (không tự gỡ giữ phòng vì tiền đã thu).
+  const depositSummary = (room: Room) => room.depositHold && isDepositHeld(room) ? <div data-testid="deposit-hold-summary"
+    className={`mt-1 space-y-0.5 text-xs ${depositHoldStale(room.depositHold) ? 'rounded border border-amber-300 bg-amber-50 px-1.5 py-1 font-medium text-amber-900' : 'text-muted-foreground'}`}>
+    {depositHoldLines(room.depositHold).map(line => <p key={line}>{line}</p>)}
+  </div> : null;
   const holdSummary = (room: Room) => room.exitHold ? <div className={`mt-1 space-y-0.5 text-xs ${room.exitHold.active ? 'text-amber-800' : 'text-muted-foreground'}`}>
     {exitHoldLines(room.exitHold).map(line => <p key={line}>{line}</p>)}
   </div> : null;
@@ -353,6 +365,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
           <div className="flex justify-between text-sm"><span>{money(row.rentPrice)}</span><span className="text-muted-foreground">{roomPhotoCount(row.images)} ảnh</span></div>
           {row.room.saleLock && <p className="text-xs text-amber-700">Lock đến {timeLabel(row.room.saleLock.expiresAt)}</p>}
           {holdSummary(row.room)}
+          {depositSummary(row.room)}
           {policySummary(row)}
           {actions(row)}
         </article>)}</div> : <div className="overflow-x-auto rounded-lg border"><table className="w-full text-left text-sm">
@@ -360,7 +373,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
           <tbody>{visible.map(row => <tr key={row.room.id} className="border-b last:border-b-0">
             <td className="px-3 py-3"><button className="text-left font-medium underline-offset-4 hover:underline" onClick={() => openRoom(row.room.id)}>{rowLabel(row)}</button>
               {drafts[row.room.id] && quickRoomDraftDirty(drafts[row.room.id]) && <span className="mt-1 block text-xs text-amber-700">Bản nháp chưa lưu</span>}</td>
-            <td className="px-3 py-3">{statusLabel(row.room)}{row.room.saleLock && <span className="mt-1 block text-xs text-muted-foreground">Đến {timeLabel(row.room.saleLock.expiresAt)}</span>}{holdSummary(row.room)}{policySummary(row)}</td>
+            <td className="px-3 py-3">{statusLabel(row.room)}{row.room.saleLock && <span className="mt-1 block text-xs text-muted-foreground">Đến {timeLabel(row.room.saleLock.expiresAt)}</span>}{holdSummary(row.room)}{depositSummary(row.room)}{policySummary(row)}</td>
             <td className="whitespace-nowrap px-3 py-3">{money(row.rentPrice)}{row.room.status === 'pass' && <span className="block text-xs text-muted-foreground">Giá pass: {money(Math.round(row.room.price * 1_000_000))}</span>}</td>
             <td className="px-3 py-3"><span className={roomPhotoCount(row.images) ? '' : 'text-amber-700'}>{roomPhotoCount(row.images) || 'Thiếu'} ảnh</span></td>
             <td className="px-3 py-3 text-xs text-muted-foreground">{timeLabel(row.updatedAt)}{row.updatedByName && <span className="block">{row.updatedByName}</span>}</td><td className="px-3 py-3">{actions(row)}</td>
@@ -376,6 +389,7 @@ function QuickRoomBoardContent({ mobile, storageKey, organizationId, actorId, on
         {selected && draft && <form ref={editor} className="mt-5 space-y-5" onSubmit={event => { event.preventDefault(); void save(); }}>
           <p className="text-xs text-muted-foreground">Tình trạng lấy từ hợp đồng, báo trả, cọc và lock. Sửa thông tin sale không đổi hợp đồng.</p>
           {selected.room.exitHold && <div role="note" className="rounded-md border border-amber-200 bg-amber-50/60 p-2" aria-label="Giữ phòng cho khách sang nhượng">{holdSummary(selected.room)}</div>}
+          {isDepositHeld(selected.room) && <div role="note" aria-label="Phòng đã có người cọc">{statusLabel(selected.room)}{depositSummary(selected.room)}</div>}
           {policySummary(selected)}
           {(stale || (unknown && !update.isPending)) && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
             <p>{unknown ? 'Chưa rõ lần lưu đã hoàn tất hay chưa. Bản nháp tạm khóa để đối chiếu đúng yêu cầu cũ.' : 'Thông tin máy chủ đã thay đổi. Bản nháp của bạn vẫn được giữ; hãy đối chiếu trước khi lưu.'}</p>

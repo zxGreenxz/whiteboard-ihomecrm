@@ -381,14 +381,15 @@ Mô hình hiện hành (315f01a → c09eda2, 2026-06-21; hạch toán item-level
 - Trigger BEFORE INSERT `deposits_set_user_id_audit` (`set_user_id_from_auth`) tự điền `user_id`.
 - Module quyền `deposits` (label "Đặt cọc", extra actions `convert`, `refund`, `print`) trong `PERMISSION_GROUPS` nhóm "Khách hàng" ([permissions.ts](src/lib/permissions.ts)); gate FE chi tiết qua catalog trang [permissionPages.ts](src/lib/permissionPages.ts) + `canUse` — trang `/deposits` dùng `deposits.create` (nút Tạo đặt cọc) và `deposits.convert` (nút Tạo HĐ, fallback quyền `edit`).
 
-### 4.17. Phiếu cọc KHÔNG auto-gắn HĐ active đã đủ cọc (2ebb066, 2026-07-02)
+### 4.17. Cọc lập ở Thu chi cho phòng đang có hợp đồng; phiếu cọc phải có tiền (#499 + Sale phòng đợt 3, 25/11/2026)
 
-[IncomeExpenseForm.tsx](src/components/income-expenses/IncomeExpenseForm.tsx)
+[IncomeExpenseForm.tsx](src/components/income-expenses/IncomeExpenseForm.tsx) · [KE-HOACH-NHAN-COC-QUA-THU-CHI.md](docs/plans/KE-HOACH-NHAN-COC-QUA-THU-CHI.md)
 
-Form Thu chi auto-prefill `contract_id` khi tạo phiếu mới cho phòng có đúng 1 HĐ `ACTIVE`. **Ngoại lệ phiếu CỌC**: nếu phiếu có item `is_deposit` **và** HĐ active đó đã đóng **ĐỦ cọc** (`deposit_paid >= total_deposit`) → mặc định "-- Không gắn HĐ --", vì tiền cọc mới gần như chắc là của **khách kế tiếp** (giữ chỗ) — để phiếu mồ côi cho trigger §4.4 tự link khi HĐ mới được tạo. Gắn nhầm vào HĐ active làm phồng `deposit_paid` của khách cũ + form tạo HĐ mới báo thiếu cọc (vụ PT2607014, phòng 102/102LVT). Chi tiết hành vi:
+Phiếu **THU tạo mới** có item `is_deposit` không còn tự gắn HĐ (#499, đúng điểm chủ chốt 24/11/2026 «luôn bắt chọn»). Ô Hợp đồng để trống; người lập chọn HĐ đang thuê (bổ sung cọc cho khách đang ở) hoặc «Giữ chỗ cho lượt thuê kế tiếp». Phòng có HĐ `ACTIVE`/`EXTENDED` mà chưa chọn thì không lưu («Chọn bổ sung cho hợp đồng đang thuê hoặc giữ chỗ cho lượt thuê kế tiếp.»). Giữ chỗ cho lượt kế tiếp ở phòng còn khách ở đòi HĐ đang ở đã báo trả và ngày dự kiến vào từ ngày báo trả trở đi; chưa báo trả thì máy chủ từ chối (PT409, `attach_deposit_income_v1`) — điều phối giữ cách chặn này 25/11 (plan Sale phòng từng đề xuất «cảnh báo rồi cho lưu»).
 
-- HĐ active còn **THIẾU** cọc → vẫn auto-gắn (đây là thu bổ sung cọc của chính khách đó).
-- Giá trị đã auto-gắn TRƯỚC khi user thêm item cọc → effect tự **gỡ lại**; HĐ do user **tự chọn** trong dropdown thì tôn trọng, không đụng (theo dõi qua `autoLinkedContractIdRef`).
+**Tạo bản sao** phiếu thu cọc không mang HĐ của phiếu gốc: người lập chọn lại đích như phiếu mới (đợt 3). Sửa phiếu chờ duyệt giữ nguyên HĐ. Phiếu không có cọc giữ cách cũ (tự gắn khi phòng có đúng 1 HĐ `ACTIVE`).
+
+**Phiếu cọc phải có tiền**: phiếu THU có item cọc thì tổng tiền các dòng cọc > 0 — form báo ở ô Số tiền với câu của hộp Cọc trang Sale. Máy chủ chặn phiếu THU chưa gắn HĐ bằng constraint trigger `a1_ie_item_deposit_amount_positive` / `a1_ie_deposit_amount_positive` (migration `20261125165113`, 23514 lúc COMMIT, chạy trước `bind_unlinked_deposit_income` của #499), gồm cả sửa/xoá dòng, bỏ huỷ, khôi phục, gỡ HĐ, đổi sang phiếu THU (trigger trên phiếu chỉ bắt các chuyển trạng thái làm phiếu «sống lại»; duyệt / bỏ duyệt phiếu cũ không bị canh). Đường `create_deposit_income_v1` gọi thẳng `attach_deposit_income_v1` nên gặp câu 22023 «Phiếu … thiếu dòng cọc hợp lệ» trước; form đổi câu này thành câu dễ hiểu. Giữ phòng không thu tiền dùng Lock tạm (§4.19) — form chỉ gợi ý câu này khi phiếu cọc chưa chọn hợp đồng. 4 phiếu mẫu 0 đ của công ty Demo (13/08) để nguyên: luật chỉ kiểm khi ghi.
 
 ### 4.18. Bỏ cọc (FORFEIT) — tất toán đầy đủ, cọc thực thu, cặp phiếu chờ duyệt
 
