@@ -14,9 +14,9 @@ type Voucher={id:string;code:string;user_id:string;type:string;building_id:strin
 // drop: lệnh gọi kế tiếp tới hàm đó không tới máy chủ; lost: máy chủ ghi xong nhưng phản hồi mất.
 const db=vi.hoisted(()=>({vouchers:[] as Voucher[],claims:new Map<string,{hash:string;id:string}>(),drop:null as string|null,lost:null as string|null,routeOff:false,seq:0}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:io.rpc,from:()=>{
-  const filters:((v:Voucher)=>boolean)[]=[];
-  const rows=()=>io.hideRead?[]:db.vouchers.filter(v=>filters.every(f=>f(v)));
-  const b:Record<string,unknown>={select:()=>b,order:()=>b,limit:()=>b,
+  const filters:((v:Voucher)=>boolean)[]=[];let sort:{col:keyof Voucher;asc:boolean}|null=null;let take=Infinity;
+  const rows=()=>{if(io.hideRead)return [];const found=db.vouchers.filter(v=>filters.every(f=>f(v)));if(sort){const {col,asc}=sort;found.sort((a,b2)=>String(a[col]).localeCompare(String(b2[col]))*(asc?1:-1));}return found.slice(0,take);};
+  const b:Record<string,unknown>={select:()=>b,order:(col:keyof Voucher,o?:{ascending?:boolean})=>{sort={col,asc:o?.ascending!==false};return b;},limit:(n:number)=>{take=n;return b;},
     eq:(c:keyof Voucher,v:unknown)=>{filters.push(r=>r[c]===v);return b;},
     is:(c:keyof Voucher,v:unknown)=>{filters.push(r=>(r[c]??null)===v);return b;},
     gte:(c:keyof Voucher,v:string)=>{filters.push(r=>String(r[c])>=v);return b;},
@@ -166,6 +166,12 @@ describe('dấu cũ gieo sẵn (trước bản này: không mã gửi lại, kh�
     const error=await submit(form()).then(()=>null,(e:unknown)=>e);
     expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);expect((error as Error).message).toMatch(/Có thể.*PC-v-cu/);
     expect(io.rpc).not.toHaveBeenCalled();expect(financialPending.read(scope)).toBeNull();
+  });
+  it('review lượt 2: nhiều phiếu giống nhau trong cửa sổ ⇒ báo các phiếu MỚI nhất (phiếu của lần kẹt không bị đẩy ra ngoài)',async()=>{
+    seed(T0-30_000);
+    for(let i=1;i<=6;i++)db.vouchers.push({...newVoucher('v-'+i,{type:'EXPENSE',building_id:'b1',room_id:null}),created_at:new Date(T0-50*60_000+i*60_000).toISOString()});
+    const error=await submit(form()).then(()=>null,(e:unknown)=>e);
+    expect((error as Error).message).toContain('PC-v-6');expect((error as Error).message).not.toContain('PC-v-1');
   });
   it('không thấy phiếu nào: dưới 2 phút chờ; quá 2 phút gửi lại, một phiếu',async()=>{
     seed(T0-30_000);

@@ -142,8 +142,10 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
   const intent = useRef<{fingerprint:string;key:string}|null>(null);
   const formRoot = useRef<HTMLFormElement>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  // Phòng của lần tạo cọc gần nhất chưa rõ kết quả trong phiên hộp này.
+  // Phòng của lần tạo cọc gần nhất chưa rõ kết quả trong phiên hộp này. Hộp ở trang Quản lý cọc luôn nằm trên trang
+  // (đóng chỉ đổi `open`), nên đóng hộp phải xoá ghi nhớ này, đúng như lối ra mà câu chặn hướng dẫn.
   const stuckRoom = useRef<string | null>(null);
+  useEffect(() => { if (!open) stuckRoom.current = null; }, [open]);
   const [completed, setCompleted] = useState<{reservationId:string;voucherIds:string[]}|null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
@@ -305,7 +307,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       const stuck=stuckRoom.current;
       if(stuck&&stuck!==data.room_id&&myUserId&&selectedOrganizationId){
         let still=false;try{still=!!financialPending.read({namespace:'deposit-create',userId:myUserId,organizationId:selectedOrganizationId,businessKey:stuck});}catch{still=false;}
-        if(still){const message='Lần tạo cọc trước chưa rõ kết quả mà phòng đã đổi. Chọn lại đúng phòng như lần trước rồi bấm lại để hệ thống đối chiếu; muốn cọc phòng khác thì mở Quản lý cọc kiểm tra trước, rồi đóng và mở lại hộp.';setSubmitError(message);toast.error(message);return;}
+        if(still){const message='Lần tạo cọc trước chưa rõ kết quả mà phòng đã đổi. Chọn lại đúng phòng cũ rồi bấm để hệ thống đối chiếu (nếu lần trước chưa ghi, cọc sẽ được tạo cho phòng cũ); chọn nhầm phòng thì mở Quản lý cọc kiểm tra trước, rồi đóng và mở lại hộp để cọc phòng khác.';setSubmitError(message);toast.error(message);return;}
         stuckRoom.current=null;
       }
       let resend=false;

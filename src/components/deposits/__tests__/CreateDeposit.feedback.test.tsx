@@ -183,6 +183,28 @@ describe('tạo cọc sau rớt mạng (gửi lại cùng mã)', () => {
     await waitFor(() => expect(h.close).toHaveBeenCalledWith(false));
     expect(keys()[1]).toBe(keys()[0]); expect(stored.size).toBe(1);
   });
+  it('review lượt 2: hộp luôn nằm trên trang, đóng rồi mở lại (prop open) thì hết chặn đổi phòng', async () => {
+    next = 'drop';
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const ui = (open: boolean) => <QueryClientProvider client={client}><CreateDepositDialog open={open} onOpenChange={h.close} /></QueryClientProvider>;
+    const r = render(ui(true));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Tên khách gợi nhớ' }), { target: { value: 'anh Tuấn' } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: roomId } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Số tiền cọc *' }), { target: { value: '500000' } });
+    const date = screen.getByRole('textbox', { name: 'Giữ phòng đến' }); fireEvent.change(date, { target: { value: '02102026' } }); fireEvent.blur(date);
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
+    submitAgain(); await screen.findByRole('alert');
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: room2Id } });
+    submitAgain();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/phòng đã đổi/));
+    r.rerender(ui(false)); r.rerender(ui(true));
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: room2Id } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
+    submitAgain();
+    await waitFor(() => expect(h.create).toHaveBeenCalledTimes(2));
+    expect((h.create.mock.calls[1][0] as { roomId: string }).roomId).toBe(room2Id);
+  });
   it('dấu cũ gieo sẵn (không tên thao tác): gửi ngay đúng mã của dấu cũ', async () => {
     const old = { ...scope, attemptId: '00000000-0000-4000-8000-0000000000aa', requestKey: 'room-reservation-00000000-0000-4000-8000-0000000000bb', completedIds: [], startedAt: '2026-11-20T01:00:00.000Z' };
     localStorage.setItem('ihome:financial-pending:v1:' + ['deposit-create', userId, organizationId, roomId].map(encodeURIComponent).join(':'), JSON.stringify(old));

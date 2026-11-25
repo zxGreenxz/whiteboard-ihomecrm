@@ -38,7 +38,7 @@ export function pendingCreateElsewhere(ctx: Pick<VoucherFormCreateContext, "user
   try { pending = financialPending.read({ namespace: "voucher-form-create", userId: ctx.userId, organizationId: ctx.organizationId, businessKey: stuckKey }); }
   catch { pending = null; }
   if (!pending) return null;
-  return "Lần lập phiếu trước chưa rõ kết quả mà loại phiếu, toà hoặc phòng đã đổi. Chọn lại đúng như lần trước rồi bấm Lưu để hệ thống đối chiếu; muốn lập cho chỗ khác thì kiểm tra danh sách phiếu trước, rồi đóng và mở lại form.";
+  return "Lần lập phiếu trước chưa rõ kết quả mà loại phiếu, toà hoặc phòng đã đổi. Chọn lại đúng như lần trước rồi bấm Lưu để hệ thống đối chiếu (nếu lần trước chưa ghi, phiếu sẽ được lập theo lựa chọn cũ); chọn nhầm thì kiểm tra danh sách phiếu trước, rồi đóng và mở lại form để lập cho chỗ khác.";
 }
 
 /** Chữ ký nhỏ của các hạng mục (mã loại, sắp xếp): đổi hạng mục giữa hai lần thì đường ghi của máy chủ có thể đã khác. */
@@ -59,7 +59,8 @@ async function findRecentCandidates(data: CreateIncomeExpenseInput, pending: Fin
   let query = supabase.from("income_expenses").select("id, code, created_at")
     .eq("user_id", pending.userId).eq("type", data.type).eq("building_id", data.building_id);
   query = data.room_id ? query.eq("room_id", data.room_id) : query.is("room_id", null);
-  const { data: rows, error } = await query.gte("created_at", since).order("created_at", { ascending: true }).limit(5);
+  // Mới nhất trước: phiếu của lần kẹt nằm gần giờ kẹt, không bị đẩy ra ngoài 5 dòng bởi các phiếu cũ trong cửa sổ.
+  const { data: rows, error } = await query.gte("created_at", since).order("created_at", { ascending: false }).limit(5);
   if (error) throw error;
   if (!Array.isArray(rows)) throw new TypeError("Chưa đọc được danh sách phiếu để đối chiếu.");
   return rows as VoucherRow[];

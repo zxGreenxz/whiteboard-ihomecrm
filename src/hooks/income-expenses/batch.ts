@@ -227,7 +227,7 @@ async function reconcileBatchCreate<T>(pending: FinancialPendingRecord, type: st
     // Dấu cũ chưa nhận mã đợt: mã đợt do máy chủ sinh nên chỉ tra gần đúng (đợt của mình, cùng loại, sau giờ kẹt).
     const since = new Date(Date.parse(pending.startedAt) - BATCH_CLOCK_SKEW_MS).toISOString();
     const { data, error } = await supabase.from('income_expense_batches').select('id, created_at')
-      .eq('user_id', pending.userId).eq('type', type).gte('created_at', since).order('created_at', { ascending: true }).limit(5);
+      .eq('user_id', pending.userId).eq('type', type).gte('created_at', since).order('created_at', { ascending: false }).limit(5);
     if (error) throw error;
     if (!Array.isArray(data)) throw new TypeError('Chưa đọc được danh sách phiếu tổng để đối chiếu.');
     const ids = (data as { id: string }[]).map(row => row.id);
