@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   isReservationLeg,
   LEDGER_APPROVE_PERMISSION_REASON,
-  LEDGER_MAKER_SELF_APPROVE_REASON,
   ledgerApproveAndPostAllowed,
   ledgerApproveBlockReason,
-  needsLedgerMakerKind,
   payoutPostAllowedAsPayee,
   profitCancelTargetFromVoucher,
   voucherActionAvailability,
@@ -312,22 +310,16 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
     const chuLap = (p: Partial<V> = {}) => soTong({ user_id: "u-chu", maker_user_id: "u-chu-2", shareholder_id: "sh-1", ...p });
 
     it("phiếu chốt chi do chính mình lập (E7 nói OWNER) ⇒ nút Duyệt ngay ở Thu chi, không khoá", () => {
-      const a = voucherActionAvailability(chuLap(), chu, state({ ledgerMakerKind: "OWNER" }));
+      const a = voucherActionAvailability(chuLap(), chu, state());
       expect([a.approve, a.approveBlockedReason]).toEqual([true, null]);
       expect(a.edit.show).toBe(false);
       expect(a.cancel.via).toBe("PROFIT_LEDGER");
     });
 
-    it("chưa biết loại người lập (chưa đọc E7) ⇒ không đoán lý do khoá: nút bấm được, hộp duyệt tự đọc E7 rồi mới cho xác nhận", () => {
-      const a = voucherActionAvailability(chuLap(), chu, state());
+    it("người giữ sổ có đủ hai quyền được duyệt phiếu tạm ứng mình lập", () => {
+      const thuQuy = viewer({ perms: owner, currentUserId: "u-giu-so", isCompanyOwner: false });
+      const a = voucherActionAvailability(chuLap({ maker_user_id: "u-giu-so" }), thuQuy, state());
       expect([a.approve, a.approveBlockedReason]).toEqual([true, null]);
-    });
-
-    it("phiếu TẠM ỨNG chính mình lập khi giữ sổ (tự ứng / lập hộ) ⇒ luật không đổi: người lập không tự duyệt — nút mờ kèm lý do", () => {
-      for (const kind of ["CUSTODIAN_ADVANCE", "CUSTODIAN_FOR_PAYEE"] as const) {
-        const a = voucherActionAvailability(chuLap(), chu, state({ ledgerMakerKind: kind }));
-        expect([a.approve, a.approveBlockedReason]).toEqual([true, LEDGER_MAKER_SELF_APPROVE_REASON]);
-      }
     });
 
     it("lương điều hành sổ tổng luôn do chủ lập: người lập có quyền chi lương thấy Duyệt (không cần E7)", () => {
@@ -346,48 +338,41 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
         perms: { shareholder_profit: owner.shareholder_profit, income_expenses: { approve: { org_wide: false, building_ids: ["b-khac"] } } },
         currentUserId: "u-chu-2",
       });
-      const a = voucherActionAvailability(chuLap(), toaKhac, state({ ledgerMakerKind: "OWNER" }));
+      const a = voucherActionAvailability(chuLap(), toaKhac, state());
       expect([a.approve, a.approveBlockedReason]).toEqual([true, LEDGER_APPROVE_PERMISSION_REASON]);
     });
 
     it("chủ KHÁC (không phải người lập) ⇒ duyệt ngay ở Thu chi — kể cả phiếu tạm ứng người khác lập (ca 3 phiếu kẹt 25/11)", () => {
       const khac = viewer({ perms: owner, currentUserId: "u-chu" });
-      for (const kind of ["OWNER", "CUSTODIAN_ADVANCE", "CUSTODIAN_FOR_PAYEE", undefined] as const) {
-        const a = voucherActionAvailability(chuLap(), khac, state({ ledgerMakerKind: kind }));
-        expect([a.approve, a.approveBlockedReason]).toEqual([true, null]);
-      }
+      const a = voucherActionAvailability(chuLap(), khac, state());
+      expect([a.approve, a.approveBlockedReason]).toEqual([true, null]);
     });
 
     it("không có quyền chi lợi nhuận ⇒ không Duyệt dù là người lập; đã duyệt ⇒ không còn Duyệt, Chi theo trạng thái", () => {
       const thuChi = viewer({ perms: { income_expenses: owner.income_expenses }, currentUserId: "u-chu-2" });
-      expect(voucherActionAvailability(chuLap(), thuChi, state({ ledgerMakerKind: "OWNER" })).approve).toBe(false);
-      const daDuyet = voucherActionAvailability(chuLap({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), chu, state({ ledgerMakerKind: "OWNER" }));
+      expect(voucherActionAvailability(chuLap(), thuChi, state()).approve).toBe(false);
+      const daDuyet = voucherActionAvailability(chuLap({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), chu, state());
       expect([daDuyet.approve, daDuyet.approveBlockedReason, daDuyet.postApproved]).toEqual([false, null, true]);
     });
 
     it("tổ chức chưa đọc ghi sổ kiểu mới, hoặc phiếu là chân xử lý cọc ⇒ không có nút Duyệt (máy chủ chỉ duyệt phiếu sổ tổng qua lệnh kiểu mới)", () => {
-      const a = voucherActionAvailability(chuLap(), chu, state({ ledgerMakerKind: "OWNER", canonicalRead: false }));
+      const a = voucherActionAvailability(chuLap(), chu, state({ canonicalRead: false }));
       expect([a.approve, a.approveBlockedReason]).toEqual([false, null]);
-      const b = voucherActionAvailability(chuLap(), chu, state({ ledgerMakerKind: "OWNER", monetaryActionsAllowed: false }));
+      const b = voucherActionAvailability(chuLap(), chu, state({ monetaryActionsAllowed: false }));
       expect([b.approve, b.approveBlockedReason]).toEqual([false, null]);
     });
 
-    it("ledgerApproveBlockReason: thiếu quyền duyệt ở toà đứng trước; người lập chỉ bị khoá khi BIẾT CHẮC không phải phiếu chủ lập", () => {
-      const me = { perms: owner, currentUserId: "u-chu-2" };
-      expect(ledgerApproveBlockReason(chuLap(), me, "OWNER")).toBeNull();
-      expect(ledgerApproveBlockReason(chuLap(), me, undefined)).toBeNull();
-      expect(ledgerApproveBlockReason(chuLap(), me, "CUSTODIAN_FOR_PAYEE")).toBe(LEDGER_MAKER_SELF_APPROVE_REASON);
-      expect(ledgerApproveBlockReason(chuLap(), me, null)).toBe(LEDGER_MAKER_SELF_APPROVE_REASON);
-      // Lương điều hành sổ tổng luôn do chủ lập: không khoá người lập dù không có loại người lập.
-      expect(ledgerApproveBlockReason(chuLap({ system_source: "profit.manager_salary" }), me, null)).toBeNull();
-      // Không phải người lập, hoặc đường đọc không mang người lập ⇒ không kết luận gì (máy chủ là chốt cuối).
-      expect(ledgerApproveBlockReason(chuLap(), { perms: owner, currentUserId: "u-khac" }, "CUSTODIAN_ADVANCE")).toBeNull();
-      expect(ledgerApproveBlockReason(chuLap({ maker_user_id: undefined }), me, "CUSTODIAN_ADVANCE")).toBeNull();
-      const thieuDuyet = { perms: { shareholder_profit: owner.shareholder_profit }, currentUserId: "u-chu-2" };
-      expect(ledgerApproveBlockReason(chuLap(), thieuDuyet, "CUSTODIAN_ADVANCE")).toBe(LEDGER_APPROVE_PERMISSION_REASON);
-      // Phiếu thường / nguồn cũ không đi luật này.
-      expect(ledgerApproveBlockReason(phieu(), thieuDuyet, undefined)).toBeNull();
-      expect(ledgerApproveBlockReason(chuLap({ system_source: "profit.distribution" }), thieuDuyet, "CUSTODIAN_ADVANCE")).toBeNull();
+    it("kiểm cả hai quyền tại toà của phiếu khi mở hộp duyệt từ chi tiết", () => {
+      const voucher = chuLap({ building_id: "b1" });
+      expect(ledgerApproveBlockReason(voucher, owner)).toBeNull();
+      expect(ledgerApproveBlockReason(voucher, { shareholder_profit: owner.shareholder_profit })).toBe(LEDGER_APPROVE_PERMISSION_REASON);
+      const saiToa = {
+        income_expenses: owner.income_expenses,
+        shareholder_profit: { distribute: { org_wide: false, building_ids: ["b2"] } },
+      };
+      expect(ledgerApproveBlockReason(voucher, saiToa)).toMatch(/quyền chi lợi nhuận/);
+      expect(ledgerApproveBlockReason(phieu(), null)).toBeNull();
+      expect(ledgerApproveBlockReason(chuLap({ system_source: "profit.distribution" }), null)).toBeNull();
     });
 
     // Máy chủ chỉ miễn "người nhận không tự Chi" khi quyền chi phủ CẢ CÔNG TY (không ngoại lệ super admin) — "Duyệt và
@@ -412,15 +397,6 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
       expect(ledgerApproveAndPostAllowed(chuLap(), coChu)).toBe(true);
       expect(ledgerApproveAndPostAllowed(phieu(), theoToa)).toBe(true);
       expect(ledgerApproveAndPostAllowed(chuLap({ system_source: "profit.distribution" }), null)).toBe(true);
-    });
-
-    it("needsLedgerMakerKind: chỉ phiếu chi lợi nhuận cổ đông CHỜ duyệt, do chính người xem lập, người xem có quyền chi", () => {
-      expect(needsLedgerMakerKind(chuLap(), chu)).toBe(true);
-      expect(needsLedgerMakerKind(chuLap({ system_source: "profit.manager_salary" }), chu)).toBe(false);
-      expect(needsLedgerMakerKind(chuLap({ approval_status: "APPROVED" }), chu)).toBe(false);
-      expect(needsLedgerMakerKind(chuLap({ maker_user_id: "u-khac" }), chu)).toBe(false);
-      expect(needsLedgerMakerKind(chuLap({ maker_user_id: undefined }), chu)).toBe(false);
-      expect(needsLedgerMakerKind(chuLap(), viewer({ perms: scoped("approve"), currentUserId: "u-chu-2" }))).toBe(false);
     });
   });
 

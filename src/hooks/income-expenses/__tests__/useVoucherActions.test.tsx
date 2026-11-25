@@ -505,20 +505,17 @@ describe('Phiếu chi theo sổ tổng', () => {
       }
     });
 
-    it('người lập phiếu TẠM ỨNG (E7: không phải phiếu chủ lập) ⇒ khoá kèm lý do, không gọi máy chủ; phiếu CHỦ lập thì tự duyệt được', async () => {
-      const tuLap = soTong({ maker_user_id: 'u-1' });
-      const { result, rerender } = setup([tuLap]);
-      act(() => result.current.approve(tuLap));
-      expect(result.current.dialogs.approve.ledger.blocked).toBe(true);
-      expect(result.current.dialogs.approve.ledger.viewerReason).toMatch(/Phiếu tạm ứng do chính bạn lập — người lập không tự duyệt được/);
-      await act(async () => { await result.current.dialogs.approve.confirm(); });
-      expect(m.approveV2).not.toHaveBeenCalled();
-      m.ledgerDetail = { data: e7({ makerKind: 'OWNER' }), isError: false };
-      rerender();
-      expect(result.current.dialogs.approve.ledger).toEqual({ isLedger: true, blocked: false, viewerReason: null });
-      await act(async () => { await result.current.dialogs.approve.confirm(); });
-      expect(m.approveV2).toHaveBeenCalledTimes(1);
-    });
+    it.each(['OWNER', 'CUSTODIAN_ADVANCE', 'CUSTODIAN_FOR_PAYEE'] as const)(
+      'người có đủ quyền tự duyệt phiếu tạm ứng đã lập dưới vai trò %s', async (makerKind) => {
+        m.ledgerDetail = { data: e7({ makerKind }), isError: false };
+        const voucher = soTong({ maker_user_id: 'u-1' });
+        const { result } = setup([voucher]);
+        act(() => result.current.approve(voucher));
+        expect(result.current.dialogs.approve.ledger).toEqual({ isLedger: true, blocked: false, viewerReason: null });
+        await act(async () => { await result.current.dialogs.approve.confirm(); });
+        expect(m.approveV2).toHaveBeenCalledTimes(1);
+      },
+    );
 
     it('thiếu quyền duyệt thu chi ở toà của phiếu ⇒ khoá kèm lý do (máy chủ đòi cả hai quyền)', () => {
       m.perms = { shareholder_profit: { distribute: { org_wide: true, building_ids: [] } } };
@@ -529,13 +526,13 @@ describe('Phiếu chi theo sổ tổng', () => {
       expect(result.current.dialogs.approve.ledger.viewerReason).toMatch(/Cần thêm quyền duyệt thu chi ở toà của phiếu/);
     });
 
-    it('máy chủ từ chối bằng mã chốt sổ tổng (vd người nhận tự duyệt) ⇒ hộp báo câu của sổ tổng, không phải câu chung', async () => {
-      m.approveV2.mockRejectedValue(Object.assign(new Error('PROFIT_LEDGER_PAYEE_SELF_APPROVE: người nhận tiền không tự duyệt'), { code: '42501' }));
+    it('máy chủ từ chối bằng mã chốt sổ tổng (quyền đã bị thu hồi) ⇒ hộp báo câu của sổ tổng, không phải câu chung', async () => {
+      m.approveV2.mockRejectedValue(Object.assign(new Error('PROFIT_LEDGER_APPROVE_FORBIDDEN: cần quyền chi lợi nhuận'), { code: '42501' }));
       const choDuyet = soTong({ maker_user_id: 'u-giu-so' });
       const { result, onChanged } = setup([choDuyet]);
       act(() => result.current.approve(choDuyet));
       await act(async () => { await result.current.dialogs.approve.confirm(); });
-      expect(result.current.dialogs.actionError).toMatch(/Người nhận tiền không tự duyệt được phiếu này/);
+      expect(result.current.dialogs.actionError).toMatch(/Bạn không có quyền duyệt khoản này/);
       expect(result.current.anyOpen).toBe(true);
       expect(m.invalidateLedger).not.toHaveBeenCalled();
       expect(onChanged).not.toHaveBeenCalled();

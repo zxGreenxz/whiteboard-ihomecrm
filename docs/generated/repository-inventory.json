@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1978,
   "soFileDocBangFs": 509,
-  "tongLoiGoi": 1388,
+  "tongLoiGoi": 1391,
   "khongPhanLoaiDuoc": 613,
   "theoLoai": {
     "ma-nguon": {
@@ -146,6 +146,14 @@
       "khongPhanLoaiDuoc": 13
     },
     {
+      "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
+      "soGoi": 15,
+      "loai": {
+        "sql": 12
+      },
+      "khongPhanLoaiDuoc": 3
+    },
+    {
       "file": "scripts/__tests__/generate-repository-inventory.test.mjs",
       "soGoi": 14,
       "loai": {
@@ -204,14 +212,6 @@
         "sql": 11
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
-      "soGoi": 12,
-      "loai": {
-        "sql": 9
-      },
-      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "infra/hermes-broker/domain-summary-sql.test.mjs",
