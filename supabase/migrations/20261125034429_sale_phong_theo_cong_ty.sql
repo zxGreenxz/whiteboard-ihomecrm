@@ -350,6 +350,8 @@ END;
 $fn$;
 COMMENT ON FUNCTION public.get_public_available_rooms(text) IS
 'Trang công khai /r/:token: mọi toà thật của CÔNG TY của link (ai tạo link cũng ra cùng trang); hotline + chính sách chung theo người đứng tên chung các toà (app_private.org_building_owner_v1), sắp trống theo người đứng tên từng toà, tin pass theo phòng. Phòng đã thuê chỉ còn mã/tầng/tên/diện tích/loại + trạng thái (vẽ sơ đồ). Link thu hồi / chưa ghi công ty ⇒ NULL (đợt 2 Sale phòng, 25/11/2026).';
+REVOKE ALL ON FUNCTION public.get_public_available_rooms(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_public_available_rooms(text) TO anon, authenticated, service_role;
 
 -- 5. Bot Zalo: danh sách theo công ty; «có trang Sale» = công ty còn link hoạt động.
 CREATE OR REPLACE FUNCTION app_private.public_sale_rooms_payload_v1(p_organization_id uuid)
@@ -394,6 +396,7 @@ END;
 $fn$;
 COMMENT ON FUNCTION app_private.public_sale_rooms_payload_v1(uuid) IS
 'Bản tin phòng trống của bot Zalo: trang Sale của CÔNG TY (đọc qua link hoạt động sớm nhất; mọi link ra cùng trang), chỉ phòng còn chào được. pages = 1 khi công ty còn link hoạt động, 0 khi hết (bot coi là chưa có trang Sale). Đợt 2 Sale phòng, 25/11/2026.';
+REVOKE ALL ON FUNCTION app_private.public_sale_rooms_payload_v1(uuid) FROM PUBLIC,anon,authenticated,service_role;
 
 -- 6. Hermes: trang phòng theo công ty, cùng vị từ với trang công khai.
 CREATE OR REPLACE FUNCTION public.hermes_available_rooms_page_v1(p_binding jsonb,p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL,
@@ -684,6 +687,8 @@ BEGIN
   RETURN result;
 END
 $fn$;
+REVOKE ALL ON FUNCTION public.get_sale_room_inventory_v1(uuid, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_sale_room_inventory_v1(uuid, uuid, uuid) TO authenticated;
 
 -- 9. «Phòng trống» (điện thoại) theo công ty đang chọn và quyền xem phòng.
 DROP FUNCTION IF EXISTS public.get_my_available_rooms();
