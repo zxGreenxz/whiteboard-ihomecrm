@@ -109,7 +109,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'salary-adjustment': tien('D', 'lưu thưởng hoặc trừ lương'), // sửa: chạy lại (A); thêm: mã khoản = mã của dấu, khoá chính chặn khoản thứ hai; dấu bản trước tra gần đúng tới đợt 10
   'contract-create': tien('B', 'tạo hợp đồng'), // create_contract_v2 khoá phòng + công ty rồi tra mã; 23505 khi gửi lại ⇒ đọc hợp đồng hiệu lực của phòng
   'contract-renew': tien('B', 'gia hạn hợp đồng'), // apply_contract_notice_transition_v1 khoá công ty + hợp đồng rồi tra mã; đọc sự kiện theo mã trước khi gửi lại
-  'contract-notice-transition': tien('van', 'gia hạn hoặc chuyển phòng hợp đồng'), // chuyển phòng ở đợt 7; dấu gia hạn bản trước chỉ còn chặn qua `legacy` của gia hạn
+  'contract-notice-transition': tien('B', 'gia hạn hoặc chuyển phòng hợp đồng'), // đợt 7: chuyển phòng đọc sự kiện theo mã rồi gửi lại cùng mã (apply_contract_notice_transition_v1 khoá công ty + phòng + hợp đồng rồi tra mã); dấu gia hạn bản trước: sự kiện có ⇒ báo đã ghi, vẫn chặn gia hạn qua `legacy`
   'cashbook-create': tien('B', 'tạo sổ quỹ'), // create_cashbook_v1 khoá công ty rồi tra mã; không băm mô tả, sổ mặc định, toà mặc định ⇒ không cho đổi khi đối chiếu
   'cashbook-reopening': tien('B', 'mở lại sổ quỹ'), // đọc lịch sử theo mã; chưa có ⇒ gửi lại cùng mã (reopen_cashbook_v1 khoá sổ + khoá tư vấn theo mã)
   'voucher-batch-account': tien('A', 'đổi sổ đợt phiếu'), // revise_pending_income_expense_v1 khoá phiếu rồi so phiên bản; vòng bỏ qua phiếu đã đúng sổ
@@ -119,12 +119,13 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'profit-unlock': tien('B', 'mở khoá lợi nhuận'), // mã máy chủ suy từ mã của dấu; dấu bản trước (mã ngẫu nhiên) ⇒ hộp cảnh báo
   'profit-reset': tien('B', 'đặt lại lợi nhuận'),
 
-  // Đợt 7: hợp đồng, chuyển khách hẹn, tạm trú
-  'contract-signing': tien('van', 'ký hợp đồng'),
-  'contract-excel-import': tien('van', 'nhập hợp đồng từ Excel'),
-  'tenant-legacy-create': khac('van', 'tạo khách thuê'),
-  'residence-registration-save': khac('van', 'lưu mã hồ sơ tạm trú'),
-  'ct01-declaration-create': khac('van', 'tạo tờ khai CT01'),
+  // Đợt 7: hợp đồng, chuyển khách hẹn, tạm trú (chuyển phòng ở dòng `contract-notice-transition` của khối đợt 6). Sửa hợp
+  // đồng dùng kho riêng `contractEditWorkflow.ts` (cách A, nối hộp cảnh báo chung), không nằm ở sổ này. Dấu chuyển khách hẹn
+  // bản trước (`lead-conversion`) chỉ còn được hộp chuyển khách hẹn đọc một lần; `tenant-legacy-create` bỏ cùng hook chết.
+  'contract-signing': tien('B', 'ký hợp đồng'), // sign_and_checkin_contract_draft_v1 khoá phòng + công ty + nháp rồi tra lần ký theo nháp (một lần ký mỗi nháp)
+  'contract-excel-import': tien('D', 'nhập hợp đồng từ Excel'), // dòng chưa rõ: tra hợp đồng hiệu lực của phòng (contracts_one_active_per_room_uq); mỗi dòng độc lập
+  'residence-registration-save': khac('A', 'lưu mã hồ sơ tạm trú'), // upsert theo (công ty, mã hồ sơ), không ghi dấu mới; dấu bản trước gỡ sau lần lưu kế tiếp
+  'ct01-declaration-create': khac('D', 'tạo tờ khai CT01'), // mã tờ khai do trình duyệt sinh, gửi lại cùng mã; không ghi dấu mới; dấu bản trước tra gần đúng một lần
 
   // Đợt 8: dữ liệu ghi lặp lại được
   'public-room-admin': khac('van', 'lưu link và cài đặt phòng công khai'), // link công khai ở đợt 8; cài đặt phòng công khai (usePublicRoomSettings) đã đúng
