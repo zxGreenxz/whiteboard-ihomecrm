@@ -224,17 +224,16 @@
         {
           "sql": "app_private.public_sale_rooms_payload_v1",
           "calls": [
-            "get_public_available_rooms",
-            "public_room_link_grants_v1"
+            "get_public_available_rooms"
           ],
-          "note": "Danh sách chung của các link đang công khai và từng phòng đã bật."
+          "note": "Trang Sale của công ty (đợt 2 Sale phòng 25/11/2026): đọc qua link hoạt động sớm nhất, mọi link của công ty ra cùng trang."
         },
         {
           "sql": "app_private.hermes_sale_listing_payload_v1",
           "calls": [
             "public_sale_rooms_payload_v1"
           ],
-          "note": "đọc trang của từng chủ có link"
+          "note": "đọc trang Sale của công ty"
         },
         {
           "sql": "public.hermes_sale_listing_rooms_v1",
@@ -2554,7 +2553,7 @@
     {
       "id": "sale-listing-page",
       "kind": "mirrored",
-      "description": "Trang Sale Phòng công khai, bản lọc tòa/trạng thái và phân trang trong SQL (B3, 20/10/2026): hermes_available_rooms_page_v1 chép vị từ chọn trang của get_public_available_rooms (chủ có link còn hiệu lực, tòa thật của chủ, soon_days/hotline/chính sách theo chủ, overlay pass đúng chủ, che liên hệ khi contact_manager, địa chỉ) và gọi nguyên room_sale_workflow_fact_v1; connector dùng khi roomRead=page (crm_available_rooms). Group preview/send và lịch vẫn đi hermes_sale_listing_rooms_v1 (mục sale-listing).",
+      "description": "Trang Sale Phòng công khai, bản lọc tòa/trạng thái và phân trang trong SQL (B3, 20/10/2026; theo công ty từ đợt 2 Sale phòng 25/11/2026): hermes_available_rooms_page_v1 chép vị từ chọn trang của get_public_available_rooms (công ty còn link hoạt động, tòa thật của công ty, soon_days theo người đứng tên tòa, hotline/chính sách theo người đứng tên chung các tòa, tin pass theo phòng, che liên hệ khi contact_manager, địa chỉ) và gọi nguyên room_sale_workflow_fact_v1; connector dùng khi roomRead=page (crm_available_rooms). Group preview/send và lịch vẫn đi hermes_sale_listing_rooms_v1 (mục sale-listing).",
       "webCalls": [
         {
           "path": "src/pages/phong-trong/usePhongTrong.ts",
@@ -2564,7 +2563,7 @@
       "sql": [
         {
           "function": "public.get_public_available_rooms",
-          "sha256": "105333eac0bfc204c0e286dd25f209f35f62914dec3b2d5040ca47a7e28de1d8"
+          "sha256": "3544a2580253566f7441c468cd8336d6ff181bed6767b5ab1bc018ac761cb143"
         }
       ],
       "hermes": [
@@ -2574,7 +2573,7 @@
             "room_sale_workflow_fact_v1",
             "hermes_room_page_admission_v1",
             "room_sale_policy_active_text_v1",
-            "public_room_link_grants_v1"
+            "org_building_owner_v1"
           ],
           "note": "trang phòng đã lọc; không gọi get_public_available_rooms"
         },
