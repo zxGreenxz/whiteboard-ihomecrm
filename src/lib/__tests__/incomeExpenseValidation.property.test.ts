@@ -255,7 +255,7 @@ describe('Property 7: Zod validation rejects invalid input', () => {
 
 /**
  * Sale phòng đợt 3: phiếu THU có hạng mục cọc thì tổng tiền dòng cọc phải > 0 (máy chủ chặn bằng trigger
- * zz_ie_item_deposit_amount_positive). Báo lỗi ở MỌI dòng cọc khi tổng ≤ 0; dòng không phải cọc không tính.
+ * a1_ie_item_deposit_amount_positive, migration 20261125165113). Báo lỗi ở MỌI dòng cọc khi tổng ≤ 0; dòng không phải cọc không tính.
  */
 describe('Property: depositAmountErrorRows — tổng dòng cọc phải > 0', () => {
   const COC = new Set(['coc-1', 'coc-2']);

@@ -101,11 +101,11 @@ describe('câu lỗi máy chủ khớp câu client', () => {
   });
 });
 
-describe('máy chủ chặn phiếu cọc 0 đ (trigger zz_ie_item_deposit_amount_positive, Sale phòng đợt 3)', () => {
+describe('máy chủ chặn phiếu cọc 0 đ (trigger a1_ie_item_deposit_amount_positive, Sale phòng đợt 3)', () => {
   const loiMayChu = {
     code: '23514',
     message: DEPOSIT_AMOUNT_SERVER_MESSAGE,
-    details: 'Phiếu PT2611442 có hạng mục Tiền cọc nhưng tổng tiền cọc không lớn hơn 0 và chưa gắn hợp đồng.',
+    details: 'Phiếu PT0000001 có hạng mục Tiền cọc nhưng tổng tiền cọc không lớn hơn 0 và chưa gắn hợp đồng.',
     hint: 'Nhập số tiền cọc lớn hơn 0 hoặc bỏ hạng mục Tiền cọc.',
   };
   it('form phiếu lẻ / phiếu tổng / Báo chi nhanh: câu báo là nguyên nhân, cùng chữ hộp Cọc trang Sale', () => {

@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 /**
  * Phiếu cọc phải có tiền (Sale phòng đợt 3, 25/11/2026). Phiếu THU chưa gắn hợp đồng có hạng mục cọc vẫn giữ phòng
- * (room_has_holding_deposit) dù tổng 0 đ — audit 24/11 lưu nhầm PT2611442 0 đ, phòng biến khỏi sale ngay. Máy chủ chặn
- * bằng trigger `zz_ie_item_deposit_amount_positive` (migration 20261125094121) với câu dưới; form chặn trước với đúng
+ * (room_has_holding_deposit) dù tổng 0 đ — audit 24/11 gặp một phiếu cọc 0 đ làm phòng biến khỏi sale ngay. Máy chủ chặn
+ * bằng trigger `a1_ie_item_deposit_amount_positive` (migration 20261125165113) với câu dưới; form chặn trước với đúng
  * câu của hộp Cọc trên trang Sale.
  */
 export const DEPOSIT_AMOUNT_SERVER_MESSAGE = 'Phiếu cọc phải có số tiền lớn hơn 0; giữ phòng không thu tiền thì dùng Lock tạm.';
