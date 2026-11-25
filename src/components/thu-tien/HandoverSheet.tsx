@@ -169,29 +169,31 @@ export function HandoverSheet({ show, onClose }: Props) {
   // kết quả chưa rõ không khoá cả màn bàn giao.
   }, {retryable: true});
 
+  // Đợt 5: bốn thao tác trên phiên cũng tự đối chiếu ở lần bấm sau (đọc trạng thái phiên; máy chủ khoá phiên rồi mới
+  // xét), nên kết quả chưa rõ không khoá cả màn bàn giao.
   const submitConfirm = (h: CashHandover) => {
     const toId = toAccount[h.id] || defaultToAccount || receiveBooks[0]?.id || '';
     return feedback.run(async () => {
       const res = await confirmMut.mutateAsync({handoverId:h.id,toAccountId:toId});
       const book = receiveBooks.find(item => item.id === toId)?.name ?? 'sổ nhận đã chọn';
       toast.success('Đã xác nhận nhận bàn giao phiên ' + res.code + ' vào sổ ' + book + '.');
-    }, () => undefined, {['account_' + h.id]:!toId ? 'Chọn sổ quỹ nhận bàn giao.' : undefined});
+    }, () => undefined, {['account_' + h.id]:!toId ? 'Chọn sổ quỹ nhận bàn giao.' : undefined}, {retryable: true});
   };
 
   const submitRequestCancel = (h: CashHandover) => feedback.run(async () => {
     await requestCancelMut.mutateAsync({handoverId:h.id,reason:cancelReason});
     toast.success('Đã gửi yêu cầu hủy phiên ' + h.code + '. Đang chờ bên còn lại xác nhận.');
-  }, () => {setCancelFor(null);setCancelReason('');}, {reason:!cancelReason.trim() ? 'Nhập lý do hủy phiên bàn giao.' : undefined});
+  }, () => {setCancelFor(null);setCancelReason('');}, {reason:!cancelReason.trim() ? 'Nhập lý do hủy phiên bàn giao.' : undefined}, {retryable: true});
 
   const submitConfirmCancel = (h: CashHandover) => feedback.run(async () => {
     await confirmCancelMut.mutateAsync({handoverId:h.id});
     toast.success('Đã hủy phiên bàn giao ' + h.code + '. Các phiếu trở về trạng thái chưa bàn giao.');
-  }, () => undefined);
+  }, () => undefined, {}, {retryable: true});
 
   const submitRejectCancel = (h: CashHandover, mine: boolean) => feedback.run(async () => {
     await rejectCancelMut.mutateAsync({handoverId:h.id});
     toast.success((mine ? 'Đã thu hồi yêu cầu hủy phiên ' : 'Đã từ chối yêu cầu hủy phiên ') + h.code + '.');
-  }, () => undefined);
+  }, () => undefined, {}, {retryable: true});
 
   const voucherRow = (v: (typeof vouchers)[number]) => {
     const checked = !unticked.has(v.id);

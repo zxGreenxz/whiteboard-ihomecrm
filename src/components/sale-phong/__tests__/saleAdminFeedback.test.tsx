@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({org:'org-1' as string|null,orgLoading:false,tokens:{} as Record<string,unknown>,settings:{} as Record<string,unknown>,create:vi.fn(),label:vi.fn(),revoke:vi.fn(),remove:vi.fn(),save:vi.fn(),retry:vi.fn(),rooms:{} as Record<string,unknown>,sheetSave:vi.fn()}));
+const m=vi.hoisted(()=>({org:'org-1' as string|null,orgLoading:false,tokens:{} as Record<string,unknown>,settings:{} as Record<string,unknown>,create:vi.fn(),label:vi.fn(),revoke:vi.fn(),remove:vi.fn(),save:vi.fn(),retry:vi.fn(),rooms:{} as Record<string,unknown>,sheetSave:vi.fn(),botTokens:[] as string[]}));
 vi.mock('@tanstack/react-query', async original => ({ ...(await original<typeof import('@tanstack/react-query')>()), useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }) }));
 vi.mock('@/hooks/useAuth', () => ({ useSession: () => ({ data: { user: { id: 'actor-a' } } }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true }, isError: false }) }));
@@ -10,7 +10,7 @@ vi.mock('@/hooks/useSaleRoomInventory', async () => {
   // Đợt 2 Sale phòng: người sửa (actor-a) KHÔNG đứng tên chung các toà (owner-b) mà vẫn sửa được cài đặt chung nhờ quyền.
   return { useSaleRoomInventory: () => ({ ...m.rooms, data: m.rooms.data === undefined ? undefined : { ...sheetInventoryFixture(m.rooms.data as import('@/pages/phong-trong/sampleData').Building[]), settingsOwnerId: 'owner-b' } }) };
 });
-vi.mock('@/hooks/usePublicRoomTokens',()=>{const mutation=(fn:typeof m.create)=>({mutateAsync:fn,mutate:(value:unknown,options?:{onSuccess?:(value:unknown)=>unknown;onError?:(error:unknown)=>unknown})=>{void fn(value).then(options?.onSuccess,options?.onError??(()=>{}));},isPending:false});return {usePublicRoomTokens:()=>m.tokens,useCreatePublicRoomToken:()=>(mutation(m.create)),useUpdateTokenLabel:()=>(mutation(m.label)),useSetTokenRevoked:()=>(mutation(m.revoke)),useDeletePublicRoomToken:()=>(mutation(m.remove))};});
+vi.mock('@/hooks/usePublicRoomTokens',()=>{const mutation=(fn:typeof m.create)=>({mutateAsync:fn,mutate:(value:unknown,options?:{onSuccess?:(value:unknown)=>unknown;onError?:(error:unknown)=>unknown})=>{void fn(value).then(options?.onSuccess,options?.onError??(()=>{}));},isPending:false});return {usePublicRoomTokens:()=>m.tokens,useCreatePublicRoomToken:()=>(mutation(m.create)),useUpdateTokenLabel:()=>(mutation(m.label)),useSetTokenRevoked:()=>(mutation(m.revoke)),useDeletePublicRoomToken:()=>(mutation(m.remove)),useBotShareTokens:()=>({data:m.botTokens})};});
 vi.mock('@/hooks/usePublicRoomSettings',()=>({usePublicRoomSettings:()=>m.settings,useUpsertPublicRoomSettings:()=>({mutateAsync:m.save,mutate:(value:unknown)=>{void m.save(value).catch(()=>{});},isPending:false}),PUBLIC_ROOM_SETTINGS_DEFAULTS:{soon_days:30,show_rented:true,hotline_id:null,sale_policy:null}}));
 // Hotline in được lên trang đi kèm cài đặt chung (của người đứng tên chung) — không còn đọc danh sách hotline riêng của người sửa.
 vi.mock('@/hooks/useHotlines',()=>({useCreateHotline:()=>({mutateAsync:vi.fn(),isPending:false}),useUpdateHotline:()=>({mutateAsync:vi.fn(),isPending:false})}));
@@ -31,7 +31,7 @@ type Hotline={id:string;name:string|null;phone_number:string;is_active:boolean|n
 const company=(values:Record<string,unknown>,hotlines:Hotline[]=[])=>({settings:{soon_days:30,show_rented:true,hotline_id:null,sale_policy:null,...values},ownerId:'owner-b',exists:true,updatedAt:T1,canManage:true,hotlines});
 const query=(data:unknown)=>({data,status:'success',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:m.retry,dataUpdatedAt:Date.now()});
 const failure=(data:unknown)=>({...query(data),status:'error',isError:true,error:{code:'42501',message:'SQL_PRIVATE_DIAGNOSTIC'}});
-beforeEach(()=>{vi.clearAllMocks(); sessionStorage.clear();m.org='org-1';m.orgLoading=false;m.tokens=query([token]);m.settings=query(company({}));m.rooms=query([]);m.save.mockResolvedValue({});const unknown=new FinancialWorkflowError('Chưa xác nhận được yêu cầu; kiểm tra link room-a trước khi thực hiện tiếp.','unknown',[]);m.create.mockRejectedValue(unknown);m.remove.mockRejectedValue(unknown);m.label.mockRejectedValue(unknown);m.revoke.mockRejectedValue(unknown);});afterEach(cleanup);
+beforeEach(()=>{vi.clearAllMocks(); sessionStorage.clear();m.botTokens=[];m.org='org-1';m.orgLoading=false;m.tokens=query([token]);m.settings=query(company({}));m.rooms=query([]);m.save.mockResolvedValue({});const unknown=new FinancialWorkflowError('Chưa xác nhận được yêu cầu; kiểm tra link room-a trước khi thực hiện tiếp.','unknown',[]);m.create.mockRejectedValue(unknown);m.remove.mockRejectedValue(unknown);m.label.mockRejectedValue(unknown);m.revoke.mockRejectedValue(unknown);});afterEach(cleanup);
 // Mobile: số ngày/hotline/chính sách chung nằm trong sheet sau nút bánh răng trên app-bar.
 let gear:{onClick:()=>void}|null=null;
 const settings=(mobile:boolean)=><MemoryRouter>{mobile?<MobileDisplaySettings onHeaderAction={value=>{gear=value;}}/>:<DisplaySettingsTab/>}</MemoryRouter>;
@@ -146,6 +146,8 @@ it.each([false,true])('company links show who created them mobile=%s',mobile=>{
 it.each([false,true].flatMap(mobile=>[
   {mobile,error:{code:'42501',message:'public_room_token_permission',hint:'SQL_PRIVATE_DIAGNOSTIC'},reason:'Quản lý link chia sẻ'},
   {mobile,error:{code:'P0002',message:'public_room_token_not_found',hint:'SQL_PRIVATE_DIAGNOSTIC'},reason:'Không thấy link này trong công ty đang chọn'},
+  {mobile,error:{code:'42501',message:'public_room_token_permission_org',hint:'SQL_PRIVATE_DIAGNOSTIC'},reason:'phạm vi TOÀN CÔNG TY'},
+  {mobile,error:{code:'22023',message:'public_room_token_invalid',hint:'SQL_PRIVATE_DIAGNOSTIC'},reason:'Thao tác link không hợp lệ'},
 ]))('server revoke rejection says it was not done and why, keeps the dialog usable mobile=$mobile $error.message',async({mobile,error,reason})=>{
   m.tokens=query([{...token,organization_id:'org-1'},{...token,token:'room-b',organization_id:'org-1'}]);m.revoke.mockRejectedValue(error);
   render(links(mobile).node);fireEvent.click(screen.getAllByTitle('Thu hồi')[0]);
@@ -157,4 +159,31 @@ it.each([false,true].flatMap(mobile=>[
   expect(document.body.textContent).not.toContain('SQL_PRIVATE');
   // Bị từ chối hẳn: không khoá như khi chưa rõ kết quả.
   expect(within(dialog).getByRole('button',{name:'Thu hồi'})).toHaveProperty('disabled',false);
+});
+
+// Sau review 25/11: sửa / thu hồi / xoá link NGƯỜI KHÁC cần quyền phạm vi công ty (máy chủ trả can_manage theo từng link).
+it.each([false,true])('links the viewer may not manage (created by someone else, building-scope permission) have their actions disabled mobile=%s',mobile=>{
+  m.tokens=query([{...token,organization_id:'org-1',can_manage:true},{...token,token:'room-b',owner_id:'actor-b',owner_name:'Chị B',organization_id:'org-1',can_manage:false},
+    {...token,token:'room-c',owner_id:'actor-b',organization_id:'org-1',revoked:true,can_manage:false}]);
+  render(links(mobile).node);
+  const locked=screen.getAllByTitle(/Link của người khác/);
+  expect(locked).toHaveLength(6); // room-b: đổi nhãn, thu hồi, xoá; room-c: đổi nhãn, khôi phục, xoá
+  for(const button of locked)expect(button).toHaveProperty('disabled',true);
+  for(const title of ['Đổi nhãn','Thu hồi','Xoá'])expect(screen.getByTitle(title)).toHaveProperty('disabled',false);
+});
+it.each([false,true])('revoking the link the Zalo bot sends warns even when the company keeps other links mobile=%s',async mobile=>{
+  m.botTokens=['room-a'];
+  m.tokens=query([{...token,organization_id:'org-1'},{...token,token:'room-b',organization_id:'org-1'}]);
+  render(links(mobile).node);fireEvent.click(screen.getAllByTitle('Thu hồi')[0]);
+  const dialog=await screen.findByRole(mobile?'dialog':'alertdialog');
+  const note=within(dialog).getByRole('note').textContent;
+  expect(note).toContain('link bot Zalo đang gửi khách');expect(note).not.toContain('cuối cùng');
+  expect(m.revoke).not.toHaveBeenCalled();
+});
+it.each([false,true])('a link the bot does not send has no bot warning mobile=%s',async mobile=>{
+  m.botTokens=['room-b'];
+  m.tokens=query([{...token,organization_id:'org-1'},{...token,token:'room-b',organization_id:'org-1'}]);
+  render(links(mobile).node);fireEvent.click(screen.getAllByTitle('Thu hồi')[0]);
+  const dialog=await screen.findByRole(mobile?'dialog':'alertdialog');
+  expect(within(dialog).queryByRole('note')).toBeNull();
 });

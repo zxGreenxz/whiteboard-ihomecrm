@@ -1,3 +1,11 @@
+import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
+import { createVoucherFromForm } from '@/hooks/income-expenses/formCreatePending';
+import type { CreateIncomeExpenseInput } from '@/hooks/income-expenses/types';
+import { getSessionUser } from '@/lib/authSession';
+import { voucherFailureMessage } from '@/lib/voucherFeedback';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { useDepositIncomeHold } from '@/hooks/useDepositIncomeHold';
+import { DepositScheduleFields,emptyDepositSchedule } from '@/components/deposits/DepositScheduleFields';
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
@@ -88,7 +96,8 @@ const IncomeExpenseQuickCreateDialog = ({
   const { data: accounts = [] } = useAccounts();
   const modeLower = mode === "INCOME" ? "income" : "expense";
   const { data: typeRows = [] } = useIncomeExpenseTypes(modeLower);
-  const createIE = useCreateIncomeExpense();
+  const {selectedOrganizationId}=useOrganization();
+  const createIE = useCreateIncomeExpense(selectedOrganizationId);
   const createType = useCreateIncomeExpenseType();
   const { data: perms } = useMyPermissions();
   const canPickRestricted = canUse(perms, "income_expenses", "restricted_create");
@@ -253,11 +262,25 @@ const IncomeExpenseQuickCreateDialog = ({
   };
 
   // Cọc không có phòng thì không hợp đồng nào nhận (depositRoomRule.ts) — "toàn tòa nhà" không đủ.
+  const isDeposit=mode==='INCOME' && !!parsed.typeId && depositTypeIdSet(typeRows).has(parsed.typeId);
+  const hold=useDepositIncomeHold(parsed.roomId,open && isDeposit);
+  const [schedule,setSchedule]=useState(emptyDepositSchedule);
+  const [payer,setPayer]=useState('');
+  const seen=useRef<{id:string|null;revision?:number}>({id:null});
+  const [saveError,setSaveError]=useState('');
+  useEffect(()=>{
+    seen.current={id:null}; setSaveError('');setSchedule(emptyDepositSchedule);setPayer('');
+  },[open,parsed.roomId,isDeposit]);
+  useEffect(()=>{
+    if(!hold.data||!isDeposit||seen.current.id===hold.data.id)return;
+    const r=hold.data;seen.current={id:r.id,revision:r.revision};setPayer(v=>v||r.payer||'');
+    setSchedule({holdUntil:r.hold_until??'',moveIn:r.intended_move_in_on??'',topup:r.topup_due_on??''});
+  },[hold.data,isDeposit]);
   const depositNeedsRoom = needsDepositRoom([parsed.typeId], parsed.roomId, depositTypeIdSet(typeRows));
   const canSubmit =
     !!parsed.buildingId &&
     (!!parsed.roomId || parsed.isBuildingWide) &&
-    !depositNeedsRoom &&
+    !depositNeedsRoom && (!isDeposit||(!hold.isError&&!hold.isLoading)) &&
     !!parsed.typeId &&
     parsed.amount != null &&
     !!accountId &&
@@ -269,14 +292,16 @@ const IncomeExpenseQuickCreateDialog = ({
     const note = parsed.noteText.trim();
     const name = note || parsed.typeName || raw.trim();
     try {
-      await createIE.mutateAsync({
+      const input:CreateIncomeExpenseInput={
         type: mode,
         name,
         building_id: parsed.buildingId!,
         room_id: parsed.roomId ?? null,
         tenant_id: null,
         contract_id: null,
-        payer_name: null,
+        payer_name: isDeposit?payer.trim()||null:null,
+        ...(isDeposit?{deposit_terms:{expected_hold:seen.current.id,expected_revision:seen.current.revision,
+          hold_until:schedule.holdUntil||null,intended_move_in_on:schedule.moveIn||null,topup_due_on:schedule.topup||null}}:{}),
         account_id: accountId,
         voucher_date: d,
         business_result_accounting: null,
@@ -294,11 +319,24 @@ const IncomeExpenseQuickCreateDialog = ({
             end_date: d,
           },
         ],
-      });
+      };
+      setSaveError('');
+      if (isDeposit) {
+        const actor=await getSessionUser();
+        if (!actor || !selectedOrganizationId) throw new Error('Đăng nhập và chọn tổ chức trước khi lưu phiếu cọc.');
+        await createVoucherFromForm(input,{userId:actor.id,organizationId:selectedOrganizationId,create:createIE.mutateAsync});
+      } else {
+        await createIE.mutateAsync(input);
+      }
       onOpenChange(false);
       onSaved?.();
-    } catch {
-      // toast handled by hook
+    } catch (error) {
+      if (error instanceof ConfirmedDepositIncome) {
+        onOpenChange(false);
+        onSaved?.();
+        return;
+      }
+      setSaveError(voucherFailureMessage(error, "lập phiếu"));
     }
   };
 
@@ -307,6 +345,12 @@ const IncomeExpenseQuickCreateDialog = ({
 
   const formBody = (
     <>
+      {saveError && <p role="alert">{saveError}</p>}
+      {isDeposit&&parsed.roomId&&<div className="space-y-2">
+        <label className="block text-sm">Người gửi<input className="block w-full rounded border p-2" value={payer} onChange={e=>setPayer(e.target.value)}/></label>
+        <DepositScheduleFields key={hold.data?.id??parsed.roomId} voucherDate={today()} value={schedule} onChange={setSchedule}/>
+        {hold.isError&&<button type="button" onClick={()=>void hold.refetch()}>Tải lại đợt giữ chỗ</button>}
+      </div>}
       {/* Dòng 1: Thu / Chi */}
       <div className="grid grid-cols-2 gap-2">
         <button

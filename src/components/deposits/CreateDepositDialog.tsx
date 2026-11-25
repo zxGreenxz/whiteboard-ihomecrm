@@ -1,3 +1,6 @@
+import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
+import {useDepositIncomeHold} from '@/hooks/useDepositIncomeHold';
+import { DepositScheduleFields } from './DepositScheduleFields';
 import {runFinancialPending} from '@/lib/financialPendingAction';
 import {FinancialPendingError,financialPending} from '@/lib/financialPending';
 import {FinancialAlreadyRecordedError} from '@/lib/financialWorkflowError';
@@ -46,7 +49,6 @@ import { AlertTriangle } from "lucide-react";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { getSessionUser } from "@/lib/authSession";
 import { useCreateRoomReservation } from "@/hooks/useRoomReservations";
-import { CustomerSelectionDialog, type CustomerBasic } from "@/components/contracts/CustomerSelectionDialog";
 import { ExitHoldRoomBanner } from "@/components/contracts/ExitHoldRoomBanner";
 import { useContractExitEarlyTerms } from "@/hooks/contracts/useContractExitEarlyTerms";
 import type { CreateRoomReservationInput } from "@/lib/reservationIdentityRpc";
@@ -85,10 +87,8 @@ function fmtVNDate(iso: string): string {
 const AGREED_PRICE_PREFIX = "Giá thoả thuận: ";
 
 const depositSchema = z.object({
-  // Khách trong danh bạ HOẶC tên gợi nhớ gõ tay (chủ chốt 10/10/2026): tên gợi nhớ thành
-  // người nộp + ghi chú phiếu; gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.
-  customer_id: z.string(),
-  customer_hint: z.string().trim().max(CUSTOMER_HINT_MAX, `Tên khách gợi nhớ tối đa ${CUSTOMER_HINT_MAX} ký tự`),
+  // Tên gợi nhớ ghi vào phiếu nguồn. Người đại diện được chọn khi lập hợp đồng.
+  customer_hint: z.string().trim().min(1, "Nhập tên người gửi").max(CUSTOMER_HINT_MAX, `Người gửi tối đa ${CUSTOMER_HINT_MAX} ký tự`),
   room_id: z.string().min(1, "Chọn phòng giữ chỗ"),
   /** Giá phòng/tháng — mặc định lấy giá niêm yết của căn hộ, sửa được. */
   room_price: z.number().min(0, "Giá phòng phải >= 0").optional(),
@@ -123,7 +123,6 @@ const depositSchema = z.object({
   sale_bonus_reason: z.string().max(COMMISSION_REASON_MAX).optional(),
 }).superRefine((value,ctx)=>{
   if ((value.sale_bonus_amount ?? 0)>0 && !isCommissionReasonValid(value.sale_bonus_reason)) ctx.addIssue({code:'custom',path:['sale_bonus_reason'],message:COMMISSION_REASON_MESSAGE});
-  if(!value.customer_id&&!value.customer_hint)ctx.addIssue({code:'custom',path:['customer_id'],message:'Chọn khách trong danh bạ hoặc gõ tên khách gợi nhớ'});
   if(!value.account_id)ctx.addIssue({code:'custom',path:['account_id'],message:'Phải chọn sổ quỹ ghi cọc'});
 });
 
@@ -134,21 +133,23 @@ interface CreateDepositDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Mở sẵn cho một phòng (vd. phòng đang lock tạm chờ tạo phiếu). */
   initialRoomId?: string | null;
+  initialPayer?: string;
+  receiptRequestKey?: string;
+  onReceipt?: (voucherId:string)=>Promise<void>;
 }
 
-export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: CreateDepositDialogProps) {
+export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initialPayer, receiptRequestKey, onReceipt }: CreateDepositDialogProps) {
   const queryClient = useQueryClient();
   const {selectedOrganizationId}=useOrganization();
-  const [customer, setCustomer] = useState<CustomerBasic | null>(null);
-  const [customerPicker, setCustomerPicker] = useState(false);
   const intent = useRef<{fingerprint:string;key:string}|null>(null);
   const formRoot = useRef<HTMLFormElement>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Phòng của lần tạo cọc gần nhất chưa rõ kết quả trong phiên hộp này. Hộp ở trang Quản lý cọc luôn nằm trên trang
   // (đóng chỉ đổi `open`), nên đóng hộp phải xoá ghi nhớ này, đúng như lối ra mà câu chặn hướng dẫn.
   const stuckRoom = useRef<string | null>(null);
-  useEffect(() => { if (!open) stuckRoom.current = null; }, [open]);
-  const [completed, setCompleted] = useState<{reservationId:string;voucherIds:string[]}|null>(null);
+  const stuckInput=useRef<Omit<CreateRoomReservationInput,'idempotencyKey'>|null>(null);
+  useEffect(() => { if (!open){stuckRoom.current=null;stuckInput.current=null;} }, [open]);
+  const [completed, setCompleted] = useState<{reservationId:string|null;voucherIds:string[]}|null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   // Ảnh chứng từ giữ ngoài react-hook-form: AttachmentUpload đã tự quản lý
@@ -185,7 +186,6 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
     shouldFocusError: false,
     resolver: zodResolver(depositSchema) as Resolver<DepositFormValues>,
     defaultValues: {
-      customer_id: "",
       customer_hint: "",
       room_id: "",
       room_price: 0,
@@ -213,6 +213,34 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
 
   // ── Giá phòng: mặc định hệ thống, sửa tay thì đánh dấu ────────────────────
   const selectedRoomId = form.watch("room_id");
+  const holdQuery=useDepositIncomeHold(selectedRoomId,open);
+  const loadedHold=useRef<string|null>(null);
+  const loadedRevision=useRef<number|undefined>(undefined);
+  useEffect(()=>{
+    loadedHold.current=null;
+    loadedRevision.current=undefined;
+    if(open){
+      if(!form.getFieldState('customer_hint').isDirty)form.setValue('customer_hint',initialPayer??'');
+      const previous=stuckRoom.current===selectedRoomId?stuckInput.current:null;
+      loadedHold.current=previous?.expectedHoldId??null;
+      loadedRevision.current=previous?.expectedRevision;
+      form.setValue('hold_until',previous?.holdUntil??'');
+      form.setValue('intended_move_in_on',previous?.intendedMoveInOn??'');
+      form.setValue('topup_due_date',previous?.topupDueOn??'');
+    }
+  },[selectedRoomId,open,form,initialPayer]);
+  useEffect(()=>{
+    if(!open||stuckRoom.current===selectedRoomId)return;
+    const hold=holdQuery.data;
+    if(!hold || loadedHold.current===hold.id)return;
+    loadedHold.current=hold.id;
+    loadedRevision.current=hold.revision;
+    if(!initialPayer && !form.getFieldState('customer_hint').isDirty)form.setValue('customer_hint',hold.payer??'');
+    form.setValue('hold_until',hold.hold_until??'');
+    form.setValue('intended_move_in_on',hold.intended_move_in_on??'');
+    form.setValue('topup_due_date',hold.topup_due_on??'');
+    if(hold.deposit_target!==null)form.setValue('deposit_target',hold.deposit_target);
+  },[open,holdQuery.data,form,initialPayer]);
   // Phòng đang chờ khách tự tìm sang phòng: khách cọc là khách nhận, không có thưởng sale (máy chủ cũng chặn).
   const exitTermsQuery = useContractExitEarlyTerms(selectedRoomId ? { roomId: selectedRoomId } : null, open && !!selectedRoomId);
   const selfFoundHold = !!exitTermsQuery.data?.some(row => row.pending_link && row.early_reason === 'SELF_FOUND');
@@ -247,10 +275,10 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
   // thì kéo lại theo phòng MỚI, cùng lý do với ô giá phòng.
   useEffect(() => {
     if (!selectedRoomId) return;
-    form.setValue("deposit_target", listedPrice, { shouldDirty: false });
-  }, [selectedRoomId, listedPrice, form]);
+    form.setValue("deposit_target", holdQuery.data?.deposit_target ?? listedPrice, { shouldDirty: false });
+  }, [selectedRoomId, listedPrice, form,holdQuery.data?.id]);
 
-  const conThieu = Math.max(0, Math.round(depositTarget) - Math.round(amountNow));
+  const conThieu = holdQuery.data && holdQuery.data.received_amount==null ? 0 : Math.max(0,Math.round(depositTarget)-Math.round(amountNow)-(holdQuery.data?.received_amount??0));
   const topupDays = diffDaysISO(topupDue || null, depositDate || null);
   // Bổ sung sau khi phòng đã nhả khoá là vô nghĩa — writer cũng chặn, nhưng nói
   // ngay tại form thì người nhập sửa được trước khi bấm lưu.
@@ -259,6 +287,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
 
   const onSubmit = async (data: DepositFormValues) => {
     if (submitting || completed || roomsQuery.isError || roomsQuery.isLoading || accountsQuery.isError || accountsQuery.isLoading) return;
+    if(holdQuery.isLoading||holdQuery.isError){setSubmitError('Chưa tải được đợt giữ chỗ của phòng.');return;}
     setSubmitError(null);
     setSubmitting(true);
     try {
@@ -295,7 +324,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       const itemDesc = extras.length ? extras.join(" · ") : null;
 
       const input:Omit<CreateRoomReservationInput,'idempotencyKey'>={
-        roomId:data.room_id,...(data.customer_id?{customerId:data.customer_id}:{customerHint:data.customer_hint}),holdUntil:data.hold_until||null,
+        roomId:data.room_id,expectedHoldId:loadedHold.current,expectedRevision:loadedRevision.current,customerHint:data.customer_hint,holdUntil:data.hold_until||null,
         intendedMoveInOn:data.intended_move_in_on||null,topupDueOn:data.topup_due_date||null,depositTarget:data.deposit_target??null,notes:data.notes||null,
         receipt:{amount:data.amount,accountId:accId,voucherDate:data.deposit_date,name,description:itemDesc,attachments:depositAttachments},
       };
@@ -313,10 +342,11 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
         stuckRoom.current=null;
       }
       let resend=false;
-      const createdReservation=await runFinancialPending({namespace:"deposit-create",userId:myUserId??"",organizationId:selectedOrganizationId??"",businessKey:data.room_id},async progress=>{
+      const {reservation:createdReservation,recoveredVoucherId}=await runFinancialPending({namespace:"deposit-create",userId:myUserId??"",organizationId:selectedOrganizationId??"",businessKey:data.room_id},async progress=>{
         let reservation;
-        try{reservation=await createReservation.mutateAsync({...input,idempotencyKey:progress.requestKey});}
+        try{reservation=await createReservation.mutateAsync({...input,idempotencyKey:receiptRequestKey??progress.requestKey});}
         catch(error){
+          if(voucherOutcomeUnknown(error))stuckInput.current=input;
           if(resend&&String((error as {code?:unknown}|null)?.code??'')==='23505')throw new FinancialAlreadyRecordedError('Cọc giữ chỗ của phòng này đã được tạo ở lần gửi trước (nội dung lúc đó khác nội dung đang lưu). Mở Quản lý cọc để kiểm tra trước khi tạo lại.');
           throw error;
         }
@@ -326,10 +356,14 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
         // Dấu đã nhận mã giữ chỗ (dấu từ bản trước, khi bước thưởng Sale hỏng): giữ chỗ đã tạo.
         if(pending.completedIds.length)return {outcome:'already-written',message:'Cọc giữ chỗ của phòng này đã được tạo ở lần gửi trước. Mở Quản lý cọc để kiểm tra trước khi tạo lại.',recordIds:pending.completedIds};
         resend=true;return {outcome:'not-written',serverDedupesRequestKey:true};
-      }});
+      }}).then(reservation=>({reservation,recoveredVoucherId:null as string|null})).catch((error:unknown)=>{
+        if (!(error instanceof ConfirmedDepositIncome)) throw error;
+        return {reservation:null,recoveredVoucherId:error.voucherId};
+      });
       stuckRoom.current=null;
       // Cọc xong là xong (dấu đã gỡ). Thưởng Sale nằm ngoài vùng giữ dấu: hỏng thì báo riêng, không chặn lần tạo cọc sau.
-      const completedReceipt = {reservationId:createdReservation.id,voucherIds:createdReservation.receipts.map(r=>r.source_voucher_id)};
+      const completedReceipt = {reservationId:createdReservation?.id??null,
+        voucherIds:createdReservation?.receipts.map(r=>r.source_voucher_id)??(recoveredVoucherId?[recoveredVoucherId]:[])};
       setCompleted(completedReceipt);
       const partialMessages: string[] = [];
 
@@ -338,7 +372,12 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       // màn hình ký hợp đồng sau này biết là "đã thưởng rồi" mà tô xám ô nhập.
       // Thưởng hỏng thì KHÔNG kéo đổ phiếu cọc — cọc là việc chính.
       const bonusAmt = selfFoundHold ? 0 : Number(data.sale_bonus_amount) || 0;
-      const depositId = createdReservation.receipts[0]?.source_voucher_id ?? null;
+      const depositId = recoveredVoucherId ?? (createdReservation && 'writtenVoucherId' in createdReservation ? createdReservation.writtenVoucherId as string : null) ??
+        (createdReservation?.receipts.length===1 ? createdReservation.receipts[0].source_voucher_id : null);
+      if(onReceipt && depositId){
+        try{await onReceipt(depositId);}
+        catch{partialMessages.push('Đã lưu phiếu thu. Mở lại khách hẹn để hoàn tất chuyển trạng thái.');}
+      }
 
       // Reservation terms and voucher projections are saved atomically by
       // create_room_reservation_v1; no second writer can overwrite them here.
@@ -369,16 +408,19 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       queryClient.invalidateQueries({ queryKey: ["orphan-deposit-vouchers"] });
 
       if (partialMessages.length) {
-        const message = partialMessages.join(" "); throw new VoucherPartialError(message,[completedReceipt.reservationId,...completedReceipt.voucherIds]);
+        const message = partialMessages.join(" "); throw new VoucherPartialError(message,[...(completedReceipt.reservationId?[completedReceipt.reservationId]:[]),...completedReceipt.voucherIds]);
       }
-      const received = createdReservation.receipts.some(r => r.received);
-      const assignLater = createdReservation.customer_id ? "" : " Nhớ gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.";
-      toast.success((received ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ." : "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn.") + assignLater);
+      const received = createdReservation?.receipts.some(r => r.source_voucher_id===depositId && r.received);
+      const message = recoveredVoucherId
+        ? "Đã đối chiếu đúng phiếu cọc của lần lưu trước. Mở Thu chi để xem trạng thái nhận tiền."
+        : received
+          ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ."
+          : "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn.";
+      toast.success(message);
       setCompleted(null);
       form.reset();
       setDepositAttachments([]);
       setBonusAttachments([]);
-      setCustomer(null);
       intent.current=null;
       onOpenChange(false);
     } catch (error) {
@@ -402,27 +444,24 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
         <DialogHeader>
           <DialogTitle>Tạo phiếu cọc</DialogTitle>
           <DialogDescription>
-            Chọn khách trong danh bạ hoặc gõ tên gợi nhớ. Cọc tạo phiếu nguồn theo luồng hiện tại; quá hạn nhắc xử lý, không tự nhả phòng. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.
+            Mỗi đợt giữ chỗ có thể có nhiều phiếu thu. Tên người gửi giúp nhận biết phiếu. Khi ký hợp đồng, chọn khách và hệ thống tự nhận cọc đã thu. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.
           </DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form ref={formRoot} onSubmit={form.handleSubmit(onSubmit, errors => void focusFirstError(errors, {root:formRoot.current,order:["customer_id","room_id","room_price","amount","deposit_date","hold_until","account_id","sale_bonus_amount"]}))} className="space-y-4">
+            <form ref={formRoot} onSubmit={form.handleSubmit(onSubmit, errors => void focusFirstError(errors, {root:formRoot.current,order:["customer_hint","room_id","room_price","amount","deposit_date","hold_until","account_id","sale_bonus_amount"]}))} className="space-y-4">
               {submitError && <div role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{submitError}</div>}
               {completed && <div className="rounded-md border p-3 text-sm"><p>Hồ sơ đã tạo. Kiểm tra trước khi bổ sung bước còn thiếu.</p><a className="underline" href="/deposits">Mở Quản lý cọc</a>{completed.voucherIds.map(id=><a key={id} className="block underline" href={`/income-expense/voucher/${id}`}>Mở phiếu {id}</a>)}</div>}
-              <FormField control={form.control} name="customer_id" render={()=> (
-                <FormItem><FormLabel>Khách hàng *</FormLabel>
-                  {customer?<div className="flex items-center gap-2"><span className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{customer.full_name} · {customer.phone}</span>
-                    <Button type="button" variant="ghost" size="sm" onClick={()=>{setCustomer(null);form.setValue('customer_id','');}} disabled={submitting}>Bỏ chọn</Button></div>
-                  :<div className="flex gap-2"><FormControl><Input aria-label="Tên khách gợi nhớ" placeholder="Gõ tên gợi nhớ, vd: anh Tuấn xem 18h" maxLength={CUSTOMER_HINT_MAX} disabled={submitting}
-                      {...form.register('customer_hint',{onChange:()=>form.clearErrors('customer_id')})}/></FormControl>
-                    <Button type="button" variant="outline" onClick={()=>setCustomerPicker(true)} disabled={submitting}>Chọn từ danh bạ</Button></div>}
-                  {!customer&&<p className="text-[11px] text-muted-foreground">Chưa cần tạo khách: tên gợi nhớ ghi vào người nộp và ghi chú phiếu. Gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.</p>}
-                <FormMessage/></FormItem>
+              <FormField control={form.control} name="customer_hint" render={({field}) => (
+                <FormItem>
+                  <FormLabel>Người gửi *</FormLabel>
+                  <FormControl><Input {...field} aria-label="Người gửi" placeholder="Nhập tên người gửi tiền cọc" maxLength={CUSTOMER_HINT_MAX} disabled={submitting}/></FormControl>
+                  <FormMessage/>
+                </FormItem>
               )}/>
 
-              <QueryRegion label="phòng và sổ quỹ nhận cọc" queries={[roomsQuery,accountsQuery]} skeleton="none">{null}</QueryRegion>
+              <QueryRegion label="phòng và sổ quỹ nhận cọc" queries={[roomsQuery,accountsQuery,...(selectedRoomId?[holdQuery]:[])]} skeleton="none">{null}</QueryRegion>
               {/* Room Selection */}
               <FormField
                 control={form.control}
@@ -539,30 +578,14 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="hold_until"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Giữ phòng đến</FormLabel>
-                      <FormControl>
-                        <DateInput
-                          value={field.value || ""}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          name={field.name}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
-              <FormField control={form.control} name="intended_move_in_on" render={({field})=>(
-                <FormItem><FormLabel>Ngày dự kiến vào (bắt buộc nếu phòng sắp trống)</FormLabel>
-                  <FormControl><DateInput value={field.value||''} onChange={field.onChange} onBlur={field.onBlur} name={field.name}/></FormControl><FormMessage/>
-                </FormItem>
-              )}/>
+              <DepositScheduleFields key={(selectedRoomId??'') + (holdQuery.data?.id??'')} voucherDate={depositDate}
+                value={{holdUntil:holdUntil || '',moveIn:form.watch('intended_move_in_on') || '',topup:topupDue || ''}}
+                onChange={next=>{
+                  form.setValue('hold_until',next.holdUntil,{shouldDirty:true});
+                  form.setValue('intended_move_in_on',next.moveIn,{shouldDirty:true});
+                  form.setValue('topup_due_date',next.topup,{shouldDirty:true});
+                }} disabled={submitting}/>
               {/* Hạn là lời nhắc. Giữ chỗ vẫn LIVE đến khi xử lý rõ ràng. */}
               {holdDays !== null && (
                 <div
@@ -595,7 +618,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
                   riêng, không nhét chung vào ghi chú. */}
               <div className="rounded-lg border p-3 space-y-3">
                 <div className="text-sm font-medium">
-                  Cọc cần đủ &amp; hạn bổ sung{" "}
+                  Mức cọc cần đủ{" "}
                   <span className="text-xs font-normal text-muted-foreground">
                     (để trống nếu khách đã cọc đủ ngay)
                   </span>
@@ -626,24 +649,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="topup_due_date"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">Hạn bổ sung cho đủ</FormLabel>
-                        <FormControl>
-                          <DateInput
-                            value={field.value || ""}
-                            onChange={field.onChange}
-                            onBlur={field.onBlur}
-                            name={field.name}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+
                 </div>
 
                 {conThieu > 0 && (
@@ -656,13 +662,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
                     }
                   >
                     <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
-                    {topupSauHold ? (
-                      <span>
-                        Hạn bổ sung <strong>sau</strong> ngày hết hạn giữ phòng — tới lúc đó
-                        phòng đã nhả khoá. Đặt hạn bổ sung trước{" "}
-                        <strong>{fmtVNDate(holdUntil!)}</strong>.
-                      </span>
-                    ) : topupDays !== null && topupDays < 0 ? (
+                    {topupDays !== null && topupDays < 0 ? (
                       <span>
                         Hạn bổ sung đang <strong>trước</strong> ngày đặt cọc — kiểm tra lại.
                       </span>
@@ -922,11 +922,6 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
             </form>
           </Form>
         </ScrollArea>
-        <CustomerSelectionDialog open={customerPicker} onOpenChange={setCustomerPicker}
-          selectedCustomerIds={customer?[customer.id]:[]} onSelect={values=>{
-            if(values.length!==1){toast.error('Phải chọn đúng một khách hàng.');return;}
-            setCustomer(values[0]);form.setValue('customer_id',values[0].id,{shouldValidate:true});form.setValue('customer_hint','');setCustomerPicker(false);
-          }}/>
       </DialogContent>
     </Dialog>
   );

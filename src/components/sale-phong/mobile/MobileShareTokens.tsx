@@ -12,10 +12,13 @@ import {
 import { roomShareUrl } from "@/lib/publicLinks";
 import {
   usePublicRoomTokens, useCreatePublicRoomToken, useUpdateTokenLabel,
-  useSetTokenRevoked, useDeletePublicRoomToken, type PublicRoomToken,
+  useSetTokenRevoked, useDeletePublicRoomToken, useBotShareTokens, type PublicRoomToken,
 } from "@/hooks/usePublicRoomTokens";
 import SaleSheet from "./SaleSheet";
 import type { HeaderAction } from "./types";
+
+/** Link của người khác khi người xem chỉ có quyền Quản lý link theo toà/khu (máy chủ cũng từ chối, 42501). */
+const OTHERS_LINK_HINT = "Link của người khác — cần quyền «Quản lý link chia sẻ» phạm vi toàn công ty";
 
 const fmtDate = (s: string) => {
   try { return new Date(s).toLocaleDateString("vi-VN"); } catch { return s; }
@@ -28,6 +31,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
   const labelMut = useUpdateTokenLabel({inlineError:true});
   const revokeMut = useSetTokenRevoked({inlineError:true});
   const deleteMut = useDeletePublicRoomToken({inlineError:true});
+  const botTokens = useBotShareTokens().data;
   // Link thuộc công ty đang chọn; chưa chốt công ty thì không cho tạo (máy chủ cũng không đoán thay).
   const {selectedOrganizationId,isLoading:orgLoading}=useOrganization();
   const orgReady=!!selectedOrganizationId;
@@ -84,7 +88,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
         </div>
       ) : (
         <div className="sp-list">
-          {tokens.map((t) => (
+          {tokens.map((t) => {const mayManage=t.can_manage!==false;return (
             <div key={t.token} className={"sp-tcard" + (t.revoked ? " off" : "")}>
               <div className="sp-tcard-h">
                 <div className="lbl">{t.label || "(chưa đặt tên)"}</div>
@@ -102,25 +106,25 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
                   <button className="sp-iconbtn" title="Mở link" onClick={() => window.open(roomShareUrl(t.token), "_blank", "noopener")}>
                     <ExternalLink size={16} />
                   </button>
-                  <button className="sp-iconbtn" title="Đổi nhãn" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setEditing(t);setLabel(t.label??"");setSheetOpen(true);}}>
+                  <button className="sp-iconbtn" title={mayManage?"Đổi nhãn":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>{setWriteError('');setEditing(t);setLabel(t.label??"");setSheetOpen(true);}}>
                     <Pencil size={16} />
                   </button>
                   {t.revoked ? (
-                    <button className="sp-iconbtn" title="Khôi phục" disabled={!canWrite||busy} onClick={()=>void perform(()=>revokeMut.mutateAsync({token:t.token,revoked:false}),()=>{})}>
+                    <button className="sp-iconbtn" title={mayManage?"Khôi phục":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>void perform(()=>revokeMut.mutateAsync({token:t.token,revoked:false}),()=>{})}>
                       <RotateCcw size={16} />
                     </button>
                   ) : (
-                    <button className="sp-iconbtn warn" title="Thu hồi" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setConfirm({kind:"revoke",token:t});}}>
+                    <button className="sp-iconbtn warn" title={mayManage?"Thu hồi":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>{setWriteError('');setConfirm({kind:"revoke",token:t});}}>
                       <Ban size={16} />
                     </button>
                   )}
-                  <button className="sp-iconbtn danger" title="Xoá" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setConfirm({kind:"delete",token:t});}}>
+                  <button className="sp-iconbtn danger" title={mayManage?"Xoá":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>{setWriteError('');setConfirm({kind:"delete",token:t});}}>
                     <Trash2 size={16} />
                   </button>
                 </span>
               </div>
             </div>
-          ))}
+          );})}
         </div>
       )}
 
@@ -155,7 +159,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
                 ? "Link sẽ bị xoá khỏi hệ thống, không thể khôi phục. Nếu chỉ muốn tạm tắt, hãy dùng Thu hồi."
                 : "Khách mở link đã thu hồi sẽ thấy \"Liên kết không hợp lệ\". Bạn có thể khôi phục lại sau."}
             </p>
-            <TokenRemovalWarnings warnings={tokenRemovalWarnings(confirm.token,tokens??[])} />
+            <TokenRemovalWarnings warnings={tokenRemovalWarnings(confirm.token,tokens??[],botTokens??[])} />
             {errorNotice}
             <div className="sp-sheet-btns">
               <button className="cancel" onClick={() => setConfirm(null)}>Hủy</button>

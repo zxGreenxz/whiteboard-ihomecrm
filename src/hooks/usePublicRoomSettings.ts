@@ -3,9 +3,12 @@ import {useOrganization} from '@/contexts/OrganizationContext';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
 import {validPublicRoomSettings,unconfirmedPublicRoomReceipt,SETTINGS_NO_ORGANIZATION,SAVE_SETTINGS_RULES,notifyRuleError} from '@/lib/publicRoomFeedback';
-import {rpcGetPublicRoomSettings,rpcSavePublicRoomSettings} from '@/lib/publicRoomAdminRpc';
+import {supabase} from '@/integrations/supabase/client';
+import type {Database} from '@/integrations/supabase/types';
 import {toast} from 'sonner';
 /** sale_policy: chính sách sale chung in ở khối đầu ảnh "DANH SÁCH PHÒNG TRỐNG" (NULL = không in). */
+/** p_expected_updated_at NULL = công ty chưa có dòng cài đặt (CAS «chưa có»); types.ts không biểu diễn được tham số NULL. */
+type SaveSettingsArgs=Database['public']['Functions']['save_public_room_settings_v1']['Args'];
 export interface PublicRoomSettings{soon_days:number;show_rented:boolean;hotline_id:string|null;sale_policy:string|null}
 export const PUBLIC_ROOM_SETTINGS_DEFAULTS:PublicRoomSettings={soon_days:30,show_rented:true,hotline_id:null,sale_policy:null};
 /** Hotline của người đứng tên chung các toà (chủ cài đặt chung) trong công ty — chỉ những số này in được lên trang. */
@@ -32,7 +35,7 @@ export function parseCompanyRoomSettings(data:unknown,organizationId:string):Com
 }
 export function usePublicRoomSettings(){const {selectedOrganizationId}=useOrganization();return useQuery({queryKey:[...KEY,selectedOrganizationId],enabled:!!selectedOrganizationId,meta:{errorDisplay:"inline"},queryFn:async():Promise<CompanyRoomSettings>=>{
  const organizationId=selectedOrganizationId!;
- const {data,error}=await rpcGetPublicRoomSettings({p_organization_id:organizationId});if(error)throw error;
+ const {data,error}=await supabase.rpc('get_public_room_settings_v1',{p_organization_id:organizationId});if(error)throw error;
  const parsed=parseCompanyRoomSettings(data,organizationId);if(!parsed)throw new TypeError('Invalid public room settings');return parsed;
 }});}
 /** Giá trị cần lưu + updatedAt của bản đã đọc (CAS): người khác lưu trước thì máy chủ báo PT409 «đã có người sửa». */
@@ -43,8 +46,8 @@ export function useUpsertPublicRoomSettings(options:{inlineError?:boolean}={}){c
  const organizationId=selectedOrganizationId;if(!organizationId)throw new FinancialWorkflowError(SETTINGS_NO_ORGANIZATION,'failure',[]);
  const expectedPolicy=values.sale_policy?.trim()||null;
  const write=async(progress:FinancialWorkflowProgress)=>{
-  const {data,error}=await rpcSavePublicRoomSettings({p_organization_id:organizationId,p_expected_updated_at:expectedUpdatedAt,p_soon_days:values.soon_days,
-   p_show_rented:values.show_rented,p_hotline_id:values.hotline_id,p_sale_policy:expectedPolicy});if(error)throw error;
+  const {data,error}=await supabase.rpc('save_public_room_settings_v1',{p_organization_id:organizationId,p_expected_updated_at:expectedUpdatedAt,p_soon_days:values.soon_days,
+   p_show_rented:values.show_rented,p_hotline_id:values.hotline_id,p_sale_policy:expectedPolicy} as SaveSettingsArgs);if(error)throw error;
   const saved=parseCompanyRoomSettings(data,organizationId);
   if(saved?.ownerId)progress.completed.push({id:saved.ownerId,label:'Cài đặt chung cần đối chiếu'});
   if(!saved||!saved.exists||saved.settings.soon_days!==values.soon_days||saved.settings.show_rented!==values.show_rented

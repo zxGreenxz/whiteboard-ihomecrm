@@ -187,10 +187,6 @@ export const navigationGroups: NavGroup[] = [
           { title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, module: 'thu_tien', action: 'collect' },
           ...navFieldsFor('cashbook').map((x) => ({ ...x, icon: CreditCard }) satisfies NavItem),
           ...navFieldsFor('chi-tieu').map((x) => ({ ...x, icon: MessageSquarePlus }) satisfies NavItem),
-          // Hộp thư duyệt: không khai `module` → luôn hiện, khớp route /approvals
-          // (không bọc RequirePermission). RPC lọc theo auth.uid() nên người không
-          // phải bước duyệt nào chỉ thấy danh sách rỗng.
-          { title: 'Chờ duyệt', href: '/approvals', icon: ClipboardList },
           ...navFieldsFor('funds').map((x) => ({ ...x, icon: Wallet }) satisfies NavItem),
           ...navFieldsFor('bank-events').map((x) => ({ ...x, icon: Landmark }) satisfies NavItem),
           // Cấu hình giá phí cố định theo toà — nguồn gợi ý số tiền cho /thanh-toan.

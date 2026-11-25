@@ -57,7 +57,7 @@ function voucher(facts: Partial<ReservationDepositRow> = {}): ReservationDeposit
     id: 'v1', code: 'PT-1', name: 'Phiếu cọc', payer_name: 'Khách A', total_amount: 2_000_000,
     voucher_date: '2026-01-01', approval_status: 'APPROVED', approval_version: 1,
     building_id: 'b1', building_name: 'Tòa A', room_id: 'r1', room_name: '101',
-    settlement_status: 'UNSETTLED', settlement: null, reservation_id: 'reservation-1',
+    settlement_status: 'UNSETTLED', settlement: null, reservation_id: null,
     received_amount: 0, received_fact_status: 'VERIFIED', ...facts,
   };
 }

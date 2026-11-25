@@ -10,15 +10,21 @@ const MIGRATION = 'supabase/migrations/20261124075933_tra_phong_truoc_han_ba_tru
 const migrationSql = readFileSync(MIGRATION, 'utf8');
 const migrationCorpus = readdirSync('supabase/migrations').filter(file => file.endsWith('.sql')).sort().reverse()
   .map(file => ({ file, sql: readFileSync(join('supabase/migrations', file), 'utf8') }));
-function liveDefinitionOf(qualified: string): string {
+// Migration này vá thân hàm đang chạy (không CREATE lại), nên trạng thái «trước» là định nghĩa cuối cùng ở các file
+// TRƯỚC nó. Migration sau có thể thay hẳn hàm (đợt 2 Sale phòng 20261125034429 thay get_my_available_rooms() bằng bản
+// (uuid) và get_sale_room_inventory_v1) — bản đó đo riêng bằng latestDefinitionOf() ở cuối beforeAll.
+const MIGRATION_FILE = MIGRATION.split('/').pop()!;
+function definitionOf(qualified: string, corpus: typeof migrationCorpus): string {
   const pattern = new RegExp('CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+' + qualified.replace(/\./g, '\\.')
     + '\\s*\\([\\s\\S]*?\\bAS\\s+(\\$[a-zA-Z_]*\\$)[\\s\\S]*?\\1\\s*;', 'i');
-  for (const migration of migrationCorpus) {
+  for (const migration of corpus) {
     const match = migration.sql.match(pattern);
     if (match) return match[0].replace(/^CREATE FUNCTION/i, 'CREATE OR REPLACE FUNCTION');
   }
   throw new Error('Missing live function: ' + qualified);
 }
+const liveDefinitionOf = (qualified: string) => definitionOf(qualified, migrationCorpus.filter(m => m.file < MIGRATION_FILE));
+const latestDefinitionOf = (qualified: string) => definitionOf(qualified, migrationCorpus);
 function sliceStatement(file: string, start: string, end: string): string {
   const sql = readFileSync(join('supabase/migrations', file), 'utf8');
   const from = sql.indexOf(start);
@@ -68,6 +74,7 @@ async function md5Of(signature: string): Promise<string> {
 const before: Record<string, string> = {};
 const after: Record<string, string> = {};
 const afterSecond: Record<string, string> = {};
+let patchedMyRooms = '';
 
 beforeAll(async () => {
   await db.exec(`
@@ -211,6 +218,19 @@ beforeAll(async () => {
   for (const signature of Object.keys(PROD_MD5)) after[signature] = await md5Of(signature);
   await db.exec(migrationSql);
   for (const signature of Object.keys(PROD_MD5)) afterSecond[signature] = await md5Of(signature);
+  // Thân hai reader SAU vá của migration này (bản `()` ngày 24/11), giữ lại để kiểm điểm nối.
+  patchedMyRooms = (await db.query<{ d: string }>("SELECT pg_get_functiondef('public.get_my_available_rooms()'::regprocedure) d")).rows[0].d;
+  // Reader SỐNG: đợt 2 Sale phòng (20261125034429) thay get_my_available_rooms() bằng (p_organization_id uuid) và dựng
+  // lại get_sale_room_inventory_v1 theo công ty — khối exit_hold phải còn nguyên ở cả hai.
+  await db.exec(`ALTER TABLE public.public_room_settings ADD COLUMN IF NOT EXISTS organization_id uuid;
+    ALTER TABLE public.hotlines ADD COLUMN IF NOT EXISTS organization_id uuid;
+    CREATE FUNCTION app_private.authorized_scope_v3(p_permission_key text, p_org uuid)
+      RETURNS TABLE(org_wide boolean, building_ids uuid[], cashbook_ids uuid[]) LANGUAGE sql STABLE AS $$ SELECT true, '{}'::uuid[], '{}'::uuid[] $$;
+    DROP FUNCTION public.get_my_available_rooms();`);
+  for (const name of ['app_private.org_building_owner_v1', 'app_private.sale_org_permission_v1', 'app_private.sale_org_wide_permission_v1',
+    'public.get_sale_room_inventory_v1', 'public.get_my_available_rooms']) {
+    await db.exec(latestDefinitionOf(name));
+  }
   // Dữ liệu chung: bốn phòng, mỗi phòng một hợp đồng cũ đang ở.
   for (let i = 0; i < 4; i++) {
     await db.query(`INSERT INTO public.rooms(id,organization_id,building_id,name,status) VALUES($1,$2,$3,$4,'OCCUPIED')`, [rooms[i], org, building, `P10${i + 1}`]);
@@ -286,7 +306,11 @@ describe('migration', () => {
     expect(await count('public.finalize_contract_exit_case_v1(uuid,uuid,bigint,text,text,text,jsonb)', 'assert_contract_transfer_exit_terms_v1(')).toBe(1);
     expect(await count('public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)', 'assert_exit_early_commission_v1(')).toBe(1);
     expect(await count('app_private.room_sale_workflow_fact_v1(uuid,uuid,text,boolean,integer)', 'room_exit_hold_open_v1(')).toBe(1);
-    expect(await count('public.get_my_available_rooms()', 'room_exit_hold_json_v1(')).toBe(1);
+    // Migration này vá bản `()` (24/11); bản sống `(uuid)` của đợt 2 Sale phòng vẫn giữ đúng một khối exit_hold.
+    expect(patchedMyRooms.split('room_exit_hold_json_v1(').length - 1).toBe(1);
+    expect(patchedMyRooms.split('OR exit_hold IS NOT NULL').length - 1).toBe(1);
+    expect(await count('public.get_my_available_rooms(uuid)', 'room_exit_hold_json_v1(')).toBe(1);
+    expect(await count('public.get_my_available_rooms(uuid)', 'OR exit_hold IS NOT NULL')).toBe(1);
     expect(await count('public.get_sale_room_inventory_v1(uuid,uuid,uuid)', 'room_exit_hold_json_v1(')).toBe(1);
     expect(await count('public.real_estate_renewals_transfers_v1(uuid,uuid[],date,date)', 'FROM early x')).toBe(1);
     expect(await count('public.confirm_contract_return_v1(uuid,uuid,timestamp with time zone,text,date,text,text,jsonb,jsonb,text)', 'app.exit_early_terms_v2')).toBe(1);
@@ -388,7 +412,7 @@ describe('giữ phòng', () => {
       exit_case_id: (await caseOf(0)).id });
     expect(inventory.rooms.find(room => room.id === rooms[1])!.exit_hold).toBeNull();
     await db.query(`SELECT set_config('test.actor',$1,false)`, [owner]);
-    const mine = (await db.query<{ r: { rooms: Row[]; buildings: Row[] } }>('SELECT public.get_my_available_rooms() r')).rows[0].r;
+    const mine = (await db.query<{ r: { rooms: Row[]; buildings: Row[] } }>('SELECT public.get_my_available_rooms($1) r', [org])).rows[0].r;
     expect(mine.buildings.map(b => b.id)).toEqual([building]);
     expect(mine.rooms.find(room => room.id === rooms[0])).toMatchObject({ status_public: 'rented', exit_hold: { recorded_by_me: false } });
     const states = new Set(inventory.rooms.map(room => room.status_public));

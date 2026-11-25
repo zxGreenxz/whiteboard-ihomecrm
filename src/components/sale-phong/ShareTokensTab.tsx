@@ -25,8 +25,11 @@ import { toast } from "sonner";
 import { roomShareUrl } from "@/lib/publicLinks";
 import {
   usePublicRoomTokens, useCreatePublicRoomToken, useUpdateTokenLabel,
-  useSetTokenRevoked, useDeletePublicRoomToken, type PublicRoomToken,
+  useSetTokenRevoked, useDeletePublicRoomToken, useBotShareTokens, type PublicRoomToken,
 } from "@/hooks/usePublicRoomTokens";
+
+/** Link của người khác khi người xem chỉ có quyền Quản lý link theo toà/khu (máy chủ cũng từ chối, 42501). */
+const OTHERS_LINK_HINT="Link của người khác — cần quyền «Quản lý link chia sẻ» phạm vi toàn công ty";
 
 const fmtDate = (s: string) => {
   try { return new Date(s).toLocaleDateString("vi-VN"); } catch { return s; }
@@ -68,7 +71,8 @@ export default function ShareTokensTab() {
     try{await task();done();}catch(error){setWriteError(message(error));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
   };
   const doCreate=()=>{if(orgReady)void perform(async()=>{const row=await createMut.mutateAsync(newLabel);await copyLink(row.token);},()=>{setCreateOpen(false);setNewLabel('');},createTokenErrorMessage);};
-  const removalWarnings=(t:PublicRoomToken|null)=>t?tokenRemovalWarnings(t,tokens??[]):[];
+  const botTokens=useBotShareTokens().data;
+  const removalWarnings=(t:PublicRoomToken|null)=>t?tokenRemovalWarnings(t,tokens??[],botTokens??[]):[];
   const doEdit=()=>{if(editing)void perform(()=>labelMut.mutateAsync({token:editing.token,label:editLabel}),()=>setEditing(null));};
   const errorNotice=writeError?<p role="alert" className="text-sm text-destructive">{writeError}</p>:null;
 
@@ -110,7 +114,7 @@ export default function ShareTokensTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tokens.map((t) => (
+                {tokens.map((t) => {const mayManage=t.can_manage!==false;return (
                   <TableRow key={t.token} className={t.revoked ? "opacity-60" : ""}>
                     <TableCell className="font-medium">
                       {t.label || <span className="text-muted-foreground">(chưa đặt tên)</span>}
@@ -133,25 +137,25 @@ export default function ShareTokensTab() {
                         <Button variant="ghost" size="icon" title="Mở link" onClick={() => window.open(roomShareUrl(t.token), "_blank", "noopener")}>
                           <ExternalLink className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" title="Đổi nhãn" disabled={!canWrite||busy} onClick={() => {setWriteError('');setEditing(t);setEditLabel(t.label ?? "");}}>
+                        <Button variant="ghost" size="icon" title={mayManage?"Đổi nhãn":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={() => {setWriteError('');setEditing(t);setEditLabel(t.label ?? "");}}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                         {t.revoked ? (
-                          <Button variant="ghost" size="icon" title="Khôi phục" disabled={!canWrite||busy} onClick={()=>void perform(()=>revokeMut.mutateAsync({token:t.token,revoked:false}),()=>{})}>
+                          <Button variant="ghost" size="icon" title={mayManage?"Khôi phục":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>void perform(()=>revokeMut.mutateAsync({token:t.token,revoked:false}),()=>{})}>
                             <RotateCcw className="h-4 w-4" />
                           </Button>
                         ) : (
-                          <Button variant="ghost" size="icon" title="Thu hồi" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setRevoking(t);}}>
+                          <Button variant="ghost" size="icon" title={mayManage?"Thu hồi":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>{setWriteError('');setRevoking(t);}}>
                             <Ban className="h-4 w-4 text-amber-600" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" title="Xoá" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setDeleting(t);}}>
+                        <Button variant="ghost" size="icon" title={mayManage?"Xoá":OTHERS_LINK_HINT} disabled={!canWrite||busy||!mayManage} onClick={()=>{setWriteError('');setDeleting(t);}}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                );})}
               </TableBody>
             </Table>
           )}

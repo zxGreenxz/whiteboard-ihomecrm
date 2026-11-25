@@ -109,12 +109,12 @@ Chốt/phân bổ chỉ xác định phần **được chia**. **Ghi phiếu chi
 | Không thấy mục Báo cáo Lợi Nhuận ở menu | Thiếu `reports_finance.profit_distribution`; vẫn có thể mở trực tiếp route nếu có quyền `shareholder_profit` |
 | Báo **Chọn tổ chức cần thao tác** | Tài khoản có quyền ở nhiều tổ chức; chọn đúng tổ chức ở ô đầu thanh công cụ |
 | Nút xác nhận chốt bị khoá, báo **Chưa có cách xử lý phần lợi nhuận còn dư** | Chọn Giữ lại lợi nhuận/Chuyển kỳ sau và nhập lý do 8–500 ký tự cho từng nhà còn dư, hoặc bỏ tick các nhà đó |
-| Báo **Còn N phiếu chờ duyệt trong tháng … của toà …** | Duyệt hoặc huỷ các phiếu được liệt kê ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) rồi chốt lại |
+| Báo **Còn N phiếu chờ duyệt trong tháng … của toà …** | Duyệt hoặc huỷ các phiếu được liệt kê ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) (tab **Chờ xử lý**) rồi chốt lại |
 | Nút Chốt báo vùng chọn đang lẫn | Đang tick cả nhà đã chốt lẫn chưa chốt; tách thành hai lượt |
 | Sau khi chốt không sửa được phiếu của tháng | Đúng thiết kế; dùng **Mở khoá N nhà đã chọn** (mất phần đã phân bổ, phải chốt lại) |
 | Báo **Tháng còn snapshot của toà đã xoá hoặc toà ảo** | Bấm **Đặt lại cả tháng (gồm dòng legacy)** rồi chốt lại |
 | Điều chỉnh bị từ chối | Số khác 0 phải có lý do |
-| Bấm Chi nhưng sổ quỹ chưa giảm | Phiếu còn chờ duyệt hoặc chưa **Đã Chi**; theo dõi ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) |
+| Bấm Chi nhưng sổ quỹ chưa giảm | Phiếu còn chờ duyệt hoặc chưa **Đã Chi**; theo dõi và duyệt ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) (tab **Chờ xử lý**) |
 | **Còn phải trả** âm | Đã chi cho cổ đông nhiều hơn phần được chia luỹ kế; rà phiếu chi ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
 
 ## Thử trực tiếp trên sandbox
@@ -139,7 +139,6 @@ Chốt/phân bổ chỉ xác định phần **được chia**. **Ghi phiếu chi
 
 - [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/) — rà số vận hành trước khi chốt lợi nhuận.
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — chốt sổ từng tháng trước khi chốt lợi nhuận.
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) — duyệt phiếu chờ trong tháng và phiếu chi lợi nhuận/lương điều hành.
-- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — xem phiếu chi đã **Đã Chi**.
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — duyệt phiếu chờ trong tháng, phiếu chi lợi nhuận và lương điều hành; xem phiếu đã **Đã Chi**.
 - [Bảng lương](/03-quan-ly-van-hanh/bang-luong/) — cột **Thu nhập đồng hành** lấy phần lợi nhuận đã chốt.
 - [Ví cá nhân](/03-quan-ly-van-hanh/vi-ca-nhan/) — sổ cá nhân, tách khỏi lợi nhuận doanh nghiệp.

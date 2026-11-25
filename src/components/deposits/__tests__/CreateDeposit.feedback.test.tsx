@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,6 +26,7 @@ const query = (data: unknown, failed = false, refetch = vi.fn()) => ({
   data: failed ? undefined : data, status: failed ? 'error' : 'success', fetchStatus: 'idle',
   isError: failed, isLoading: false, error: failed ? new Error('Failed to fetch') : null, refetch,
 });
+vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:null,isError:false,isLoading:false,status:'success',refetch:vi.fn()})}));
 vi.mock('@/hooks/useRoomReservations', () => ({ useCreateRoomReservation: () => ({ mutateAsync: h.create, isPending: false }) }));
 vi.mock('@/hooks/useReservationHoldDeadlines', () => ({ useSetReservationHoldTerms: () => ({ mutateAsync: h.hold, isPending: false }) }));
 vi.mock('@/hooks/useSaleBonus', () => ({ useCreateSaleBonusFromDeposit: () => ({ mutateAsync: h.bonus, isPending: false }) }));
@@ -67,14 +69,10 @@ function view() {
 }
 async function prepare(bonus = false, amount = '500000', hint?: string, bonusReason = 'Thưởng theo thỏa thuận cho giao dịch cọc') {
   view();
-  if (hint) fireEvent.change(screen.getByRole('textbox', { name: 'Tên khách gợi nhớ' }), { target: { value: hint } });
-  else {
-    fireEvent.click(screen.getByRole('button', { name: 'Chọn từ danh bạ' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Chọn khách Demo' }));
-  }
+  fireEvent.change(screen.getByRole('textbox', {name:'Người gửi'}), {target:{value:hint ?? 'Khách Demo'}});
   fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: roomId } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Số tiền cọc *' }), { target: { value: amount } });
-  const date = screen.getByRole('textbox', { name: 'Giữ phòng đến' });
+  const date = screen.getByRole('textbox', { name: 'Giữ chỗ đến' });
   fireEvent.change(date, { target: { value: '02102026' } }); fireEvent.blur(date);
   fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Ghi chú' }), { target: { value: 'Giữ lại nội dung cọc' } });
@@ -188,10 +186,10 @@ describe('tạo cọc sau rớt mạng (gửi lại cùng mã)', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const ui = (open: boolean) => <QueryClientProvider client={client}><CreateDepositDialog open={open} onOpenChange={h.close} /></QueryClientProvider>;
     const r = render(ui(true));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Tên khách gợi nhớ' }), { target: { value: 'anh Tuấn' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Người gửi' }), { target: { value: 'anh Tuấn' } });
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: roomId } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Số tiền cọc *' }), { target: { value: '500000' } });
-    const date = screen.getByRole('textbox', { name: 'Giữ phòng đến' }); fireEvent.change(date, { target: { value: '02102026' } }); fireEvent.blur(date);
+    const date = screen.getByRole('textbox', { name: 'Giữ chỗ đến' }); fireEvent.change(date, { target: { value: '02102026' } }); fireEvent.blur(date);
     fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
     submitAgain(); await screen.findByRole('alert');
@@ -233,14 +231,14 @@ it('lỗi nguồn phòng có retry và khóa gửi cọc', async () => {
 it.each(['-10','abc2','1.5'])('tiền cọc invalid %s giữ raw/đỏ/focus, không gửi writer',async amount=>{
  await prepare(false,amount);fireEvent.submit(document.querySelector('form')!);const field=screen.getByRole('textbox',{name:'Số tiền cọc *'});expect(field).toHaveProperty('value',amount);expect(field.getAttribute('aria-invalid')).toBe('true');await waitFor(()=>expect(document.activeElement).toBe(field));expect(h.create).not.toHaveBeenCalled();expect(h.close).not.toHaveBeenCalled();
 });
-it('tên khách gợi nhớ gửi customerHint, không gửi customerId, và nhắc gắn khách', async () => {
+it('tên khách gợi nhớ gửi customerHint, không gửi customerId và không yêu cầu gắn khách', async () => {
   h.create.mockResolvedValue({ ...result(false), customer_id: null, customer_phone: null, customer_name: 'anh Tuấn', customer_hint: 'anh Tuấn' });
   await prepare(false, '500000', '  anh Tuấn  ');
   await waitFor(() => expect(h.create).toHaveBeenCalledOnce());
   const input = h.create.mock.calls[0][0];
   expect(input).toMatchObject({ roomId, customerHint: 'anh Tuấn', receipt: { amount: 500000, accountId: bookId } });
   expect(input).not.toHaveProperty('customerId');
-  await waitFor(() => expect(h.success).toHaveBeenCalledWith(expect.stringContaining('gắn khách thật')));
+  await waitFor(() => expect(h.success).toHaveBeenCalledWith(expect.not.stringContaining('gắn khách thật')));
 });
 it('phòng đang chờ khách sang nhượng: báo khách cọc là khách nhận, vẫn cho cọc', async () => {
   h.exitRows = [exitTermsRow({ room_id: roomId })];
@@ -260,7 +258,17 @@ it('thiếu khách hoặc số tiền 0 thì chặn tại form, không gọi wri
   fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
   await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
   fireEvent.submit(document.querySelector('form')!);
-  await screen.findByText('Chọn khách trong danh bạ hoặc gõ tên khách gợi nhớ');
+  await screen.findByText('Nhập tên người gửi');
   expect(await screen.findByText(/Nhập số tiền cọc lớn hơn 0/)).toBeTruthy();
   expect(h.create).not.toHaveBeenCalled();
+});
+
+it('tiếp tục thưởng Sale theo đúng mã cọc đã xác nhận sau mất phản hồi',async()=>{
+  h.create.mockRejectedValueOnce(new ConfirmedDepositIncome(voucherId));
+  await prepare(true);
+  await waitFor(()=>expect(h.close).toHaveBeenCalledWith(false));
+  expect(h.success).toHaveBeenCalledWith(expect.stringContaining('Đã đối chiếu đúng phiếu cọc'));
+  expect(h.bonus).toHaveBeenCalledTimes(1);
+  expect(h.bonus.mock.calls[0][0]).toMatchObject({depositVoucherId:voucherId,amount:200000});
+  expect(h.create).toHaveBeenCalledTimes(1);
 });

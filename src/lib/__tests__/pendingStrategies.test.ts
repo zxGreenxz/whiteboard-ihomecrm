@@ -41,7 +41,19 @@ function scanPendingUsage(source: string, fileName = "sample.ts"): FileUsage {
   const visit = (node: ts.Node) => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       let namespace: string | null | undefined;
-      if (node.expression.text === "persistentFinancialWorkflow") namespace = literalOf(node.arguments[0]);
+      if (node.expression.text === "persistentFinancialWorkflow") {
+        namespace = literalOf(node.arguments[0]);
+        // `legacy` (đợt 5): namespace chung bản trước mà nơi này được tách ra; dấu cũ ở đó vẫn được đọc nên dòng sổ còn dùng.
+        const options = node.arguments[1];
+        const legacy = options && ts.isObjectLiteralExpression(options)
+          ? options.properties.find((item): item is ts.PropertyAssignment => ts.isPropertyAssignment(item) && item.name.getText(file) === "legacy")
+          : undefined;
+        if (legacy) {
+          const legacyNamespace = literalOf(legacy.initializer);
+          if (legacyNamespace) usage.literals.push(legacyNamespace);
+          else usage.dynamicCalls += 1;
+        }
+      }
       // `settleLegacyPending` (đợt 4) đọc dấu khoá chung bản trước để lại ở namespace đó: vẫn là nơi dùng của dòng sổ.
       if (node.expression.text === "runFinancialPending" || node.expression.text === "settleLegacyPending") {
         const scope = node.arguments[0];
@@ -164,6 +176,13 @@ describe("bộ quét nơi dùng", () => {
         namespace:'invoice-cancel',userId:user.id,
       }, work);
     `)).toEqual({ literals: ["room-create", "salary-lock", "invoice-cancel"], dynamicCalls: 0, directGuards: 0 });
+  });
+
+  it("tính namespace chung bản trước khai ở `legacy` (đợt 5 tách khoá theo thao tác)", () => {
+    expect(scanPendingUsage(`
+      const guard = useRef(persistentFinancialWorkflow('voucher-approve', { scope: 'actor', legacy: 'voucher-lifecycle' }));
+      const other = persistentFinancialWorkflow('voucher-cancel', { legacy: oldNamespace });
+    `)).toEqual({ literals: ["voucher-lifecycle", "voucher-approve", "voucher-cancel"], dynamicCalls: 1, directGuards: 0 });
   });
 
   it("tính cả nơi chỉ còn đọc dấu khoá chung bản trước để lại", () => {

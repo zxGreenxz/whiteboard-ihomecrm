@@ -1,7 +1,7 @@
 // Tab "Tạm ứng LN" — người được chủ cấp riêng quyền tạm ứng lợi nhuận (shareholder_profit.advance_own_cashbook)
 // mà KHÔNG có tab tự xem (không có trang Báo cáo Lợi Nhuận). Chỉ: giải thích ngắn, hai con số của chính mình
 // ("Lợi nhuận chưa chi" · "Tạm ứng đang có" — R2), nút mở hộp tạm ứng cho CHÍNH MÌNH (chỉ sổ đang giữ, mọi
-// khoản chờ chủ duyệt), các lần chủ chốt chi và các khoản mình đã lập (tự huỷ khi còn chờ).
+// khoản chờ duyệt), các lần chủ chốt chi và các khoản mình đã lập (tự huỷ khi còn chờ).
 // Không đọc sổ tổng của cổ đông khác, không cần quyền chi lợi nhuận. Số chỉ hiện khi sổ tổng đã chạy.
 
 import { useMemo, useState } from 'react';
@@ -43,7 +43,7 @@ export default function ShareholderAdvanceTab({ me, phone = false }: { me: Share
 
 const EXPLAIN = [
   'Chủ công ty cho bạn tạm ứng lợi nhuận từ sổ quỹ bạn đang giữ.',
-  'Mỗi lần ứng là một phiếu chờ chủ duyệt — tiền chưa ra khỏi sổ cho tới khi chủ duyệt. Phiếu còn chờ duyệt thì bạn tự huỷ được.',
+  'Mỗi lần ứng là một phiếu chờ duyệt. Người có đủ quyền được duyệt cả phiếu mình lập. Tiền ra khỏi sổ khi ghi chi. Phiếu còn chờ duyệt thì bạn tự huỷ được.',
   'Tạm ứng cộng dồn. Khi chủ chốt chi lợi nhuận, tạm ứng đã duyệt được khấu trừ vào phần lợi nhuận chưa chi.',
 ];
 

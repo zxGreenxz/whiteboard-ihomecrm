@@ -40,7 +40,7 @@ chứ không nối thẳng vào `DB`.
 | 12–14 | Lợi nhuận, báo cáo/thông báo, cài đặt | `/reports/**`, `/notifications`, `/settings/**` |
 | 15–18 | Sale/public, thanh lý, lương, Zalo | public room/invoice routes, `/finance/salary`, `/chat-zalo` |
 | 19 | SOP tiền và sổ quỹ | quy trình kiểm soát |
-| 20 | Approval tài chính | `/approvals` |
+| 20 | Approval tài chính | duyệt ở `/income-expense` (màn `/approvals` đã bỏ 25/11/2026, tự chuyển về Thu chi) |
 | 21 | Trợ lý Hermes | **Kết nối Hermes** · `/settings/hermes`; nhắn bot trên Zalo |
 | [22](22-network-center.md) | Trung tâm mạng — fleet router MikroTik/RouterOS nhiều toà | `/network-center` |
 | [24](24-platform-delivery.md) | Phát hành nền tảng — deploy, cron, môi trường | không có route |
@@ -53,7 +53,7 @@ chứ không nối thẳng vào `DB`.
 ## Trạng thái platform
 
 - Authorization organization-model đang production; 15/15 canonical writer flags ON.
-- Approval inbox live; phiếu đặc biệt/chi vượt ngưỡng đi qua maker-checker.
+- Bộ máy yêu cầu duyệt phía máy chủ live (màn web Chờ duyệt đã bỏ 25/11/2026, duyệt ở Thu chi); phiếu đặc biệt/chi vượt ngưỡng đi qua maker-checker.
 - Hub báo cáo tài chính hiện có 9 báo cáo. Các route debt cũ chuyển về `/thu-tien`.
 - Profit Close V2 chốt lợi nhuận server-side bằng preview/source hash/revision; snapshot cũ được đánh dấu stale thay vì âm thầm ghi đè.
 - Hermes thực hiện thao tác theo quyền CRM của người dùng và phạm vi kết nối. Xem [hợp đồng của connector](../../infra/hermes-broker/CONNECTOR.md).

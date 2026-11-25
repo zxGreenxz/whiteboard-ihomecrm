@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1984,
-  "soFileDocBangFs": 511,
-  "tongLoiGoi": 1394,
-  "khongPhanLoaiDuoc": 613,
+  "tongSoFileTest": 1989,
+  "soFileDocBangFs": 510,
+  "tongLoiGoi": 1395,
+  "khongPhanLoaiDuoc": 614,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 67,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 222,
+      "soFile": 221,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -146,6 +146,14 @@
       "khongPhanLoaiDuoc": 13
     },
     {
+      "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
+      "soGoi": 15,
+      "loai": {
+        "sql": 12
+      },
+      "khongPhanLoaiDuoc": 3
+    },
+    {
       "file": "scripts/__tests__/generate-repository-inventory.test.mjs",
       "soGoi": 14,
       "loai": {
@@ -204,14 +212,6 @@
         "sql": 11
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
-      "soGoi": 12,
-      "loai": {
-        "sql": 9
-      },
-      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "infra/hermes-broker/domain-summary-sql.test.mjs",
@@ -295,6 +295,14 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "infra/hermes-zalo-native/operator.test.mjs",
+      "soGoi": 9,
+      "loai": {
+        "manifest": 4
+      },
+      "khongPhanLoaiDuoc": 5
+    },
+    {
       "file": "scripts/__tests__/check-vault-access.test.mjs",
       "soGoi": 9,
       "loai": {},
@@ -365,14 +373,6 @@
         "sql": 7
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-zalo-native/operator.test.mjs",
-      "soGoi": 7,
-      "loai": {
-        "manifest": 2
-      },
-      "khongPhanLoaiDuoc": 5
     },
     {
       "file": "infra/hermes-zalo-native/quarantine-release.test.mjs",
@@ -884,14 +884,6 @@
       "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "src/lib/__tests__/cocThuChiMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 4
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/lib/__tests__/contractExitEarlyTermsMigration.test.ts",
       "soGoi": 4,
       "loai": {
@@ -1340,6 +1332,14 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "worker/__tests__/sale-advice-db.test.js",
+      "soGoi": 3,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": ".e2e-fleet/controlled/workflow-safety.test.mjs",
@@ -1938,14 +1938,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/lib/__tests__/depositRoomRule.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/lib/__tests__/forfeitVoucherKqkdMigration.test.ts",
       "soGoi": 2,
       "loai": {},
@@ -2105,14 +2097,6 @@
       "soGoi": 2,
       "loai": {
         "tai-lieu": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "worker/__tests__/sale-advice-db.test.js",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -3320,6 +3304,14 @@
     },
     {
       "file": "src/lib/__tests__/demoOrganizationMetadataMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/depositRoomRule.test.ts",
       "soGoi": 1,
       "loai": {
         "sql": 1

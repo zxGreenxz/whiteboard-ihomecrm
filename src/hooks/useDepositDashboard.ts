@@ -1,3 +1,4 @@
+import { useOrganization } from '@/contexts/OrganizationContext';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,17 +29,30 @@ export interface HeldDepositBuildingAgg {
   firstInvoiceCount: number;
 }
 
+// Older aggregate RPCs scope by building IDs. An empty array explicitly means no matching building.
+async function depositSummaryBuildings(org: string | null, selected?: string[]): Promise<string[]> {
+  if (!org) throw new Error('Chưa chọn công ty để xem cọc.');
+  const rows=await fetchAllRows<{id:string}>((from,to)=>{
+    let query=supabase.from('buildings').select('id').eq('organization_id',org);
+    if (selected?.length) query=query.in('id',selected);
+    return query.order('id').range(from,to);
+  },{label:'deposits.buildings'});
+  return financialReadRows(rows).map(row=>row.id);
+}
+
 export function useHeldDepositSummary(
   buildingIds?: string[],
   threshold: number = DEPOSIT_SHORTFALL_THRESHOLD,
 ) {
+  const {selectedOrganizationId}=useOrganization();
   return useQuery({
+    enabled: !!selectedOrganizationId,
     meta:{errorDisplay:'inline',label:'thống kê cọc'},
-    queryKey: ['deposit-dashboard', 'held-summary', buildingIds ?? [], threshold],
+    queryKey: ['deposit-dashboard', 'held-summary', selectedOrganizationId, buildingIds ?? [], threshold],
     queryFn: async (): Promise<HeldDepositBuildingAgg[]> => {
       // hermes-parity:begin deposits-held
       const { data, error } = await supabase.rpc('get_held_deposit_summary', {
-        p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
+        p_building_ids: await depositSummaryBuildings(selectedOrganizationId,buildingIds),
         p_threshold: threshold,
       });
       // hermes-parity:end deposits-held
@@ -145,13 +159,15 @@ export interface RefundForfeitServerSummary extends RefundForfeitSummary {
  * `linkedTotal + orphanTotal === refundTotal`.
  */
 export function useRefundForfeitSummary(buildingIds?: string[]) {
+  const {selectedOrganizationId}=useOrganization();
   return useQuery({
+    enabled: !!selectedOrganizationId,
     meta:{errorDisplay:'inline',label:'thống kê cọc'},
-    queryKey: ['deposit-dashboard', 'refund-forfeit-summary', buildingIds ?? []],
+    queryKey: ['deposit-dashboard', 'refund-forfeit-summary', selectedOrganizationId, buildingIds ?? []],
     queryFn: async (): Promise<RefundForfeitServerSummary> => {
       // hermes-parity:begin deposit-refunds — Hermes gọi cùng RPC (báo cáo deposit_refunds)
       const { data, error } = await supabase.rpc('get_refund_forfeit_summary', {
-        p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
+        p_building_ids: await depositSummaryBuildings(selectedOrganizationId,buildingIds),
       });
       // hermes-parity:end deposit-refunds
       if (error) throw error;
@@ -306,6 +322,8 @@ export interface RefundForfeitRow {
   status: string;
   /** Σ phiếu hoàn ĐÃ VÀO SỔ của hợp đồng này (đồng). */
   posted_refund: number;
+  posted_deposit_refund?: number;
+  pending_deposit_refund?: number;
   posted_refund_count: number;
   posted_refund_codes: string[];
   /** true ⇔ có ít nhất 1 phiếu hoàn đã vào sổ. Không đọc `refund_date` nữa. */
@@ -335,10 +353,13 @@ function repName(contractCustomers: any[] | undefined | null): string {
  * Trả về từng dòng HĐ; trang tự gộp theo toà nhà.
  */
 export function useHeldDeposits() {
+  const {selectedOrganizationId}=useOrganization();
   return useQuery({
+    enabled: !!selectedOrganizationId,
     meta:{errorDisplay:'inline',label:'thống kê cọc'},
-    queryKey: ['deposit-dashboard', 'held'],
+    queryKey: ['deposit-dashboard', 'held', selectedOrganizationId],
     queryFn: async (): Promise<HeldDepositRow[]> => {
+      if (!selectedOrganizationId) throw new Error('Chưa chọn công ty để xem cọc.');
       // hermes-parity:begin deposit-held-rows — Hermes chép vùng này (public.deposit_held_contracts_v1)
       // PAGED: danh sách HĐ ACTIVE có thể > 1000 → phân trang kẻo bảng bị cắt.
       const data = await fetchAllRows<any>(
@@ -356,7 +377,8 @@ export function useHeldDeposits() {
               customer:customers!contract_customers_customer_id_fkey ( full_name )
             )
           `)
-          .in('status', ['ACTIVE'])
+          .eq('organization_id',selectedOrganizationId)
+          .in('status', ['ACTIVE','EXTENDED'])
           .is('deleted_at', null)
           .order('id', { ascending: true })
           .range(from, to),
@@ -434,11 +456,29 @@ export function summarizeByBuilding(rows: HeldDepositRow[]): BuildingDepositSumm
  * Hai query chạy song song trong CÙNG một queryFn (không phải hai hook) để bảng
  * và ô KPI luôn đọc một ảnh chụp dữ liệu, không bao giờ lệch pha nhau.
  */
+interface UnlinkedRefund {
+  id:string; code:string; buildingId:string; building:string; room:string; person:string;
+  amount:number; posted:boolean;
+}
+interface DepositRefundRead { settlements:RefundForfeitRow[]; unlinked:UnlinkedRefund[] }
+
 export function useDepositRefundsForfeits() {
+  return useDepositRefundRead(result=>result.settlements);
+}
+
+export function useDepositSettlementReport() {
+  return useDepositRefundRead(result=>result);
+}
+
+function useDepositRefundRead<T>(select:(result:DepositRefundRead)=>T) {
+  const {selectedOrganizationId}=useOrganization();
   return useQuery({
+    enabled: !!selectedOrganizationId,
     meta:{errorDisplay:'inline',label:'thống kê cọc'},
-    queryKey: ['deposit-dashboard', 'refunds-forfeits'],
-    queryFn: async (): Promise<RefundForfeitRow[]> => {
+    queryKey: ['deposit-dashboard', 'refunds-forfeits', selectedOrganizationId],
+    select,
+    queryFn: async (): Promise<DepositRefundRead> => {
+      if (!selectedOrganizationId) throw new Error('Chưa chọn công ty để xem cọc.');
       // hermes-parity:begin deposit-refunds — Hermes chép vùng này (public.deposit_refunds_forfeits_v1)
       // PAGED cả hai nhánh: thanh lý và phiếu hoàn đều tích luỹ mãi → phân trang
       // (order + id tiebreaker). CỐ Ý KHÔNG select `refund_date` nữa: nó do cùng
@@ -462,6 +502,7 @@ export function useDepositRefundsForfeits() {
                 )
               )
             `)
+            .eq('organization_id',selectedOrganizationId)
             .order('termination_date', { ascending: false })
             .order('id', { ascending: true })
             .range(from, to),
@@ -470,13 +511,11 @@ export function useDepositRefundsForfeits() {
         fetchAllRows<any>(
           (from, to) => supabase
             .from('income_expenses')
-            .select('id, code, contract_id, total_amount')
+            .select('id, code, contract_id, total_amount, approval_status, posting_status, active_posting_id_v2, building_id, payer_name, room:rooms!income_expenses_room_id_fkey(name), building:buildings!income_expenses_building_id_fkey(name), income_expense_items(accounting_class,amount)')
+            .eq('organization_id',selectedOrganizationId)
             .eq('type', 'EXPENSE')
             .eq('system_source', TERMINATION_REFUND_SOURCE)
-            .eq('approval_status', 'APPROVED')
-            .eq('posting_status', 'POSTED')
-            .not('active_posting_id_v2', 'is', null)
-            .not('contract_id', 'is', null)
+            .in('approval_status', ['APPROVED','UNAPPROVED'])
             .is('deleted_at', null)
             .order('id', { ascending: true })
             .range(from, to),
@@ -490,15 +529,24 @@ export function useDepositRefundsForfeits() {
         throw new Error('Lỗi tải phiếu hoàn cọc đã vào sổ — chưa thể kết luận đã hoàn hay chưa');
       }
 
+      const isPosted=(v:typeof vouchers[number])=>v.approval_status==='APPROVED' && v.posting_status==='POSTED' && !!v.active_posting_id_v2;
       const posted = indexPostedRefunds(
-        vouchers.map((v: any): PostedRefundVoucher => ({
+        vouchers.filter(isPosted).map((v: any): PostedRefundVoucher => ({
           contract_id: v.contract_id,
           code: v.code ?? null,
           amount: nn(v.total_amount),
         })),
       );
 
-      return data.map((t: any): RefundForfeitRow => {
+      const depositPart=(v:typeof vouchers[number])=>({
+        contract_id:v.contract_id,code:v.code,
+        amount:financialReadRows<{accounting_class:string;amount:unknown}>(v.income_expense_items)
+          .filter(item=>item.accounting_class==='DEPOSIT').reduce((sum,item)=>sum+nn(item.amount),0),
+      });
+      const deposits=indexPostedRefunds(vouchers.filter(isPosted).map(depositPart));
+      const pending=indexPostedRefunds(vouchers.filter(v=>!isPosted(v) && v.posting_status!=='REVERSED').map(depositPart));
+
+      const settlements=data.map((t: any): RefundForfeitRow => {
         const kind: RefundForfeitKind =
           t.termination_type === 'FORFEIT' ? 'FORFEIT' : 'REFUND';
         const agg = posted.get(t.contract_id) ?? { total: 0, count: 0, codes: [] };
@@ -519,12 +567,20 @@ export function useDepositRefundsForfeits() {
           settlement_net: settlementNet,
           status: t.status,
           posted_refund: agg.total,
+          posted_deposit_refund: deposits.get(t.contract_id)?.total ?? 0,
+          pending_deposit_refund: pending.get(t.contract_id)?.total ?? 0,
           posted_refund_count: agg.count,
           posted_refund_codes: agg.codes,
           refund_done: agg.count > 0,
           refund_drift: settlementNet > 0 ? settlementNet - agg.total : 0,
         };
       });
+      const linked=new Set(data.map(t=>t.contract_id));
+      const unlinked=vouchers.filter(v=>!linked.has(v.contract_id) && v.posting_status!=='REVERSED')
+        .map(v=>({id:v.id,code:v.code??'—',buildingId:v.building_id,building:v.building?.name??'—',
+          room:v.room?.name??'—',person:v.payer_name??'—',amount:depositPart(v).amount,posted:isPosted(v)}))
+        .filter(v=>v.amount>0);
+      return {settlements,unlinked};
       // hermes-parity:end deposit-refunds
     },
   });

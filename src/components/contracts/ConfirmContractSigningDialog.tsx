@@ -11,20 +11,10 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ContractMeterBoundaryFields } from '@/components/contracts/ContractMeterBoundaryFields';
 import { useContractDraftSigning, useContractSigning, useSignedContractDocument } from '@/hooks/contracts/useContractSigning';
-import { useRoomReservations } from '@/hooks/useRoomReservations';
-import type { RoomReservation } from '@/lib/reservationIdentityRpc';
-import { buildSigningCreationOptions, matchingSigningReservations, signingReservationReady, signingErrorMessage, validateSigningConfirmation, type ContractSigning, type PreparedSigningCreation, type SigningReservationIdentity } from '@/lib/contractSigning';
+import { useContractRoomDeposits } from '@/hooks/useDeposits';
+import { buildSigningCreationOptions, signingErrorMessage, validateSigningConfirmation, type ContractSigning, type PreparedSigningCreation } from '@/lib/contractSigning';
 import { compatibleDraftDocument, type ContractDraft } from '@/lib/contractDrafts';
 import type { MeterBoundaryInput } from '@/lib/contractMeterBoundaries';
-
-// Preserve the validated DTO's required signing fields even under the app's legacy non-strict Zod inference.
-function hasSigningIdentity(row: RoomReservation): row is RoomReservation & SigningReservationIdentity {
-  return typeof row.id === 'string' && typeof row.organization_id === 'string' && typeof row.building_id === 'string'
-    && typeof row.room_id === 'string' && typeof row.customer_id === 'string' && typeof row.status === 'string'
-    && typeof row.claim_status === 'string' && typeof row.revision === 'number' && typeof row.received_amount === 'number'
-    && Array.isArray(row.source_voucher_ids) && Array.isArray(row.receipts)
-    && row.receipts.every(receipt => typeof receipt.received === 'boolean' && (typeof receipt.approval_status === 'string' || receipt.approval_status === null));
-}
 
 export interface ConfirmContractSigningDialogProps {
   open: boolean;
@@ -39,7 +29,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
   const snapshot = useContractDraftSigning(draft.id, open);
   const signingMutation = useContractSigning(draft.organization_id,draft.id);
   const documentMutation = useSignedContractDocument(draft.organization_id);
-  const reservationsQuery = useRoomReservations({ roomId: draft.room_id ?? undefined, status: 'HOLD' }, open && !!draft.room_id);
+  const reservationsQuery = useContractRoomDeposits(open && draft.room_id ? draft.room_id : undefined, draft.payload.form.start_date);
   const [receivedOn, setReceivedOn] = useState(draft.payload.form.start_date);
   const [roomReady, setRoomReady] = useState(false);
   const [termsConfirmed, setTermsConfirmed] = useState(false);
@@ -49,7 +39,6 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
   const [debtReason, setDebtReason] = useState('');
   const [topupDueOn, setTopupDueOn] = useState('');
   const [localSigning, setLocalSigning] = useState<ContractSigning | null>(null);
-  const [selectedReservation, setSelectedReservation] = useState<(RoomReservation & SigningReservationIdentity) | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [unconfirmed,setUnconfirmed]=useState(false);
   const dialogRoot=useRef<HTMLDivElement>(null);
@@ -60,7 +49,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
     if (!open) return;
     setReceivedOn(draft.payload.form.start_date); setRoomReady(false); setTermsConfirmed(false); setMeterBoundary(null);
     setCreateFirstInvoice(true); setDepositMode(undefined); setDebtReason(''); setTopupDueOn('');
-    setLocalSigning(null); setSelectedReservation(null); setErrors([]);setUnconfirmed(false);intent.current = null; continuedRequest.current = null;reconcilingRequest.current=null;
+    setLocalSigning(null); setErrors([]);setUnconfirmed(false);intent.current = null; continuedRequest.current = null;reconcilingRequest.current=null;
   }, [open, draft.id, draft.revision, draft.payload.form.start_date]);
   const document = compatibleDraftDocument(draft);
   const signed = localSigning ?? snapshot.data?.signing;
@@ -80,17 +69,18 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
   }, [open, signed, localSigning, onSigned,signingMutation.pendingRequestId]);
   const pending = signingMutation.isPending || documentMutation.isPending;
   const unresolved=unconfirmed||!!signingMutation.pendingRequestId;
-  const reservations = matchingSigningReservations(draft, (reservationsQuery.data?.reservations ?? []).filter(hasSigningIdentity));
-  // Giữ chỗ chỉ có tên gợi nhớ (chưa gắn khách thật) không chọn được làm nguồn ký; nhắc gắn khách ở Quản lý cọc.
-  const hintOnlyHold = (reservationsQuery.data?.reservations ?? []).find(row => row.status === 'HOLD' && row.customer_id === null);
-  const currentReservation = selectedReservation && reservations.find(row => row.id === selectedReservation.id);
-  const reservationValid = !selectedReservation || (!reservationsQuery.isError && !reservationsQuery.isPending && !reservationsQuery.isFetching
-    && !!currentReservation && signingReservationReady(currentReservation) && currentReservation.revision === selectedReservation.revision
-    && currentReservation.received_amount === selectedReservation.received_amount
-    && JSON.stringify(currentReservation.source_voucher_ids) === JSON.stringify(selectedReservation.source_voucher_ids));
-  const unpreparedReservationSources = !!preparedCreation && !!selectedReservation
-    && selectedReservation.source_voucher_ids.some(id => !(preparedCreation.options.existing_deposit_voucher_ids ?? []).includes(id));
-  const depositPaid = preparedCreation?.depositPaid ?? selectedReservation?.received_amount ?? 0;
+  const roomSource = reservationsQuery.data;
+  const vouchers = roomSource?.vouchers ?? [];
+  const received = vouchers.filter(voucher => voucher.received && !voucher.outsideWindow);
+  const sourceIds = received.map(voucher => voucher.id);
+  const roomTotal = received.reduce((sum,voucher) => sum + voucher.total_amount, 0);
+  const blocked = vouchers.find(voucher => !voucher.received || voucher.outsideWindow);
+  const preparedIds = preparedCreation?.options.existing_deposit_voucher_ids ?? [];
+  const changed = !!preparedCreation && (preparedIds.length !== sourceIds.length || preparedIds.some(id => !sourceIds.includes(id))
+    || preparedCreation.roomHold?.id !== roomSource?.hold?.id || preparedCreation.roomHold?.revision !== roomSource?.hold?.revision
+    || (preparedCreation.roomDepositTotal !== undefined && preparedCreation.roomDepositTotal !== roomTotal));
+  const reservationValid = !!roomSource && !reservationsQuery.isError && !reservationsQuery.isFetching && !blocked && !changed;
+  const depositPaid = preparedCreation?.depositPaid ?? roomTotal;
   const confirmationErrors = validateSigningConfirmation(draft, document, { receivedOn, roomReady, termsConfirmed,
     metersConfirmed: meterBoundary?.state === 'VERIFIED' }, snapshot.data?.server_today);
 
@@ -98,13 +88,12 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
     if(unresolved)return;
     if(!validateInputDrafts(dialogRoot.current)){setErrors(['Kiểm tra ngày/số đang được đánh dấu đỏ trước khi ký.']);return;}
     setErrors(confirmationErrors);
-    if (confirmationErrors.length || !document || meterBoundary?.state !== 'VERIFIED' || !canSign || !reservationValid || unpreparedReservationSources) return;
+    if (confirmationErrors.length || !document || meterBoundary?.state !== 'VERIFIED' || !canSign || !reservationValid) return;
     try {
-      const creationOptions = preparedCreation?.options ?? buildSigningCreationOptions(draft.payload, { createFirstInvoice, depositMode, debtReason, topupDueOn, depositPaid });
+      const creationOptions = preparedCreation?.options ?? {...buildSigningCreationOptions(draft.payload, { createFirstInvoice, depositMode, debtReason, topupDueOn, depositPaid }), expected_room_deposit_amount:roomTotal, ...(sourceIds.length ? {existing_deposit_voucher_ids:sourceIds} : {})};
       const value = { source: { draftId: draft.id, revision: draft.revision, documentId: document.id, documentSha256: document.document_sha256 },
         receivedOn, roomReady, termsConfirmed, boundary: meterBoundary, creationOptions,
-        ...(selectedReservation ? { reservationSource: { reservationId: selectedReservation.id, revision: selectedReservation.revision,
-          sourceVoucherIds: [...selectedReservation.source_voucher_ids] } } : {}) };
+        ...(roomSource?.hold ? { reservationSource: { reservationId: roomSource.hold.id, revision: roomSource.hold.revision, sourceVoucherIds: sourceIds } } : {}) };
       const key = JSON.stringify(value);
       if (intent.current?.key !== key) intent.current = { key, requestId: crypto.randomUUID() };
       const result = await signingMutation.mutateAsync({ ...value, requestId: intent.current.requestId });
@@ -120,9 +109,6 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
   const handleReconcile=async()=>{
     try{const result=await signingMutation.mutateAsync(undefined);intent.current={key:'recovered',requestId:result.request_id};setLocalSigning(result);setUnconfirmed(false);setErrors([]);}
     catch(error){setErrors([signingErrorMessage(error)]);void snapshot.refetch();}
-  };
-  const selectReservation = (reservation: (RoomReservation & SigningReservationIdentity) | null) => {
-    setSelectedReservation(reservation); setDepositMode(undefined); setDebtReason(''); setTopupDueOn(''); setErrors([]);
   };
   const handleDownload = async () => {
     if (!signed || !canPrint) return;
@@ -147,21 +133,19 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
           <p>Tiền thuê: {draft.payload.form.rent_price.toLocaleString('vi-VN')} đ · Cọc thoả thuận: {draft.payload.form.total_deposit.toLocaleString('vi-VN')} đ</p>
         </div>
         {!document && <p role="alert" className="text-sm text-destructive">Lưu và xuất đúng phiên bản nháp trước khi ký.</p>}
-        {hintOnlyHold && <Alert><AlertDescription>Phòng đang giữ chỗ cho “{hintOnlyHold.customer_hint ?? hintOnlyHold.customer_name}” (tên gợi nhớ). Gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.</AlertDescription></Alert>}
         <fieldset disabled={pending || !canSign} className="space-y-4">
           <div className="space-y-1"><Label htmlFor="signing-received-date">Ngày nhận phòng thực tế</Label><DateInput id="signing-received-date" name="receivedOn" value={receivedOn} onChange={setReceivedOn}/><p className="text-xs text-muted-foreground">Nếu ngày nhận khác ngày bắt đầu trên tài liệu, sửa và xuất lại nháp trước khi xác nhận.</p></div>
           <label className="flex gap-2 text-sm"><input type="checkbox" checked={termsConfirmed} onChange={event => setTermsConfirmed(event.target.checked)}/><span>Khách đã ký đúng tài liệu nháp phiên bản {draft.revision} đã xuất.</span></label>
           <label className="flex gap-2 text-sm"><input type="checkbox" checked={roomReady} onChange={event => setRoomReady(event.target.checked)}/><span>Phòng đã sẵn sàng và được bàn giao cho khách mới.</span></label>
           {draft.room_id && <ContractMeterBoundaryFields key={`${draft.id}:${draft.revision}:${draft.room_id}`} roomId={draft.room_id} onChange={setMeterBoundary} disabled={pending}/>}
-          <div className="rounded-md border p-3 space-y-3 text-sm">
-            <p className="font-medium">Nguồn giữ chỗ/cọc của khách</p>
-            <label className="flex gap-2"><input type="radio" name="signing-reservation" checked={!selectedReservation} onChange={() => selectReservation(null)}/>Không chuyển nguồn giữ chỗ; kiểm tra phòng còn nhận được khi ký</label>
-            {reservationsQuery.isPending ? <LoadingState label="nguồn giữ chỗ" rows={2} /> : reservationsQuery.isError ? <p role="alert" className="text-destructive">Không tải được nguồn giữ chỗ theo quyền hiện tại. <Button type="button" variant="link" onClick={() => void reservationsQuery.refetch()}>Tải lại nguồn giữ chỗ</Button></p>
-              : reservations.length ? reservations.map(reservation => <label key={reservation.id} className="flex gap-2 items-start"><input type="radio" name="signing-reservation" disabled={!signingReservationReady(reservation)} checked={selectedReservation?.id === reservation.id && selectedReservation.revision === reservation.revision} onChange={() => selectReservation(reservation)}/><span>{reservation.customer_name || draft.payload.customers.find(customer => customer.id === reservation.customer_id)?.full_name} · Đã nhận {reservation.received_amount.toLocaleString('vi-VN')} đ · phiên bản {reservation.revision}{!signingReservationReady(reservation) && ' · Chờ nhận/duyệt tiền'}</span></label>)
-                : <p className="text-muted-foreground">Không có giữ chỗ đang hiệu lực khớp phòng và khách của bản nháp.</p>}
-            {selectedReservation && !reservationValid && <p role="alert" className="text-destructive">Nguồn đã chọn chưa xác minh được hoặc đã đổi. Tải lại và chọn đúng phiên bản trước khi ký.</p>}
-            {unpreparedReservationSources && <p role="alert" className="text-destructive">Nguồn giữ chỗ có phiếu cọc chưa được form hợp đồng kiểm tra. Quay lại form để kiểm tra cọc và hoá đơn đầu trước khi ký.</p>}
-          </div>
+          {reservationsQuery.isPending ? <LoadingState label="nguồn cọc của phòng" rows={2}/> :
+            reservationsQuery.isError ? <p role="alert">Không tải được nguồn cọc của phòng. <Button type="button" variant="link" onClick={()=>void reservationsQuery.refetch()}>Tải lại</Button></p> :
+            <div className="space-y-1 text-sm">
+              {roomSource?.hold?.hint && <p>Tên gợi nhớ khi nhận cọc: {roomSource.hold.hint}</p>}
+              {received.map(voucher => <p key={voucher.id}>{voucher.code ?? voucher.name} · Đã nhận {voucher.total_amount.toLocaleString('vi-VN')} đ</p>)}
+              {blocked && <p role="alert">Phiếu {blocked.code ?? blocked.name} {blocked.outsideWindow ? 'nằm ngoài kỳ nhận cọc' : 'chưa đủ điều kiện ghi nhận tiền'}.</p>}
+              {changed && <p role="alert">Nguồn cọc đã thay đổi. Quay lại form hợp đồng để kiểm tra số cọc và hóa đơn đầu.</p>}
+            </div>}
           {preparedCreation ? <p className="rounded-md border p-3 text-sm">Dùng khoản cọc đã nhận {depositPaid.toLocaleString('vi-VN')} đ
             {preparedCreation.options.transfer_support_amount ? ` (gồm ${preparedCreation.options.transfer_support_amount.toLocaleString('vi-VN')} đ khách cũ hỗ trợ, chuyển từ cọc hợp đồng cũ)` : ''}
             {' '}cùng lựa chọn nợ cọc và hoá đơn đầu đã kiểm tra trong form hợp đồng chính thức.</p> : <>
@@ -175,7 +159,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
           <p className="text-xs text-muted-foreground">Nguồn cọc đã chọn được chuyển đúng sang hợp đồng; không ghi phiếu thu cọc lần nữa. Phần chưa thu theo cách bổ sung đã chọn.</p>
           </>}
         </fieldset>
-        <Button type="button" disabled={pending || unresolved || !canSign || confirmationErrors.length > 0 || !meterBoundary || !reservationValid || unpreparedReservationSources} onClick={() => void handleSign()}>{signingMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}Xác nhận đã ký và nhận phòng</Button>
+        <Button type="button" disabled={pending || unresolved || !canSign || confirmationErrors.length > 0 || !meterBoundary || !reservationValid} onClick={() => void handleSign()}>{signingMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}Xác nhận đã ký và nhận phòng</Button>
       </div>}
       <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>Đóng</Button>
     </DialogContent>

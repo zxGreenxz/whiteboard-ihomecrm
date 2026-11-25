@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:null,isError:false,isLoading:false,refetch:vi.fn()})}));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'o1' }) }));
 //
 // Form Thu chi — chế độ "Tạm Ứng" (tạm ứng lợi nhuận cổ đông, 18/11/2026). Chốt các điều người dùng thấy:

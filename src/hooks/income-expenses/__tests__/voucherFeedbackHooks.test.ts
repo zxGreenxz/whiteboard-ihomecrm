@@ -63,7 +63,8 @@ describe('C01/C02/C09 — một thông báo đúng kết quả', () => {
   });
   it('duyệt quorum còn chờ hiển thị info, không success', async () => {
     const mutation = useDecideApproval() as unknown as Mutation;
-    h.rpc.mockResolvedValueOnce({data:{request_id:'r1',state:'PENDING_APPROVAL'},error:null});
+    // Đợt 5: quyết định đọc ảnh trạng thái yêu cầu trước khi ghi dấu; phép đọc giả không thấy yêu cầu (không ảnh trước).
+    h.rpc.mockImplementation(async(name:string)=>name==='get_approval_request_detail_compat_v2'?{data:null,error:null}:{data:{request_id:'r1',state:'PENDING_APPROVAL'},error:null});
     const args = {requestId:'r1',decision:'APPROVE',organizationId:'o1'};
     mutation.onSuccess(await mutation.mutationFn(args),args);
     expect(h.success).not.toHaveBeenCalled(); expect(h.info).toHaveBeenCalledWith(expect.stringContaining('vẫn đang chờ'));
@@ -139,7 +140,10 @@ describe('C16–C21 — một phần, không thay đổi và kết quả kiểm'
     expect(h.info).toHaveBeenCalledTimes(3); expect(h.success).not.toHaveBeenCalled();
   });
   it('đánh dấu/bỏ kiểm dựa trạng thái đọc lại; đọc lỗi không cho bấm toggle lần nữa', async () => {
-    const reader:VoucherQuery={select:()=>reader,eq:()=>reader,maybeSingle:vi.fn().mockResolvedValueOnce({data:{id:'v1',code:'PT01',verified_at:null},error:null}).mockResolvedValueOnce({data:null,error:{code:'42501'}})};
+    // Thứ tự đọc (đợt 5): lần 1 đọc trước khi ghi dấu + đọc xác nhận; lần 2 đọc trước khi ghi dấu + đọc xác nhận HỎNG;
+    // lần 3 đọc trước khi ghi dấu + đọc để đối chiếu (trạng thái như lúc bấm, dấu chưa đủ 2 phút ⇒ chờ, không gửi).
+    const ok={data:{id:'v1',code:'PT01',verified_at:null},error:null};
+    const reader:VoucherQuery={select:()=>reader,eq:()=>reader,maybeSingle:vi.fn().mockResolvedValueOnce(ok).mockResolvedValueOnce(ok).mockResolvedValueOnce(ok).mockResolvedValueOnce({data:null,error:{code:'42501'}}).mockResolvedValue(ok)};
     h.from.mockReturnValue(reader); h.rpc.mockResolvedValue({data:null,error:null});
     const mutation=renderHook(()=>useVerifyIncomeExpense()).result.current as unknown as Mutation;
     mutation.onSuccess(await mutation.mutationFn({id:'v1',note:null}));

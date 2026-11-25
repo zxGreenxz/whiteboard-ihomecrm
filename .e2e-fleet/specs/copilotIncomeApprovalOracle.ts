@@ -74,7 +74,7 @@ export function incomeApprovalToolText(f:IncomeApprovalFixture):string {
   }
   const rows=f.payload.hop_cho!;
   const lines=rows.map(r=>`- [${TYPE[r.loai]}] ${identifier(r)} — ${r.ten_phieu ?? '?'} — ${money(r.so_tien)}${r.gui_luc ? ` — gửi ${r.gui_luc.slice(0,10)}`:''} — lập bởi ${r.nguoi_lap}`);
-  return `${rows.length} phiếu đang chờ bạn duyệt (tối đa 20 dòng):\n${lines.join('\n')}\n[link: /approvals]`;
+  return `${rows.length} phiếu đang chờ bạn duyệt (tối đa 20 dòng):\n${lines.join('\n')}\n[link: /income-expense]`;
 }
 /** Independent reconstruction of the supplementary product result, including empty and truncation behavior. */
 export function dailyCashbookToolText(f:IncomeApprovalFixture):string {
@@ -321,5 +321,5 @@ export function assertIncomeApprovalResult(e:Pick<ReadonlyEvidence,'prompt'|'ans
   }
   // Route links are navigation only. A fabricated detail target can hide behind
   // a faithful label after MiniMarkdown strips the destination from innerText.
-  for(const m of final.text.matchAll(/\]\(([^)\s]+)\)|\[link:\s*([^\]]+)\]/g)) check((m[1]??m[2])===(pending?'/approvals':'/income-expense') || dailyCalls.length===1 && (m[1]??m[2])==='/reports/finance/daily-cashbook','financial_identity');
+  for(const m of final.text.matchAll(/\]\(([^)\s]+)\)|\[link:\s*([^\]]+)\]/g)) check((m[1]??m[2])==='/income-expense' || dailyCalls.length===1 && (m[1]??m[2])==='/reports/finance/daily-cashbook','financial_identity');
 }

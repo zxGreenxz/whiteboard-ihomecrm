@@ -114,7 +114,7 @@ Số quyết toán = (Cọc hoàn trả + Tiền thừa áp vào + Hoàn lại k
 | [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/) | Form quyết toán rời phòng, hoàn cọc dư, thu thêm. |
 | [Thanh lý — Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/) | Form quyết toán bỏ cọc, huỷ nợ, hoá đơn thu thêm riêng. |
 | [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) | Tab **Hoàn / Bỏ cọc**, khối **Chờ hoàn cọc**, thẻ **Đối soát hoàn cọc**. |
-| [Thu chi](/03-quan-ly-van-hanh/thu-chi/) · [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) | Chọn sổ và duyệt/chi phiếu **Trả khách thanh lý**; tra phiếu **Doanh thu bỏ cọc**. |
+| [Thu chi](/03-quan-ly-van-hanh/thu-chi/) | Chọn sổ và duyệt/chi phiếu **Trả khách thanh lý**; tra phiếu **Doanh thu bỏ cọc**. |
 | [Tiền thừa](/03-quan-ly-van-hanh/tien-thua/) | Báo cáo legacy; credit chuẩn hiện ở ô credit của form quyết toán. |
 
 ## Tình huống & lỗi thường gặp

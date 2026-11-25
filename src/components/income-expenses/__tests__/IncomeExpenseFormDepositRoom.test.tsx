@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:null,isError:false,isLoading:false,refetch:vi.fn()})}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'o1'})}));
 //
 // Phiếu có hạng mục Tiền cọc phải chọn phòng (07/10/2026). Ca thật PT2609155: cọc G03 chỉ chọn toà

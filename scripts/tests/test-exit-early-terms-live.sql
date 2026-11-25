@@ -141,7 +141,7 @@ BEGIN
       IF response->>'status_public' IS DISTINCT FROM 'rented' OR response->'exit_hold'->>'exit_case_id' IS DISTINCT FROM exit_case::text
         OR (response->'exit_hold'->>'active')::boolean IS DISTINCT FROM true THEN
         RAISE EXCEPTION '%: Sale Phòng không thấy phòng đang giữ %', scenario.label, response; END IF;
-      SELECT count(*) INTO matches FROM jsonb_array_elements(public.get_my_available_rooms()->'rooms') x
+      SELECT count(*) INTO matches FROM jsonb_array_elements(public.get_my_available_rooms(org)->'rooms') x
         WHERE x->>'id' = room::text AND x->'exit_hold'->>'exit_case_id' = exit_case::text;
       IF matches <> 1 THEN RAISE EXCEPTION '%: get_my_available_rooms không trả phòng đang giữ', scenario.label; END IF;
       BEGIN

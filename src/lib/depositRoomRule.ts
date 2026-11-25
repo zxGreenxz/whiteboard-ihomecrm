@@ -2,7 +2,7 @@ import { get, set, type FieldErrors, type FieldValues, type Resolver } from 'rea
 
 /**
  * Phiếu có hạng mục cọc (`is_deposit`) phải gắn phòng. Cọc chỉ vào được hợp đồng theo phòng —
- * form tạo HĐ (`useOrphanDepositVouchers`) lẫn trigger `trg_contract_link_orphan_deposits` đều lọc
+ * form tạo HĐ (`useContractRoomDeposits`) lẫn trigger `trg_contract_link_orphan_deposits` đều lọc
  * `room_id` — nên phiếu cọc chỉ có toà sẽ treo mãi, không HĐ nào nhận. Ca thật: PT2609155
  * (29/09/2026) nhập lại thành PT2610026 ⇒ sổ thừa 1.000.000đ. Máy chủ chặn cùng luật bằng trigger
  * `zz_ie_deposit_requires_room`, và trả đúng câu này (xem `voucherErrorRules.ts`).

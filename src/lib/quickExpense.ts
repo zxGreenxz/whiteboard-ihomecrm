@@ -23,9 +23,9 @@ export function quickExpenseReason(v: IncomeExpenseWithRelations, ctx: QuickExpe
   if (v.approval_status !== 'UNAPPROVED' || v.posting_status !== 'UNPOSTED') return 'Chỉ chọn phiếu chờ duyệt và chưa chi.';
   if (v.review_state !== 'PENDING' && v.review_state !== 'CHANGES_REQUESTED') return 'Trạng thái xử lý của phiếu chưa cho phép duyệt.';
   if (v.posting_mode !== 'CASHBOOK' || isNonCashVoucher(v) || v.system_source?.startsWith('reservation.')) return 'Phiếu này cần xử lý trong nghiệp vụ gốc.';
-  // Phiếu chi theo sổ tổng: người duyệt phải thấy số dư sổ tổng (màn Chờ duyệt), quyền duyệt là quyền
-  // chi lợi nhuận chứ không phải quyền duyệt thu chi — không gom vào duyệt và chi nhanh.
-  if (isProfitLedgerVoucher(v.system_source)) return 'Phiếu chi lợi nhuận / lương điều hành duyệt ở màn Chờ duyệt.';
+  // Phiếu chi theo sổ tổng: người duyệt phải thấy số dư sổ tổng (hộp Duyệt của từng phiếu), còn cần quyền chi lợi
+  // nhuận ngoài quyền duyệt thu chi — không gom vào duyệt và chi nhanh.
+  if (isProfitLedgerVoucher(v.system_source)) return 'Phiếu chi lợi nhuận / lương điều hành duyệt từng phiếu bằng nút Duyệt (xem số dư sổ tổng trước khi duyệt).';
   if (!canWriteWorkflow(ctx.routes) || !canWritePosting(ctx.routes)) return 'Công ty chưa cho phép duyệt và chi nhanh.';
   // canUse(null) asks whether permission exists anywhere, which is not enough
   // for an organization-wide voucher without a building.
