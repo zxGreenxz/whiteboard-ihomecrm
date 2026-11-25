@@ -86,7 +86,9 @@ function ReopeningContent({ onOpenChange, cashbookId, cashbookName }: Props & { 
               if (!current?.can_reopen || !current.lock_date) throw new Error('Chưa xác nhận được trạng thái khóa sổ.');
               if (current.blocked_reason === 'PENDING_CLOSURE') throw new Error('[REOPEN_PENDING_CLOSURE] Sổ có đề nghị chốt đang chờ.');
               await reopen.mutateAsync({cashbookId, cashbookName, reason: reason.trim(), expectedLockDate: current.lock_date, expectedRevision: current.revision});
-            }, () => onOpenChange(false), {reason: reason.trim().length < 10 ? 'Nhập lý do mở khóa ít nhất 10 ký tự.' : reason.trim().length > 1000 ? 'Lý do mở khóa không được dài quá 1000 ký tự.' : undefined})}>
+            // Đợt 6: mở khóa chưa rõ kết quả tự đối chiếu ở lần bấm sau (đọc lịch sử theo mã, chưa có thì gửi lại cùng mã),
+            // nên không khoá nút.
+            }, () => onOpenChange(false), {reason: reason.trim().length < 10 ? 'Nhập lý do mở khóa ít nhất 10 ký tự.' : reason.trim().length > 1000 ? 'Lý do mở khóa không được dài quá 1000 ký tự.' : undefined}, {retryable: true})}>
               {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Đang mở khóa…</> : 'Xác nhận mở khóa'}
             </Button>
           )}

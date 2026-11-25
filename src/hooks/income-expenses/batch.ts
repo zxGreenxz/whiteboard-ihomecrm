@@ -613,7 +613,9 @@ export const useUpdateBatchAccount = () => {
             expectedApprovalVersion: Number(r.approval_version),
             patch: { account_id: accountId },
             reason,
-            idempotencyKey:`${progress.requestKey}:${r.id}`,
+            // Mã gồm cả sổ đích: revise_pending_income_expense_v1 trả lại kết quả cũ theo mã mà KHÔNG so nội dung, nên lần
+            // chạy lại sang sổ khác phải là mã khác (không thì nhận "đã đổi" của lần trước trong khi phiếu vẫn ở sổ cũ).
+            idempotencyKey:`${progress.requestKey}:${r.id}:${accountId}`,
           });
           if(result.id!==r.id)throw new TypeError('Chưa xác nhận được đúng phiếu vừa đổi sổ.');
           if (result.changed) { count++; completedIds.push(r.id); progress.completed.push({id:r.id,label:`Đã đổi sổ phiếu ${r.code??r.id}`}); }
@@ -624,13 +626,18 @@ export const useUpdateBatchAccount = () => {
       }
 
       return { count };
-      },undefined,selectedOrganizationId??undefined);
+      // Cách A (đợt 6): chạy lại ngay. revise_pending_income_expense_v1 (production 25/11/2026) khoá công ty rồi khoá phiếu
+      // FOR UPDATE trước khi tra mã và so phiên bản; vòng trên đọc lại phiếu và bỏ qua phiếu đã ở đúng sổ, nên lần chạy lại
+      // chỉ đổi phần còn thiếu, không đổi một phiếu hai lần.
+      },async()=>({outcome:'not-written',serverDedupesRequestKey:true}),selectedOrganizationId??undefined);
       }catch(error){
         if(error instanceof FinancialWorkflowError && error.completed.length)throw new VoucherPartialError(workflowErrorMessage(error,'đổi sổ quỹ cho đợt phiếu'),error.completed.map(step=>step.id),batchId,error);
         throw error;
       }
     },
-    onSuccess: ({ count }) => {
+    onSuccess: ({ count }, input) => {
+      // Lần chạy lại đã đổi xong phần còn thiếu: câu báo của lần chưa rõ kết quả không còn đúng.
+      batchAccountIssues.delete(input.batchId);
       for (const key of VOUCHER_QUERY_KEYS) {
         queryClient.invalidateQueries({ queryKey: key });
       }

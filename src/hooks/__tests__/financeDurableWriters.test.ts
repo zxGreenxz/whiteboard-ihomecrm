@@ -137,10 +137,16 @@ it('hủy đợt dòng một thành công dòng hai timeout giữ ID và khóa c
  const result=await mount(useCancelIncomeExpenseBatch).mutation.mutationFn({batchId:'b1',reason:'Huỷ đợt phiếu lập nhầm'});expect(result).toMatchObject({count:1,completedIds:['v1'],failures:[{id:'v2'}]});expect(financialPending.read(scope('voucher-batch-cancel','b1'))?.completedIds).toEqual(['v1']);
  await expect(mount(useCancelIncomeExpenseBatch).mutation.mutationFn({batchId:'b1',reason:'Huỷ đợt phiếu lập nhầm'})).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(2);
 });
-it('đổi sổ đợt giữ ID đổi xong và cùng requestKey qua timeout/remount',async()=>{
+it('đổi sổ đợt giữ ID đổi xong và cùng requestKey qua timeout/remount, rồi chạy lại cùng requestKey',async()=>{
  h.tables={income_expense_batch_items:[{income_expense_id:'v1'},{income_expense_id:'v2'}],income_expenses:[{id:'v1',code:'PC01',approval_status:'UNAPPROVED',approval_version:1,account_id:'old'},{id:'v2',code:'PC02',approval_status:'UNAPPROVED',approval_version:1,account_id:'old'}]};
  h.rpc.mockImplementationOnce((_name:string,args:{p_idempotency_key:string;input:{idempotencyKey:string}})=>{expect(args.p_idempotency_key).toContain(financialPending.read(scope('voucher-batch-account','b1'))?.requestKey);return Promise.resolve({data:{id:'v1',changed:true,approval_version:2,changed_fields:['account_id']},error:null});}).mockRejectedValueOnce(new TypeError('Failed to fetch'));
- await expect(mount(useUpdateBatchAccount).mutation.mutationFn({batchId:'b1',accountId:'new',reason:'Đổi sổ ghi phiếu'})).rejects.toThrow();expect(financialPending.read(scope('voucher-batch-account','b1'))?.completedIds).toEqual(['v1']);await expect(mount(useUpdateBatchAccount).mutation.mutationFn({batchId:'b1',accountId:'different',reason:'Đổi sổ ghi phiếu'})).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(2);
+ await expect(mount(useUpdateBatchAccount).mutation.mutationFn({batchId:'b1',accountId:'new',reason:'Đổi sổ ghi phiếu'})).rejects.toThrow();expect(financialPending.read(scope('voucher-batch-account','b1'))?.completedIds).toEqual(['v1']);
+ // Đợt 6 (cách A): lần bấm sau chạy lại ngay với CÙNG mã yêu cầu của dấu (mã từng phiếu gồm cả sổ đích), không bị khoá.
+ const requestKey=financialPending.read(scope('voucher-batch-account','b1'))?.requestKey;
+ h.rpc.mockImplementation((_name:string,args:{p_voucher:string})=>Promise.resolve({data:{id:args.p_voucher,changed:true,approval_version:2,changed_fields:['account_id']},error:null}));
+ await expect(mount(useUpdateBatchAccount).mutation.mutationFn({batchId:'b1',accountId:'different',reason:'Đổi sổ ghi phiếu'})).resolves.toMatchObject({count:2});
+ expect(h.rpc.mock.calls.slice(2).map(call=>call[1].p_idempotency_key)).toEqual([`${requestKey}:v1:different`,`${requestKey}:v2:different`]);
+ expect(financialPending.read(scope('voucher-batch-account','b1'))).toBeNull();
 });
 
 // Đợt 5: mỗi thao tác phiếu một namespace riêng (trước: chung `voucher-lifecycle`). Dấu vẫn theo phạm vi người dùng

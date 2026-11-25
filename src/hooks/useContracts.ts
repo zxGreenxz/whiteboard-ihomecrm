@@ -1,6 +1,7 @@
 import {reconcileResidenceMembers} from '@/lib/customerResidenceHistory';
 import {matchesContractMoneyReceipt} from '@/lib/contractMoneyReceipt';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialAlreadyRecordedError} from '@/lib/financialWorkflow';
 import {sameContractFields,type ContractRelationWriteProgress} from '@/lib/contractEditWorkflow';
 import {sameContractServices} from '@/lib/contractRelationReconcile';
 import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
@@ -507,6 +508,24 @@ export const useContract = (id?: string) => {
 // Requirements: 2.11, 2.13, 3.3
 // =============================================
 
+/**
+ * Lần gửi lại tạo hợp đồng bị máy chủ báo trùng (23505): «idempotency_key đã dùng với nội dung khác» nghĩa là mã của lần
+ * trước đã được dùng, tức hợp đồng đã tạo; «Phòng đã có hợp đồng đang hiệu lực» có thể là hợp đồng của lần trước. Đọc
+ * hợp đồng hiệu lực của phòng để báo mã. Đọc hỏng vẫn báo đã tạo (không tạo lần hai), chỉ thiếu mã.
+ */
+async function contractAlreadyCreated(roomId:string,error:unknown):Promise<FinancialAlreadyRecordedError>{
+  const keyReused=/idempotency_key/i.test(String((error as {message?:unknown}|null)?.message??''));
+  let found:{id:string;contract_number:string|null}|null=null;
+  try{
+    const {data}=await supabase.from('contracts').select('id,contract_number').eq('room_id',roomId).eq('status','ACTIVE').is('deleted_at',null).limit(1).maybeSingle();
+    if(data&&typeof data.id==='string')found={id:data.id,contract_number:data.contract_number??null};
+  }catch{/* Báo không kèm mã. */}
+  const label=found?` ${found.contract_number||found.id}`:'';
+  return new FinancialAlreadyRecordedError(keyReused
+    ?`Hợp đồng${label} của phòng đã được tạo ở lần gửi trước (nội dung lúc đó khác nội dung đang lưu). Mở hợp đồng để kiểm tra; không tạo lần hai.`
+    :`Phòng đã có hợp đồng${label} đang hiệu lực (có thể là hợp đồng của lần gửi trước). Mở hợp đồng để kiểm tra; không tạo lần hai.`,found?[found.id]:[]);
+}
+
 export const useCreateContract = () => {
   const queryClient = useQueryClient();
   const workflow=persistentFinancialWorkflow('contract-create',{scope:'actor'});
@@ -515,17 +534,41 @@ export const useCreateContract = () => {
       // Local validation runs before the durable marker/writer.
       buildCreateContractRpcArgs(request);
       const roomId=request.payload.contract.room_id;
+      // Cách B (đợt 6): create_contract_v2 (production 25/11/2026) khoá phòng FOR UPDATE và khoá công ty TRƯỚC khi tra mã;
+      // cùng mã cùng nội dung ⇒ trả hợp đồng cũ; khác nội dung ⇒ 23505 «idempotency_key đã dùng với nội dung khác».
+      let resend=false;
       return workflow.run(roomId,'tạo hợp đồng',async progress=>{
-        const response=await createContractV2(async(fn,args)=>{
+        let response;
+        try{response=await createContractV2(async(fn,args)=>{
           const result=await supabase.rpc(fn,args);
           const raw=result.data as unknown as {contract?:{id?:unknown;contract_number?:unknown}}|null;
           if(!result.error&&typeof raw?.contract?.id==='string'&&raw.contract.id)progress.completed.push({id:raw.contract.id,label:`Đã nhận hợp đồng ${typeof raw.contract.contract_number==='string'?raw.contract.contract_number:raw.contract.id}`});
           return result;
-        },{...request,idempotencyKey:progress.requestKey});
+        },{...request,idempotencyKey:progress.requestKey});}
+        catch(error){
+          // Gửi lại mà máy chủ báo trùng (mã đã dùng với nội dung khác, hoặc phòng đã có hợp đồng hiệu lực): lần trước đã
+          // tạo. Đọc hợp đồng hiệu lực của phòng để báo mã, không tạo lần hai. Đổi ngày bắt đầu là phạm vi khoá khác của máy
+          // chủ: khi đó phòng không còn trống (55000) báo trước; có hợp đồng hiệu lực thì cũng là có thể của lần trước.
+          const code=String((error as {code?:unknown}|null)?.code??'');
+          if(resend&&code==='23505')throw await contractAlreadyCreated(roomId,error);
+          if(resend&&code==='55000'&&/Trạng thái phòng không cho phép tạo hợp đồng/.test(String((error as {message?:unknown}).message??''))){
+            const created=await contractAlreadyCreated(roomId,error);
+            if(created.recordIds.length)throw created;
+          }
+          throw error;
+        }
         const receipt=response.contract;
+        // Hàng rào biên nhận giữ nguyên: lệch phòng / trạng thái / tiền ⇒ chưa xác nhận, dấu giữ mã hợp đồng. Lần bấm sau
+        // không gửi gì: hàm đối chiếu thấy mã hợp đồng trong dấu, báo đã tạo kèm mã rồi gỡ dấu (không khoá mãi).
         if(!receipt||typeof receipt.id!=='string'||!receipt.id||receipt.room_id!==roomId||receipt.status!=='ACTIVE')throw new TypeError('Chưa xác nhận được đúng hợp đồng và phòng vừa tạo.');
         if(!matchesContractMoneyReceipt(receipt.rent_price,request.payload.contract.rent_price)||!matchesContractMoneyReceipt(receipt.total_deposit,request.payload.contract.total_deposit))throw new TypeError('Chưa xác nhận được đúng tiền thuê và tiền cọc của hợp đồng vừa tạo.');
         return receipt;
+      },async pending=>{
+        // Dấu đã nhận mã hợp đồng (rồi biên nhận lệch hoặc mất bước sau): hợp đồng đã tạo; máy chủ cũng không cho phòng có hợp
+        // đồng hiệu lực thứ hai. Báo kèm mã, gỡ dấu, không gửi.
+        if(pending.completedIds.length)return {outcome:'already-written',message:'Hợp đồng của phòng này đã được tạo ở lần gửi trước (thông tin máy chủ trả về lúc đó chưa khớp form). Mở hợp đồng để kiểm tra; không tạo lần hai.',recordIds:pending.completedIds};
+        resend=true;
+        return {outcome:'not-written',serverDedupesRequestKey:true};
       });
     },
     // 15/09 (plan con B): chín lượt invalidate ở đây là lượt ĐÁNH THỨ NHẤT.

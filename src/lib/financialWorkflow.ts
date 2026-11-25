@@ -57,7 +57,15 @@ export interface FinancialWorkflowPersistence {
   legacyNamespace?: string;
 }
 /** Tuỳ chọn thêm của một lượt ghi. `meta`: vài giá trị nguyên thuỷ lưu vào dấu (ví dụ trạng thái trước khi bấm). */
-export interface FinancialWorkflowRunOptions { meta?: FinancialPendingMeta }
+export interface FinancialWorkflowRunOptions {
+  meta?: FinancialPendingMeta;
+  /**
+   * Đợt 6: còn dấu của lần gửi trước mà lượt này đổi những trường máy chủ KHÔNG so khi trả lại kết quả cũ theo mã yêu
+   * cầu (gửi lại sẽ nhận bản ghi cũ mang giá trị cũ). Trả câu hướng dẫn thì lõi giữ dấu, mở hộp cảnh báo, không đối
+   * chiếu, không gửi, và ném đúng câu đó; trả `null` thì đối chiếu như thường.
+   */
+  priorMismatch?: (pending: FinancialPendingRecord) => string | null;
+}
 /** Câu báo nêu thao tác ĐANG KẸT và giờ kẹt, đọc từ dấu; không dùng tên thao tác người dùng vừa bấm. */
 const pendingFailure = (pending:FinancialPendingRecord,at:Date) => new FinancialWorkflowError(
   pendingBlockMessage(pending,pendingHasSettled(pending,at)),
@@ -86,6 +94,7 @@ export class FinancialWorkflowGuard {
     let resendPriorRequest=false;
     let alreadyRecorded:FinancialAlreadyRecordedError|undefined;
     let legacyBlocked:FinancialWorkflowError|undefined;
+    let mismatchBlocked:FinancialWorkflowError|undefined;
     // Dấu đang có task chạy thì chưa thể coi là đã kết thúc, kể cả với guard khác trong tab.
     let stopTracking:(()=>void)|undefined;
     // Both initial execution and domain-verified recovery persist each new receipt immediately.
@@ -113,6 +122,12 @@ export class FinancialWorkflowGuard {
           Array.prototype.push.apply(progress.completed,prior.completedIds.map(id=>({id,label:`Bản ghi cần đối chiếu: ${id}`})));
           // Lượt ghi của dấu này còn chạy trong tab (vòng lặp nhiều bước chưa xong): chưa có gì để đối chiếu.
           if(isAttemptRunning(prior.attemptId))throw pendingFailure(prior,now());
+          const mismatch=options.priorMismatch?.(prior);
+          if(mismatch){
+            try{valve.report({pending:prior,blockedOperation:operation,store});}catch{/* giữ lỗi chính */}
+            mismatchBlocked=new FinancialWorkflowError(mismatch,prior.completedIds.length?'partial':'unknown',[...progress.completed]);
+            throw mismatchBlocked;
+          }
           // Domain code must read authoritative state before resuming only verified missing steps.
           const stopReconcile=trackRunningAttempt(prior.attemptId);
           let verdict:PendingReconciliation<T>;
@@ -157,6 +172,8 @@ export class FinancialWorkflowGuard {
       if(alreadyRecorded&&error===alreadyRecorded)throw error;
       // Bị chặn bởi dấu khoá chung bản trước: dấu đó nằm ở namespace khác, lượt này chưa ghi gì và không giữ khoá nào.
       if(legacyBlocked&&error===legacyBlocked)throw error;
+      // Chặn vì lượt này đổi trường máy chủ không so (`priorMismatch`): dấu cũ giữ nguyên, không khoá thêm trong bộ nhớ.
+      if(mismatchBlocked&&error===mismatchBlocked)throw error;
       const collided=error instanceof FinancialPendingError?error.pending:null;
       const failure=collided?pendingFailure(collided,now()):error;
       let feedback=workflowFailure(failure,operation,progress.completed,progress.stage);
@@ -177,7 +194,9 @@ export class FinancialWorkflowGuard {
         this.blocked.set(blockedKey,{error:retainedFeedback,attemptId:scope?(pending??collided)?.attemptId:undefined});
         // Lần sau cùng khoá sẽ lại bị chặn bởi dấu này: báo hộp cảnh báo để người dùng có lối xử lý.
         // Lời báo là kênh phụ; nó hỏng thì lỗi chính của lượt ghi vẫn phải tới được nơi gọi.
-        const blocker=recoveryAttempt?pending:collided;
+        // Đợt 6: lần GỬI LẠI (cùng mã, sau `not-written`) mà vẫn chưa rõ kết quả cũng báo hộp cảnh báo với dấu mới, để một
+        // phép gửi lại hỏng lặp lại (ví dụ biên nhận luôn sai) vẫn có lối tự gỡ sau 2 phút, không vòng lặp không lối ra.
+        const blocker=recoveryAttempt?pending:(collided??(resendPriorRequest?pending:undefined));
         if(blocker){try{valve.report({pending:blocker,blockedOperation:operation,store});}catch{/* giữ lỗi chính */}}
         feedback=retainedFeedback;
       }else if(writerStarted&&!recoveryAttempt&&scope&&pending){
