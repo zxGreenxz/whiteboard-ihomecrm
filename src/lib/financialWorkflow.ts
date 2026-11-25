@@ -4,7 +4,7 @@ import { hasUnconfirmedResponse as voucherOutcomeUnknown, isKnownRejectionCode }
 import { pendingBlockMessage, pendingValve, type PendingValve } from './pendingValve';
 
 import {FinancialAlreadyRecordedError,FinancialWorkflowError,workflowFeedbackDescription,type CompletedFinancialStep} from './financialWorkflowError';
-export {FinancialAlreadyRecordedError,FinancialWorkflowError} from './financialWorkflowError';
+export {FinancialAlreadyRecordedError,FinancialWorkflowError,RepeatableWriteUnknownError} from './financialWorkflowError';
 export type {CompletedFinancialStep} from './financialWorkflowError';
 export type {PendingReconciliation} from './financialPending';
 export interface FinancialWorkflowProgress {completed:CompletedFinancialStep[];stage:string;requestKey:string}

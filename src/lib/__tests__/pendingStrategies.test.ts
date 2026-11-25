@@ -55,7 +55,8 @@ function scanPendingUsage(source: string, fileName = "sample.ts"): FileUsage {
         }
       }
       // `settleLegacyPending` (đợt 4) đọc dấu khoá chung bản trước để lại ở namespace đó: vẫn là nơi dùng của dòng sổ.
-      if (node.expression.text === "runFinancialPending" || node.expression.text === "settleLegacyPending") {
+      // `forgetLegacyPending` (đợt 8) gỡ dấu bản trước của thao tác ghi lặp lại được: cũng là nơi dùng.
+      if (["runFinancialPending", "settleLegacyPending", "forgetLegacyPending"].includes(node.expression.text)) {
         const scope = node.arguments[0];
         const property = scope && ts.isObjectLiteralExpression(scope)
           ? scope.properties.find((item): item is ts.PropertyAssignment => ts.isPropertyAssignment(item) && item.name.getText(file) === "namespace")
@@ -114,7 +115,7 @@ function scanRepository() {
     if (DEFINITION_FILES.has(file)) continue;
     const source = readFileSync(full, "utf8");
     // Phân tích cú pháp chỉ những tệp có nhắc tới bộ chống ghi trùng; phần còn lại không thể là nơi dùng.
-    if (!/persistentFinancialWorkflow|runFinancialPending|FinancialWorkflowGuard|settleLegacyPending/.test(source)) continue;
+    if (!/persistentFinancialWorkflow|runFinancialPending|FinancialWorkflowGuard|settleLegacyPending|forgetLegacyPending/.test(source)) continue;
     declared.delete(file);
     const usage = scanPendingUsage(source, file);
     const strings = stringLiterals(source, file);
@@ -190,6 +191,14 @@ describe("bộ quét nơi dùng", () => {
       await settleLegacyPending({ namespace: 'customer-create', businessKey: 'create' }, decide);
       await settleLegacyPending(site, decide);
     `)).toEqual({ literals: ["customer-create"], dynamicCalls: 1, directGuards: 0 });
+  });
+
+  it("tính cả nơi gỡ dấu bản trước của thao tác ghi lặp lại được (đợt 8)", () => {
+    expect(scanPendingUsage(`
+      const { forgetLegacyPending } = await import('@/lib/legacyPendingExit');
+      await forgetLegacyPending({ namespace: 'useUpdateLead', businessKey: id }, { organizationId: 'actor-scope' });
+      await forgetLegacyPending(site);
+    `)).toEqual({ literals: ["useUpdateLead"], dynamicCalls: 1, directGuards: 0 });
   });
 
   it("đếm lời gọi không viết thẳng namespace và guard dựng trực tiếp", () => {

@@ -16,11 +16,16 @@ export interface FakeRecordServer {
   inserts: { table: string; payload: Row | Row[] }[];
   rpcCalls: { name: string; args: Row }[];
   /** Lần gọi kế tiếp của đúng loại thao tác trên bảng (hoặc RPC) sẽ hỏng theo kiểu đã chọn. */
-  failNext: (target: string, op: 'insert' | 'update' | 'read' | 'rpc', failure: Failure) => void;
+  failNext: (target: string, op: 'insert' | 'update' | 'delete' | 'read' | 'rpc', failure: Failure) => void;
   /** Bảng nào có thêm ràng buộc duy nhất (ngoài mã) thì khai khoá ở đây. */
   uniqueBy: Record<string, (row: Row) => string>;
   /** Giả RLS khi đọc: dòng nào trả false thì người đọc không thấy (vẫn chặn trùng khi chèn). */
   visible: Record<string, (row: Row) => boolean>;
+  /**
+   * Đợt 8: giả RLS khi sửa / xoá (USING): dòng nào trả false thì lệnh sửa / xoá bỏ qua dòng đó MÀ KHÔNG BÁO LỖI, đúng
+   * như PostgREST (khớp 0 dòng).
+   */
+  writable: Record<string, (row: Row) => boolean>;
   rpcHandlers: Record<string, (args: Row) => Result>;
   from: (table: string) => unknown;
   rpc: (name: string, args: Row) => Promise<Result>;
@@ -36,6 +41,7 @@ export function fakeRecordServer(): FakeRecordServer {
     rpcCalls: [],
     uniqueBy: {},
     visible: {},
+    writable: {},
     rpcHandlers: {},
     failNext: (target, op, failure) => {
       const key = `${target}:${op}`;
@@ -89,16 +95,22 @@ export function fakeRecordServer(): FakeRecordServer {
         const stored = result.data as Row[];
         return { data: shape === 'many' ? stored : stored[0] ?? null, error: null };
       }
+      const writable = server.writable[table] ?? (() => true);
       if (mode === 'delete') {
-        const doomed = tableRows(table).filter(row => filters.every(filter => filter(row)));
+        // Đợt 8: xoá cũng có thể rớt mạng trước hoặc sau khi xoá.
+        const failure = takeFailure(`${table}:delete`);
+        if (failure === 'drop-before') return { data: null, error: NETWORK_ERROR };
+        const doomed = tableRows(table).filter(row => writable(row) && filters.every(filter => filter(row)));
         server.rows[table] = tableRows(table).filter(row => !doomed.includes(row));
-        return { data: shape === 'many' ? doomed : doomed[0] ?? null, error: null };
+        if (failure === 'drop-after') return { data: null, error: NETWORK_ERROR };
+        if (shape === 'single' && doomed.length !== 1) return { data: null, error: { code: 'PGRST116', message: 'not single' } };
+        return { data: shape === 'many' ? doomed.map(row => ({ ...row })) : doomed[0] ?? null, error: null };
       }
       if (mode === 'update') {
         // Đợt 6: sửa thẳng bảng (thưởng/trừ lương) cũng có thể rớt mạng trước hoặc sau khi ghi.
         const failure = takeFailure(`${table}:update`);
         if (failure === 'drop-before') return { data: null, error: NETWORK_ERROR };
-        const changed = tableRows(table).filter(row => filters.every(filter => filter(row)));
+        const changed = tableRows(table).filter(row => writable(row) && filters.every(filter => filter(row)));
         for (const row of changed) Object.assign(row, payload);
         if (failure === 'drop-after') return { data: null, error: NETWORK_ERROR };
         if (shape === 'many') return { data: changed, error: null };
