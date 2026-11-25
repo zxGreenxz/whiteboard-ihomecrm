@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T17:07:28.091Z",
+  "generatedAt": "2026-11-25T18:43:56.515Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -14798,7 +14798,7 @@
       "version": "20261125165113",
       "name": "coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho",
       "scheme": "timestamp14",
-      "sha256": "05619278affcd52820883f1b22afed9d03134a1b0b5adf54e1a08351af6aa406",
+      "sha256": "aa8a0e414362ac56c5b34fac57220f5bb2da7e72955c39f5664215157a9abdcd",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

@@ -988,7 +988,7 @@
       ]
     },
     "supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql": {
-      "sha256": "05619278affcd52820883f1b22afed9d03134a1b0b5adf54e1a08351af6aa406",
+      "sha256": "aa8a0e414362ac56c5b34fac57220f5bb2da7e72955c39f5664215157a9abdcd",
       "missingObjects": [
         "function:app_private.guard_deposit_voucher_amount_v1",
         "function:app_private.room_deposit_hold_json_v1",
@@ -996,7 +996,7 @@
         "trigger:public.income_expenses.a1_ie_deposit_amount_positive"
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward migration Sale phòng đợt 3 rút gọn sau #499 (chặn phiếu THU cọc 0 đ chưa gắn hợp đồng bằng constraint trigger hoãn tới COMMIT, chạy trước bind_unlinked_deposit_income; khối «đang giữ bằng cọc» theo đợt giữ chỗ cho hai reader nội bộ, giữ has_deposit_hold của #499) chưa áp production. Bằng chứng: chạy cả file trên TEST trong ROLLBACK (tiền kiểm md5 thân production sau #499 + hậu kiểm đạt) kèm thăm dò; test PGlite 28 ca (src/lib/__tests__/cocThuChiMigration.test.ts) dựng thân hai reader như production (đợt 2 + khối vá #499) rồi chạy file, chạy lại cả file. Object vắng là hàm / trigger mới của chính file này; không thay review độc lập, forward lane và backup.",
+      "lyLe": "Forward migration Sale phòng đợt 3 rút gọn sau #499 (chặn phiếu THU cọc 0 đ chưa gắn hợp đồng bằng constraint trigger hoãn tới COMMIT, chạy trước bind_unlinked_deposit_income; khối «đang giữ bằng cọc» theo đợt giữ chỗ cho hai reader nội bộ, chi tiết người gửi / mã phiếu chỉ cho người có deposits.view ở toà, giữ has_deposit_hold của #499) chưa áp production. Bằng chứng: áp trên TEST (đã đưa TEST về thân production trước) rồi chạy lại hai lượt trong ROLLBACK (tiền kiểm md5 thân production sau #499 + hậu kiểm đạt) kèm thăm dò; test PGlite 30 ca (src/lib/__tests__/cocThuChiMigration.test.ts) dựng thân hai reader như production (đợt 2 + khối vá #499) rồi chạy file, chạy lại cả file. Object vắng là hàm / trigger mới của chính file này; không thay review độc lập, forward lane và backup.",
       "bangChung": [
         {
           "duong_dan": "supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql",
