@@ -298,6 +298,45 @@ describe('câu báo và hộp cảnh báo khi bị chặn',()=>{
  });
 });
 
+describe('tách khoá theo thao tác (đợt 5)',()=>{
+ // Hai guard dùng chung một kho, như hai hook trên cùng một trang.
+ const split=()=>{
+  const base=durableOptions();
+  const of=(namespace:string)=>({...base,scope:async(key:string)=>({namespace,userId:'u',organizationId:'org',businessKey:key})});
+  return {base,of};
+ };
+ it('thao tác kẹt không chặn thao tác khác trên cùng bản ghi, cũng không chặn cùng thao tác trên bản ghi khác',async()=>{
+  const {of}=split();
+  await expect(new FinancialWorkflowGuard({...of('voucher-approve'),legacyNamespace:'voucher-lifecycle'}).run('v1','duyệt phiếu',failedFetch)).rejects.toMatchObject({outcome:'unknown'});
+  await expect(new FinancialWorkflowGuard({...of('voucher-cancel'),legacyNamespace:'voucher-lifecycle'}).run('v1','huỷ phiếu',async()=>'huỷ')).resolves.toBe('huỷ');
+  await expect(new FinancialWorkflowGuard({...of('voucher-approve'),legacyNamespace:'voucher-lifecycle'}).run('v2','duyệt phiếu',async()=>'duyệt')).resolves.toBe('duyệt');
+ });
+ it('dấu khoá chung bản trước chặn đúng bản ghi đó, mở hộp cảnh báo, không gọi đối chiếu, không chạy task, không giữ khoá bộ nhớ',async()=>{
+  const {base,of}=split();
+  base.values.set('ihome:financial-pending:v1:voucher-lifecycle:u:org:v1',JSON.stringify({namespace:'voucher-lifecycle',userId:'u',organizationId:'org',businessKey:'v1',attemptId:'a-old',requestKey:'k-old',completedIds:[],startedAt:'2026-11-20T03:30:00.000Z'}));
+  const guard=new FinancialWorkflowGuard({...of('voucher-cancel'),legacyNamespace:'voucher-lifecycle'});
+  const task=vi.fn(async()=>'ok');const reconcile=vi.fn(async()=>({outcome:'not-written' as const,serverDedupesRequestKey:true}));
+  const error=await guard.run('v1','huỷ phiếu',task,reconcile).then(()=>null,(e:unknown)=>e as FinancialWorkflowError);
+  expect(error?.message).toContain('Yêu cầu duyệt, huỷ hoặc khôi phục phiếu thu chi gửi lúc 10:30 ngày 20/11/2026 chưa xác nhận xong.');
+  expect(task).not.toHaveBeenCalled();expect(reconcile).not.toHaveBeenCalled();
+  expect(base.valve.current()).toMatchObject({kind:'stale',blockedOperation:'huỷ phiếu',pending:{namespace:'voucher-lifecycle',attemptId:'a-old'}});
+  // Không để lại dấu mới ở namespace mới; bản ghi khác không bị chặn.
+  expect(base.store.read(await of('voucher-cancel').scope('v1'))).toBeNull();
+  await expect(guard.run('v2','huỷ phiếu',task)).resolves.toBe('ok');
+  // Người dùng tự gỡ qua hộp cảnh báo: CHÍNH guard đó chạy được ngay, không còn khoá trong bộ nhớ.
+  base.valve.release(base.valve.current()!);
+  await expect(guard.run('v1','huỷ phiếu',task)).resolves.toBe('ok');
+  expect(task).toHaveBeenCalledTimes(2);
+ });
+ it('lưu `meta` của lượt ghi vào dấu để hàm đối chiếu đọc lại',async()=>{
+  const options=durableOptions();
+  await expect(new FinancialWorkflowGuard(options).run('v1','đổi kiểm phiếu',failedFetch,undefined,undefined,{meta:{before:'chua-kiem'}})).rejects.toMatchObject({outcome:'unknown'});
+  const reconcile=vi.fn(async(..._args:unknown[])=>null);
+  await expect(new FinancialWorkflowGuard(options).run('v1','đổi kiểm phiếu',async()=>'x',reconcile)).rejects.toMatchObject({outcome:'unknown'});
+  expect(reconcile.mock.calls[0][0]).toMatchObject({meta:{before:'chua-kiem'},operation:'đổi kiểm phiếu'});
+ });
+});
+
 describe('mồi khoá chung',()=>{
  it('PGRST116 (lệnh ghi khớp 0 dòng) khi chưa bước nào hoàn tất là từ chối rõ: gỡ dấu, giữ nguyên lỗi',async()=>{
   const options=durableOptions();const rejected={code:'PGRST116',message:'JSON object requested, multiple (or no) rows returned'};

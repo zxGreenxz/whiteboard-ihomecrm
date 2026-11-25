@@ -57,7 +57,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'utility-cancel': tien('A', 'huỷ phiếu điện nước'), // như huỷ phiếu phí kỳ
   'special-fee-generate': tien('A', 'sinh phí đặc biệt'), // khoá theo kỳ, chỉ sinh ô còn thiếu (không trả kết quả cũ theo khoá)
   'reconciliation-propose': tien('D', 'đề nghị đối soát sổ'), // tra gần đúng (sổ, ngày, người đề nghị, sau giờ kẹt) tới đợt 10
-  'invoice-cancel': tien('van', 'huỷ hoá đơn'), // huỷ hàng loạt đã đối chiếu cách C (đợt 3); huỷ lẻ (useCancelInvoice) chưa có hàm đối chiếu, đợt 5 đổi dòng này
+  'invoice-cancel': tien('C', 'huỷ hoá đơn'), // huỷ hàng loạt (đợt 3) và huỷ lẻ (đợt 5) đọc trạng thái hoá đơn; cancel_invoice_with_credit_v1 khoá rồi trả noop
 
   // Đợt 4: tạo khách, khách hẹn, bàn giao. Bốn dòng `khac` không còn ghi dấu mới (luật 5: không khoá dữ liệu không phải
   // tiền); chỉ còn đọc MỘT LẦN dấu khoá chung bản trước để lại (`settleLegacyPending`), đối chiếu gần đúng rồi gỡ.
@@ -67,20 +67,36 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'handover-create': tien('A', 'lập phiên bàn giao tiền'), // create_cash_handover khoá phiếu FOR UPDATE rồi đòi handover_id rỗng; đọc phiên của phiếu trước khi gửi
   'income-expense-type-create': khac('D', 'tạo loại thu chi'), // ràng buộc duy nhất (công ty, chiều, tên chuẩn hoá); trùng ⇒ trả loại đã có
 
-  // Đợt 5: chuyển trạng thái phiếu, hoá đơn, bàn giao, chốt sổ
-  'voucher-lifecycle': tien('van', 'duyệt, huỷ hoặc khôi phục phiếu thu chi'), // 7 thao tác phiếu chung một dấu: statusMutations, flexMutations, incomeVoucherCancel
-  'voucher-v2-approve': tien('van', 'duyệt phiếu'),
-  'voucher-v2-post': tien('van', 'ghi sổ phiếu'),
-  'voucher-v2-approve-post': tien('van', 'duyệt và ghi sổ phiếu'),
-  'voucher-v2-reverse': tien('van', 'hoàn tác ghi sổ phiếu'),
-  'approval-request': tien('van', 'xử lý yêu cầu duyệt'), // quyết định ở đợt 5; rút đề nghị là mã chết, xoá ở đợt 11
-  'handover-lifecycle': tien('van', 'xác nhận hoặc huỷ phiên bàn giao tiền'), // 4 thao tác bàn giao chung một dấu
-  'invoice-restore': tien('van', 'khôi phục hoá đơn'),
-  'invoice-force-cancel': tien('van', 'buộc huỷ hoá đơn'),
-  'closing-propose': tien('van', 'gửi đề nghị chốt sổ'),
-  'closing-request-lifecycle': tien('van', 'xác nhận hoặc huỷ đề nghị chốt sổ'), // xác nhận và huỷ chung một dấu
-  'voucher-batch-cancel': tien('van', 'huỷ đợt phiếu'),
-  'cashbook-lifecycle': tien('van', 'sửa hoặc lưu trữ sổ quỹ'), // lưu trữ sổ ở đợt 5; sửa sổ ở đợt 8
+  // Đợt 5: chuyển trạng thái phiếu, hoá đơn, bàn giao, chốt sổ. Ba dấu chung (`voucher-lifecycle`, `handover-lifecycle`,
+  // `closing-request-lifecycle`) được tách theo thao tác; dòng của dấu chung giữ `van`: không ai ghi dấu mới ở đó, dấu
+  // cũ không cho biết thuộc thao tác nào nên chặn đúng bản ghi đó qua hộp cảnh báo (`legacy` của nơi gọi mới).
+  'voucher-lifecycle': tien('van', 'duyệt, huỷ hoặc khôi phục phiếu thu chi'), // dấu chung bản trước của 7 thao tác phiếu; chỉ còn đọc
+  'voucher-approve': tien('A', 'duyệt phiếu'), // approve_pending_income_expense_checked_v1 khoá phiếu rồi trả `already`
+  'voucher-unapprove': tien('C', 'bỏ duyệt phiếu'), // unapprove_voucher không xét trạng thái hiện tại: so trạng thái trước khi bấm, chờ 2 phút
+  'voucher-cancel': tien('C', 'huỷ phiếu'), // thang huỷ cũ nhiều bước: đã hoàn tác mà chưa huỷ thì chỉ chạy bước huỷ
+  'voucher-restore': tien('C', 'khôi phục phiếu'), // restore_income_expense không khoá dòng: chỉ gửi lại sau 2 phút
+  'voucher-verify': tien('C', 'cập nhật trạng thái đã kiểm'), // nút bật/tắt: trạng thái đã đổi so với lúc bấm thì không gửi lần hai
+  'voucher-flex-cancel': tien('A', 'huỷ phiếu'), // cancel_income_expense_flex_v1 khoá phiếu rồi trả {changed:false}
+  'voucher-income-cancel': tien('A', 'huỷ phiếu thu'), // cancel_income_voucher_v1 khoá phiếu rồi trả {changed:false}
+  'voucher-v2-approve': tien('B', 'duyệt phiếu'), // khoá phiếu rồi tra mã yêu cầu (finance_v2_begin_canonical_op); nội dung đổi ⇒ đọc trạng thái
+  'voucher-v2-post': tien('B', 'ghi sổ phiếu'),
+  'voucher-v2-approve-post': tien('B', 'duyệt và ghi sổ phiếu'),
+  'voucher-v2-reverse': tien('B', 'hoàn tác ghi sổ phiếu'), // ngày ghi là hôm nay: qua ngày là nội dung khác ⇒ đọc trạng thái
+  'approval-request': tien('C', 'xử lý yêu cầu duyệt'), // đọc trạng thái + phiên bản + bước của yêu cầu; rút đề nghị là mã chết, xoá ở đợt 11
+  'handover-lifecycle': tien('van', 'xác nhận hoặc huỷ phiên bàn giao tiền'), // dấu chung bản trước của 4 thao tác bàn giao; chỉ còn đọc
+  'handover-confirm': tien('C', 'xác nhận nhận bàn giao'), // bốn hàm bàn giao khoá phiên FOR UPDATE rồi mới xét trạng thái
+  'handover-cancel-request': tien('C', 'xin huỷ phiên bàn giao'),
+  'handover-cancel-confirm': tien('C', 'đồng ý huỷ phiên bàn giao'),
+  'handover-cancel-reject': tien('C', 'từ chối huỷ phiên bàn giao'),
+  'invoice-restore': tien('C', 'khôi phục hoá đơn'), // khoá hoá đơn rồi trả noop
+  'invoice-force-cancel': tien('C', 'buộc huỷ hoá đơn'),
+  'closing-propose': tien('C', 'gửi đề nghị chốt sổ'), // mỗi sổ một đề nghị chờ (CLOSURE_PENDING dưới khoá sổ): đọc danh sách
+  'closing-request-lifecycle': tien('van', 'xác nhận hoặc huỷ đề nghị chốt sổ'), // dấu chung bản trước của xác nhận và huỷ; chỉ còn đọc
+  'closing-confirm': tien('C', 'xác nhận chốt sổ'), // còn chờ ⇒ gửi lại; đã có biên bản đúng ngày ⇒ báo
+  'closing-cancel': tien('A', 'huỷ đề nghị chốt sổ'), // cancel_cashbook_closing_v1 khoá rồi trả {changed:false}
+  'voucher-batch-cancel': tien('A', 'huỷ đợt phiếu'), // đọc lại phiếu còn hiệu lực, huỷ phần còn (sau 2 phút: đường phiếu chi không xét đã huỷ)
+  'cashbook-lifecycle': tien('van', 'sửa hoặc lưu trữ sổ quỹ'), // sửa sổ ở đợt 8; lưu trữ đã tách sang `cashbook-archive`, dấu ở đây vẫn chặn lưu trữ
+  'cashbook-archive': tien('C', 'lưu trữ sổ quỹ'), // archive_cashbook_v1 khoá sổ chưa lưu trữ rồi mới xét
 
   // Đợt 6: lương, tạo và gia hạn hợp đồng, lợi nhuận, sổ quỹ
   'salary-payout': tien('van', 'lập phiếu chi lương'),

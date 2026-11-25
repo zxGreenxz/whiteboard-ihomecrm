@@ -338,7 +338,8 @@ describe('Hoàn tác / Duyệt và Chi / Chi phiếu đã duyệt / Huỷ cả �
     expect(onChanged).not.toHaveBeenCalled();
   });
 
-  it('huỷ cả đợt chưa xong hết ⇒ báo số phiếu, khoá thao tác tiếp trên đợt, vẫn báo làm mới', async () => {
+  // Đợt 5: bấm lại thì đọc lại phiếu còn hiệu lực của đợt và chỉ huỷ phần còn, nên không khoá đợt tới khi tải lại trang.
+  it('huỷ cả đợt chưa xong hết ⇒ báo số phiếu, không khoá thao tác tiếp trên đợt, vẫn báo làm mới', async () => {
     m.cancelBatch.mockResolvedValue({ count: 2, failures: [{ id: 'x' }] });
     const { result, onChanged } = setup([]);
     act(() => result.current.cancelBatch('b-1'));
@@ -346,7 +347,7 @@ describe('Hoàn tác / Duyệt và Chi / Chi phiếu đã duyệt / Huỷ cả �
     await act(async () => { await result.current.dialogs.cancelBatch.confirm(); });
     expect(m.cancelBatch).toHaveBeenCalledWith({ batchId: 'b-1', reason: 'nhập trùng cả đợt' });
     expect(result.current.dialogs.actionError).toMatch(/Đã huỷ 2 phiếu; 1 phiếu chưa hoàn tất/);
-    expect(result.current.dialogs.blockedVoucherId).toBe('b-1');
+    expect(result.current.dialogs.blockedVoucherId).toBeNull();
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 });
