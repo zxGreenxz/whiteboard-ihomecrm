@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -30,6 +31,53 @@ const tree = root => fs.readdirSync(root, { recursive: true }).sort().map(name =
 });
 const request = (url, token, route, body = {}) => fetch(url + route, { method: 'POST', headers: {
   Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+
+test('a pinned historical account can coexist with a new channel without changing any receipts', t => {
+  const f = fixture(t);
+  const { channel } = apply(createOptions(f));
+  const previous = { ...channel, accountId: '33333333-3333-4333-8333-333333333333' };
+  const journal = createNativeJournal(f.stateRoot, previous);
+  const id = nativeDigest([previous.accountId, previous.generation, previous.pairedUid, 'msg-1']);
+  journal.update('inbound', id, { id, digest: nativeDigest('fixture'), messageId: 'msg-1', senderUid: previous.pairedUid,
+    status: 'accepted', sentAt: 1, dispatchedAt: 2, acknowledgedAt: 3 });
+  const record = { id: 'reply-1', digest: nativeDigest('reply'), status: 'outcome_unknown', startedAt: 4 };
+  journal.update('outbound', record.id, record);
+  const journalFile = path.join(f.stateRoot, nativeDigest([previous.accountId, previous.profile, previous.generation]) + '.json');
+  const history = { previousAccountId: previous.accountId, accountId, profile: channel.profile, generation: channel.generation,
+    ownUid: channel.ownUid, pairedUid: channel.pairedUid, journalSha256: createHash('sha256').update(fs.readFileSync(journalFile)).digest('hex') };
+  const writeHistory = entry => fs.writeFileSync(f.configFile + '.account-history.json',
+    JSON.stringify({ version: 1, entries: [entry] }), { mode: 0o600 });
+  const newChannel = createOptions(f, 'beta', '300');
+  const blocked = () => assert.throws(() => planNativeGrant(newChannel), /native_operator_state_namespace_conflict/);
+  blocked();
+  writeHistory(history);
+  blocked();
+  const decision = { profile: previous.profile, accountId: previous.accountId, generation: previous.generation,
+    requestId: record.id, recordDigest: record.digest, startedAt: 4, decision: 'sent', note: 'fixture', decidedAt: new Date().toISOString() };
+  const writeLedger = entries => fs.writeFileSync(f.configFile + '.reconciliations.json', JSON.stringify({ version: 1, entries }), { mode: 0o600 });
+  writeLedger([{ ...decision, recordDigest: nativeDigest('another reply') }]);
+  blocked();
+  writeLedger([decision]);
+  for (const changed of [{ ownUid: '101' }, { pairedUid: '201' }, { accountId: previous.accountId }, { profile: 'other' },
+    { journalSha256: 'a'.repeat(64) }, { generation: '44444444-4444-4444-8444-444444444444' }]) {
+    writeHistory({ ...history, ...changed });
+    blocked();
+  }
+  writeHistory(history);
+  assert.throws(() => planNativeGrant({ ...newChannel, accountId: previous.accountId }), /native_operator_historical_account/);
+  const preview = planNativeGrant(newChannel);
+  const diskBefore = tree(f.stateRoot);
+  writeLedger([]);
+  assert.throws(() => applyNativeGrant({ ...newChannel, expect: preview.expectedRevision }), /native_operator_state_namespace_conflict/);
+  writeLedger([decision]);
+  assert.equal(applyNativeGrant({ ...newChannel, expect: preview.expectedRevision }).diskStatus, 'updated');
+  assert.deepEqual(tree(f.stateRoot), diskBefore);
+  assert.equal(inspectNativeDelivery({ configFile: f.configFile }).historicalJournals, 1);
+  journal.update('inbound', id, { ...journal.get('inbound', id), status: 'dispatch_unknown' });
+  writeHistory({ ...history, journalSha256: createHash('sha256').update(fs.readFileSync(journalFile)).digest('hex') });
+  assert.throws(() => inspectNativeDelivery({ configFile: f.configFile }), /native_operator_state_namespace_conflict/);
+});
 
 test('create preview is read-only; apply uses the real worker config and private token files', t => {
   const f = fixture(t), options = createOptions(f), before = tree(f.root);

@@ -4,7 +4,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { nativeId, resolveNativeConfig } from '../../worker/lib/hermes-native-config.js';
 import { nativeAbsolute, nativeDirectory, nativePrivateRead } from '../../worker/lib/hermes-native-files.js';
-import { createNativeJournal, nativeDigest } from '../../worker/lib/hermes-native-journal.js';
+import { createNativeJournal, nativeDigest, NATIVE_JOURNAL_MAX_BYTES, validateNativeJournalSnapshot } from '../../worker/lib/hermes-native-journal.js';
 import { NATIVE_RECONCILIATION_MAX_BYTES as LEDGER_MAX, nativeReconciliationFile as ledgerPath, nativeReconciliationFor,
   readNativeReconciliations, validNativeNote as validNote } from '../../worker/lib/hermes-native-reconciliation.js';
 
@@ -29,6 +29,43 @@ function absent(file) {
   try { fs.lstatSync(file); return false; }
   catch (error) { if (error.code === 'ENOENT') return true; throw error; }
 }
+const historyPath = file => `${file}.account-history.json`;
+const historicalKeys = ['previousAccountId', 'accountId', 'profile', 'generation', 'ownUid', 'pairedUid', 'journalSha256'];
+function readAccountHistory(document, file, ownerRaw) {
+  const names = new Set(), previousAccounts = new Map();
+  if (absent(historyPath(file))) return { names, previousAccounts, revision: null };
+  const conflict = () => fail('native_operator_state_namespace_conflict');
+  if (!ownerRaw) conflict();
+  const raw = nativePrivateRead(historyPath(file), 65536);
+  const history = JSON.parse(raw);
+  if (!history || Object.keys(history).length !== 2 || history.version !== 1 || !Array.isArray(history.entries) ||
+      !history.entries.length || history.entries.length > 100) conflict();
+  const ledger = readLedger(file);
+  const activeAccounts = new Set(document.channels.map(c => c.accountId));
+  for (const entry of history.entries) {
+    if (!entry || Object.keys(entry).length !== historicalKeys.length || !historicalKeys.every(key => typeof entry[key] === 'string') ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(entry.previousAccountId) ||
+        activeAccounts.has(entry.previousAccountId)) conflict();
+    const live = document.channels.find(channel => channel.profile === entry.profile);
+    if (!live || ['accountId', 'generation', 'ownUid', 'pairedUid'].some(key => live[key] !== entry[key]) ||
+        (previousAccounts.has(entry.previousAccountId) && previousAccounts.get(entry.previousAccountId) !== live.accountId)) conflict();
+    const historical = { ...live, accountId: entry.previousAccountId };
+    const name = nativeDigest([historical.accountId, historical.profile, historical.generation]) + '.json';
+    if (names.has(name)) conflict();
+    const journalFile = path.join(document.stateRoot, name);
+    const text = nativePrivateRead(journalFile, NATIVE_JOURNAL_MAX_BYTES);
+    // The private UTF-8 reader strips a leading BOM. Only accept byte-exact journal output.
+    if (Buffer.byteLength(text) !== fs.lstatSync(journalFile).size || hash(text) !== entry.journalSha256) conflict();
+    const journal = JSON.parse(text);
+    validateNativeJournalSnapshot(journal, historical);
+    if (Object.values(journal.inbound).some(record => !['accepted', 'rejected'].includes(record.status)) ||
+        Object.values(journal.outbound).some(record => record.status === 'outcome_unknown' &&
+          !nativeReconciliationFor(ledger.entries, historical, record))) conflict();
+    names.add(name);
+    previousAccounts.set(historical.accountId, live.accountId);
+  }
+  return { names, previousAccounts, revision: hash(JSON.stringify([raw, ledger.raw])) };
+}
 function stateNamespace(document, file, bootstrap = false) {
   const root = nativeDirectory(document.stateRoot), ownerFile = path.join(root, STATE_OWNER);
   const entries = fs.readdirSync(root).filter(name => name !== STATE_LOCK);
@@ -45,8 +82,9 @@ function stateNamespace(document, file, bootstrap = false) {
   // Legacy grants can be adopted only with their complete existing namespace.
   // A removed/rebound channel leaves an orphan journal: no create, rotate or
   // inspect may silently ignore it and present a fresh generation as safe.
-  if (entries.some(name => name !== STATE_OWNER && !journals.has(name))) fail('native_operator_state_namespace_conflict');
-  return { root, ownerFile, ownerRaw };
+  const history = readAccountHistory(document, file, ownerRaw);
+  if (entries.some(name => name !== STATE_OWNER && !journals.has(name) && !history.names.has(name))) fail('native_operator_state_namespace_conflict');
+  return { root, ownerFile, ownerRaw, history };
 }
 function snapshot(file, bootstrap) {
   nativeDirectory(path.dirname(file));
@@ -66,7 +104,9 @@ function snapshot(file, bootstrap) {
   // Detect replacement during the read. Tokens are high-entropy secrets; only
   // an opaque revision is exposed, never their bytes or individual hashes.
   if (nativePrivateRead(file, 65536) !== raw || [...tokenBytes].some(([name, bytes]) => nativePrivateRead(name, 128) !== bytes)) fail('native_operator_config_changed');
-  return { raw, document, runtime, state, revision: hash(JSON.stringify([raw, [...tokenBytes], state.ownerRaw])) };
+  const inputs = [raw, [...tokenBytes], state.ownerRaw];
+  if (state.history.revision) inputs.push(state.history.revision);
+  return { raw, document, runtime, state, revision: hash(JSON.stringify(inputs)) };
 }
 function validateOptions(options) {
   const common = ['action', 'configFile', 'profile', 'tokenFile', 'expect'];
@@ -85,8 +125,10 @@ function prepare(options) {
   if (current.raw !== null && (options.stateRoot !== undefined || options.listenPort !== undefined)) fail('native_operator_bootstrap_only');
   const existing = current.document.channels.find(c => c.profile === options.profile);
   if (options.action === 'create' ? !!existing : !existing) fail('native_operator_profile_conflict');
+  if (options.action === 'create' && current.state.history.previousAccounts.has(options.accountId)) fail('native_operator_historical_account');
   const tokenFile = options.action === 'revoke' ? path.join(path.dirname(file), `${options.profile}.unissued.${randomUUID()}.token`) : nativeAbsolute(options.tokenFile);
-  if (inside(nativeAbsolute(current.document.stateRoot), tokenFile) || inside(`${file}.operator-lock`, tokenFile) || tokenFile === ledgerPath(file)) fail('native_operator_reserved_path');
+  if (inside(nativeAbsolute(current.document.stateRoot), tokenFile) || inside(`${file}.operator-lock`, tokenFile) ||
+      tokenFile === ledgerPath(file) || tokenFile === historyPath(file)) fail('native_operator_reserved_path');
   nativeDirectory(path.dirname(tokenFile));
   if (tokenFile === file || !absent(tokenFile)) fail('native_operator_token_file_exists');
   const channel = options.action === 'create' ? {
@@ -289,6 +331,7 @@ export function inspectNativeDelivery({ configFile, profile, limit = 20 } = {}) 
   const count = (records, statuses) => Object.fromEntries(statuses.map(status => [status, records.filter(r => r.status === status).length]));
   return { version: 1, source: 'disk_snapshot', configFile: file, revision: current.revision,
     runtimeStatus: 'unverified', observedAt: new Date().toISOString(), recoverySupported: false,
+    historicalJournals: current.state.history.names.size,
     channels: channels.map(channel => {
       const journalFile = path.join(current.runtime.stateRoot, `${nativeDigest([channel.accountId, channel.profile, channel.generation])}.json`);
       const present = !absent(journalFile);
