@@ -20,6 +20,8 @@ interface ExistingReceipt {
   note?: string;
   /** Dấu bản trước cần gỡ khi khách hẹn đã chuyển xong. */
   legacy?: { scope: FinancialPendingScope; attemptId: string; requestKey?: string };
+  /** Phiếu chỉ tra gần đúng («có thể»): còn lối «Tải lại» sau khi tự gỡ dấu qua hộp cảnh báo. */
+  uncertain?: boolean;
 }
 
 export function ConvertLeadDialog({open,onOpenChange,lead}: {
@@ -52,17 +54,25 @@ export function ConvertLeadDialog({open,onOpenChange,lead}: {
           },
         });
         const legacy={scope,attemptId:pending.attemptId,requestKey:pending.requestKey};
-        if(verdict.kind==='deposit')return {id:verdict.depositId,legacy,note:verdict.exact
-          ?`Lần chuyển khách hẹn trước đã ghi phiếu cọc (mã ${verdict.depositId}). Hoàn tất cập nhật trạng thái khách hẹn.`
-          :`Có thể lần chuyển khách hẹn trước đã ghi phiếu cọc (mã ${verdict.depositId}). Kiểm tra phiếu ở Quản lý cọc; đúng là phiếu của khách này thì bấm Hoàn tất chuyển đổi, không tạo phiếu khác.`};
+        const record={...pending,operation:pending.operation??OPERATION};
+        /** Hộp cảnh báo chung cho dấu này: sau 2 phút người dùng tự gỡ (có nhật ký) rồi bấm Tải lại. */
+        const reportValve=async()=>{
+          const valve=await import('@/lib/pendingValve');
+          try{valve.pendingValve.report({pending:record,blockedOperation:OPERATION,store:financialPending});}catch{/* giữ lỗi chính */}
+          return valve;
+        };
+        if(verdict.kind==='deposit'){
+          if(verdict.exact)return {id:verdict.depositId,legacy,note:`Lần chuyển khách hẹn trước đã ghi phiếu cọc (mã ${verdict.depositId}). Hoàn tất cập nhật trạng thái khách hẹn.`};
+          // Chỉ tra gần đúng: phiếu có thể không phải của khách này. Cho cả lối ra qua hộp cảnh báo, không bắt buộc nhận phiếu.
+          await reportValve();
+          return {id:verdict.depositId,legacy,uncertain:true,note:`Có thể lần chuyển khách hẹn trước đã ghi phiếu cọc (mã ${verdict.depositId}). Kiểm tra phiếu ở Quản lý cọc: đúng là phiếu của khách này thì bấm Hoàn tất chuyển đổi, không tạo phiếu khác; không phải thì dùng hộp cảnh báo để gỡ dấu rồi bấm Tải lại.`};
+        }
         if(verdict.kind==='clear'){
           if(financialPending.clearConfirmed(scope,pending.attemptId))forgetLeadConversionTrace(pending.requestKey);
         }else{
           // Chưa kết luận được: chặn đúng khách hẹn này qua hộp cảnh báo; sau 2 phút người dùng tự gỡ rồi bấm Tải lại.
-          const {pendingBlockMessage,pendingValve}=await import('@/lib/pendingValve');
-          const record={...pending,operation:pending.operation??OPERATION};
-          try{pendingValve.report({pending:record,blockedOperation:OPERATION,store:financialPending});}catch{/* giữ lỗi chính */}
-          throw new Error(pendingBlockMessage(record,pendingHasSettled(record)));
+          const valve=await reportValve();
+          throw new Error(valve.pendingBlockMessage(record,pendingHasSettled(record)));
         }
       }
       return {id:await getLeadDepositIncomeId(org, lead.id)};
@@ -88,6 +98,7 @@ export function ConvertLeadDialog({open,onOpenChange,lead}: {
       {convert.isError&&<p role="alert">Đã có phiếu cọc. Cập nhật trạng thái khách hẹn chưa thành công.</p>}
       {id?<Button disabled={convert.isPending} onClick={()=>convert.mutate(lead.id, { onSuccess: () => { settleLegacy(); onOpenChange(false); } })}>Hoàn tất chuyển đổi</Button>:
         existing.isError&&<Button onClick={()=>void existing.refetch()}>Tải lại</Button>}
+      {id&&!recorded&&existing.data?.uncertain&&<Button variant="outline" onClick={()=>void existing.refetch()}>Tải lại</Button>}
     </DialogContent></Dialog>;
   }
   return <CreateDepositDialog open onOpenChange={onOpenChange} initialRoomId={lead.room_id}

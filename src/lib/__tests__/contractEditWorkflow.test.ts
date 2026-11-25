@@ -31,7 +31,7 @@ it('stale form membership is rejected before any writer even when the save-time 
 // ── Đợt 7 (plan sửa khoá vĩnh viễn): kho dấu riêng của sửa hợp đồng, cách A + hộp cảnh báo chung ─────────────────────
 describe('đợt 7: sửa hợp đồng không còn khoá vĩnh viễn',()=>{
  const key='ihome:contract-edit-pending:v1:u1:c1';
- const seed=(over:Record<string,unknown>={})=>localStorage.setItem(key,JSON.stringify({version:1,actorId:'u1',attemptId:'legacy-attempt',contractId:'c1',organizationId:'o1',fieldsFingerprint:'old-form',updates:{rent_price:200},corePhase:'sending',customersPhase:'not-started',servicesPhase:'not-started',customers:request.customers,services:request.services,baseline:{customers:[{customer_id:'old',is_representative:true,notes:null}],services:[]},startedAt:new Date(Date.now()-10*60_000).toISOString(),...over}));
+ const seed=(over:Record<string,unknown>={})=>localStorage.setItem(key,JSON.stringify({version:1,actorId:'u1',attemptId:'legacy-attempt',contractId:'c1',organizationId:'o1',fieldsFingerprint:'old-form',updates:{rent_price:200},before:{rent_price:100},corePhase:'sending',customersPhase:'not-started',servicesPhase:'not-started',customers:request.customers,services:request.services,baseline:{customers:[{customer_id:'old',is_representative:true,notes:null}],services:[]},startedAt:new Date(Date.now()-10*60_000).toISOString(),...over}));
  const valve=()=>({report:vi.fn()});
  it('lệnh không tới máy chủ: lần sau đọc chưa khớp ⇒ gửi lại đúng giá trị trong dấu, hoàn tất, gỡ dấu',async()=>{
   const update=ports.update;ports.update=vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockImplementation(update);
@@ -48,11 +48,25 @@ describe('đợt 7: sửa hợp đồng không còn khoá vĩnh viễn',()=>{
   await expect(runContractEdit(request,ports)).resolves.toMatchObject({contractId:'c1'});
   expect(ports.update).toHaveBeenCalledOnce();expect(await loadContractEditJob('c1')).toBeNull();
  });
- it('dấu cũ gieo sẵn (bản trước, pha «đang gửi», không có giờ ghi cuối): gửi lại đúng giá trị trong dấu rồi hoàn tất',async()=>{
+ it('dấu gieo sẵn pha «đang gửi», các trường còn như lúc tạo dấu: gửi lại đúng giá trị trong dấu rồi hoàn tất',async()=>{
   seed();
   await expect(runContractEdit({...request,updates:{rent_price:555},fieldsFingerprint:'form-now'},ports)).resolves.toMatchObject({contractId:'c1',fieldsFingerprint:'old-form'});
   expect(ports.update).toHaveBeenCalledOnce();expect(ports.update).toHaveBeenCalledWith(expect.objectContaining({updates:{rent_price:200}}));
   expect(await loadContractEditJob('c1')).toBeNull();
+ });
+ it('dấu cũ gieo sẵn của bản trước (không biết các trường lúc tạo dấu), chưa khớp đích: không gửi lại mù, giữ dấu, báo hộp cảnh báo',async()=>{
+  seed({before:undefined,activeAt:undefined});const deps={valve:valve()};
+  await expect(runContractEdit(request,ports,deps)).rejects.toThrow(/thay đổi ở nơi khác/);
+  expect(ports.update).not.toHaveBeenCalled();expect(deps.valve.report).toHaveBeenCalledOnce();expect(await loadContractEditJob('c1')).not.toBeNull();
+ });
+ it('pha «đang gửi» mà người khác đã đổi đúng trường đó (khác cả đích lẫn lúc tạo dấu): không ghi đè, giữ dấu, báo hộp cảnh báo',async()=>{
+  const update=ports.update;ports.update=vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockImplementation(update);
+  const deps={valve:valve()};
+  await expect(runContractEdit(request,ports,deps)).rejects.toThrow();
+  actual.contract.rent_price=150;
+  await expect(runContractEdit(request,ports,deps)).rejects.toThrow(/thay đổi ở nơi khác/);
+  expect(ports.update).toHaveBeenCalledOnce();expect(actual.contract.rent_price).toBe(150);expect(deps.valve.report).toHaveBeenCalledOnce();
+  expect(await loadContractEditJob('c1')).toMatchObject({corePhase:'sending',before:{rent_price:100}});
  });
  it('dấu cũ gieo sẵn đang chèn dịch vụ dở, dịch vụ đã rỗng: chèn lại đúng danh sách trong dấu (không xoá lần hai)',async()=>{
   actual.contract.rent_price=200;actual.customers=structuredClone(request.customers);

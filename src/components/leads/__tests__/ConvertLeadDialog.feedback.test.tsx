@@ -66,9 +66,19 @@ describe('dấu chuyển khách hẹn bản trước',()=>{
     io.deposits=[{id:'deposit-legacy',tenant_id:'tenant'}];mount();
     expect(await screen.findByText(/Có thể lần chuyển khách hẹn trước đã ghi phiếu cọc \(mã deposit-legacy\)/)).toBeTruthy();
     expect(screen.queryByText('Người gửi · room · lead-income-lead')).toBeNull();
+    expect(io.report).toHaveBeenCalledWith(expect.objectContaining({pending:expect.objectContaining({attemptId:'old'})}));
+    expect(screen.getByRole('button',{name:'Tải lại'})).toBeTruthy();
     fireEvent.click(screen.getByRole('button',{name:'Hoàn tất chuyển đổi'}));
     await waitFor(()=>expect(io.clear).toHaveBeenCalledWith(expect.objectContaining({businessKey:'lead'}),'old'));
     expect(io.mark).toHaveBeenCalledWith('lead');
+  });
+  it('phiếu chỉ tra gần đúng mà không phải của khách này: tự gỡ dấu qua hộp cảnh báo rồi Tải lại ⇒ luồng nhận cọc như bình thường',async()=>{
+    io.pending.mockReturnValueOnce(legacyPending(['tenant']));trace({tenantId:'tenant',stage:'deposit',canResume:false});
+    io.deposits=[{id:'deposit-legacy',tenant_id:'tenant'}];mount();
+    expect(await screen.findByText(/Có thể lần chuyển khách hẹn trước/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Tải lại'}));
+    expect(await screen.findByRole('button',{name:'Người gửi · room · lead-income-lead'})).toBeTruthy();
+    expect(io.mark).not.toHaveBeenCalled();
   });
   it('dấu cũ đã nhận mã phiếu cọc: báo đã ghi kèm mã, chỉ hoàn tất khách hẹn rồi gỡ dấu',async()=>{
     io.pending.mockReturnValue(legacyPending(['tenant','deposit-1']));trace({tenantId:'tenant',depositId:'deposit-1',stage:'lead',canResume:true});

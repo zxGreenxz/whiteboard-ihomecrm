@@ -27,6 +27,8 @@ function server(){
  } satisfies ContractImportSteps;
  return {steps,contracts,links};
 }
+/** Dấu vân tay của dòng như bản trước lưu trong ảnh chụp (sha256 các trường của dòng). */
+const fp=async(input:ContractImportRow)=>Array.from(new Uint8Array(await webcrypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([input.room_name,input.customer_name,input.customer_phone,input.customer_id_number??null,input.signed_date,input.start_date,input.end_date,input.rent_price,input.payment_cycle,input.deposit,input.notes??null])))),byte=>byte.toString(16).padStart(2,'0')).join('');
 const pendingKeys=()=>Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:v1:'));
 beforeEach(()=>{vi.stubGlobal('crypto',webcrypto);localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId',scope.organizationId);});afterEach(()=>vi.unstubAllGlobals());
 
@@ -65,7 +67,7 @@ describe('dòng chưa rõ kết quả: tra hợp đồng hiệu lực của phò
   const fake=server();
   const marker='ihome:financial-pending:v1:'+['contract-excel-import','user-1','org-1','batch'].map(encodeURIComponent).join(':');
   localStorage.setItem(marker,JSON.stringify({namespace:'contract-excel-import',userId:'user-1',organizationId:'org-1',businessKey:'batch',attemptId:'legacy-attempt',requestKey:'legacy-attempt',completedIds:[],startedAt:new Date(Date.now()-10*60_000).toISOString()}));
-  localStorage.setItem('ihome:contract-import-progress:v1:user-1:org-1',JSON.stringify({...scope,attemptId:'legacy-attempt',rows:[{sourceRow:9,fingerprint:'old',stage:'contract',customerId:'customer-1'}]}));
+  localStorage.setItem('ihome:contract-import-progress:v1:user-1:org-1',JSON.stringify({...scope,attemptId:'legacy-attempt',rows:[{sourceRow:9,fingerprint:await fp(row(9)),stage:'contract',customerId:'customer-1'}]}));
   expect(readContractImportPending(scope)?.canCorrect).toBe(false);
   const result=await importContractBatch([row(9)],scope,fake.steps,vi.fn());
   expect(result).toMatchObject({success:1,failed:0,pending:false});
@@ -87,6 +89,44 @@ describe('dòng chưa rõ kết quả: tra hợp đồng hiệu lực của phò
  });
 });
 
+describe('sửa theo review: dòng chưa rõ phải đúng nội dung, mã mang sang phải còn đúng',()=>{
+ it('dòng chưa rõ mà file mới đổi nội dung ở cùng số dòng: chưa kết luận được ⇒ giữ dấu, không tạo hợp đồng nào',async()=>{
+  const fake=server();fake.steps.contract=vi.fn().mockRejectedValueOnce(NETWORK());
+  await importContractBatch([row(9)],scope,fake.steps,vi.fn());
+  const second=await importContractBatch([{...row(9),room_name:'P99',customer_phone:'0911111111'}],scope,fake.steps,vi.fn());
+  expect(second.pending).toBe(true);expect(fake.steps.contract).toHaveBeenCalledOnce();expect(fake.steps.findActiveContract).not.toHaveBeenCalled();expect(pendingKeys()).toHaveLength(1);
+ });
+ it('mã khách tìm theo SĐT ở lần trước không còn đúng người: tra lại khách như dòng mới, không gắn nhầm',async()=>{
+  const fake=server();fake.steps.contract=vi.fn().mockRejectedValueOnce(NETWORK()).mockImplementation(async()=>({id:'contract-x',roomId:'room-P9'}));
+  await importContractBatch([row(9)],scope,fake.steps,vi.fn());
+  fake.steps.verifyCustomer.mockResolvedValue(false);
+  fake.steps.customer.mockImplementation(async(_row,priorId)=>({id:priorId??'customer-dung',created:false}));
+  await importContractBatch([row(9)],scope,fake.steps,vi.fn());
+  expect(fake.steps.customer.mock.calls[1][1]).toBeUndefined();expect(fake.steps.contract.mock.calls[1][1]).toBe('customer-dung');
+ });
+ it('hợp đồng đã nhận mã nhưng không còn là hợp đồng hiệu lực của phòng: không liên kết, không đặt «có người ở» lại',async()=>{
+  const fake=server();const link=fake.steps.link;fake.steps.link=vi.fn().mockRejectedValueOnce({code:'42501',message:'permission denied'}).mockImplementation(link);
+  const first=await importContractBatch([row(9)],scope,fake.steps,vi.fn());expect(first.pending).toBe(true);
+  fake.contracts.length=0;
+  const second=await importContractBatch([row(9)],scope,fake.steps,vi.fn());
+  expect(second).toMatchObject({success:0,pending:false,canCorrect:true});expect(second.errors[0].message).toMatch(/contract-1.*không còn là hợp đồng hiệu lực/);
+  expect(fake.steps.link).toHaveBeenCalledOnce();expect(fake.steps.occupy).not.toHaveBeenCalled();expect(pendingKeys()).toEqual([]);
+ });
+ it('tạo hợp đồng bị 23505 vì phòng đã có hợp đồng của người khác: báo mã đó, kết quả rõ, không khoá',async()=>{
+  const fake=server();fake.contracts.push({id:'contract-other',room:'P9',tenant:'customer-other',price:1});
+  const result=await importContractBatch([row(9)],scope,fake.steps,vi.fn());
+  expect(result).toMatchObject({success:0,failed:1,pending:false,canCorrect:true});expect(result.errors[0].message).toMatch(/contract-other/);expect(pendingKeys()).toEqual([]);
+ });
+ it('tạo hợp đồng bị 23505 mà hợp đồng của phòng đúng là của dòng này (lần trước đã tới): nhận nó, làm tiếp, không tạo lần hai',async()=>{
+  const fake=server();const create=fake.steps.contract;fake.steps.contract=vi.fn().mockImplementationOnce(async(input:ContractImportRow,customerId:string)=>{await create(input,customerId);throw NETWORK();}).mockImplementation(create);
+  await importContractBatch([row(9)],scope,fake.steps,vi.fn());
+  // Người dùng đã tự gỡ dấu qua hộp cảnh báo và xoá ảnh chụp: lượt mới không biết gì về lần trước.
+  for(const key of Object.keys(localStorage))if(key.startsWith('ihome:'))localStorage.removeItem(key);
+  const second=await importContractBatch([row(9)],scope,fake.steps,vi.fn());
+  expect(second).toMatchObject({success:1,failed:0,pending:false,createdIds:[{row:9,id:'contract-1'}]});
+  expect(fake.contracts).toHaveLength(1);expect(fake.steps.link).toHaveBeenCalledWith('contract-1','customer-1');
+ });
+});
 describe('mỗi dòng độc lập, kết quả rõ không giữ dấu',()=>{
  it('dòng bị từ chối không dừng dòng sau; lượt không có dòng chưa rõ thì không giữ dấu; lượt sau bỏ qua dòng đã nhập đúng nội dung',async()=>{
   const fake=server();const create=fake.steps.contract;fake.steps.contract=vi.fn().mockRejectedValueOnce({code:'23514',message:'check violation'}).mockImplementation(create);
@@ -104,6 +144,7 @@ describe('mỗi dòng độc lập, kết quả rõ không giữ dấu',()=>{
   await importContractBatch([row(9)],scope,fake.steps,vi.fn());
   const second=await importContractBatch([row(9,9000000)],scope,fake.steps,vi.fn());
   expect(second).toMatchObject({success:0,failed:1,pending:false,canCorrect:true});
+  expect(second.errors[0].message).toMatch(/contract-1/);
   expect(fake.contracts).toHaveLength(1);
  });
  it('allows correction after a confirmed zero-write rejection',async()=>{

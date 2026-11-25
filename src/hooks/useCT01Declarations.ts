@@ -8,6 +8,7 @@ import { recordWriteMessage } from "@/lib/recordWriteOutcome";
 import { FinancialAlreadyRecordedError, FinancialWorkflowError } from "@/lib/financialWorkflowError";
 import { hasUnconfirmedResponse } from "@/lib/operationOutcome";
 import { legacyWindow, settleLegacyPending } from "@/lib/legacyPendingExit";
+import { payloadFingerprint } from "@/lib/financialPending";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg } from "@/lib/orgPayload";
 
@@ -50,7 +51,7 @@ export const useCT01Declarations = (customerId: string) => {
 // trình duyệt sinh (bảng nhận `id` từ trình duyệt, trigger không ghi đè; production 26/11/2026). Mã của lần gửi chưa rõ kết
 // quả được nhớ theo (người dùng, khách) trong tab này để lần lưu sau gửi lại ĐÚNG mã đó: khoá chính chặn tờ khai thứ hai và
 // đọc đúng mã cho biết lần trước đã ghi hay chưa. Tải lại trang là quên; không gì bị khoá.
-const unconfirmedCt01 = new Map<string, string>();
+const unconfirmedCt01 = new Map<string, { id: string; fingerprint: string }>();
 /** Test / đổi tài khoản: quên các mã đang chờ xác nhận. */
 export const forgetUnconfirmedCt01 = () => unconfirmedCt01.clear();
 const isUniqueViolation = (error: unknown) => !!error && typeof error === "object" && String((error as { code?: unknown }).code ?? "") === "23505";
@@ -95,9 +96,12 @@ export const useCreateCT01Declaration = () => {
       }
 
       const memoryKey = `${user.id}|${selectedOrganizationId ?? ""}|${customerId}`;
-      const reused = unconfirmedCt01.get(memoryKey);
+      // Dấu vân tay nội dung của lần gửi chưa rõ: lần sau đổi nội dung mà lần trước đã ghi thì báo, không coi là đã lưu nội dung mới.
+      const fingerprint = payloadFingerprint({ customerId, ...formData });
+      const prior = unconfirmedCt01.get(memoryKey);
+      const reused = prior?.id;
       const id = reused ?? crypto.randomUUID();
-      unconfirmedCt01.set(memoryKey, id);
+      unconfirmedCt01.set(memoryKey, { id, fingerprint: prior?.fingerprint ?? fingerprint });
       let response: { data: unknown; error: unknown };
       try {
         response = await supabase
@@ -130,6 +134,9 @@ export const useCreateCT01Declaration = () => {
       const read = await readCt01ById(id);
       if (read.state === "found") {
         unconfirmedCt01.delete(memoryKey);
+        if (prior && prior.fingerprint !== fingerprint) {
+          throw new FinancialAlreadyRecordedError(`Tờ khai CT01 đã được lưu ở lần gửi trước với thông tin lúc đó (mã ${id}). Mở tờ khai đó để kiểm tra và sửa nếu cần; bấm lưu lại nếu vẫn muốn tạo thêm.`, [id]);
+        }
         return read.row;
       }
       if (duplicate && read.state === "missing") {

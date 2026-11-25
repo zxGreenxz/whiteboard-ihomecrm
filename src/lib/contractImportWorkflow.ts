@@ -61,6 +61,9 @@ async function fingerprint(row:ContractImportRow){
  return Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
 const isUniqueViolation=(error:unknown)=>!!error&&typeof error==='object'&&String((error as {code?:unknown}).code??'')==='23505';
+const roomTakenMessage=(sourceRow:number,contractId:string)=>`Phòng của dòng ${sourceRow} đã có hợp đồng hiệu lực (mã ${contractId}), có thể là của lần nhập trước. Mở hợp đồng đó để kiểm tra; dòng này không nhập lại.`;
+/** Phòng của dòng đã có hợp đồng hiệu lực không chứng minh được là của lần nhập này: kết quả rõ, không nhập lại dòng đó. */
+class RoomTakenError extends Error {}
 /** Direct INSERTs have no backend retry key: absence never proves rollback; the room's active contract does (unique index). */
 export async function importContractBatch(rows:ContractImportRow[],scope:ContractImportScope,steps:ContractImportSteps,onResult:(report:ContractImportReport)=>void):Promise<ContractImportReport> {
  if(!rows.length||rows.some(row=>!Number.isInteger(row.source_row)||Number(row.source_row)<1)||new Set(rows.map(row=>row.source_row)).size!==rows.length)throw new FinancialWorkflowError('Chưa xác định được dòng Excel gốc. Đọc lại file trước khi nhập.','failure',[]);
@@ -72,23 +75,29 @@ export async function importContractBatch(rows:ContractImportRow[],scope:Contrac
   */
  const resolveUncertain=async(snapshot:Snapshot):Promise<boolean>=>{
   for(const entry of snapshot.rows){
-   // Khách đã tạo ở lần trước chỉ được dùng lại khi vẫn đúng người của dòng đang nhập (SĐT khớp); khác thì tra theo SĐT như mới.
-   if(entry.stage!=='completed'&&!entry.contractId&&entry.customerCreated&&entry.customerId){
-    const input=rows.find(row=>row.source_row===entry.sourceRow);
-    if(input&&!await steps.verifyCustomer(entry.customerId,input))entry.customerId=undefined;
-   }
+   const index=rows.findIndex(row=>row.source_row===entry.sourceRow);
+   const input=index>=0?rows[index]:undefined;
+   // Mã khách của lần trước (tạo mới hay tìm theo SĐT) chỉ được dùng lại khi vẫn đúng người của dòng đang nhập (SĐT khớp);
+   // khác thì tra theo SĐT như dòng mới.
+   if(entry.stage!=='completed'&&!entry.contractId&&entry.customerId&&input&&!await steps.verifyCustomer(entry.customerId,input))entry.customerId=undefined;
    if(!UNCERTAIN.includes(entry.stage))continue;
-   // Hợp đồng đã nhận mã: chỉ còn liên kết khách và phòng, hai bước ghi lặp lại được.
-   if(entry.contractId){entry.stage='partial';continue;}
-   const input=rows.find(row=>row.source_row===entry.sourceRow);
-   if(!input)return false;
+   // Dòng chưa rõ chỉ được kết luận bằng ĐÚNG dòng đó của file (cùng số dòng VÀ cùng nội dung). File đã đổi ở dòng này thì
+   // không biết lần trước gửi gì: chưa kết luận được (giữ dấu, hộp cảnh báo).
+   if(!input||fingerprints[index]!==entry.fingerprint)return false;
    const found=await steps.findActiveContract(input);
+   if(entry.contractId){
+    // Hợp đồng đã nhận mã: chỉ còn liên kết khách và phòng, hai bước ghi lặp lại được, nhưng chỉ khi nó vẫn là hợp đồng hiệu
+    // lực của phòng (không đặt lại «có người ở» cho một phòng mà hợp đồng đó đã thôi hiệu lực).
+    if(found?.id===entry.contractId){entry.stage='partial';entry.roomId=entry.roomId??found.roomId;continue;}
+    entry.stage='existing';
+    entry.message=`Hợp đồng mã ${entry.contractId} tạo ở lần nhập trước (dòng ${entry.sourceRow}) không còn là hợp đồng hiệu lực của phòng. Kiểm tra hợp đồng đó; dòng này không nhập lại.`;
+    continue;
+   }
    if(!found){entry.stage='ready';entry.message=undefined;continue;}
    if(entry.customerId&&found.tenantId===entry.customerId&&found.matches){
     entry.contractId=found.id;entry.roomId=found.roomId;entry.stage='partial';continue;
    }
-   entry.stage='existing';
-   entry.message=`Phòng của dòng ${entry.sourceRow} đã có hợp đồng hiệu lực (mã ${found.id}), có thể là của lần nhập trước. Mở hợp đồng đó để kiểm tra; dòng này không nhập lại.`;
+   entry.stage='existing';entry.message=roomTakenMessage(entry.sourceRow,found.id);
   }
   // Dòng đã nhập xong mà file lần này ghi nội dung khác: không nhập lại, báo để người dùng sửa hợp đồng đã có.
   for(let index=0;index<rows.length;index++){
@@ -114,7 +123,19 @@ export async function importContractBatch(rows:ContractImportRow[],scope:Contrac
      const customer=await steps.customer(input,entry.customerId);entry.customerId=confirmedRecordId(customer,'tạo khách nhập');entry.customerCreated=entry.customerCreated||customer.created;
      if(customer.created)progress.completed.push({id:customer.id,label:`Khách đã tạo từ dòng ${entry.sourceRow}`});save(scope,snapshot);
      progress.stage=`hợp đồng dòng ${entry.sourceRow}`;entry.stage='contract';save(scope,snapshot);
-     const contract=await steps.contract(input,customer.id);entry.contractId=confirmedRecordId(contract,'tạo hợp đồng nhập');entry.roomId=contract.roomId;
+     let contract:{id:string;roomId:string};
+     try{contract=await steps.contract(input,customer.id);}
+     catch(error){
+      if(!isUniqueViolation(error))throw error;
+      // Phòng đã có hợp đồng hiệu lực (chỉ mục duy nhất theo phòng): tra để biết là của lần trước hay của người khác.
+      let found:ActiveRoomContract|null=null;
+      try{found=await steps.findActiveContract(input);}
+      catch{/* Không tra được: giữ lời từ chối 23505 của máy chủ làm kết quả của dòng. */}
+      if(!found)throw error;
+      if(found.tenantId!==customer.id||!found.matches)throw new RoomTakenError(roomTakenMessage(entry.sourceRow,found.id));
+      contract={id:found.id,roomId:found.roomId};
+     }
+     entry.contractId=confirmedRecordId(contract,'tạo hợp đồng nhập');entry.roomId=contract.roomId;
      progress.completed.push({id:entry.contractId,label:`Hợp đồng đã tạo từ dòng ${entry.sourceRow}`});save(scope,snapshot);
     }
     const contractId=entry.contractId,customerId=entry.customerId,roomId=entry.roomId;
@@ -128,7 +149,9 @@ export async function importContractBatch(rows:ContractImportRow[],scope:Contrac
     if(!await steps.verify(entry,input))throw new TypeError('Chưa xác nhận đầy đủ hợp đồng và liên kết đã tạo.');
     entry.stage='completed';save(scope,snapshot);publish(snapshot);
    }catch(error){
-    entry.stage=entry.contractId?'partial':isConfirmedFinancialRejection(error)?'rejected':'unknown';entry.message=importErrorMessage(error,`nhập hợp đồng dòng ${entry.sourceRow}`);save(scope,snapshot);publish(snapshot);
+    if(error instanceof RoomTakenError){entry.stage='existing';entry.message=error.message;}
+    else{entry.stage=entry.contractId?'partial':isConfirmedFinancialRejection(error)?'rejected':'unknown';entry.message=importErrorMessage(error,`nhập hợp đồng dòng ${entry.sourceRow}`);}
+    save(scope,snapshot);publish(snapshot);
     // Mỗi dòng độc lập: dòng chưa rõ hay bị từ chối không dừng các dòng sau.
    }
   }
@@ -146,9 +169,10 @@ export async function importContractBatch(rows:ContractImportRow[],scope:Contrac
    const carried=prior&&prior.buildingId===scope.buildingId?prior:null;
    const snapshot:Snapshot={...scope,attemptId:progress.requestKey,rows:rows.map((row,index)=>{
     const old=carried?.rows.find(entry=>entry.sourceRow===row.source_row);
-    if(old&&(old.stage==='completed'?old.fingerprint===fingerprints[index]:UNCERTAIN.includes(old.stage)))return {...old};
-    // Khách đã tạo ở lượt trước cho dòng này (dòng bị từ chối ở bước hợp đồng): dùng lại để không tạo khách thứ hai.
-    const customer=old?.customerCreated&&old.customerId?{customerId:old.customerId,customerCreated:true}:{};
+    // Chỉ mang sang dòng của ĐÚNG nội dung đó (cùng số dòng, cùng dấu vân tay): đã nhập xong thì bỏ qua, chưa rõ thì tra trước.
+    if(old&&old.fingerprint===fingerprints[index]&&(old.stage==='completed'||UNCERTAIN.includes(old.stage)))return {...old};
+    // Khách đã tạo ở lượt trước cho dòng này (dòng bị từ chối ở bước hợp đồng): dùng lại (sau khi kiểm SĐT) để không tạo khách thứ hai.
+    const customer=old&&!old.contractId&&old.customerCreated&&old.customerId?{customerId:old.customerId,customerCreated:true}:{};
     return {sourceRow:row.source_row!,fingerprint:fingerprints[index],stage:'ready' as const,...customer};
    })};
    // Bước này chỉ đọc: đọc hỏng là chưa ghi gì, từ chối rõ để dấu vừa ghi được gỡ ngay.

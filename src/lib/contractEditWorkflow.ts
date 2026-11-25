@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {getSessionUser} from './authSession';
 import {FinancialWorkflowError,isConfirmedFinancialRejection} from './financialWorkflow';
-import {FinancialPendingStorageError,pendingHasSettled,type FinancialPendingRecord,type FinancialPendingScope} from './financialPending';
+import {FinancialPendingStorageError,pendingHasSettled,trackRunningAttempt,type FinancialPendingRecord,type FinancialPendingScope} from './financialPending';
 import {pendingBlockMessage,pendingValve,type PendingValve,type PendingValveStore} from './pendingValve';
 import {readContractRelationSnapshot,sameContractCustomers,sameContractServices,type ContractRelationSnapshot} from './contractRelationReconcile';
 import {supabase} from '@/integrations/supabase/client';
@@ -13,7 +13,9 @@ import type {UpdateContractPayload} from '@/hooks/useContracts';
 // Một lần sửa ghi ba phần: thông tin hợp đồng (đặt giá trị), khách của hợp đồng (đối chiếu nguyên tử với danh sách lúc mở
 // form) và dịch vụ của hợp đồng (xoá rồi chèn lại). Dấu lưu giá trị ĐÍCH của cả ba phần cùng pha của từng phần. Trước đợt 7,
 // một lần gửi chưa rõ kết quả mà đọc lại chưa khớp giá trị đích là khoá vĩnh viễn. Nay:
-//   - thông tin hợp đồng chưa khớp ⇒ gửi lại ĐÚNG giá trị đã lưu trong dấu (đặt giá trị lặp lại cho cùng kết quả);
+//   - thông tin hợp đồng chưa khớp ⇒ gửi lại ĐÚNG giá trị đã lưu trong dấu (đặt giá trị lặp lại cho cùng kết quả), CHỈ khi các
+//     trường đó còn đúng như lúc tạo dấu (`before`); người khác đã đổi thì không ghi đè. Dấu bản trước không có `before`
+//     nên chỉ còn hộp cảnh báo;
 //   - dịch vụ / khách đang ghi dở (pha xoá / chèn) ⇒ đọc lại: còn nguyên như lúc mở form thì chạy lại cả phần, đã rỗng thì
 //     chèn lại, khớp đích thì xong. Lệnh chèn cũ có thể còn đang chạy nên chỉ gửi lại sau 2 phút kể từ lần ghi cuối;
 //   - máy chủ từ chối rõ ở bước đầu (hết phiên, không có quyền, khớp 0 dòng) ⇒ gỡ dấu, không để pha «đang gửi»;
@@ -29,6 +31,8 @@ export interface ContractEditJob extends ContractEditRequest {
  baseline:ContractRelationSnapshot;startedAt:string;
  /** Đợt 7: giờ một lệnh ghi được gửi gần nhất. Dấu bản trước không có thì tính từ `startedAt`. */
  activeAt?:string;
+ /** Đợt 7: giá trị của đúng các trường trong `updates` đọc được ngay trước khi tạo dấu. Dấu bản trước không có. */
+ before?:Record<string,unknown>;
 }
 export interface ContractEditSnapshot extends ContractRelationSnapshot {contract:Record<string,unknown>&{id:string;organization_id?:string|null}}
 export interface ContractRelationWriteProgress {skipDelete?:boolean;organizationId?:string;expectedCustomers?:ContractRelationSnapshot['customers'];onPhase?:(phase:'reconciling'|'deleting'|'deleted'|'inserting'|'done')=>void}
@@ -47,7 +51,7 @@ const relations=z.object({customers:z.array(customer),services:z.array(service)}
 const updatesSchema=z.object({room_id:z.string().optional(),signed_date:z.string().optional(),start_date:z.string().optional(),end_date:z.string().optional(),rent_price:z.number().finite().nonnegative().optional(),total_deposit:z.number().finite().nonnegative().optional(),payment_cycle:z.enum(['MONTHLY','QUARTERLY','SEMI_ANNUAL','ANNUAL']).optional(),start_billing_date:z.string().nullable().optional(),end_billing_date:z.string().nullable().optional(),contract_template_id:z.string().nullable().optional(),invoice_template_id:z.string().nullable().optional(),notes:z.string().nullable().optional(),discounts:z.object({months:z.number().finite(),amount_per_month:z.number().finite()}).nullable().optional()}).strict();
 const phase=z.enum(['reconciling','not-started','deleting','deleted','inserting','done','rejected']);
 const isoTime=z.string().refine(value=>Number.isFinite(Date.parse(value)));
-const jobSchema=relations.extend({version:z.literal(1),actorId:z.string().min(1),attemptId:z.string().min(1),contractId:z.string().min(1),organizationId:z.string().min(1),fieldsFingerprint:z.string(),updates:updatesSchema,commissionChangeReason:z.string().trim().min(8).max(2000).optional(),corePhase:z.enum(['not-started','sending','done','rejected']),customersPhase:phase,servicesPhase:phase,baseline:relations,startedAt:isoTime,activeAt:isoTime.optional()});
+const jobSchema=relations.extend({version:z.literal(1),actorId:z.string().min(1),attemptId:z.string().min(1),contractId:z.string().min(1),organizationId:z.string().min(1),fieldsFingerprint:z.string(),updates:updatesSchema,commissionChangeReason:z.string().trim().min(8).max(2000).optional(),corePhase:z.enum(['not-started','sending','done','rejected']),customersPhase:phase,servicesPhase:phase,baseline:relations,startedAt:isoTime,activeAt:isoTime.optional(),before:z.record(z.string(),z.unknown()).optional()});
 const key=(actorId:string,id:string)=>`ihome:contract-edit-pending:v1:${encodeURIComponent(actorId)}:${encodeURIComponent(id)}`;
 const active=new Set<string>();
 function readJob(actorId:string,id:string):ContractEditJob|null {
@@ -100,7 +104,7 @@ export async function runContractEdit(request:ContractEditRequest,ports:Contract
  const now=deps.now??(()=>new Date());
  const actor=await getSessionUser();if(!actor)throw {code:'PGRST301'};const scope=key(actor.id,request.contractId);
  if(active.has(scope))throw new FinancialWorkflowError('Yêu cầu cập nhật hợp đồng đang được xử lý. Chờ kết quả trước khi tiếp tục.','unknown',[]);
- active.add(scope);let job:ContractEditJob|null=null;let recovering=false;
+ active.add(scope);let job:ContractEditJob|null=null;let recovering=false;let stopTracking:(()=>void)|undefined;
  try {
   job=readJob(actor.id,request.contractId);recovering=!!job;ports.onJob?.(job);let actual:ContractEditSnapshot;
   try{actual=await ports.read(request.contractId);}catch(error){if(job)throw issue(job,'đọc dữ liệu hợp đồng/khách hàng/dịch vụ',error);throw error;}
@@ -111,10 +115,13 @@ export async function runContractEdit(request:ContractEditRequest,ports:Contract
    if(!sameContractCustomers(actual.customers,expectedCustomers as ContractRelationSnapshot['customers']))throw new FinancialWorkflowError('Danh sách khách hàng đã thay đổi từ lúc mở form. Đóng và mở lại hợp đồng để đối chiếu.','failure',[]);
    const parsed=updatesSchema.parse(request.updates) as UpdateContractPayload;const selected=relations.parse(request) as ContractRelationSnapshot;
    if(typeof actual.contract.organization_id!=='string'||!actual.contract.organization_id)throw new FinancialWorkflowError('Chưa đọc được tổ chức của hợp đồng. Tải lại hợp đồng trước khi cập nhật.','failure',[]);
-   job={...request,...selected,updates:parsed,version:1,actorId:actor.id,attemptId:crypto.randomUUID(),organizationId:actual.contract.organization_id,corePhase:'not-started',customersPhase:'not-started',servicesPhase:'not-started',baseline:{customers:expectedCustomers as ContractRelationSnapshot['customers'],services:actual.services},startedAt:now().toISOString()};saveJob(job);
+   const before=Object.fromEntries(Object.entries(parsed).filter(([,value])=>value!==undefined).map(([field])=>[field,actual.contract[field]??null]));
+   job={...request,...selected,updates:parsed,before,version:1,actorId:actor.id,attemptId:crypto.randomUUID(),organizationId:actual.contract.organization_id,corePhase:'not-started',customersPhase:'not-started',servicesPhase:'not-started',baseline:{customers:expectedCustomers as ContractRelationSnapshot['customers'],services:actual.services},startedAt:now().toISOString()};saveJob(job);
   } else if(actual.contract.organization_id!==job.organizationId)throw issue(job,'tổ chức đã thay đổi');
   ports.onJob?.(job);
   const current=job;
+  // Hộp cảnh báo không gỡ dấu của lượt còn đang chạy trong tab này.
+  stopTracking=trackRunningAttempt(current.attemptId);
   /** Lưu pha mà không đổi đồng hồ: đọc lại thấy đã xong không phải là một lệnh ghi mới. */
   const persist=()=>{saveJob(current);ports.onJob?.(current);};
   /** Lưu pha của một lệnh ghi vừa gửi: đồng hồ 2 phút tính lại từ đây. */
@@ -122,6 +129,9 @@ export async function runContractEdit(request:ContractEditRequest,ports:Contract
   if(sameContractFields(actual.contract,current.updates))current.corePhase='done';
   // Đã xác nhận lưu ở lần trước mà nay khác: người khác đã sửa sau đó. Không ghi đè.
   else if(current.corePhase==='done')throw issue(current,'thông tin hợp đồng đã thay đổi sau lần lưu trước');
+  // Lần bấm sau mà các trường không còn như lúc tạo dấu: người khác đã sửa (hoặc dấu bản trước không biết lúc đó ra sao).
+  // Không ghi đè; giữ dấu và báo hộp cảnh báo.
+  else if(recovering&&!(current.before&&sameContractFields(actual.contract,current.before as UpdateContractPayload)))throw issue(current,'thông tin hợp đồng đã được thay đổi ở nơi khác');
   else {
    // Cách A: chưa khớp giá trị đích (lần trước chưa ghi, hoặc chưa gửi) ⇒ gửi (lại) đúng giá trị đã lưu trong dấu.
    current.corePhase='sending';touch();
@@ -176,7 +186,8 @@ export async function runContractEdit(request:ContractEditRequest,ports:Contract
   const feedback=job&&!(error instanceof FinancialWorkflowError)?issue(job,'đọc/ghi dữ liệu liên quan',error):error;
   // Lần bấm để hoàn tất một lần sửa đang dở mà vẫn chưa kết luận được: báo hộp cảnh báo chung (sau 2 phút người dùng tự
   // gỡ, có nhật ký). Lần gửi đầu tiên không báo, như lõi chung. Lời báo là kênh phụ: hỏng thì lỗi chính vẫn tới nơi gọi.
+  stopTracking?.();
   if(recovering&&job){try{(deps.valve??pendingValve).report({pending:asPending(job),blockedOperation:OPERATION,store:contractEditValveStore});}catch{/* giữ lỗi chính */}}
   throw feedback;
- }finally{active.delete(scope);}
+ }finally{stopTracking?.();active.delete(scope);}
 }

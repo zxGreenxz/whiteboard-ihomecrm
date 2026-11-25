@@ -124,6 +124,15 @@ describe('chuyển phòng (cách B)', () => {
     expect(pendingKeys()).toHaveLength(1);
   });
 
+  it('hàng rào biên nhận: lần đầu đã nhận mã hợp đồng mà biên nhận lệch, lần sau vẫn lệch ⇒ giữ dấu và mã, không gỡ lặng lẽ, không gửi lại', async () => {
+    install();
+    const handler = io.server.rpcHandlers.transfer_room_with_notice_v2!;
+    io.server.rpcHandlers.transfer_room_with_notice_v2 = args => { const result = handler(args); io.server.rows.contracts[0]!.rent_price = 999; return result; };
+    await expect(transfer(input)).rejects.toMatchObject({ outcome: 'partial' });
+    await expect(transfer(input)).rejects.toMatchObject({ message: expect.stringContaining('đối chiếu') });
+    expect(transferKeys()).toHaveLength(1);
+    expect(pendingKeys()).toHaveLength(1);
+  });
   it('đọc sự kiện hỏng: chưa kết luận được ⇒ giữ dấu, không gửi lại', async () => {
     install();
     io.server.failNext('transfer_room_with_notice_v2', 'rpc', 'drop-before');

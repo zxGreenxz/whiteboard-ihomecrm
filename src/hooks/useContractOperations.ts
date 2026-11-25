@@ -148,8 +148,14 @@ export const useTransferRoom = () => {
         if(event){
           if(event.operation==='TRANSFER_ROOM'){
             try{return {result:await readContractNoticeOperationReceipt(organizationId,requestKey,params,'TRANSFER_ROOM')};}
-            // Sự kiện có thật nên hợp đồng đã được chuyển; chỉ chưa dựng lại được biên nhận theo nội dung đang gửi.
-            catch{return {outcome:'already-written',message:'Hợp đồng đã được chuyển phòng ở lần gửi trước. Tải lại hợp đồng để xem phòng mới trước khi thao tác tiếp.',recordIds:[event.result_contract_id??params.contractId]};}
+            catch{
+              // Hàng rào biên nhận: lần trước đã nhận mã hợp đồng mà biên nhận lệch (tiền, phòng…) thì giữ dấu và mã như cũ, để
+              // người dùng đối chiếu qua hộp cảnh báo (có nhật ký), không gỡ lặng lẽ.
+              if(pending.completedIds.length)return null;
+              // Lần trước mất phản hồi, sự kiện có thật nên hợp đồng đã được chuyển; chỉ chưa dựng lại được biên nhận theo nội
+              // dung đang gửi (người dùng đã đổi nội dung form).
+              return {outcome:'already-written',message:'Hợp đồng đã được chuyển phòng ở lần gửi trước. Tải lại hợp đồng để xem phòng mới trước khi thao tác tiếp.',recordIds:[event.result_contract_id??params.contractId]};
+            }
           }
           // Dấu chung bản trước (đợt 6 đã tách gia hạn) là của một lần gia hạn đã ghi.
           return {outcome:'already-written',message:'Lần gia hạn hợp đồng gửi trước đó đã được ghi. Tải lại hợp đồng để kiểm tra rồi mới chuyển phòng.',recordIds:[event.result_contract_id??params.contractId]};

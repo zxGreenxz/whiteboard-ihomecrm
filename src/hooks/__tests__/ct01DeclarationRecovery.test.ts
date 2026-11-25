@@ -53,6 +53,15 @@ describe('tờ khai CT01 (cách D, không giữ dấu)', () => {
     expect(pendingKeys()).toEqual([]);
   });
 
+  it('lần trước đã ghi (mất phản hồi) mà lần này đổi nội dung: báo đã lưu với thông tin lúc đó kèm mã, không coi là đã lưu nội dung mới', async () => {
+    io.server.failNext('ct01_declarations', 'insert', 'drop-after');
+    io.server.failNext('ct01_declarations', 'read', 'drop-before');
+    await expect(save()).rejects.toMatchObject({ outcome: 'unknown' });
+    await expect(save(form('Người khai đã sửa'))).rejects.toMatchObject({ alreadyRecorded: true, recordIds: [insertedIds()[0]], message: expect.stringContaining('thông tin lúc đó') });
+    expect(rows()).toHaveLength(1);
+    await expect(save(form('Người khai đã sửa'))).resolves.toMatchObject({ full_name: 'Người khai đã sửa' });
+    expect(rows()).toHaveLength(2);
+  });
   it('dấu cũ gieo sẵn (khoá chung theo khách): thấy tờ khai quanh giờ kẹt ⇒ chỉ báo «có thể đã lưu» kèm mã, gỡ dấu; lần lưu sau tạo bình thường', async () => {
     const stuckAt = new Date(Date.now() - 10 * 60_000);
     io.server.rows.ct01_declarations = [{ id: 'ct01-legacy', customer_id: 'customer-1', user_id: 'actor', organization_id: 'org-a', created_at: stuckAt.toISOString() }];
