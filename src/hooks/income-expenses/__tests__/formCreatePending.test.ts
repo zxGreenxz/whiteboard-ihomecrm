@@ -3,6 +3,7 @@
 // canonical_write_operations, so băm nội dung, chờ lệnh cũ còn chạy — production 24/11/2026). Đường compat
 // ie_compat_insert_v2 nhận p_row.id do trình duyệt sinh: gửi lại cùng mã thì khoá chính chặn phiếu thứ hai, và
 // phép đối chiếu tra đúng phiếu theo mã đó. Dấu cũ (trước bản này) không có mã nên chỉ tra gần đúng.
+import {renderHook} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 const io=vi.hoisted(()=>({rpc:vi.fn(),user:{id:'u1',user_metadata:{full_name:'Tâm'}} as unknown,hideRead:false}));
 vi.mock('@tanstack/react-query',()=>({useMutation:(o:unknown)=>o,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
@@ -37,7 +38,7 @@ const form=(over:Partial<CreateIncomeExpenseInput>={}):CreateIncomeExpenseInput=
   items:[{income_expense_type_id:'t1',quantity:1,unit_price:120_000,start_date:'2026-11-01',end_date:'2026-11-30'}],...over,
 });
 const repeat={repeat_cycle:'MONTH' as const,repeat_count:2};
-const create=(input:CreateIncomeExpenseInput)=>(useCreateIncomeExpense() as unknown as {mutationFn:(i:CreateIncomeExpenseInput)=>Promise<{id?:string}>}).mutationFn(input);
+const create=(input:CreateIncomeExpenseInput)=>(renderHook(()=>useCreateIncomeExpense()).result.current as unknown as {mutationFn:(i:CreateIncomeExpenseInput)=>Promise<{id?:string}>}).mutationFn(input);
 const submit=(data:CreateIncomeExpenseInput)=>createVoucherFromForm(data,{userId:'u1',organizationId:'o1',create});
 const rpcCalls=(name:string)=>io.rpc.mock.calls.filter(c=>c[0]===name).map(c=>c[1] as Record<string,unknown>);
 const newVoucher=(id:string,args:{type?:unknown;building_id?:unknown;room_id?:unknown}):Voucher=>({id,code:'PC-'+id,user_id:'u1',type:String(args.type),building_id:String(args.building_id),room_id:(args.room_id as string|null)??null,created_at:new Date(clock).toISOString(),deleted_at:null});

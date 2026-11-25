@@ -2,6 +2,7 @@
 // Đợt 3: phiếu tổng (cả bảo trì đa toà) tra đúng đợt theo mã do trình duyệt sinh (cách D). Mã đợt chính là mã yêu
 // cầu của dấu, nên gửi lại sau khi "chưa thấy" vẫn dùng đúng mã đó và khoá chính của income_expense_batches chặn
 // đợt thứ hai. Lỗi từ chối rõ mà các phiếu con đã huỷ lại và đợt đã xoá (đã kiểm) thì gỡ dấu ngay.
+import {renderHook} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 type Row=Record<string,unknown>;
 const io=vi.hoisted(()=>({tables:{} as Record<string,Row[]>,rpc:vi.fn(),fail:{} as Record<string,'drop'|'lost'|'reject'|undefined>,seq:0,now:()=>new Date().toISOString()}));
@@ -55,7 +56,7 @@ const advance=(ms:number)=>{clock+=ms;vi.setSystemTime(clock);};
 const scope={namespace:'voucher-batch-create',userId:'u1',organizationId:'o1',businessKey:'EXPENSE'};
 const item={income_expense_type_id:'t1',quantity:1,unit_price:100,building_id:'b1',room_id:null,start_date:'2026-11-01',end_date:'2026-11-30'};
 const input={type:'EXPENSE',shared_name:'Bảo trì thang máy',account_id:'a1',voucher_date:'2026-11-24',items:[item,{...item,building_id:'b2'}]};
-const submit=()=>(useCreateIncomeExpenseBatch() as unknown as {mutationFn:(i:unknown)=>Promise<{batch:{id:string};voucherIds:string[]}>}).mutationFn(input);
+const submit=()=>(renderHook(()=>useCreateIncomeExpenseBatch()).result.current as unknown as {mutationFn:(i:unknown)=>Promise<{batch:{id:string};voucherIds:string[]}>}).mutationFn(input);
 const batches=()=>io.tables.income_expense_batches??[];
 const activeChildren=()=>(io.tables.income_expenses??[]).filter(v=>v.approval_status!=='CANCELLED');
 
