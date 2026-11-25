@@ -9,16 +9,32 @@ import {CREATE_TOKEN_NO_ORGANIZATION,rememberToken,unconfirmedPublicRoomReceipt,
 import {rpcListPublicRoomTokens,rpcManagePublicRoomToken,type ManageTokenArgs} from '@/lib/publicRoomAdminRpc';
 import {toast} from 'sonner';
 type TokenRow=Database['public']['Tables']['public_room_share_tokens']['Row'];
-/** Link của công ty kèm tên người tạo (list_public_room_tokens_v1, đợt 2 Sale phòng). */
-export type PublicRoomToken=TokenRow&{owner_name?:string|null};
+/**
+ * Link của công ty kèm tên người tạo (list_public_room_tokens_v1, đợt 2 Sale phòng). can_manage: người xem sửa / thu hồi /
+ * xoá được link này (link của mình, hoặc có quyền Quản lý link ở PHẠM VI CÔNG TY); thiếu trường (link đọc qua RLS) = của mình.
+ */
+export type PublicRoomToken=TokenRow&{owner_name?:string|null;can_manage?:boolean};
 const KEY=['public-room-tokens'] as const;
 const OWN_KEY=['public-room-tokens-own'] as const;
 type Options={inlineError?:boolean};
 function validToken(data:unknown):data is PublicRoomToken{
  if(!data||typeof data!=='object'||Array.isArray(data))return false;const r=data as Record<string,unknown>;
  return typeof r.token==='string'&&!!r.token&&typeof r.owner_id==='string'&&!!r.owner_id&&(r.label===null||typeof r.label==='string')&&typeof r.revoked==='boolean'&&typeof r.created_at==='string'&&Number.isFinite(Date.parse(r.created_at))&&(r.organization_id===null||typeof r.organization_id==='string')
-  &&(r.owner_name===undefined||r.owner_name===null||typeof r.owner_name==='string');
+  &&(r.owner_name===undefined||r.owner_name===null||typeof r.owner_name==='string')&&(r.can_manage===undefined||typeof r.can_manage==='boolean');
 }
+/** Mã link trong một URL /r/:token — cùng mẫu zalo_sale_advice_delivery_v1 dùng để đọc link của bot. */
+export function shareUrlToken(url:unknown):string|null{
+ if(typeof url!=='string')return null;const m=/^https:\/\/[A-Za-z0-9.-]+\/r\/([A-Za-z0-9_-]+)\/?$/.exec(url.trim());return m?m[1]:null;
+}
+/**
+ * Link bot Zalo đang gửi khách (zalo_automations «broadcast_vacant», config.template.shareUrl) của công ty đang chọn — để
+ * cảnh báo khi thu hồi / xoá đúng link đó. Bảng đọc qua RLS theo quyền xem Zalo: người không có quyền đó nhận danh sách
+ * rỗng (không cảnh báo được), lỗi đọc cũng im lặng — đây chỉ là lời nhắc thêm, máy chủ không dựa vào nó.
+ */
+export function useBotShareTokens({enabled=true}:{enabled?:boolean}={}){const {selectedOrganizationId}=useOrganization();return useQuery({queryKey:['zalo-bot-share-tokens',selectedOrganizationId],enabled:enabled&&!!selectedOrganizationId,meta:{silent:true},retry:false,queryFn:async():Promise<string[]>=>{
+ const {data,error}=await supabase.from('zalo_automations').select('config').eq('organization_id',selectedOrganizationId!).eq('kind','broadcast_vacant').limit(10);if(error)throw error;
+ return [...new Set((data??[]).map(row=>{const c=row.config as {template?:{shareUrl?:unknown}}|null;return shareUrlToken(c?.template?.shareUrl);}).filter((t):t is string=>!!t))];
+}});}
 const writeGuard=()=>persistentFinancialWorkflow('public-room-admin',{scope:'actor'});
 const report=(error:unknown,options:Options,operation:string)=>{if(!options.inlineError)notifyRuleError(error,`Chưa ${operation}`,'quản lý link chia sẻ',TOKEN_ADMIN_RULES);};
 /**

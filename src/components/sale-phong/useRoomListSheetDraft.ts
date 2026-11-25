@@ -66,7 +66,7 @@ export function useRoomListSheetDraft(onBusyChange?: (busy: boolean) => void) {
   const rows = rooms.data?.rooms ?? [];
   const byId = new Map(rows.map(row => [row.room.id, row]));
   const inventoryBlocked = rooms.isError || !rooms.data || !actorId || !selectedOrganizationId;
-  // Cài đặt chung thuộc CÔNG TY (đợt 2 Sale phòng): ai có quyền «Cài đặt hiển thị» đều sửa được — máy chủ trả cờ theo
+  // Cài đặt chung thuộc CÔNG TY (đợt 2 Sale phòng): ai có quyền «Cài đặt hiển thị» PHẠM VI CÔNG TY sửa được — máy chủ trả cờ theo
   // quyền (get_sale_room_inventory_v1) và kiểm lại khi lưu; không còn đòi người sửa đứng tên mọi toà.
   const canManageSettings = !inventoryBlocked && !permissions.isError && !!rooms.data?.canManageAccountSettings
     && canUse(permissions.data, 'sale_phong', 'manage_settings');
