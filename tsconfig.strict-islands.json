@@ -1552,6 +1552,7 @@
     "src/lib/storage/r2Client.ts",
     "src/lib/storage/r2Config.ts",
     "src/lib/storageKey.ts",
+    "src/lib/statusTransitionPending.ts",
     "src/lib/supabaseFetchAll.ts",
     "src/lib/tamTruBridge.ts",
     "src/lib/tamTruPayload.ts",

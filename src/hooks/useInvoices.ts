@@ -4,7 +4,8 @@ import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import {runFinancialPending} from '@/lib/financialPendingAction';
-import {financialPending,type FinancialPendingScope} from '@/lib/financialPending';
+import {financialPending,type FinancialPendingRecord,type FinancialPendingScope,type PendingReconciliation} from '@/lib/financialPending';
+import {beforeStateMeta,transitionVerdict} from '@/lib/statusTransitionPending';
 import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { invoiceFailureMessage, invoiceLabel, invoiceLifecycleFeedback, confirmedInvoiceReceipt, InvoicePartialError } from '@/lib/invoiceFeedback';
 // =============================================
@@ -1545,6 +1546,39 @@ export const useBulkCreateMeterReadings = () => {
 };
 
 // =============================================
+// Đối chiếu khôi phục / buộc huỷ / huỷ một hoá đơn (cách C, đợt 5)
+// Thân hàm production (25/11/2026): restore_invoice_with_credit_v1, super_admin_force_cancel_invoice_with_credit_v1,
+// cancel_invoice_with_credit_v1 đều khoá hợp đồng + hoá đơn FOR UPDATE (cùng khoá hỗ trợ tiền thuê) rồi mới xét trạng
+// thái, đã ở đích thì trả `noop`. Trình duyệt đọc trạng thái hoá đơn TRƯỚC khi ghi dấu; lần bấm sau so lại: đã ở đích
+// ⇒ báo «không thay đổi», không gửi; còn như trước ⇒ gửi lại đúng mã (máy chủ không làm hai lần); khác hẳn ⇒ báo, không gửi.
+// =============================================
+
+interface InvoiceState {id:string;invoice_number:string|null;status:string|null;deleted_at:string|null;paid_amount:number}
+async function readInvoiceState(invoiceId:string):Promise<InvoiceState|null>{
+  const {data,error}=await supabase.from('invoices').select('id, invoice_number, status, deleted_at, paid_amount').eq('id',invoiceId).maybeSingle();
+  if(error)throw error;
+  const row=data as Partial<InvoiceState>|null;
+  if(!row||row.id!==invoiceId)return null;
+  return {id:invoiceId,invoice_number:typeof row.invoice_number==='string'?row.invoice_number:null,status:typeof row.status==='string'?row.status:null,deleted_at:typeof row.deleted_at==='string'?row.deleted_at:null,paid_amount:Number(row.paid_amount??0)};
+}
+const invoiceSignature=(row:InvoiceState)=>[row.status,row.deleted_at?'deleted':'',row.paid_amount].join('|');
+const INVOICE_STATUS:Record<string,string>={DRAFT:'Nháp',APPROVED:'Đã duyệt, chưa thu',PARTIAL_PAID:'Đã thu một phần',PAID:'Đã thu đủ',OVERDUE:'Quá hạn',CANCELLED:'Đã huỷ'};
+function invoiceTransition(invoiceId:string,operation:string,rule:{reached:(row:InvoiceState)=>boolean;ready:(row:InvoiceState)=>boolean}){
+  return async (pending:FinancialPendingRecord):Promise<PendingReconciliation<unknown>>=>{
+    const row=await readInvoiceState(invoiceId);
+    const label=row?invoiceLabel(row):'hoá đơn';
+    const state=row?row.deleted_at?'đã xoá':INVOICE_STATUS[row.status??'']??row.status??'không rõ':'';
+    return transitionVerdict<unknown>({pending,current:row&&invoiceSignature(row),reached:!!row&&!row.deleted_at&&rule.reached(row),
+      // Dấu ghi trước đợt 5 không mang trạng thái trước khi bấm: xét điều kiện của thao tác trên trạng thái hiện tại.
+      ready:!!row&&!row.deleted_at&&rule.ready(row),serverLocksFirst:true,
+      onReached:()=>({result:{invoice:row,noop:true}}),
+      otherMessage:`${label.charAt(0).toUpperCase()}${label.slice(1)} đang ở trạng thái ${state}, đã đổi kể từ lần gửi trước. Không gửi lại yêu cầu ${operation}; tải lại hoá đơn để kiểm tra.`,
+      recordIds:[row?.invoice_number??invoiceId]});
+  };
+}
+const invoiceMeta=(row:InvoiceState|null)=>row?{meta:beforeStateMeta(invoiceSignature(row))}:{};
+
+// =============================================
 // Legacy: useCancelInvoice (kept for backward compatibility)
 // =============================================
 
@@ -1563,10 +1597,11 @@ export const useRestoreInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      return workflow.current.run(invoiceId,'khôi phục hoá đơn',async progress=>{
+      // Phép đọc đứng TRƯỚC khi ghi dấu (đợt 5): hết phiên hay mất mạng lúc đọc không để lại dấu nào.
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
-
+      const before=await readInvoiceState(invoiceId);
+      return workflow.current.run(invoiceId,'khôi phục hoá đơn',async progress=>{
       const result=await invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1581,7 +1616,7 @@ export const useRestoreInvoice = () => {
         ),
       );
       return confirmSingleInvoiceLifecycle(result,invoiceId,['APPROVED', 'PARTIAL_PAID', 'PAID', 'OVERDUE'],progress.completed);
-      },undefined,selectedOrganizationId??undefined);
+      },invoiceTransition(invoiceId,'khôi phục hoá đơn',{reached:row=>['APPROVED','PARTIAL_PAID','PAID','OVERDUE'].includes(row.status??''),ready:row=>row.status==='CANCELLED'}),selectedOrganizationId??undefined,invoiceMeta(before));
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -1614,6 +1649,7 @@ export const useForceCancelInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
+      const before=await readInvoiceState(invoiceId);
       return workflow.current.run(invoiceId,'huỷ hoá đơn',async progress=>{
       const result=await invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
@@ -1629,7 +1665,7 @@ export const useForceCancelInvoice = () => {
         ),
       );
       return confirmSingleInvoiceLifecycle(result,invoiceId,['CANCELLED'],progress.completed);
-      },undefined,selectedOrganizationId??undefined);
+      },invoiceTransition(invoiceId,'huỷ hoá đơn',{reached:row=>row.status==='CANCELLED',ready:row=>row.status!=='CANCELLED'}),selectedOrganizationId??undefined,invoiceMeta(before));
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -1660,26 +1696,24 @@ export const useCancelInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      return workflow.current.run(invoiceId,'huỷ hoá đơn',async progress=>{
+      // Đợt 5: đọc phiên và trạng thái hoá đơn TRƯỚC khi ghi dấu. Trước đây hai phép đọc này nằm trong vùng giữ dấu, nên
+      // hết phiên (lỗi thường, không phải lời từ chối có mã) cũng để lại dấu chặn lần huỷ sau.
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
-
       // Từ 15/09/2026 luật "DRAFT|APPROVED và chưa thu đồng nào" đã nằm trong
       // chính RPC (migration `hoa_don_guard_huy_no_keo_subtotal_ngay`), nên lần
       // đọc này chỉ còn để đổi lỗi SQL thành một câu tiếng Việt. Giữ lại: bỏ đi
       // thì người dùng nhận nguyên văn thông báo của Postgres.
-      const { data: current, error: fetchError } = await supabase
-        .from('invoices')
-        .select('status, paid_amount, deleted_at')
-        .eq('id', invoiceId)
-        .single();
-
-      if (fetchError) throw fetchError;
-      if (!canCancelInvoice({
+      const current=await readInvoiceState(invoiceId);
+      if(!current)throw new FinancialWorkflowError('Chưa đọc được hoá đơn cần huỷ. Tải lại hoá đơn trước khi tiếp tục.','failure',[]);
+      const cancellable=canCancelInvoice({
         status: current.status as InvoiceStatus,
         paid_amount: current.paid_amount,
         deleted_at: current.deleted_at,
-      })) {
+      });
+      return workflow.current.run(invoiceId,'huỷ hoá đơn',async progress=>{
+      // Hoá đơn đã huỷ vẫn đi vào đây khi còn dấu của lần huỷ trước: phép đối chiếu bên dưới gỡ dấu đó trước.
+      if (!cancellable) {
         throw new FinancialWorkflowError('Không thể huỷ hoá đơn ở trạng thái này (đã thu tiền hoặc đã huỷ)','failure',[]);
       }
 
@@ -1695,7 +1729,7 @@ export const useCancelInvoice = () => {
         ),
       );
       return confirmSingleInvoiceLifecycle(result,invoiceId,['CANCELLED'],progress.completed);
-      },undefined,selectedOrganizationId??undefined);
+      },invoiceTransition(invoiceId,'huỷ hoá đơn',{reached:row=>row.status==='CANCELLED',ready:row=>canCancelInvoice({status:row.status as InvoiceStatus,paid_amount:row.paid_amount,deleted_at:row.deleted_at})}),selectedOrganizationId??undefined,invoiceMeta(current));
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });

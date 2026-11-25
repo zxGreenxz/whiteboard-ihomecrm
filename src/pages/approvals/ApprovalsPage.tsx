@@ -59,7 +59,7 @@ import {
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 import { AiSubmittedBadge } from "@/components/approvals/AiSubmittedBadge";
 import { QueryRegion } from "@/components/errors/QueryRegion";
-import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
 import { loadIncomeExpenseDetails } from '@/lib/incomeExpenseDetailRpc';
 import { hasCompleteVoucherDetail } from '@/lib/incomeExpenseDetailRead';
 import { withDetailReadDeadline } from '@/hooks/income-expenses/detailRead';
@@ -184,11 +184,11 @@ const ApprovalsPage = () => {
   const [reasonError, setReasonError] = useState(false);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [blockedRequests, setBlockedRequests] = useState<Set<string>>(() => new Set());
-  const reportActionError = (error: unknown, requestId: string) => {
+  // Đợt 5: quyết định, duyệt V2 và duyệt + thu/chi V2 đều tự đối chiếu ở lần bấm sau (đọc trạng thái yêu cầu / gửi lại
+  // đúng mã), nên kết quả chưa rõ không còn khoá dòng đó tới khi tải lại trang; câu báo vẫn hiện.
+  const reportActionError = (error: unknown) => {
     // Lỗi chốt sổ tổng (PROFIT_LEDGER_…) ra câu riêng; lỗi khác như cũ.
     setActionError(ledgerAwareVoucherFailure(error, "xử lý yêu cầu duyệt"));
-    if (voucherOutcomeUnknown(error)) setBlockedRequests(previous => new Set(previous).add(requestId));
   };
 
   // Nguồn phiếu (RPC hộp thư không có system_source): biết dòng nào là phiếu chi theo sổ tổng.
@@ -243,7 +243,7 @@ const ApprovalsPage = () => {
   const custodianBookIds = new Set(custodianBooks.map((book) => book.id));
 
   const openPosting = async (row: PendingApproval, lockedCashbookId: string | null = null) => {
-    if (postingRead.current || !row.organization_id || !row.voucher_id || blockedRequests.has(row.request_id) || !v2PostOptionFor(row)) return;
+    if (postingRead.current || !row.organization_id || !row.voucher_id || !v2PostOptionFor(row)) return;
     const token = Symbol('approval voucher detail'); postingRead.current = token;
     setOpeningPosting(true); setActionError(null);
     try {
@@ -277,7 +277,7 @@ const ApprovalsPage = () => {
   // Lỗi (hết quyền, request đã đóng…) đã được hook toast nguyên văn — giữ dialog
   // mở để người duyệt sửa lý do/thử lại thay vì mất nội dung vừa gõ.
   const submitReject = async () => {
-    if (!rejecting || blockedRequests.has(rejecting.request_id)) return;
+    if (!rejecting) return;
     if (!reason.trim()) { setReasonError(true); reasonRef.current?.focus(); return; }
     try {
       await decide.mutateAsync({
@@ -289,12 +289,11 @@ const ApprovalsPage = () => {
       refreshLedger(rejecting);
       closeReject();
     } catch (error) {
-      reportActionError(error, rejecting.request_id);
+      reportActionError(error);
     }
   };
 
   const approve = (row: PendingApproval) => {
-    if (blockedRequests.has(row.request_id)) return;
     setActionError(null);
     // V2 CANONICAL: duyệt-only trên PHIẾU qua RPC canonical — KHÔNG đổi tồn quỹ
     // (posting làm sau ở dialog Thu/Chi). Không fallback legacy khi RPC lỗi.
@@ -305,13 +304,13 @@ const ApprovalsPage = () => {
           organizationId: row.organization_id,
           expectedApprovalVersion: row.approval_version ?? 1,
         },
-        { onSuccess: () => { refetch(); refreshLedger(row); }, onError: error => reportActionError(error, row.request_id) },
+        { onSuccess: () => { refetch(); refreshLedger(row); }, onError: error => reportActionError(error) },
       );
       return;
     }
     decide.mutate({ requestId: row.request_id,
         organizationId: row.organization_id, decision: "APPROVE", reason: null },
-      { onSuccess: () => refreshLedger(row), onError: error => reportActionError(error, row.request_id) });
+      { onSuccess: () => refreshLedger(row), onError: error => reportActionError(error) });
   };
   const rowActions = (r: PendingApproval, mobile: boolean) => (
     <ApprovalActions
@@ -579,7 +578,7 @@ const ApprovalsPage = () => {
             <Button
               variant="destructive"
               onClick={submitReject}
-              disabled={decide.isPending || !!rejecting && blockedRequests.has(rejecting.request_id)}
+              disabled={decide.isPending}
             >
               Xác nhận từ chối
             </Button>

@@ -1,5 +1,6 @@
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {workflowErrorMessage} from '@/lib/financialWorkflow';
+import {beforeStateMeta,transitionVerdict} from '@/lib/statusTransitionPending';
 import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
 import { useMemo } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -200,6 +201,29 @@ export const usePendingApprovalSources = (rows: readonly PendingApproval[]) => {
 // Duyệt / từ chối một yêu cầu. Engine tự kiểm quyền duyệt, chặn maker tự duyệt,
 // và chuyển phiếu sang POSTED khi qua hết bước — lỗi trả về là câu tiếng Việt
 // từ server nên hiển thị nguyên văn.
+/**
+ * Ảnh trạng thái của một yêu cầu duyệt mà người đang xem đọc được (get_approval_request_detail_compat_v2: trạng thái,
+ * phiên bản, từng bước). `null` khi không đọc thấy (không thuộc công ty, không từng là người duyệt).
+ * Không đọc được quyết định của riêng mình: approval_decisions chỉ có chính sách RESTRICTIVE nên không ai SELECT được.
+ */
+interface ApprovalRequestState { state: string; version: number; signature: string; canDecide: boolean }
+async function readApprovalRequestState(requestId: string): Promise<ApprovalRequestState | null> {
+  const { data, error } = await supabase.rpc("get_approval_request_detail_compat_v2", { p_request_id: requestId });
+  if (error) throw error;
+  const row = data && typeof data === "object" && !Array.isArray(data) ? data as Record<string, unknown> : null;
+  if (!row || row.id !== requestId || typeof row.state !== "string") return null;
+  const steps = Array.isArray(row.steps) ? row.steps as Record<string, unknown>[] : [];
+  const version = Number(row.version);
+  return {
+    state: row.state, version, canDecide: row.can_decide === true,
+    signature: [row.state, Number.isFinite(version) ? version : "", ...steps.map(step => `${step.step_no}:${step.status}:${step.current_generation}`)].join("|"),
+  };
+}
+const APPROVAL_STATE_LABEL: Record<string, string> = {
+  PENDING_APPROVAL: "Đang chờ duyệt", APPROVED: "Đã duyệt", POSTED: "Đã duyệt và ghi nhận", REJECTED: "Đã từ chối",
+  CANCELLED: "Đã huỷ", WITHDRAWN: "Đã thu hồi",
+};
+
 export const useDecideApproval = () => {
   const queryClient = useQueryClient();
   const workflow=persistentFinancialWorkflow('approval-request',{scope:'actor'});
@@ -211,6 +235,11 @@ export const useDecideApproval = () => {
       decision: "APPROVE" | "REJECT";
       reason?: string | null;
     }) => {
+      // Cách C (đợt 5): decide_financial_request_v2 → app_private.decide_financial_request_v1 (production 25/11/2026)
+      // khoá yêu cầu FOR UPDATE rồi đòi đúng phiên bản và trạng thái chờ duyệt; nhưng một phiếu duyệt bước cần nhiều
+      // người (ALL/QUORUM) chưa đủ người thì không đổi phiên bản, nên gửi lại sớm có thể ghi thêm một dòng quyết định
+      // của chính mình. Vì vậy đọc ảnh trạng thái TRƯỚC khi ghi dấu, lần bấm sau so lại, chỉ gửi lại sau 2 phút.
+      const before = await readApprovalRequestState(input.requestId);
       return workflow.run(input.requestId,'xử lý yêu cầu duyệt',async progress=>{
       const { data, error } = await supabase.rpc("decide_financial_request_v2", {
         p_request_id: input.requestId,
@@ -223,7 +252,21 @@ export const useDecideApproval = () => {
       if ((data as {request_id?:unknown}|null)?.request_id!==input.requestId || approvalDecisionFeedback(data, input.decision).kind === "warning") throw new TypeError("Missing approval decision confirmation");
       progress.completed.push({id:input.requestId,label:'Đã nhận kết quả xử lý yêu cầu duyệt'});
       return data as { request_id: string; state: string };
-      },undefined,input.organizationId);
+      },async pending=>{
+        const now = await readApprovalRequestState(input.requestId);
+        if (!now) return null;
+        const label = APPROVAL_STATE_LABEL[now.state] ?? now.state;
+        // Yêu cầu đã rời trạng thái chờ duyệt (do quyết định của mình hoặc người khác): không gửi lại.
+        if (now.state !== "PENDING_APPROVAL") return { outcome: "already-written", message: `Yêu cầu duyệt đã ở trạng thái ${label}. Không gửi lại quyết định; tải lại hộp duyệt để kiểm tra.`, recordIds: [input.requestId] };
+        return transitionVerdict({
+          // Dấu không có ảnh trước khi bấm (bản trước): chưa biết bước có đổi hay không, nên giữ dấu cho hộp cảnh báo.
+          pending, current: now.signature, reached: false, onReached: () => null,
+          otherMessage: now.canDecide
+            ? "Yêu cầu duyệt đã chuyển bước kể từ lần gửi trước (có thể do quyết định đó hoặc người duyệt khác). Không gửi lại; tải lại hộp duyệt để kiểm tra."
+            : "Bạn không còn là người duyệt của bước đang chờ. Không gửi lại; tải lại hộp duyệt để kiểm tra.",
+          recordIds: [input.requestId],
+        });
+      },input.organizationId,before ? { meta: beforeStateMeta(before.signature) } : {});
     },
     onSuccess: (_data, input) => {
       invalidateAfterDecision(queryClient);

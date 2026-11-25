@@ -1,5 +1,6 @@
 import {useRef} from 'react';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {beforeStateMeta,transitionVerdict} from '@/lib/statusTransitionPending';
 import {financialReadNumber} from '@/lib/financialReadValidation';
 import { notifyActionError } from "@/lib/actionFeedback";
 import { jsonProp } from "@/lib/jsonValue";
@@ -288,11 +289,25 @@ export const useUpdateAccount = (options?: {silent?: boolean}) => {
   });
 };
 
+/** Sổ đã lưu trữ chưa (`deleted_at`). Không đọc thấy sổ (quyền) trả `null`; đọc hỏng ném lỗi. */
+async function readCashbookArchived(id: string): Promise<boolean | null> {
+  const { data, error } = await supabase.from("accounts").select("id, deleted_at").eq("id", id).maybeSingle();
+  if (error) throw error;
+  const row = data as { id?: unknown; deleted_at?: unknown } | null;
+  return row && row.id === id ? !!row.deleted_at : null;
+}
+
 export const useDeleteAccount = () => {
   const qc = useQueryClient();
-  const workflow=useRef(persistentFinancialWorkflow('cashbook-lifecycle',{scope:'actor'}));
+  // Đợt 5: lưu trữ tách khỏi dấu chung `cashbook-lifecycle` của sửa sổ. Dấu ở đó (sửa sổ chưa rõ, hoặc lưu trữ của bản
+  // trước) vẫn chặn lưu trữ đúng sổ đó qua hộp cảnh báo; lưu trữ kẹt thì không còn chặn sửa sổ.
+  const workflow=useRef(persistentFinancialWorkflow('cashbook-archive',{scope:'actor',legacy:'cashbook-lifecycle'}));
   return useMutation({
-    mutationFn: async (id: string) => workflow.current.run(id,'xóa sổ quỹ',async () => {
+    mutationFn: async (id: string) => {
+      // Cách C: archive_cashbook_v1 (production 25/11/2026) khoá sổ FOR UPDATE (chỉ sổ chưa lưu trữ) rồi mới xét; gửi lại
+      // khi sổ đã lưu trữ chỉ ra lỗi «không tìm thấy». Đọc trạng thái sổ trước khi ghi dấu; lần bấm sau so lại.
+      const before = await readCashbookArchived(id);
+      return workflow.current.run(id,'xóa sổ quỹ',async () => {
       // Canonical archive_cashbook_v1 (từ chối nếu còn phiếu). Không còn
       // fallback ghi thẳng bảng (xem ghi chú ở useCreateAccount).
       const canonical = await supabase.rpc("archive_cashbook_v1", { p_cashbook_id: id });
@@ -301,7 +316,15 @@ export const useDeleteAccount = () => {
         return;
       }
       throw canonical.error;
-    }),
+      }, async pending => {
+        const archived = await readCashbookArchived(id);
+        return transitionVerdict({
+          pending, current: archived === null ? null : archived ? 'archived' : 'active', reached: archived === true, serverLocksFirst: true,
+          onReached: () => ({ outcome: 'already-written', message: 'Sổ quỹ đã ở trạng thái lưu trữ (đã xoá khỏi danh sách). Không gửi lại yêu cầu xoá.', recordIds: [id] }),
+          otherMessage: 'Sổ quỹ đã đổi trạng thái kể từ lần gửi trước. Không gửi lại; tải lại danh sách sổ quỹ để kiểm tra.', recordIds: [id],
+        });
+      }, undefined, before === null ? {} : { meta: beforeStateMeta(before ? 'archived' : 'active') });
+    },
     onError: (error:unknown) => notifyActionError(error, "Chưa xóa sổ quỹ."),
     onSuccess: (_result, input) => {
       qc.invalidateQueries({ queryKey: ["accounts"] });

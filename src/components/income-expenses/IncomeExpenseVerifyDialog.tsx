@@ -1,4 +1,4 @@
-import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -57,8 +57,9 @@ export function IncomeExpenseVerifyDialog({
       }
       onOpenChange(false);
     } catch(error) {
+      // Đợt 5: lần bấm sau tự so trạng thái đã kiểm với lúc bấm (đã đổi thì không gửi lần hai, vì gửi lại là đảo ngược),
+      // nên kết quả chưa rõ không khoá hộp nữa; câu báo vẫn hiện.
       setSubmitError(voucherFailureMessage(error,"cập nhật trạng thái đã kiểm"));
-      if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
     }
   };
 

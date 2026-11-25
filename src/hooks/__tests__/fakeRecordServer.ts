@@ -104,6 +104,8 @@ export function fakeRecordServer(): FakeRecordServer {
         found = [...found].sort((a, b) => String(a[column]).localeCompare(String(b[column])) * (ascending ? 1 : -1));
       }
       if (limit !== undefined) found = found.slice(0, limit);
+      // Máy chủ thật trả bản sao: dòng đọc ra không đổi theo các lệnh ghi sau đó.
+      found = found.map(row => ({ ...row }));
       if (shape === 'many') return { data: found, error: null };
       if (shape === 'maybe') return { data: found[0] ?? null, error: null };
       return found.length === 1 ? { data: found[0], error: null } : { data: null, error: { code: 'PGRST116', message: 'not single' } };
