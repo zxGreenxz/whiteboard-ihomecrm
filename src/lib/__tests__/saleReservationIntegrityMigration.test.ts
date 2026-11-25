@@ -44,7 +44,8 @@ async function installLiveSaleReader() {
   }
   // Đo định nghĩa SỐNG: «Phòng trống» theo công ty (đợt 2 Sale phòng). Bản () trong các file lịch sử chỉ để chúng chạy lại.
   expect('supabase/migrations/' + liveDefinitionOf('public.get_my_available_rooms').file)
-    .toBe('supabase/migrations/20261125034429_sale_phong_theo_cong_ty.sql');
+    // Đợt 3 Sale phòng: bản sống thêm khoá deposit_hold (khối «đang giữ bằng cọc», đo ở cocThuChiMigration.test.ts).
+    .toBe('supabase/migrations/20261125094121_coc_thu_chi_chan_0d_va_khoi_dang_giu_bang_coc.sql');
 }
 
 const org = '00000000-0000-4000-8000-000000000001';
@@ -139,6 +140,7 @@ beforeAll(async () => {
     -- Đợt 2 Sale phòng: «Phòng trống» lọc toà theo quyền xem (sale_room_can_v1) và lấy hotline theo người đứng tên chung.
     CREATE FUNCTION app_private.sale_room_can_v1(uuid,uuid,text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT auth.uid() IS NOT NULL AND $1=ANY(my_org_ids()) AND can_access_building($2) $$;
     CREATE FUNCTION app_private.room_exit_hold_json_v1(uuid,uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
+    CREATE FUNCTION app_private.room_deposit_hold_json_v1(uuid,uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
     ${liveDefinitionOf('app_private.org_building_owner_v1').sql}
     -- Bản () cũ cho các file lịch sử chạy lại (chúng CREATE OR REPLACE bản này và kiểm ACL); installLiveSaleReader bỏ nó.
     CREATE FUNCTION public.get_my_available_rooms() RETURNS jsonb LANGUAGE sql AS $$ SELECT NULL::jsonb $$;
