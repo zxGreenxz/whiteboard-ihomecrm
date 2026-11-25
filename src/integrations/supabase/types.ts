@@ -25594,7 +25594,10 @@ export type Database = {
           user_id: string
         }[]
       }
-      get_my_available_rooms: { Args: never; Returns: Json }
+      get_my_available_rooms: {
+        Args: { p_organization_id?: string }
+        Returns: Json
+      }
       get_my_context: { Args: never; Returns: Json }
       get_my_copilot_availability_v1: {
         Args: { p_organization_id: string }
@@ -25712,6 +25715,10 @@ export type Database = {
       }
       get_public_latest_invoice_by_contract: {
         Args: { p_contract_id: string }
+        Returns: Json
+      }
+      get_public_room_settings_v1: {
+        Args: { p_organization_id: string }
         Returns: Json
       }
       get_receiving_cashbooks_v1: {
@@ -27615,6 +27622,10 @@ export type Database = {
       }
       list_organization_members_v1: { Args: never; Returns: Json }
       list_organization_roles_v1: { Args: never; Returns: Json }
+      list_public_room_tokens_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       list_receiving_cashbook_settings_v1: {
         Args: { p_organization_id: string }
         Returns: Json
@@ -27783,6 +27794,15 @@ export type Database = {
         Returns: Json
       }
       lucky_save_payout_v1: { Args: { p: Json; p_code: string }; Returns: Json }
+      manage_public_room_token_v1: {
+        Args: {
+          p_action: string
+          p_label?: string
+          p_organization_id: string
+          p_token: string
+        }
+        Returns: Json
+      }
       manager_collection_cycle_report: {
         Args: { p_from?: string; p_manager_id?: string; p_to?: string }
         Returns: Json
@@ -30123,6 +30143,17 @@ export type Database = {
           p_expected_version: number
           p_organization_id: string
           p_payload: Json
+        }
+        Returns: Json
+      }
+      save_public_room_settings_v1: {
+        Args: {
+          p_expected_updated_at: string
+          p_hotline_id?: string
+          p_organization_id: string
+          p_sale_policy?: string
+          p_show_rented: boolean
+          p_soon_days: number
         }
         Returns: Json
       }

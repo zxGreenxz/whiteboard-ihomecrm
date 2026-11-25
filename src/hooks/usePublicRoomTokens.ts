@@ -6,7 +6,6 @@ import {getSessionUser} from '@/lib/authSession';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {CREATE_TOKEN_NO_ORGANIZATION,rememberToken,unconfirmedPublicRoomReceipt,TOKEN_ADMIN_RULES,notifyRuleError} from '@/lib/publicRoomFeedback';
-import {rpcListPublicRoomTokens,rpcManagePublicRoomToken,type ManageTokenArgs} from '@/lib/publicRoomAdminRpc';
 import {toast} from 'sonner';
 type TokenRow=Database['public']['Tables']['public_room_share_tokens']['Row'];
 /**
@@ -17,6 +16,9 @@ export type PublicRoomToken=TokenRow&{owner_name?:string|null;can_manage?:boolea
 const KEY=['public-room-tokens'] as const;
 const OWN_KEY=['public-room-tokens-own'] as const;
 type Options={inlineError?:boolean};
+/** p_label NULL = xoá nhãn (types.ts không biểu diễn được tham số NULL của RPC). */
+type ManageTokenRpcArgs=Database['public']['Functions']['manage_public_room_token_v1']['Args'];
+type ManageTokenArgs={p_token:string;p_action:'rename'|'revoke'|'restore'|'delete';p_label?:string|null};
 function validToken(data:unknown):data is PublicRoomToken{
  if(!data||typeof data!=='object'||Array.isArray(data))return false;const r=data as Record<string,unknown>;
  return typeof r.token==='string'&&!!r.token&&typeof r.owner_id==='string'&&!!r.owner_id&&(r.label===null||typeof r.label==='string')&&typeof r.revoked==='boolean'&&typeof r.created_at==='string'&&Number.isFinite(Date.parse(r.created_at))&&(r.organization_id===null||typeof r.organization_id==='string')
@@ -43,7 +45,7 @@ const report=(error:unknown,options:Options,operation:string)=>{if(!options.inli
  */
 export function usePublicRoomTokens({enabled=true}:{enabled?:boolean}={}){const {selectedOrganizationId}=useOrganization();return useQuery({queryKey:[...KEY,selectedOrganizationId],enabled:enabled&&!!selectedOrganizationId,meta:{errorDisplay:"inline"},queryFn:async():Promise<PublicRoomToken[]>=>{
  const organizationId=selectedOrganizationId!;
- const {data,error}=await rpcListPublicRoomTokens({p_organization_id:organizationId});if(error)throw error;
+ const {data,error}=await supabase.rpc('list_public_room_tokens_v1',{p_organization_id:organizationId});if(error)throw error;
  if(!Array.isArray(data)||!data.every(validToken)||data.some(row=>row.organization_id!==organizationId)||new Set(data.map(row=>row.token)).size!==data.length)throw new TypeError('Invalid public room token list');return data;
 }});}
 /** Link của chính người dùng (RLS) — cho Thống kê, nơi người xem không cần quyền quản link. */
@@ -62,9 +64,9 @@ export function useCreatePublicRoomToken(options:Options={}){const qc=useQueryCl
  });
 },onSuccess:row=>{void invalidate(qc);toast.success(`Đã tạo link chia sẻ ${row.token}`);},onError:error=>report(error,options,'tạo link chia sẻ')});}
 /** Đổi nhãn / thu hồi / khôi phục / xoá qua manage_public_room_token_v1 (kiểm quyền ở máy chủ; ghi thẳng bảng đã bị chặn). */
-async function manage(organizationId:string|null|undefined,args:Omit<ManageTokenArgs,'p_organization_id'>):Promise<Record<string,unknown>>{
+async function manage(organizationId:string|null|undefined,args:ManageTokenArgs):Promise<Record<string,unknown>>{
  if(!organizationId)throw new FinancialWorkflowError('Chưa chọn công ty. Chọn công ty ở đầu trang rồi thao tác link.','failure',[]);
- const {data,error}=await rpcManagePublicRoomToken({p_organization_id:organizationId,...args});if(error)throw error;
+ const {data,error}=await supabase.rpc('manage_public_room_token_v1',{p_organization_id:organizationId,...args} as ManageTokenRpcArgs);if(error)throw error;
  if(!data||typeof data!=='object'||Array.isArray(data)||(data as Record<string,unknown>).token!==args.p_token)unconfirmedPublicRoomReceipt();
  return data as Record<string,unknown>;
 }

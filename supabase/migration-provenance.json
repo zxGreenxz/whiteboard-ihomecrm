@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T13:56:15.129Z",
+  "generatedAt": "2026-11-25T15:52:40.745Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 989,
-    "unknown": 81,
+    "ledger-applied": 990,
+    "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14755,14 +14755,9 @@
       "name": "sale_phong_theo_cong_ty",
       "scheme": "timestamp14",
       "sha256": "216eecfdbc7e89df8e358a64cfa715c8efc572049107331111cb5c3d7a05b2e0",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.org_building_owner_v1",
-        "function:app_private.sale_org_permission_v1",
-        "function:app_private.sale_org_wide_permission_v1",
-        "function:app_private.buildings_nguoi_dung_ten_theo_cong_ty_v1",
-        "function:app_private.buildings_khoa_nguoi_dung_ten_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T15:51:08.450Z|bien-nhan-backup"
       ]
     },
     {
