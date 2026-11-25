@@ -13,7 +13,8 @@ import { isCommissionReasonValid } from "@/lib/commissionAudit";
 import { useIncomeExpenseRevisions, useReviseIncomeExpense } from "@/hooks/income-expenses/revisions";
 import { checkSelfApproveBeforeApprove, useSelfApproveGate } from "@/hooks/income-expenses/selfApproveGate";
 import { focusFirstError } from "@/lib/formErrors";
-import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
+import { FinancialAlreadyRecordedError } from "@/lib/financialWorkflow";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -336,8 +337,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
         changed();
       } catch (error) {
         // Lỗi chốt sổ tổng (PROFIT_LEDGER_…) ra câu riêng; lỗi khác như cũ.
+        // Đợt 5: duyệt V2 gửi lại đúng mã ở lần bấm sau (máy chủ trả kết quả cũ), nên không khoá phiếu tới khi tải lại trang.
         setActionError(ledgerAwareVoucherFailure(error, "duyệt phiếu"));
-        if (voucherOutcomeUnknown(error)) setBlockedVoucherId(target.id);
       }
       return;
     }
@@ -366,7 +367,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       setActionError(revisionSaved
         ? `Đã lưu thay đổi của phiếu nhưng chưa hoàn tất duyệt. ${voucherFailureMessage(error, "duyệt phiếu")} Tải lại phiếu trước khi tiếp tục.`
         : voucherFailureMessage(error, "duyệt phiếu"));
-      if (revisionSaved || voucherOutcomeUnknown(error)) setBlockedVoucherId(target.id);
+      // Đã lưu sửa đổi thì hộp đang giữ phiên bản cũ: phải tải lại phiếu. Duyệt chưa rõ kết quả thì lần bấm sau tự đối chiếu.
+      if (revisionSaved) setBlockedVoucherId(target.id);
       if (revisionSaved) changed();
     }
   }, [
@@ -405,7 +407,12 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       await unapproveMutation.mutateAsync({ id: unapproveTarget, reason: unapproveNeedsReason ? lifecycleReason : undefined });
       setUnapproveTarget(null);
       changed();
-    } catch (error) { setActionError(voucherFailureMessage(error, "bỏ duyệt phiếu")); }
+    } catch (error) {
+      // Đợt 5: máy đã kết luận phiếu «đã ở trạng thái …» (hook đã báo): đóng hộp đang giữ ảnh cũ và làm mới, vì bỏ duyệt
+      // không xét trạng thái hiện tại nên bấm lại sẽ lên phiên bản phiếu thêm lần nữa.
+      if (error instanceof FinancialAlreadyRecordedError) { setUnapproveTarget(null); changed(); return; }
+      setActionError(voucherFailureMessage(error, "bỏ duyệt phiếu"));
+    }
   };
 
   const confirmRestore = async () => {
@@ -415,7 +422,10 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       await restoreMutation.mutateAsync({ id: restoreTarget, reason: restoreNeedsReason ? lifecycleReason : undefined });
       setRestoreTarget(null);
       changed();
-    } catch (error) { setActionError(voucherFailureMessage(error, "khôi phục phiếu")); }
+    } catch (error) {
+      if (error instanceof FinancialAlreadyRecordedError) { setRestoreTarget(null); changed(); return; }
+      setActionError(voucherFailureMessage(error, "khôi phục phiếu"));
+    }
   };
 
   const confirmCancel = async () => {
@@ -432,8 +442,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       setCancelTarget(null); setCancelTargetType(null); setCancelReason("");
       changed();
     } catch (error) {
+      // Đợt 5: ba cửa huỷ tự đối chiếu ở lần bấm sau (huỷ đường cũ chỉ chạy bước còn thiếu), nên không khoá phiếu.
       setActionError(voucherFailureMessage(error, "huỷ phiếu"));
-      if (voucherOutcomeUnknown(error) || error instanceof VoucherPartialError) setBlockedVoucherId(cancelTarget);
     }
   };
 
@@ -444,8 +454,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     try {
       const result = await cancelBatchMutation.mutateAsync({ batchId: cancelBatchTarget, reason: batchCancelReason });
       if (result.failures?.length) {
+        // Bấm lại thì đọc lại phiếu còn hiệu lực của đợt và chỉ huỷ phần còn (đợt 5), nên không khoá đợt.
         setActionError(`Đã huỷ ${result.count} phiếu; ${result.failures.length} phiếu chưa hoàn tất. Kiểm tra từng phiếu trong đợt trước khi thao tác tiếp.`);
-        setBlockedVoucherId(cancelBatchTarget);
         changed();
         return;
       }
@@ -453,7 +463,6 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       changed();
     } catch (error) {
       setActionError(voucherFailureMessage(error, "huỷ đợt phiếu"));
-      if (error instanceof VoucherPartialError || voucherOutcomeUnknown(error)) setBlockedVoucherId(cancelBatchTarget);
     }
   };
 
@@ -467,7 +476,6 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       changed();
     } catch (error) {
       setActionError(voucherFailureMessage(error, "hoàn tác thu/chi"));
-      if (voucherOutcomeUnknown(error)) setBlockedVoucherId(reverseTarget.id);
     }
   };
 

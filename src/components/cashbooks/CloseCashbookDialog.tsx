@@ -255,7 +255,7 @@ export default function CloseCashbookDialog({
             <Button onClick={() => void feedback.run(() => undefined, () => setStep(3), formErrors)} disabled={sourcesBlocked || feedback.saving || feedback.blocked}>Tiếp tục</Button>
           )}
           {step === 3 && (
-            <Button onClick={() => void feedback.run(submit, () => onOpenChange(false), {...formErrors,typed:typed.trim().toUpperCase() === CONFIRM_WORD ? undefined : 'Nhập CHOT SO để xác nhận gửi đề nghị.'})} disabled={sourcesBlocked || feedback.saving || feedback.blocked}
+            <Button onClick={() => void feedback.run(submit, () => onOpenChange(false), {...formErrors,typed:typed.trim().toUpperCase() === CONFIRM_WORD ? undefined : 'Nhập CHOT SO để xác nhận gửi đề nghị.'}, {retryable: true})} disabled={sourcesBlocked || feedback.saving || feedback.blocked}
                     className="bg-red-600 hover:bg-red-700">
               {proposeMut.isPending
                 ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Đang gửi…</>)

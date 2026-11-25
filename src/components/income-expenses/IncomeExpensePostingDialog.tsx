@@ -10,6 +10,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Upload, X, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  DIALOG_SCROLL_BODY,
+  DIALOG_STICKY_FOOTER,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -26,6 +28,10 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useAuth } from '@/hooks/useAuth';
+import { useProfile } from '@/hooks/useProfile';
+import { createPostingConfirmationImage } from '@/lib/postingConfirmationImage';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { DateSegmentInput } from '@/components/ui/date-segment-input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -72,6 +78,7 @@ export interface PostingVoucherSummary {
   approvedTotal: number;
   /** Tên phiếu (hiển thị phụ, tùy chọn). */
   name?: string;
+  code?: string;
   /**
    * MULTI_TRANCHE salary: số còn được phép chi (ceiling - đã chi). Chỉ dùng khi
    * subjectKind='SALARY_AUTHORIZATION'.
@@ -712,6 +719,11 @@ export default function IncomeExpensePostingDialog({
   const isVoucher = voucher.subjectKind === 'VOUCHER';
   /** Ảnh mới gom lại rồi đính lên phiếu lúc xác nhận (đường chính, thay cho đính khi dán). */
   const stageUploads = isVoucher && !!onAttachEvidence;
+  const { data: actor } = useAuth();
+  const { data: profile } = useProfile();
+  const [creatingConfirmation, setCreatingConfirmation] = useState(false);
+  // Ô tick theo đúng ảnh của lần chọn này, từ mã tải tạm tới URL trong kho.
+  const [confirmationKey, setConfirmationKey] = useState<string | null>(null);
   /** Cho gỡ ảnh đang có trên phiếu (gỡ thật lúc xác nhận). */
   const canRemoveExisting = isVoucher && !!onRemoveAttachment;
   const {
@@ -891,6 +903,8 @@ export default function IncomeExpensePostingDialog({
       setRemovedUrls([]);
       setAppliedAdds([]);
       setAppliedRemovals([]);
+      setConfirmationKey(null);
+      setCreatingConfirmation(false);
     };
   }, [open, voucher.subjectId, mode, discardStaged, dropLocalPreviews, abortPendingUploads]);
 
@@ -1021,6 +1035,7 @@ export default function IncomeExpensePostingDialog({
           // khoá — tải ảnh gốc (tới 25 MB) ở đó là khoá hộp hàng phút.
           stagedFilesRef.current.set(res.url, res.file);
           setStaged([...stagedRef.current, res.url]);
+          setConfirmationKey(key => key === id ? res.url : key);
           movePreview(PENDING_PREVIEW(id), res.url);
           setUploadStats((prev) => ({ ...prev, [res.url]: { size: res.size, elapsedMs: res.elapsedMs } }));
         } finally {
@@ -1047,29 +1062,28 @@ export default function IncomeExpensePostingDialog({
     [dropLocalPreviews, setPendingUploads, notifyInFlightChange],
   );
 
+  const stageEvidenceFile = useCallback((file: File) => {
+    const invalid = validateAttachmentFile(file, { compressFirst: true });
+    if (invalid) {
+      toast.error(`“${file.name}”: ${invalid}`);
+      return null;
+    }
+    pendingSeqRef.current += 1;
+    const id = `u${pendingSeqRef.current}`;
+    pendingFilesRef.current.set(id, file);
+    addLocalPreview(PENDING_PREVIEW(id), file);
+    setPendingUploads(prev => [...prev, { id, name: file.name, loaded: 0, total: file.size, attempt: 1, phase: 'queued' }]);
+    startUpload(id);
+    return id;
+  }, [addLocalPreview, setPendingUploads, startUpload]);
+
   const handleEvidenceFiles = useCallback(
     async (files: FileList | File[] | null) => {
       const list = files ? Array.from(files as ArrayLike<File>) : [];
       if (list.length === 0) return;
       warmUploadConnection();
       if (stageUploads) {
-        for (const file of list) {
-          const invalid = validateAttachmentFile(file, { compressFirst: true });
-          if (invalid) {
-            toast.error(`“${file.name}”: ${invalid}`);
-            continue;
-          }
-          pendingSeqRef.current += 1;
-          const id = `u${pendingSeqRef.current}`;
-          pendingFilesRef.current.set(id, file);
-          // Ô ảnh vẽ NGAY từ file trên máy, cùng URL tạm dùng tiếp sau khi tải xong.
-          addLocalPreview(PENDING_PREVIEW(id), file);
-          setPendingUploads((prev) => [
-            ...prev,
-            { id, name: file.name, loaded: 0, total: file.size, attempt: 1, phase: 'queued' },
-          ]);
-          startUpload(id);
-        }
+        for (const file of list) stageEvidenceFile(file);
         return;
       }
       if (!onUploadEvidence) return;
@@ -1085,7 +1099,7 @@ export default function IncomeExpensePostingDialog({
         if (sessionRef.current === session) setLegacyUploading(false);
       }
     },
-    [stageUploads, onUploadEvidence, addLocalPreview, setPendingUploads, startUpload],
+    [stageUploads, onUploadEvidence, stageEvidenceFile],
   );
 
   const handleEvidenceRemove = useCallback(
@@ -1109,6 +1123,35 @@ export default function IncomeExpensePostingDialog({
     (item: PostingEvidenceItem) => item.addedNow || canRemoveExisting,
     [canRemoveExisting],
   );
+
+  const confirmationSelected = confirmationKey !== null && (
+    pendingUploads.some(upload => upload.id === confirmationKey) || stagedUrls.includes(confirmationKey)
+  );
+  const showConfirmation = stageUploads && mode === 'APPROVE_AND_POST' && voucher.type === 'EXPENSE'
+    && (confirmationSelected || (pendingUploads.length === 0 && countUsableEvidence(evidenceItems) === 0 && fallbackIds.length === 0));
+
+  const toggleConfirmation = async (checked: boolean) => {
+    if (!checked && confirmationKey) {
+      if (stagedRef.current.includes(confirmationKey)) await handleEvidenceRemove(confirmationKey);
+      else handlePendingRemove(confirmationKey);
+      return;
+    }
+    if (!checked || !actor || creatingConfirmation || confirmationSelected) return;
+    const session = sessionRef.current;
+    setCreatingConfirmation(true);
+    try {
+      const profileName = profile?.id === actor.id ? profile.full_name?.trim() : '';
+      const file = await createPostingConfirmationImage({
+        actorId: actor.id, actorName: profileName || actor.email || actor.phone || actor.id,
+        voucherId: voucher.subjectId, voucherCode: voucher.code, amount: voucher.approvedTotal,
+      });
+      if (sessionRef.current === session) setConfirmationKey(stageEvidenceFile(file));
+    } catch (error) {
+      if (sessionRef.current === session) toast.error(error instanceof Error ? error.message : 'Không tạo được ảnh xác nhận.');
+    } finally {
+      if (sessionRef.current === session) setCreatingConfirmation(false);
+    }
+  };
 
   /**
    * ĐƯỜNG LÙI (giữ tinh thần 27/08/2026): server không cho đính ảnh lên phiếu (vd
@@ -1347,11 +1390,11 @@ export default function IncomeExpensePostingDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
+      <DialogContent className={cn("grid-cols-1 sm:max-w-[480px]", DIALOG_SCROLL_BODY)}>
+        <DialogHeader className="pr-8">
           <DialogTitle>{title}</DialogTitle>
           {voucher.name && (
-            <DialogDescription className="truncate">
+            <DialogDescription className="[overflow-wrap:anywhere]">
               {voucher.name}
             </DialogDescription>
           )}
@@ -1488,7 +1531,7 @@ export default function IncomeExpensePostingDialog({
                       canRemove={canRemoveItem}
                       busy={legacyUploading}
                       adopting={adopting}
-                      disabled={committing || waitingUploads || isSubmitting}
+                      disabled={creatingConfirmation || committing || waitingUploads || isSubmitting}
                       fallbackCount={fallbackIds.length}
                       pendingChanges={hasPendingAttachmentChanges}
                       confirmLabel={title}
@@ -1502,6 +1545,17 @@ export default function IncomeExpensePostingDialog({
                       pendingLocked={committing || isSubmitting}
                     />
                   </FormControl>
+                  {showConfirmation && (
+                    <label className="flex items-start gap-2 text-sm">
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={creatingConfirmation || confirmationSelected}
+                        disabled={!actor || !capabilityOk || adopting || cashbookError || reconcileRequired || creatingConfirmation || committing || waitingUploads || isSubmitting}
+                        onCheckedChange={value => void toggleConfirmation(value === true)}
+                      />
+                      Dùng ảnh xác nhận của tôi
+                    </label>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -1522,10 +1576,11 @@ export default function IncomeExpensePostingDialog({
               </p>
             )}
 
-            <DialogFooter>
+            <DialogFooter className={DIALOG_STICKY_FOOTER}>
               <Button
                 type="button"
                 variant="outline"
+                className="flex-1 sm:flex-none"
                 disabled={committing}
                 onClick={() => handleOpenChange(false)}
               >
@@ -1534,7 +1589,8 @@ export default function IncomeExpensePostingDialog({
               {/* Ảnh đang tải KHÔNG khoá nút: bấm thì hộp chờ ảnh xong rồi tự đi tiếp. */}
               <Button
                 type="submit"
-                disabled={cashbookError || reconcileRequired || isSubmitting || committing || waitingUploads || legacyUploading || !capabilityOk}
+                className="flex-1 sm:flex-none"
+                disabled={cashbookError || reconcileRequired || isSubmitting || committing || waitingUploads || legacyUploading || creatingConfirmation || !capabilityOk}
               >
                 {waitingUploads
                   ? 'Đang chờ ảnh tải xong...'

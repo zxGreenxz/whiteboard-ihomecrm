@@ -148,12 +148,14 @@ export default function ConfirmCashbookClosingDialog({
           <Button
             variant="outline"
             disabled={feedback.saving || feedback.blocked}
+            // Đợt 5: huỷ và ký đều tự đối chiếu ở lần bấm sau (máy chủ khoá đề nghị rồi mới xét), nên kết quả chưa rõ không
+            // khoá hộp; câu báo vẫn hiện.
             onClick={() => void feedback.run(async () => {
               await cancelMut.mutateAsync({
                 requestId: request.request_id, cashbookName: request.cashbook_name,
                 reason: "Người nhận từ chối / cần đếm lại",
               });
-            }, () => onOpenChange(false))}
+            }, () => onOpenChange(false), {}, {retryable: true})}
           >
             Từ chối &amp; huỷ đề nghị
           </Button>
@@ -164,11 +166,12 @@ export default function ConfirmCashbookClosingDialog({
               await confirmMut.mutateAsync({
                 requestId: request.request_id, cashbookName: request.cashbook_name,
                 countedBalance: countedNum as number,
+                cashbookId: request.cashbook_id, closedThrough: request.closed_through,
               });
             }, () => onOpenChange(false), {
               counted: countedNum === null ? 'Nhập số tiền bạn thực kiểm đếm.' : !matches ? 'Số tiền khác số người giao khai. Hai bên cần kiểm đếm lại.' : undefined,
               agreed: !agreed ? 'Xác nhận bạn đã kiểm đếm và nhận đủ số tiền.' : undefined,
-            })}
+            }, {retryable: true})}
           >
             {confirmMut.isPending
               ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Đang chốt…</>)

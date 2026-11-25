@@ -1490,6 +1490,7 @@
     "src/lib/prefetchIntent.ts",
     "src/lib/prefetchPages.ts",
     "src/lib/profitClose.ts",
+    "src/lib/postingConfirmationImage.ts",
     "src/lib/profitConfigurationReceipt.ts",
     "src/lib/profitFeedback.ts",
     "src/lib/profitReadModels.ts",

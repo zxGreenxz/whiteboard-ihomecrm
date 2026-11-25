@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3232,
+    "sourceCallSites": 3241,
     "catalogFunctions": 1689,
     "schemas": [
       "public",
@@ -9,13 +9,13 @@
     ]
   },
   "counts": {
-    "calledRpcs": 438,
+    "calledRpcs": 439,
     "byRisk": {
-      "normal": 328,
+      "normal": 329,
       "financial": 109,
       "infrastructure": 1
     },
-    "securityDefiner": 412
+    "securityDefiner": 413
   },
   "missingOnServer": [],
   "rpcs": {
@@ -2572,6 +2572,25 @@
       ],
       "callers": [
         "src/hooks/useAcceptanceGeofence.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_approval_request_detail_compat_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useApprovals.ts"
       ],
       "risk": "normal"
     },

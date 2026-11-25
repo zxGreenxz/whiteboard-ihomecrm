@@ -1,5 +1,6 @@
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialAlreadyRecordedError, FinancialWorkflowError, FinancialWorkflowGuard } from '@/lib/financialWorkflow';
+import { beforeStateMeta, transitionVerdict } from '@/lib/financialPending';
 // =============================================
 // useCashHandovers — data layer cho Bàn giao tiền mặt (/thu-tien).
 //
@@ -260,12 +261,46 @@ async function handoverCodes(ids: readonly string[]): Promise<string[]> {
   }
 }
 
+// ── Bốn thao tác trên một phiên (đợt 5) ──────────────────────────────────────────────────────────────────────────
+// Mỗi thao tác một namespace (`handover-confirm`, `handover-cancel-request`, `handover-cancel-confirm`,
+// `handover-cancel-reject`). Trước đó cả bốn chung dấu `handover-lifecycle` theo mã phiên và cùng tên thao tác, nên
+// dấu cũ ở đó không cho biết là thao tác nào: nó chặn đúng phiên đó qua hộp cảnh báo (`legacy`).
+// Cách C: thân hàm production (25/11/2026) confirm_cash_handover, request_cancel_handover, confirm_cancel_handover,
+// reject_cancel_handover đều khoá phiên FOR UPDATE rồi mới xét trạng thái và báo lỗi rõ (P0001) khi phiên đã đổi, nên
+// gửi lại không ghi hai lần. Trình duyệt đọc trạng thái phiên trước khi ghi dấu; lần bấm sau so lại.
+interface HandoverState { id: string; code: string | null; status: string | null; cancelRequestedBy: string | null; cancelRequestedAt: string | null }
+async function readHandoverState(handoverId: string): Promise<HandoverState | null> {
+  const { data, error } = await supabase.from('cash_handovers').select('id, code, status, cancel_requested_by, cancel_requested_at').eq('id', handoverId).maybeSingle();
+  if (error) throw error;
+  const row = data as { id?: unknown; code?: unknown; status?: unknown; cancel_requested_by?: unknown; cancel_requested_at?: unknown } | null;
+  if (!row || row.id !== handoverId) return null;
+  const text = (value: unknown) => typeof value === 'string' && value ? value : null;
+  return { id: handoverId, code: text(row.code), status: text(row.status), cancelRequestedBy: text(row.cancel_requested_by), cancelRequestedAt: text(row.cancel_requested_at) };
+}
+const handoverSignature = (row: HandoverState) => [row.status, row.cancelRequestedBy, row.cancelRequestedAt].map(value => value ?? '').join('|');
+const HANDOVER_STATUS: Record<string, string> = { PENDING: 'Chờ nhận', CONFIRMED: 'Đã nhận', CANCELLED: 'Đã huỷ' };
+const handoverStateLabel = (row: HandoverState) => `${HANDOVER_STATUS[row.status ?? ''] ?? row.status ?? 'không rõ'}${row.cancelRequestedBy && row.status !== 'CANCELLED' ? ', đang có yêu cầu huỷ' : ''}`;
+async function runHandoverTransition<T>(guard: FinancialWorkflowGuard, handoverId: string, operation: string, task: () => Promise<T>, reached: (row: HandoverState) => boolean): Promise<T> {
+  // Đọc trước khi ghi dấu: lỗi đọc (hết phiên, mất mạng) không để lại dấu nào.
+  const before = await readHandoverState(handoverId);
+  return guard.run(handoverId, operation, task, async pending => {
+    const row = await readHandoverState(handoverId);
+    const name = row?.code ?? handoverId;
+    return transitionVerdict<T>({
+      pending, current: row && handoverSignature(row), reached: !!row && reached(row), serverLocksFirst: true,
+      onReached: () => ({ outcome: 'already-written', message: `Phiên ${name} đã ở trạng thái ${row ? handoverStateLabel(row) : ''}. Không gửi lại yêu cầu ${operation}.`, recordIds: [name] }),
+      otherMessage: `Phiên ${name} đang ở trạng thái ${row ? handoverStateLabel(row) : ''}, đã đổi kể từ lần gửi trước. Không gửi lại yêu cầu ${operation}; tải lại danh sách phiên để kiểm tra.`,
+      recordIds: [name],
+    });
+  }, undefined, before ? { meta: beforeStateMeta(handoverSignature(before)) } : {});
+}
+
 export const useConfirmHandover = () => {
   const invalidate = useInvalidateHandover();
-  const guard = useRef(persistentFinancialWorkflow('handover-lifecycle',{scope:'actor'}));
+  const guard = useRef(persistentFinancialWorkflow('handover-confirm',{scope:'actor',legacy:'handover-lifecycle'}));
   return useMutation({
     meta: {handlesFeedback: true},
-    mutationFn: async (args: { handoverId: string; toAccountId?: string | null }) => guard.current.run(args.handoverId, 'xử lý phiên bàn giao', async () => {
+    mutationFn: async (args: { handoverId: string; toAccountId?: string | null }) => runHandoverTransition(guard.current, args.handoverId, 'xác nhận nhận bàn giao', async () => {
       const { data, error } = await supabase.rpc('confirm_cash_handover', {
         p_handover_id: args.handoverId,
         p_to_account_id: args.toAccountId ?? undefined,
@@ -274,17 +309,17 @@ export const useConfirmHandover = () => {
       const value = data as {id?:unknown;code?:unknown} | null;
       if (!value || value.id !== args.handoverId || typeof value.code !== 'string') throw new FinancialWorkflowError('Chưa xác nhận được kết quả xử lý phiên bàn giao. Tải lại phiên và đối chiếu trước khi tiếp tục.', 'unknown', [{id:args.handoverId,label:'Phiên cần đối chiếu'}]);
       return data as { id: string; code: string };
-    }),
+    }, row => row.status === 'CONFIRMED'),
     onSuccess: invalidate,
   });
 };
 
 export const useRequestCancelHandover = () => {
   const invalidate = useInvalidateHandover();
-  const guard = useRef(persistentFinancialWorkflow('handover-lifecycle',{scope:'actor'}));
+  const guard = useRef(persistentFinancialWorkflow('handover-cancel-request',{scope:'actor',legacy:'handover-lifecycle'}));
   return useMutation({
     meta: {handlesFeedback: true},
-    mutationFn: async (args: { handoverId: string; reason: string }) => guard.current.run(args.handoverId, 'xử lý phiên bàn giao', async () => {
+    mutationFn: async (args: { handoverId: string; reason: string }) => runHandoverTransition(guard.current, args.handoverId, 'xin huỷ phiên bàn giao', async () => {
       const { data, error } = await supabase.rpc('request_cancel_handover', {
         p_handover_id: args.handoverId,
         p_reason: args.reason,
@@ -293,17 +328,17 @@ export const useRequestCancelHandover = () => {
       const value = data as {id?:unknown;code?:unknown} | null;
       if (!value || value.id !== args.handoverId || typeof value.code !== 'string') throw new FinancialWorkflowError('Chưa xác nhận được kết quả xử lý phiên bàn giao. Tải lại phiên và đối chiếu trước khi tiếp tục.', 'unknown', [{id:args.handoverId,label:'Phiên cần đối chiếu'}]);
       return data as { id: string; code: string };
-    }),
+    }, row => !!row.cancelRequestedBy && row.status !== 'CANCELLED'),
     onSuccess: invalidate,
   });
 };
 
 export const useConfirmCancelHandover = () => {
   const invalidate = useInvalidateHandover();
-  const guard = useRef(persistentFinancialWorkflow('handover-lifecycle',{scope:'actor'}));
+  const guard = useRef(persistentFinancialWorkflow('handover-cancel-confirm',{scope:'actor',legacy:'handover-lifecycle'}));
   return useMutation({
     meta: {handlesFeedback: true},
-    mutationFn: async (args: { handoverId: string }) => guard.current.run(args.handoverId, 'xử lý phiên bàn giao', async () => {
+    mutationFn: async (args: { handoverId: string }) => runHandoverTransition(guard.current, args.handoverId, 'đồng ý huỷ phiên bàn giao', async () => {
       const { data, error } = await supabase.rpc('confirm_cancel_handover', {
         p_handover_id: args.handoverId,
       });
@@ -311,17 +346,17 @@ export const useConfirmCancelHandover = () => {
       const value = data as {id?:unknown;code?:unknown} | null;
       if (!value || value.id !== args.handoverId || typeof value.code !== 'string') throw new FinancialWorkflowError('Chưa xác nhận được kết quả xử lý phiên bàn giao. Tải lại phiên và đối chiếu trước khi tiếp tục.', 'unknown', [{id:args.handoverId,label:'Phiên cần đối chiếu'}]);
       return data as { id: string; code: string };
-    }),
+    }, row => row.status === 'CANCELLED'),
     onSuccess: invalidate,
   });
 };
 
 export const useRejectCancelHandover = () => {
   const invalidate = useInvalidateHandover();
-  const guard = useRef(persistentFinancialWorkflow('handover-lifecycle',{scope:'actor'}));
+  const guard = useRef(persistentFinancialWorkflow('handover-cancel-reject',{scope:'actor',legacy:'handover-lifecycle'}));
   return useMutation({
     meta: {handlesFeedback: true},
-    mutationFn: async (args: { handoverId: string }) => guard.current.run(args.handoverId, 'xử lý phiên bàn giao', async () => {
+    mutationFn: async (args: { handoverId: string }) => runHandoverTransition(guard.current, args.handoverId, 'từ chối huỷ phiên bàn giao', async () => {
       const { data, error } = await supabase.rpc('reject_cancel_handover', {
         p_handover_id: args.handoverId,
       });
@@ -329,7 +364,7 @@ export const useRejectCancelHandover = () => {
       const value = data as {id?:unknown;code?:unknown} | null;
       if (!value || value.id !== args.handoverId || typeof value.code !== 'string') throw new FinancialWorkflowError('Chưa xác nhận được kết quả xử lý phiên bàn giao. Tải lại phiên và đối chiếu trước khi tiếp tục.', 'unknown', [{id:args.handoverId,label:'Phiên cần đối chiếu'}]);
       return data as { id: string; code: string };
-    }),
+    }, row => !row.cancelRequestedBy && row.status !== 'CANCELLED'),
     onSuccess: invalidate,
   });
 };
