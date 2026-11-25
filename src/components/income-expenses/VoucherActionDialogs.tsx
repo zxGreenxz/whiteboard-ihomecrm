@@ -340,6 +340,7 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
       {/* Finance V2: Duyệt và Chi/Thu atomic qua Posting dialog (§12.3). */}
       {approveTarget && (
         <IncomeExpensePostingDialog
+          key={`${approveTarget.id}:${d.authUserId ?? ''}`}
           open={approveAndPost.open}
           onOpenChange={approveAndPost.setOpen}
           mode="APPROVE_AND_POST"
@@ -349,6 +350,7 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
             type: (approveTarget.type as "INCOME" | "EXPENSE") ?? "EXPENSE",
             approvedTotal: approveTarget.total_amount ?? 0,
             name: approveTarget.name ?? undefined,
+            code: approveTarget.code ?? undefined,
             defaultCashbookId: approveTarget.account_id ?? null,
             cashbookLocked: approveAndPost.cashbookLocked,
             attachments: approveTarget.attachments ?? null,
