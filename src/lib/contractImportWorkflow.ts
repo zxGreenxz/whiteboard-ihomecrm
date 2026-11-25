@@ -79,12 +79,21 @@ export async function importContractBatch(rows:ContractImportRow[],scope:Contrac
    const input=index>=0?rows[index]:undefined;
    // Mã khách của lần trước (tạo mới hay tìm theo SĐT) chỉ được dùng lại khi vẫn đúng người của dòng đang nhập (SĐT khớp);
    // khác thì tra theo SĐT như dòng mới.
-   if(entry.stage!=='completed'&&!entry.contractId&&entry.customerId&&input&&!await steps.verifyCustomer(entry.customerId,input))entry.customerId=undefined;
+   if(entry.stage!=='completed'&&!entry.contractId&&entry.customerId&&input&&!await steps.verifyCustomer(entry.customerId,input)){entry.customerId=undefined;entry.customerCreated=false;}
    if(!UNCERTAIN.includes(entry.stage))continue;
    // Dòng chưa rõ chỉ được kết luận bằng ĐÚNG dòng đó của file (cùng số dòng VÀ cùng nội dung). File đã đổi ở dòng này thì
    // không biết lần trước gửi gì: chưa kết luận được (giữ dấu, hộp cảnh báo).
    if(!input||fingerprints[index]!==entry.fingerprint)return false;
-   const found=await steps.findActiveContract(input);
+   let found:ActiveRoomContract|null;
+   try{found=await steps.findActiveContract(input);}
+   catch(error){
+    // Máy chủ từ chối rõ phép tra của riêng dòng này (phòng đã đổi tên / bị xoá, mất quyền đọc hợp đồng): dòng không nhập được,
+    // không ghi gì; báo rõ cho dòng đó thay vì làm hỏng cả lượt mãi. Lỗi chưa rõ (mạng) thì vẫn chưa kết luận được.
+    if(!isConfirmedFinancialRejection(error))throw error;
+    entry.stage='existing';
+    entry.message=`${importErrorMessage(error,`tra hợp đồng của phòng dòng ${entry.sourceRow}`)} Lần nhập trước có thể đã tạo hợp đồng cho dòng này: kiểm tra phòng và hợp đồng trước khi nhập lại.`;
+    continue;
+   }
    if(entry.contractId){
     // Hợp đồng đã nhận mã: chỉ còn liên kết khách và phòng, hai bước ghi lặp lại được, nhưng chỉ khi nó vẫn là hợp đồng hiệu
     // lực của phòng (không đặt lại «có người ở» cho một phòng mà hợp đồng đó đã thôi hiệu lực).

@@ -107,6 +107,8 @@ export async function runContractEdit(request:ContractEditRequest,ports:Contract
  active.add(scope);let job:ContractEditJob|null=null;let recovering=false;let stopTracking:(()=>void)|undefined;
  try {
   job=readJob(actor.id,request.contractId);recovering=!!job;ports.onJob?.(job);let actual:ContractEditSnapshot;
+  // Hộp cảnh báo không gỡ dấu của lượt còn đang chạy trong tab này (kể cả lúc đang đọc lần đầu).
+  if(job)stopTracking=trackRunningAttempt(job.attemptId);
   try{actual=await ports.read(request.contractId);}catch(error){if(job)throw issue(job,'đọc dữ liệu hợp đồng/khách hàng/dịch vụ',error);throw error;}
   if(!actual.contract||actual.contract.id!==request.contractId)throw new TypeError('Chưa đọc được đúng hợp đồng.');
   if(!job){
@@ -120,8 +122,7 @@ export async function runContractEdit(request:ContractEditRequest,ports:Contract
   } else if(actual.contract.organization_id!==job.organizationId)throw issue(job,'tổ chức đã thay đổi');
   ports.onJob?.(job);
   const current=job;
-  // Hộp cảnh báo không gỡ dấu của lượt còn đang chạy trong tab này.
-  stopTracking=trackRunningAttempt(current.attemptId);
+  if(!stopTracking)stopTracking=trackRunningAttempt(current.attemptId);
   /** Lưu pha mà không đổi đồng hồ: đọc lại thấy đã xong không phải là một lệnh ghi mới. */
   const persist=()=>{saveJob(current);ports.onJob?.(current);};
   /** Lưu pha của một lệnh ghi vừa gửi: đồng hồ 2 phút tính lại từ đây. */

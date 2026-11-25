@@ -74,16 +74,24 @@ describe('dòng chưa rõ kết quả: tra hợp đồng hiệu lực của phò
   expect(fake.steps.findActiveContract).toHaveBeenCalledOnce();expect(fake.steps.contract).toHaveBeenCalledOnce();
   expect(fake.contracts).toHaveLength(1);expect(pendingKeys()).toEqual([]);
  });
+ it('máy chủ từ chối rõ phép tra của một dòng chưa rõ (phòng đã bị xoá / mất quyền): báo riêng dòng đó, không ghi gì, không làm hỏng cả lượt',async()=>{
+  const fake=server();fake.steps.contract=vi.fn().mockRejectedValueOnce(NETWORK()).mockImplementation(async()=>({id:'contract-12',roomId:'room-P12'}));
+  await importContractBatch([row(9),row(12)],scope,fake.steps,vi.fn());
+  fake.steps.findActiveContract.mockRejectedValueOnce({code:'22023',message:'Không tìm thấy phòng trong tòa đang nhập'});
+  const second=await importContractBatch([row(9),row(12)],scope,fake.steps,vi.fn());
+  expect(second).toMatchObject({pending:false,canCorrect:true,success:1});expect(second.errors[0].message).toMatch(/có thể đã tạo hợp đồng/);
+  expect(fake.steps.contract).toHaveBeenCalledTimes(2);expect(pendingKeys()).toEqual([]);
+ });
  it('dòng chưa rõ mà file đang nhập không còn dòng đó: chưa tra được ⇒ giữ dấu, không tạo gì thêm',async()=>{
   const fake=server();fake.steps.contract=vi.fn().mockRejectedValueOnce(NETWORK());
   await importContractBatch([row(9)],scope,fake.steps,vi.fn());
   const other=await importContractBatch([row(12)],scope,fake.steps,vi.fn());
   expect(other.pending).toBe(true);expect(fake.steps.contract).toHaveBeenCalledOnce();expect(pendingKeys()).toHaveLength(1);
  });
- it('đọc hợp đồng của phòng hỏng: chưa kết luận được ⇒ giữ dấu, không tạo hợp đồng',async()=>{
+ it('đọc hợp đồng của phòng hỏng (mạng): chưa kết luận được ⇒ giữ dấu, không tạo hợp đồng',async()=>{
   const fake=server();fake.steps.contract=vi.fn().mockRejectedValueOnce(NETWORK());
   await importContractBatch([row(9)],scope,fake.steps,vi.fn());
-  fake.steps.findActiveContract.mockRejectedValueOnce({code:'42501',message:'permission denied'});
+  fake.steps.findActiveContract.mockRejectedValueOnce(NETWORK());
   const second=await importContractBatch([row(9)],scope,fake.steps,vi.fn());
   expect(second.pending).toBe(true);expect(fake.steps.contract).toHaveBeenCalledOnce();expect(readContractImportPending(scope)).not.toBeNull();
  });

@@ -101,7 +101,7 @@ export const useCreateCT01Declaration = () => {
       const prior = unconfirmedCt01.get(memoryKey);
       const reused = prior?.id;
       const id = reused ?? crypto.randomUUID();
-      unconfirmedCt01.set(memoryKey, { id, fingerprint: prior?.fingerprint ?? fingerprint });
+      unconfirmedCt01.set(memoryKey, { id, fingerprint });
       let response: { data: unknown; error: unknown };
       try {
         response = await supabase
