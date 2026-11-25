@@ -127,6 +127,21 @@
     "src/lib/door-access/reconcile.ts",
     "src/lib/door-access/tempPassword.ts",
     "src/lib/door-access/forms.ts",
+    "src/lib/door-access/holdToOpen.ts",
+    "src/lib/door-access/mobile.ts",
+    "src/hooks/door-access/useHoldToOpen.ts",
+    "src/hooks/door-access/useSelectedDoorDevice.ts",
+    "src/components/door-access/mobile/DoorAccessMobile.tsx",
+    "src/components/door-access/mobile/DoorPickerSheet.tsx",
+    "src/components/door-access/mobile/HoldDial.tsx",
+    "src/components/door-access/mobile/MobileDoorTab.tsx",
+    "src/components/door-access/mobile/MobileHistory.tsx",
+    "src/components/door-access/mobile/MobileManage.tsx",
+    "src/components/door-access/mobile/MobileReconcile.tsx",
+    "src/components/door-access/mobile/MobileSheet.tsx",
+    "src/components/door-access/mobile/MobileTempPasswords.tsx",
+    "src/components/door-access/mobile/mobileParts.tsx",
+    "src/components/door-access/mobile/useDoorDial.ts",
     "src/lib/door-access/view.ts",
     "src/lib/door-access/__tests__/fixtures.ts",
     "src/lib/door-access/__tests__/repository.test.ts",
@@ -2023,7 +2038,9 @@
     "src/components/contracts/contract-form/ExitSupportField.tsx",
     "src/components/deposits/DepositScheduleFields.tsx",
     "src/hooks/useDepositIncomeHold.ts",
-    "src/lib/depositIncomeRpc.ts"
+    "src/lib/depositIncomeRpc.ts",
+    "src/pages/phong-trong/depositHold.ts",
+    "src/pages/phong-trong/shareText.ts"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }

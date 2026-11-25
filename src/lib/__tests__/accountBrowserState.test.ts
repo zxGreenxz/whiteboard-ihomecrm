@@ -125,7 +125,7 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/hooks/usePersonalTasks.ts": "gan-nguoi-dung",
   "src/hooks/usePersonalTaskReminders.ts": "gan-nguoi-dung",
   // Máy cửa vừa chọn: khoá `door-access.last-device.v1:<công ty>:<người dùng>` — không sang tài khoản khác.
-  "src/components/door-access/DoorAccessScreen.tsx": "gan-nguoi-dung",
+  "src/hooks/door-access/useSelectedDoorDevice.ts": "gan-nguoi-dung",
   // Bộ lọc nhà bảng "LN được chia Nhà × Tháng": khoá `ihome:ln-nha-thang:bo-loc:v1:<công ty>:<cổ đông>`;
   // cổ đông gắn một tài khoản đăng nhập nên không sang tài khoản khác.
   "src/hooks/useBuildingFilterState.ts": "gan-nguoi-dung",

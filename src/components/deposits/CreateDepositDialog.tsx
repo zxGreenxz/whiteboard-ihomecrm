@@ -10,6 +10,7 @@ import {QueryRegion} from '@/components/errors/QueryRegion';
 import { focusFirstError } from "@/lib/formErrors";
 import { CUSTOMER_HINT_MAX, reservationErrorMessage } from "@/lib/reservationIdentityRpc";
 import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { DEPOSIT_AMOUNT_REQUIRED_MESSAGE } from "@/lib/incomeExpenseValidation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -92,7 +93,8 @@ const depositSchema = z.object({
   /** Giá phòng/tháng — mặc định lấy giá niêm yết của căn hộ, sửa được. */
   room_price: z.number().min(0, "Giá phòng phải >= 0").optional(),
   // Bỏ "giữ chỗ 0 đồng" (chủ chốt 10/10/2026): giữ phòng không thu tiền là Lock tạm.
-  amount: z.number().positive("Nhập số tiền cọc lớn hơn 0. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống."),
+  // Cùng câu với form Thu chi (incomeExpenseValidation.ts).
+  amount: z.number().positive(DEPOSIT_AMOUNT_REQUIRED_MESSAGE),
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
   hold_until: z.string().optional(),
   intended_move_in_on: z.string().optional(),

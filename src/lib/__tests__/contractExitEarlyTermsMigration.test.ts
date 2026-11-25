@@ -226,6 +226,10 @@ beforeAll(async () => {
     ALTER TABLE public.hotlines ADD COLUMN IF NOT EXISTS organization_id uuid;
     CREATE FUNCTION app_private.authorized_scope_v3(p_permission_key text, p_org uuid)
       RETURNS TABLE(org_wide boolean, building_ids uuid[], cashbook_ids uuid[]) LANGUAGE sql STABLE AS $$ SELECT true, '{}'::uuid[], '{}'::uuid[] $$;
+    -- Sale đợt 3 (20261125165113) thêm khoá deposit_hold vào hai reader sống. Test này đo khối exit_hold, không đo cọc giữ
+    -- chỗ (fixture không có bảng đợt giữ chỗ / phiếu cọc của #499) ⇒ hàm phụ giả trả NULL như phòng không có cọc giữ.
+    CREATE FUNCTION app_private.room_deposit_hold_json_v1(p_organization_id uuid, p_room_id uuid, p_detail boolean)
+      RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
     DROP FUNCTION public.get_my_available_rooms();`);
   for (const name of ['app_private.org_building_owner_v1', 'app_private.sale_org_permission_v1', 'app_private.sale_org_wide_permission_v1',
     'public.get_sale_room_inventory_v1', 'public.get_my_available_rooms']) {

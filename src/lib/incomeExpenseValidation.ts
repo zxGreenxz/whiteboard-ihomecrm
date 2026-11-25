@@ -1,5 +1,48 @@
 import { z } from 'zod';
 
+/**
+ * Phiếu cọc phải có tiền (Sale phòng đợt 3, 25/11/2026). Phiếu THU chưa gắn hợp đồng có hạng mục cọc vẫn giữ phòng
+ * (room_has_holding_deposit) dù tổng 0 đ — audit 24/11 gặp một phiếu cọc 0 đ làm phòng biến khỏi sale ngay. Máy chủ chặn
+ * bằng trigger `a1_ie_item_deposit_amount_positive` (migration 20261125165113) với câu dưới; form chặn trước với đúng
+ * câu của hộp Cọc trên trang Sale.
+ */
+export const DEPOSIT_AMOUNT_SERVER_MESSAGE = 'Phiếu cọc phải có số tiền lớn hơn 0; giữ phòng không thu tiền thì dùng Lock tạm.';
+export const DEPOSIT_AMOUNT_REQUIRED_MESSAGE = 'Nhập số tiền cọc lớn hơn 0. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.';
+/** Phiếu cọc đã chọn hợp đồng (bổ sung cọc cho khách đang ở) không giữ phòng ⇒ không gợi ý Lock tạm. */
+export const DEPOSIT_AMOUNT_CONTRACT_MESSAGE = 'Nhập số tiền cọc lớn hơn 0.';
+export function depositAmountRequiredMessage(contractId: string | null | undefined): string {
+  return contractId ? DEPOSIT_AMOUNT_CONTRACT_MESSAGE : DEPOSIT_AMOUNT_REQUIRED_MESSAGE;
+}
+/**
+ * Câu dễ hiểu cho 22023 «Phiếu PTxxxx thiếu dòng cọc hợp lệ» / «… chưa có dòng tiền cọc» của #499
+ * (attach_deposit_income_v1, đường create_deposit_income_v1 gọi thẳng nên đến trước luật của đợt 3). Mã phiếu trong câu
+ * gốc không còn tồn tại vì giao dịch đã huỷ; nguyên nhân là tiền cọc ≤ 0 hoặc dòng cọc lệch hạng mục.
+ */
+export const DEPOSIT_INCOME_LINE_INVALID_MESSAGE =
+  'Dòng tiền cọc chưa hợp lệ: tiền cọc phải lớn hơn 0 và đúng hạng mục Tiền cọc. Kiểm tra dòng Tiền cọc rồi lưu lại; giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.';
+
+/**
+ * Phiếu THU có hạng mục cọc mà tổng tiền các dòng cọc ≤ 0 ⇒ chỉ số mọi dòng cọc (để báo lỗi ở ô Số tiền của từng dòng).
+ * Tiền dòng tính như máy chủ (auto_calc_item_amount: round(số lượng × đơn giá, 2)). Form chặn cả phiếu cọc đã chọn hợp
+ * đồng: dòng cọc 0 đ không có nghĩa ở đâu cả (máy chủ chỉ chặn phiếu chưa gắn hợp đồng — phiếu giữ phòng).
+ */
+export function depositAmountErrorRows(
+  voucherType: string | null | undefined,
+  items: readonly { income_expense_type_id?: string | null; quantity?: number | null; unit_price?: number | null }[],
+  depositTypeIds: ReadonlySet<string>,
+): number[] {
+  if (voucherType !== 'INCOME') return [];
+  const rows: number[] = [];
+  let total = 0;
+  items.forEach((it, index) => {
+    if (!it.income_expense_type_id || !depositTypeIds.has(it.income_expense_type_id)) return;
+    rows.push(index);
+    const amount = Math.round(Number(it.quantity ?? 0) * Number(it.unit_price ?? 0) * 100) / 100;
+    total += Number.isFinite(amount) ? amount : 0;
+  });
+  return rows.length === 0 || total > 0 ? [] : rows;
+}
+
 // Schema cho hạng mục (item) trong phiếu thu/chi
 export const itemSchema = z.object({
   income_expense_type_id: z.string().min(1, 'Vui lòng chọn loại hạng mục'),

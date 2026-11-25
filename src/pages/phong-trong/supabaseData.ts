@@ -15,6 +15,7 @@ import {
 } from "./sampleData";
 import { applyStoredLayout, type StoredFloorLayout } from "./floorLayoutShared";
 import { EXIT_HOLD_SALE_FACT, isExitHeld, parseRoomExitHold } from "./exitHold";
+import { parseRoomDepositHold } from "./depositHold";
 
 /** Bucket Storage PUBLIC cho ảnh sale (phòng + tòa). Ảnh thường lưu dạng URL đầy đủ
  *  (imageUrl pass-through); bucket dùng khi giá trị là storage PATH. */
@@ -74,6 +75,8 @@ export interface RpcRoom {
   // Chỉ hai reader trong app: hồ sơ trả phòng trước hạn còn chờ khách nhận sang nhượng (xem exitHold.ts).
   // Để `unknown`: khoá lệch dạng bị bỏ khi ánh xạ chứ không làm hỏng cả danh sách.
   exit_hold?: unknown;
+  // Chỉ hai reader trong app: phòng đang giữ bằng phiếu cọc chờ hợp đồng (xem depositHold.ts). `unknown` như exit_hold.
+  deposit_hold?: unknown;
   has_deposit_hold?:boolean;
 }
 export interface RpcContact { name: string | null; phone: string | null }
@@ -122,6 +125,7 @@ const payloadSchema = z.object({
     sale_lock: z.object({ id: z.string(), hours: z.number(), note: nullableText, locked_at: z.string(), expires_at: z.string(),
       locked_by_name: z.string(), locked_by_me: z.boolean() }).nullable().optional(),
     exit_hold: z.unknown().optional(), has_deposit_hold:z.boolean().optional(),
+    deposit_hold: z.unknown().optional(),
   })),
   contact: z.object({ name: nullableText, phone: nullableText }).nullable().optional(),
   sale_policy: optionalText,
@@ -220,7 +224,16 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
       const status: RoomStatus = lock ? "locked" : rr.status_public;
       // Hồ sơ giữ cho khách nhận sang nhượng: chỉ nhân viên trong app; link công khai bỏ qua kể cả khi payload có.
       const exitHold = options.includeInternal ? parseRoomExitHold(rr.exit_hold) : null;
-      const saleFact = lock ? undefined : isExitHeld({ status, exitHold }) ? EXIT_HOLD_SALE_FACT
+      // Người cọc: chỉ nhân viên trong app; link công khai / Hermes bỏ qua kể cả khi payload có.
+      const depositHold = options.includeInternal && status === "rented" ? parseRoomDepositHold(rr.deposit_hold) : null;
+      const hasDepositHold = options.includeInternal && rr.has_deposit_hold === true;
+      // saleFact.label là nhãn CÔNG KHAI (tin «Chia sẻ» gửi khách, ảnh / xuất bảng, Copilot): phòng giữ bằng cọc chỉ ghi
+      // «Đang giữ chỗ», không tên người cọc / mã phiếu — chi tiết nằm ở depositHold cho bảng Sale nội bộ. Ưu tiên trước giữ
+      // cho khách sang nhượng như #499; phiếu cọc treo ở phòng còn khách ở thì vẫn theo tình trạng phòng.
+      const depositHeld = status === "rented" && (hasDepositHold || (depositHold !== null && !depositHold.roomOccupied));
+      const saleFact = lock ? undefined
+        : depositHeld ? roomSaleFacts({ status, hasDepositHold: true })
+        : isExitHeld({ status, exitHold }) ? EXIT_HOLD_SALE_FACT
         : roomSaleFacts({ status, state: rr.sale_state, today: rr.sale_today,
           availableOn: rr.avail_date, expectedReadyOn: rr.expected_ready_on });
       return {
@@ -239,8 +252,8 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         status,
         amenities: toAmenities(rr.amenities),
         availDate: status === "soon" ? fmtAvail(saleFact?.availableOn) : null,
-        hasDepositHold:options.includeInternal && rr.has_deposit_hold===true,
-        saleFact:options.includeInternal && rr.has_deposit_hold ? {kind:"rented" as const,label:"Đang giữ chỗ",availableOn:null} : saleFact,
+        hasDepositHold,
+        saleFact,
         // Thiếu ảnh không tự thêm ảnh mẫu.
         imgCount: roomPhotoCount(imgs),
         phClass: "",
@@ -258,6 +271,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         saleLock: lock ? { id: lock.id, hours: lock.hours, note: lock.note, lockedAt: lock.locked_at, expiresAt: lock.expires_at,
           lockedByName: lock.locked_by_name, lockedByMe: lock.locked_by_me } : null,
         exitHold,
+        depositHold,
         x: 0, y: 0, w: 0, h: 0,
       };
     });
