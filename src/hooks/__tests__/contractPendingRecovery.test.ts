@@ -3,6 +3,7 @@
 // 25/11/2026: create_contract_v2 khoá phòng FOR UPDATE + khoá công ty rồi mới tra mã (subject phòng|ngày bắt đầu), băm cả
 // payload; cùng mã cùng nội dung ⇒ trả hợp đồng cũ; khác ⇒ 23505 «idempotency_key đã dùng với nội dung khác»; phòng đã có hợp
 // đồng hiệu lực ⇒ 23505. Gia hạn: apply_contract_notice_transition_v1 khoá công ty + hợp đồng rồi tra sự kiện theo mã.
+import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeRecordServer, pendingKeys, seedLegacyPending, type FakeRecordServer } from './fakeRecordServer';
 
@@ -29,7 +30,7 @@ const request = (over: Partial<ContractCreateRequest['payload']['contract']> = {
   },
   idempotencyKey: 'contract-create-placeholder',
 });
-const create = (value: ContractCreateRequest) => (useCreateContract() as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
+const create = (value: ContractCreateRequest) => (renderHook(() => useCreateContract()).result.current as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
 const createKeys = () => io.server.rpcCalls.filter(call => call.name === 'create_contract_v2').map(call => call.args.p_idempotency_key);
 const contracts = () => io.server.rows.contracts;
 let seq = 0;
@@ -123,7 +124,7 @@ describe('tạo hợp đồng (cách B)', () => {
 });
 
 const renewInput = { contractId: id(2), expectedUpdatedAt: '2026-09-28T00:00:00Z', requestId: id(3), newEndDate: '2027-12-31', newRentPrice: 100, newDeposit: 200, noticeChoice: 'KEEP' as const };
-const renew = (value: typeof renewInput) => (useRenewContract() as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
+const renew = (value: typeof renewInput) => (renderHook(() => useRenewContract()).result.current as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
 const renewKeys = () => io.server.rpcCalls.filter(call => call.name === 'renew_contract_with_notice_v1').map(call => call.args.p_request_id);
 function installRenew() {
   io.server.rows.contracts = [{ id: id(2), organization_id: id(1), contract_number: 'HĐ26-009', status: 'ACTIVE', end_date: '2027-06-30', rent_price: 100, total_deposit: 200, room_id: id(4), room: { id: id(4), name: 'P203' }, expected_move_out_date: '2026-11-01' }];

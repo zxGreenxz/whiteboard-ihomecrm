@@ -2,6 +2,7 @@
 // Đợt 6: đổi sổ quỹ cho cả đợt phiếu (cách A: chạy lại). revise_pending_income_expense_v1 (production 25/11/2026) khoá
 // công ty + phiếu FOR UPDATE rồi tra mã (trả kết quả cũ KHÔNG so nội dung), rồi so phiên bản. Vòng của trình duyệt đọc lại
 // phiếu và bỏ qua phiếu đã ở đúng sổ.
+import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeRecordServer, pendingKeys, seedLegacyPending, type FakeRecordServer } from '../../__tests__/fakeRecordServer';
 
@@ -15,7 +16,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), info: vi.fn(), error: vi.f
 import { useUpdateBatchAccount } from '../batch';
 
 type Row = Record<string, unknown>;
-const move = (accountId: string) => (useUpdateBatchAccount() as unknown as { mutationFn: (v: unknown) => Promise<{ count: number }> }).mutationFn({ batchId: 'b1', accountId, reason: 'Đổi sổ ghi phiếu' });
+const move = (accountId: string) => (renderHook(() => useUpdateBatchAccount()).result.current as unknown as { mutationFn: (v: unknown) => Promise<{ count: number }> }).mutationFn({ batchId: 'b1', accountId, reason: 'Đổi sổ ghi phiếu' });
 const revisions = () => io.server.rpcCalls.filter(call => call.name === 'revise_pending_income_expense_v1');
 let changes = 0;
 function install() {

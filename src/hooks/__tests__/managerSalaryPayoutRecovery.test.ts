@@ -2,6 +2,7 @@
 // Đợt 6: lương điều hành (manager_salary_payout_v1, cách B). Thân hàm production 25/11/2026: khoá công ty TRƯỚC khi tra mã
 // trong canonical_write_operations; băm quản lý, số tiền, sổ quỹ, ngày chi, công ty (không băm ghi chú); cùng mã cùng phần
 // băm ⇒ trả phiếu cũ; khác ⇒ 23505.
+import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeRecordServer, pendingKeys, seedLegacyPending, type FakeRecordServer } from './fakeRecordServer';
 
@@ -20,7 +21,7 @@ const MANAGER = 'm-1';
 const input = (over: Partial<CreateManagerSalaryPayoutInput> = {}): CreateManagerSalaryPayoutInput => ({
   organizationId: 'org-1', manager_id: MANAGER, manager_name: 'Quản lý mẫu', amount: 2_000_000, account_id: 'account-a', voucher_date: '2026-11-05', note: null, ...over,
 });
-const pay = (value: CreateManagerSalaryPayoutInput) => (useCreateManagerSalaryPayout({ deferFeedback: true }) as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
+const pay = (value: CreateManagerSalaryPayoutInput) => (renderHook(() => useCreateManagerSalaryPayout({ deferFeedback: true })).result.current as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
 const keys = () => io.server.rpcCalls.filter(call => call.name === 'manager_salary_payout_v1').map(call => call.args.p_idempotency_key);
 const vouchers = () => io.server.rows.income_expenses;
 let seq = 0;

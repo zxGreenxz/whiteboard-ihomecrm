@@ -3,6 +3,7 @@
 //   - create_cashbook_v1 khoá công ty rồi tra mã; băm tên, số dư đầu, ngày đầu kỳ, người phụ trách, công ty (không băm mô tả,
 //     sổ mặc định, toà mặc định); cùng mã cùng phần băm ⇒ trả sổ cũ; khác ⇒ 23505.
 //   - reopen_cashbook_v1 khoá sổ FOR UPDATE, khoá công ty, khoá tư vấn theo mã rồi tra mã: trả `idempotent_replay`.
+import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeRecordServer, pendingKeys, seedLegacyPending, type FakeRecordServer } from './fakeRecordServer';
 
@@ -19,7 +20,7 @@ import { useReopenCashbook } from '../useCashbookReopening';
 
 type Row = Record<string, unknown>;
 const values = (over: Partial<AccountFormValues> = {}): AccountFormValues => ({ name: 'Sổ mẫu', initial_amount: 0, initial_date: '2026-11-01', description: null, quick_default_building_id: null, ...over });
-const createBook = (value: AccountFormValues) => (useCreateAccount({ silent: true }) as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
+const createBook = (value: AccountFormValues) => (renderHook(() => useCreateAccount({ silent: true })).result.current as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
 const createKeys = () => io.server.rpcCalls.filter(call => call.name === 'create_cashbook_v1').map(call => call.args.p_idempotency_key);
 const books = () => io.server.rows.accounts;
 let seq = 0;
@@ -104,7 +105,7 @@ describe('tạo sổ quỹ (cách B)', () => {
 const BOOK = 'a0000000-0000-4000-8000-000000000001';
 const KEY = 'b0000000-0000-4000-8000-000000000009';
 const reopenInput = { cashbookId: BOOK, cashbookName: 'Sổ mẫu', reason: 'Đối chiếu lại chứng từ', expectedLockDate: '2026-10-30', expectedRevision: 'a'.repeat(32) };
-const reopen = (value: typeof reopenInput) => (useReopenCashbook() as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
+const reopen = (value: typeof reopenInput) => (renderHook(() => useReopenCashbook()).result.current as unknown as { mutationFn: (v: unknown) => Promise<Row> }).mutationFn(value);
 const reopenKeys = () => io.server.rpcCalls.filter(call => call.name === 'reopen_cashbook_v1').map(call => call.args.p_idempotency_key);
 function installReopen() {
   const history: Row[] = [];
