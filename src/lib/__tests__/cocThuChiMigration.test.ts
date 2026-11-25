@@ -16,6 +16,9 @@ vi.setConfig({ testTimeout: 120_000 });
 const FILE = 'supabase/migrations/20261125094121_coc_thu_chi_chan_0d_va_khoi_dang_giu_bang_coc.sql';
 const DOT2 = 'supabase/migrations/20261125034429_sale_phong_theo_cong_ty.sql';
 const sql = readFileSync(FILE, 'utf8').replace(/\r\n/g, '\n');
+// Ca hành vi chạy file KHÔNG có hậu kiểm md5 (đột biến thân hàm phải làm đỏ ca hành vi, không chỉ ca md5); hậu kiểm chạy
+// riêng ở ca «chạy lại CẢ FILE».
+const behaviourSql = sql.replace(/DO \$sau\$[\s\S]*?\$sau\$;/, '');
 const dot2Sql = readFileSync(DOT2, 'utf8').replace(/\r\n/g, '\n')
   .replace(/DO \$truoc\$[\s\S]*?\$truoc\$;/, '').replace(/DO \$sau\$[\s\S]*?\$sau\$;/, '');
 
@@ -274,7 +277,7 @@ let db: PGlite;
 beforeAll(async () => {
   db = await freshDb();
   await db.exec(dot2Sql);
-  await db.exec(sql);
+  await db.exec(behaviourSql);
 }, 120_000);
 afterAll(async () => { await db?.close(); });
 beforeEach(async () => { await db.exec('RESET ROLE'); });

@@ -34,7 +34,7 @@ vi.mock('@/hooks/useIsCompanyOwner', () => ({ useIsCompanyOwner: () => ({ data: 
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
 vi.mock('@/hooks/useIncomeExpenseFormScope', () => ({
   useIncomeExpenseFormBuildings: () => ({ data: [{ id: 'b1', name: '331PHI', managed: true }] }),
-  useIncomeExpenseFormRooms: () => ({ data: [{ id: 'p201', name: '201' }] }),
+  useIncomeExpenseFormRooms: () => ({ data: [{ id: 'p201', name: '201' }, { id: 'p202', name: '202' }] }),
 }));
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: [{ id: 'a1', name: 'TKHIEP', bank_name: null, is_virtual: false }] }) }));
 vi.mock('@/hooks/useContracts', () => ({ useContractsLegacy: () => ({ data: h.contracts }) }));
@@ -181,6 +181,18 @@ describe('Cọc ở phòng đang có hợp đồng: luôn bắt chọn cọc c�
     fireEvent.click(nutLuu());
     await waitFor(() => expect(h.save).toHaveBeenCalledOnce());
     expect(daLuu()?.contract_id).toBeNull();
+  });
+
+  it('đổi phòng sau khi đã chọn ⇒ quên lựa chọn, phải chọn lại cho phòng mới', async () => {
+    moForm();
+    chonSo();
+    fireEvent.click(screen.getByRole('radio', { name: /Cọc giữ phòng của khách mới/ }));
+    const phong = screen.getAllByRole('combobox').find((el) => within(el).queryByText('202'))!;
+    fireEvent.change(phong, { target: { value: 'p202' } });
+    await waitFor(() => expect(screen.getByRole('radio', { name: /Cọc giữ phòng của khách mới/ }).getAttribute('aria-checked')).toBe('false'));
+    fireEvent.click(nutLuu());
+    await screen.findByText(DEPOSIT_CONTRACT_CHOICE_REQUIRED_MESSAGE);
+    expect(h.save).not.toHaveBeenCalled();
   });
 
   it('HĐ đã thanh lý (có ngày trả thực tế) không tính là đang ở ⇒ không hỏi', async () => {
