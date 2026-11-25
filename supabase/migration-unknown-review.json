@@ -986,6 +986,28 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
+    },
+    "supabase/migrations/20261125102224_contract_room_deposit_sources.sql": {
+      "sha256": "f00ecc40f9d910be0dff1fa8361c76c576136825f99fcf562f6f223e88ec4af2",
+      "missingObjects": [
+        "function:app_private.contract_room_deposit_sources_v1",
+        "function:app_private.contract_hold_has_missing_deposit_v1",
+        "function:public.get_contract_room_deposits_v1",
+        "function:app_private.release_settled_room_hold_v1",
+        "trigger:public.reservation_deposit_settlements.release_settled_room_hold"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration đang chờ review và phát hành qua forward lane. Trên TEST, cả tạo trực tiếp và ký bản nháp đã nhận đúng hai phiếu thay thế sau khi hủy phiếu cũ. Hồ sơ giữ chỗ chỉ có tên gợi nhớ ký được với khách đại diện chọn trên hợp đồng. Đã kiểm giao dịch bỏ cọc, phiên bản cũ, thiếu phiếu, sai số tiền và đọc khác tổ chức.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261125102224_contract_room_deposit_sources.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.get_contract_room_deposits_v1(p_organization_id uuid,p_room_id uuid)"
+        },
+        {
+          "duong_dan": "scripts/tests/test-contract-room-deposits-live.sql",
+          "trich_doan": "RAISE EXCEPTION 'Changed room deposit amount was accepted';"
+        }
+      ]
     }
   }
 }

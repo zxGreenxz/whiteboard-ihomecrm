@@ -45,7 +45,6 @@ import { AlertTriangle } from "lucide-react";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { getSessionUser } from "@/lib/authSession";
 import { useCreateRoomReservation } from "@/hooks/useRoomReservations";
-import { CustomerSelectionDialog, type CustomerBasic } from "@/components/contracts/CustomerSelectionDialog";
 import { ExitHoldRoomBanner } from "@/components/contracts/ExitHoldRoomBanner";
 import { useContractExitEarlyTerms } from "@/hooks/contracts/useContractExitEarlyTerms";
 import type { CreateRoomReservationInput } from "@/lib/reservationIdentityRpc";
@@ -84,10 +83,8 @@ function fmtVNDate(iso: string): string {
 const AGREED_PRICE_PREFIX = "Giá thoả thuận: ";
 
 const depositSchema = z.object({
-  // Khách trong danh bạ HOẶC tên gợi nhớ gõ tay (chủ chốt 10/10/2026): tên gợi nhớ thành
-  // người nộp + ghi chú phiếu; gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.
-  customer_id: z.string(),
-  customer_hint: z.string().trim().max(CUSTOMER_HINT_MAX, `Tên khách gợi nhớ tối đa ${CUSTOMER_HINT_MAX} ký tự`),
+  // Tên gợi nhớ ghi vào phiếu nguồn. Người đại diện được chọn khi lập hợp đồng.
+  customer_hint: z.string().trim().min(1, "Nhập tên khách gợi nhớ").max(CUSTOMER_HINT_MAX, `Tên khách gợi nhớ tối đa ${CUSTOMER_HINT_MAX} ký tự`),
   room_id: z.string().min(1, "Chọn phòng giữ chỗ"),
   /** Giá phòng/tháng — mặc định lấy giá niêm yết của căn hộ, sửa được. */
   room_price: z.number().min(0, "Giá phòng phải >= 0").optional(),
@@ -121,7 +118,6 @@ const depositSchema = z.object({
   sale_bonus_reason: z.string().max(COMMISSION_REASON_MAX).optional(),
 }).superRefine((value,ctx)=>{
   if ((value.sale_bonus_amount ?? 0)>0 && !isCommissionReasonValid(value.sale_bonus_reason)) ctx.addIssue({code:'custom',path:['sale_bonus_reason'],message:COMMISSION_REASON_MESSAGE});
-  if(!value.customer_id&&!value.customer_hint)ctx.addIssue({code:'custom',path:['customer_id'],message:'Chọn khách trong danh bạ hoặc gõ tên khách gợi nhớ'});
   if(!value.account_id)ctx.addIssue({code:'custom',path:['account_id'],message:'Phải chọn sổ quỹ ghi cọc'});
 });
 
@@ -137,8 +133,6 @@ interface CreateDepositDialogProps {
 export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: CreateDepositDialogProps) {
   const queryClient = useQueryClient();
   const {selectedOrganizationId}=useOrganization();
-  const [customer, setCustomer] = useState<CustomerBasic | null>(null);
-  const [customerPicker, setCustomerPicker] = useState(false);
   const intent = useRef<{fingerprint:string;key:string}|null>(null);
   const formRoot = useRef<HTMLFormElement>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -183,7 +177,6 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
     shouldFocusError: false,
     resolver: zodResolver(depositSchema) as Resolver<DepositFormValues>,
     defaultValues: {
-      customer_id: "",
       customer_hint: "",
       room_id: "",
       room_price: 0,
@@ -293,7 +286,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       const itemDesc = extras.length ? extras.join(" · ") : null;
 
       const input:Omit<CreateRoomReservationInput,'idempotencyKey'>={
-        roomId:data.room_id,...(data.customer_id?{customerId:data.customer_id}:{customerHint:data.customer_hint}),holdUntil:data.hold_until||null,
+        roomId:data.room_id,customerHint:data.customer_hint,holdUntil:data.hold_until||null,
         intendedMoveInOn:data.intended_move_in_on||null,topupDueOn:data.topup_due_date||null,depositTarget:data.deposit_target??null,notes:data.notes||null,
         receipt:{amount:data.amount,accountId:accId,voucherDate:data.deposit_date,name,description:itemDesc,attachments:depositAttachments},
       };
@@ -370,13 +363,11 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
         const message = partialMessages.join(" "); throw new VoucherPartialError(message,[completedReceipt.reservationId,...completedReceipt.voucherIds]);
       }
       const received = createdReservation.receipts.some(r => r.received);
-      const assignLater = createdReservation.customer_id ? "" : " Nhớ gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.";
-      toast.success((received ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ." : "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn.") + assignLater);
+      toast.success((received ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ." : "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn."));
       setCompleted(null);
       form.reset();
       setDepositAttachments([]);
       setBonusAttachments([]);
-      setCustomer(null);
       intent.current=null;
       onOpenChange(false);
     } catch (error) {
@@ -400,24 +391,21 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
         <DialogHeader>
           <DialogTitle>Tạo phiếu cọc</DialogTitle>
           <DialogDescription>
-            Chọn khách trong danh bạ hoặc gõ tên gợi nhớ. Cọc tạo phiếu nguồn theo luồng hiện tại; quá hạn nhắc xử lý, không tự nhả phòng. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.
+            Ghi tên gợi nhớ để nhận ra phiếu khi lập hợp đồng. Cọc tạo phiếu nguồn theo luồng hiện tại; quá hạn nhắc xử lý, không tự nhả phòng. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.
           </DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form ref={formRoot} onSubmit={form.handleSubmit(onSubmit, errors => void focusFirstError(errors, {root:formRoot.current,order:["customer_id","room_id","room_price","amount","deposit_date","hold_until","account_id","sale_bonus_amount"]}))} className="space-y-4">
+            <form ref={formRoot} onSubmit={form.handleSubmit(onSubmit, errors => void focusFirstError(errors, {root:formRoot.current,order:["customer_hint","room_id","room_price","amount","deposit_date","hold_until","account_id","sale_bonus_amount"]}))} className="space-y-4">
               {submitError && <div role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{submitError}</div>}
               {completed && <div className="rounded-md border p-3 text-sm"><p>Hồ sơ đã tạo. Kiểm tra trước khi bổ sung bước còn thiếu.</p><a className="underline" href="/deposits">Mở Quản lý cọc</a>{completed.voucherIds.map(id=><a key={id} className="block underline" href={`/income-expense/voucher/${id}`}>Mở phiếu {id}</a>)}</div>}
-              <FormField control={form.control} name="customer_id" render={()=> (
-                <FormItem><FormLabel>Khách hàng *</FormLabel>
-                  {customer?<div className="flex items-center gap-2"><span className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{customer.full_name} · {customer.phone}</span>
-                    <Button type="button" variant="ghost" size="sm" onClick={()=>{setCustomer(null);form.setValue('customer_id','');}} disabled={submitting}>Bỏ chọn</Button></div>
-                  :<div className="flex gap-2"><FormControl><Input aria-label="Tên khách gợi nhớ" placeholder="Gõ tên gợi nhớ, vd: anh Tuấn xem 18h" maxLength={CUSTOMER_HINT_MAX} disabled={submitting}
-                      {...form.register('customer_hint',{onChange:()=>form.clearErrors('customer_id')})}/></FormControl>
-                    <Button type="button" variant="outline" onClick={()=>setCustomerPicker(true)} disabled={submitting}>Chọn từ danh bạ</Button></div>}
-                  {!customer&&<p className="text-[11px] text-muted-foreground">Chưa cần tạo khách: tên gợi nhớ ghi vào người nộp và ghi chú phiếu. Gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.</p>}
-                <FormMessage/></FormItem>
+              <FormField control={form.control} name="customer_hint" render={({field}) => (
+                <FormItem>
+                  <FormLabel>Tên khách gợi nhớ *</FormLabel>
+                  <FormControl><Input {...field} aria-label="Tên khách gợi nhớ" placeholder="Ví dụ: anh Tuấn xem phòng lúc 18h" maxLength={CUSTOMER_HINT_MAX} disabled={submitting}/></FormControl>
+                  <FormMessage/>
+                </FormItem>
               )}/>
 
               <QueryRegion label="phòng và sổ quỹ nhận cọc" queries={[roomsQuery,accountsQuery]} skeleton="none">{null}</QueryRegion>
@@ -920,11 +908,6 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
             </form>
           </Form>
         </ScrollArea>
-        <CustomerSelectionDialog open={customerPicker} onOpenChange={setCustomerPicker}
-          selectedCustomerIds={customer?[customer.id]:[]} onSelect={values=>{
-            if(values.length!==1){toast.error('Phải chọn đúng một khách hàng.');return;}
-            setCustomer(values[0]);form.setValue('customer_id',values[0].id,{shouldValidate:true});form.setValue('customer_hint','');setCustomerPicker(false);
-          }}/>
       </DialogContent>
     </Dialog>
   );

@@ -43,7 +43,7 @@ interface UseContractSubmitParams {
 export function isStaleOrphanDepositError(error: unknown) {
   const message = error instanceof Error ? error.message : String((error as { message?: unknown } | null)?.message ?? "");
   const normalized = message.toLocaleLowerCase("vi");
-  return normalized.includes("phiếu cọc") && (
+  return normalized.includes("tải lại cọc của phòng") || normalized.includes("chưa đủ điều kiện ghi nhận tiền") || normalized.includes("phiếu cọc") && (
     normalized.includes("đã xử lý bỏ cọc") || normalized.includes("đã được dùng") ||
     normalized.includes("đã gắn hợp đồng") || normalized.includes("không còn")
   );
@@ -104,6 +104,14 @@ export function useContractSubmit({
       const labels = state.sourceIssues.map(issue => issue.label).join(', ');
       form.setError('root.server', { type: 'server', message: `Chưa tải được ${labels}. Tải lại nguồn trước khi lưu hợp đồng.` });
       toast.error('Chưa thể lưu hợp đồng', { description: `Cần tải lại ${labels} để đối chiếu dữ liệu.` });
+      return;
+    }
+    const blockedVoucher = !isEditMode && orphanDepositVouchers?.find(voucher => !voucher.received || voucher.outsideWindow);
+    if (blockedVoucher) {
+      const reason = blockedVoucher.outsideWindow ? 'nằm ngoài kỳ nhận cọc của hợp đồng' : 'chưa đủ điều kiện ghi nhận tiền';
+      const message = `Phiếu cọc ${blockedVoucher.code ?? blockedVoucher.id} ${reason}.`;
+      form.setError('root.server', {type:'validation', message});
+      toast.error('Chưa thể ký hợp đồng', {description:message});
       return;
     }
     const recoveringEdit=isEditMode&&!!partialSyncRef?.current;
@@ -408,8 +416,10 @@ export function useContractSubmit({
             received_date: row.received_date || data.signed_date,
             attachments: [...row.images],
           })),
+        expected_room_deposit_amount: approvedOrphanTotal,
+        ...(state.roomHold ? {reservation_id: state.roomHold.id, reservation_revision: state.roomHold.revision} : {}),
         existing_deposit_voucher_ids: orphanDepositVouchers
-          .filter((voucher) => voucher.approval_status === "APPROVED")
+          .filter((voucher) => voucher.received && !voucher.outsideWindow)
           .map((voucher) => voucher.id),
         ...(exitSupportAmount > 0 ? { transfer_support_amount: exitSupportAmount } : {}),
         first_invoice:

@@ -32,7 +32,7 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'sale_phong.manage_images': 'Hermes: thay danh sách ảnh phòng bằng URL HTTPS đã tải lên',
   'sale_phong.lock_room': 'Hermes: lock tạm 6/12/24 giờ qua trang Hợp đồng; gỡ lock do bạn tạo, người có quyền Tạo phiếu cọc ở tòa gỡ được cả lock của người khác',
   'deposits.create': 'Hermes: chỉ tra danh sách phòng và yêu cầu cũ; báo cọc, thu thêm cọc làm trên web, trang Quản lý cọc (/deposits)',
-  'deposits.edit': 'Hermes: chỉ tra danh sách phòng và yêu cầu cũ; sửa cọc, gắn khách vào cọc làm trên web, trang Quản lý cọc (/deposits)',
+  'deposits.edit': 'Hermes: chỉ tra danh sách phòng và yêu cầu cũ; sửa cọc làm trên web, trang Quản lý cọc (/deposits)',
   'income_expenses.view': 'Hermes: tra phiếu thu/chi, không gồm hạng mục hạn chế, lương, cổ đông',
   'meter_readings.view': 'Hermes: tra chỉ số công tơ theo ngày đọc',
   'deposits.view': 'Hermes: chỉ tổng cọc đang giữ theo tòa, không có chi tiết khách',

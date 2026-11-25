@@ -13,7 +13,7 @@ vi.mock('@/hooks/useContracts', () => ({ useCreateContract: () => ({ isPending: 
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: fixtures.rows }) }));
 vi.mock('@/hooks/useRooms', () => ({ useRooms: () => ({ data: fixtures.rows }) }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: fixtures.rows }) }));
-vi.mock('@/hooks/useDeposits', () => ({ useOrphanDepositVouchers: () => ({ data: fixtures.rows }) }));
+vi.mock('@/hooks/useDeposits', () => ({ useContractRoomDeposits: () => ({ data: {hold:null,vouchers:fixtures.rows} }) }));
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: fixtures.rows }) }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'actor' } }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true } }) }));
