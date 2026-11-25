@@ -2563,7 +2563,7 @@
       "sql": [
         {
           "function": "public.get_public_available_rooms",
-          "sha256": "3544a2580253566f7441c468cd8336d6ff181bed6767b5ab1bc018ac761cb143"
+          "sha256": "01ede68ba6bb01033e59024572154b89535d5dc20b8e334cb54e81a025cc4def"
         }
       ],
       "hermes": [
