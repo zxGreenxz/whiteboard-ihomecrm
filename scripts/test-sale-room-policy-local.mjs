@@ -120,7 +120,7 @@ test('Direct sale metadata and timed policy / real local PostgreSQL',async t=>{
    const p=await save('sale');
    const publicRead=async()=>(await admin.query('SELECT public.get_public_available_rooms($1) value',[token])).rows[0].value;
    const workerRead=async()=>(await admin.query('SELECT public.zalo_phong_trong_cho_worker_v1($1) value',[f.org])).rows[0].value;
-   const mineRead=async()=>(await clients.landlord.query('SELECT public.get_my_available_rooms() value')).rows[0].value;
+   const mineRead=async()=>(await clients.landlord.query('SELECT public.get_my_available_rooms($1) value',[f.org])).rows[0].value;
    for(const read of [publicRead,workerRead,mineRead])assert.equal((await read()).rooms.find(r=>r.id===f.rooms[0]).sale_note,'Ghi chú nền\nMiễn phí gửi xe');
    for(const read of [publicRead,mineRead]){
     const room=(await read()).rooms.find(r=>r.id===f.rooms[0]);assert.equal(room.sale_note_base,'Ghi chú nền');
