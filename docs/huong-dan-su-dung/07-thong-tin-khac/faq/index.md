@@ -37,7 +37,7 @@ Không kết luận từ chữ **Đã duyệt**. Hãy mở phiếu, kiểm trạ
 
 Có. Báo cáo lợi nhuận hiện **đã tính** phiếu chờ duyệt thuộc kết quả kinh doanh vào tổng và ghi riêng một dòng *"Trong tổng có: n phiếu chờ duyệt (thu … · chi …)"*. Vì vậy số lợi nhuận không nhảy lần nữa khi phiếu được duyệt.
 
-Khi chốt lợi nhuận một tháng của một toà, máy chủ **từ chối** nếu tháng đó (theo ngày phiếu) còn phiếu ở trạng thái chờ duyệt, với thông báo dạng *"Còn N phiếu chờ duyệt trong tháng MM/YYYY của toà …: mã phiếu… — duyệt hoặc huỷ trước khi chốt."* Phiếu **Đã Duyệt - Chưa Chi** không chặn chốt. Xem [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/) và [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/).
+Khi chốt lợi nhuận một tháng của một toà, máy chủ **từ chối** nếu tháng đó (theo ngày phiếu) còn phiếu ở trạng thái chờ duyệt, với thông báo dạng *"Còn N phiếu chờ duyệt trong tháng MM/YYYY của toà …: mã phiếu… — duyệt hoặc huỷ trước khi chốt."* Phiếu **Đã Duyệt - Chưa Chi** không chặn chốt. Xem [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/) và [Thu chi](/03-quan-ly-van-hanh/thu-chi/) (tab **Chờ xử lý**) để xử lý phiếu chờ.
 
 ## Vì sao cọc không được tính vào doanh thu?
 

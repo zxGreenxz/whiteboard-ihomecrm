@@ -1,6 +1,6 @@
 ---
 title: "Ghi chú phiên bản"
-description: "Những thay đổi chính của ứng dụng từ 14/08 đến 07/10/2026, cách xác định tài liệu khớp bản hiện hành và giới hạn của trang /changelog."
+description: "Những thay đổi chính của ứng dụng từ 14/08 đến 25/11/2026, cách xác định tài liệu khớp bản hiện hành và giới hạn của trang /changelog."
 routes: []
 permissions: []
 viewport: desktop
@@ -16,6 +16,16 @@ status: published
 
 Bộ hướng dẫn này được rà soát theo code, route, catalog quyền và database production hiện hành tại thời điểm ghi trong `captured.date`. Ngày này là **mốc đối chiếu tài liệu**, không phải số phiên bản sản phẩm. Mỗi trang có `captured.date` riêng; trang nào ghi ngày cũ hơn là trang chưa được chụp lại ở lần đồng bộ gần nhất.
 
+## Cập nhật 25/11/2026
+
+Chủ công ty chốt **duyệt phiếu chỉ còn một đường duy nhất là màn Thu chi**. Các thay đổi người dùng sẽ thấy:
+
+| Mảng | Thay đổi chính (25/11/2026) | Đọc ở trang |
+|---|---|---|
+| Màn Chờ duyệt | Màn **Chờ duyệt** (menu **Tài chính → Chờ duyệt**) đã bỏ, mục menu không còn. Đường dẫn cũ `/approvals` tự chuyển về **Thu chi → tab Chờ xử lý**. Nút **Mở duyệt chi** ở Bảng lương và câu trả lời "có gì chờ tôi duyệt" của trợ lý cũng dẫn về đó. | [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
+| Phiếu chi lợi nhuận, tạm ứng, lương điều hành | Phiếu chi theo **sổ tổng lợi nhuận** (chi lợi nhuận cổ đông, **tạm ứng lợi nhuận**, **lương điều hành**) không còn bị bắt sang màn Chờ duyệt: duyệt ngay ở Thu chi, trong hộp **Xác nhận duyệt phiếu** có **thẻ số dư sổ tổng** (số dư lúc lập, số dư bây giờ, sổ đã chọn lúc lập). Luật ai được duyệt không đổi; khi không duyệt được, hộp ghi **Không duyệt được: …** và khoá nút xác nhận. | [Thu chi](/03-quan-ly-van-hanh/thu-chi/), [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
+| Từ chối phiếu | Nút **Từ chối** (kèm lý do) chỉ có ở màn Chờ duyệt cũ nên không còn. Muốn bỏ phiếu đang chờ duyệt, dùng **Huỷ** và ghi lý do ở Thu chi. | [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
+
 ## Đợt đồng bộ 07/10/2026
 
 Toàn bộ site được đối chiếu lại với bản production `81c5a3cd` (phát hành 06/10/2026) và chụp lại ảnh thao tác trên tổ chức **DEMO** (dữ liệu giả, chỉ xem — không lưu, không duyệt, không ghi sổ). Lần đồng bộ trước là 13–14/08/2026. Những thay đổi chính người dùng sẽ thấy trong khoảng này:
@@ -24,7 +34,7 @@ Toàn bộ site được đối chiếu lại với bản production `81c5a3cd` 
 |---|---|---|
 | Báo chi nhanh | Trang `/chi-tieu`: gõ, nói hoặc chụp bill để tạo thẻ nháp phiếu chi; tự nhận toà/phòng đọc bằng lời và tự chọn hạng mục theo **danh mục chi chuẩn**; có ô Báo chi nhanh trên màn hình chính điện thoại. | [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) |
 | Ví cá nhân | Ví riêng theo chủ sở hữu, sổ thu chi cá nhân, báo cáo và bốn nút nhập nhanh trên điện thoại. | [Ví cá nhân](/03-quan-ly-van-hanh/vi-ca-nhan/) |
-| Phiếu thu chi | Sửa phiếu **chờ duyệt** có lưu vết, duyệt kèm phiên bản, sổ nhận tiền theo hình thức thu, đổi hình thức thu; chi tiết phiếu mở ngay từ dòng danh sách; ảnh chứng từ tải chịu được mạng chập chờn; bộ máy **chi theo cam kết** bật từ 27/09. | [Thu chi](/03-quan-ly-van-hanh/thu-chi/), [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) |
+| Phiếu thu chi | Sửa phiếu **chờ duyệt** có lưu vết, duyệt kèm phiên bản, sổ nhận tiền theo hình thức thu, đổi hình thức thu; chi tiết phiếu mở ngay từ dòng danh sách; ảnh chứng từ tải chịu được mạng chập chờn; bộ máy **chi theo cam kết** bật từ 27/09. | [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
 | Sổ quỹ & lợi nhuận | Chốt lợi nhuận theo từng nhà; khoá tháng tuyệt đối và chặn chốt khi còn phiếu chờ duyệt; phiếu thu của hoá đơn tháng đã chốt cũng bị khoá sửa/huỷ. | [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/), [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
 | Hợp đồng | Màn chi tiết hợp đồng desktop một trang; bản nháp hợp đồng và ký; luồng trả phòng bắt buộc ghi chú và hiện trên phiếu hoàn; lịch hỗ trợ tiền thuê; in CT01 + hợp đồng lưu trú. | [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/), [Chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) |
 | Cọc & thanh lý | Xử lý cọc giữ chỗ theo mẫu, hạn bổ sung cọc, ảnh + sổ quỹ trên phiếu cọc; mục "Hoàn lại khách" khi thanh lý; bỏ hẳn đường hoàn khách thứ hai. | [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/), [Thanh lý](/03-quan-ly-van-hanh/thanh-ly-move-out/) |

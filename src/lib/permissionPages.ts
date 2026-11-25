@@ -336,7 +336,7 @@ export const PAGE_GROUPS: PageGroup[] = [
             desc: "Thấy & chọn hạng mục đánh dấu 'hạn chế' (vd Quản Lý) trong picker khi tạo phiếu. Mặc định ẩn.",
           }),
           f("approvals", "emergency_override", "Duyệt khẩn cấp (cửa thoát chủ sở hữu)", "elevated", {
-            desc: "Gỡ kẹt phiếu do HỆ THỐNG sinh ở hạng mục đặc biệt (cọc / hoa hồng / thưởng) — nhóm này không ai tự duyệt được. Mọi lần dùng đều ghi nhật ký kèm lý do. Trang /approvals không cần quyền vì đã lọc theo người đăng nhập.",
+            desc: "Gỡ kẹt phiếu do HỆ THỐNG sinh ở hạng mục đặc biệt (cọc / hoa hồng / thưởng) — nhóm này không ai tự duyệt được. Mọi lần dùng đều ghi nhật ký kèm lý do.",
           }),
           f("income_expenses", "reverse", "Đảo bút toán phiếu đã ghi sổ", "elevated", {
             desc: "Sinh phiếu ngược để huỷ tác động của phiếu đã hạch toán. Không xoá phiếu gốc — dấu vết được giữ nguyên.",

@@ -96,4 +96,4 @@ Nếu chọn nhầm tiền, sổ hoặc hoá đơn, dùng **Hoàn tác** rồi g
 - [Thu tiền tại hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/)
 - [Chu kỳ Thu → Bàn giao](/04-bao-cao/thu-ban-giao/)
 - [Bàn giao tiền & đối soát](/03-quan-ly-van-hanh/ban-giao-doi-soat/)
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/)
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/)

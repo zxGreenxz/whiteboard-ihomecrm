@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   isReservationLeg,
+  LEDGER_APPROVE_PERMISSION_REASON,
+  LEDGER_MAKER_SELF_APPROVE_REASON,
   ledgerApproveAndPostAllowed,
+  ledgerApproveBlockReason,
   needsLedgerMakerKind,
   payoutPostAllowedAsPayee,
   profitCancelTargetFromVoucher,
@@ -182,10 +185,12 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
   };
   const soTong = (p: Partial<V> = {}) => phieu({ system_source: "profit.ledger_payout", building_id: "toa-ao", ...p });
 
-  it("chờ duyệt: không Duyệt / Sửa ở Thu chi; có lối sang Chờ duyệt; Huỷ đi hộp sổ tổng", () => {
+  // Chủ chốt 25/11/2026: duyệt MỘT đường ở Thu chi — phiếu sổ tổng có nút Duyệt thật, không còn lối sang màn khác.
+  it("chờ duyệt: có nút Duyệt ngay ở Thu chi (không khoá gì); không Sửa; Huỷ đi hộp sổ tổng", () => {
     const a = voucherActionAvailability(soTong(), viewer({ perms: owner, isAdmin: true, isSuperAdmin: true, isCompanyOwner: true }), state());
-    expect(a.approve).toBe(false);
-    expect(a.approveVia).toBe("INBOX");
+    expect(a.approve).toBe(true);
+    expect(a.approveBlockedReason).toBeNull();
+    expect(a).not.toHaveProperty("approveVia");
     expect(a.edit.show).toBe(false);
     expect(a.cancel).toEqual({ show: true, disabled: false, reason: null, via: "PROFIT_LEDGER" });
   });
@@ -197,7 +202,7 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
     expect(a.cancel.via).toBe("PROFIT_LEDGER");
     expect(a.verify).toBe(true);
     expect(a.annotate).toBe(true);
-    expect(a.approveVia).toBeNull();
+    expect([a.approve, a.approveBlockedReason]).toEqual([false, null]);
   });
 
   it("đã duyệt chưa chi: Chi từ sổ (hộp khoá đúng sổ lúc lập); phiếu đã đảo hoặc tổ chức chưa ghi sổ kiểu mới ⇒ không", () => {
@@ -217,12 +222,14 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
   it("quyền theo loại phiếu: cổ đông ⇒ distribute, lương điều hành ⇒ pay_manager; quyền huỷ thu chi KHÔNG đủ", () => {
     const thuChiOnly = viewer({ perms: { income_expenses: owner.income_expenses } });
     const a = voucherActionAvailability(soTong(), thuChiOnly, state({ flexEligibility: flex({ eligible: true }) }));
-    expect([a.cancel.show, a.approveVia, a.approve]).toEqual([false, null, false]);
+    expect([a.cancel.show, a.approveBlockedReason, a.approve]).toEqual([false, null, false]);
     const manager = soTong({ system_source: "profit.manager_salary" });
     expect(voucherActionAvailability(manager, viewer({ perms: owner }), state()).cancel.show).toBe(false);
     const payManager = viewer({ perms: { shareholder_profit: { pay_manager: { org_wide: true, building_ids: [] } } } });
     expect(voucherActionAvailability(manager, payManager, state()).cancel).toEqual({ show: true, disabled: false, reason: null, via: "PROFIT_LEDGER" });
-    expect(voucherActionAvailability(manager, payManager, state()).approveVia).toBe("INBOX");
+    // Có quyền chi lương điều hành nhưng thiếu quyền duyệt thu chi ở toà của phiếu ⇒ nút mờ kèm lý do (máy chủ từ chối).
+    const quaManager = voucherActionAvailability(manager, payManager, state());
+    expect([quaManager.approve, quaManager.approveBlockedReason]).toEqual([true, LEDGER_APPROVE_PERMISSION_REASON]);
   });
 
   // Phiếu Tạm Ứng người giữ sổ lập HỘ một cổ đông (18/11/2026): cùng nguồn profit.ledger_payout nên cùng nhánh
@@ -232,9 +239,9 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
     // Như máy chủ ghi: user_id của phiếu sổ tổng là CHỦ công ty; người bấm lập nằm ở maker_user_id.
     const tamUng = (p: Partial<V> = {}) => soTong({ user_id: "u-chu", maker_user_id: "u-giu-so", shareholder_id: "sh-nguoi-nhan", ...p });
 
-    it("còn chờ chủ duyệt: người lập không có Duyệt, không có lối sang Chờ duyệt, chưa có nút Chi", () => {
+    it("còn chờ chủ duyệt: người lập (không có quyền chi lợi nhuận) không có nút Duyệt nào, chưa có nút Chi", () => {
       const a = voucherActionAvailability(tamUng(), custodian, state());
-      expect([a.approve, a.approveVia, a.postApproved, a.edit.show, a.reverse, a.unapprove]).toEqual([false, null, false, false, false, false]);
+      expect([a.approve, a.approveBlockedReason, a.postApproved, a.edit.show, a.reverse, a.unapprove]).toEqual([false, null, false, false, false, false]);
     });
 
     it("còn chờ chủ duyệt: NGƯỜI LẬP thấy Huỷ ở Thu chi dù không có quyền chi lợi nhuận — mở hộp huỷ sổ tổng", () => {
@@ -272,7 +279,7 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
       const a = voucherActionAvailability(tamUng({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), custodian, state());
       expect(a.postApproved).toBe(true);
       // Người lập huỷ phiếu đã duyệt: máy chủ từ chối (PROFIT_LEDGER_CANCEL_FORBIDDEN) ⇒ không chào nút.
-      expect([a.approve, a.approveVia, a.edit.show, a.cancel.show]).toEqual([false, null, false, false]);
+      expect([a.approve, a.approveBlockedReason, a.edit.show, a.cancel.show]).toEqual([false, null, false, false]);
     });
 
     it("đã chi: không còn nút Chi, không Hoàn tác, người lập không Huỷ (chỉ người có quyền chi lợi nhuận huỷ có lý do)", () => {
@@ -293,32 +300,33 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
       const payee = viewer({ perms: { shareholder_profit: { advance_own_cashbook: { org_wide: true, building_ids: [] } } }, currentUserId: "u-nguoi-nhan" });
       const a = voucherActionAvailability(tamUng({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), payee, state());
       expect(a.postApproved).toBe(true);
-      expect([a.approve, a.approveVia, a.cancel.show, a.edit.show]).toEqual([false, null, false, false]);
+      expect([a.approve, a.approveBlockedReason, a.cancel.show, a.edit.show]).toEqual([false, null, false, false]);
     });
   });
 
   // Chốt F1 nới 19/11/2026: phiếu CHỦ lập (maker_kind OWNER) — người có quyền chi tự duyệt được phiếu mình lập, duyệt /
-  // chi được dù mình là người nhận. Máy chủ loại người lập khỏi người duyệt của Chờ duyệt ⇒ người lập có Duyệt ở Thu chi.
-  describe("phiếu CHỦ lập — người có quyền chi tự duyệt (F1 nới 19/11)", () => {
+  // chi được dù mình là người nhận. Từ 25/11/2026 MỌI người có quyền chi đều duyệt ngay ở Thu chi; trường hợp biết trước
+  // máy chủ từ chối thì nút mờ kèm lý do (hộp duyệt khoá xác nhận).
+  describe("duyệt ngay ở Thu chi — người có quyền chi (F1 nới 19/11, một đường duyệt 25/11)", () => {
     const chu = viewer({ perms: owner, currentUserId: "u-chu-2" });
     const chuLap = (p: Partial<V> = {}) => soTong({ user_id: "u-chu", maker_user_id: "u-chu-2", shareholder_id: "sh-1", ...p });
 
-    it("phiếu chốt chi do chính mình lập (E7 nói OWNER) ⇒ nút Duyệt ngay ở Thu chi, không còn lối sang Chờ duyệt", () => {
+    it("phiếu chốt chi do chính mình lập (E7 nói OWNER) ⇒ nút Duyệt ngay ở Thu chi, không khoá", () => {
       const a = voucherActionAvailability(chuLap(), chu, state({ ledgerMakerKind: "OWNER" }));
-      expect([a.approve, a.approveVia]).toEqual([true, null]);
+      expect([a.approve, a.approveBlockedReason]).toEqual([true, null]);
       expect(a.edit.show).toBe(false);
       expect(a.cancel.via).toBe("PROFIT_LEDGER");
     });
 
-    it("chưa biết loại người lập (chưa đọc E7) ⇒ không đoán: giữ lối sang Chờ duyệt", () => {
+    it("chưa biết loại người lập (chưa đọc E7) ⇒ không đoán lý do khoá: nút bấm được, hộp duyệt tự đọc E7 rồi mới cho xác nhận", () => {
       const a = voucherActionAvailability(chuLap(), chu, state());
-      expect([a.approve, a.approveVia]).toEqual([false, "INBOX"]);
+      expect([a.approve, a.approveBlockedReason]).toEqual([true, null]);
     });
 
-    it("phiếu TẠM ỨNG chính chủ lập khi giữ sổ (tự ứng / lập hộ) ⇒ giữ luật cũ: không tự duyệt", () => {
+    it("phiếu TẠM ỨNG chính mình lập khi giữ sổ (tự ứng / lập hộ) ⇒ luật không đổi: người lập không tự duyệt — nút mờ kèm lý do", () => {
       for (const kind of ["CUSTODIAN_ADVANCE", "CUSTODIAN_FOR_PAYEE"] as const) {
         const a = voucherActionAvailability(chuLap(), chu, state({ ledgerMakerKind: kind }));
-        expect([a.approve, a.approveVia]).toEqual([false, "INBOX"]);
+        expect([a.approve, a.approveBlockedReason]).toEqual([true, LEDGER_MAKER_SELF_APPROVE_REASON]);
       }
     });
 
@@ -328,36 +336,58 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
         currentUserId: "u-chu-2",
       });
       const a = voucherActionAvailability(chuLap({ system_source: "profit.manager_salary" }), payManager, state());
-      expect([a.approve, a.approveVia]).toEqual([true, null]);
+      expect([a.approve, a.approveBlockedReason]).toEqual([true, null]);
       // Thiếu quyền chi lương điều hành (chỉ có quyền chi lợi nhuận) ⇒ không có nút nào.
       expect(voucherActionAvailability(chuLap({ system_source: "profit.manager_salary" }), chu, state()).approve).toBe(false);
     });
 
-    it("thiếu quyền duyệt thu chi ở ĐÚNG toà của phiếu (approve_income_expense_v2 đòi) ⇒ không hứa nút Duyệt", () => {
+    it("thiếu quyền duyệt thu chi ở ĐÚNG toà của phiếu (approve_income_expense_v2 đòi) ⇒ nút mờ kèm lý do, không hứa duyệt được", () => {
       const toaKhac = viewer({
         perms: { shareholder_profit: owner.shareholder_profit, income_expenses: { approve: { org_wide: false, building_ids: ["b-khac"] } } },
         currentUserId: "u-chu-2",
       });
       const a = voucherActionAvailability(chuLap(), toaKhac, state({ ledgerMakerKind: "OWNER" }));
-      expect([a.approve, a.approveVia]).toEqual([false, "INBOX"]);
+      expect([a.approve, a.approveBlockedReason]).toEqual([true, LEDGER_APPROVE_PERMISSION_REASON]);
     });
 
-    it("chủ KHÁC / người nhận (không phải người lập) ⇒ vẫn duyệt ở Chờ duyệt (có trong danh sách người duyệt, thấy số dư)", () => {
+    it("chủ KHÁC (không phải người lập) ⇒ duyệt ngay ở Thu chi — kể cả phiếu tạm ứng người khác lập (ca 3 phiếu kẹt 25/11)", () => {
       const khac = viewer({ perms: owner, currentUserId: "u-chu" });
-      const a = voucherActionAvailability(chuLap(), khac, state({ ledgerMakerKind: "OWNER" }));
-      expect([a.approve, a.approveVia]).toEqual([false, "INBOX"]);
+      for (const kind of ["OWNER", "CUSTODIAN_ADVANCE", "CUSTODIAN_FOR_PAYEE", undefined] as const) {
+        const a = voucherActionAvailability(chuLap(), khac, state({ ledgerMakerKind: kind }));
+        expect([a.approve, a.approveBlockedReason]).toEqual([true, null]);
+      }
     });
 
     it("không có quyền chi lợi nhuận ⇒ không Duyệt dù là người lập; đã duyệt ⇒ không còn Duyệt, Chi theo trạng thái", () => {
       const thuChi = viewer({ perms: { income_expenses: owner.income_expenses }, currentUserId: "u-chu-2" });
       expect(voucherActionAvailability(chuLap(), thuChi, state({ ledgerMakerKind: "OWNER" })).approve).toBe(false);
       const daDuyet = voucherActionAvailability(chuLap({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), chu, state({ ledgerMakerKind: "OWNER" }));
-      expect([daDuyet.approve, daDuyet.approveVia, daDuyet.postApproved]).toEqual([false, null, true]);
+      expect([daDuyet.approve, daDuyet.approveBlockedReason, daDuyet.postApproved]).toEqual([false, null, true]);
     });
 
-    it("tổ chức chưa đọc ghi sổ kiểu mới ⇒ không mở Duyệt ở Thu chi (lối Chờ duyệt như cũ)", () => {
+    it("tổ chức chưa đọc ghi sổ kiểu mới, hoặc phiếu là chân xử lý cọc ⇒ không có nút Duyệt (máy chủ chỉ duyệt phiếu sổ tổng qua lệnh kiểu mới)", () => {
       const a = voucherActionAvailability(chuLap(), chu, state({ ledgerMakerKind: "OWNER", canonicalRead: false }));
-      expect([a.approve, a.approveVia]).toEqual([false, "INBOX"]);
+      expect([a.approve, a.approveBlockedReason]).toEqual([false, null]);
+      const b = voucherActionAvailability(chuLap(), chu, state({ ledgerMakerKind: "OWNER", monetaryActionsAllowed: false }));
+      expect([b.approve, b.approveBlockedReason]).toEqual([false, null]);
+    });
+
+    it("ledgerApproveBlockReason: thiếu quyền duyệt ở toà đứng trước; người lập chỉ bị khoá khi BIẾT CHẮC không phải phiếu chủ lập", () => {
+      const me = { perms: owner, currentUserId: "u-chu-2" };
+      expect(ledgerApproveBlockReason(chuLap(), me, "OWNER")).toBeNull();
+      expect(ledgerApproveBlockReason(chuLap(), me, undefined)).toBeNull();
+      expect(ledgerApproveBlockReason(chuLap(), me, "CUSTODIAN_FOR_PAYEE")).toBe(LEDGER_MAKER_SELF_APPROVE_REASON);
+      expect(ledgerApproveBlockReason(chuLap(), me, null)).toBe(LEDGER_MAKER_SELF_APPROVE_REASON);
+      // Lương điều hành sổ tổng luôn do chủ lập: không khoá người lập dù không có loại người lập.
+      expect(ledgerApproveBlockReason(chuLap({ system_source: "profit.manager_salary" }), me, null)).toBeNull();
+      // Không phải người lập, hoặc đường đọc không mang người lập ⇒ không kết luận gì (máy chủ là chốt cuối).
+      expect(ledgerApproveBlockReason(chuLap(), { perms: owner, currentUserId: "u-khac" }, "CUSTODIAN_ADVANCE")).toBeNull();
+      expect(ledgerApproveBlockReason(chuLap({ maker_user_id: undefined }), me, "CUSTODIAN_ADVANCE")).toBeNull();
+      const thieuDuyet = { perms: { shareholder_profit: owner.shareholder_profit }, currentUserId: "u-chu-2" };
+      expect(ledgerApproveBlockReason(chuLap(), thieuDuyet, "CUSTODIAN_ADVANCE")).toBe(LEDGER_APPROVE_PERMISSION_REASON);
+      // Phiếu thường / nguồn cũ không đi luật này.
+      expect(ledgerApproveBlockReason(phieu(), thieuDuyet, undefined)).toBeNull();
+      expect(ledgerApproveBlockReason(chuLap({ system_source: "profit.distribution" }), thieuDuyet, "CUSTODIAN_ADVANCE")).toBeNull();
     });
 
     // Máy chủ chỉ miễn "người nhận không tự Chi" khi quyền chi phủ CẢ CÔNG TY (không ngoại lệ super admin) — "Duyệt và
@@ -398,7 +428,7 @@ describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
     const a = voucherActionAvailability(soTong({ system_source: "profit.distribution", building_id: "b1" }),
       viewer({ perms: scoped("approve", "cancel") }), state());
     expect(a.approve).toBe(true);
-    expect(a.approveVia).toBeNull();
+    expect(a.approveBlockedReason).toBeNull();
     expect(a.cancel.via).toBeUndefined();
   });
 });

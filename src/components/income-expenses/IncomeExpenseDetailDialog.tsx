@@ -29,7 +29,6 @@ import {
   CopyPlus,
   BadgeCheck,
   CalendarX,
-  ClipboardCheck,
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import {
@@ -345,26 +344,15 @@ function IncomeExpenseDetailDialogContent({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-green-600 hover:bg-green-700"
-                  title="Duyệt phiếu"
+                  // Phiếu chi theo sổ tổng cũng duyệt ở đây: hộp xác nhận hiện số dư sổ tổng và nói rõ khi không duyệt được.
+                  title={can.approveBlockedReason ? `Duyệt phiếu — ${can.approveBlockedReason}` : "Duyệt phiếu"}
+                  aria-label="Duyệt phiếu"
                   onClick={() => {
                     onApprove(voucher);
                     onOpenChange(false);
                   }}
                 >
                   <CheckCircle2 className="h-4 w-4 text-white" />
-                </Button>
-              )}
-              {/* Phiếu chi theo sổ tổng: duyệt ở màn Chờ duyệt (thấy số dư sổ tổng trước khi duyệt). */}
-              {can.approveVia === "INBOX" && (
-                <Button asChild size="icon" variant="default" className="h-8 w-8 bg-green-600 hover:bg-green-700">
-                  <Link
-                    to="/approvals"
-                    title="Duyệt ở màn Chờ duyệt (xem số dư sổ tổng trước khi duyệt)"
-                    aria-label="Duyệt ở màn Chờ duyệt"
-                    onClick={() => onOpenChange(false)}
-                  >
-                    <ClipboardCheck className="h-4 w-4 text-white" />
-                  </Link>
                 </Button>
               )}
               {monetaryActionsAllowed && !locked && <QuickExpenseButton voucher={voucher} quick={quickExpense} />}

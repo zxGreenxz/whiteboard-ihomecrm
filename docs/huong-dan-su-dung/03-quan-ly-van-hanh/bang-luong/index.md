@@ -74,11 +74,11 @@ Mỗi khoản có nhãn trạng thái (**Tạm tính**, **Nhập tay**, **Địn
 
 **Bước 7**: Trả lương (cần `distribute`). Ở khung **Thanh toán cho <tên>** bên phải tab Thu nhập & thanh toán, kiểm các dòng **Quỹ lương vận hành**, **Chi phí tòa · khoản Sale nguồn**, **Phân bổ lợi nhuận**, **Tổng thu nhập được chọn**, các khoản trừ (**Đã ứng**, **Hoa hồng chi từ sổ thật**, **Đã trả trước đó**, tiền phòng) và **Tiền thực chuyển**. Chọn **Chi từ sổ**, **Ngày chi**, **Ghi chú** rồi bấm **Lập yêu cầu thanh toán**. Muốn trả nhiều người một lượt, dùng **Trả lương hàng loạt** → chọn **Chi từ sổ quỹ** → **Ghi N phiếu chi**.
 
-- Mỗi lần lập tạo **một phiếu chi lương chờ duyệt**, không tính KQKD. Người đang có phiếu chờ duyệt bị khoá lập phiếu mới (kể cả trong trả hàng loạt) và có thẻ **Đang chờ chi** kèm nút **Mở duyệt chi**.
+- Mỗi lần lập tạo **một phiếu chi lương chờ duyệt**, không tính KQKD. Người đang có phiếu chờ duyệt bị khoá lập phiếu mới (kể cả trong trả hàng loạt) và có thẻ **Đang chờ chi** kèm nút **Mở duyệt chi** (mở **Thu chi → Chờ xử lý** để duyệt).
 - Tiền phòng: nếu đã gán phòng và có hoá đơn phòng tháng kế, phần tiền phòng được trừ thẳng vào hoá đơn, không chuyển khoản; nếu chưa có hoá đơn thì trừ theo mức cố định trong cấu hình.
 
 ::: danger Lập yêu cầu, duyệt và tiền ra khỏi quỹ là ba việc khác nhau
-**Lập yêu cầu thanh toán** chỉ tạo phiếu chờ duyệt. Ô **Đã trả** tăng khi phiếu được **duyệt**. Tiền chỉ thật sự ra khỏi sổ quỹ khi phiếu ở trạng thái **Đã Chi** (`posting_status = POSTED`); kiểm tra ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) và [Thu chi](/03-quan-ly-van-hanh/thu-chi/) trước khi báo nhân viên đã nhận lương.
+**Lập yêu cầu thanh toán** chỉ tạo phiếu chờ duyệt. Ô **Đã trả** tăng khi phiếu được **duyệt**. Tiền chỉ thật sự ra khỏi sổ quỹ khi phiếu ở trạng thái **Đã Chi** (`posting_status = POSTED`); kiểm tra và duyệt ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) trước khi báo nhân viên đã nhận lương.
 :::
 
 ::: info Hai cách tính lương theo kỳ
@@ -108,7 +108,7 @@ Hệ thống có cách tính cũ và cách tính v5 (lương cứng theo chuyên
 | **Thu nhập đồng hành** "Chưa đủ cơ sở" | Lợi nhuận toà chưa chốt; xem [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
 | Nút thanh toán ghi **Đang có phiếu chờ duyệt** | Người này đã có phiếu chi lương chờ duyệt; duyệt hoặc huỷ phiếu đó trước |
 | Nút ghi **Không còn tiền phải chuyển** | Thực nhận đã được trả đủ hoặc các khoản đã chọn bằng 0 |
-| Đã lập yêu cầu nhưng quỹ chưa giảm | Phiếu còn chờ duyệt hoặc chưa **Đã Chi**; theo dõi ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) |
+| Đã lập yêu cầu nhưng quỹ chưa giảm | Phiếu còn chờ duyệt hoặc chưa **Đã Chi**; theo dõi và duyệt ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) (tab **Chờ xử lý**) |
 | Không thấy nút **Chốt kỳ** / **Trả lương hàng loạt** / tab **Cấu hình** | Thiếu quyền `lock` / `distribute` / `manage_salary` |
 
 ## Thử trực tiếp trên sandbox
@@ -133,8 +133,7 @@ Hệ thống có cách tính cũ và cách tính v5 (lương cứng theo chuyên
 - [Lương của tôi](/03-quan-ly-van-hanh/luong-cua-toi/) — màn tự xem của nhân viên, cùng nguồn số với màn này.
 - [Thêm nhân viên](/01-bat-dau/them-nhan-vien/) — tạo tài khoản trước khi khai hưởng lương.
 - [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/) — việc hoàn thành là nguồn thưởng trong bảng kê.
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) — duyệt phiếu chi lương.
-- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — phiếu chi lương, ứng lương, phiếu hoa hồng.
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — duyệt và theo dõi phiếu chi lương, ứng lương, phiếu hoa hồng.
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — sổ chi lương.
 - [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) — nguồn của Thu nhập đồng hành.
 - [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/) — hoá đơn phòng ở của nhân viên dùng để cấn trừ.

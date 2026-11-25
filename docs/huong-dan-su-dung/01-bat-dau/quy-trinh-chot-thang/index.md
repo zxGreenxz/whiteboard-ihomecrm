@@ -19,7 +19,7 @@ Cuối mỗi tháng, chủ nhà hoặc kế toán khép sổ theo một trình t
 Xuyên suốt trang này, nhớ ba mức khác nhau: **đã duyệt** (phiếu qua bước phê duyệt), **Đã Thu / Đã Chi** (đã ghi sổ — `posting_status = POSTED`, tiền thật vào/ra quỹ), và **đã chốt** (số bị khoá, không sửa được nữa).
 
 ::: info Điều kiện tiên quyết
-- Quyền theo từng chặng: duyệt phiếu ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/); **Đề nghị chốt & bàn giao quỹ** / **Xác nhận nhận bàn giao** (sổ quỹ); `reports_finance.profit_distribution` và `shareholder_profit.lock/unlock/manage_shareholders/distribute` (lợi nhuận); `salary.lock/unlock/distribute/manage_salary` (lương). Không suy quyền từ tên vai trò.
+- Quyền theo từng chặng: duyệt phiếu ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/); **Đề nghị chốt & bàn giao quỹ** / **Xác nhận nhận bàn giao** (sổ quỹ); `reports_finance.profit_distribution` và `shareholder_profit.lock/unlock/manage_shareholders/distribute` (lợi nhuận); `salary.lock/unlock/distribute/manage_salary` (lương). Không suy quyền từ tên vai trò.
 - Trong tháng đã thu tiền, ghi thu/chi và bàn giao đầy đủ — xem [Quy trình: Chu kỳ thu tiền hàng tháng](/01-bat-dau/quy-trinh-thu-tien/) và [Quy trình: Bàn giao & đối soát](/01-bat-dau/quy-trinh-ban-giao/).
 - Đã khai **cổ đông & tỷ lệ** theo toà (nếu chia lợi nhuận) và **quản lý hưởng lương** (nếu trả lương) — cấu hình ngay trong màn ở Bước 4 và Bước 5.
 - Dùng **máy tính**: bản điện thoại của Báo cáo Lợi Nhuận không có tab chốt và cấu hình.
@@ -29,7 +29,7 @@ Xuyên suốt trang này, nhớ ba mức khác nhau: **đã duyệt** (phiếu q
 
 ```mermaid
 flowchart TD
-  A["1 · Dọn phiếu của tháng<br/>Chờ duyệt · Thu chi tab Chờ xử lý · Cam kết chi"] -->|"không còn phiếu chờ"| R["2 · Chốt sổ quỹ (Sổ quỹ)<br/>Chốt sổ & bàn giao quỹ → người khác Ký nhận & khoá kỳ"]
+  A["1 · Dọn phiếu của tháng<br/>Thu chi tab Chờ xử lý · Cam kết chi"] -->|"không còn phiếu chờ"| R["2 · Chốt sổ quỹ (Sổ quỹ)<br/>Chốt sổ & bàn giao quỹ → người khác Ký nhận & khoá kỳ"]
   R -->|"tiền trong sổ khớp thực tế"| P["3 · Xem KQKD<br/>Trung tâm tài chính · tab BC Doanh Thu Chi Phí"]
   P --> L["4 · Chốt LN tháng (theo từng nhà)<br/>Chốt N nhà đã chọn → phân bổ cổ đông<br/>Tổng quan → Chi lợi nhuận"]
   L -->|"LN toà đã chốt → Thu nhập đồng hành có số"| S["5 · Lương & thu nhập<br/>Chốt kỳ ThN → Lập yêu cầu thanh toán"]
@@ -38,7 +38,7 @@ flowchart TD
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: **Dọn phiếu của tháng.** Mở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) (`/approvals`) xử lý các yêu cầu giao cho bạn (**Duyệt**, **Duyệt và Chi…/Duyệt và Thu…** khi bạn giữ sổ, hoặc **Từ chối** có lý do); mở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) tab **Chờ xử lý** để thấy mọi phiếu của công ty còn chờ duyệt hoặc chưa chọn sổ quỹ. Chi phát sinh ngoài đời ghi nhanh bằng [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) (gõ, nói hoặc chụp bill → thẻ nháp → **Lưu**) — phiếu tạo ra đi cùng luật duyệt như lập ở Thu chi.
+**Bước 1**: **Dọn phiếu của tháng.** Mở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) tab **Chờ xử lý** để thấy mọi phiếu của công ty còn chờ duyệt hoặc chưa chọn sổ quỹ, rồi xử lý ngay tại đó (**Duyệt**, **Duyệt và Chi…/Duyệt và Thu…** khi bạn giữ sổ, hoặc **Huỷ** có lý do). Từ 25/11/2026 màn **Chờ duyệt** cũ đã bỏ; phiếu chi lợi nhuận, tạm ứng lợi nhuận và lương điều hành cũng duyệt ở Thu chi. Chi phát sinh ngoài đời ghi nhanh bằng [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) (gõ, nói hoặc chụp bill → thẻ nháp → **Lưu**) — phiếu tạo ra đi cùng luật duyệt như lập ở Thu chi.
 
 ::: tip Cam kết chi quyết định phiếu nào tự duyệt
 Với các phạm vi (hạng mục × toà × tháng) đã bật áp dụng ở [Cam kết chi](/05-cai-dat/cam-ket-chi/), phiếu chi nằm trong phần cam kết còn lại được máy duyệt ngay; vượt cam kết thì nằm chờ chủ duyệt, kể cả khi người lập có quyền duyệt. Máy duyệt vẫn chưa phải **Đã Chi** — tuỳ cửa chi, người giữ sổ có thể còn phải bấm chi.
@@ -100,7 +100,7 @@ Sau khi chốt, **mọi phiếu có ngày trong tháng** của các nhà đã ch
 
 | Màn hình | Vai trò & chứng từ sinh ra |
 | --- | --- |
-| [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) · [Thu chi](/03-quan-ly-van-hanh/thu-chi/) | Duyệt / từ chối phiếu; tab **Chờ xử lý** gom phiếu chờ duyệt hoặc chưa chọn sổ quỹ. |
+| [Thu chi](/03-quan-ly-van-hanh/thu-chi/) | Duyệt / huỷ phiếu; tab **Chờ xử lý** gom phiếu chờ duyệt hoặc chưa chọn sổ quỹ. |
 | [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) | Ghi phiếu thu/chi từ câu gõ, giọng nói, ảnh bill. |
 | [Cam kết chi](/05-cai-dat/cam-ket-chi/) | Ký trước số chi mỗi tháng theo toà × hạng mục; máy quyết phiếu nào tự duyệt. |
 | [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) | **Chốt sổ & bàn giao quỹ** hai bên ký, khoá kỳ vĩnh viễn, biên bản in được. |
@@ -114,13 +114,13 @@ Sau khi chốt, **mọi phiếu có ngày trong tháng** của các nhà đã ch
 | Tình huống | Nguyên nhân & cách xử lý |
 | --- | --- |
 | Không thấy tab **Chốt LN tháng** / **Cổ đông & tỷ lệ** | Dùng máy tính, nhấp nhanh 3 lần biểu tượng bên trái tiêu đề. Vẫn không hiện thì thiếu quyền `lock`/`unlock`/`manage_shareholders`. |
-| Chốt báo **Còn N phiếu chờ duyệt trong tháng … của toà …** | Duyệt hoặc huỷ các phiếu được nêu ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) rồi chốt lại. |
+| Chốt báo **Còn N phiếu chờ duyệt trong tháng … của toà …** | Duyệt hoặc huỷ các phiếu được nêu ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) (tab **Chờ xử lý**) rồi chốt lại. |
 | Nút xác nhận chốt bị khoá vì phần lợi nhuận còn dư | Chọn **Giữ lại lợi nhuận** / **Chuyển kỳ sau** và nhập lý do cho từng nhà còn dư, hoặc bỏ tick nhà đó. |
 | Nút chốt báo vùng chọn đang lẫn | Đang tick cả nhà đã chốt lẫn chưa chốt; chốt và **Chốt lại N nhà đã chọn** làm hai lượt. |
 | Nhà báo **Cũ** / **Đã lệch nguồn** | Dữ liệu phiếu, tỷ lệ hoặc lương đã đổi sau lần chốt. Tick nhà đó, **Chốt lại N nhà đã chọn** với lý do. |
 | Thu/sửa phiếu báo lợi nhuận tháng **đã chốt** | Nhà đó đã chốt lợi nhuận tháng này. Lập điều chỉnh ở tháng hiện tại, hoặc **Mở khoá** (mất phần đã phân bổ, phải chốt lại). |
 | **Thu nhập đồng hành** ghi **Chưa đủ cơ sở** | Lợi nhuận toà chưa chốt; quay lại Bước 4. |
-| Đã lập yêu cầu trả lương / chi lợi nhuận nhưng quỹ chưa giảm | Phiếu còn chờ duyệt hoặc chưa **Đã Chi**; theo dõi ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/). |
+| Đã lập yêu cầu trả lương / chi lợi nhuận nhưng quỹ chưa giảm | Phiếu còn chờ duyệt hoặc chưa **Đã Chi**; theo dõi và duyệt ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) (tab **Chờ xử lý**). |
 | Không ký được chốt sổ vì sổ đã thay đổi | Có phiếu mới ghi sổ sau lúc đề nghị. Huỷ đề nghị, hai bên đếm lại. |
 
 ## Thử trực tiếp trên sandbox
@@ -145,7 +145,7 @@ Kết quả mong đợi: bạn dựng được chuỗi **dọn phiếu => chốt
 ## Quy trình liên quan
 
 - [Quy trình: Bàn giao & đối soát](/01-bat-dau/quy-trinh-ban-giao/) — nộp tiền và chốt sổ trước khi khép tháng.
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) · [Thu chi](/03-quan-ly-van-hanh/thu-chi/) · [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) — đưa đủ phiếu của tháng vào sổ.
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) · [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) — đưa đủ phiếu của tháng vào sổ.
 - [Cam kết chi](/05-cai-dat/cam-ket-chi/) — luật tự duyệt phiếu chi theo cam kết.
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — chốt sổ & bàn giao quỹ.
 - [Trung tâm tài chính](/04-bao-cao/trung-tam-tai-chinh/) — xem KQKD toàn cảnh.
