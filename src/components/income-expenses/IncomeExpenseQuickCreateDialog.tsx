@@ -1,3 +1,6 @@
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { useDepositIncomeHold } from '@/hooks/useDepositIncomeHold';
+import { DepositScheduleFields,emptyDepositSchedule } from '@/components/deposits/DepositScheduleFields';
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
@@ -88,7 +91,8 @@ const IncomeExpenseQuickCreateDialog = ({
   const { data: accounts = [] } = useAccounts();
   const modeLower = mode === "INCOME" ? "income" : "expense";
   const { data: typeRows = [] } = useIncomeExpenseTypes(modeLower);
-  const createIE = useCreateIncomeExpense();
+  const {selectedOrganizationId}=useOrganization();
+  const createIE = useCreateIncomeExpense(selectedOrganizationId);
   const createType = useCreateIncomeExpenseType();
   const { data: perms } = useMyPermissions();
   const canPickRestricted = canUse(perms, "income_expenses", "restricted_create");
@@ -253,11 +257,25 @@ const IncomeExpenseQuickCreateDialog = ({
   };
 
   // Cọc không có phòng thì không hợp đồng nào nhận (depositRoomRule.ts) — "toàn tòa nhà" không đủ.
+  const isDeposit=mode==='INCOME' && !!parsed.typeId && depositTypeIdSet(typeRows).has(parsed.typeId);
+  const hold=useDepositIncomeHold(parsed.roomId,open && isDeposit);
+  const [schedule,setSchedule]=useState(emptyDepositSchedule);
+  const [payer,setPayer]=useState('');
+  const seen=useRef<{id:string|null;revision?:number}>({id:null});
+  const request=useRef('');
+  useEffect(()=>{
+    seen.current={id:null}; request.current=crypto.randomUUID();setSchedule(emptyDepositSchedule);setPayer('');
+  },[open,parsed.roomId,isDeposit]);
+  useEffect(()=>{
+    if(!hold.data||!isDeposit||seen.current.id===hold.data.id)return;
+    const r=hold.data;seen.current={id:r.id,revision:r.revision};setPayer(v=>v||r.payer||'');
+    setSchedule({holdUntil:r.hold_until??'',moveIn:r.intended_move_in_on??'',topup:r.topup_due_on??''});
+  },[hold.data,isDeposit]);
   const depositNeedsRoom = needsDepositRoom([parsed.typeId], parsed.roomId, depositTypeIdSet(typeRows));
   const canSubmit =
     !!parsed.buildingId &&
     (!!parsed.roomId || parsed.isBuildingWide) &&
-    !depositNeedsRoom &&
+    !depositNeedsRoom && (!isDeposit||(!hold.isError&&!hold.isLoading)) &&
     !!parsed.typeId &&
     parsed.amount != null &&
     !!accountId &&
@@ -276,7 +294,9 @@ const IncomeExpenseQuickCreateDialog = ({
         room_id: parsed.roomId ?? null,
         tenant_id: null,
         contract_id: null,
-        payer_name: null,
+        payer_name: isDeposit?payer.trim()||null:null,
+        ...(isDeposit?{idempotency_key:request.current,deposit_terms:{expected_hold:seen.current.id,expected_revision:seen.current.revision,
+          hold_until:schedule.holdUntil||null,intended_move_in_on:schedule.moveIn||null,topup_due_on:schedule.topup||null}}:{}),
         account_id: accountId,
         voucher_date: d,
         business_result_accounting: null,
@@ -307,6 +327,11 @@ const IncomeExpenseQuickCreateDialog = ({
 
   const formBody = (
     <>
+      {isDeposit&&parsed.roomId&&<div className="space-y-2">
+        <label className="block text-sm">Người gửi<input className="block w-full rounded border p-2" value={payer} onChange={e=>setPayer(e.target.value)}/></label>
+        <DepositScheduleFields key={hold.data?.id??parsed.roomId} voucherDate={today()} value={schedule} onChange={setSchedule}/>
+        {hold.isError&&<button type="button" onClick={()=>void hold.refetch()}>Tải lại đợt giữ chỗ</button>}
+      </div>}
       {/* Dòng 1: Thu / Chi */}
       <div className="grid grid-cols-2 gap-2">
         <button

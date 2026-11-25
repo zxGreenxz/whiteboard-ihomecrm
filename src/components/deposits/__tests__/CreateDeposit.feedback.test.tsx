@@ -25,6 +25,7 @@ const query = (data: unknown, failed = false, refetch = vi.fn()) => ({
   data: failed ? undefined : data, status: failed ? 'error' : 'success', fetchStatus: 'idle',
   isError: failed, isLoading: false, error: failed ? new Error('Failed to fetch') : null, refetch,
 });
+vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:null,isError:false,isLoading:false,status:'success',refetch:vi.fn()})}));
 vi.mock('@/hooks/useRoomReservations', () => ({ useCreateRoomReservation: () => ({ mutateAsync: h.create, isPending: false }) }));
 vi.mock('@/hooks/useReservationHoldDeadlines', () => ({ useSetReservationHoldTerms: () => ({ mutateAsync: h.hold, isPending: false }) }));
 vi.mock('@/hooks/useSaleBonus', () => ({ useCreateSaleBonusFromDeposit: () => ({ mutateAsync: h.bonus, isPending: false }) }));
@@ -67,10 +68,10 @@ function view() {
 }
 async function prepare(bonus = false, amount = '500000', hint?: string, bonusReason = 'Thưởng theo thỏa thuận cho giao dịch cọc') {
   view();
-  fireEvent.change(screen.getByRole('textbox', {name:'Tên khách gợi nhớ'}), {target:{value:hint ?? 'Khách Demo'}});
+  fireEvent.change(screen.getByRole('textbox', {name:'Người gửi'}), {target:{value:hint ?? 'Khách Demo'}});
   fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: roomId } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Số tiền cọc *' }), { target: { value: amount } });
-  const date = screen.getByRole('textbox', { name: 'Giữ phòng đến' });
+  const date = screen.getByRole('textbox', { name: 'Giữ chỗ đến' });
   fireEvent.change(date, { target: { value: '02102026' } }); fireEvent.blur(date);
   fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Ghi chú' }), { target: { value: 'Giữ lại nội dung cọc' } });
@@ -184,10 +185,10 @@ describe('tạo cọc sau rớt mạng (gửi lại cùng mã)', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const ui = (open: boolean) => <QueryClientProvider client={client}><CreateDepositDialog open={open} onOpenChange={h.close} /></QueryClientProvider>;
     const r = render(ui(true));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Tên khách gợi nhớ' }), { target: { value: 'anh Tuấn' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Người gửi' }), { target: { value: 'anh Tuấn' } });
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: roomId } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Số tiền cọc *' }), { target: { value: '500000' } });
-    const date = screen.getByRole('textbox', { name: 'Giữ phòng đến' }); fireEvent.change(date, { target: { value: '02102026' } }); fireEvent.blur(date);
+    const date = screen.getByRole('textbox', { name: 'Giữ chỗ đến' }); fireEvent.change(date, { target: { value: '02102026' } }); fireEvent.blur(date);
     fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
     submitAgain(); await screen.findByRole('alert');
@@ -256,7 +257,7 @@ it('thiếu khách hoặc số tiền 0 thì chặn tại form, không gọi wri
   fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
   await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
   fireEvent.submit(document.querySelector('form')!);
-  await screen.findByText('Nhập tên khách gợi nhớ');
+  await screen.findByText('Nhập tên người gửi');
   expect(await screen.findByText(/Nhập số tiền cọc lớn hơn 0/)).toBeTruthy();
   expect(h.create).not.toHaveBeenCalled();
 });

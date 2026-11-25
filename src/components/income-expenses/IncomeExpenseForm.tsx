@@ -1,3 +1,5 @@
+import {DepositScheduleFields,emptyDepositSchedule} from '@/components/deposits/DepositScheduleFields';
+import {useDepositIncomeHold} from '@/hooks/useDepositIncomeHold';
 import {createVoucherFromForm,pendingCreateElsewhere,voucherFormCreateKey} from '@/hooks/income-expenses/formCreatePending';
 import {FinancialPendingError} from '@/lib/financialPending';
 import {useOrganization} from '@/contexts/OrganizationContext';
@@ -240,7 +242,8 @@ const IncomeExpenseFormInner = ({
   const detailBlocked = !!sourceId && (!detail.isSuccess || !detail.isFetchedAfterMount || detail.isFetching || !hasCompleteVoucherDetail(detail.data));
   const detailConflict = !!baselineVersion.current && !!detail.data && (baselineVersion.current.approval !== detail.data.approval_version || baselineVersion.current.updatedAt !== detail.data.updated_at);
 
-  const createMutation = useCreateIncomeExpense();
+  const {selectedOrganizationId}=useOrganization();
+  const createMutation = useCreateIncomeExpense(selectedOrganizationId);
   const reviseMutation = useReviseIncomeExpense();
   // Sửa phiếu Chờ duyệt (đợt 1, 25/09/2026): mọi lần lưu đi qua
   // revise_pending_income_expense_v1 — có lưu vết, lý do khi đổi trục tiền, và
@@ -263,7 +266,6 @@ const IncomeExpenseFormInner = ({
   // Phiếu chưa có sổ: giữ được sổ trống, người duyệt chọn lúc duyệt.
   const accountOptional = !!voucher && !voucher.account_id;
   const { data: authUser } = useAuth();
-  const {selectedOrganizationId}=useOrganization();
   const { data: isAdmin = false } = useIsAdmin();
   // Chủ công ty KHÁC chủ tổ chức: xem đầu useIsCompanyOwner (vai "Chủ công ty"
   // có system_key NULL nên is_org_owner_self_v1 bỏ sót chính chủ doanh nghiệp).
@@ -612,6 +614,27 @@ const IncomeExpenseFormInner = ({
   const hasDepositItem = itemRows.some((r) =>
     depositTypeIds.has(r.income_expense_type_id),
   );
+  const isDepositIncome=!isEditing && voucherType==='INCOME' && hasDepositItem;
+  const selectedContractId=form.watch('contract_id');
+  const holdQuery=useDepositIncomeHold(selectedRoomId, open && isDepositIncome && !selectedContractId);
+  const [schedule,setSchedule]=useState(emptyDepositSchedule);
+  const [depositTargetChoice,setDepositTargetChoice]=useState<string|null>(null);
+  const scheduleSource=useRef<string|null>(null);
+  const scheduleRevision=useRef<number|undefined>(undefined);
+  useEffect(()=>{
+    scheduleSource.current=null;
+    scheduleRevision.current=undefined;
+    setSchedule(emptyDepositSchedule);
+    setDepositTargetChoice(null);
+  },[selectedRoomId,open,isDepositIncome]);
+  useEffect(()=>{
+    if(!open||!isDepositIncome||!holdQuery.data||scheduleSource.current===holdQuery.data.id)return;
+    const hold=holdQuery.data;
+    scheduleSource.current=hold.id;
+    scheduleRevision.current=hold.revision;
+    setSchedule({holdUntil:hold.hold_until??'',moveIn:hold.intended_move_in_on??'',topup:hold.topup_due_on??''});
+    if(!form.getValues('payer_name') && hold.payer)form.setValue('payer_name',hold.payer);
+  },[holdQuery.data,form,open,isDepositIncome,selectedRoomId]);
   const hasInternalItem = itemRows.some((r) =>
     internalTypeIds.has(r.income_expense_type_id),
   );
@@ -625,12 +648,7 @@ const IncomeExpenseFormInner = ({
   //  • Đã pick room
   //  • Có đúng 1 HĐ ACTIVE trên phòng đó
   // Tránh ghi đè khi user đang edit phiếu cũ hoặc đã chọn HĐ rồi.
-  // NGOẠI LỆ phiếu CỌC: HĐ active đã đóng ĐỦ cọc → tiền cọc mới gần như chắc
-  // là của khách KẾ TIẾP (giữ chỗ) → mặc định "-- Không gắn HĐ --" để phiếu
-  // là cọc mồ côi, trigger DB tự link khi HĐ mới được tạo. Gắn nhầm vào HĐ
-  // active làm phồng deposit_paid của khách cũ + form tạo HĐ mới báo thiếu
-  // cọc (vụ PT2607014). HĐ active còn THIẾU cọc thì vẫn auto-gắn (thu bổ
-  // sung cọc của chính khách đó).
+  // Với phiếu thu cọc, người lập xác nhận hợp đồng hiện tại hoặc lượt thuê kế tiếp.
   useEffect(() => {
     if (voucher || copyFrom) return; // edit/copy mode → giữ value cũ/đã copy
     const activeContracts = roomContracts.filter(
@@ -638,11 +656,10 @@ const IncomeExpenseFormInner = ({
     );
     if (activeContracts.length !== 1) return;
     const active = activeContracts[0] as any;
-    const activeFullyDeposited =
-      Number(active.deposit_paid ?? 0) >= Number(active.total_deposit ?? 0);
+
     const currentValue = form.getValues('contract_id');
 
-    if (hasDepositItem && activeFullyDeposited) {
+    if (hasDepositItem && voucherType==='INCOME') {
       // Gỡ lại giá trị đã auto-gắn trước khi user thêm item cọc; giá trị do
       // user tự chọn thì tôn trọng, không đụng.
       if (currentValue && currentValue === autoLinkedContractIdRef.current) {
@@ -655,7 +672,7 @@ const IncomeExpenseFormInner = ({
       form.setValue('contract_id', active.id);
       autoLinkedContractIdRef.current = active.id;
     }
-  }, [roomContracts, voucher, form, hasDepositItem]);
+  }, [roomContracts, voucher, form, hasDepositItem, voucherType, copyFrom]);
   // Giá trị "tự động" của cờ KQKD (khi business_result_accounting = null).
   const autoBusinessResult = !hasDepositItem && !hasInternalItem;
 
@@ -802,6 +819,16 @@ const IncomeExpenseFormInner = ({
       } else {
         // Có đối chiếu sau một lần chưa rõ kết quả: gửi lại cùng mã (đường chính) hoặc tra đúng phiếu theo mã do
         // trình duyệt sinh (đường compat). Xem hooks/income-expenses/formCreatePending.ts.
+        if(isDepositIncome){
+          if(!data.contract_id){
+            if(!selectedRoomId || holdQuery.isLoading || holdQuery.isError){setSubmitError('Chưa tải được đợt giữ chỗ của phòng.');return;}
+            if(roomContracts.some(c=>c.status==='ACTIVE'||c.status==='EXTENDED') && depositTargetChoice!=='__none__'){
+              setSubmitError('Chọn bổ sung cho hợp đồng đang thuê hoặc giữ chỗ cho lượt thuê kế tiếp.');return;
+            }
+            data.deposit_terms={expected_hold:scheduleSource.current,...(scheduleRevision.current?{expected_revision:scheduleRevision.current}:{}),
+              hold_until:schedule.holdUntil||null,intended_move_in_on:schedule.moveIn||null,topup_due_on:schedule.topup||null};
+          } else data.deposit_terms={};
+        }
         const createCtx={userId:authUser?.id??"",organizationId:selectedOrganizationId??"",create:createMutation.mutateAsync};
         // Đổi loại/toà/phòng sau một lần chưa rõ kết quả là sang phạm vi dấu khác, không được đối chiếu: chặn.
         const elsewhere=pendingCreateElsewhere(createCtx,stuckCreateKey.current,data);
@@ -1209,11 +1236,11 @@ const IncomeExpenseFormInner = ({
                     // giữ HĐ đang chọn trong danh sách (vd phiếu cũ gắn HĐ thanh lý)
                     // để Select hiển thị đúng giá trị.
                     const inactiveContracts = roomContracts.filter(
-                      (c: any) => c.status !== 'ACTIVE',
+                      (c: any) => c.status !== 'ACTIVE' && c.status !== 'EXTENDED',
                     );
                     const visibleContracts = roomContracts.filter(
                       (c: any) =>
-                        c.status === 'ACTIVE' ||
+                        c.status === 'ACTIVE' || c.status === 'EXTENDED' ||
                         showInactiveContracts ||
                         c.id === field.value,
                     );
@@ -1240,9 +1267,10 @@ const IncomeExpenseFormInner = ({
                           // User tự tay chọn → không còn là giá trị auto-gắn,
                           // effect auto-link không được phép gỡ nữa.
                           autoLinkedContractIdRef.current = null;
+                          setDepositTargetChoice(v);
                           field.onChange(v === '__none__' ? null : v);
                         }}
-                        value={field.value ?? '__none__'}
+                        value={field.value ?? (isDepositIncome && !depositTargetChoice ? '' : '__none__')}
                         disabled={!canEditFrame}
                       >
                         <FormControl>
@@ -1252,7 +1280,7 @@ const IncomeExpenseFormInner = ({
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="__none__">
-                            -- Không gắn HĐ --
+                            {isDepositIncome ? 'Giữ chỗ cho lượt thuê kế tiếp' : '-- Không gắn HĐ --'}
                           </SelectItem>
                           {visibleContracts.map((c: any) => {
                             const isActive = c.status === 'ACTIVE';
@@ -1287,6 +1315,10 @@ const IncomeExpenseFormInner = ({
                 />
               )}
 
+              {isDepositIncome && !selectedContractId && selectedRoomId && (
+                <DepositScheduleFields key={holdQuery.data?.id??selectedRoomId} voucherDate={form.watch('voucher_date')}
+                  value={schedule} onChange={setSchedule} disabled={!canEdit || holdQuery.isLoading}/>
+              )}
               {/* Row 2: Người gửi (INCOME) / Tên người nhận (EXPENSE) + Ngày — luôn cùng 1 dòng */}
               <div className="grid grid-cols-2 gap-3">
                 <FormField

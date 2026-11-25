@@ -64,7 +64,7 @@ import { useApproveVoucher } from "@/hooks/income-expenses/statusMutations";
 import { vnTodayISO } from "@/lib/vnDate";
 import {
   buildDepositWorkQueue,
-  countTasks,
+  countTasks, summarizeOpenHolds,
   type DepositTask,
 } from "@/lib/depositWorkQueue";
 import { DepositWorkQueuePanel } from "./DepositWorkQueuePanel";
@@ -482,7 +482,8 @@ const DepositsDesktop = () => {
   }, [heldAgg, refundKpi, rfSummary, rfReconciles, reservationSettlementSummary]);
 
   // Giữ chỗ đang giữ (phiếu thu cọc mồ côi đã duyệt) — RPC aggregate.
-  const holdingAmount = resvSummary?.holdingAmount ?? 0;
+  const openHolds=useMemo(()=>summarizeOpenHolds(reservations),[reservations]);
+  const holdingAmount=openHolds.paid;
 
   const shortfallRows = useMemo(() => {
     const rows = heldFiltered.filter((r) => r.state !== "FULL");
@@ -537,12 +538,12 @@ const DepositsDesktop = () => {
       buildDepositWorkQueue({
         today: vnTodayISO(),
         held: heldFiltered,
-        reservations,
+        flagUnlinked:true, reservations:reservations.filter(v=>!v.reservation_id),
         holdTerms,
       }),
     [heldFiltered, reservations, holdTerms],
   );
-  const todoCount = useMemo(() => countTasks(workQueue), [workQueue]);
+  const todoCount = useMemo(() => countTasks(workQueue)+openHolds.count, [workQueue,openHolds.count]);
   const ledgerCount = heldFiltered.length + reservations.length;
 
   // Callback ổn định để dòng/thẻ memo không dựng lại theo mỗi render của trang.
@@ -639,7 +640,7 @@ const DepositsDesktop = () => {
             valueClass="text-orange-600"
           />
           <KpiCell
-            label={`Giữ chỗ chờ ký · ${resvSummary?.approvedCount ?? 0}`}
+            label={`Giữ chỗ chờ ký · ${openHolds.ready} đợt`}
             value={formatCurrency(holdingAmount)}
             dot="bg-blue-500"
             valueClass="text-blue-600"
@@ -701,7 +702,7 @@ const DepositsDesktop = () => {
         </Suspense>
 
         <Suspense fallback={<LoadingState label="hồ sơ giữ chỗ" rows={2} />}>
-          <RoomReservationPanel />
+          <RoomReservationPanel buildingIds={buildingIds} rows={reservations} onContract={canConvertDeposit?(buildingId,roomId)=>{setResvPrefill({buildingId,roomId});setResvContractOpen(true);}:undefined} onApprove={canApproveDeposit?v=>approveMutate({id:v.id,expectedApprovalVersion:v.approval_version}):undefined}/>
         </Suspense>
 
         {/* ===== BÀN XỬ LÝ ===== */}

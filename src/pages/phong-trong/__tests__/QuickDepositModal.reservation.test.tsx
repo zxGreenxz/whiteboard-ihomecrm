@@ -4,6 +4,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {QuickDepositModal} from '../QuickDepositModal';
 import type {Room} from '../sampleData';
 const m=vi.hoisted(()=>({create:vi.fn(),legacy:vi.fn(),rpc:vi.fn(),error:vi.fn(),options:vi.fn()}));
+vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:null,isError:false,isLoading:false,status:'success',refetch:vi.fn()})}));
 vi.mock('@/hooks/useRoomReservations',()=>({useCreateRoomReservation:(options:unknown)=>{m.options(options);return{mutateAsync:m.create,isPending:false};}}));
 vi.mock('@/hooks/useAccounts',()=>({useAccounts:()=>({data:[{id:'account1',user_id:'user1',name:'Sổ thu',is_default:true}]})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'user1'})}));
@@ -19,7 +20,7 @@ describe('nhận cọc: luôn có tiền, tên khách gợi nhớ',()=>{
  it('a typed reminder name is sent as customerHint with a positive receipt and no customer id',async()=>{
   const done=vi.fn();render(<QuickDepositModal room={room} onClose={vi.fn()} onDone={done}/>);
   expect(screen.queryByText(/Giữ chỗ 0 đồng/)).toBeNull();
-  fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'  anh Tuấn xem 18h '}});
+  fireEvent.change(screen.getByLabelText('Người gửi'),{target:{value:'  anh Tuấn xem 18h '}});
   fireEvent.change(screen.getByLabelText('Số tiền cọc'),{target:{value:'500000'}});
   await waitFor(()=>expect((screen.getByLabelText('Sổ quỹ nhận cọc') as HTMLSelectElement).value).toBe('account1'));
   submit();await waitFor(()=>expect(m.create).toHaveBeenCalledOnce());
@@ -30,7 +31,7 @@ describe('nhận cọc: luôn có tiền, tên khách gợi nhớ',()=>{
  });
  it('retry preserves the hint and intent key',async()=>{
   m.create.mockRejectedValue({message:'Timeout'});render(<QuickDepositModal room={room} onClose={vi.fn()} onDone={vi.fn()}/>);
-  fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'Chị Lan'}});
+  fireEvent.change(screen.getByLabelText('Người gửi'),{target:{value:'Chị Lan'}});
   expect(screen.queryByRole('button',{name:'Chọn khách trong danh bạ'})).toBeNull();
   fireEvent.change(screen.getByLabelText('Số tiền cọc'),{target:{value:'100000'}});fireEvent.change(screen.getByLabelText('Sổ quỹ nhận cọc'),{target:{value:'account1'}});
   submit();await waitFor(()=>expect(m.create).toHaveBeenCalledOnce());
@@ -47,7 +48,7 @@ describe('nhận cọc: luôn có tiền, tên khách gợi nhớ',()=>{
 it('marks each required field inline and focuses the first invalid field before writing', async()=>{
  render(<QuickDepositModal room={room} onClose={vi.fn()} onDone={vi.fn()}/>);
  submit();
- const customer=screen.getByLabelText('Tên khách gợi nhớ');
+ const customer=screen.getByLabelText('Người gửi');
  expect(customer.getAttribute('aria-invalid')).toBe('true');expect(document.activeElement).toBe(customer);
  fireEvent.change(customer,{target:{value:'Chị Lan'}});submit();
  const amount=screen.getByLabelText('Số tiền cọc');expect(amount.getAttribute('aria-invalid')).toBe('true');expect(document.activeElement).toBe(amount);
@@ -58,7 +59,7 @@ it('marks each required field inline and focuses the first invalid field before 
 });
 it.each(['-100000','12abc','1,5'])('retains invalid money %s and never rewrites it into another amount',async raw=>{
  render(<QuickDepositModal room={room} onClose={vi.fn()} onDone={vi.fn()}/>);
- fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'Chị Lan'}});
+ fireEvent.change(screen.getByLabelText('Người gửi'),{target:{value:'Chị Lan'}});
  const amount=screen.getByLabelText('Số tiền cọc');fireEvent.change(amount,{target:{value:raw}});
  submit();
  expect((amount as HTMLInputElement).value).toBe(raw);expect(amount.getAttribute('aria-invalid')).toBe('true');expect(document.activeElement).toBe(amount);expect(m.create).not.toHaveBeenCalled();
@@ -66,7 +67,7 @@ it.each(['-100000','12abc','1,5'])('retains invalid money %s and never rewrites 
 it('lets the modal own one safe inline failure and retains the entered deposit',async()=>{
  m.create.mockRejectedValue({code:'42501',message:'permission denied for relation secret_table'});
  const close=vi.fn();render(<QuickDepositModal room={room} onClose={close} onDone={vi.fn()}/>);
- fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'Chị Lan'}});
+ fireEvent.change(screen.getByLabelText('Người gửi'),{target:{value:'Chị Lan'}});
  fireEvent.change(screen.getByLabelText('Số tiền cọc'),{target:{value:'100000'}});
  await waitFor(()=>expect((screen.getByLabelText('Sổ quỹ nhận cọc') as HTMLSelectElement).value).toBe('account1'));
  submit();
@@ -78,12 +79,12 @@ it('lets the modal own one safe inline failure and retains the entered deposit',
 it('a withdrawn inventory permission blocks the open deposit form while preserving the entered customer and money',async()=>{
  const done=vi.fn(),close=vi.fn();
  const view=render(<QuickDepositModal room={room} onClose={close} onDone={done}/>);
- fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'Chị Lan'}});
+ fireEvent.change(screen.getByLabelText('Người gửi'),{target:{value:'Chị Lan'}});
  fireEvent.change(screen.getByLabelText('Số tiền cọc'),{target:{value:'500000'}});
  view.rerender(<QuickDepositModal room={room} onClose={close} onDone={done} blockedReason="Phạm vi phòng đã thay đổi; tải lại để kiểm tra."/>);
  expect(screen.getByRole('button',{name:'Lưu cọc & giữ phòng'})).toHaveProperty('disabled',true);
  submit();expect(m.create).not.toHaveBeenCalled();expect(done).not.toHaveBeenCalled();
- expect(screen.getByLabelText('Tên khách gợi nhớ')).toHaveProperty('value','Chị Lan');
+ expect(screen.getByLabelText('Người gửi')).toHaveProperty('value','Chị Lan');
  expect(screen.getByLabelText('Số tiền cọc')).toHaveProperty('value','500.000');
  expect(screen.getByRole('alert').textContent).toContain('Phạm vi phòng');
 });

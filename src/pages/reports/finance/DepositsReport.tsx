@@ -3,7 +3,8 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
-import { useDepositsReport, useDepositsReportSummary } from "@/hooks/useReports";
+import { useReservationDeposits } from '@/hooks/useDeposits';
+import { useHeldDeposits, useDepositRefundsForfeits } from '@/hooks/useDepositDashboard';
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
@@ -13,20 +14,15 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Button } from '@/components/ui/button';
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/utils";
 
-const STATUS_MAP: Record<string, string> = {
-  PENDING: "Chờ xác nhận",
-  CONFIRMED: "Đã xác nhận",
-  CONVERTED: "Đã chuyển HĐ",
-  REFUNDED: "Đã hoàn",
-  FORFEITED: "Mất cọc",
+const STATUS_MAP: Record<string,string> = {
+  HOLD:'Giữ chỗ trước hợp đồng', CONTRACT:'Đang giữ theo hợp đồng', REVIEW:'Cần đối chiếu',
+  PENDING:'Chờ duyệt / ghi sổ', REFUND_DUE:'Phải hoàn khách', REFUNDED:'Đã hoàn khách', RETAINED:'Đã bỏ cọc',
 };
-
-const HOLDING_STATUSES = new Set(["PENDING", "CONFIRMED"]);
-const IN_INVOICE_STATUSES = new Set(["CONVERTED"]);
-
+type ReportRow={id:string;buildingId:string;building:string;room:string;person:string;status:string;amount:number;code:string};
 export default function DepositsReport() {
   const [statusFilter, setStatusFilter] = usePersistedState<string>("flt:rpt-deposits:status", "all");
   // Lọc 1 toà (BuildingFilterSelect, state giữ shape mảng 0/1 phần tử). [] = tất cả.
@@ -35,22 +31,42 @@ export default function DepositsReport() {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  const depositsReportQuery = useDepositsReport();
-  const { data: deposits = [], isLoading } = depositsReportQuery;
-  // Tổng tiền: RPC SQL aggregate (miễn nhiễm cap-1000), theo đúng bộ lọc.
-  const depositsReportSummaryQuery = useDepositsReportSummary(statusFilter, buildingIds);
-  const { data: summary } = depositsReportSummaryQuery;
-
-  const filtered = useMemo(() => {
-    let arr = [...(deposits as any[])];
-    if (statusFilter !== "all") arr = arr.filter((d) => d.status === statusFilter);
-    if (buildingIds.length > 0) {
-      arr = arr.filter((d) => buildingIds.includes(d.rooms?.buildings?.id));
+  const vouchers=useReservationDeposits(buildingIds);
+  const contracts=useHeldDeposits();
+  const settlements=useDepositRefundsForfeits();
+  const filtered=useMemo(()=>{
+    const rows=new Map<string,ReportRow>();
+    const add=(row:ReportRow)=>{
+      const old=rows.get(row.id);
+      rows.set(row.id,old?{...old,amount:old.amount+row.amount,code:old.code+', '+row.code}:row);
+    };
+    for(const v of vouchers.data??[]){
+      if(v.approval_status==='CANCELLED')continue;
+      const base={buildingId:v.building_id,building:v.building_name,room:v.room_name??'—',person:v.payer_name??'—',code:v.code??'—'};
+      if(v.settlement){
+        for(const [status,amount] of [['REFUND_DUE',v.settlement.refundRemaining],['REFUNDED',v.settlement.refundedAmount],['RETAINED',v.settlement.retainedAmount]] as const){
+          if(amount>0)add({...base,id:status+v.id,status,amount});
+        }
+        continue;
+      }
+      const verified=v.received_fact_status==='VERIFIED' && v.approval_status==='APPROVED' && (v.received_amount??0)>0;
+      const status=!v.reservation_id?'REVIEW':verified?'HOLD':'PENDING';
+      add({...base,id:status+(v.reservation_id??v.id),status,amount:verified?Number(v.received_amount):0});
     }
-    return arr;
-  }, [deposits, statusFilter, buildingIds]);
-
-  const total = summary?.total ?? 0;
+    for(const h of contracts.data??[]){
+      add({id:h.contract_id,buildingId:h.building_id,building:h.building_name,room:h.room_name,
+        person:h.customer_name,code:h.contract_number??'—',status:'CONTRACT',amount:h.deposit_paid});
+    }
+    for(const r of settlements.data??[]){
+      const base={buildingId:r.building_id,building:r.building_name,room:r.room_name,person:r.customer_name,code:r.contract_number??'—'};
+      if(r.posted_refund>0)add({...base,id:'refund-'+r.id,status:'REFUNDED',amount:r.posted_refund});
+      if(r.kind==='FORFEIT')add({...base,id:'forfeit-'+r.id,status:'RETAINED',amount:r.total_deposit});
+    }
+    return [...rows.values()].filter(r=>(!buildingIds.length||buildingIds.includes(r.buildingId)) && (statusFilter==='all'||r.status===statusFilter))
+      .sort((a,b)=>a.building.localeCompare(b.building,'vi')||a.room.localeCompare(b.room,'vi',{numeric:true}));
+  },[vouchers.data,contracts.data,settlements.data,buildingIds,statusFilter]);
+  const total=filtered.reduce((sum,r)=>sum+(statusFilter!=='all'||['CONTRACT','HOLD','REVIEW'].includes(r.status)?r.amount:0),0);
+  const isLoading=vouchers.isLoading||contracts.isLoading||settlements.isLoading;
   const totalCount = filtered.length;
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
@@ -68,7 +84,7 @@ export default function DepositsReport() {
         <div className="flex flex-wrap items-end gap-3">
           <SearchableSelect
             value={statusFilter}
-            onValueChange={setStatusFilter}
+            onValueChange={v=>{setStatusFilter(v);setPage(1);}}
             className="w-[200px]"
             placeholder="Loại cọc"
             options={[
@@ -88,8 +104,8 @@ export default function DepositsReport() {
           />
         </div>
 
-        <QueryRegion label="báo cáo tiền cọc" queries={[depositsReportQuery, depositsReportSummaryQuery]} skeleton="table" rows={8}>
-        <div className="text-base font-semibold">Tổng: {formatCurrency(total)}</div>
+        <QueryRegion label="báo cáo tiền cọc" queries={[vouchers,contracts,settlements]} skeleton="table" rows={8}>
+        <div className="text-base font-semibold">{statusFilter==='all'?'Tiền cọc đang giữ':'Tổng theo phân loại'} · {formatCurrency(total)}</div>
 
         <div className="rounded-md border">
           <Table>
@@ -97,10 +113,10 @@ export default function DepositsReport() {
               <TableRow>
                 <TableHead>Tòa nhà</TableHead>
                 <TableHead>Căn hộ</TableHead>
-                <TableHead>Khách hàng</TableHead>
+                <TableHead>Người gửi / khách ký</TableHead>
                 <TableHead className="text-right">Số tiền cọc</TableHead>
-                <TableHead className="text-right">Số tiền cọc (giữ chỗ)</TableHead>
-                <TableHead className="text-right">Số tiền cọc (trong hóa đơn)</TableHead>
+                <TableHead>Chứng từ / hợp đồng</TableHead>
+
                 <TableHead>Phân loại</TableHead>
               </TableRow>
             </TableHeader>
@@ -108,30 +124,23 @@ export default function DepositsReport() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={7}><Skeleton className="h-6 w-full" /></TableCell>
+                    <TableCell colSpan={6}><Skeleton className="h-6 w-full" /></TableCell>
                   </TableRow>
                 ))
               ) : pageRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     Không có dữ liệu nào để hiển thị
                   </TableCell>
                 </TableRow>
               ) : (
-                pageRows.map((d: any) => (
+                pageRows.map((d) => (
                   <TableRow key={d.id}>
-                    <TableCell>{d.rooms?.buildings?.name || "—"}</TableCell>
-                    <TableCell>{d.rooms?.room_number || "—"}</TableCell>
-                    <TableCell>{d.leads?.full_name || d.tenants?.full_name || "—"}</TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {formatCurrency(d.amount || 0)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {HOLDING_STATUSES.has(d.status) ? formatCurrency(d.amount || 0) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {IN_INVOICE_STATUSES.has(d.status) ? formatCurrency(d.amount || 0) : "—"}
-                    </TableCell>
+                    <TableCell>{d.building}</TableCell>
+                    <TableCell>{d.room}</TableCell>
+                    <TableCell>{d.person}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(d.amount)}</TableCell>
+                    <TableCell>{d.code}</TableCell>
                     <TableCell>{STATUS_MAP[d.status] || d.status}</TableCell>
                   </TableRow>
                 ))
@@ -154,6 +163,8 @@ export default function DepositsReport() {
               </SelectContent>
             </Select>
           </div>
+          <Button variant="outline" disabled={page<=1} onClick={()=>setPage(page-1)}>Trang trước</Button>
+          <Button variant="outline" disabled={page*pageSize>=totalCount} onClick={()=>setPage(page+1)}>Trang sau</Button>
           <div>
             {totalCount === 0
               ? "1 - 0 trên tổng số 0 bản ghi"

@@ -17,7 +17,7 @@ BEGIN
   SELECT id INTO STRICT dep_type FROM public.income_expense_types WHERE organization_id=org AND lower(type)='income' AND is_deposit ORDER BY id LIMIT 1;
   PERFORM set_config('request.jwt.claim.sub',actor::text,true);
   PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',actor,'role','authenticated')::text,true);
-  FOREACH scenario IN ARRAY ARRAY['direct','draft','no-hold-draft','abandon','bound','replaced-abandon','unrelated-zero','legacy-customer','moved-source'] LOOP
+  FOREACH scenario IN ARRAY ARRAY['cash-at-sign','direct','draft','no-hold-draft','abandon','bound','replaced-abandon','unrelated-zero','legacy-customer','moved-source'] LOOP
     room:=gen_random_uuid(); tenant:=gen_random_uuid(); draft:=gen_random_uuid(); doc:=gen_random_uuid(); request:=gen_random_uuid();
     inputs:='{}'; hold:=NULL; original:=NULL; phone:='09'||lpad(floor(random()*100000000)::text,8,'0');
     INSERT INTO public.rooms(id,building_id,organization_id,name,rent_price,deposit_amount,status)
@@ -56,7 +56,11 @@ BEGIN
       END IF;
       IF scenario='bound' THEN inputs:=ARRAY[original];
       ELSIF scenario<>'moved-source' THEN PERFORM public.cancel_income_voucher_v1(original,'QA thay phiếu'); END IF;
-      IF (public.get_contract_room_deposits_v1(org,room)->'hold'->>'id') IS DISTINCT FROM (hold->>'id') THEN RAISE EXCEPTION 'Correction lost hold'; END IF;
+      IF scenario IN ('bound','moved-source') THEN
+        IF (public.get_contract_room_deposits_v1(org,room)->'hold'->>'id') IS DISTINCT FROM (hold->>'id') THEN RAISE EXCEPTION 'Open source lost hold'; END IF;
+      ELSIF (public.get_contract_room_deposits_v1(org,room)->'hold'->>'id') IS NOT NULL THEN
+        RAISE EXCEPTION 'Last cancelled source retained its hold';
+      END IF;
     END IF;
     RESET ROLE;
     FOREACH amount IN ARRAY (CASE WHEN scenario='bound' THEN ARRAY[]::int[] ELSE ARRAY[400000,600000] END) LOOP
@@ -64,14 +68,21 @@ BEGIN
         VALUES(actor,org,'INCOME','QA cọc thay thế',building,room,book,day,amount,'APPROVED',actor,clock_timestamp()) RETURNING id INTO source;
       INSERT INTO public.income_expense_items(income_expense_id,organization_id,income_expense_type_id,description,quantity,unit_price,amount,start_date,end_date,accounting_class)
         VALUES(source,org,dep_type,'Tiền cọc thử',1,amount,amount,day,day,'DEPOSIT');
+      IF scenario<>'unrelated-zero' THEN PERFORM app_private.attach_deposit_income_v1(source,'{}',actor); END IF;
       inputs:=array_append(inputs,source);
     END LOOP;
     SET LOCAL ROLE authenticated;
+    snap:=public.get_contract_room_deposits_v1(org,room);
+    hold:=nullif(snap->'hold','null'::jsonb);
     terms:=jsonb_build_object('room_id',room,'signed_date',day,'start_date',day,'end_date',day+90,'rent_price',1000000,'total_deposit',1000000,'payment_cycle','MONTHLY','start_billing_date',day,'end_billing_date',day+5,'discount_months',0,'discount_amount_per_month',0,'notes','');
     parties:=jsonb_build_array(jsonb_build_object('id',tenant,'full_name','Người ký QA','phone',phone,'is_representative',true,'notes',NULL,'id_number',NULL));
     payload:=jsonb_build_object('contract',terms,'customers',jsonb_build_array(jsonb_build_object('customer_id',tenant,'is_representative',true)),
       'services','[]'::jsonb,'expected_room_deposit_amount',1000000,'existing_deposit_voucher_ids',to_jsonb(inputs)) ||
       CASE WHEN hold IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('reservation_id',hold->>'id','reservation_revision',(hold->>'revision')::bigint) END;
+    IF scenario='cash-at-sign' THEN
+      payload:=jsonb_set(payload,'{contract,total_deposit}','1100000')||jsonb_build_object('deposit_receipts',jsonb_build_array(
+        jsonb_build_object('amount',100000,'account_id',book,'received_date',day)));
+    END IF;
     IF scenario='moved-source' THEN
       RESET ROLE;
       moved_room:=gen_random_uuid();
@@ -89,9 +100,9 @@ BEGIN
       EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL; END;
     ELSE
     snap:=public.get_contract_room_deposits_v1(org,room);
-    IF jsonb_array_length(snap->'vouchers')<>cardinality(inputs) OR (SELECT sum((v->>'total_amount')::numeric) FROM jsonb_array_elements(snap->'vouchers') v WHERE (v->>'received')::boolean) IS DISTINCT FROM 1000000
+    IF scenario<>'unrelated-zero' AND (jsonb_array_length(snap->'vouchers')<>cardinality(inputs) OR (SELECT sum((v->>'total_amount')::numeric) FROM jsonb_array_elements(snap->'vouchers') v WHERE (v->>'received')::boolean) IS DISTINCT FROM 1000000)
       THEN RAISE EXCEPTION 'Each received payment must appear once in the balance'; END IF;
-    IF scenario='legacy-customer' AND snap->'hold'->>'hint' IS NOT NULL THEN RAISE EXCEPTION 'A directory name was exposed as a hold hint'; END IF;
+    IF scenario='legacy-customer' AND snap->'hold'->>'hint'='Khách trên hồ sơ cũ' THEN RAISE EXCEPTION 'A directory name was exposed as a hold hint'; END IF;
     END IF;
     BEGIN
       PERFORM public.get_contract_room_deposits_v1(gen_random_uuid(),room);
@@ -127,7 +138,7 @@ BEGIN
         RAISE EXCEPTION 'Stale hold was accepted';
       EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL; END;
     END IF;
-    IF scenario IN ('direct','bound','legacy-customer') THEN
+    IF scenario IN ('cash-at-sign','direct','bound','legacy-customer') THEN
       result:=public.create_contract_v2(payload,request::text); repeated:=public.create_contract_v2(payload,request::text);
       signed_id:=(result->'contract'->>'id')::uuid;
       IF signed_id IS DISTINCT FROM (repeated->'contract'->>'id')::uuid THEN RAISE EXCEPTION 'Replay duplicated direct creation'; END IF;
@@ -141,9 +152,9 @@ BEGIN
       signed_id:=(result->>'contract_id')::uuid;
     END IF;
     RESET ROLE;
-    IF signed_id IS NULL OR NOT EXISTS(SELECT 1 FROM public.contracts WHERE id=signed_id AND deposit_paid=1000000)
+    IF signed_id IS NULL OR NOT EXISTS(SELECT 1 FROM public.contracts WHERE id=signed_id AND deposit_paid=CASE WHEN scenario='cash-at-sign' THEN 1100000 ELSE 1000000 END)
       OR (SELECT count(*) FROM public.contract_deposit_links WHERE contract_id=signed_id AND income_expense_id=ANY(inputs))<>cardinality(inputs)
-      OR (SELECT count(*) FROM public.income_expenses WHERE contract_id=signed_id AND public.ie_has_deposit_item(id))<>cardinality(inputs)
+      OR (SELECT count(*) FROM public.income_expenses WHERE contract_id=signed_id AND public.ie_has_deposit_item(id))<>(cardinality(inputs)+(CASE WHEN scenario='cash-at-sign' THEN 1 ELSE 0 END))
       OR (scenario<>'bound' AND EXISTS(SELECT 1 FROM public.income_expenses WHERE id=original AND contract_id IS NOT NULL))
       OR NOT EXISTS(SELECT 1 FROM public.contract_customers WHERE contract_id=signed_id AND customer_id=tenant AND is_representative)
       OR EXISTS(SELECT 1 FROM public.room_next_claims WHERE room_id=room AND status='LIVE')

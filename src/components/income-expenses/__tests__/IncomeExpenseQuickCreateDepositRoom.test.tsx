@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:null,isError:false,isLoading:false,refetch:vi.fn()})}));
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'o1'})}));
 // "Nhập nhanh" (trang Thu chi mobile): hạng mục Tiền cọc phải có phòng — "toàn tòa nhà" không đủ,
 // vì cọc chỉ vào hợp đồng theo phòng (depositRoomRule.ts). Không cho bấm Lưu và nói rõ lý do.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';

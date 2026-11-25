@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3231,
+    "sourceCallSites": 3236,
     "catalogFunctions": 1689,
     "schemas": [
       "public",
@@ -17,7 +17,32 @@
     },
     "securityDefiner": 413
   },
-  "missingOnServer": [],
+  "missingOnServer": [
+    {
+      "name": "create_deposit_income_v1",
+      "callers": [
+        "src/lib/depositIncomeRpc.ts"
+      ]
+    },
+    {
+      "name": "get_deposit_income_hold_v1",
+      "callers": [
+        "src/hooks/useDepositIncomeHold.ts"
+      ]
+    },
+    {
+      "name": "get_lead_deposit_income_v1",
+      "callers": [
+        "src/components/leads/ConvertLeadDialog.tsx"
+      ]
+    },
+    {
+      "name": "list_deposit_income_holds_v1",
+      "callers": [
+        "src/hooks/useRoomReservations.ts"
+      ]
+    }
+  ],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [

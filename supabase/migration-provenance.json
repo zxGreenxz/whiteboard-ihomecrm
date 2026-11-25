@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-25T13:04:18.368Z",
+  "generatedAt": "2026-11-25T14:27:03.274Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 989,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14769,6 +14769,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-25T13:03:44.869Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261125133852_unified_deposit_voucher_workflow.sql",
+      "version": "20261125133852",
+      "name": "unified_deposit_voucher_workflow",
+      "scheme": "timestamp14",
+      "sha256": "51c6b1d1003254b749ba6596bd6056e88f266dac29f6d403211dd32cd2ffd9e9",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.deposit_income_requests",
+        "function:app_private.attach_deposit_income_v1",
+        "function:app_private.write_deposit_income_v1",
+        "function:public.create_deposit_income_v1",
+        "function:app_private.close_empty_deposit_reservation_v1"
       ]
     },
     {
