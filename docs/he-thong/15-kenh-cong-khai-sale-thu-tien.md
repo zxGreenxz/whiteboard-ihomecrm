@@ -38,7 +38,7 @@ Trang quản trị (trong shell CRM, sidebar *Danh mục dữ liệu → Sale Ph
 | Sơ đồ tòa nhà | [FloorPlanEditorTab.tsx](src/components/sale-phong/floor-editor/FloorPlanEditorTab.tsx) | `edit_floor_plan` | Editor **kéo-thả** vị trí phòng / thang máy / cầu thang / hành lang theo từng tầng → lưu `buildings.floor_layouts` (jsonb). |
 | Thống kê | [AnalyticsTab.tsx](src/components/sale-phong/AnalyticsTab.tsx) | `view_analytics` | Báo cáo đo đếm trang công khai: KPI tổng quan, phòng được xem nhiều, theo thời gian, theo link, lỗi — 7 RPC `pra_*` (§2.8/§4.8). Ô lọc toà dùng [BuildingFilterSelect](src/components/buildings/BuildingFilterSelect.tsx) (phẳng, đơn-chọn, `3c3b7fa`); bộ lọc giữ qua F5 (`usePersistedState`). |
 
-Trên **điện thoại** (`usePhoneViewport`) entry rẽ nhánh sang [SalePhongMobilePage.tsx](src/pages/sale-phong/SalePhongMobilePage.tsx) (`17be739` + redesign `386665e`): mặc định là màn **"Phòng trống" in-app** (nhúng nguyên `PhongTrongPage` với data từ `useMyAvailableRooms`), chế độ "Quản lý" là 6 màn mobile-native riêng dưới [src/components/sale-phong/mobile/](src/components/sale-phong/mobile/MobileShareTokens.tsx) (cùng gate quyền như desktop).
+Trên **điện thoại** (`usePhoneViewport`) entry rẽ nhánh sang [SalePhongMobilePage.tsx](src/pages/sale-phong/SalePhongMobilePage.tsx) (`17be739` + redesign `386665e`): mặc định là chế độ **"Cập nhật"** (bảng cập nhật phòng nội bộ); chế độ **"Phòng trống" in-app** nhúng nguyên `PhongTrongPage` với data từ `useMyAvailableRooms` (chỉ đọc khi đang mở chế độ này, xem §4.5), chế độ "Quản lý" là 6 màn mobile-native riêng dưới [src/components/sale-phong/mobile/](src/components/sale-phong/mobile/MobileShareTokens.tsx) (cùng gate quyền như desktop).
 
 ### 1.3. Trang "Thu tiền" `/thu-tien`
 
@@ -297,7 +297,9 @@ Gọi `supabase.rpc(...)` **như method** (giữ `this`) hoặc `supabase.rpc.bi
 
 ### 4.5. Realtime "mềm" của trang công khai
 
-[usePhongTrong.ts](src/pages/phong-trong/usePhongTrong.ts) đọc lại mỗi 5 giây khi trang đang hiện, khi quay lại cửa sổ hoặc có mạng trở lại; không poll khi chạy nền. Lỗi mạng giãn nhịp tối đa 60 giây, link không hợp lệ dừng poll. Danh sách trong ứng dụng dùng reader riêng, không chạy truy vấn token công khai song song.
+[usePhongTrong.ts](src/pages/phong-trong/usePhongTrong.ts) đọc lại mỗi 60 giây khi trang đang hiện, và đọc ngay khi quay lại cửa sổ hoặc có mạng trở lại; không poll khi chạy nền. Lỗi liên tiếp giãn nhịp gấp đôi, tối đa 5 phút, và về nhịp gốc ngay sau một lần đọc thành công; link không hợp lệ dừng poll. Danh sách trong ứng dụng dùng reader riêng, không chạy truy vấn token công khai song song.
+
+Nhịp chung nằm ở `roomSaleQueryInterval` / `roomSalePollingInterval` ([roomSaleFacts.ts](src/lib/roomSaleFacts.ts)); số lỗi tính là lỗi LIÊN TIẾP kể từ lần đọc thành công gần nhất (`errorUpdateCount` của TanStack cộng dồn cả đời query nên không dùng thẳng). Từ 25/11/2026 (đợt 4 «Tải nhẹ» của plan sửa trang Sale; trước đó mọi nơi 5 giây): bảng cập nhật phòng nội bộ ([useSaleRoomInventory.ts](src/hooks/useSaleRoomInventory.ts)) và danh sách «Phòng trống» trên điện thoại ([useMyAvailableRooms.ts](src/hooks/useMyAvailableRooms.ts)) đọc lại 30 giây; link công khai 60 giây. Thao tác của chính người dùng (lưu phòng, lock/gỡ lock, cọc, báo sắp trống…) vẫn hiện ngay vì mutation invalidate các khoá `sale-room-inventory`, `my-available-rooms`, `phong-trong`. Thay đổi của người khác hiện chậm tối đa một chu kỳ (cộng thời gian một lần đọc). Trên điện thoại, `get_my_available_rooms` chỉ chạy khi đang ở chế độ «Phòng trống» (kể cả hẹn giờ đọc lại ở ranh giới chính sách của [useTimedRoomSaleResult.ts](src/hooks/useTimedRoomSaleResult.ts) cũng tắt theo); ở «Cập nhật» chỉ còn vòng đọc của bảng nội bộ.
 
 ### 4.6. Giữ chỗ / Tạo cọc nhanh trên trang công khai
 
@@ -395,7 +397,7 @@ sequenceDiagram
     PT->>DB: rpc get_public_available_rooms(p_token) [anon]
     DB-->>PT: jsonb {areas, buildings, rooms(status_public), contact}
     Note over PT: token sai / revoked → NULL → "Liên kết không hợp lệ"
-    PT-->>Khach: Danh sách / Sơ đồ tầng (refetch mỗi 5 phút, ảnh từ R2)
+    PT-->>Khach: Danh sách / Sơ đồ tầng (refetch mỗi 60 giây khi trang hiện, ảnh từ R2)
     Khach->>PT: Mở chi tiết phòng → Gọi / Zalo / Chỉ đường / Chia sẻ ảnh
     PT--)DB: rpc log_public_room_events(p_token, batch) [anon, mỗi 8s / rời trang]
     Note over DB: → public_room_events → tab "Thống kê" (pra_*)
@@ -434,7 +436,7 @@ Gate route: `RequirePermission module="sale_phong" action="view"` ([App.tsx](src
 - **Tab Khách nhờ sale**: danh sách + form `room_pass_listings` (§2.7) — chọn phòng trong scope (`pass_listing_form_rooms`), tự điền khách đại diện (`pass_listing_room_customers`), ô giá pass / chính sách / ngày trống / switch "Liên hệ quản lý (ẩn SĐT khách)".
 - **Tab Sơ đồ tòa nhà**: editor kéo-thả (§4.3) — chọn toà/tầng, palette Thang máy/Cầu thang, bắt lưới, "Tự sắp xếp", Hoàn tác, danh sách "Phòng chưa đặt" (+ tên phòng để thêm vào canvas), Lưu sơ đồ.
 - **Tab Thống kê**: bộ lọc DateRangePicker (mặc định 30 ngày) × link chia sẻ (`SearchableSelect`) × toà ([BuildingFilterSelect](src/components/buildings/BuildingFilterSelect.tsx) phẳng đơn-chọn) × switch "loại trừ lượt xem nội bộ"; 5 mục **Tổng quan (KPI) · Phòng được xem nhiều · Theo thời gian · Theo link · Lỗi** (recharts + ExportButtons); data từ 6 hook `usePra*` (§2.8). Bộ lọc giữ qua F5 (`usePersistedState` key `flt:sale-phong-analytics:*`).
-- **Mobile** ([SalePhongMobilePage](src/pages/sale-phong/SalePhongMobilePage.tsx)): mặc định màn "Phòng trống" in-app (nhúng `PhongTrongPage` + `useMyAvailableRooms`); chế độ "Quản lý" liệt kê 6 hàng tab → mở màn full-screen mobile-native tương ứng ([MobileShareTokens](src/components/sale-phong/mobile/MobileShareTokens.tsx) / MobileDisplaySettings / MobileSaleInfo / MobilePassListings / MobileAnalytics; riêng Sơ đồ tòa nhà chỉ hiện stub "mở trên máy tính" — editor kéo-thả không hợp màn nhỏ).
+- **Mobile** ([SalePhongMobilePage](src/pages/sale-phong/SalePhongMobilePage.tsx)): mặc định chế độ "Cập nhật"; chế độ "Phòng trống" in-app nhúng `PhongTrongPage` + `useMyAvailableRooms` (chỉ đọc khi đang mở); chế độ "Quản lý" liệt kê 6 hàng tab → mở màn full-screen mobile-native tương ứng ([MobileShareTokens](src/components/sale-phong/mobile/MobileShareTokens.tsx) / MobileDisplaySettings / MobileSaleInfo / MobilePassListings / MobileAnalytics; riêng Sơ đồ tòa nhà chỉ hiện stub "mở trên máy tính" — editor kéo-thả không hợp màn nhỏ).
 
 ### 5.4. `/thu-tien` — Thu tiền mobile
 
