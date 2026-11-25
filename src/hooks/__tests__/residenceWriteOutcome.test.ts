@@ -42,6 +42,6 @@ it('registration: lần chưa rõ kết quả rồi lưu lại ghi đè đúng m
  const input={customerId:'c1',buildingId:'b1',organizationId:'o1',submCode:'G01.899.909-260916-890028'};
  await expect(ghiHoSoTamTru(input)).rejects.toBeInstanceOf(FinancialWorkflowError);
  expect(await ghiHoSoTamTru(input)).toMatchObject({id:'reg1'});
- expect(write.upsert).toHaveBeenCalledTimes(1);expect(write2.upsert).toHaveBeenCalledTimes(1);expect(write2.upsert.mock.calls[0][1]).toEqual({onConflict:'organization_id,subm_code'});
+ expect(write.upsert).toHaveBeenCalledTimes(1);expect(write2.upsert).toHaveBeenCalledTimes(1);expect((write2.upsert.mock.calls[0] as unknown[])[1]).toEqual({onConflict:'organization_id,subm_code'});
  expect(localStorage.getItem(marker)).toBeNull();
 });

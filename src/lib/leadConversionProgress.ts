@@ -25,14 +25,11 @@ const traceKey = (requestKey: string) => `ihome:lead-conversion-trace:v1:${reque
 
 export function readLeadConversionTrace(requestKey: string | undefined): LeadConversionTrace | null {
   if (!requestKey) return null;
-  try {
-    const value = JSON.parse(localStorage.getItem(traceKey(requestKey)) ?? 'null') as LeadConversionTrace | null;
-    if (!value || typeof value.leadId !== 'string' || !value.leadId || !['tenant', 'deposit', 'lead', 'complete'].includes(value.stage) || typeof value.canResume !== 'boolean' || (value.tenantId !== undefined && (typeof value.tenantId !== 'string' || !value.tenantId)) || (value.depositId !== undefined && (typeof value.depositId !== 'string' || !value.depositId))) return null;
-    return value;
-  } catch {
-    // Vết hỏng không chứng minh được gì: nơi gọi coi như chưa kết luận được.
-    return null;
-  }
+  let value: LeadConversionTrace | null = null;
+  try { value = JSON.parse(localStorage.getItem(traceKey(requestKey)) ?? 'null') as LeadConversionTrace | null; }
+  catch { /* Vết hỏng hoặc không đọc được: không chứng minh được gì, nơi gọi chặn qua hộp cảnh báo (`block`). */ }
+  if (!value || typeof value !== 'object' || typeof value.leadId !== 'string' || !value.leadId || !['tenant', 'deposit', 'lead', 'complete'].includes(value.stage) || typeof value.canResume !== 'boolean' || (value.tenantId !== undefined && (typeof value.tenantId !== 'string' || !value.tenantId)) || (value.depositId !== undefined && (typeof value.depositId !== 'string' || !value.depositId))) return null;
+  return value;
 }
 
 /** Gỡ vết tiến độ của dấu cũ cùng lúc gỡ dấu. Hỏng thì thôi: vết không chặn gì. */

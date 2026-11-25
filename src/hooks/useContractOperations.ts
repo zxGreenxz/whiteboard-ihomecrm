@@ -127,7 +127,9 @@ export const useTransferRoom = () => {
         if(error){
           // Gửi lại cùng mã mà máy chủ báo trùng: sự kiện của mã đó đã có (lần trước đã ghi, với nội dung khác lần này).
           if(resend&&String((error as {code?:unknown}).code??'')==='23505'){
-            const event=await readNoticeEvent(organizationId,progress.requestKey).catch(()=>null);
+            let event:Awaited<ReturnType<typeof readNoticeEvent>>=null;
+            try{event=await readNoticeEvent(organizationId,progress.requestKey);}
+            catch{/* Đọc lại hỏng: giữ nguyên lời từ chối 23505 của máy chủ, không đoán đã ghi. */}
             if(event)throw new FinancialAlreadyRecordedError(event.operation==='TRANSFER_ROOM'
               ?'Hợp đồng đã được chuyển phòng ở lần gửi trước (nội dung lúc đó khác nội dung đang gửi). Tải lại hợp đồng để kiểm tra phòng mới trước khi thao tác tiếp.'
               :'Lần gia hạn hợp đồng gửi trước đó đã được ghi. Tải lại hợp đồng để kiểm tra rồi mới chuyển phòng.',[event.result_contract_id??params.contractId]);

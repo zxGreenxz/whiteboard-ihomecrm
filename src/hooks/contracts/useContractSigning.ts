@@ -39,7 +39,7 @@ export function useContractSigning(organizationId:string,draftId?:string) {
     // nháp FOR UPDATE TRƯỚC khi tra lần ký; mỗi bản nháp chỉ có MỘT lần ký (contract_draft_signings_draft_id_key): cùng nội
     // dung ⇒ trả lại lần ký cũ, khác nội dung ⇒ 23505. Lần bấm sau đọc lần ký của bản nháp; chưa có thì gửi lại đúng mã.
     let resend=false;
-    return workflow.run(target,'ghi nhận ký hợp đồng',async progress=>{
+    return workflow.run<ContractSigning>(target,'ghi nhận ký hợp đồng',async progress=>{
       if(!input)throw new FinancialWorkflowError('Chưa thấy lần ký đã gửi trên máy chủ. Kiểm tra thông tin rồi bấm «Xác nhận đã ký và nhận phòng» để gửi lại; mỗi bản nháp chỉ được ghi nhận ký một lần.','failure',[]);
       setPendingRequestId(progress.requestKey);
       const record=(raw:unknown)=>{const id=raw&&typeof raw==='object'?(raw as {contract_id?:unknown}).contract_id:undefined;if(typeof id==='string'&&id&&!progress.completed.some(step=>step.id===id))progress.completed.push({id,label:`Đã nhận hợp đồng chính thức ${id}`});};
