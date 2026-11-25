@@ -76,13 +76,14 @@ it('báo cần đối chiếu khi đã có mã hợp đồng nhưng chưa đọc
   expect(h.toast.error.mock.calls[0][0]).not.toMatch(/^Chưa chuyển phòng/);
 });
 
+// Đợt 7: không còn nút «Kiểm tra kết quả» riêng; lần bấm Chuyển phòng kế tiếp tự đọc sự kiện theo mã của dấu.
 it('chỉ đọc lại biên nhận sau lỗi xác nhận và giữ request id, không gửi writer lần hai', async () => {
   const hook = useNoticeOptions('transfer');
   h.rpc.mockResolvedValue({data:id(2),error:null});
   h.responses = [() => ({data:null,error:{code:'42501',message:'denied'}})];
   await expect(hook.mutationFn(transfer)).rejects.toMatchObject({outcome:'partial'});
-  h.responses = [() => ({data:core('transfer'),error:null}),() => ({data:event('transfer'),error:null})];
-  await expect(hook.mutationFn({...transfer,reconcileOnly:true})).resolves.toMatchObject({contractId:id(2)});
+  h.responses = [() => ({data:{id:id(5),operation:'TRANSFER_ROOM',result_contract_id:id(2)},error:null}),() => ({data:core('transfer'),error:null}),() => ({data:event('transfer'),error:null})];
+  await expect(hook.mutationFn(transfer)).resolves.toMatchObject({contractId:id(2)});
   expect(h.rpc).toHaveBeenCalledTimes(1);
   expect(h.rpc.mock.calls[0][0]).toBe('transfer_room_with_notice_v2');
   expect(h.rpc.mock.calls[0][1]).toMatchObject({p_new_deposit:200,p_quote_key:'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'});

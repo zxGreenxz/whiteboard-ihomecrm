@@ -95,31 +95,77 @@ export const useRenewContract = () => {
 // Requirements: 5.2, 5.3
 // =============================================
 
+/** Sự kiện gia hạn/chuyển phòng của đúng mã yêu cầu (cột `request_id` duy nhất). Đọc hỏng thì ném: chưa kết luận được. */
+async function readNoticeEvent(organizationId:string,requestId:string){
+  const {data,error}=await supabase.from('contract_notice_transition_events').select('id,operation,result_contract_id').eq('request_id',requestId).eq('organization_id',organizationId).maybeSingle();
+  if(error)throw error;
+  return data as {id:string;operation:string;result_contract_id:string|null}|null;
+}
+
 export const useTransferRoom = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
+  // Đợt 7: chuyển phòng giữ namespace `contract-notice-transition` (gia hạn đã tách sang `contract-renew` ở đợt 6) để dấu đang
+  // kẹt trong máy nhân viên, kể cả dấu gia hạn của bản trước, được đối chiếu theo mã yêu cầu thay vì chặn.
   const workflow=useRef(persistentFinancialWorkflow('contract-notice-transition',{scope:'actor'}));
 
   return useMutation({
     retry:false,
     meta:{handlesFeedback:true},
-    mutationFn: async ({reconcileOnly, ...params}: TransferRoomNoticeInput & {reconcileOnly?: boolean}) => {
+    mutationFn: async (params: TransferRoomNoticeInput) => {
       if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức');
-      const args=buildTransferRoomNoticeArgs(params,selectedOrganizationId);
+      const organizationId=selectedOrganizationId;
+      const args=buildTransferRoomNoticeArgs(params,organizationId);
       if(params.newRentPrice!==undefined)financialReadNumber(params.newRentPrice);
-      return workflow.current.run(params.contractId,"chuyển phòng",async progress=>{
-        if(reconcileOnly) throw {code:'22023',message:'Không tìm thấy yêu cầu chuyển phòng đang chờ đối chiếu.'};
+      // Cách B: transfer_room_with_notice_v2 → apply_contract_notice_transition_v1 (production 26/11/2026) khoá công ty, hai
+      // phòng (khoá tư vấn) và hợp đồng FOR UPDATE TRƯỚC khi tra mã yêu cầu; cùng mã cùng nội dung ⇒ trả hợp đồng cũ, khác nội
+      // dung ⇒ 23505. Phiên bản hợp đồng (`expected_updated_at`) chỉ được so SAU khi tra mã, nên lần gửi lại của một lần đã
+      // chuyển nhận lại kết quả cũ, không chuyển hai lần.
+      let resend=false;
+      return workflow.current.run<ContractNoticeOperationReceipt>(params.contractId,"chuyển phòng",async progress=>{
         const {data,error}=await submitRoomTransfer({...args,p_request_id:progress.requestKey});
-        if(error)throw error;
+        if(error){
+          // Gửi lại cùng mã mà máy chủ báo trùng: sự kiện của mã đó đã có (lần trước đã ghi, với nội dung khác lần này).
+          if(resend&&String((error as {code?:unknown}).code??'')==='23505'){
+            let event:Awaited<ReturnType<typeof readNoticeEvent>>=null;
+            try{event=await readNoticeEvent(organizationId,progress.requestKey);}
+            catch{/* Đọc lại hỏng: giữ nguyên lời từ chối 23505 của máy chủ, không đoán đã ghi. */}
+            if(event)throw new FinancialAlreadyRecordedError(event.operation==='TRANSFER_ROOM'
+              ?'Hợp đồng đã được chuyển phòng ở lần gửi trước (nội dung lúc đó khác nội dung đang gửi). Tải lại hợp đồng để kiểm tra phòng mới trước khi thao tác tiếp.'
+              :'Lần gia hạn hợp đồng gửi trước đó đã được ghi. Tải lại hợp đồng để kiểm tra rồi mới chuyển phòng.',[event.result_contract_id??params.contractId]);
+          }
+          throw error;
+        }
         const parsedId=z.string().guid().safeParse(data);
         if(parsedId.success)progress.completed.push({id:parsedId.data,label:`Hợp đồng cần đối chiếu: ${parsedId.data}`});
         if(!parsedId.success||parsedId.data!==params.contractId)throw new TypeError("Unconfirmed contract operation ID");
-        const receipt=await readContractNoticeOperationReceipt(selectedOrganizationId,progress.requestKey,params,'TRANSFER_ROOM');
+        const receipt=await readContractNoticeOperationReceipt(organizationId,progress.requestKey,params,'TRANSFER_ROOM');
         progress.completed.push({id:receipt.eventId,label:'Đã xác nhận sự kiện gia hạn/chuyển phòng'});
         return receipt;
-      }, async pending => reconcileOnly ? {
-        result: await readContractNoticeOperationReceipt(selectedOrganizationId, pending.requestKey ?? pending.attemptId, params, 'TRANSFER_ROOM'),
-      } : null);
+      },async pending=>{
+        const requestKey=pending.requestKey??pending.attemptId;
+        const event=await readNoticeEvent(organizationId,requestKey);
+        if(event){
+          if(event.operation==='TRANSFER_ROOM'){
+            try{return {result:await readContractNoticeOperationReceipt(organizationId,requestKey,params,'TRANSFER_ROOM')};}
+            catch{
+              // Hàng rào biên nhận: lần trước đã nhận mã hợp đồng mà biên nhận lệch (tiền, phòng…) thì giữ dấu và mã như cũ, để
+              // người dùng đối chiếu qua hộp cảnh báo (có nhật ký), không gỡ lặng lẽ.
+              if(pending.completedIds.length)return null;
+              // Lần trước mất phản hồi, sự kiện có thật nên hợp đồng đã được chuyển; chỉ chưa dựng lại được biên nhận theo nội
+              // dung đang gửi (người dùng đã đổi nội dung form).
+              return {outcome:'already-written',message:'Hợp đồng đã được chuyển phòng ở lần gửi trước. Tải lại hợp đồng để xem phòng mới trước khi thao tác tiếp.',recordIds:[event.result_contract_id??params.contractId]};
+            }
+          }
+          // Dấu chung bản trước (đợt 6 đã tách gia hạn) là của một lần gia hạn đã ghi.
+          return {outcome:'already-written',message:'Lần gia hạn hợp đồng gửi trước đó đã được ghi. Tải lại hợp đồng để kiểm tra rồi mới chuyển phòng.',recordIds:[event.result_contract_id??params.contractId]};
+        }
+        // Hàng rào biên nhận: lần trước máy chủ đã trả mã hợp đồng (đã chuyển) mà nay không đọc thấy sự kiện của mã đó (quyền
+        // xem đổi?). Không gửi lại; giữ dấu và mã để đối chiếu qua hộp cảnh báo.
+        if(pending.completedIds.length)return null;
+        resend=true;
+        return {outcome:'not-written',serverDedupesRequestKey:true};
+      });
     },
     onSuccess: (receipt) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });

@@ -14,7 +14,15 @@ export interface LegacyPendingSite {
   businessKey: string;
 }
 
-export interface LegacyPendingOptions { store?: FinancialPendingStore; now?: () => Date }
+export interface LegacyPendingOptions {
+  store?: FinancialPendingStore;
+  now?: () => Date;
+  /**
+   * Đợt 7: phạm vi công ty của dấu bản trước khi nó không phải công ty đang chọn: `'actor-scope'` (dấu phạm vi người
+   * dùng) hoặc mã công ty đích của bản ghi. Không khai thì dùng công ty đang chọn như đợt 4.
+   */
+  organizationId?: string;
+}
 
 export interface LegacyPendingContext { userId: string; organizationId: string }
 
@@ -34,7 +42,7 @@ export async function settleLegacyPending<T>(
   // gì) và lần tạo sau đối chiếu lại. Không bước nào được làm hỏng lần tạo đang chạy.
   let scope: FinancialPendingScope | undefined;
   try {
-    const organizationId = globalThis.localStorage.getItem('ihomecrm.selectedOrganizationId');
+    const organizationId = options.organizationId ?? globalThis.localStorage.getItem('ihomecrm.selectedOrganizationId');
     const user = await getSessionUser();
     if (user && organizationId) scope = { namespace: site.namespace, businessKey: site.businessKey, userId: user.id, organizationId };
   } catch { /* Không đọc được phiên hoặc công ty đang chọn. */ }

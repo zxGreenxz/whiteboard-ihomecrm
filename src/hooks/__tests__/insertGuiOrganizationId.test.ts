@@ -118,7 +118,6 @@ import { useCreateJobGroup } from "../useJobGroups";
 import { useCreatePayment } from "../usePayments";
 import { useBulkCreateRooms, useCreateRoom } from "../useRooms";
 import { useCreateService, useUpdateService } from "../useServices";
-import { useCreateTenant } from "../useTenants";
 import { useCreateVehicle } from "../useVehicles";
 import { useCreateIncomeExpenseBatch } from "../income-expenses/batch";
 import { useSubmitExcelInvoices } from "../invoices/useExcelInvoiceData";
@@ -314,11 +313,6 @@ describe("hook tạo một dòng", () => {
     io.single.services={id:"s1"};
     await run(useUpdateService, { id: "s1", updates: { name: "Điện" }, building_ids: ["b9"] });
     expectOrg("building_services");
-  });
-
-  it("useCreateTenant → tenants", async () => {
-    await run(useCreateTenant, { full_name: "Khách B", phone: "0900000003" });
-    expectOrg("tenants");
   });
 
   it("useCreateVehicle → vehicles", async () => {

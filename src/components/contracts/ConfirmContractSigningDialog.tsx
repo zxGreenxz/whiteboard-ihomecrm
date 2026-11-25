@@ -85,7 +85,8 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
     metersConfirmed: meterBoundary?.state === 'VERIFIED' }, snapshot.data?.server_today);
 
   const handleSign = async () => {
-    if(unresolved)return;
+    // Đợt 7: lần ký chưa rõ kết quả không khoá nút. Lần bấm này đọc lần ký của bản nháp trước: đã ký thì hiện kết quả,
+    // chưa thì gửi lại đúng mã của lần trước (máy chủ chỉ ghi một lần ký cho mỗi bản nháp).
     if(!validateInputDrafts(dialogRoot.current)){setErrors(['Kiểm tra ngày/số đang được đánh dấu đỏ trước khi ký.']);return;}
     setErrors(confirmationErrors);
     if (confirmationErrors.length || !document || meterBoundary?.state !== 'VERIFIED' || !canSign || !reservationValid) return;
@@ -108,7 +109,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
   };
   const handleReconcile=async()=>{
     try{const result=await signingMutation.mutateAsync(undefined);intent.current={key:'recovered',requestId:result.request_id};setLocalSigning(result);setUnconfirmed(false);setErrors([]);}
-    catch(error){setErrors([signingErrorMessage(error)]);void snapshot.refetch();}
+    catch(error){if(isConfirmedFinancialRejection(error))setUnconfirmed(false);setErrors([signingErrorMessage(error)]);void snapshot.refetch();}
   };
   const handleDownload = async () => {
     if (!signed || !canPrint) return;
@@ -121,7 +122,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
     <DialogContent ref={dialogRoot} className="max-w-2xl max-h-[90vh] overflow-y-auto">
       <DialogHeader><DialogTitle>Xác nhận đã ký và nhận phòng ngay</DialogTitle><DialogDescription>Ghi nhận khách đã ký tài liệu đã xuất và bàn giao phòng theo ngày bắt đầu của bản nháp.</DialogDescription></DialogHeader>
       {errors.length > 0 && <Alert variant="destructive"><AlertDescription>{errors.map(error => <p key={error}>{error}</p>)}</AlertDescription></Alert>}
-      {unresolved&&<Alert><AlertDescription>Lần ký đã gửi cần được đối chiếu trước khi tiếp tục. Tải lại trang không huỷ yêu cầu đã gửi. <Button type="button" variant="link" disabled={pending} onClick={()=>void handleReconcile()}>Đối chiếu lần ký đã gửi</Button></AlertDescription></Alert>}
+      {unresolved&&<Alert><AlertDescription>Lần ký đã gửi chưa rõ kết quả. Bấm «Xác nhận đã ký và nhận phòng» để hệ thống đối chiếu: đã ký thì hiện kết quả, chưa thì gửi lại đúng yêu cầu đó, không ký hai lần. <Button type="button" variant="link" disabled={pending} onClick={()=>void handleReconcile()}>Đối chiếu lần ký đã gửi</Button></AlertDescription></Alert>}
       {signed ? <div className="space-y-4">
         <Alert><AlertDescription>Đã ghi nhận ký và nhận phòng · {signed.contract_number}</AlertDescription></Alert>
         <p className="text-sm">Hợp đồng chính thức đã được tạo từ nháp phiên bản {signed.revision}. Có thể tải lại đúng bản này.</p>
@@ -159,7 +160,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
           <p className="text-xs text-muted-foreground">Nguồn cọc đã chọn được chuyển đúng sang hợp đồng; không ghi phiếu thu cọc lần nữa. Phần chưa thu theo cách bổ sung đã chọn.</p>
           </>}
         </fieldset>
-        <Button type="button" disabled={pending || unresolved || !canSign || confirmationErrors.length > 0 || !meterBoundary || !reservationValid} onClick={() => void handleSign()}>{signingMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}Xác nhận đã ký và nhận phòng</Button>
+        <Button type="button" disabled={pending || !canSign || confirmationErrors.length > 0 || !meterBoundary || !reservationValid} onClick={() => void handleSign()}>{signingMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}Xác nhận đã ký và nhận phòng</Button>
       </div>}
       <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>Đóng</Button>
     </DialogContent>

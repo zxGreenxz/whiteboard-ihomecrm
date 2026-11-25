@@ -33,10 +33,19 @@ describe('confirm persisted document signing',()=>{
     await waitFor(()=>expect(mocks.sign).toHaveBeenCalledTimes(1));expect(mocks.sign.mock.calls[0][0]).toMatchObject({source:{draftId:id,revision:1,documentId:id,documentSha256:'a'.repeat(64)},creationOptions:{}});
     await screen.findByText(/Đã ghi nhận ký.*HD-2026-00001/);expect(screen.queryByRole('button',{name:'Xác nhận đã ký và nhận phòng'})).toBeNull();
   });
-  it('lost response blocks another signing and offers readonly reconciliation instead of a new identity',async()=>{
+  // Đợt 7: kết quả chưa rõ không khoá nút ký. Lần bấm sau gửi cùng ý định; hook đọc lần ký của nháp rồi mới gửi lại đúng mã cũ.
+  it('lost response keeps the sign button usable (the hook reconciles first) and still offers readonly reconciliation',async()=>{
     mocks.sign.mockRejectedValueOnce(new Error('Network lost'));render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft}/>);ready();
     fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText(/Chưa.*ký hợp đồng/);expect(screen.queryByText('Network lost')).toBeNull();
-    const signButton=screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'});expect(signButton.hasAttribute('disabled')).toBe(true);fireEvent.click(signButton);expect(mocks.sign).toHaveBeenCalledOnce();
+    expect(screen.getByText(/chưa rõ kết quả.*không ký hai lần/)).toBeTruthy();
+    const signButton=screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'});expect(signButton.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(signButton);await waitFor(()=>expect(mocks.sign).toHaveBeenCalledTimes(2));
+    expect(mocks.sign.mock.calls[1][0]).toMatchObject({source:mocks.sign.mock.calls[0][0].source,requestId:mocks.sign.mock.calls[0][0].requestId});
+    await screen.findByText(/Đã ghi nhận ký.*HD-2026-00001/);
+  });
+  it('readonly reconciliation still sends no signing payload',async()=>{
+    mocks.sign.mockRejectedValueOnce(new Error('Network lost'));render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft}/>);ready();
+    fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText(/Chưa.*ký hợp đồng/);
     fireEvent.click(screen.getByRole('button',{name:'Đối chiếu lần ký đã gửi'}));await waitFor(()=>expect(mocks.sign).toHaveBeenCalledTimes(2));expect(mocks.sign.mock.calls[1][0]).toBeUndefined();
   });
   it('continues once when a snapshot recovers the current signing intent after a lost response',async()=>{
@@ -131,9 +140,9 @@ describe('confirm persisted document signing',()=>{
   });
 });
 
-it('pending marker được hydrate khóa sign payload mới sau remount và chỉ cho readonly reconcile',async()=>{
+it('pending marker được hydrate sau remount: vẫn cho đối chiếu chỉ đọc, và nút ký không khoá (hook đối chiếu trước khi gửi)',async()=>{
  mocks.pendingRequestId=id;mocks.sign.mockResolvedValue({...result,request_id:id});const onSigned=vi.fn();render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft} onSigned={onSigned}/>);ready();
- expect(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}).hasAttribute('disabled')).toBe(true);fireEvent.click(screen.getByRole('button',{name:'Đối chiếu lần ký đã gửi'}));await waitFor(()=>expect(mocks.sign).toHaveBeenCalledWith(undefined));await waitFor(()=>expect(onSigned).toHaveBeenCalledOnce());
+ expect(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}).hasAttribute('disabled')).toBe(false);fireEvent.click(screen.getByRole('button',{name:'Đối chiếu lần ký đã gửi'}));await waitFor(()=>expect(mocks.sign).toHaveBeenCalledWith(undefined));await waitFor(()=>expect(onSigned).toHaveBeenCalledOnce());
 });
 it('manual sign giữ invalid date raw/focus và không bypass bằng ngày cũ trong state',async()=>{
  render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft}/>);ready();const date=screen.getByLabelText('Ngày nhận phòng thực tế') as HTMLInputElement;fireEvent.change(date,{target:{value:'31/02/2026'}});fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText(/Kiểm tra ngày\/số/);expect(date.value).toBe('31/02/2026');expect(document.activeElement).toBe(date);expect(mocks.sign).not.toHaveBeenCalled();

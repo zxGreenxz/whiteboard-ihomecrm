@@ -14,7 +14,7 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{from:(table:string)=>{
  let write=false,insert=false;const port={then:(resolve:(v:unknown)=>void)=>{let data:unknown=[],error:unknown=null;
  if(table==='rooms')data=write?null:[{id:'44444444-4444-4444-8444-444444444444',name:'101',code:'101',status:'OCCUPIED',organization_id:'11111111-1111-4111-8111-111111111111'}];
  if(table==='customers')data=[{id:'33333333-3333-4333-8333-333333333333',full_name:'Khách A',phone:'0900000000',id_number:null,organization_id:'11111111-1111-4111-8111-111111111111'}];
- if(table==='contracts'){data={id:'55555555-5555-4555-8555-555555555555',organization_id:'11111111-1111-4111-8111-111111111111',room_id:'44444444-4444-4444-8444-444444444444',status:'ACTIVE',signed_date:'2026-09-01',start_date:'2026-10-01',end_date:'2027-10-01',rent_price:5000000,total_deposit:5000000};if(insert){m.contractWrites();error=m.contractError;if(error)data=null;}}
+ if(table==='contracts'){data={id:'55555555-5555-4555-8555-555555555555',organization_id:'11111111-1111-4111-8111-111111111111',room_id:'44444444-4444-4444-8444-444444444444',tenant_id:'33333333-3333-4333-8333-333333333333',status:'ACTIVE',signed_date:'2026-09-01',start_date:'2026-10-01',end_date:'2027-10-01',rent_price:5000000,total_deposit:5000000};if(insert){m.contractWrites();error=m.contractError;if(error)data=null;}}
  if(table==='contract_customers'){data=[{contract_id:'55555555-5555-4555-8555-555555555555',customer_id:'33333333-3333-4333-8333-333333333333',is_representative:true}];if(write)error=m.relationError;}
  return Promise.resolve({data,error}).then(resolve);}};
  return new Proxy(port,{get:(obj,key)=>key==='then'?obj.then:(..._args:unknown[])=>{if(key==='insert'){write=true;insert=true;}if(key==='update')write=true;return new Proxy(obj,{get:(_o,k)=>k==='then'?obj.then:(...args:unknown[])=>{if(k==='insert'){write=true;insert=true;}if(k==='update')write=true;return new Proxy(obj,{get:(_p,j)=>j==='then'?obj.then:()=>new Proxy(obj,{get:(_q,x)=>x==='then'?obj.then:()=>new Proxy(obj,{get:(_r,y)=>y==='then'?obj.then:()=>obj})})});}});}});
@@ -31,7 +31,16 @@ it('reports a created contract against its original source row and retains IDs a
  render(<ContractImportExportDialog open mode="import" onOpenChange={vi.fn()}/>);
  await waitFor(()=>expect(screen.getByText(/Bản ghi đã tạo/).textContent).toContain(contract));expect(m.contractWrites).toHaveBeenCalledOnce();
 });
-it('blocks another contract writer after an unconfirmed insert across remount',async()=>{
- m.contractError=new TypeError('Failed to fetch');const view=await prepare();fireEvent.click(screen.getByRole('button',{name:/Xác nhận nhập/}));await waitFor(()=>expect(m.contractWrites).toHaveBeenCalledOnce());await screen.findAllByText(/chưa.*xác nhận|chưa.*đối chiếu/i);view.unmount();
- render(<ContractImportExportDialog open mode="import" onOpenChange={vi.fn()}/>);await waitFor(()=>expect(screen.getByText(/Lượt nhập trước chưa hoàn tất/)).toBeTruthy());expect(screen.queryByRole('button',{name:/Xác nhận nhập/})).toBeNull();expect(m.contractWrites).toHaveBeenCalledOnce();
+// Đợt 7 (cách D): hộp không còn khoá sau một lần ghi chưa rõ. Nhập lại đúng file: dòng chưa rõ tra hợp đồng hiệu lực của phòng
+// trước; phòng đã có đúng hợp đồng của khách đó ⇒ nhận là của lần trước, không ghi hợp đồng thứ hai.
+it('after an unconfirmed insert, remount does not lock the dialog; re-importing finds the room contract instead of writing again',async()=>{
+ m.contractError=new TypeError('Failed to fetch');const view=await prepare();fireEvent.click(screen.getByRole('button',{name:/Xác nhận nhập/}));await waitFor(()=>expect(m.contractWrites).toHaveBeenCalledOnce());await screen.findAllByText(/chưa.*xác nhận|chưa.*đối chiếu|chưa rõ/i);view.unmount();
+ render(<ContractImportExportDialog open mode="import" onOpenChange={vi.fn()}/>);await waitFor(()=>expect(screen.getByText(/Lượt nhập trước còn dòng chưa rõ kết quả/)).toBeTruthy());
+ m.contractError=null;
+ fireEvent.change(document.querySelector('input[type=file]')!,{target:{files:[new File(['data'],'contracts.xlsx')]}});
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Nhập dữ liệu'}).hasAttribute('disabled')).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Nhập dữ liệu'}));
+ fireEvent.click(await screen.findByRole('button',{name:/Xác nhận nhập/}));
+ // Trang báo đúng mã hợp đồng của phòng (máy giả không phân biệt đọc một dòng nên chưa chứng minh được khách: «có thể»).
+ await waitFor(()=>expect(document.body.textContent).toContain(contract));
+ expect(m.contractWrites).toHaveBeenCalledOnce();
 });
