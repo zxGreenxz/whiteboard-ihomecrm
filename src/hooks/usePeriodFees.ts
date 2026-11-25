@@ -325,7 +325,7 @@ export const usePayDraftFeeVoucher = () => {
       });
       if (error) {
         // Lệnh cũ chạy xong giữa lúc đối chiếu và lúc gửi lại: phiếu đã rời trạng thái nháp.
-        if (resend && /không ở trạng thái nháp/i.test(String((error as {message?:unknown}).message ?? ''))) throw new FinancialAlreadyRecordedError('Phiếu nháp này đã được thanh toán ở lần gửi trước. Mở phiếu để kiểm tra sổ quỹ và ảnh chứng từ.',[args.voucherId]);
+        if (resend && /không ở trạng thái nháp \(hiện: APPROVED\)/i.test(String((error as {message?:unknown}).message ?? ''))) throw new FinancialAlreadyRecordedError('Phiếu nháp này đã được thanh toán ở lần gửi trước. Mở phiếu để kiểm tra sổ quỹ và ảnh chứng từ.',[args.voucherId]);
         throw error;
       }
       const receipt=await readCreatedVoucherReceipt(data);

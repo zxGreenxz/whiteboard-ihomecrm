@@ -37,8 +37,9 @@ export function reconciliationReceipt(data:unknown) {
 }
 
 const reconciliationKey=(accountId:string,asOf:string)=>`${accountId}:${asOf}`;
-/** Lệch giờ trình duyệt ↔ máy chủ chấp nhận khi tra đề nghị "tạo sau giờ kẹt". Lệch rộng chỉ làm báo "có thể đã tạo" nhiều hơn. */
-const CLOCK_SKEW_MS=10*60_000;
+/** Cửa sổ tra đề nghị "tạo sau giờ kẹt" (giờ máy có thể lệch giờ máy chủ). Đề nghị đã gắn sổ và ngày nên cửa sổ rộng chỉ làm
+ * báo "có thể đã tạo" nhiều hơn, không làm gửi trùng. */
+const CLOCK_SKEW_MS=24*60*60_000;
 function stateReceipt(data:unknown,id:string,status:string) {
  const row=data as {id?:unknown;status?:unknown}|null;
  if(!row||row.id!==id||row.status!==status) throw new TypeError('Chưa xác nhận được trạng thái đối soát sau thao tác.');

@@ -24,7 +24,7 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:io.rpc,from:()=>{
     then:(ok:(v:unknown)=>unknown)=>Promise.resolve({data:rows(),error:null}).then(ok)};
   return b;
 }}}));
-import {createVoucherFromForm} from '../formCreatePending';
+import {createVoucherFromForm,pendingCreateElsewhere,voucherFormCreateKey} from '../formCreatePending';
 import {useCreateIncomeExpense} from '../mutations';
 import type {CreateIncomeExpenseInput} from '../types';
 import {FinancialPendingError,PENDING_SETTLE_MS,financialPending} from '@/lib/financialPending';
@@ -137,6 +137,25 @@ describe('đổi đường giữa hai lần gửi (máy chủ không chống tr�
     expect(rpcCalls('ie_compat_insert_v2')).toHaveLength(0);
     advance(PENDING_SETTLE_MS);
     await expect(submit(form(repeat))).resolves.toMatchObject({id:expect.any(String)});expect(db.vouchers).toHaveLength(1);
+  });
+});
+
+describe('review lượt 1: đổi phạm vi hoặc hạng mục sau một lần chưa rõ kết quả',()=>{
+  it('đổi phòng/toà/loại khi dấu cũ còn ⇒ có câu chặn; đúng phạm vi cũ hoặc dấu đã gỡ ⇒ không chặn',async()=>{
+    db.drop='create_income_expense_v1';await expect(submit(form())).rejects.toThrow();
+    const ctx={userId:'u1',organizationId:'o1'};const stuck=voucherFormCreateKey(form());
+    expect(pendingCreateElsewhere(ctx,stuck,form({room_id:'r2'}))).toMatch(/đã đổi/);
+    expect(pendingCreateElsewhere(ctx,stuck,form({type:'INCOME'}))).toMatch(/đã đổi/);
+    expect(pendingCreateElsewhere(ctx,stuck,form())).toBeNull();
+    await submit(form());expect(financialPending.read(scope)).toBeNull();
+    expect(pendingCreateElsewhere(ctx,stuck,form({room_id:'r2'}))).toBeNull();
+  });
+  it('đổi hạng mục giữa hai lần (đường ghi có thể đã khác): không gửi ngay; tra gần đúng thấy phiếu ⇒ báo có thể đã lập',async()=>{
+    db.lost='create_income_expense_v1';await expect(submit(form())).rejects.toThrow();
+    const changed=form({items:[{...form().items[0],income_expense_type_id:'t2'}]});
+    const error=await submit(changed).then(()=>null,(e:unknown)=>e);
+    expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);expect((error as Error).message).toMatch(/Có thể/);
+    expect(rpcCalls('create_income_expense_v1')).toHaveLength(1);expect(db.vouchers).toHaveLength(1);
   });
 });
 

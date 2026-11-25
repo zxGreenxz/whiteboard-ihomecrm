@@ -178,6 +178,13 @@ describe('trả phiếu nháp (cách C: đọc trạng thái phiếu)',()=>{
     await expect(call(usePayDraftFeeVoucher,draftArgs)).rejects.toBeInstanceOf(FinancialAlreadyRecordedError);
     expect(io.rpc).not.toHaveBeenCalled();expect(financialPending.read(draftScope)).toBeNull();
   });
+  it('review lượt 1: phiếu bị huỷ giữa hai lần ⇒ gửi lại nhận lỗi thật của máy chủ, KHÔNG báo "đã thanh toán ở lần trước"',async()=>{
+    next='drop';await expect(call(usePayDraftFeeVoucher,draftArgs)).rejects.toThrow();
+    vouchers()[0].approval_status='CANCELLED';
+    const error=await call(usePayDraftFeeVoucher,draftArgs).then(()=>null,(e:unknown)=>e);
+    expect(error).not.toBeInstanceOf(FinancialAlreadyRecordedError);expect((error as {message:string}).message).toMatch(/CANCELLED/);
+    expect(financialPending.read(draftScope)).toBeNull();
+  });
   it('đọc trạng thái hỏng ⇒ giữ dấu, không gửi',async()=>{
     next='drop';await expect(call(usePayDraftFeeVoucher,draftArgs)).rejects.toThrow();
     io.failRead={code:'500',message:'Failed to fetch'};

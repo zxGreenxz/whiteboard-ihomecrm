@@ -210,7 +210,7 @@ export const useImportIncomeExpenses = () => {
 /** Dấu ghi từ bản này: mã đợt chính là mã yêu cầu của dấu. Dấu cũ hơn chỉ biết mã đợt khi đã nhận (completedIds[0]). */
 const BATCH_ID_FROM_KEY = 'request-key';
 /** Lệch giờ trình duyệt ↔ máy chủ chấp nhận khi tra đợt "tạo sau giờ kẹt" (chỉ cho dấu cũ chưa nhận mã đợt). */
-const BATCH_CLOCK_SKEW_MS = 10 * 60_000;
+const BATCH_CLOCK_SKEW_MS = 60 * 60_000;
 
 /**
  * Đối chiếu lần tạo phiếu tổng chưa rõ kết quả (cách D, đợt 3). Thứ tự bước: đợt → từng phiếu con → nối phiếu vào

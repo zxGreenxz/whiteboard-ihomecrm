@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { FinancialPendingRecord, PendingReconciliation } from "@/lib/financialPending";
+import { financialPending, type FinancialPendingRecord, type PendingReconciliation } from "@/lib/financialPending";
 import { runFinancialPending } from "@/lib/financialPendingAction";
 import { isCanonicalCreateEligible, prepareIncomeExpenseCreate } from "./mutations";
 import type { CreateIncomeExpenseInput } from "./types";
@@ -16,13 +16,34 @@ import type { CreateIncomeExpenseInput } from "./types";
 /** Dấu mang mã yêu cầu đã gửi lên máy chủ theo hai đường trên. */
 const KEYED = "request-key-v1";
 /** Lệch giờ trình duyệt ↔ máy chủ chấp nhận khi tra phiếu "tạo sau giờ kẹt". Lệch rộng chỉ làm báo "có thể đã lập" nhiều hơn. */
-const CLOCK_SKEW_MS = 10 * 60_000;
+const CLOCK_SKEW_MS = 60 * 60_000;
 
 export interface VoucherFormCreateContext {
   userId: string;
   organizationId: string;
   create: (input: CreateIncomeExpenseInput) => Promise<unknown>;
 }
+
+/** Phạm vi dấu của một lần lập phiếu: loại × toà × phòng. Đổi một trong ba thì là lượt khác, không thấy dấu cũ. */
+export const voucherFormCreateKey = (data: Pick<CreateIncomeExpenseInput, "type" | "building_id" | "room_id">) =>
+  [data.type, data.building_id, data.room_id ?? ""].join(":");
+
+/**
+ * Lần lập trước ở phạm vi `stuckKey` chưa rõ kết quả mà người dùng đã đổi loại, toà hoặc phòng: lượt mới không thấy dấu cũ
+ * nên không được đối chiếu, có thể ra phiếu thứ hai cho cùng một khoản tiền. Còn dấu đó thì trả câu báo để chặn.
+ */
+export function pendingCreateElsewhere(ctx: Pick<VoucherFormCreateContext, "userId" | "organizationId">, stuckKey: string | null, data: Pick<CreateIncomeExpenseInput, "type" | "building_id" | "room_id">): string | null {
+  if (!stuckKey || stuckKey === voucherFormCreateKey(data) || !ctx.userId || !ctx.organizationId) return null;
+  let pending: FinancialPendingRecord | null;
+  try { pending = financialPending.read({ namespace: "voucher-form-create", userId: ctx.userId, organizationId: ctx.organizationId, businessKey: stuckKey }); }
+  catch { pending = null; }
+  if (!pending) return null;
+  return "Lần lập phiếu trước chưa rõ kết quả mà loại phiếu, toà hoặc phòng đã đổi. Chọn lại đúng như lần trước rồi bấm Lưu để hệ thống đối chiếu; muốn lập cho chỗ khác thì kiểm tra danh sách phiếu trước, rồi đóng và mở lại form.";
+}
+
+/** Chữ ký nhỏ của các hạng mục (mã loại, sắp xếp): đổi hạng mục giữa hai lần thì đường ghi của máy chủ có thể đã khác. */
+const itemsSignature = (data: CreateIncomeExpenseInput) =>
+  [...new Set(data.items.map((item) => item.income_expense_type_id))].sort().join(",").slice(0, 400);
 
 interface VoucherRow { id: string; code: string | null }
 
@@ -57,8 +78,9 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
   // Phiên và hạng mục đọc TRƯỚC khi ghi dấu: hỏng ở đây thì chưa có gì được ghi, báo lỗi ngay, không để lại dấu.
   const prepared = await prepareIncomeExpenseCreate(data);
   const canonical = isCanonicalCreateEligible(data);
+  const items = itemsSignature(data);
   let resend = false;
-  return runFinancialPending({ namespace: "voucher-form-create", userId: ctx.userId, organizationId: ctx.organizationId, businessKey: [data.type, data.building_id, data.room_id ?? ""].join(":") }, async (progress) => {
+  return runFinancialPending({ namespace: "voucher-form-create", userId: ctx.userId, organizationId: ctx.organizationId, businessKey: voucherFormCreateKey(data) }, async (progress) => {
     // Cả hai đường ghi (create_income_expense_v1 / ie_compat_insert_v2) trả về phiếu có id.
     const created = (await ctx.create({
       ...data,
@@ -72,7 +94,7 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
     return { id: created.id };
   }, undefined, {
     operation: "lập phiếu thu/chi",
-    meta: { dedupe: KEYED, canonical },
+    meta: { dedupe: KEYED, canonical, items },
     reconcile: async (pending) => {
       if (pending.completedIds.length) {
         return { outcome: "already-written", message: "Phiếu đã được lập ở lần gửi trước.", recordIds: pending.completedIds };
@@ -91,9 +113,10 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
         return { outcome: "already-written", message: `Phiếu ${exact.code || exact.id} đã được lập ở lần gửi trước. Mở danh sách phiếu để kiểm tra trước khi lập thêm.`, recordIds: [exact.code || exact.id] };
       }
       resend = true;
-      if (pending.meta.canonical !== canonical) {
-        // Lần trước và lần này đi hai đường khác nhau (vd. bật/tắt phiếu lặp): máy chủ không chống trùng chéo đường.
-        // Lần trước đi đường chính thì phiếu của nó mang mã do máy chủ sinh, chỉ tra gần đúng được.
+      // Đường ghi có thể đã khác giữa hai lần: điều kiện phía trình duyệt đổi (bật/tắt phiếu lặp…), hoặc hạng mục đổi
+      // (hạng mục chỉ-hệ-thống làm đường chính trả 0A000 TRƯỚC bước claim rồi rơi sang compat). Máy chủ không chống trùng
+      // chéo đường, nên không gửi ngay; lần trước đi đường chính thì phiếu mang mã do máy chủ sinh, chỉ tra gần đúng được.
+      if (pending.meta.canonical !== canonical || pending.meta.items !== items) {
         if (pending.meta.canonical === true) {
           const rows = await findRecentCandidates(data, pending);
           if (rows.length) return maybeWritten(rows);

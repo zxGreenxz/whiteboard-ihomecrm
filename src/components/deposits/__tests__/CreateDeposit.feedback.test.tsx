@@ -28,7 +28,8 @@ const query = (data: unknown, failed = false, refetch = vi.fn()) => ({
 vi.mock('@/hooks/useRoomReservations', () => ({ useCreateRoomReservation: () => ({ mutateAsync: h.create, isPending: false }) }));
 vi.mock('@/hooks/useReservationHoldDeadlines', () => ({ useSetReservationHoldTerms: () => ({ mutateAsync: h.hold, isPending: false }) }));
 vi.mock('@/hooks/useSaleBonus', () => ({ useCreateSaleBonusFromDeposit: () => ({ mutateAsync: h.bonus, isPending: false }) }));
-vi.mock('@/hooks/useRooms', () => ({ useRooms: () => query([{ id: roomId, name: '101', building_id: 'building1', rent_price: 1000000, building: { id: 'building1', name: 'Tòa Demo' } }], h.roomsError, h.roomsRetry) }));
+const room2Id = '00000000-0000-4000-8000-000000000009';
+vi.mock('@/hooks/useRooms', () => ({ useRooms: () => query([{ id: roomId, name: '101', building_id: 'building1', rent_price: 1000000, building: { id: 'building1', name: 'Tòa Demo' } }, { id: room2Id, name: '102', building_id: 'building1', rent_price: 1000000, building: { id: 'building1', name: 'Tòa Demo' } }], h.roomsError, h.roomsRetry) }));
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => query([{ id: bookId, name: 'Sổ Demo', user_id: userId }]) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: organizationId }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: userId }) }));
@@ -169,6 +170,18 @@ describe('tạo cọc sau rớt mạng (gửi lại cùng mã)', () => {
     submitAgain();
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/đã được tạo ở lần gửi trước.*Mở Quản lý cọc/));
     expect(stored.size).toBe(1); expect(h.close).not.toHaveBeenCalled(); expect(financialPending.read(scope)).toBeNull();
+  });
+  it('review lượt 1: chưa rõ kết quả rồi đổi sang phòng khác ⇒ chặn, không tạo giữ chỗ cho phòng mới', async () => {
+    next = 'lost'; await prepare(); await screen.findByRole('alert');
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: room2Id } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
+    submitAgain();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/phòng đã đổi/));
+    expect(h.create).toHaveBeenCalledOnce(); expect(stored.size).toBe(1);
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: roomId } });
+    submitAgain();
+    await waitFor(() => expect(h.close).toHaveBeenCalledWith(false));
+    expect(keys()[1]).toBe(keys()[0]); expect(stored.size).toBe(1);
   });
   it('dấu cũ gieo sẵn (không tên thao tác): gửi ngay đúng mã của dấu cũ', async () => {
     const old = { ...scope, attemptId: '00000000-0000-4000-8000-0000000000aa', requestKey: 'room-reservation-00000000-0000-4000-8000-0000000000bb', completedIds: [], startedAt: '2026-11-20T01:00:00.000Z' };
