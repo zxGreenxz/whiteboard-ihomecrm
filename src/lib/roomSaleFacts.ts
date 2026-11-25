@@ -5,8 +5,10 @@ export interface RoomSaleFactInput {
   today?: string | null;
   availableOn?: string | null;
   expectedReadyOn?: string | null;
-  /** Chỉ reader trong app: phòng 'rented' vì đang giữ bằng phiếu cọc chờ hợp đồng (khoá deposit_hold). */
+  /** Chỉ reader trong app: phòng 'rented' vì đang giữ bằng cọc chờ hợp đồng (khoá deposit_hold). */
   depositHold?: { payerName?: string | null; heldDays: number } | null;
+  /** Chỉ reader trong app: cờ has_deposit_hold của #499 (đợt giữ chỗ đang mở) khi máy chủ chưa trả khối deposit_hold. */
+  hasDepositHold?: boolean;
 }
 
 export interface RoomSaleFact {
@@ -36,7 +38,8 @@ export function roomSaleDepositLabel(hold: { payerName?: string | null; heldDays
 
 export function roomSaleFacts(input: RoomSaleFactInput): RoomSaleFact {
   if (input.status === 'rented') {
-    return { kind: 'rented', label: input.depositHold ? roomSaleDepositLabel(input.depositHold) : 'Đã thuê / giữ chỗ', availableOn: null };
+    const label = input.depositHold ? roomSaleDepositLabel(input.depositHold) : input.hasDepositHold ? 'Đang giữ chỗ' : 'Đã thuê / giữ chỗ';
+    return { kind: 'rented', label, availableOn: null };
   }
   if (input.status === 'pass') return { kind: 'pass', label: 'Khách pass phòng', availableOn: null };
   const today = validDay(input.today) ? input.today : null;

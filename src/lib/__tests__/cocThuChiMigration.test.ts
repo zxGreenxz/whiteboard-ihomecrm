@@ -7,20 +7,24 @@ import { DEPOSIT_AMOUNT_SERVER_MESSAGE } from '../incomeExpenseValidation';
 // Mỗi ca dựng CSDL PGlite riêng mất 10–20 giây trên máy chậm.
 vi.setConfig({ testTimeout: 120_000 });
 
-// Sale phòng đợt 3 «Cọc ở Thu chi» (20261125094121): constraint trigger chặn phiếu THU chưa gắn HĐ có hạng mục cọc mà
-// tổng tiền cọc ≤ 0; khối «đang giữ bằng cọc» (deposit_hold) ở hai reader nội bộ, link công khai không đổi. Fixture là
-// fixture của đợt 2 (20261125034429, nguồn thân hai reader) + bảng phiếu thu chi tối thiểu và THÂN PRODUCTION của
-// room_has_holding_deposit / ie_has_deposit_item / reservation_deposit_is_settled_v1; fact phòng giản lược coi phòng có
-// phiếu cọc giữ phòng là 'rented' như production. Chạy file đợt 2 (bỏ khối md5 của nó) rồi CẢ FILE đợt 3 (có tiền kiểm
-// md5 sau đợt 2 và hậu kiểm).
-const FILE = 'supabase/migrations/20261125094121_coc_thu_chi_chan_0d_va_khoi_dang_giu_bang_coc.sql';
+// Sale phòng đợt 3 «Cọc ở Thu chi», phạm vi rút gọn sau #499 (20261125165113): constraint trigger chặn phiếu THU chưa gắn
+// HĐ có hạng mục cọc mà tổng tiền cọc ≤ 0 (chạy TRƯỚC bind_unlinked_deposit_income của #499); khối «đang giữ bằng cọc»
+// (deposit_hold) theo đợt giữ chỗ của #499 ở hai reader nội bộ, link công khai không đổi. Fixture là fixture của đợt 2
+// (20261125034429) + bảng phiếu thu chi / đợt giữ chỗ tối thiểu và THÂN PRODUCTION của room_has_holding_deposit /
+// ie_has_deposit_item / reservation_deposit_is_settled_v1; fact phòng giản lược coi phòng có phiếu cọc giữ phòng hoặc đợt
+// giữ chỗ sống là 'rented' như production. Dựng thân hai reader như production: file đợt 2 (bỏ khối md5 của nó) rồi khối
+// vá $inventory$ của #499 (20261125133852), rồi file đợt 3 (tiền kiểm ghim md5 production sau #499).
+const FILE = 'supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql';
 const DOT2 = 'supabase/migrations/20261125034429_sale_phong_theo_cong_ty.sql';
+const PR499 = 'supabase/migrations/20261125133852_unified_deposit_voucher_workflow.sql';
 const sql = readFileSync(FILE, 'utf8').replace(/\r\n/g, '\n');
 // Ca hành vi chạy file KHÔNG có hậu kiểm md5 (đột biến thân hàm phải làm đỏ ca hành vi, không chỉ ca md5); hậu kiểm chạy
 // riêng ở ca «chạy lại CẢ FILE».
 const behaviourSql = sql.replace(/DO \$sau\$[\s\S]*?\$sau\$;/, '');
 const dot2Sql = readFileSync(DOT2, 'utf8').replace(/\r\n/g, '\n')
   .replace(/DO \$truoc\$[\s\S]*?\$truoc\$;/, '').replace(/DO \$sau\$[\s\S]*?\$sau\$;/, '');
+// Đúng khối #499 đã dùng để thêm has_deposit_hold vào hai reader trên production.
+const pr499InventorySql = /DO \$inventory\$[\s\S]*?\$inventory\$;/.exec(readFileSync(PR499, 'utf8').replace(/\r\n/g, '\n'))![0];
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG = id(101), ORG_B = id(102);
@@ -29,6 +33,8 @@ const SALE = id(2); // nhân viên xem trang Sale phạm vi công ty
 const LA = id(5); // không thuộc công ty
 const TOA = id(201), TOA_B = id(202);
 const P_TRONG = id(301), P_COC = id(302), P_HAI = id(303), P_CU = id(304), P_THUE = id(305), P_THU = id(306), P_B = id(307);
+const P_DOT = id(308), P_DOT0 = id(309); // phòng giữ bằng đợt giữ chỗ (#499): có hai phiếu / đợt cũ không phiếu
+const DOT = id(901), DOT0 = id(902), KHACH_DB = id(903);
 const T_COC = id(401), T_THUE = id(402), T_HOAN = id(403);
 const KHACH = id(501), HD_CU = id(601), HD_KHAC = id(602);
 
@@ -48,6 +54,10 @@ const fixture = `
     SELECT EXISTS (SELECT 1 FROM public.super_admins WHERE user_id = auth.uid()) $$;
   CREATE FUNCTION public.sandbox_org_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$ SELECT '{}'::uuid[] $$;
   CREATE FUNCTION public.can_access_building(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
+  CREATE FUNCTION public.is_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+  -- Tài khoản demo theo cấu hình test (test.demo_users, phân cách dấu phẩy).
+  CREATE FUNCTION public.demo_user_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$
+    SELECT COALESCE(string_to_array(NULLIF(current_setting('test.demo_users', true), ''), ',')::uuid[], '{}'::uuid[]) $$;
   -- authorized_scope_v3 thật luôn trả đúng một dòng (không quyền ⇒ org_wide=false, building_ids rỗng).
   CREATE TABLE app_private.test_grants(user_id uuid, org uuid, permission text, org_wide boolean, building_ids uuid[]);
   CREATE FUNCTION app_private.authorized_scope_v3(p_permission_key text, p_org uuid)
@@ -112,6 +122,30 @@ const fixture = `
     income_expense_id uuid NOT NULL REFERENCES public.income_expenses(id) ON DELETE CASCADE,
     income_expense_type_id uuid, quantity numeric NOT NULL DEFAULT 1, unit_price numeric NOT NULL DEFAULT 0, amount numeric);
   CREATE TABLE public.reservation_deposit_settlements(source_voucher_id uuid);
+  -- Đợt giữ chỗ của #499 (bảng tối thiểu).
+  CREATE TABLE public.customers(id uuid PRIMARY KEY, full_name text);
+  CREATE TABLE public.room_reservations(id uuid PRIMARY KEY, organization_id uuid, building_id uuid, room_id uuid, customer_id uuid,
+    status text, customer_hint text, created_at timestamptz NOT NULL DEFAULT now());
+  CREATE TABLE public.room_next_claims(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid, room_id uuid, reservation_id uuid, status text);
+  CREATE TABLE public.reservation_receipts(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid, reservation_id uuid,
+    source_voucher_id uuid, source_item_id uuid);
+  CREATE FUNCTION app_private.org_timezone_v1(uuid) RETURNS text LANGUAGE sql STABLE AS $$ SELECT 'Asia/Ho_Chi_Minh' $$;
+  -- Có mặt để tiền kiểm biết #499 đã áp (thân thật không dùng ở đây).
+  CREATE FUNCTION app_private.attach_deposit_income_v1(uuid, jsonb, uuid, uuid[]) RETURNS uuid LANGUAGE sql AS $$ SELECT NULL::uuid $$;
+  -- Mô phỏng bind_unlinked_deposit_income của #499: trigger hoãn trên dòng phiếu, từ chối cọc ≤ 0 bằng câu 22023. Luật đợt 3
+  -- phải chạy TRƯỚC nó (người dùng thấy câu «Phiếu cọc phải có số tiền lớn hơn 0; …»).
+  CREATE FUNCTION app_private.bind_unlinked_deposit_income_v1() RETURNS trigger LANGUAGE plpgsql AS $$
+  DECLARE v public.income_expenses%ROWTYPE;
+  BEGIN
+    SELECT * INTO v FROM public.income_expenses WHERE id = NEW.income_expense_id;
+    IF v.id IS NULL OR v.type <> 'INCOME' OR v.deleted_at IS NOT NULL OR v.contract_id IS NOT NULL OR v.approval_status = 'CANCELLED' THEN RETURN NULL; END IF;
+    IF (SELECT COALESCE(sum(i.amount), 0) FROM public.income_expense_items i JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
+        WHERE i.income_expense_id = v.id AND t.is_deposit) <= 0 AND EXISTS (SELECT 1 FROM public.income_expense_items i
+        JOIN public.income_expense_types t ON t.id = i.income_expense_type_id WHERE i.income_expense_id = v.id AND t.is_deposit) THEN
+      RAISE EXCEPTION 'Phiếu % thiếu dòng cọc hợp lệ', v.code USING ERRCODE = '22023';
+    END IF;
+    RETURN NULL;
+  END $$;
   CREATE FUNCTION public.auto_calc_item_amount() RETURNS trigger LANGUAGE plpgsql AS $$
   BEGIN NEW.amount := round(NEW.quantity * NEW.unit_price, 2); RETURN NEW; END $$;
   CREATE TRIGGER trigger_auto_calc_item_amount BEFORE INSERT OR UPDATE ON public.income_expense_items
@@ -158,8 +192,8 @@ $body$;
   -- được dùng ⇒ test thấy số ngày lấy theo ai), có tin pass ⇒ pass, còn lại ⇒ rented.
   CREATE FUNCTION app_private.room_sale_workflow_fact_v1(p_room_id uuid, p_organization_id uuid, p_room_status text, p_has_pass boolean, p_soon_days integer)
   RETURNS TABLE(status_public text, sale_state text, avail_date date, sale_today date, expected_ready_on date) LANGUAGE sql STABLE AS $$
-    SELECT CASE WHEN public.room_has_holding_deposit(p_room_id) THEN 'rented' WHEN p_has_pass THEN 'pass' WHEN p_room_status='AVAILABLE' THEN 'free' WHEN p_room_status='NOTICE' THEN 'soon' ELSE 'rented' END,
-      CASE WHEN public.room_has_holding_deposit(p_room_id) THEN 'RENTED' WHEN p_has_pass THEN 'PASS' WHEN p_room_status='AVAILABLE' THEN 'READY' WHEN p_room_status='NOTICE' THEN 'NOTICE' ELSE 'RENTED' END,
+    SELECT CASE WHEN public.room_has_holding_deposit(p_room_id) OR EXISTS (SELECT 1 FROM public.room_next_claims c WHERE c.room_id = p_room_id AND c.status = 'LIVE') THEN 'rented' WHEN p_has_pass THEN 'pass' WHEN p_room_status='AVAILABLE' THEN 'free' WHEN p_room_status='NOTICE' THEN 'soon' ELSE 'rented' END,
+      CASE WHEN public.room_has_holding_deposit(p_room_id) OR EXISTS (SELECT 1 FROM public.room_next_claims c WHERE c.room_id = p_room_id AND c.status = 'LIVE') THEN 'RENTED' WHEN p_has_pass THEN 'PASS' WHEN p_room_status='AVAILABLE' THEN 'READY' WHEN p_room_status='NOTICE' THEN 'NOTICE' ELSE 'RENTED' END,
       CASE WHEN p_room_status='NOTICE' THEN DATE '2026-01-01' + p_soon_days END, DATE '2026-01-01', NULL::date $$;
   CREATE FUNCTION app_private.room_sale_workflow_base_fact_v1(p_room_id uuid, p_organization_id uuid, p_room_status text, p_has_pass boolean, p_soon_days integer)
   RETURNS TABLE(status_public text, sale_state text, avail_date date, sale_today date, expected_ready_on date) LANGUAGE sql STABLE AS $$
@@ -191,7 +225,7 @@ $body$;
 `;
 
 const V = { COC: id(701), H1: id(702), H2: id(703), CU: id(704), HUY: id(705), XOA: id(706), GAN_HD: id(707), QUYET_TOAN: id(708),
-  CHI: id(709), DEMO: id(710) };
+  CHI: id(709), DEMO: id(710), D1: id(711), D2: id(712) };
 const seed = `
   INSERT INTO public.organizations(id) VALUES ('${ORG}'),('${ORG_B}');
   INSERT INTO public.organization_memberships VALUES ('${CHU}','${ORG}','ACTIVE'),('${SALE}','${ORG}','ACTIVE'),('${CHU}','${ORG_B}','ACTIVE');
@@ -207,7 +241,9 @@ const seed = `
     ('${P_CU}','${ORG}','${TOA}',2,'201','201',25,5000000,5000000,2,'[]','[]',NULL,NULL,'1PN','OCCUPIED'),
     ('${P_THUE}','${ORG}','${TOA}',2,'202','202',25,5000000,5000000,2,'[]','[]',NULL,NULL,'1PN','OCCUPIED'),
     ('${P_THU}','${ORG}','${TOA}',3,'301','301',18,3500000,3500000,1,'[]','[]',NULL,NULL,'Studio','AVAILABLE'),
-    ('${P_B}','${ORG_B}','${TOA_B}',1,'B101','B101',30,6000000,6000000,3,'[]','[]',NULL,NULL,NULL,'AVAILABLE');
+    ('${P_B}','${ORG_B}','${TOA_B}',1,'B101','B101',30,6000000,6000000,3,'[]','[]',NULL,NULL,NULL,'AVAILABLE'),
+    ('${P_DOT}','${ORG}','${TOA}',4,'401','401',20,4000000,4000000,2,'[]','[]',NULL,NULL,'Studio','AVAILABLE'),
+    ('${P_DOT0}','${ORG}','${TOA}',4,'402','402',20,4000000,4000000,2,'[]','[]',NULL,NULL,'Studio','AVAILABLE');
   INSERT INTO public.public_room_settings(owner_id, organization_id, soon_days) VALUES ('${CHU}','${ORG}',16);
   INSERT INTO public.public_room_share_tokens(token, owner_id, label, organization_id) VALUES ('demo','${CHU}','Demo','${ORG}');
   INSERT INTO public.tenants VALUES ('${KHACH}','Nguyễn Văn Khách');
@@ -233,6 +269,22 @@ const seed = `
   -- Bộ dữ liệu mẫu Demo (20260812010000): dòng cọc chỉ ghi amount, unit_price mặc định 0 ⇒ trigger tính lại amount = 0.
   INSERT INTO public.income_expense_items(income_expense_id, income_expense_type_id, amount) VALUES ('${V.DEMO}','${T_COC}',6000000);
   INSERT INTO public.reservation_deposit_settlements VALUES ('${V.QUYET_TOAN}');
+  -- Đợt giữ chỗ (#499) phòng 401: hai lần thu, người gửi khác nhau; phiếu thứ ba đã huỷ không tính. Đợt cũ phòng 402 không
+  -- có phiếu (giữ chỗ 0 đ thời kỳ trước), khách trong danh bạ.
+  INSERT INTO public.customers VALUES ('${KHACH_DB}','Khách Danh Bạ');
+  INSERT INTO public.room_reservations(id, organization_id, building_id, room_id, customer_id, status, customer_hint, created_at) VALUES
+    ('${DOT}','${ORG}','${TOA}','${P_DOT}',NULL,'HOLD','Chị Hoa','2026-11-10T02:00:00Z'),
+    ('${DOT0}','${ORG}','${TOA}','${P_DOT0}','${KHACH_DB}','HOLD',NULL,'2026-11-01T18:00:00Z');
+  INSERT INTO public.room_next_claims(organization_id, room_id, reservation_id, status) VALUES
+    ('${ORG}','${P_DOT}','${DOT}','LIVE'),('${ORG}','${P_DOT0}','${DOT0}','LIVE');
+  INSERT INTO public.income_expenses(id, organization_id, code, type, room_id, contract_id, payer_name, voucher_date, approval_status, created_at) VALUES
+    ('${V.D1}','${ORG}','PT2611101','INCOME','${P_DOT}',NULL,'Chị Hoa','2026-11-10','APPROVED','2026-11-10T02:00:00Z'),
+    ('${V.D2}','${ORG}','PT2611102','INCOME','${P_DOT}',NULL,'Anh Tú','2026-11-15','UNAPPROVED','2026-11-15T02:00:00Z'),
+    ('${id(713)}','${ORG}','PT2611099','INCOME','${P_DOT}',NULL,'Đã huỷ','2026-11-09','CANCELLED','2026-11-09T02:00:00Z');
+  INSERT INTO public.income_expense_items(income_expense_id, income_expense_type_id, quantity, unit_price) VALUES
+    ('${V.D1}','${T_COC}',1,1000000),('${V.D2}','${T_COC}',1,2000000),('${id(713)}','${T_COC}',1,500000);
+  INSERT INTO public.reservation_receipts(organization_id, reservation_id, source_voucher_id)
+    SELECT '${ORG}','${DOT}',id FROM public.income_expenses WHERE id IN ('${V.D1}','${V.D2}','${id(713)}');
 `;
 
 async function freshDb(): Promise<PGlite> {
@@ -241,12 +293,27 @@ async function freshDb(): Promise<PGlite> {
   await db.exec(seed);
   return db;
 }
+// Trigger mô phỏng #499 gắn SAU dữ liệu mẫu (như production: phiếu Demo 0 đ có trước #499).
+const bindTriggerSql = `CREATE CONSTRAINT TRIGGER bind_unlinked_deposit_income AFTER INSERT OR UPDATE ON public.income_expense_items
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app_private.bind_unlinked_deposit_income_v1();`;
+/** CSDL ở trạng thái production trước đợt 3: đợt 2 rồi vá has_deposit_hold của #499. */
+async function productionLikeDb(): Promise<PGlite> {
+  const db = await freshDb();
+  await db.exec(dot2Sql);
+  await db.exec(pr499InventorySql);
+  await db.exec(bindTriggerSql);
+  return db;
+}
+const readerMd5 = async (db: PGlite) => Object.fromEntries((await db.query<{ fn: string; md5: string }>(
+  `SELECT p.oid::regprocedure::text fn, md5(replace(p.prosrc, chr(13), '')) md5 FROM pg_proc p
+    WHERE p.oid IN ('public.get_sale_room_inventory_v1(uuid,uuid,uuid)'::regprocedure, 'public.get_my_available_rooms(uuid)'::regprocedure)`)).rows
+  .map(r => [r.fn, r.md5]));
 async function asUser<T>(db: PGlite, uid: string | null, text: string, params: unknown[] = []) {
   await db.query("SELECT set_config('test.uid', $1, false)", [uid ?? '']);
   return db.query<T>(text, params);
 }
-type Hold = { voucher_id: string; code: string; voucher_date: string; payer_name: string | null; held_days: number;
-  voucher_count: number; room_occupied: boolean };
+type Hold = { source: 'hold' | 'voucher'; hold_id: string | null; voucher_id: string | null; code: string | null; codes: string[];
+  voucher_date: string; payer_name: string | null; held_days: number; voucher_count: number; room_occupied: boolean };
 type Room = Record<string, unknown> & { id: string; status_public: string; deposit_hold?: Hold | null };
 const inventory = async (db: PGlite, uid = SALE) =>
   (await asUser<{ p: { rooms: Room[] } }>(db, uid, 'SELECT public.get_sale_room_inventory_v1($1) p', [ORG])).rows[0].p;
@@ -275,28 +342,39 @@ const expectBlocked = async (db: PGlite, write: Promise<unknown>) => {
 
 let db: PGlite;
 beforeAll(async () => {
-  db = await freshDb();
-  await db.exec(dot2Sql);
+  db = await productionLikeDb();
   await db.exec(behaviourSql);
 }, 120_000);
 afterAll(async () => { await db?.close(); });
 beforeEach(async () => { await db.exec('RESET ROLE'); });
 
 describe('khối «đang giữ bằng cọc» ở hai reader nội bộ (lỗi 21)', () => {
-  it('bảng nội bộ: phòng giữ bằng phiếu cọc chờ HĐ ⇒ rented kèm mã phiếu, ngày lập, người nộp, số ngày đã giữ', async () => {
-    const room = roomOf(await inventory(db), P_COC);
-    expect(room?.status_public).toBe('rented');
-    expect(room?.deposit_hold).toEqual({ voucher_id: V.COC, code: 'PT2611001', voucher_date: '2026-11-05', payer_name: 'Chị Lan',
-      held_days: 20, voucher_count: 1, room_occupied: false });
+  it('đợt giữ chỗ (#499): người gửi phiếu đầu, ngày nhận phiếu đầu, các mã phiếu còn hiệu lực, số ngày giữ; giữ has_deposit_hold', async () => {
+    const room = roomOf(await inventory(db), P_DOT);
+    expect(room).toMatchObject({ status_public: 'rented', has_deposit_hold: true });
+    expect(room?.deposit_hold).toEqual({ source: 'hold', hold_id: DOT, voucher_id: V.D1, code: 'PT2611101', codes: ['PT2611101', 'PT2611102'],
+      voucher_date: '2026-11-10', payer_name: 'Chị Hoa', held_days: 15, voucher_count: 2, room_occupied: false });
   });
 
-  it('nhiều phiếu cọc chờ: lấy phiếu CŨ NHẤT, đếm số phiếu; người nộp trống ⇒ tên khách của phiếu', async () => {
-    expect(roomOf(await inventory(db), P_HAI)?.deposit_hold).toEqual({ voucher_id: V.H1, code: 'PT2611002', voucher_date: '2026-11-01',
-      payer_name: 'Nguyễn Văn Khách', held_days: 24, voucher_count: 2, room_occupied: false });
+  it('đợt cũ không có phiếu: ngày lập đợt theo múi giờ công ty, người gửi lấy khách trong danh bạ', async () => {
+    expect(roomOf(await inventory(db), P_DOT0)?.deposit_hold).toEqual({ source: 'hold', hold_id: DOT0, voucher_id: null, code: null, codes: [],
+      voucher_date: '2026-11-02', payer_name: 'Khách Danh Bạ', held_days: 23, voucher_count: 0, room_occupied: false });
+  });
+
+  it('phiếu cọc chưa nối đợt: lấy theo phiếu (mã, ngày lập, người nộp, số ngày)', async () => {
+    const room = roomOf(await inventory(db), P_COC);
+    expect(room).toMatchObject({ status_public: 'rented', has_deposit_hold: false });
+    expect(room?.deposit_hold).toEqual({ source: 'voucher', hold_id: null, voucher_id: V.COC, code: 'PT2611001', codes: ['PT2611001'],
+      voucher_date: '2026-11-05', payer_name: 'Chị Lan', held_days: 20, voucher_count: 1, room_occupied: false });
+  });
+
+  it('nhiều phiếu treo chưa nối: lấy phiếu CŨ NHẤT, đếm số phiếu; người nộp trống ⇒ tên khách của phiếu', async () => {
+    expect(roomOf(await inventory(db), P_HAI)?.deposit_hold).toMatchObject({ source: 'voucher', voucher_id: V.H1, code: 'PT2611002',
+      codes: ['PT2611002', 'PT2611003'], voucher_date: '2026-11-01', payer_name: 'Nguyễn Văn Khách', held_days: 24, voucher_count: 2 });
   });
 
   it('phòng còn khách ở mà có phiếu cọc treo (ca 102LVT·104) ⇒ khối có room_occupied = true', async () => {
-    expect(roomOf(await inventory(db), P_CU)?.deposit_hold).toMatchObject({ code: 'PT2605004', held_days: 182, room_occupied: true });
+    expect(roomOf(await inventory(db), P_CU)?.deposit_hold).toMatchObject({ source: 'voucher', code: 'PT2605004', held_days: 182, room_occupied: true });
   });
 
   it('phòng trống, phòng đã thuê không có cọc ⇒ không có khối', async () => {
@@ -309,23 +387,29 @@ describe('khối «đang giữ bằng cọc» ở hai reader nội bộ (lỗi 2
     expect(roomOf(await inventory(db), P_THU)).toMatchObject({ status_public: 'free', deposit_hold: null });
     expect(await holdOf(db, P_THU)).toBeNull();
     expect(await holdOf(db, P_COC, ORG_B)).toBeNull(); // công ty khác
+    expect(await holdOf(db, P_DOT, ORG_B)).toBeNull();
   });
 
-  it('«Phòng trống» (get_my_available_rooms) trả cùng khối như bảng nội bộ', async () => {
+  it('«Phòng trống» (get_my_available_rooms) trả cùng khối như bảng nội bộ, giữ has_deposit_hold', async () => {
     const mine = await myRooms(db);
     const inv = await inventory(db);
-    for (const room of [P_COC, P_HAI, P_CU, P_TRONG, P_THUE]) expect(roomOf(mine, room)?.deposit_hold, room).toEqual(roomOf(inv, room)?.deposit_hold);
+    for (const room of [P_DOT, P_DOT0, P_COC, P_HAI, P_CU, P_TRONG, P_THUE]) {
+      expect(roomOf(mine, room)?.deposit_hold, room).toEqual(roomOf(inv, room)?.deposit_hold);
+      expect(roomOf(mine, room)?.has_deposit_hold, room).toEqual(roomOf(inv, room)?.has_deposit_hold);
+    }
   });
 
-  it('link công khai, bot Zalo, Hermes: không có khối, không lộ tên người nộp hay mã phiếu', async () => {
+  it('link công khai, bot Zalo, Hermes: không có khối, không lộ tên người gửi hay mã phiếu', async () => {
     const pub = (await asUser<{ p: { rooms: Room[] } }>(db, null, 'SELECT public.get_public_available_rooms($1) p', ['demo'])).rows[0].p;
     expect(roomOf(pub, P_COC)?.status_public).toBe('rented');
+    expect(roomOf(pub, P_DOT)?.status_public).toBe('rented');
     const botPayload = (await asUser<{ p: unknown }>(db, null, 'SELECT app_private.public_sale_rooms_payload_v1($1) p', [ORG])).rows[0].p;
     const hermes = (await asUser<{ p: unknown }>(db, null, 'SELECT public.hermes_available_rooms_page_v1($1::jsonb, $2::uuid) p',
       [JSON.stringify({ organizationId: ORG, buildingIds: [TOA] }), ORG])).rows[0].p;
     for (const payload of [pub, botPayload, hermes]) {
       const text = JSON.stringify(payload);
-      for (const secret of ['deposit_hold', 'Chị Lan', 'Nguyễn Văn Khách', 'PT2611001', 'Khách cũ']) expect(text).not.toContain(secret);
+      for (const secret of ['deposit_hold', 'Chị Lan', 'Chị Hoa', 'Anh Tú', 'Khách Danh Bạ', 'Nguyễn Văn Khách', 'PT2611001', 'PT2611101', 'Khách cũ'])
+        expect(text).not.toContain(secret);
     }
   });
 });
@@ -433,7 +517,7 @@ describe('catalog: trigger, quyền gọi', () => {
   it('hai constraint trigger hoãn tới COMMIT, đúng hàm; hàm nội bộ không vai API nào gọi được', async () => {
     const triggers = (await db.query<{ tgname: string; d: boolean; i: boolean }>(
       "SELECT tgname, tgdeferrable d, tginitdeferred i FROM pg_trigger WHERE tgfoid='app_private.guard_deposit_voucher_amount_v1()'::regprocedure ORDER BY 1")).rows;
-    expect(triggers).toEqual([{ tgname: 'zz_ie_deposit_amount_positive', d: true, i: true }, { tgname: 'zz_ie_item_deposit_amount_positive', d: true, i: true }]);
+    expect(triggers).toEqual([{ tgname: 'a1_ie_deposit_amount_positive', d: true, i: true }, { tgname: 'a1_ie_item_deposit_amount_positive', d: true, i: true }]);
     for (const fn of ['app_private.guard_deposit_voucher_amount_v1()', 'app_private.room_deposit_hold_json_v1(uuid,uuid)']) {
       for (const role of ['anon', 'authenticated', 'service_role']) expect(await can(role, fn), `${role} ${fn}`).toBe(false);
     }
@@ -450,51 +534,71 @@ describe('tiền kiểm và hậu kiểm md5 của file migration', () => {
     if (!m) throw new Error(name);
     return createHash('md5').update(m[1]).digest('hex');
   };
-  it('md5 ghim ở hậu kiểm là thân của file; tiền kiểm nhận thân của file đợt 2 và thân của file này', () => {
+  const bodyOf = (text: string, name: string) =>
+    new RegExp(`CREATE OR REPLACE FUNCTION ${name.replace('.', '\\.')}\\([\\s\\S]*?AS \\$fn\\$([\\s\\S]*?)\\$fn\\$`).exec(text)![1];
+
+  it('md5 ghim ở hậu kiểm là thân của file; tiền kiểm ghim đúng thân production (đợt 2 + vá #499) và thân của file này', async () => {
     const post = /DO \$sau\$[\s\S]*?\$sau\$;/.exec(sql)![0];
     const pins = [...post.matchAll(/\('((?:public|app_private)\.\w+)\([^']*\)', '([0-9a-f]{32})'\)/g)];
     expect(pins.length).toBe(4);
     for (const [, name, pin] of pins) expect(pin, name).toBe(bodyMd5(sql, name));
-    const pre = /DO \$truoc\$[\s\S]*?\$truoc\$;/.exec(sql)![0];
-    const dot2 = readFileSync(DOT2, 'utf8').replace(/\r\n/g, '\n');
-    for (const name of ['public.get_sale_room_inventory_v1', 'public.get_my_available_rooms']) {
-      expect(pre.includes(`'${bodyMd5(dot2, name)}', '${bodyMd5(sql, name)}'`), name).toBe(true);
-    }
-  });
-
-  it('thân hai reader = thân đợt 2 + đúng một dòng deposit_hold', () => {
-    const dot2 = readFileSync(DOT2, 'utf8').replace(/\r\n/g, '\n');
-    const fn = (text: string, name: string) =>
-      new RegExp(`CREATE OR REPLACE FUNCTION ${name.replace('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`).exec(text)![0];
-    const inv = fn(sql, 'public.get_sale_room_inventory_v1');
-    expect(inv.replace("      CASE WHEN fact.status_public='rented' THEN app_private.room_deposit_hold_json_v1(r.organization_id,r.id) END AS deposit_hold,\n", ''))
-      .toBe(fn(dot2, 'public.get_sale_room_inventory_v1'));
-    const mine = fn(sql, 'public.get_my_available_rooms');
-    expect(mine.replace("AS exit_hold,\n      CASE WHEN fact.status_public = 'rented' THEN app_private.room_deposit_hold_json_v1(rm.organization_id,rm.id) END AS deposit_hold\n", 'AS exit_hold\n'))
-      .toBe(fn(dot2, 'public.get_my_available_rooms'));
-  });
-
-  it('chưa áp đợt 2 ⇒ dừng ở tiền kiểm (thiếu phụ thuộc), không tạo trigger', async () => {
-    const other = await freshDb();
+    // Dựng lại đúng chuỗi production trong PGlite (đợt 2 rồi khối vá của #499): md5 phải là md5 đã đo trên production.
+    const other = await productionLikeDb();
     try {
-      await expect(other.exec(sql)).rejects.toThrow(/thiếu phụ thuộc/);
-      expect((await other.query("SELECT 1 FROM pg_trigger WHERE tgname LIKE 'zz_ie%deposit_amount_positive'")).rows).toHaveLength(0);
+      const live = await readerMd5(other);
+      expect(live).toEqual({ 'get_sale_room_inventory_v1(uuid,uuid,uuid)': '0e3e37a193c5db71f34089c7fcb6f789',
+        'get_my_available_rooms(uuid)': '7a25503d7a27eff1c424e1870f132ef3' });
+      const pre = /DO \$truoc\$[\s\S]*?\$truoc\$;/.exec(sql)![0];
+      expect(pre).toContain(`'0e3e37a193c5db71f34089c7fcb6f789', '${bodyMd5(sql, 'public.get_sale_room_inventory_v1')}'`);
+      expect(pre).toContain(`'7a25503d7a27eff1c424e1870f132ef3', '${bodyMd5(sql, 'public.get_my_available_rooms')}'`);
     } finally { await other.close(); }
   });
 
-  it('thân đang chạy khác thân đã rà (reader hoặc room_has_holding_deposit) ⇒ 55000, không ghi gì', async () => {
+  it('thân hai reader = thân production (đợt 2 + has_deposit_hold của #499) + đúng một dòng deposit_hold', async () => {
+    const other = await productionLikeDb();
+    try {
+      const src = async (sig: string) => (await other.query<{ s: string }>('SELECT prosrc s FROM pg_proc WHERE oid = $1::regprocedure', [sig])).rows[0].s;
+      expect(bodyOf(sql, 'public.get_sale_room_inventory_v1')
+        .replace("      CASE WHEN fact.status_public='rented' THEN app_private.room_deposit_hold_json_v1(r.organization_id,r.id) END AS deposit_hold,\n", ''))
+        .toBe(await src('public.get_sale_room_inventory_v1(uuid,uuid,uuid)'));
+      expect(bodyOf(sql, 'public.get_my_available_rooms')
+        .replace("AS has_deposit_hold,\n      CASE WHEN fact.status_public = 'rented' THEN app_private.room_deposit_hold_json_v1(rm.organization_id,rm.id) END AS deposit_hold\n", 'AS has_deposit_hold\n'))
+        .toBe(await src('public.get_my_available_rooms(uuid)'));
+    } finally { await other.close(); }
+  });
+
+  it('chưa áp #499 (hoặc đợt 2) ⇒ dừng ở tiền kiểm (thiếu phụ thuộc), không tạo trigger', async () => {
     const other = await freshDb();
     try {
+      await other.exec('DROP FUNCTION app_private.attach_deposit_income_v1(uuid,jsonb,uuid,uuid[])');
       await other.exec(dot2Sql);
+      await expect(other.exec(sql)).rejects.toThrow(/thiếu phụ thuộc/);
+      expect((await other.query("SELECT 1 FROM pg_trigger WHERE tgname LIKE 'a1_ie%deposit_amount_positive'")).rows).toHaveLength(0);
+    } finally { await other.close(); }
+  });
+
+  it('thân đang chạy khác thân đã rà ⇒ 55000, không ghi gì: reader chưa có vá #499 / room_has_holding_deposit lạ', async () => {
+    const other = await freshDb();
+    try {
+      await other.exec(dot2Sql); // thiếu khối vá has_deposit_hold của #499
+      await expect(other.exec(sql)).rejects.toThrow(/get_sale_room_inventory_v1\(uuid,uuid,uuid\) KHÁC thân đã rà/);
+      await other.exec(pr499InventorySql);
       await other.exec("CREATE OR REPLACE FUNCTION public.room_has_holding_deposit(p_room_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$");
       await expect(other.exec(sql)).rejects.toThrow(/room_has_holding_deposit\(uuid\) KHÁC thân đã rà/);
       expect((await other.query("SELECT 1 FROM pg_proc WHERE proname='guard_deposit_voucher_amount_v1'")).rows).toHaveLength(0);
     } finally { await other.close(); }
   });
 
-  it('chạy lại CẢ FILE sau khi đã áp: tiền kiểm nhận thân của file, hậu kiểm đạt, trigger không nhân đôi', async () => {
+  it('chạy lại CẢ FILE sau khi đã áp: tiền kiểm nhận thân của file, hậu kiểm (thân, has_deposit_hold, thứ tự trigger, ACL) đạt', async () => {
     await db.exec(sql);
-    expect((await db.query("SELECT 1 FROM pg_trigger WHERE tgname LIKE 'zz_ie%deposit_amount_positive'")).rows).toHaveLength(2);
-    expect(roomOf(await inventory(db), P_COC)?.deposit_hold).toMatchObject({ code: 'PT2611001' });
+    expect((await db.query("SELECT 1 FROM pg_trigger WHERE tgname LIKE 'a1_ie%deposit_amount_positive'")).rows).toHaveLength(2);
+    expect(roomOf(await inventory(db), P_DOT)?.deposit_hold).toMatchObject({ source: 'hold', code: 'PT2611101' });
+  });
+
+  it('khối vá của #499 chạy lại sau file này (thứ tự replay khác production) vẫn bỏ qua vì đã có has_deposit_hold', async () => {
+    await db.exec(pr499InventorySql);
+    const live = await readerMd5(db);
+    expect(live['get_sale_room_inventory_v1(uuid,uuid,uuid)']).toBe(bodyMd5(sql, 'public.get_sale_room_inventory_v1'));
+    expect(live['get_my_available_rooms(uuid)']).toBe(bodyMd5(sql, 'public.get_my_available_rooms'));
   });
 });

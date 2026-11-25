@@ -45,8 +45,12 @@ export interface RoomExitHoldInfo {
  * get_sale_room_inventory_v1 / get_my_available_rooms). Phiếu cũ nhất của phòng; `roomOccupied` = phòng còn khách ở.
  */
 export interface RoomDepositHoldInfo {
-  voucherId: string;
+  /** 'hold' = đợt giữ chỗ đang mở (#499); 'voucher' = phiếu cọc treo chưa nối đợt (dữ liệu cũ). */
+  source: 'hold' | 'voucher';
+  holdId: string | null;
+  voucherId: string | null;
   code: string | null;
+  codes: string[];
   voucherDate: string;
   payerName: string | null;
   heldDays: number;

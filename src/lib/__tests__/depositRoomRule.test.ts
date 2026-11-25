@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Resolver } from 'react-hook-form';
 import { DEPOSIT_ROOM_REQUIRED_MESSAGE, depositTypeIdSet, needsDepositRoom, withDepositRoomRule, withFieldErrors } from '../depositRoomRule';
-import { DEPOSIT_AMOUNT_REQUIRED_MESSAGE, DEPOSIT_AMOUNT_SERVER_MESSAGE } from '../incomeExpenseValidation';
+import { DEPOSIT_AMOUNT_REQUIRED_MESSAGE, DEPOSIT_AMOUNT_SERVER_MESSAGE, DEPOSIT_INCOME_LINE_INVALID_MESSAGE } from '../incomeExpenseValidation';
 import { friendlyError } from '../friendlyError';
 import { VOUCHER_ERROR_RULES } from '../voucherErrorRules';
 import { voucherFailureMessage } from '../voucherFeedback';
@@ -113,8 +113,14 @@ describe('máy chủ chặn phiếu cọc 0 đ (trigger zz_ie_item_deposit_amoun
     expect(fb.description).toBe(DEPOSIT_AMOUNT_REQUIRED_MESSAGE);
     expect(voucherFailureMessage(loiMayChu, 'tạo phiếu')).toBe(DEPOSIT_AMOUNT_REQUIRED_MESSAGE);
   });
+  it('câu 22023 của #499 («Phiếu PTxxxx thiếu dòng cọc hợp lệ», mã phiếu đã bị huỷ cùng giao dịch) ⇒ câu dễ hiểu, không nêu mã', () => {
+    for (const message of ['Phiếu PT2611488 thiếu dòng cọc hợp lệ', 'Phiếu  thiếu dòng cọc hợp lệ', 'Phiếu PT2611488 chưa có dòng tiền cọc']) {
+      expect(voucherFailureMessage({ code: '22023', message }, 'tạo phiếu')).toBe(DEPOSIT_INCOME_LINE_INVALID_MESSAGE);
+    }
+    expect(voucherFailureMessage({ code: '22023', message: 'Phiếu X thiếu dòng cọc hợp lệ khác' }, 'tạo phiếu')).not.toBe(DEPOSIT_INCOME_LINE_INVALID_MESSAGE);
+  });
   it('migration raise ĐÚNG DEPOSIT_AMOUNT_SERVER_MESSAGE với 23514', () => {
-    const sql = readFileSync('supabase/migrations/20261125094121_coc_thu_chi_chan_0d_va_khoi_dang_giu_bang_coc.sql', 'utf8');
+    const sql = readFileSync('supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql', 'utf8');
     expect(sql).toContain(`RAISE EXCEPTION '${DEPOSIT_AMOUNT_SERVER_MESSAGE}'`);
     expect(sql).toContain("USING ERRCODE = '23514'");
   });

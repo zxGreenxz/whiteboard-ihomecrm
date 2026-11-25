@@ -44,7 +44,7 @@ async function installLiveSaleReader() {
   // Đo định nghĩa SỐNG: «Phòng trống» theo công ty (đợt 2 Sale phòng). Bản () trong các file lịch sử chỉ để chúng chạy lại.
   expect('supabase/migrations/' + liveDefinitionOf('public.get_my_available_rooms').file)
     // Đợt 3 Sale phòng: bản sống thêm khoá deposit_hold (khối «đang giữ bằng cọc», đo ở cocThuChiMigration.test.ts).
-    .toBe('supabase/migrations/20261125094121_coc_thu_chi_chan_0d_va_khoi_dang_giu_bang_coc.sql');
+    .toBe('supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql');
 }
 
 const org = '00000000-0000-4000-8000-000000000001';

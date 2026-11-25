@@ -705,43 +705,51 @@ it('D5-15 — chỉ đổi cách viết giá (4250000 ⇄ 4.250.000) không thà
   expect(state.save).not.toHaveBeenCalled();
 });
 
-// Sale phòng đợt 3 (lỗi 21): phòng giữ bằng phiếu cọc chờ hợp đồng ghi «Đã cọc · người nộp · N ngày»; quá 14 ngày tô cảnh
-// báo; phòng chỉ có cọc giữ chỗ (chưa ai ở) không có Báo pass / Báo sắp trống.
-const depositRow = (hold: Partial<RoomDepositHoldInfo> = {}, id = 'room-c', buildingId = 'building-b') => {
+// Sale phòng đợt 3 (lỗi 21): phòng giữ bằng cọc chờ hợp đồng ghi «Đã cọc · người gửi · N ngày» (đợt giữ chỗ của #499 hoặc
+// phiếu treo chưa nối); quá 14 ngày tô cảnh báo; phòng chỉ có cọc giữ chỗ (chưa ai ở) không có Báo pass / Báo sắp trống.
+const depositRow = (hold: Partial<RoomDepositHoldInfo> = {}, id = 'room-c', buildingId = 'building-b', hasDepositHold = true) => {
   const row = room(id, buildingId, 'rented');
-  row.room.depositHold = { voucherId: '33333333-3333-4333-8333-333333333333', code: 'PT2611443', voucherDate: '2026-11-22',
-    payerName: 'Chị Lan', heldDays: 3, voucherCount: 1, roomOccupied: false, ...hold };
-  row.room.saleFact = roomSaleFacts({ status: 'rented', depositHold: row.room.depositHold });
+  row.room.depositHold = { source: 'hold', holdId: '44444444-4444-4444-8444-444444444444', voucherId: '33333333-3333-4333-8333-333333333333',
+    code: 'PT2611443', codes: ['PT2611443'], voucherDate: '2026-11-22', payerName: 'Chị Lan', heldDays: 3, voucherCount: 1, roomOccupied: false, ...hold };
+  row.room.hasDepositHold = hasDepositHold;
+  row.room.saleFact = roomSaleFacts({ status: 'rented', depositHold: row.room.depositHold, hasDepositHold });
   return row;
 };
 
-it.each([false, true])('U40 — Sale: phòng đã cọc ghi rõ người nộp, số ngày, mã phiếu; không Báo pass / Báo sắp trống / Cọc, mobile=%s', mobile => {
-  state.query.data!.rooms = [depositRow(), room('room-b', 'building-b', 'rented')];
+it.each([false, true])('U40 — Sale: đợt giữ chỗ ghi rõ người gửi, số ngày, mã phiếu; không Báo pass / Báo sắp trống; vẫn Cọc bổ sung (#499), mobile=%s', mobile => {
+  state.query.data!.rooms = [depositRow({ codes: ['PT2611443', 'PT2611450'], voucherCount: 2 }), room('room-b', 'building-b', 'rented')];
   render(<QuickRoomBoard mobile={mobile} />); showAllStatuses(mobile);
   expect(screen.getByText('Đã cọc · Chị Lan · 3 ngày')).toBeTruthy();
-  expect(screen.getByText('Phiếu PT2611443 · lập 22/11/2026')).toBeTruthy();
+  expect(screen.getByText('Phiếu PT2611443, PT2611450 · nhận đầu 22/11/2026')).toBeTruthy();
   // Phòng thuê thường vẫn ghi như cũ và vẫn báo trả / báo pass được.
   expect(screen.getByText('Đã thuê / giữ chỗ', { ignore: 'option' })).toBeTruthy();
   expect(screen.getAllByRole('button', { name: 'Báo sắp trống' })).toHaveLength(1);
   expect(screen.getAllByRole('button', { name: 'Báo pass' })).toHaveLength(1);
-  expect(screen.queryByRole('button', { name: 'Cọc' })).toBeNull();
+  // #499: phòng đang giữ chỗ vẫn nhận cọc bổ sung vào cùng đợt.
+  expect(screen.getAllByRole('button', { name: 'Cọc' })).toHaveLength(1);
   expect(screen.getByTestId('deposit-hold-summary').className).not.toContain('bg-amber-50');
 });
 
-it('U41 — Sale: bộ lọc «Đã cọc chờ hợp đồng»; quá 14 ngày tô cảnh báo; nhiều phiếu cọc chờ thì báo số phiếu', () => {
-  state.query.data!.rooms = [depositRow({ heldDays: 20, voucherCount: 2 }), room('room-b', 'building-b', 'rented'), room()];
+it('U41 — Sale: bộ lọc «Đã cọc chờ hợp đồng» gồm cả phòng chỉ có cờ của #499; quá 14 ngày tô cảnh báo; phiếu treo nhiều phiếu thì báo', () => {
+  const flagOnly = room('room-f', 'building-a', 'rented'); flagOnly.room.hasDepositHold = true;
+  flagOnly.room.saleFact = roomSaleFacts({ status: 'rented', hasDepositHold: true });
+  state.query.data!.rooms = [depositRow({ source: 'voucher', holdId: null, heldDays: 20, voucherCount: 2, codes: ['PT2605004', 'PT2606001'] }, 'room-c', 'building-b', false),
+    flagOnly, room('room-b', 'building-b', 'rented'), room()];
   render(<QuickRoomBoard />);
   fireEvent.change(screen.getByLabelText('Tình trạng'), { target: { value: 'deposit-hold' } });
   expect(screen.getByText('Đã cọc · Chị Lan · 20 ngày')).toBeTruthy();
-  expect(screen.queryByText('Tòa Ánh Dương · 101')).toBeNull();
+  expect(screen.getByText('Đang giữ chỗ')).toBeTruthy();
+  expect(screen.queryByText('Tòa Bình Minh · 101 (room-b)')).toBeNull();
+  expect(screen.getAllByRole('row')).toHaveLength(3); // tiêu đề + hai phòng đang giữ bằng cọc
   const summary = screen.getByTestId('deposit-hold-summary');
   expect(summary.className).toContain('bg-amber-50');
   expect(within(summary).getByText('Quá 14 ngày chưa có hợp đồng — kiểm lại phiếu cọc')).toBeTruthy();
-  expect(within(summary).getByText('Phòng có 2 phiếu cọc chờ hợp đồng — kiểm trước khi ký hợp đồng mới')).toBeTruthy();
+  expect(within(summary).getByText('Phòng có 2 phiếu cọc chờ hợp đồng ngoài đợt giữ chỗ — kiểm trước khi ký hợp đồng mới')).toBeTruthy();
 });
 
 it('U42 — Quản lý: phòng còn khách ở mà có phiếu cọc treo (ca 102LVT·104) vẫn báo trả / báo pass được, hiện «Đã cọc»', () => {
-  state.query.data!.rooms = [depositRow({ roomOccupied: true, heldDays: 182, code: 'PT2605004', voucherDate: '2026-05-27' })];
+  state.query.data!.rooms = [depositRow({ source: 'voucher', holdId: null, roomOccupied: true, heldDays: 182, code: 'PT2605004', codes: ['PT2605004'],
+    voucherDate: '2026-05-27' }, 'room-c', 'building-b', false)];
   render(<QuickRoomBoard />); showAllStatuses(false);
   expect(screen.getByText('Đã cọc · Chị Lan · 182 ngày')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Báo sắp trống' })).toBeTruthy();

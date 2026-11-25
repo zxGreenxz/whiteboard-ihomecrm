@@ -8,6 +8,13 @@ import { z } from 'zod';
  */
 export const DEPOSIT_AMOUNT_SERVER_MESSAGE = 'Phiếu cọc phải có số tiền lớn hơn 0; giữ phòng không thu tiền thì dùng Lock tạm.';
 export const DEPOSIT_AMOUNT_REQUIRED_MESSAGE = 'Nhập số tiền cọc lớn hơn 0. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.';
+/**
+ * Câu dễ hiểu cho 22023 «Phiếu PTxxxx thiếu dòng cọc hợp lệ» / «… chưa có dòng tiền cọc» của #499
+ * (attach_deposit_income_v1, đường create_deposit_income_v1 gọi thẳng nên đến trước luật của đợt 3). Mã phiếu trong câu
+ * gốc không còn tồn tại vì giao dịch đã huỷ; nguyên nhân là tiền cọc ≤ 0 hoặc dòng cọc lệch hạng mục.
+ */
+export const DEPOSIT_INCOME_LINE_INVALID_MESSAGE =
+  'Dòng tiền cọc chưa hợp lệ: tiền cọc phải lớn hơn 0 và đúng hạng mục Tiền cọc. Kiểm tra dòng Tiền cọc rồi lưu lại; giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.';
 
 /**
  * Phiếu THU có hạng mục cọc mà tổng tiền các dòng cọc ≤ 0 ⇒ chỉ số mọi dòng cọc (để báo lỗi ở ô Số tiền của từng dòng).

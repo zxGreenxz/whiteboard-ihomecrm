@@ -226,9 +226,14 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
       const exitHold = options.includeInternal ? parseRoomExitHold(rr.exit_hold) : null;
       // Người cọc: chỉ nhân viên trong app; link công khai / Hermes bỏ qua kể cả khi payload có.
       const depositHold = options.includeInternal && status === "rented" ? parseRoomDepositHold(rr.deposit_hold) : null;
-      const saleFact = lock ? undefined : isExitHeld({ status, exitHold }) ? EXIT_HOLD_SALE_FACT
+      const hasDepositHold = options.includeInternal && rr.has_deposit_hold === true;
+      // Một luật nhãn (đợt 3 + #499): đang giữ bằng cọc ⇒ «Đã cọc · người gửi · N ngày» (thiếu khối thì «Đang giữ chỗ»),
+      // ưu tiên trước giữ cho khách sang nhượng như #499; còn lại theo tình trạng phòng.
+      const saleFact = lock ? undefined
+        : status === "rented" && (depositHold || hasDepositHold) ? roomSaleFacts({ status, depositHold, hasDepositHold })
+        : isExitHeld({ status, exitHold }) ? EXIT_HOLD_SALE_FACT
         : roomSaleFacts({ status, state: rr.sale_state, today: rr.sale_today,
-          availableOn: rr.avail_date, expectedReadyOn: rr.expected_ready_on, depositHold });
+          availableOn: rr.avail_date, expectedReadyOn: rr.expected_ready_on });
       return {
         id: rr.id,
         no: roomNo(rr, rr.floor * 100 + i + 1),
@@ -245,8 +250,8 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         status,
         amenities: toAmenities(rr.amenities),
         availDate: status === "soon" ? fmtAvail(saleFact?.availableOn) : null,
-        hasDepositHold:options.includeInternal && rr.has_deposit_hold===true,
-        saleFact:options.includeInternal && rr.has_deposit_hold ? {kind:"rented" as const,label:"Đang giữ chỗ",availableOn:null} : saleFact,
+        hasDepositHold,
+        saleFact,
         // Thiếu ảnh không tự thêm ảnh mẫu.
         imgCount: roomPhotoCount(imgs),
         phClass: "",
