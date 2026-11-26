@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 2006,
   "soFileDocBangFs": 511,
-  "tongLoiGoi": 1401,
-  "khongPhanLoaiDuoc": 615,
+  "tongLoiGoi": 1402,
+  "khongPhanLoaiDuoc": 614,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 67,
@@ -149,9 +149,9 @@
       "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
       "soGoi": 16,
       "loai": {
-        "sql": 12
+        "sql": 13
       },
-      "khongPhanLoaiDuoc": 4
+      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "scripts/__tests__/generate-repository-inventory.test.mjs",
@@ -628,6 +628,15 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/dauVanTayChotLnMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 2,
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "src/lib/__tests__/gd3RaoBangAnToanMigration.test.ts",
       "soGoi": 5,
       "loai": {
@@ -914,15 +923,6 @@
         "sql": 4
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/dauVanTayChotLnMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 1,
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/profitClose.test.ts",
