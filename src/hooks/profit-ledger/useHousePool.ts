@@ -110,7 +110,8 @@ type HousePoolRpc = (
   data: unknown;
   error: { code: string; message: string } | null;
 }>;
-const rpc = supabase.rpc.bind(supabase) as unknown as HousePoolRpc;
+const rpc: HousePoolRpc = (name, args) =>
+  (supabase.rpc as unknown as HousePoolRpc)(name, args);
 
 const storedReceipt = z.object({
   voucher: z.string().uuid().nullable(),
@@ -223,7 +224,7 @@ export function useHousePoolWrite(org: string) {
           throw new Error("Biên nhận không khớp tổng tiền của đợt hoàn.");
         return { imported: null, voucher: result.voucher_id };
       };
-      return workflow.current.run(
+      return workflow.current.run<z.infer<typeof storedReceipt>>(
         "house-pool-" + op.kind,
         "ghi quỹ góp theo nhà",
         (progress) => send(progress.requestKey),

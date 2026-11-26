@@ -1398,6 +1398,9 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
       await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[NGOAI]);
       await local.exec('SET ROLE authenticated');
       await expect(local.query(create,[ORG_A,SO_QUY,NGAY,first.hash,randomUUID()])).rejects.toMatchObject({code:'42501'});
+      await expect(quote()).rejects.toMatchObject({code:'42501'});
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[U_XEM]);
+      await expect(quote()).rejects.toMatchObject({code:'42501'});
     } finally {
       await local.close();
     }
