@@ -1,6 +1,5 @@
-import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialAlreadyRecordedError,FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {confirmedRecordId,recordWriteMessage,repeatableWrite,settleZeroRowDelete} from '@/lib/recordWriteOutcome';
 // Nạp động: hai module của đợt 4 chỉ cần lúc tạo, nạp tĩnh từ nhiều trang làm Vite tách thành chunk dùng chung và
 // thêm tên chunk vào danh sách phụ thuộc của chunk entry (cửa bundle-inventory).
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -185,19 +184,24 @@ export const useUpdateLead = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // Đợt 8 (luật 5): đặt giá trị theo mã, chạy lại cho cùng kết quả: không giữ dấu «chờ đối chiếu»; kết quả chưa rõ báo
+    // rõ và cho lưu lại. Khớp 0 dòng (RLS, khách hẹn đã mất) là PGRST116: từ chối rõ.
     mutationFn: async ({ id, ...data }: LeadUpdate & { id: string }) => {
-      return persistentFinancialWorkflow('useUpdateLead').run(id, 'cập nhật khách hẹn', async () => {
-      const { data: lead, error } = await supabase
-        .from("leads")
-        .update(data)
-        .eq("id", id)
-        .select()
-        .single();
+      const lead = await repeatableWrite('cập nhật khách hẹn', async () => {
+        const { data: lead, error } = await supabase
+          .from("leads")
+          .update(data)
+          .eq("id", id)
+          .select()
+          .single();
 
-      if (error) throw error;
-      confirmedRecordId(lead,'cập nhật khách hẹn',id);
-      return lead;
+        if (error) throw error;
+        confirmedRecordId(lead,'cập nhật khách hẹn',id);
+        return lead;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'useUpdateLead', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần ghi sau gỡ lại. */ }
+      return lead;
     },
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
@@ -217,21 +221,31 @@ export const useDeleteLead = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      return persistentFinancialWorkflow('useDeleteLead').run(id, 'xoá khách hẹn', async () => {
-      const { data: lead, error } = await supabase
-        .from("leads")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id).select('id').single();
+    // Đợt 8 (luật 5): xoá mềm theo mã lặp lại được, không giữ dấu. Chỉ xoá khách hẹn còn sống: lần bấm lại sau một lần
+    // mất phản hồi khớp 0 dòng (không đổi giờ xoá), đọc lại thấy đã xoá ⇒ thành công «đã xoá trước đó»; còn nguyên ⇒
+    // máy chủ không cho xoá (RLS) ⇒ báo không có quyền.
+    mutationFn: async (id: string): Promise<{ id: string; alreadyDeleted?: boolean }> => {
+      const result = await repeatableWrite('xoá khách hẹn', async () => {
+        const { data, error } = await supabase
+          .from("leads")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", id).is('deleted_at', null).select('id');
 
-      if (error) throw error;
-      confirmedRecordId(lead,'xoá khách hẹn',id);
-      return lead;
+        if (error) throw error;
+        if (Array.isArray(data) && data.length === 0) {
+          await settleZeroRowDelete('xoá khách hẹn', () => supabase.from('leads').select('id, deleted_at').eq('id', id).maybeSingle());
+          return { id, alreadyDeleted: true };
+        }
+        confirmedRecordId(Array.isArray(data) && data.length === 1 ? data[0] : null,'xoá khách hẹn',id);
+        return { id };
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'useDeleteLead', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
+      return result;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success('Đã xóa khách hẹn');
+      toast.success(result.alreadyDeleted ? 'Khách hẹn đã được xoá trước đó.' : 'Đã xóa khách hẹn');
     },
     onError: (error: Error) => {
       queryClient.invalidateQueries({queryKey:['leads']});
