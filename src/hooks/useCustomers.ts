@@ -1,7 +1,6 @@
 import { customerListArgs, parseCustomerList } from '@/lib/customerList';
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialAlreadyRecordedError, FinancialWorkflowError, type CompletedFinancialStep } from '@/lib/financialWorkflow';
-import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage, repeatableWrite } from '@/lib/recordWriteOutcome';
 // Nạp động: hai module của đợt 4 chỉ cần lúc tạo, nạp tĩnh từ nhiều trang làm Vite tách thành chunk dùng chung và
 // thêm tên chunk vào danh sách phụ thuộc của chunk entry (cửa bundle-inventory).
 import type { FinancialPendingRecord } from '@/lib/financialPending';
@@ -313,17 +312,38 @@ function validatedVehicleType(value: string): VehicleType {
     default: throw new Error('Loại phương tiện không hợp lệ. Chọn lại trước khi lưu.');
   }
 }
+/**
+ * Khoá so một xe trong form với xe đã có của khách: biển số bỏ dấu cách, gạch, chấm, chữ hoa. Xe không có biển số thì
+ * so đủ loại, tên và màu (cùng cách chuẩn hoá).
+ */
+function vehicleMatchKey(vehicle:{vehicle_type?:unknown;vehicle_name?:unknown;color?:unknown;license_plate?:unknown}):string{
+  const text=(value:unknown)=>typeof value==='string'?value.normalize('NFKC').toUpperCase().replace(/[\s.\-_/]+/g,''):'';
+  const plate=text(vehicle.license_plate);
+  return plate?`p:${plate}`:`x:${text(vehicle.vehicle_type)}|${text(vehicle.vehicle_name)}|${text(vehicle.color)}`;
+}
+
 // Preserve main removal-update-insert order; receipts record each completed step.
 async function syncCustomerVehicles(customerId:string,vehicles:NonNullable<CustomerFormData['vehicles']>,organizationId:string|null,completed:CompletedFinancialStep[]):Promise<void>{
   const user=await getSessionUser();if(!user)throw new Error('Not authenticated');
-  const {data:existing,error:loadError}=await supabase.from('vehicles').select('id').eq('customer_id',customerId).is('deleted_at',null);
+  const {data:existing,error:loadError}=await supabase.from('vehicles').select('id, vehicle_type, vehicle_name, color, license_plate').eq('customer_id',customerId).is('deleted_at',null);
   if(loadError)throw loadError;
   if(!Array.isArray(existing)||existing.some(row=>typeof row?.id!=='string'||!row.id)||new Set(existing.map(row=>row.id)).size!==existing.length)throw new Error('Chưa xác nhận được danh sách phương tiện hiện tại.');
   const existingIds=existing.map(row=>row.id);
   const keptIds=vehicles.flatMap(v=>v.id?[v.id]:[]);
   if(new Set(keptIds).size!==keptIds.length||keptIds.some(id=>!existingIds.includes(id)))throw new Error('Phương tiện vừa thay đổi hoặc không thuộc khách này. Tải lại để đối chiếu.');
   const fields=(v:(typeof vehicles)[number])=>({vehicle_type:validatedVehicleType(v.vehicle_type),vehicle_name:v.vehicle_name,color:v.color||null,license_plate:v.license_plate});
-  const removedIds=existingIds.filter(id=>!keptIds.includes(id));
+  // Đợt 8 (cách A, chạy lại): lần lưu trước có thể đã thêm xe rồi mất phản hồi. Xe chưa có mã trong form khớp một xe
+  // hiện có của khách (ngoài danh sách giữ lại) theo biển số chuẩn hoá thì là CẬP NHẬT xe đó: không thêm xe trùng, không
+  // gỡ rồi thêm lại xe vừa thêm. Mỗi xe hiện có khớp tối đa một xe trong form.
+  const matched=new Map<(typeof vehicles)[number],string>();
+  for(const v of vehicles){
+    if(v.id)continue;
+    const key=vehicleMatchKey(v);
+    const hit=existing.find(row=>!keptIds.includes(row.id)&&![...matched.values()].includes(row.id)&&vehicleMatchKey(row)===key);
+    if(hit)matched.set(v,hit.id);
+  }
+  const claimedIds=[...keptIds,...matched.values()];
+  const removedIds=existingIds.filter(id=>!claimedIds.includes(id));
   if(removedIds.length){
     const {data,error}=await supabase.from('vehicles').update({deleted_at:new Date().toISOString()}).in('id',removedIds).select('id');
     if(error)throw error;
@@ -331,12 +351,13 @@ async function syncCustomerVehicles(customerId:string,vehicles:NonNullable<Custo
     if(removedIds.some(id=>!ids.includes(id)))throw new Error('Chưa xác nhận đủ phương tiện được gỡ.');
     completed.push(...ids.map(id=>({id,label:'Đã gỡ phương tiện'})));
   }
-  for(const v of vehicles.filter(v=>v.id)){
-    const {data,error}=await supabase.from('vehicles').update(fields(v)).eq('id',v.id!).select('id').single();
-    if(error)throw error;const id=confirmedRecordId(data,'cập nhật phương tiện',v.id);
+  const updates=[...vehicles.flatMap(v=>v.id?[{v,id:v.id}]:[]),...[...matched].map(([v,id])=>({v,id}))];
+  for(const {v,id:vehicleId} of updates){
+    const {data,error}=await supabase.from('vehicles').update(fields(v)).eq('id',vehicleId).select('id').single();
+    if(error)throw error;const id=confirmedRecordId(data,'cập nhật phương tiện',vehicleId);
     completed.push({id,label:'Đã cập nhật phương tiện'});
   }
-  const added=vehicles.filter(v=>!v.id);
+  const added=vehicles.filter(v=>!v.id&&!matched.has(v));
   if(added.length){
     const payload=withOrgAll(added.map(v=>({...fields(v),user_id:user.id,customer_id:customerId})),organizationId);
     const {data,error}=await supabase.from('vehicles').insert(withOrgAll(payload,organizationId)).select('id');
@@ -348,21 +369,33 @@ async function syncCustomerVehicles(customerId:string,vehicles:NonNullable<Custo
 
 export const useUpdateCustomer = () => {
   const queryClient=useQueryClient();const {selectedOrganizationId}=useOrganization();
-  const guard=persistentFinancialWorkflow('customer-update');
   const refresh=()=>{for(const key of ['customers','vehicles'])queryClient.invalidateQueries({queryKey:[key]});};
   return useMutation({
     meta:{handlesFeedback:true},
+    // Đợt 8 (luật 5): sửa khách là đặt giá trị theo mã, chạy lại cho cùng kết quả: không giữ dấu «chờ đối chiếu»; kết
+    // quả chưa rõ báo rõ và cho lưu lại. Xe: gỡ / sửa theo mã lặp lại được, xe thêm ở lần trước được nhận lại theo biển số.
     mutationFn:async({id,data:formData}:{id:string;data:Partial<CustomerFormData>}):Promise<CreateCustomerResult>=>{
       const {vehicles,...customerData}=formData;
-      vehicles?.forEach(vehicle=>validatedVehicleType(vehicle.vehicle_type));let saved:Customer|undefined;
-      try{return await guard.run(id,'cập nhật khách hàng',async progress=>{
+      vehicles?.forEach(vehicle=>validatedVehicleType(vehicle.vehicle_type));
+      const customer=await repeatableWrite('cập nhật khách hàng',async()=>{
         const {data,error}=await supabase.from('customers').update(customerData as any).eq('id',id).select().single();
         if(error)throw error;confirmedRecordId(data,'cập nhật khách hàng',id);
-        saved=data as unknown as Customer;progress.completed.push({id,label:'Đã cập nhật khách hàng'});
-        if(vehicles){progress.stage='đồng bộ phương tiện';await syncCustomerVehicles(id,vehicles,selectedOrganizationId,progress.completed);}
-        return {customer:saved};
-      });}
-      catch(error){if(saved&&error instanceof FinancialWorkflowError&&error.outcome==='partial')return {customer:saved,vehicleError:error};throw error;}
+        return data as unknown as Customer;
+      });
+      let vehicleError:FinancialWorkflowError|undefined;
+      if(vehicles){
+        // Khách đã cập nhật. Xe hỏng giữa chừng: báo «xe chưa xong», không giữ dấu; lưu lại cùng form đồng bộ tiếp.
+        const completed:CompletedFinancialStep[]=[{id,label:'Đã cập nhật khách hàng'}];
+        try{await syncCustomerVehicles(id,vehicles,selectedOrganizationId,completed);}
+        catch(error){
+          const reason=error instanceof FinancialWorkflowError?error.message:recordWriteMessage(error,'đồng bộ phương tiện');
+          vehicleError=new FinancialWorkflowError(`Khách hàng đã cập nhật (mã ${id}) nhưng phương tiện chưa đồng bộ xong: ${reason} Bấm lưu lại để đồng bộ tiếp: xe đã lưu ở lần trước được nhận lại theo biển số, không tạo trùng.`,'partial',completed,error);
+        }
+      }
+      // Lần ghi khách đã xác nhận: dấu bản trước của đúng khách này (công ty đang chọn) không còn chặn gì.
+      try{const {forgetLegacyPending}=await import('@/lib/legacyPendingExit');await forgetLegacyPending({namespace:'customer-update',businessKey:id});}
+      catch{/* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần ghi sau gỡ lại. */}
+      return vehicleError?{customer,vehicleError}:{customer};
     },
     onSuccess:result=>{
       refresh();
@@ -378,18 +411,33 @@ export const useUpdateCustomer = () => {
 // Requirements: 5.4
 // =============================================
 
+/** Kết quả xoá khách. `alreadyDeleted`: khách đã bị xoá trước lần bấm này (lần gửi trước mất phản hồi, hoặc người khác). */
+export interface DeleteCustomerResult { id: string; deleted_at: string; alreadyDeleted?: boolean }
+
 export const useDeleteCustomer = () => {
   const queryClient = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
-  const guard = persistentFinancialWorkflow('customer-delete');
-  const readDeletion = async (id: string) => {
-    const { data: deleted, error } = await supabase.from('customers').select('id, deleted_at').eq('id', id).maybeSingle();
-    if (error || !deleted || deleted.id !== id || typeof deleted.deleted_at !== 'string' || !Number.isFinite(Date.parse(deleted.deleted_at))) return null;
-    return deleted;
+  /** Đọc đúng khách: `null` khi không thấy (không có quyền xem); lỗi đọc ném nguyên; dòng lạ dạng là chưa rõ. */
+  const readState = async (id: string): Promise<{ id: string; deleted_at: string | null } | null> => {
+    const { data, error } = await supabase.from('customers').select('id, deleted_at').eq('id', id).maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    if (data.id !== id || (data.deleted_at !== null && (typeof data.deleted_at !== 'string' || !Number.isFinite(Date.parse(data.deleted_at))))) {
+      throw new FinancialWorkflowError('Chưa đọc được trạng thái khách hàng. Tải lại danh sách rồi thử lại.', 'unknown', [{id, label:'Khách hàng cần đối chiếu'}]);
+    }
+    return data;
+  };
+  const forgetPrior = async (id: string) => {
+    try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'customer-delete', businessKey: id }); }
+    catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
   };
 
   return useMutation({
-    mutationFn: async (id: string) => {
+    // Đợt 8 (luật 5, cách C «chưa xoá thì chạy lại»): xoá mềm theo mã lặp lại được nên không giữ dấu «chờ đối chiếu».
+    // Đọc trạng thái trước: khách đã xoá thì báo thành công, không gửi lần nữa; chưa xoá thì gửi. Hàm xoá trên máy chủ chỉ
+    // xoá khách còn sống (khoá dòng), nên gửi lại sau một lần mất phản hồi không xoá hai lần, không đổi giờ xoá.
+    mutationFn: async (id: string): Promise<DeleteCustomerResult> => {
+      const before = await readState(id);
+      if (before?.deleted_at) { await forgetPrior(id); return { id, deleted_at: before.deleted_at, alreadyDeleted: true }; }
       // Khách đang có HĐ hiệu lực thì không được xoá. RPC soft_delete_customer
       // cũng chặn ở DB (migration 20260902042935) — đây là lớp báo sớm cho UI,
       // không phải hàng rào duy nhất.
@@ -420,21 +468,27 @@ export const useDeleteCustomer = () => {
         }
       }
 
-      return guard.run(id, 'xoá khách hàng', async () => {
+      return repeatableWrite('xoá khách hàng', async (): Promise<DeleteCustomerResult> => {
         const { error } = await supabase.rpc('soft_delete_customer' as any, { p_customer_id: id });
-        if (error) throw error;
+        if (error) {
+          // Hàm production (md5 6ace1f95…) chỉ khoá khách CÒN SỐNG; khách đã xoá thì trả 42501 như khi không có quyền. Đọc
+          // lại đúng khách: đã xoá ⇒ thành công «đã xoá trước đó»; còn nguyên ⇒ lời từ chối đi nguyên.
+          if (String((error as { code?: unknown }).code ?? '') === '42501') {
+            const after = await readState(id);
+            if (after?.deleted_at) { await forgetPrior(id); return { id, deleted_at: after.deleted_at, alreadyDeleted: true }; }
+          }
+          throw error;
+        }
         // RPC trả void: xác nhận trạng thái bằng lần đọc, không ghi lần nữa.
-        const deleted = await readDeletion(id);
-        if (!deleted) throw new FinancialWorkflowError('Yêu cầu xoá đã được gửi nhưng chưa xác nhận được trạng thái khách hàng. Tải lại và đối chiếu bản ghi trước khi tiếp tục.', 'unknown', [{id, label:'Khách hàng cần đối chiếu'}]);
-        return deleted;
-      }, async () => {
-        const deleted = await readDeletion(id);
-        return deleted ? {result: deleted} : null;
-      }, selectedOrganizationId);
+        const deleted = await readState(id);
+        if (!deleted?.deleted_at) throw new FinancialWorkflowError('Yêu cầu xoá đã được gửi nhưng chưa xác nhận được trạng thái khách hàng.', 'unknown', [{id, label:'Khách hàng cần đối chiếu'}]);
+        await forgetPrior(id);
+        return { id, deleted_at: deleted.deleted_at };
+      });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
-      toast.success('Đã xác nhận xoá khách hàng');
+      toast.success(result.alreadyDeleted ? 'Khách hàng đã được xoá trước đó (lần gửi trước hoặc người khác đã xoá).' : 'Đã xác nhận xoá khách hàng');
     },
     onError: (error: any) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
