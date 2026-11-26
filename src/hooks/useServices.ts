@@ -1,4 +1,3 @@
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError, RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,19 +9,22 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
 import { friendlyError } from "@/lib/friendlyError";
 
+/**
+ * Đợt 9: dịch vụ đã TẠO nhưng bước gán tòa áp dụng chưa xong (chưa rõ hoặc bị từ chối). Không còn gì khoá: lần bấm Lưu sau
+ * (cùng thông tin dịch vụ) gán tiếp đúng các tòa đang chọn cho đúng dịch vụ này, không tạo dịch vụ thứ hai.
+ */
 export class ServiceLinksPartialError extends Error {
   constructor(public readonly serviceId: string, public readonly cause: unknown) {
-    super(`Dịch vụ ${serviceId} đã lưu, nhưng danh sách tòa áp dụng chưa hoàn tất. Mở lại dịch vụ và kiểm tra các tòa trước khi lưu tiếp; không tạo lại dịch vụ.`);
+    super(`Dịch vụ đã tạo (mã ${serviceId}) nhưng chưa lưu xong tòa áp dụng: ${recordWriteMessage(cause, 'lưu tòa áp dụng')} Bấm Lưu lại để gán tiếp đúng các tòa đang chọn cho dịch vụ này; không tạo dịch vụ thứ hai.`);
     this.name = "ServiceLinksPartialError";
-    if(cause instanceof FinancialWorkflowError && cause.completed.length)this.message+=` ID cần đối chiếu: ${cause.completed.map(step=>step.id).join(', ')}.`;
   }
 }
 
+/** Đợt 9: định mức đã TẠO nhưng bậc giá chưa ghi xong; lần bấm Lưu sau ghi lại đúng bộ bậc đang nhập cho đúng định mức này. */
 export class ServiceQuotaPartialError extends Error {
   constructor(public readonly quotaId: string, public readonly cause: unknown) {
-    super(`Định mức ${quotaId} đã lưu, nhưng các bậc giá chưa hoàn tất. Tải lại định mức để kiểm tra trước khi sửa tiếp; không tạo lại.`);
+    super(`Định mức đã tạo (mã ${quotaId}) nhưng chưa ghi xong bậc giá: ${recordWriteMessage(cause, 'ghi bậc giá')} Bấm Lưu lại để ghi tiếp đúng các bậc đang nhập cho định mức này; không tạo định mức thứ hai.`);
     this.name = "ServiceQuotaPartialError";
-    if(cause instanceof FinancialWorkflowError && cause.completed.length)this.message+=` ID cần đối chiếu: ${cause.completed.map(step=>step.id).join(', ')}.`;
   }
 }
 
@@ -103,7 +105,23 @@ export const useServices = (
 
 // Preserve main write order; receipts retain the result of each completed step.
 const refreshServices=(queryClient:ReturnType<typeof useQueryClient>)=>{queryClient.invalidateQueries({queryKey:['services']});queryClient.invalidateQueries({queryKey:['building-services']});};
-const serviceWriteError=(id:string|undefined,error:unknown):unknown=>id&&error instanceof FinancialWorkflowError&&error.outcome==='partial'?new ServiceLinksPartialError(id,error):error;
+/** Đợt 9: so trường đã gửi với dòng đọc lại (khoá jsonb xếp lại). Bỏ `user_id` (máy chủ có thể đặt). */
+const canonical=(value:unknown):string=>JSON.stringify(value??null,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
+const sentFieldsMatch=(saved:Record<string,unknown>,sent:Record<string,unknown>)=>Object.keys(sent).every(key=>key==='user_id'||canonical(saved[key])===canonical(sent[key]));
+/**
+ * Đợt 9 (sửa theo review): dịch vụ / định mức đã TẠO ở lần bấm trước mà bước sau (tòa áp dụng, bậc giá) chưa xong. Hộp tạo giữ mã
+ * đó (khoá các ô thông tin chính) và gửi kèm `continueId`; trước khi làm tiếp thì đọc lại đúng mã: còn (chưa xoá) ⇒ làm tiếp phần
+ * còn thiếu trên bản ghi đó; không còn / đã xoá ⇒ bỏ mã, tạo bản mới (không gắn tòa, bậc vào bản ghi đã xoá); đọc hỏng ⇒ chưa rõ,
+ * không tạo gì. Không nhớ theo tên nữa: đổi tên giữa hai lần bấm không âm thầm ra bản thứ hai vì hộp đã khoá ô tên.
+ */
+async function createdStillThere<T extends {id:string}>(table:'services'|'service_quotas',id:string,operation:string):Promise<T|null>{
+ const {readRecordById}=await import('@/lib/clientRecordCreate');
+ const read=await readRecordById<T>(table,id);
+ if(read.state==='unreadable')throw new RepeatableWriteUnknownError(operation,undefined,[{id,label:'Bản ghi đã tạo ở lần trước, cần đối chiếu'}],'Chưa đọc lại được bản ghi đã tạo ở lần bấm trước nên chưa ghi gì thêm. Bấm lại để thử lần nữa.');
+ if(read.state==='missing')return null;
+ const deletedAt=(read.row as {deleted_at?:unknown}).deleted_at;
+ return typeof deletedAt==='string'&&deletedAt!==''?null:read.row;
+}
 const refused=(message:string,cause?:unknown)=>new FinancialWorkflowError(message,'failure',[],cause);
 /** Mã nhận lại sau lệnh sửa/xoá theo danh sách: phải là tập con không trùng của các mã đã gửi; biên nhận lạ thì không tin. */
 function receivedSubset(rows:unknown,expectedIds:string[],operation:string):string[]{
@@ -139,19 +157,34 @@ async function syncServiceBuildings(id:string,buildingIds:string[],organizationI
     confirmedRecordBatch(rows,added.length,'thêm tòa áp dụng');
   }
 }
+/**
+ * Đợt 9 (luật 5): tạo dịch vụ không giữ dấu «chờ đối chiếu» nào. Lõi `services` mang mã do trình duyệt sinh
+ * (`createRecordOnce`; bảng nhận `id`, không trigger nào gán `id` — production 26/11/2026): kết quả chưa rõ báo «bấm lại», lần
+ * bấm lại cùng tên gửi ĐÚNG mã cũ. Tòa áp dụng đồng bộ theo phần chênh (`syncServiceBuildings`, duy nhất building_id+service_id)
+ * nên lần bấm sau một lần gán dở (hộp gửi kèm `continueId`, xem `createdStillThere`) chỉ gán phần còn thiếu trên đúng dịch vụ đã
+ * tạo. Dấu bản trước (`create`) gỡ sau khi xong.
+ */
 export const useCreateService=()=>{
- const queryClient=useQueryClient();const {selectedOrganizationId}=useOrganization();const guard=persistentFinancialWorkflow('service-create');
- return useMutation({meta:{handlesFeedback:true},mutationFn:async(params:Omit<ServiceInsert,'user_id'>&{building_ids?:string[]})=>{
+ const queryClient=useQueryClient();const {selectedOrganizationId}=useOrganization();
+ return useMutation({meta:{handlesFeedback:true},mutationFn:async(params:Omit<ServiceInsert,'user_id'>&{building_ids?:string[];continueId?:string})=>{
   const user=await getSessionUser();if(!user)throw new Error('Not authenticated');
-  const {building_ids,...serviceData}=params;if(serviceData.unit_price!==undefined&&!Number.isFinite(serviceData.unit_price))throw new Error('Đơn giá chưa hợp lệ.');
-  const payload=withOrg({...serviceData,user_id:user.id},selectedOrganizationId);let coreId:string|undefined;
-  try{return await guard.run('create','tạo dịch vụ',async progress=>{
-   const {data,error}=await supabase.from('services').insert(withOrg(payload,selectedOrganizationId)).select().single();
-   if(error)throw error;coreId=confirmedRecordId(data,'tạo dịch vụ');progress.completed.push({id:coreId,label:'Đã tạo dịch vụ'});
-   const buildings=building_ids??[];
-   if(buildings.length){progress.stage='lưu tòa áp dụng';const {data:rows,error:linksError}=await supabase.from('building_services').insert(withOrgAll(buildings.map(building_id=>({service_id:coreId!,building_id,is_active:true})),selectedOrganizationId)).select('id');if(linksError)throw linksError;const ids=confirmedRecordBatch(rows,buildings.length,'lưu tòa áp dụng');progress.completed.push(...ids.map(id=>({id,label:'Đã lưu tòa áp dụng'})));}
-   return data;
-  },undefined,payload.organization_id);}catch(error){throw serviceWriteError(coreId,error);}
+  const {building_ids,continueId,...serviceData}=params;if(serviceData.unit_price!==undefined&&!Number.isFinite(serviceData.unit_price))throw new Error('Đơn giá chưa hợp lệ.');
+  const payload=withOrg({...serviceData,user_id:user.id},selectedOrganizationId);
+  const known=continueId?await createdStillThere<Service>('services',continueId,'kiểm tra dịch vụ đã tạo ở lần bấm trước'):null;
+  const service=known??await repeatableWrite('tạo dịch vụ',async()=>{
+   const {createRecordOnce,normalizeVietnameseName}=await import('@/lib/clientRecordCreate');
+   const {row}=await createRecordOnce<Service>({table:'services',userId:user.id,organizationId:payload.organization_id,matchKeys:[`n:${normalizeVietnameseName(params.name)}`],
+    payload,operation:'tạo dịch vụ',sameAs:saved=>sentFieldsMatch(saved,payload),describe:saved=>`Dịch vụ ${String(saved.name)}`});
+   return row;
+  });
+  const buildings=building_ids??[];
+  if(buildings.length||known){
+   try{await repeatableWrite('lưu tòa áp dụng (dịch vụ đã tạo)',()=>syncServiceBuildings(service.id,buildings,selectedOrganizationId));}
+   catch(error){throw new ServiceLinksPartialError(service.id,error);}
+  }
+  try{const {forgetLegacyPending}=await import('@/lib/legacyPendingExit');await forgetLegacyPending({namespace:'service-create',businessKey:'create'});}
+  catch{/* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */}
+  return service as Service;
  },onSuccess:data=>{refreshServices(queryClient);toast.success(`Đã tạo dịch vụ ${data.name || data.id} và lưu tòa áp dụng.`);},onError:error=>{refreshServices(queryClient);toast.error('Chưa hoàn tất tạo dịch vụ',{description:error instanceof ServiceLinksPartialError?error.message:recordWriteMessage(error,'tạo dịch vụ')});}});
 };
 /**
@@ -231,40 +264,59 @@ export const useServiceQuotas = () => {
 
 interface QuotaTierInput{tier_number:number;from_value:number;to_value:number|null;unit_price:number}
 interface QuotaInput{name:string;description?:string|null;tiers:QuotaTierInput[]}
-const quotaWriteError=(id:string|undefined,error:unknown):unknown=>id&&error instanceof FinancialWorkflowError&&error.outcome==='partial'?new ServiceQuotaPartialError(id,error):error;
+/**
+ * Đợt 9 (luật 5): tạo định mức không giữ dấu «chờ đối chiếu» nào. Lõi `service_quotas` mang mã do trình duyệt sinh
+ * (`createRecordOnce`; bảng nhận `id`, không trigger nào gán `id` — production 26/11/2026): kết quả chưa rõ báo «bấm lại», lần
+ * bấm lại cùng tên gửi ĐÚNG mã cũ. Bậc giá (duy nhất quota_id+tier_number): lần bấm sau một lần ghi bậc dở thì gỡ bậc của đúng
+ * định mức đó rồi ghi lại đủ bộ đang nhập (như sửa định mức, đợt 8), không tạo định mức thứ hai. Dấu bản trước (`create`) gỡ
+ * sau khi xong.
+ */
 export const useCreateServiceQuota=()=>{
- const queryClient=useQueryClient();const {selectedOrganizationId}=useOrganization();const guard=persistentFinancialWorkflow('quota-create');
+ const queryClient=useQueryClient();const {selectedOrganizationId}=useOrganization();
  const record=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
  const savedTier=(value:unknown,quotaId:string):value is Pick<ServiceQuotaTier,'id'|'quota_id'|'tier_number'|'from_value'|'to_value'|'unit_price'>=>record(value)&&typeof value.id==='string'&&!!value.id&&value.quota_id===quotaId&&typeof value.tier_number==='number'&&typeof value.from_value==='number'&&(value.to_value===null||typeof value.to_value==='number')&&typeof value.unit_price==='number';
- return useMutation({meta:{handlesFeedback:true},mutationFn:async(params:QuotaInput)=>{
-  const user=await getSessionUser();if(!user)throw new Error('Not authenticated');let coreId:string|undefined;
-  try{return await guard.run('create','tạo định mức dịch vụ',async progress=>{
-   const {data,error}=await supabase.from('service_quotas')
-    .insert(withOrg({name:params.name,description:params.description||null,user_id:user.id},selectedOrganizationId)).select().single();
-   if(error)throw error;
-   coreId=confirmedRecordId(data,'tạo định mức');progress.completed.push({id:coreId,label:'Định mức đã nhận mã; cần đối chiếu nội dung'});
-   if(data.name!==params.name||data.description!==(params.description||null)||data.user_id!==user.id)throw new FinancialWorkflowError('Chưa xác nhận đúng định mức đã tạo; chưa gửi các bậc giá.','unknown',[],new TypeError('Mismatched created quota receipt'));
-   progress.completed[0]!.label='Đã tạo định mức';
-   if(params.tiers.length>0){
-    progress.stage='lưu các bậc giá';
-    const {data:inserted,error:tierError}=await supabase.from('service_quota_tiers')
-     .insert(withOrgAll(params.tiers.map((t)=>({
-      quota_id:data.id,
-      tier_number:t.tier_number,
-      from_value:t.from_value,
-      to_value:t.to_value,
-      unit_price:t.unit_price,
-     })),data.organization_id)).select('id,quota_id,tier_number,from_value,to_value,unit_price');
-    if(tierError)throw tierError;
-    if(Array.isArray(inserted)){const rows:unknown[]=inserted;const ids=[...new Set(rows.flatMap(row=>record(row)&&typeof row.id==='string'&&row.id?[row.id]:[]))];progress.completed.push(...ids.map(id=>({id,label:'Đã nhận mã bậc giá; chưa xác nhận đủ danh sách'})));}
-    if(!Array.isArray(inserted))throw new FinancialWorkflowError('Chưa xác nhận được các bậc giá đã lưu. Giữ mã định mức và đối chiếu trước khi thực hiện tiếp.','unknown',[],new TypeError('Unconfirmed created quota tier receipt'));
-    const rows:unknown[]=inserted;
-    if(!rows.every(row=>savedTier(row,data.id))||rows.length!==params.tiers.length||new Set(rows.map(row=>row.id)).size!==rows.length)throw new FinancialWorkflowError('Chưa xác nhận đủ và đúng các bậc giá đã lưu.','unknown',[],new TypeError('Incomplete created quota tier receipt'));
-    const expected=[...params.tiers];
-    for(const row of rows){const index=expected.findIndex(t=>t.tier_number===row.tier_number&&t.from_value===row.from_value&&t.to_value===row.to_value&&t.unit_price===row.unit_price);if(index<0)throw new FinancialWorkflowError('Biên nhận bậc giá chưa khớp các giá trị đã gửi.','unknown',[],new TypeError('Mismatched created quota tier values'));expected.splice(index,1);}
-   }
-   return data;
-  },undefined,selectedOrganizationId??undefined);}catch(error){const feedback=quotaWriteError(coreId,error);if(feedback instanceof ServiceQuotaPartialError&&error instanceof FinancialWorkflowError)feedback.message=recordWriteMessage(error,'tạo định mức');throw feedback;}
+ /** Ghi bộ bậc cho định mức đã tạo; `replace` (lần trước có thể đã ghi một phần) thì gỡ bậc cũ của đúng định mức này trước. */
+ const writeTiers=async(quota:{id:string;organization_id?:unknown},tiers:QuotaTierInput[],replace:boolean)=>{
+  if(replace){
+   const {data:removed,error:removeError}=await supabase.from('service_quota_tiers').delete().eq('quota_id',quota.id).select('id');
+   if(removeError)throw removeError;
+   if(!Array.isArray(removed))throw new FinancialWorkflowError('Chưa xác nhận được việc gỡ bậc giá ghi dở; chưa ghi lại bậc giá.','unknown',[],new TypeError('Unconfirmed created quota tier cleanup'));
+  }
+  if(!tiers.length)return;
+  const {data:inserted,error:tierError}=await supabase.from('service_quota_tiers')
+   .insert(withOrgAll(tiers.map((t)=>({
+    quota_id:quota.id,
+    tier_number:t.tier_number,
+    from_value:t.from_value,
+    to_value:t.to_value,
+    unit_price:t.unit_price,
+   })),typeof quota.organization_id==='string'?quota.organization_id:selectedOrganizationId)).select('id,quota_id,tier_number,from_value,to_value,unit_price');
+  if(tierError)throw tierError;
+  const received=Array.isArray(inserted)?[...new Set((inserted as unknown[]).flatMap(row=>record(row)&&typeof row.id==='string'&&row.id?[row.id]:[]))].map(id=>({id,label:'Đã nhận mã bậc giá; chưa xác nhận đủ danh sách'})):[];
+  if(!Array.isArray(inserted))throw new FinancialWorkflowError('Chưa xác nhận được các bậc giá đã lưu.','unknown',[],new TypeError('Unconfirmed created quota tier receipt'));
+  const rows:unknown[]=inserted;
+  if(!rows.every(row=>savedTier(row,quota.id))||rows.length!==tiers.length||new Set(rows.map(row=>(row as {id?:unknown}).id)).size!==rows.length)throw new FinancialWorkflowError('Chưa xác nhận đủ và đúng các bậc giá đã lưu.','unknown',received,new TypeError('Incomplete created quota tier receipt'));
+  const expected=[...tiers];
+  for(const row of rows as Pick<ServiceQuotaTier,'tier_number'|'from_value'|'to_value'|'unit_price'>[]){const index=expected.findIndex(t=>t.tier_number===row.tier_number&&t.from_value===row.from_value&&t.to_value===row.to_value&&t.unit_price===row.unit_price);if(index<0)throw new FinancialWorkflowError('Biên nhận bậc giá chưa khớp các giá trị đã gửi.','unknown',received,new TypeError('Mismatched created quota tier values'));expected.splice(index,1);}
+ };
+ return useMutation({meta:{handlesFeedback:true},mutationFn:async(params:QuotaInput&{continueId?:string})=>{
+  const user=await getSessionUser();if(!user)throw new Error('Not authenticated');
+  const payload=withOrg({name:params.name,description:params.description||null,user_id:user.id},selectedOrganizationId);
+  // Hộp gửi kèm mã định mức đã tạo ở lần bấm trước (bậc giá ghi dở): đọc lại đúng mã rồi mới làm tiếp (xem `createdStillThere`).
+  const known=params.continueId?await createdStillThere<ServiceQuota>('service_quotas',params.continueId,'kiểm tra định mức đã tạo ở lần bấm trước'):null;
+  const quota=known??await repeatableWrite('tạo định mức dịch vụ',async()=>{
+   const {createRecordOnce,normalizeVietnameseName}=await import('@/lib/clientRecordCreate');
+   const {row}=await createRecordOnce<ServiceQuota>({table:'service_quotas',userId:user.id,organizationId:payload.organization_id,matchKeys:[`n:${normalizeVietnameseName(params.name)}`],
+    payload,operation:'tạo định mức dịch vụ',sameAs:saved=>sentFieldsMatch(saved,payload),describe:saved=>`Định mức ${String(saved.name)}`});
+   return row;
+  });
+  if(params.tiers.length>0||known){
+   try{await repeatableWrite('ghi bậc giá (định mức đã tạo)',()=>writeTiers(quota,params.tiers,!!known));}
+   catch(error){throw new ServiceQuotaPartialError(quota.id,error);}
+  }
+  try{const {forgetLegacyPending}=await import('@/lib/legacyPendingExit');await forgetLegacyPending({namespace:'quota-create',businessKey:'create'});}
+  catch{/* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */}
+  return quota as ServiceQuota;
  },onSuccess:data=>{queryClient.invalidateQueries({queryKey:['service_quotas']});toast.success(`Đã tạo định mức ${data.name || data.id} và các bậc giá.`);},onError:error=>{queryClient.invalidateQueries({queryKey:['service_quotas']});toast.error('Chưa hoàn tất tạo định mức',{description:error instanceof ServiceQuotaPartialError?error.message:recordWriteMessage(error,'tạo định mức')});}});
 };
 /**

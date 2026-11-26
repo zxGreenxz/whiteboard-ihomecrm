@@ -68,7 +68,7 @@ import { ImagePlus, Loader2 } from 'lucide-react';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { todayISO } from '@/lib/collect';
 import { focusFirstError } from '@/lib/formErrors';
-import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { MeterReadingsRejectedError, meterRejectedRowText } from '@/lib/meterReadingRpc';
 import {validateInputDrafts} from '@/lib/inputDraftValidation';
 
@@ -124,7 +124,6 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<number, string>>({});
   const [imageErrors, setImageErrors] = useState<Record<number, string>>({});
-  const [unknownBatchOutcome, setUnknownBatchOutcome] = useState<string | null>(null);
 
   const currentMonth = new Date().toISOString().slice(0, 7);
 
@@ -166,8 +165,8 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   useEffect(() => {
     if(!open)return;
     const key=reading?.id ?? 'new';
-    if(draftKey.current===key && (form.formState.isDirty || submitFailure || unknownBatchOutcome || Object.keys(imageErrors).length))return;
-    draftKey.current=key;setSubmitFailure('');setUnknownBatchOutcome(null);loadedFilter.current=null;
+    if(draftKey.current===key && (form.formState.isDirty || submitFailure || Object.keys(imageErrors).length))return;
+    draftKey.current=key;setSubmitFailure('');loadedFilter.current=null;
     if (reading && open) {
       setSelectedBuildingId(reading.building_id || '');
       form.reset({
@@ -232,7 +231,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
 
   // Auto-load meters when filters change (add mode only)
   useEffect(() => {
-    if (isEditing || !open || submitFailure || unknownBatchOutcome) return;
+    if (isEditing || !open || submitFailure) return;
     const key=[watchBuildingId,watchRoomId,watchMeterType,watchMonth].join(':');
     if(loadedFilter.current===key && form.formState.dirtyFields.readings)return;
     if (isLoadingMeters || unrecordedQuery.isError || !unrecordedQuery.data) return;
@@ -316,7 +315,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   // Submit handler
   // --------------------------------------------------------------------------
   const onSubmit = async (data: MeterReadingFormValues) => {
-    if (unknownBatchOutcome || busy.current || bulkCreate.isPending || updateReading.isPending || sourceBlocked || (!isEditing && (unrecordedQuery.isLoading || unrecordedQuery.isError || !unrecordedQuery.data)) || !validateInputDrafts(formRef.current)) return;
+    if (busy.current || bulkCreate.isPending || updateReading.isPending || sourceBlocked || (!isEditing && (unrecordedQuery.isLoading || unrecordedQuery.isError || !unrecordedQuery.data)) || !validateInputDrafts(formRef.current)) return;
     if (!validateReadings()) return;
 
     busy.current=true;setSubmitFailure('');
@@ -356,11 +355,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
       }
       draftKey.current=null;loadedFilter.current=null;form.reset();onOpenChange(false);
     } catch (error) {
-      const message=recordWriteMessage(error,'lưu chỉ số');
-      setSubmitFailure(message);
-      // Đợt 8: sửa một chỉ số là đặt giá trị theo mã, lặp lại được ⇒ báo rõ, giữ bản nháp, không khoá. Chỉ đường TẠO
-      // hàng loạt (đợt 9) còn khoá khi kết quả chưa rõ.
-      if(!isEditing && recordWriteBlocked(error))setUnknownBatchOutcome(message);
+      setSubmitFailure(recordWriteMessage(error,'lưu chỉ số'));
+      // Đợt 8: sửa một chỉ số là đặt giá trị theo mã, lặp lại được ⇒ báo rõ, giữ bản nháp, không khoá. Đợt 9: đường TẠO
+      // hàng loạt cũng không khoá nữa: lần bấm sau gửi lại cùng mã chống trùng, hàm ghi v2 không ghi hai lần.
       // Từ chối cả lô (vd tháng này đã có chỉ số): đánh dấu đúng dòng, chưa ghi dòng nào.
       if(error instanceof MeterReadingsRejectedError){
         const rowErrors=Object.fromEntries(error.rows.flatMap(row=>row.n && sentIndexes[row.n-1]!==undefined?[[sentIndexes[row.n-1],meterRejectedRowText(row)]]:[]));
@@ -387,10 +384,10 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
             <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
-              {(unknownBatchOutcome || submitFailure) && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{unknownBatchOutcome || submitFailure}</p>}
+              {submitFailure && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{submitFailure}</p>}
               {!isEditing && unrecordedQuery.isError && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">Không tải được công tơ chưa chốt. Dữ liệu đã nhập được giữ nguyên. <Button type="button" variant="link" onClick={() => void unrecordedQuery.refetch()}>Tải lại công tơ</Button></p>}
               {sourceBlocked && <div role="alert" className="text-destructive">Chưa tải đủ toà nhà hoặc phòng. <Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void roomsQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
-              <fieldset disabled={isPending || sourceBlocked || !!unknownBatchOutcome} className="space-y-4">
+              <fieldset disabled={isPending || sourceBlocked} className="space-y-4">
               {/* Row 1: Tòa nhà + Phòng */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField
@@ -716,7 +713,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isPending || sourceBlocked || uploadingIndex!==null || fields.length === 0 || !!unknownBatchOutcome || (!isEditing && (unrecordedQuery.isError || !unrecordedQuery.data))}
+                  disabled={isPending || sourceBlocked || uploadingIndex!==null || fields.length === 0 || (!isEditing && (unrecordedQuery.isError || !unrecordedQuery.data))}
                 >
                   {isPending ? (
                     <>

@@ -19,7 +19,19 @@ import { hasUnconfirmedResponse } from './operationOutcome';
 
 // `lead_activities` (đợt 8): thêm hoạt động khách hẹn dùng `insertWithClientId`; bảng nhận `id`, không trigger nào ghi đè,
 // chỉ mục duy nhất duy nhất là khoá chính (production 26/11/2026). Không dùng bộ nhớ chọn mã theo người ở dưới.
-export type ClientCreateTable = 'customers' | 'leads' | 'lead_activities';
+//
+// Đợt 9 (tạo mới ở màn thiết lập, `createRecordOnce`): production 26/11/2026, mọi bảng dưới đây có `id uuid default
+// gen_random_uuid()`, các trigger BEFORE INSERT (`set_user_id_from_auth`, `autofill_org_strict`, sinh mã phiếu/mẫu/tên
+// công tơ, `buildings_nguoi_dung_ten_theo_cong_ty_v1`) không đụng `new.id`. Vài bảng có chỉ mục duy nhất NGOÀI khoá chính
+// (tên phòng trong toà, mã công tơ theo người, mã mẫu in theo người, mã phiếu vật tư): 23505 nêu tên chỉ mục đó thì không
+// chứng minh mã đã có (xem `otherUniqueConstraint`).
+export type ClientCreateTable =
+  | 'customers' | 'leads' | 'lead_activities'
+  | 'rooms' | 'meters' | 'buildings' | 'vehicles' | 'areas'
+  | 'assets' | 'asset_handovers' | 'asset_movements' | 'asset_maintenance'
+  | 'services' | 'service_quotas'
+  | 'material_purchases' | 'material_adjustments' | 'material_usages'
+  | 'income_expense_templates';
 type Row = { id: string };
 
 interface UnconfirmedCreate { id: string; matchKeys: string[]; at: number }
@@ -108,6 +120,17 @@ export function forgetUnconfirmedCreates(): void {
 export const isUniqueViolation = (error: unknown): boolean =>
   !!error && typeof error === 'object' && String((error as { code?: unknown }).code ?? '') === '23505';
 
+/**
+ * 23505 nêu tên một chỉ mục duy nhất KHÁC khoá chính `<bảng>_pkey` (tên phòng trong toà, mã công tơ…): một bản ghi khác
+ * đã giữ giá trị đó. Không nêu được tên chỉ mục thì trả `false` (coi như khoá chính, như trước đợt 9).
+ */
+export function otherUniqueConstraint(error: unknown, table: ClientCreateTable): boolean {
+  if (!isUniqueViolation(error)) return false;
+  const fields = error as { message?: unknown; details?: unknown };
+  const match = /unique constraint "([^"]+)"/.exec(`${String(fields.message ?? '')} ${String(fields.details ?? '')}`);
+  return !!match && match[1] !== `${table}_pkey`;
+}
+
 export type RecordRead<T> = { state: 'found'; row: T } | { state: 'missing' } | { state: 'unreadable' };
 
 /** Đọc đúng bản ghi theo mã. `missing` = đọc được nhưng không thấy (chưa có, hoặc RLS ẩn); `unreadable` = đọc hỏng. */
@@ -163,6 +186,9 @@ export async function insertWithClientId<T extends Row>(table: ClientCreateTable
   // Không lỗi mà không có dòng, lỗi mạng, hay trùng mã: đọc đúng mã mới biết lần gửi đã ghi chưa.
   const read = await readRecordById<T>(table, id);
   if (read.state === 'found') return isDeleted(read.row) ? { row: read.row, replayed: true, deleted: true } : { row: read.row, replayed: true };
+  // Trùng một chỉ mục khác khoá chính mà mã này không có trên máy chủ: bản ghi KHÁC đã giữ giá trị đó (tên phòng, mã công
+  // tơ…). Lời từ chối rõ, trả nguyên lỗi gốc để nơi gọi báo (và tra bản ghi đó nếu muốn).
+  if (read.state === 'missing' && otherUniqueConstraint(error, table)) throw error;
   if (uniqueViolation && read.state === 'missing') {
     throw new FinancialAlreadyRecordedError(`Mã ${id} đã có trên máy chủ (lần gửi trước đã ghi) nhưng bạn không xem được bản ghi đó. Nhờ quản lý kiểm tra; bấm lưu lại nếu vẫn muốn tạo thêm.`, [id]);
   }
@@ -221,6 +247,69 @@ export async function createWithClientMemory<T extends Row>(input: CreateWithMem
   if (outcome.replayed && !input.clientId && !samePerson(input.personOf(outcome.row as unknown as Record<string, unknown>), input.person)) {
     throw new FinancialAlreadyRecordedError(
       `${input.describe(outcome.row as unknown as Record<string, unknown>)} đã được tạo ở lần gửi trước với thông tin lúc đó (mã ${outcome.row.id}). Mở bản ghi đó để kiểm tra và sửa nếu cần; bấm lưu lại nếu vẫn muốn tạo thêm.${input.alreadyNote ? ` ${input.alreadyNote}` : ''}`,
+      [outcome.row.id],
+    );
+  }
+  return { row: outcome.row, replayed: outcome.replayed, clientId: id };
+}
+
+export interface CreateRecordOnceInput {
+  table: ClientCreateTable;
+  userId: string;
+  organizationId: string;
+  /**
+   * Khoá nhận ra «cùng một bản ghi đang tạo» giữa hai lần bấm trong tab (ví dụ `toà|tên chuẩn hoá`). Lần gửi trước còn
+   * chưa rõ mang cùng khoá thì gửi lại ĐÚNG mã đó. Không có khoá (mảng rỗng) thì mỗi lần bấm là một mã mới.
+   */
+  matchKeys: readonly string[];
+  /** Dòng gửi đi, đã bọc `withOrg(...)` ở nơi gọi. Không chứa `id`. */
+  payload: Record<string, unknown>;
+  operation: string;
+  /** Dòng đọc lại của lần gửi trước có đúng là thứ đang tạo không (so các trường người dùng nhập). */
+  sameAs: (row: Record<string, unknown>) => boolean;
+  /** Tên hiển thị trong câu báo khi lần trước đã ghi với thông tin khác. */
+  describe: (row: Record<string, unknown>) => string;
+}
+
+/**
+ * Đợt 9: tạo một bản ghi thiết lập (toà, xe, khu vực, tài sản, dịch vụ, định mức, phiếu vật tư, mẫu in…) bằng mã do trình
+ * duyệt sinh, như `createWithClientMemory` nhưng nhận ra «cùng bản ghi» bằng `matchKeys` thay cho SĐT / tên người. Không
+ * giữ dấu bền nào: nơi gọi bọc bằng `repeatableWrite` để kết quả chưa rõ thành lời báo «bấm lại», và lần bấm lại gửi
+ * đúng mã cũ nên khoá chính chặn bản thứ hai. Kết quả:
+ * - `{row, replayed:false}`: vừa tạo.
+ * - `{row, replayed:true}`: lần gửi trước đã ghi đúng thứ này (mã cũ); không ghi thêm.
+ * - ném `FinancialAlreadyRecordedError`: lần gửi trước đã ghi nhưng với thông tin khác (người dùng sửa giữa hai lần), hoặc
+ *   mã đã có mà không đọc thấy. Câu báo nêu mã; lần bấm sau là lượt mới.
+ * - ném `FinancialWorkflowError('unknown')`: chưa rõ và chưa đọc được; mã được nhớ để lần bấm sau gửi lại đúng mã.
+ * - ném lỗi gốc: máy chủ từ chối rõ (kể cả trùng tên / mã với một bản ghi KHÁC).
+ */
+export async function createRecordOnce<T extends Row>(input: CreateRecordOnceInput): Promise<CreateWithMemoryOutcome<T>> {
+  const { table, userId, organizationId, matchKeys } = input;
+  const choice = pickClientId(table, userId, organizationId, matchKeys);
+  if (matchKeys.length) rememberUnconfirmed(table, userId, organizationId, { id: choice.id, matchKeys: [...matchKeys] });
+  let id = choice.id;
+  let outcome: ClientCreateOutcome<T>;
+  try {
+    outcome = await insertWithClientId<T>(table, id, input.payload, input.operation);
+    if (outcome.deleted) {
+      // Lần trước đã tạo rồi bị xoá: lần bấm này là một lần tạo mới, mã mới.
+      forgetUnconfirmed(table, userId, organizationId, id);
+      id = crypto.randomUUID();
+      if (matchKeys.length) rememberUnconfirmed(table, userId, organizationId, { id, matchKeys: [...matchKeys] });
+      outcome = await insertWithClientId<T>(table, id, input.payload, input.operation);
+    }
+  } catch (error) {
+    // Như `createWithClientMemory`: mã mới bị từ chối rõ, hoặc máy chủ đã báo mã đã có ⇒ quên. Mã của lần gửi trước còn
+    // chưa rõ thì giữ: lời từ chối của lần này không nói gì về lần trước.
+    const settled = error instanceof FinancialAlreadyRecordedError || (!(error instanceof FinancialWorkflowError) && !hasUnconfirmedResponse(error) && !choice.reused);
+    if (settled) forgetUnconfirmed(table, userId, organizationId, id);
+    throw error;
+  }
+  forgetUnconfirmed(table, userId, organizationId, id);
+  const row = outcome.row as unknown as Record<string, unknown>;
+  if (outcome.replayed && !input.sameAs(row)) {
+    throw new FinancialAlreadyRecordedError(
+      `${input.describe(row)} đã được tạo ở lần gửi trước với thông tin lúc đó (mã ${outcome.row.id}). Mở bản ghi đó để kiểm tra và sửa nếu cần; bấm lưu lại nếu vẫn muốn tạo thêm.`,
       [outcome.row.id],
     );
   }

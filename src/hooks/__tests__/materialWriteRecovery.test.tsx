@@ -2,7 +2,8 @@
 // Đợt 8 (luật 5, cách A): lưu vật tư của công việc và SỬA phiếu nhập vật tư không giữ dấu «chờ đối chiếu» nữa.
 // Cả hai «xoá rồi chèn lại» toàn bộ dòng của phiếu; trigger production tính lại tồn kho và tổng phiếu bằng SUM của mọi
 // dòng đang có (recompute_material_stock, material_purchase_recompute_total), không cộng / trừ dồn. Nên chạy lại cùng
-// nội dung cho cùng kết quả: bấm lại không nhân đôi dòng, không trừ tồn hai lần. Đường TẠO phiếu nhập vẫn giữ dấu (đợt 9).
+// nội dung cho cùng kết quả: bấm lại không nhân đôi dòng, không trừ tồn hai lần. Đường TẠO phiếu nhập (đợt 9) không ghi dấu
+// nữa: xem materialCreateRecovery.test.tsx.
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeRecordServer, seedLegacyPending, pendingKeys, type FakeRecordServer } from './fakeRecordServer';
@@ -350,12 +351,20 @@ describe('sửa phiếu nhập vật tư (material-purchase, đường sửa)', 
     expect(purchaseLines('p-1')).toHaveLength(2);
   });
 
-  it('đường TẠO phiếu nhập vẫn giữ dấu (đợt 9): mất phản hồi thì lần tạo sau bị chặn, không tạo phiếu thứ hai', async () => {
+  // Đợt 9: trước đợt 9 test này tên «đường TẠO phiếu nhập vẫn giữ dấu (đợt 9): mất phản hồi thì lần tạo sau bị chặn, không
+  // tạo phiếu thứ hai». Nay đường tạo không ghi dấu (mã do trình duyệt sinh); hàng rào «không tạo phiếu thứ hai» giữ nguyên.
+  it('đường TẠO phiếu nhập (đợt 9) không ghi dấu: mất phản hồi thì lần tạo sau dùng đúng phiếu đó, không tạo phiếu thứ hai', async () => {
     io.server.failNext('material_purchases', 'insert', 'drop-after');
-    await expect(createPurchase()(purchaseInput)).rejects.toMatchObject({ outcome: 'unknown' });
-    expect(pendingKeys()).toHaveLength(1);
-    await expect(createPurchase()(purchaseInput)).rejects.toBeInstanceOf(FinancialWorkflowError);
+    io.server.failNext('material_purchases', 'read', 'drop-before');
+    const lost = await createPurchase()(purchaseInput).catch(failure => failure);
+    expectRepeatable(lost);
     expect(rows('material_purchases')).toHaveLength(2);
-    expect(io.server.inserts.filter(item => item.table === 'material_purchases')).toHaveLength(1);
+    await createPurchase()(purchaseInput);
+    expect(rows('material_purchases')).toHaveLength(2);
+    const sent = io.server.inserts.filter(item => item.table === 'material_purchases').map(item => (item.payload as Row).id);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toBe(sent[0]);
+    expect(purchaseLines(String(sent[0]))).toHaveLength(2);
+    expect(pendingKeys()).toEqual([]);
   });
 });

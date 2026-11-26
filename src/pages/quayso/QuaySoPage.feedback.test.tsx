@@ -83,15 +83,22 @@ it('retains uploaded identities through full unmount/remount before attachment r
  expect(api.upload).toHaveBeenCalledTimes(1);expect(api.save).toHaveBeenCalledTimes(1);
 });
 
-it('retains an upload with a lost response through remount and never attaches or uploads it blindly',async()=>{
- api.upload.mockImplementationOnce(async(_event:string,file:File,lifecycle:{onPlanned:(proof:{path:string;name:string})=>void})=>{lifecycle.onPlanned({path:'event/uncertain.png',name:file.name});throw new TypeError('Failed to fetch');});
+// Đợt 9 (đổi từ «retains an upload with a lost response through remount and never attaches or uploads it blindly»): tải
+// mất phản hồi không còn khoá ô tải mãi. Không gắn tệp chưa có biên nhận (hàng rào giữ nguyên); tải lại là một tệp mới.
+it('an upload with a lost response is never attached blindly and can be retried as a new upload, also after remount',async()=>{
+ api.upload.mockRejectedValueOnce(new TypeError('Failed to fetch'));
  const first=render(<PayoutForm eventId="event" code="123456" team={team} onSaved={vi.fn()}/>);
  fireEvent.change(first.container.querySelector('input[type="file"]')!,{target:{files:[new File(['a'],'lost.png')]}});
- await screen.findByText(/Chưa xác nhận được kết quả tải: lost.png/);
- expect(screen.getByRole('button',{name:'Thử lại lost.png'}).hasAttribute('disabled')).toBe(true);
+ await screen.findByText(/Chưa tải xong lost.png/);
+ expect(screen.getByRole('button',{name:'Thử lại lost.png'}).hasAttribute('disabled')).toBe(false);
  expect(api.save).not.toHaveBeenCalled();first.unmount();
  const second=render(<PayoutForm eventId="event" code="123456" team={team} onSaved={vi.fn()}/>);
- expect(screen.getByText(/Chưa xác nhận được kết quả tải: lost.png/)).toBeTruthy();
- expect(second.container.querySelector('input[type="file"]')?.hasAttribute('disabled')).toBe(true);
- expect(api.upload).toHaveBeenCalledTimes(1);expect(api.save).not.toHaveBeenCalled();
+ expect(screen.queryByText(/lost.png/)).toBeNull();
+ expect(second.container.querySelector('input[type="file"]')?.hasAttribute('disabled')).toBe(false);
+ api.upload.mockResolvedValueOnce({path:'event/retry.png',name:'lost.png'});
+ api.save.mockResolvedValueOnce({ok:true,event:{id:'event'},teams:[{id:'team',isMine:true,proofs:[{path:'event/retry.png',name:'lost.png'}]}]});
+ fireEvent.change(second.container.querySelector('input[type="file"]')!,{target:{files:[new File(['a'],'lost.png')]}});
+ await screen.findByText(/Đã nộp 1\/1 giấy cọc/);
+ expect(api.upload).toHaveBeenCalledTimes(2);
+ expect(api.save.mock.calls[0][1].proofs.map((proof:{path:string})=>proof.path)).toEqual(['event/retry.png']);
 });

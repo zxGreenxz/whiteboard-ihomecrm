@@ -94,6 +94,8 @@ export default function LuckyDrawAdminPage() {
   }, [event?.id]);
   const invalidate = () => queryClient.invalidateQueries({ queryKey: QK });
 
+  // Đợt 9: chỉ lệnh QUAY còn giữ dấu (riêng từng sự kiện); điểm danh, sửa / xoá đội, thể lệ, đặt lại không giữ dấu nên kết
+  // quả chưa rõ không khoá gì — tải lại danh sách để người bấm thấy trạng thái thật rồi bấm lại nếu cần.
   const mUpsert = useMutation({
     mutationFn: async (input: Parameters<typeof luckyAdminApi.upsertEvent>[0]) => {
       const result = await luckyAdminApi.upsertEvent(input);
@@ -103,9 +105,10 @@ export default function LuckyDrawAdminPage() {
     onSuccess: (r) => {
       setSelectedId(r.eventId);
       invalidate();
-      toast.success(`Đã lưu sự kiện ${events.find(item => item.id === r.eventId)?.title ?? 'vừa tạo'}.`);
+      if (r.replayed) toast.success(`Sự kiện mới đã được tạo ở lần bấm trước (đường dẫn /quayso/${r.slug ?? r.eventId}); không tạo thêm.`);
+      else toast.success(`Đã lưu sự kiện ${events.find(item => item.id === r.eventId)?.title ?? 'vừa tạo'}.`);
     },
-    onError: (e: Error) => notifyActionError(e, 'Không lưu được sự kiện.'),
+    onError: (e: Error) => { invalidate(); notifyActionError(e, 'Không lưu được sự kiện.'); },
   });
   const mAddTeam = useMutation({
     mutationFn: async (input: Parameters<typeof luckyAdminApi.addTeam>[0]) => {
@@ -118,42 +121,48 @@ export default function LuckyDrawAdminPage() {
       setDraft(EMPTY_DRAFT); setTeamNameError('');
       toast.success(`Đã thêm đội ${input.name}. Mã điểm danh: ${r.code}.`);
     },
-    onError: (e: Error) => notifyActionError(e, `Chưa thêm được đội ${draft.name || 'mới'}.`),
+    onError: (e: Error) => { invalidate(); notifyActionError(e, `Chưa thêm được đội ${draft.name || 'mới'}.`); },
   });
   const mUpdateTeam = useMutation({
     mutationFn: (args: { teamId: string; p: Parameters<typeof luckyAdminApi.updateTeam>[1] }) =>
       luckyAdminApi.updateTeam(args.teamId, args.p),
     onSuccess: (_, input) => { invalidate(); toast.success(`Đã cập nhật đội ${event?.teams.find(item => item.id === input.teamId)?.name ?? "đã chọn"}.`); },
-    onError: (e: Error) => notifyActionError(e, 'Chưa cập nhật được đội.'),
+    onError: (e: Error) => { invalidate(); notifyActionError(e, 'Chưa cập nhật được đội.'); },
   });
   const mDeleteTeam = useMutation({
-    mutationFn: luckyAdminApi.deleteTeam,
-    onSuccess: (_, teamId) => { const name = event?.teams.find(item => item.id === teamId)?.name; invalidate(); toast.success(`Đã xóa đội ${name ?? "đã chọn"}.`); },
-    onError: (e: Error) => notifyActionError(e, 'Chưa xóa được đội.'),
+    mutationFn: (args: { teamId: string; eventId: string }) => luckyAdminApi.deleteTeam(args.teamId, args.eventId),
+    onSuccess: (r, input) => {
+      const name = event?.teams.find(item => item.id === input.teamId)?.name ?? 'đã chọn';
+      invalidate();
+      toast.success(r.alreadyDeleted ? `Đội ${name} đã được xoá trước đó.` : `Đã xóa đội ${name}.`);
+    },
+    onError: (e: Error) => { invalidate(); notifyActionError(e, 'Chưa xóa được đội.'); },
   });
   const mForceDraw = useMutation({
     mutationFn: luckyAdminApi.forceDraw,
     onSuccess: (r) => {
       invalidate();
-      if (r.ok) toast.success(`Đã xác nhận kết quả sự kiện ${event?.title ?? 'đã chọn'}. Mở trang công khai để xem kết quả.`);
+      if (r.ok && r.replayed) toast.success(`Sự kiện ${event?.title ?? 'đã chọn'} đã được quay ở lần bấm trước; không quay thêm. Mở trang công khai để xem kết quả.`);
+      else if (r.ok) toast.success(`Đã xác nhận kết quả sự kiện ${event?.title ?? 'đã chọn'}. Mở trang công khai để xem kết quả.`);
       else if (r.reason === 'no_checked_in_teams') toast.error('Chưa có đội nào điểm danh — không quay được.');
       else toast.error(r.reason === 'closed' ? 'Sự kiện đã đóng.' : r.reason === 'forbidden' ? 'Bạn không có quyền quản trị sự kiện này.' : 'Sự kiện không còn khả dụng. Tải lại danh sách để kiểm tra.');
     },
-    onError: (e: Error, eventId) => { if (hasUnconfirmedResponse(e)) setDrawUncertain(eventId); notifyActionError(e, `Chưa xác nhận được kết quả quay của ${event?.title ?? 'sự kiện'}. Tải lại trạng thái trước khi tiếp tục`); },
+    onError: (e: Error, eventId) => { if (hasUnconfirmedResponse(e)) setDrawUncertain(eventId); invalidate(); notifyActionError(e, `Chưa xác nhận được kết quả quay của ${event?.title ?? 'sự kiện'}. Tải lại trạng thái trước khi tiếp tục`); },
   });
   const mDrawRound = useMutation({
     mutationFn: (a: { eventId: string; ordinal: number }) =>
       luckyAdminApi.drawRound(a.eventId, a.ordinal),
     onSuccess: (r, a) => {
       invalidate();
-      if (r.ok) toast.success(`Đã chốt kết quả lượt ${a.ordinal} của sự kiện ${event?.title ?? "đã chọn"}.`);
+      if (r.ok && r.replayed) toast.success(`Lượt ${a.ordinal} của sự kiện ${event?.title ?? "đã chọn"} đã được chốt ở lần bấm trước; không quay thêm.`);
+      else if (r.ok) toast.success(`Đã chốt kết quả lượt ${a.ordinal} của sự kiện ${event?.title ?? "đã chọn"}.`);
       else if (r.reason === 'no_checked_in_teams') toast.error('Chưa vé nào điểm danh — chưa mở được.');
       else if (r.reason === 'not_time') toast.error('Chưa tới giờ mở thưởng đã hẹn.');
       else if (r.reason === 'previous_round_pending') toast.error('Lượt trước chưa xong.');
       else if (r.reason === 'forbidden') toast.error('Bạn không có quyền quản trị sự kiện này.');
       else toast.error(r.reason === 'closed' ? 'Sự kiện đã đóng.' : 'Sự kiện hoặc lượt quay không còn khả dụng. Tải lại danh sách để kiểm tra.');
     },
-    onError: (e: Error, input) => { if (hasUnconfirmedResponse(e)) setDrawUncertain(input.eventId); notifyActionError(e, `Chưa xác nhận được kết quả lượt của ${event?.title ?? 'sự kiện'}. Tải lại trạng thái trước khi tiếp tục`); },
+    onError: (e: Error, input) => { if (hasUnconfirmedResponse(e)) setDrawUncertain(input.eventId); invalidate(); notifyActionError(e, `Chưa xác nhận được kết quả lượt của ${event?.title ?? 'sự kiện'}. Tải lại trạng thái trước khi tiếp tục`); },
   });
   const mSetRounds = useMutation({
     mutationFn: (a: { eventId: string; rounds: LuckyRoundInput[] }) =>
@@ -162,16 +171,34 @@ export default function LuckyDrawAdminPage() {
       invalidate();
       toast.success(r.rounds ? `Đã lưu thể lệ ${r.rounds} lượt.` : 'Đã bỏ chia lượt — về một giải như cũ.');
     },
-    onError: (e: Error) => notifyActionError(e, 'Không lưu được thể lệ.'),
+    onError: (e: Error) => { invalidate(); notifyActionError(e, 'Không lưu được thể lệ.'); },
   });
   const mResetDraw = useMutation({
-    mutationFn: luckyAdminApi.resetDraw,
-    onSuccess: () => {
+    mutationFn: (a: { eventId: string; drawnAt: string | null }) => luckyAdminApi.resetDraw(a.eventId, a.drawnAt),
+    onSuccess: (r) => {
       invalidate();
-      toast.success(`Đã hủy kết quả sự kiện ${event?.title ?? 'đã chọn'} và mở lại sự kiện.`);
+      toast.success(r.alreadyReset
+        ? `Kết quả sự kiện ${event?.title ?? 'đã chọn'} đã được hủy trước đó; sự kiện đang mở.`
+        : `Đã hủy kết quả sự kiện ${event?.title ?? 'đã chọn'} và mở lại sự kiện.`);
     },
-    onError: (e: Error) => notifyActionError(e, `Chưa hủy được kết quả sự kiện ${event?.title ?? 'đã chọn'}`),
+    onError: (e: Error) => { invalidate(); notifyActionError(e, `Chưa hủy được kết quả sự kiện ${event?.title ?? 'đã chọn'}`); },
   });
+  // «Tải lại trạng thái» của cảnh báo quay chưa rõ: chỉ đọc trạng thái rồi kết luận (đã quay / chưa quay), luôn gỡ được
+  // cảnh báo khi đọc được; không bao giờ tự gửi lệnh quay.
+  const reconcileDraw = async (eventId: string) => {
+    setDrawRecovering(true); setDrawRecoveryError('');
+    try {
+      const verdict = await luckyAdminApi.reconcileDraw(eventId);
+      await q.refetch();
+      setDrawUncertain(null);
+      const title = events.find(item => item.id === eventId)?.title ?? 'đã chọn';
+      const what = (ordinal: number | null) => ordinal === null ? `sự kiện ${title}` : `lượt ${ordinal} của sự kiện ${title}`;
+      if (verdict.outcome === 'drawn') toast.success(`Lần bấm trước đã quay xong ${what(verdict.ordinal)}; không quay thêm.`);
+      else if (verdict.outcome === 'not-drawn') toast.info(`Lần bấm trước chưa quay ${what(verdict.ordinal)}. Bấm quay lại khi sẵn sàng: máy chủ chỉ quay mỗi lượt một lần.`);
+      else if (verdict.outcome === 'unknown-intent') toast.info('Không đọc được lượt của lần bấm trước. Xem trạng thái các lượt bên dưới trước khi quay tiếp.');
+    } catch (error) { setDrawRecoveryError(actionErrorMessage(error, 'Chưa đối chiếu được kết quả quay')); }
+    finally { setDrawRecovering(false); }
+  };
 
   // Bucket `lucky-proofs` là PRIVATE (anon chỉ upload được, không đọc) nên phải
   // ký URL tạm mới xem được. Mở tab mới ngay trong handler click để Safari
@@ -237,16 +264,7 @@ export default function LuckyDrawAdminPage() {
           </Button>
         </div>
 
-        {drawUncertain && <div role="alert" className="rounded border border-amber-500 p-3 text-sm">Chưa xác nhận được kết quả thao tác. Tải trạng thái mới trước khi mở lượt hoặc quay tiếp. <Button variant="outline" disabled={q.isFetching || drawRecovering} onClick={async () => {
-          setDrawRecovering(true); setDrawRecoveryError('');
-          try {
-            const confirmed = await luckyAdminApi.reconcileDraw(drawUncertain);
-            await q.refetch();
-            if (confirmed?.ok) setDrawUncertain(null);
-            else setDrawRecoveryError('Chưa xác nhận được kết quả yêu cầu trước. Giữ trạng thái hiện tại và đối chiếu với người quản lý trước khi tiếp tục.');
-          } catch (error) { setDrawRecoveryError(actionErrorMessage(error, 'Chưa đối chiếu được kết quả quay')); }
-          finally { setDrawRecovering(false); }
-        }}>Tải lại trạng thái</Button>{drawRecoveryError && <p role="alert">{drawRecoveryError}</p>}</div>}
+        {drawUncertain && <div role="alert" className="rounded border border-amber-500 p-3 text-sm">Chưa xác nhận được kết quả quay của lần bấm trước. Bấm «Tải lại trạng thái» để xem lượt đó đã quay chưa trước khi mở lượt hoặc quay tiếp. <Button variant="outline" disabled={q.isFetching || drawRecovering} onClick={() => void reconcileDraw(drawUncertain)}>Tải lại trạng thái</Button>{drawRecoveryError && <p role="alert">{drawRecoveryError}</p>}</div>}
         {/* Chờ dữ liệu: khối xám, không chữ "Đang tải" — chủ chốt 02/10/2026. */}
         {q.isLoading && <LoadingState label="sự kiện quay số" variant="detail" rows={5} onRetry={() => { void q.refetch(); }} />}
 
@@ -338,7 +356,7 @@ export default function LuckyDrawAdminPage() {
                       variant="outline"
                       disabled={mResetDraw.isPending}
                       onClick={() => {
-                        if (window.confirm('Huỷ kết quả đã quay và mở lại sự kiện?')) mResetDraw.mutate(event.id);
+                        if (window.confirm('Huỷ kết quả đã quay và mở lại sự kiện?')) mResetDraw.mutate({ eventId: event.id, drawnAt: event.drawnAt });
                       }}
                     >
                       ↺ Huỷ kết quả
@@ -495,7 +513,7 @@ export default function LuckyDrawAdminPage() {
                                 variant="ghost"
                                 className="text-destructive"
                                 onClick={() => {
-                                  if (window.confirm(`Xoá đội "${t.name}"?`)) mDeleteTeam.mutate(t.id);
+                                  if (window.confirm(`Xoá đội "${t.name}"?`)) mDeleteTeam.mutate({ teamId: t.id, eventId: event.id });
                                 }}
                               >
                                 Xoá

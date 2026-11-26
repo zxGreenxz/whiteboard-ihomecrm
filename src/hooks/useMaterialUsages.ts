@@ -2,10 +2,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Material, MaterialUsage, MaterialUsageItem } from '@/types/material';
-import { FinancialWorkflowError, RepeatableWriteUnknownError, isConfirmedFinancialRejection } from '@/lib/financialWorkflow';
+import { FinancialWorkflowError, RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 import { confirmedRecordBatch, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { confirmedMaterialVoucherId, materialLinesRewriteError, materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
+import { confirmedMaterialVoucherId, createMaterialVoucherOnce, materialLinesRewriteError, materialVoucherFailureMessage, sameVoucherHeader, materialVoucherMatchKeys } from '@/lib/materialVoucherOutcome';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { withOrg, withOrgAll } from '@/lib/orgPayload';
 export interface MaterialUsageWithItems extends MaterialUsage {
@@ -49,6 +48,10 @@ interface UsageInput {
   usage_date: string;
   notes: string | null;
   items: Array<{ material_id: string; quantity: number; unit_cost_at_usage: number }>;
+}
+interface ManualUsageInput extends UsageInput {
+  /** Mã bản nháp của form tạo (không gửi lên máy chủ): các lần bấm của cùng bản nháp là cùng một phiếu. */
+  draft?: string;
 }
 interface UpsertInput extends UsageInput { job_id: string }
 /**
@@ -131,39 +134,30 @@ export const useUpsertJobMaterialUsage = (options: { silent?: boolean } = {}) =>
 export const useCreateMaterialUsage = () => {
   const qc = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
-  const guard = persistentFinancialWorkflow('material-manual-usage');
   const refresh = () => { qc.invalidateQueries({ queryKey: ['material-usages', 'list'] }); qc.invalidateQueries({ queryKey: ['materials'] }); };
   return useMutation({
-    mutationFn: async (input: UsageInput) => {
+    // Đợt 9 (cách D): không giữ dấu «chờ đối chiếu»; đầu phiếu và dòng mang mã do trình duyệt sinh (xem
+    // `createMaterialVoucherOnce`). Bấm lại dùng lại đúng phiếu, đúng các mã dòng: tồn (trigger tính lại) không trừ hai lần.
+    mutationFn: async (input: ManualUsageInput): Promise<MaterialUsage & { replayed: boolean }> => {
       if (input.items.length === 0) throw new Error('Cần ít nhất 1 dòng vật tư');
-      return guard.run('create', 'tạo phiếu xuất', async progress => {
-        const { data: header, error } = await supabase.from('material_usages' as any).insert(withOrg({ job_id: null, usage_date: input.usage_date, notes: input.notes }, selectedOrganizationId)).select('id, organization_id').single();
-        if (error) throw error;
-        const id = confirmedMaterialVoucherId(header);
-        progress.completed.push({ id, label: `Phiếu xuất ID ${id} đã tạo` });
-        progress.stage = 'lưu các dòng vật tư';
-        const lines = input.items.map(row => ({ usage_id: id, material_id: row.material_id, quantity: row.quantity, unit_cost_at_usage: row.unit_cost_at_usage }));
-        const headerOrg = (header as unknown as { organization_id?: string | null } | null)?.organization_id;
-        const { data, error: lineError } = await supabase.from('material_usage_items' as any).insert(withOrgAll(lines, headerOrg)).select('id');
-        if (lineError) {
-          progress.stage = 'gỡ phiếu tạm sau lỗi lưu dòng vật tư';
-          const { data: removedHeader, error: cleanupError } = await supabase.from('material_usages' as any).delete().eq('id', id).select('id').single();
-          if (cleanupError) throw cleanupError;
-          confirmedMaterialVoucherId(removedHeader, id);
-          if (isConfirmedFinancialRejection(lineError)) {
-            progress.completed.splice(0, progress.completed.length);
-            throw new FinancialWorkflowError('Dòng vật tư bị từ chối; phiếu tạm đã gỡ. Giữ bản nháp, kiểm tra lỗi trước khi thử lại.', 'failure', [], lineError);
-          }
-          for (const step of progress.completed) if (step.id === id) step.label = `Phiếu tạm ID ${id} đã gỡ; kết quả lưu dòng chưa xác nhận`;
-          progress.stage = 'đối chiếu kết quả lưu dòng sau khi đã gỡ phiếu tạm';
-          throw lineError;
-        }
-        const lineIds = confirmedRecordBatch(data, input.items.length, 'lưu dòng phiếu xuất');
-        progress.completed.push(...lineIds.map(lineId => ({ id: lineId, label: 'Dòng phiếu xuất đã lưu' })));
-        return id;
-      });
+      const { getSessionUser } = await import('@/lib/authSession');
+      const user = await getSessionUser();
+      if (!user) throw new Error('Not authenticated');
+      const headerPayload = withOrg({ job_id: null, usage_date: input.usage_date, notes: input.notes }, selectedOrganizationId);
+      const compare = ['material_id', 'quantity', 'unit_cost_at_usage'] as const;
+      const created = await repeatableWrite('tạo phiếu xuất', () => createMaterialVoucherOnce<MaterialUsage>({
+        headerTable: 'material_usages', lineTable: 'material_usage_items', parentColumn: 'usage_id', noun: 'Phiếu xuất', operation: 'tạo phiếu xuất',
+        userId: user.id, organizationId: selectedOrganizationId ?? '',
+        matchKeys: materialVoucherMatchKeys(input.draft, [input.usage_date, input.notes], input.items, compare),
+        headerPayload, sameHeader: row => sameVoucherHeader(row, headerPayload, ['job_id', 'usage_date', 'notes']),
+        items: input.items, compare,
+        buildLines: header => withOrgAll(input.items.map(row => ({ usage_id: header.id, material_id: row.material_id, quantity: row.quantity, unit_cost_at_usage: row.unit_cost_at_usage })), header.organization_id as string | null | undefined),
+      }));
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'material-manual-usage', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
+      return { ...created.header, replayed: created.replayed };
     },
-    onSuccess: () => { refresh(); toast.success('Đã tạo phiếu xuất kho'); },
+    onSuccess: usage => { refresh(); toast.success(usage.replayed ? `Phiếu xuất ${usage.code ?? ''} đã được lưu ở lần bấm trước (mã ${usage.id}); không ghi thêm.` : 'Đã tạo phiếu xuất kho'); },
     onError: error => { refresh(); toast.error('Chưa hoàn tất tạo phiếu xuất', { description: materialVoucherFailureMessage(error, 'tạo phiếu xuất') }); },
   });
 };

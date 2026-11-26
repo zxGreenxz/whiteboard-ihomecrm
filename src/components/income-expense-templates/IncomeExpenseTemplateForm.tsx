@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -29,7 +29,7 @@ import {
   type IncomeExpenseTemplate,
 } from '@/hooks/useIncomeExpenseTemplates';
 import { focusFirstError } from '@/lib/formErrors';
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
 
 interface IncomeExpenseTemplateFormProps {
   open: boolean;
@@ -39,7 +39,6 @@ interface IncomeExpenseTemplateFormProps {
 
 const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpenseTemplateFormProps) => {
   const isEditing = !!template;
-  const [blocked,setBlocked]=useState(false);
   const busy=useRef(false);
   const draftKey=useRef<string|null>(null);
   const createTemplate = useCreateIncomeExpenseTemplate();
@@ -60,8 +59,8 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
   useEffect(() => {
     if(!open) return;
     const key=template?.id ?? 'new';
-    if(draftKey.current===key && (form.formState.isDirty || form.formState.errors.root?.server || blocked)) return;
-    draftKey.current=key;setBlocked(false);
+    if(draftKey.current===key && (form.formState.isDirty || form.formState.errors.root?.server)) return;
+    draftKey.current=key;
     if (template && open) {
       form.reset({
         name: template.name,
@@ -82,7 +81,7 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
   }, [template, open, form]);
 
   const onSubmit = async (data: IncomeExpenseTemplateFormValues) => {
-    if(blocked || busy.current || createTemplate.isPending || updateTemplate.isPending) return;
+    if(busy.current || createTemplate.isPending || updateTemplate.isPending) return;
     busy.current=true;
     form.clearErrors('root.server');
     try {
@@ -110,9 +109,8 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      // Chỉ đường TẠO còn khoá khi chưa rõ kết quả (đợt 9 sửa). SỬA mẫu ghi theo mã, lưu lại cho cùng kết quả (đợt 8): báo
-      // rõ, giữ nội dung đang sửa, không khoá.
-      setBlocked(!isEditing && recordWriteBlocked(error));
+      // SỬA mẫu ghi theo mã, lưu lại cho cùng kết quả (đợt 8); TẠO mẫu gửi lại đúng mã mẫu cũ (đợt 9). Cả hai: báo rõ, giữ
+      // nội dung đang nhập, không khoá.
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'lưu mẫu in thu chi') });
     } finally {busy.current=false;}
   };
@@ -131,7 +129,7 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
             {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
-            <fieldset disabled={isPending || blocked} className="space-y-4">
+            <fieldset disabled={isPending} className="space-y-4">
             <FormField
               control={form.control}
               name="name"
@@ -222,7 +220,7 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
               >
                 Hủy
               </Button>
-              <Button type="submit" disabled={isPending || blocked}>
+              <Button type="submit" disabled={isPending}>
                 {isPending ? 'Đang lưu...' : 'Lưu'}
               </Button>
             </div>

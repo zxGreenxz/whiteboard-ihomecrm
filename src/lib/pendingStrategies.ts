@@ -143,10 +143,10 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'service-update': khac('A', 'cập nhật dịch vụ'), // đặt giá trị + đồng bộ toà áp dụng theo phần chênh, đọc lại mỗi lần
   'quota-update': khac('A', 'cập nhật định mức'), // xoá rồi chèn lại bậc (duy nhất quota_id+tier_number); khoảng thiếu bậc chờ hàm nguyên tử đợt 10
   'building-services-replace': khac('A', 'lưu dịch vụ mặc định của toà'), // xoá rồi chèn lại (duy nhất building_id+service_id); nguyên tử ở đợt 10
-  'area-write': khac('van', 'lưu khu vực'), // sửa, gán toà, xoá: đợt 8 không ghi dấu (A; xoá mềm khu còn sống, gỡ toà khớp thiếu cặp ⇒ đọc lại); TẠO khu vực (khoá new) còn dấu tới đợt 9
+  'area-write': khac('A', 'lưu khu vực'), // sửa, gán toà, xoá: A (xoá mềm khu còn sống, gỡ toà khớp thiếu cặp ⇒ đọc lại); TẠO khu vực (khoá new, đợt 9): mã do trình duyệt sinh, không ghi dấu
   'vehicle-update': khac('A', 'cập nhật xe'), // sửa theo mã; khớp 0 dòng = PGRST116, từ chối rõ
   'vehicle-delete': khac('A', 'xoá xe'), // xoá mềm xe còn sống; khớp 0 dòng ⇒ đọc lại (đã xoá = xong, còn nguyên = không có quyền)
-  'material-purchase': khac('van', 'lưu phiếu nhập vật tư'), // sửa phiếu nhập (khoá update:<id>): đợt 8 không ghi dấu (A; tổng, tồn, giá vốn do trigger tính lại từ mọi dòng; dấu bản trước gỡ sau lần sửa xong); TẠO phiếu nhập (khoá create) còn dấu tới đợt 9
+  'material-purchase': khac('D', 'lưu phiếu nhập vật tư'), // sửa (khoá update:<id>): A, tổng, tồn, giá vốn do trigger tính lại từ mọi dòng; TẠO (khoá create, đợt 9): đầu phiếu + dòng mã do trình duyệt sinh, phiếu đã có ⇒ đọc dòng của nó; không ghi dấu
   'material-job-usage': khac('A', 'lưu vật tư của công việc'), // không ghi dấu; xoá rồi chèn lại toàn bộ dòng, tồn do trigger tính lại; một phiếu mỗi công việc (uq_material_usages_job); nguyên tử ở đợt 10
   'income-expense-type-update': khac('A', 'cập nhật loại thu chi'), // sửa theo mã, đặt giá trị; khớp 0 dòng = từ chối rõ
   'income-expense-type-delete': khac('A', 'xoá loại thu chi'), // khớp 0 dòng ⇒ đọc lại: không còn = đã xoá, còn = không có quyền
@@ -163,30 +163,33 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'profit-manager-save': khac('D', 'lưu quản lý và lương điều hành'), // sửa: A (hồ sơ theo mã, xoá rồi tạo lại cả bộ quy tắc); thêm: tra theo tài khoản (profit_managers.auth_user_id duy nhất); không ghi dấu
   'shareholder-save': khac('D', 'lưu cổ đông'), // bỏ dấu lồng; sửa theo mã (A), thêm tra theo tài khoản (shareholders.auth_user_id duy nhất)
 
-  // Đợt 9: tạo mới ở màn thiết lập, nhập Excel, Quay số
-  'room-create': khac('van', 'tạo phòng'),
-  'meter-create': khac('van', 'tạo công tơ'),
-  'building-create': khac('van', 'tạo toà nhà'),
-  'building-form-save': khac('van', 'lưu toà nhà'),
-  'building-owner-form-save': khac('van', 'lưu toà nhà và chủ sở hữu'),
-  'vehicle-create': khac('van', 'tạo xe'),
-  'asset-create': khac('van', 'tạo tài sản'),
-  'asset-handover-create': khac('van', 'tạo biên bản bàn giao tài sản'),
-  'asset-movement-create': khac('van', 'ghi di chuyển tài sản'),
-  'asset-maintenance-create': khac('van', 'tạo phiếu bảo trì tài sản'),
-  'service-create': khac('van', 'tạo dịch vụ'),
-  'quota-create': khac('van', 'tạo định mức'),
-  'material-adjustment': khac('van', 'kiểm kê vật tư'), // tạo phiếu kiểm kê và đặt tồn kho chung một dấu
-  'material-adjustment-batch': khac('van', 'kiểm kê nhiều vật tư'),
-  'material-manual-usage': khac('van', 'tạo phiếu xuất vật tư'),
-  'income-expense-template-create': khac('van', 'tạo mẫu in thu chi'),
-  'voucher-excel-import': tien('van', 'nhập thu chi từ Excel'),
-  'useImportMeterReadings': khac('van', 'nhập chỉ số từ Excel'),
-  'useBulkCreateMeterReadings': khac('van', 'tạo chỉ số hàng loạt'),
+  // Đợt 9: tạo mới ở màn thiết lập, nhập Excel, Quay số. Dòng `khac` của đường TẠO không ghi dấu mới (luật 5): mã do trình
+  // duyệt sinh (`createRecordOnce`), bấm lại sau một lần chưa rõ gửi lại đúng mã nên khoá chính chặn bản thứ hai; dấu khoá
+  // chung bản trước (`create`, `new`…) gỡ sau lần tạo xong. Bốn dòng còn giữ dấu (nhập Excel thu chi, nhập / ghi chỉ số hàng
+  // loạt, quay số) có hàm đối chiếu luôn kết luận được.
+  'room-create': khac('D', 'tạo phòng'), // tên duy nhất trong toà (idx_rooms_unique_name_per_building): trùng phòng KHÁC ⇒ tra theo tên, báo mã
+  'meter-create': khac('D', 'tạo công tơ'), // duy nhất (user_id, code): trùng công tơ khác ⇒ tra theo mã, báo mã
+  'building-create': khac('D', 'tạo toà nhà'), // trigger chỉ đặt user_id; sinh phạm vi quyền AFTER ON CONFLICT DO NOTHING
+  'building-form-save': khac('D', 'lưu toà nhà'), // bỏ ba dấu lồng: lõi D (tạo) / A (sửa); chủ sở hữu + dịch vụ làm tiếp trên đúng toà đã lưu (nhớ theo tab)
+  'building-owner-form-save': khac('A', 'lưu toà nhà và chủ sở hữu'), // sửa theo mã; save_building_legal_owner khoá toà rồi upsert
+  'vehicle-create': khac('D', 'tạo xe'), // khoá nhận dạng theo biển số chuẩn hoá + khách
+  'asset-create': khac('D', 'tạo tài sản'),
+  'asset-handover-create': khac('D', 'tạo biên bản bàn giao tài sản'),
+  'asset-movement-create': khac('D', 'ghi di chuyển tài sản'), // không trigger AFTER, không bước đổi phòng ở trình duyệt
+  'asset-maintenance-create': khac('D', 'tạo phiếu bảo trì tài sản'),
+  'service-create': khac('D', 'tạo dịch vụ'), // toà áp dụng đồng bộ theo phần chênh trên đúng dịch vụ đã tạo; nguyên tử ở đợt 10
+  'quota-create': khac('D', 'tạo định mức'), // bậc ghi dở ⇒ gỡ bậc của đúng định mức rồi ghi lại; nguyên tử ở đợt 10
+  'material-adjustment': khac('C', 'kiểm kê vật tư'), // tạo phiếu IN/OUT: D (đầu phiếu + dòng mã do trình duyệt sinh); đặt tồn: mỗi lần đọc materials.on_hand trên máy chủ rồi tính lại chênh
+  'material-adjustment-batch': khac('C', 'kiểm kê nhiều vật tư'), // bỏ dấu lồng; mỗi vật tư đặt tồn như trên, bấm lại chạy cả vòng, vật tư đã khớp không ghi
+  'material-manual-usage': khac('D', 'tạo phiếu xuất vật tư'), // đầu phiếu + dòng mã do trình duyệt sinh; phiếu đã có ⇒ đọc dòng của nó
+  'income-expense-template-create': khac('D', 'tạo mẫu in thu chi'), // generate_template_code không đụng id
+  'voucher-excel-import': tien('D', 'nhập thu chi từ Excel'), // giữ dấu: mỗi dòng mang mã phiếu do trình duyệt sinh (ie_compat_insert_v2 nhận p_row.id), dòng cọc tra theo mã yêu cầu; ảnh chụp bản trước tra gần đúng ⇒ «có thể đã ghi», không tự gửi lại
+  'useImportMeterReadings': khac('B', 'nhập chỉ số từ Excel'), // record_meter_readings_v2 khoá toà rồi mới tra mã; một mã cho mỗi nhóm toà + ngày, gửi lại ngay cùng mã
+  'useBulkCreateMeterReadings': khac('B', 'tạo chỉ số hàng loạt'), // gửi lại ngay cùng khoá; 23505 (mã đã dùng với nội dung khác) = lần trước đã ghi
   // Viết thẳng, KHÔNG trải (`...khac(...)`): phép trải ở cấp tệp làm Rollup coi cả sổ là có tác dụng phụ, nên mọi chunk dính tới
   // bộ chống ghi trùng phải nạp riêng sổ này (đợt 8 đo: chunk sổ tách riêng, bảng nạp trước của chunk entry vượt ngưỡng).
-  'lucky-public-draw': { money: false, reconcile: 'van', label: 'quay số', silent: true }, // trang công khai tự gọi khi mở; người xem ẩn danh không được thấy hộp gỡ khoá
-  'lucky-admin': khac('van', 'thao tác quản trị Quay số'), // 9 thao tác quản trị Quay số chung một dấu
+  'lucky-public-draw': { money: false, reconcile: 'C', label: 'quay số', silent: true }, // lucky_draw_v1 khoá sự kiện FOR UPDATE rồi mới xét «đã quay»: đọc trạng thái, đã quay ⇒ nhận, chưa quay ⇒ gửi lại
+  'lucky-admin': khac('C', 'thao tác quản trị Quay số'), // chỉ lệnh quay giữ dấu (khoá draw:<sự kiện>, ba hàm quay khoá sự kiện rồi mới xét); 7 thao tác khác không ghi dấu, gỡ dấu chung bản trước
 
   // Đợt 11: mã chết, xoá cùng nơi gọi
   'copilot-confirmation': tien('van', 'xác nhận thao tác của trợ lý Hermes'),

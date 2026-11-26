@@ -1,6 +1,6 @@
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
-import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage, repeatableWrite } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
@@ -102,21 +102,52 @@ export const useRoom = (id: string) => {
 
 // Room writes require positive receipts; feedback is emitted once by the hook.
 const duplicateRoomRules = [{ code: '23505', message: /idx_rooms_unique_name_per_building/, description: 'Tên căn hộ đã có trong tòa nhà này.', fieldErrors: { name: 'Tên căn hộ đã có trong tòa nhà này.' } }];
+/** Đợt 9: so trường đã gửi với dòng đọc lại (khoá jsonb xếp lại). Bỏ `user_id`: trigger máy chủ có thể đặt lại người đứng tên. */
+const canonical = (value: unknown): string => JSON.stringify(value ?? null, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+const sentFieldsMatch = (saved: Record<string, unknown>, sent: Record<string, unknown>) => Object.keys(sent).every(key => key === 'user_id' || canonical(saved[key]) === canonical(sent[key]));
+/**
+ * Tên trùng một căn hộ KHÁC còn sống trong tòa (`idx_rooms_unique_name_per_building`, chỉ dòng chưa xoá): tra căn hộ đó để
+ * câu từ chối nêu mã. Không thấy hoặc tra hỏng thì trả lời từ chối gốc (câu chung «Tên căn hộ đã có trong tòa nhà này»).
+ */
+async function roomNameTaken(error: unknown, room: RoomInsert): Promise<unknown> {
+  const detail = error && typeof error === 'object' ? error as { code?: unknown; message?: unknown; details?: unknown } : {};
+  if (String(detail.code ?? '') !== '23505' || !/idx_rooms_unique_name_per_building/.test(`${String(detail.message ?? '')} ${String(detail.details ?? '')}`)) return error;
+  try {
+    const { data, error: readError } = await supabase.from('rooms').select('id,name').eq('building_id', room.building_id).eq('name', room.name).is('deleted_at', null).maybeSingle();
+    if (!readError && data?.id) return new FinancialWorkflowError(`Căn hộ «${data.name}» đã có trong tòa nhà này (mã ${data.id}). Đặt tên khác, hoặc mở căn hộ đó để sửa.`, 'failure', [], error);
+  } catch { /* Tra hỏng: giữ lời từ chối gốc, không đoán mã. */ }
+  return error;
+}
+/**
+ * Đợt 9 (luật 5): tạo căn hộ không giữ dấu «chờ đối chiếu» nào. Mã căn hộ do trình duyệt sinh (`createRecordOnce`; `rooms`
+ * nhận `id`, không trigger BEFORE INSERT nào gán `id` — production 26/11/2026): kết quả chưa rõ báo «bấm lại» và không khoá
+ * form; lần bấm lại cùng tòa + tên gửi ĐÚNG mã cũ nên khoá chính chặn căn hộ thứ hai. Dấu bản trước (khoá chung `create`,
+ * công ty đang chọn) không còn chặn gì, gỡ sau lần tạo xong.
+ */
 export const useCreateRoom = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
-  const guard = persistentFinancialWorkflow('room-create');
   const refresh = () => { queryClient.invalidateQueries({queryKey:['rooms']}); queryClient.invalidateQueries({queryKey:['buildings']}); };
   return useMutation({
     meta: {handlesFeedback:true},
     mutationFn: async (room: RoomInsert) => {
+      const { getSessionUser } = await import('@/lib/authSession');
+      const user = await getSessionUser();
+      if (!user) throw { code: 'PGRST301', message: 'Not authenticated' };
       const payload = withOrg(room, selectedOrganizationId);
-      return guard.run('create', 'tạo căn hộ', async () => {
-        const {data,error} = await supabase.from('rooms').insert(withOrg(room,selectedOrganizationId)).select().single();
-        if(error) throw error;
-        confirmedRecordId(data, 'tạo căn hộ');
-        return data;
-      }, undefined, payload.organization_id);
+      const created = await repeatableWrite('tạo căn hộ', async () => {
+        const { createRecordOnce, normalizeVietnameseName } = await import('@/lib/clientRecordCreate');
+        const { row } = await createRecordOnce<Room>({
+          table: 'rooms', userId: user.id, organizationId: payload.organization_id,
+          matchKeys: [`b:${room.building_id}|n:${normalizeVietnameseName(room.name)}`],
+          payload, operation: 'tạo căn hộ',
+          sameAs: saved => sentFieldsMatch(saved, payload), describe: saved => `Căn hộ ${String(saved.name)}`,
+        });
+        return row;
+      }).catch(async (error: unknown) => { throw await roomNameTaken(error, room); });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'room-create', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
+      return created;
     },
     onSuccess: data => { refresh(); toast.success(`Đã tạo căn hộ ${data.name || data.id}`); },
     onError: error => { refresh(); toast.error('Chưa tạo được căn hộ', {description:recordWriteMessage(error,'tạo căn hộ',{rules:duplicateRoomRules})}); },
