@@ -145,8 +145,8 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'area-write': khac('van', 'lưu khu vực'), // sửa, gán toà, xoá ở đợt 8; tạo khu vực ở đợt 9
   'vehicle-update': khac('van', 'cập nhật xe'),
   'vehicle-delete': khac('van', 'xoá xe'),
-  'material-purchase': khac('van', 'lưu phiếu nhập vật tư'), // sửa phiếu nhập ở đợt 8; tạo phiếu nhập ở đợt 9
-  'material-job-usage': khac('van', 'lưu vật tư của công việc'),
+  'material-purchase': khac('van', 'lưu phiếu nhập vật tư'), // sửa phiếu nhập (khoá update:<id>): đợt 8 không ghi dấu (A; tổng, tồn, giá vốn do trigger tính lại từ mọi dòng; dấu bản trước gỡ sau lần sửa xong); TẠO phiếu nhập (khoá create) còn dấu tới đợt 9
+  'material-job-usage': khac('A', 'lưu vật tư của công việc'), // không ghi dấu; xoá rồi chèn lại toàn bộ dòng, tồn do trigger tính lại; một phiếu mỗi công việc (uq_material_usages_job); nguyên tử ở đợt 10
   'income-expense-type-update': khac('van', 'cập nhật loại thu chi'),
   'income-expense-type-delete': khac('van', 'xoá loại thu chi'),
   'income-expense-template-update': khac('van', 'cập nhật mẫu in thu chi'),
