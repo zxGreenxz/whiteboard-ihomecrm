@@ -10,7 +10,7 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor' }) }));
 vi.mock('@/components/materials/MaterialPicker', () => ({ MaterialPicker: ({ value, onChange }: { value: string | null; onChange: (id: string) => void }) => <select aria-label="Vật tư" value={value ?? ''} onChange={e => onChange(e.target.value)}><option value=""/><option value="m-1">Ống</option><option value="m-2">Đinh</option></select> }));
 vi.mock('@/hooks/useMaterialUsages', () => ({ useCreateMaterialUsage: () => ({ mutateAsync: state.createUsage, isPending: false }), useUpsertJobMaterialUsage: () => ({ mutateAsync: state.upsertUsage, isPending: false }), useMaterialUsageByJob: () => ({ data: null, isPending: false, isError: false, refetch: vi.fn() }) }));
-import { FinancialWorkflowError } from '@/lib/financialWorkflow';
+import { FinancialWorkflowError, RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 import MaterialUsageFormDialog from '../MaterialUsageFormDialog';
 import MaterialUsageSection from '../MaterialUsageSection';
 import MaterialPurchaseFormDialog from '../MaterialPurchaseFormDialog';
@@ -78,14 +78,59 @@ it('phiếu xuất partial giữ bản nháp và ID sau đóng/mở, khóa tạo
   expect(state.createUsage).toHaveBeenCalledTimes(1);
 });
 
-it('vật tư công việc partial hiện ID và giữ dòng, khóa lưu lại toàn bộ', async () => {
-  state.upsertUsage.mockRejectedValue(new FinancialWorkflowError('Phiếu vật tư mới lưu một phần.', 'partial', [{ id: 'job-usage-1', label: 'Phiếu xuất' }]));
+// Đợt 8 (luật 5): lưu vật tư công việc ghi lặp lại được (xoá rồi chèn lại toàn bộ dòng) nên kết quả chưa rõ không khoá
+// form: giữ dòng đang nhập, báo rõ, bấm lại gửi lại đúng bộ dòng đó. (Trước đợt 8 test này chốt «khóa lưu lại toàn bộ».)
+it('vật tư công việc chưa rõ kết quả: báo rõ, giữ dòng, KHÔNG khoá; bấm lại gửi lại đúng bộ dòng', async () => {
+  state.upsertUsage.mockReset().mockRejectedValueOnce(new RepeatableWriteUnknownError('lưu vật tư công việc')).mockResolvedValueOnce('usage-1');
   render(<MaterialUsageSection jobId="job-1"/>);
   fireEvent.change(screen.getByLabelText('Vật tư'), { target: { value: 'm-1' } });
   fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Lưu vật tư' }));
-  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('job-usage-1'));
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Bấm lại'));
   expect(screen.getByRole('spinbutton').getAttribute('value')).toBe('3');
+  expect((screen.getByRole('spinbutton') as HTMLInputElement).disabled).toBe(false);
+  expect((screen.getByRole('button', { name: 'Lưu vật tư' }) as HTMLButtonElement).disabled).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: 'Lưu vật tư' }));
-  expect(state.upsertUsage).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(state.upsertUsage).toHaveBeenCalledTimes(2));
+  expect(state.upsertUsage.mock.calls[1][0]).toEqual(state.upsertUsage.mock.calls[0][0]);
+  expect(state.upsertUsage.mock.calls[1][0]).toMatchObject({ job_id: 'job-1', items: [{ material_id: 'm-1', quantity: 3 }] });
+});
+
+const purchaseOf = (id: string, quantity: number) => ({ id, code: `MP-${id}`, purchase_date: '2026-09-01', supplier_id: null, notes: null, total: 0, items: [{ id: `${id}-line`, purchase_id: id, material_id: 'm-1', quantity, unit_price: 100, line_total: quantity * 100 }] }) as unknown as Parameters<typeof MaterialPurchaseFormDialog>[0]['editing'];
+
+it('sửa phiếu nhập chưa rõ kết quả: không khoá, đóng/mở lại đúng phiếu giữ bản nháp, bấm lại gửi lại', async () => {
+  state.updatePurchase.mockReset().mockRejectedValueOnce(new RepeatableWriteUnknownError('cập nhật phiếu nhập')).mockResolvedValueOnce(undefined);
+  const onOpenChange = vi.fn();
+  const editing = purchaseOf('p-1', 5);
+  const view = render(<MaterialPurchaseFormDialog open onOpenChange={onOpenChange} editing={editing}/>);
+  fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '7' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cập nhật' }));
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Bấm lại'));
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect((screen.getByRole('button', { name: 'Cập nhật' }) as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.getByRole('button', { name: 'Huỷ' })).toBeTruthy();
+  view.rerender(<MaterialPurchaseFormDialog open={false} onOpenChange={onOpenChange} editing={editing}/>);
+  view.rerender(<MaterialPurchaseFormDialog open onOpenChange={onOpenChange} editing={purchaseOf('p-1', 0)}/>);
+  expect(screen.getAllByRole('spinbutton')[0].getAttribute('value')).toBe('7');
+  fireEvent.click(screen.getByRole('button', { name: 'Cập nhật' }));
+  await waitFor(() => expect(state.updatePurchase).toHaveBeenCalledTimes(2));
+  expect(state.updatePurchase.mock.calls[1][0]).toEqual(state.updatePurchase.mock.calls[0][0]);
+  expect(state.updatePurchase.mock.calls[1][0]).toMatchObject({ id: 'p-1', input: { items: [{ material_id: 'm-1', quantity: 7, unit_price: 100 }] } });
+  await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+});
+
+it('sửa phiếu nhập lỗi rồi mở PHIẾU KHÁC: không mang bản nháp và lời báo của phiếu trước sang', async () => {
+  state.updatePurchase.mockReset().mockRejectedValueOnce(new RepeatableWriteUnknownError('cập nhật phiếu nhập')).mockResolvedValueOnce(undefined);
+  const onOpenChange = vi.fn();
+  const view = render(<MaterialPurchaseFormDialog open onOpenChange={onOpenChange} editing={purchaseOf('p-1', 5)}/>);
+  fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '7' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cập nhật' }));
+  await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+  view.rerender(<MaterialPurchaseFormDialog open={false} onOpenChange={onOpenChange} editing={purchaseOf('p-1', 5)}/>);
+  view.rerender(<MaterialPurchaseFormDialog open onOpenChange={onOpenChange} editing={purchaseOf('p-2', 9)}/>);
+  await waitFor(() => expect(screen.getAllByRole('spinbutton')[0].getAttribute('value')).toBe('9'));
+  expect(screen.queryByRole('alert')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Cập nhật' }));
+  await waitFor(() => expect(state.updatePurchase).toHaveBeenCalledTimes(2));
+  expect(state.updatePurchase.mock.calls[1][0]).toMatchObject({ id: 'p-2', input: { items: [{ quantity: 9 }] } });
 });

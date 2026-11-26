@@ -2,10 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Material, MaterialUsage, MaterialUsageItem } from '@/types/material';
-import { FinancialWorkflowError, isConfirmedFinancialRejection } from '@/lib/financialWorkflow';
-import { confirmedRecordBatch } from '@/lib/recordWriteOutcome';
+import { FinancialWorkflowError, RepeatableWriteUnknownError, isConfirmedFinancialRejection } from '@/lib/financialWorkflow';
+import { confirmedRecordBatch, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { confirmedMaterialVoucherId, materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
+import { confirmedMaterialVoucherId, materialLinesRewriteError, materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { withOrg, withOrgAll } from '@/lib/orgPayload';
 export interface MaterialUsageWithItems extends MaterialUsage {
@@ -51,50 +51,73 @@ interface UsageInput {
   items: Array<{ material_id: string; quantity: number; unit_cost_at_usage: number }>;
 }
 interface UpsertInput extends UsageInput { job_id: string }
+/**
+ * Một lượt lưu vật tư của công việc, CHẠY LẠI ĐƯỢC: đọc phiếu xuất của công việc, đặt ngày / ghi chú, xoá MỌI dòng cũ rồi
+ * chèn đúng bộ dòng đang nhập (không còn dòng nào thì gỡ phiếu). Tồn kho do trigger tính lại từ toàn bộ dòng đang có
+ * (recompute_material_stock: nhập − xuất, không trừ dồn), nên chạy lại sau một lần chưa rõ kết quả cho cùng bộ dòng và
+ * cùng tồn kho: không nhân đôi dòng, không trừ tồn hai lần. Mỗi công việc tối đa một phiếu (uq_material_usages_job), nên
+ * lần chạy lại sau khi tạo đầu phiếu mất phản hồi đọc thấy phiếu đó, không tạo phiếu thứ hai. Chưa nguyên tử (đợt 10):
+ * chèn hỏng SAU khi đã xoá thì công việc tạm không còn dòng vật tư nào tới lần bấm lưu lại; câu báo nói rõ điều đó.
+ */
+async function saveJobMaterialUsage(input: UpsertInput): Promise<string | null> {
+  const { data: existing, error: readError } = await supabase.from('material_usages' as any).select('id').eq('job_id', input.job_id).maybeSingle();
+  if (readError) throw readError;
+  const existingId = existing ? confirmedMaterialVoucherId(existing) : null;
+  if (!existingId && input.items.length === 0) return null;
+  let usageId: string;
+  if (existingId) {
+    // Khớp 0 dòng (không thấy / không có quyền sửa) ⇒ PGRST116: từ chối rõ, chưa xoá dòng nào.
+    const { data, error } = await supabase.from('material_usages' as any).update({ usage_date: input.usage_date, notes: input.notes }).eq('id', existingId).select('id').single();
+    if (error) throw error;
+    usageId = confirmedMaterialVoucherId(data, existingId);
+    const { data: removed, error: removeError } = await supabase.from('material_usage_items' as any).delete().eq('usage_id', existingId).select('id');
+    if (removeError) throw removeError;
+    // Biên nhận xoá sai dạng ⇒ chưa rõ: dừng, không chèn dòng mới lên trên.
+    confirmedRecordBatch(removed, Array.isArray(removed) ? removed.length : 0, 'xóa dòng vật tư công việc cũ');
+  } else {
+    const { data, error } = await supabase.from('material_usages' as any).insert({ job_id: input.job_id, usage_date: input.usage_date, notes: input.notes }).select().single();
+    if (error) throw error;
+    usageId = confirmedMaterialVoucherId(data);
+  }
+  if (input.items.length > 0) {
+    const lines = input.items.map(row => ({ usage_id: usageId, material_id: row.material_id, quantity: row.quantity, unit_cost_at_usage: row.unit_cost_at_usage }));
+    try {
+      const { data, error } = await supabase.from('material_usage_items' as any).insert(lines).select('id');
+      if (error) throw error;
+      confirmedRecordBatch(data, input.items.length, 'lưu dòng vật tư công việc mới');
+    } catch (error) {
+      throw materialLinesRewriteError(existingId ? 'Đã xoá vật tư cũ của công việc' : 'Đã tạo phiếu xuất cho công việc', 'Lưu vật tư', error);
+    }
+  } else if (existingId) {
+    const { data, error } = await supabase.from('material_usages' as any).delete().eq('id', existingId).select('id').single();
+    if (error && (error as { code?: unknown }).code === 'PGRST116') {
+      // Gỡ phiếu khớp 0 dòng: đọc lại đúng phiếu. Không còn ⇒ đã gỡ (lần trước / người khác); còn ⇒ không có quyền xoá.
+      try {
+        await settleZeroRowDelete('gỡ phiếu xuất công việc không còn vật tư', () => supabase.from('material_usages' as any).select('id').eq('id', existingId).maybeSingle());
+      } catch (refusal) {
+        if (refusal instanceof RepeatableWriteUnknownError || !(refusal instanceof FinancialWorkflowError)) throw refusal;
+        throw new FinancialWorkflowError(`Đã xoá hết vật tư của công việc. ${refusal.message}`, 'failure', [], refusal);
+      }
+    } else {
+      if (error) throw error;
+      confirmedMaterialVoucherId(data, existingId);
+    }
+  }
+  return usageId;
+}
 export const useUpsertJobMaterialUsage = (options: { silent?: boolean } = {}) => {
   const qc = useQueryClient();
-  const guard = persistentFinancialWorkflow('material-job-usage');
   const refresh = (jobId: string) => { qc.invalidateQueries({ queryKey: ['material-usages', 'by-job', jobId] }); qc.invalidateQueries({ queryKey: ['material-usages', 'list'] }); qc.invalidateQueries({ queryKey: ['materials'] }); };
   return useMutation({
     mutationFn: async (input: UpsertInput) => {
-      const { data: existing, error: readError } = await supabase.from('material_usages' as any).select('id').eq('job_id', input.job_id).maybeSingle();
-      if (readError) throw readError;
-      const existingId = existing ? confirmedMaterialVoucherId(existing) : null;
-      return guard.run(input.job_id, 'lưu vật tư công việc', async progress => {
-        if (!existingId && input.items.length === 0) return null;
-        let usageId: string;
-        if (existingId) {
-          const { data, error } = await supabase.from('material_usages' as any).update({ usage_date: input.usage_date, notes: input.notes }).eq('id', existingId).select('id').single();
-          if (error) throw error;
-          usageId = confirmedMaterialVoucherId(data, existingId);
-          progress.completed.push({ id: usageId, label: `Thông tin phiếu xuất công việc ID ${usageId} đã cập nhật` });
-          progress.stage = 'xóa toàn bộ dòng vật tư công việc cũ';
-          const { data: removed, error: removeError } = await supabase.from('material_usage_items' as any).delete().eq('usage_id', existingId).select('id');
-          if (removeError) throw removeError;
-          const removedIds = confirmedRecordBatch(removed, Array.isArray(removed) ? removed.length : 0, 'xóa dòng vật tư công việc cũ');
-          progress.completed.push(...removedIds.map(lineId => ({ id: lineId, label: 'Dòng vật tư công việc cũ đã xóa' })));
-        } else {
-          const { data, error } = await supabase.from('material_usages' as any).insert({ job_id: input.job_id, usage_date: input.usage_date, notes: input.notes }).select().single();
-          if (error) throw error;
-          usageId = confirmedMaterialVoucherId(data);
-          progress.completed.push({ id: usageId, label: `Phiếu xuất công việc ID ${usageId} đã tạo` });
-        }
-        if (input.items.length > 0) {
-          progress.stage = 'lưu các dòng vật tư công việc mới';
-          const lines = input.items.map(row => ({ usage_id: usageId, material_id: row.material_id, quantity: row.quantity, unit_cost_at_usage: row.unit_cost_at_usage }));
-          const { data, error } = await supabase.from('material_usage_items' as any).insert(lines).select('id');
-          if (error) throw error;
-          const lineIds = confirmedRecordBatch(data, input.items.length, 'lưu dòng vật tư công việc mới');
-          progress.completed.push(...lineIds.map(lineId => ({ id: lineId, label: 'Dòng vật tư công việc mới đã lưu' })));
-        } else if (existingId) {
-          progress.stage = 'gỡ phiếu xuất công việc không còn dòng';
-          const { data, error } = await supabase.from('material_usages' as any).delete().eq('id', existingId).select('id').single();
-          if (error) throw error;
-          confirmedMaterialVoucherId(data, existingId);
-          progress.completed.push({ id: existingId, label: 'Phiếu xuất công việc không còn dòng đã gỡ' });
-        }
-        return usageId;
-      });
+      // Đợt 8 (luật 5, cách A): không giữ dấu «chờ đối chiếu»; kết quả chưa rõ báo rõ, form không khoá, bấm lại ghi lại.
+      const usageId = await repeatableWrite('lưu vật tư công việc', () => saveJobMaterialUsage(input));
+      const jobId = input.job_id;
+      try {
+        const { forgetLegacyPending } = await import('@/lib/legacyPendingExit');
+        await forgetLegacyPending({ namespace: 'material-job-usage', businessKey: jobId });
+      } catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
+      return usageId;
     },
     onSuccess: (data, input) => { refresh(input.job_id); if (!options.silent) { if (data) toast.success('Đã lưu vật tư sử dụng cho phiếu công việc'); else toast.info('Không có vật tư cần lưu.'); } },
     onError: (error, input) => { refresh(input.job_id); if (!options.silent) toast.error('Chưa hoàn tất lưu vật tư công việc', { description: materialVoucherFailureMessage(error, 'lưu vật tư công việc') }); },

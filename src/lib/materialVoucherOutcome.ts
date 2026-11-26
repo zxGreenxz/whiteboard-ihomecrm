@@ -1,4 +1,4 @@
-import { FinancialWorkflowError, workflowErrorMessage } from './financialWorkflow';
+import { FinancialWorkflowError, RepeatableWriteUnknownError, isConfirmedFinancialRejection, workflowErrorMessage } from './financialWorkflow';
 
 export function confirmedMaterialVoucherId(value: unknown, expectedId?: string): string {
   const id = value && typeof value === 'object' ? (value as Record<string, unknown>).id : undefined;
@@ -18,8 +18,24 @@ export function confirmMaterialVoucherLines(value: unknown, expectedIds: readonl
 export function materialVoucherFailureMessage(error: unknown, operation: string): string {
   return workflowErrorMessage(error, operation);
 }
+/** Kết quả chưa rõ thì khoá form, TRỪ thao tác lặp lại được (đợt 8): lỗi đó báo rõ và cho bấm lại. */
 export function materialVoucherRetryBlocked(error: unknown): boolean {
-  return error instanceof FinancialWorkflowError && error.outcome !== 'failure';
+  return error instanceof FinancialWorkflowError && !(error instanceof RepeatableWriteUnknownError) && error.outcome !== 'failure';
+}
+
+/**
+ * Đợt 8: lưu vật tư của công việc và sửa phiếu nhập «xoá rồi chèn lại» toàn bộ dòng (chưa nguyên tử; hàm máy chủ ở đợt
+ * 10). Ghi dòng mới hỏng SAU khi đã xoá dòng cũ (hoặc sau khi vừa tạo đầu phiếu) thì phiếu đang không còn dòng nào: câu
+ * báo nói rõ điều đó. Máy chủ từ chối rõ ⇒ `failure`; chưa rõ ⇒ lỗi lặp lại được. Cả hai không khoá form: lần lưu lại xoá
+ * rồi ghi lại đúng bộ dòng đang nhập nên không nhân đôi dòng, và tồn kho do trigger tính lại từ toàn bộ dòng.
+ */
+export function materialLinesRewriteError(done: string, button: string, error: unknown): FinancialWorkflowError {
+  if (isConfirmedFinancialRejection(error)) {
+    return new FinancialWorkflowError(`${done} nhưng máy chủ từ chối ghi các dòng vật tư mới; phiếu đang chưa có dòng vật tư nào. ${workflowErrorMessage(error, 'ghi các dòng vật tư mới')} Sửa lại rồi bấm «${button}».`, 'failure', [], error);
+  }
+  const unknown = new RepeatableWriteUnknownError('ghi các dòng vật tư mới', error);
+  unknown.message = `${done} nhưng chưa xác nhận được đã ghi các dòng vật tư mới; phiếu có thể đang chưa có dòng vật tư nào. Bấm «${button}» lại: lần lưu lại xoá rồi ghi lại đúng bộ dòng đang nhập nên không nhân đôi.`;
+  return unknown;
 }
 
 export function readMaterialVoucherLines(value: unknown): Array<{ id: string; material_id: string }> {

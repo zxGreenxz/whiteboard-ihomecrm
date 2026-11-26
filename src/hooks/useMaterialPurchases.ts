@@ -4,9 +4,9 @@ import { toast } from 'sonner';
 import { friendlyError } from '@/lib/friendlyError';
 import type { Material, MaterialPurchase, MaterialPurchaseItem } from '@/types/material';
 import { FinancialWorkflowError, isConfirmedFinancialRejection } from '@/lib/financialWorkflow';
-import { confirmedRecordBatch } from '@/lib/recordWriteOutcome';
+import { confirmedRecordBatch, repeatableWrite } from '@/lib/recordWriteOutcome';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { confirmedMaterialVoucherId, materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
+import { confirmedMaterialVoucherId, materialLinesRewriteError, materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { withOrg, withOrgAll } from '@/lib/orgPayload';
 
@@ -75,32 +75,45 @@ export const useCreateMaterialPurchase = () => {
     onError: error => { refresh(); toast.error('Chưa hoàn tất tạo phiếu nhập', { description: materialVoucherFailureMessage(error, 'tạo phiếu nhập') }); },
   });
 };
+/**
+ * Một lượt SỬA phiếu nhập, CHẠY LẠI ĐƯỢC: đặt ngày / nhà cung cấp / ghi chú theo mã phiếu, xoá MỌI dòng cũ rồi chèn đúng
+ * bộ dòng đang nhập. Production (đọc 26/11/2026): tổng phiếu (material_purchase_recompute_total) và tồn kho / giá vốn bình
+ * quân (recompute_material_stock) do trigger TÍNH LẠI từ toàn bộ dòng đang có, không cộng dồn; phiếu nhập không sinh phiếu
+ * chi hay bút toán nào. Nên chạy lại cùng nội dung cho cùng kết quả: không nhân đôi dòng, tồn và tổng không cộng hai lần.
+ * Chưa nguyên tử (đợt 10): chèn hỏng SAU khi đã xoá thì phiếu tạm không còn dòng nào tới lần bấm «Cập nhật» lại.
+ */
+async function replaceMaterialPurchase(id: string, input: PurchaseInput): Promise<void> {
+  // Khớp 0 dòng (đã xoá / không có quyền sửa) ⇒ PGRST116: từ chối rõ, chưa xoá dòng nào.
+  const { data: header, error } = await supabase.from('material_purchases' as any).update({ purchase_date: input.purchase_date, supplier_id: input.supplier_id, notes: input.notes }).eq('id', id).select('id, organization_id').single();
+  if (error) throw error;
+  confirmedMaterialVoucherId(header, id);
+  const { data: removed, error: removeError } = await supabase.from('material_purchase_items' as any).delete().eq('purchase_id', id).select('id');
+  if (removeError) throw removeError;
+  // Biên nhận xoá sai dạng ⇒ chưa rõ: dừng, không chèn dòng mới lên trên.
+  confirmedRecordBatch(removed, Array.isArray(removed) ? removed.length : 0, 'xóa dòng phiếu nhập cũ');
+  if (input.items.length === 0) return;
+  const lines = input.items.map(row => ({ purchase_id: id, material_id: row.material_id, quantity: row.quantity, unit_price: row.unit_price }));
+  const headerOrg = (header as unknown as { organization_id?: string | null } | null)?.organization_id;
+  try {
+    const { data, error: lineError } = await supabase.from('material_purchase_items' as any).insert(withOrgAll(lines, headerOrg)).select('id');
+    if (lineError) throw lineError;
+    confirmedRecordBatch(data, input.items.length, 'lưu dòng phiếu nhập mới');
+  } catch (lineError) {
+    throw materialLinesRewriteError('Đã xoá các dòng cũ của phiếu nhập', 'Cập nhật', lineError);
+  }
+}
 export const useUpdateMaterialPurchase = () => {
   const qc = useQueryClient();
-  const guard = persistentFinancialWorkflow('material-purchase');
   const refresh = () => { qc.invalidateQueries({ queryKey: KEY }); qc.invalidateQueries({ queryKey: ['materials'] }); };
   return useMutation({
     mutationFn: async ({ id, input }: { id: string; input: PurchaseInput }) => {
-      return guard.run(`update:${id}`, 'cập nhật phiếu nhập', async progress => {
-        const { data: header, error } = await supabase.from('material_purchases' as any).update({ purchase_date: input.purchase_date, supplier_id: input.supplier_id, notes: input.notes }).eq('id', id).select('id, organization_id').single();
-        if (error) throw error;
-        confirmedMaterialVoucherId(header, id);
-        progress.completed.push({ id, label: `Thông tin phiếu nhập ID ${id} đã cập nhật` });
-        progress.stage = 'xóa toàn bộ dòng phiếu nhập cũ';
-        const { data: removed, error: removeError } = await supabase.from('material_purchase_items' as any).delete().eq('purchase_id', id).select('id');
-        if (removeError) throw removeError;
-        const removedIds = confirmedRecordBatch(removed, Array.isArray(removed) ? removed.length : 0, 'xóa dòng phiếu nhập cũ');
-        progress.completed.push(...removedIds.map(lineId => ({ id: lineId, label: 'Dòng phiếu nhập cũ đã xóa' })));
-        if (input.items.length > 0) {
-          progress.stage = 'lưu các dòng vật tư mới';
-          const lines = input.items.map(row => ({ purchase_id: id, material_id: row.material_id, quantity: row.quantity, unit_price: row.unit_price }));
-          const headerOrg = (header as unknown as { organization_id?: string | null } | null)?.organization_id;
-          const { data, error: lineError } = await supabase.from('material_purchase_items' as any).insert(withOrgAll(lines, headerOrg)).select('id');
-          if (lineError) throw lineError;
-          const lineIds = confirmedRecordBatch(data, input.items.length, 'lưu dòng phiếu nhập mới');
-          progress.completed.push(...lineIds.map(lineId => ({ id: lineId, label: 'Dòng phiếu nhập mới đã lưu' })));
-        }
-      });
+      // Đợt 8 (luật 5, cách A): đường SỬA không giữ dấu; kết quả chưa rõ báo rõ, form không khoá, bấm lại ghi lại.
+      // Đường TẠO phiếu nhập (cùng namespace, khoá `create`) vẫn giữ dấu tới đợt 9.
+      await repeatableWrite('cập nhật phiếu nhập', () => replaceMaterialPurchase(id, input));
+      try {
+        const { forgetLegacyPending } = await import('@/lib/legacyPendingExit');
+        await forgetLegacyPending({ namespace: 'material-purchase', businessKey: `update:${id}` });
+      } catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần sửa sau gỡ lại. */ }
     },
     onSuccess: () => { refresh(); toast.success('Đã cập nhật phiếu nhập'); },
     onError: error => { refresh(); toast.error('Chưa hoàn tất cập nhật phiếu nhập', { description: materialVoucherFailureMessage(error, 'cập nhật phiếu nhập') }); },
