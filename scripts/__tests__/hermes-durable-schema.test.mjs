@@ -786,6 +786,23 @@ BEGIN
 END $fn$`)],
 ]);
 
+// These CRM signatures already existed before the first Hermes migration in this
+// replay that replaces their bodies. CREATE OR REPLACE retains their prior ACL.
+// Pin the historical declarations and the roles verified in the rollout catalog.
+const depositTrigger = 'public.trg_contract_link_orphan_deposits()';
+const inheritedDeposits = [
+  ['app_private.assert_room_reservation_legacy_sources_v1(uuid,uuid,uuid[])','20260928025848_room_reservation_workflow.sql',[]],
+  ['app_private.contract_room_deposit_sources_v1(uuid,uuid,uuid)','20261125102224_contract_room_deposit_sources.sql',[]],
+  [depositTrigger,'20260731140000_orphan_deposit_trigger_flex.sql',['service_role']],
+];
+for (const [key,file] of inheritedDeposits) {
+  const historical = splitSqlStatements(readFileSync(join(directory,file),'utf8')).map(clean);
+  assert(historical.some(statement => {
+    const match = /^CREATE OR REPLACE FUNCTION ((?:app_private|public)\.\w+)\(([^)]*)\)/i.exec(statement);
+    return match && match[1] === key.split('(')[0] && signature(match[1],match[2],true) === key;
+  }), `Missing historical deposit declaration: ${key}`);
+}
+
 function securityContract(sql = all, registry = functions) {
   const expandedStatements = expandReviewedFunctionAcl(sql);
   sql = expandedStatements.join(';\n');
@@ -848,7 +865,7 @@ function securityContract(sql = all, registry = functions) {
   // existing subset. Replay ACL statements in order, rather than requiring each
   // historical GRANT to contain the entire future surface (or unioning grants
   // that a later REVOKE actually removed). CREATE OR REPLACE keeps its old ACL.
-  const acl = new Map();
+  const acl = new Map(inheritedDeposits.map(([key,,roles]) => [key,new Set(roles)]));
   // The room-link forward migration also replaces the existing guest sale page
   // and worker reader. Their grants do not make any Hermes RPC public.
   const guestPage = 'public.get_public_available_rooms(text)';
@@ -875,7 +892,7 @@ function securityContract(sql = all, registry = functions) {
       ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER, ...LEARNING_ACTION_CALLER, guestPage, readyRoomWriter, ...saleCompanyCaller])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
-    ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER, guestPage, stockWorker, 'public.get_my_available_rooms(uuid)'])],
+    ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER, guestPage, stockWorker, depositTrigger, 'public.get_my_available_rooms(uuid)'])],
     ['hermes_learning_ingest', new Set(LEARNING_INGEST)],
   ]);
   for (const statement of expandedStatements) {

@@ -71,8 +71,8 @@ export function depositHoldLines(hold: RoomDepositHoldInfo): string[] {
   if (hold.source === 'voucher') {
     const codes = hold.codes.length ? hold.codes : [hold.code].filter(Boolean);
     const label = hold.detail && codes.length ? `Phiếu ${codes.join(', ')}` : `${hold.voucherCount} phiếu cọc`;
-    const lines = [`${label} · nhận ${day} · chờ đối chiếu lượt thuê`];
-    if (depositHoldStale(hold)) lines.push(`Phiếu đã thu quá ${DEPOSIT_HOLD_STALE_DAYS} ngày, cần đối chiếu lượt thuê.`);
+    const lines = [`${label} · lập ${day} · chờ đối chiếu lượt thuê`];
+    if (depositHoldStale(hold)) lines.push(`Phiếu cọc quá ${DEPOSIT_HOLD_STALE_DAYS} ngày, cần đối chiếu lượt thuê.`);
     return lines;
   }
   const first = !hold.detail

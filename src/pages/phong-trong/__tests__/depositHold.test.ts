@@ -64,7 +64,7 @@ describe('khoá deposit_hold', () => {
     expect(isDepositHeld(roomOf(true, 'co'))).toBe(true);
     expect(roomOf(true, 'treo').saleFact?.label).toBe('Đã thuê / giữ chỗ');
     expect(isDepositHeld(roomOf(true, 'treo'))).toBe(true);
-    expect(roomSaleDepositLabel(roomOf(true, 'treo').depositHold!)).toBe('Đã thu · Chưa xác định lượt thuê');
+    expect(roomSaleDepositLabel(roomOf(true, 'treo').depositHold!)).toBe('Phiếu cọc · Chưa xác định lượt thuê');
     expect(roomOf(true, 'thue').saleFact?.label).toBe('Đã thuê / giữ chỗ');
     // Chỉ phòng 'rented' mới mang khối (máy chủ cũng chỉ trả cho phòng 'rented').
     expect(roomOf(true, 'trong').depositHold).toBeNull();
@@ -106,8 +106,8 @@ describe('khoá deposit_hold', () => {
     const cu: RoomDepositHoldInfo = { ...parseRoomDepositHold(treo)!, voucherCount: 2, codes: ['PT2605004', 'PT2606001'] };
     expect(depositHoldStale(cu)).toBe(true);
     expect(depositHoldLines(cu)).toEqual([
-      'Phiếu PT2605004, PT2606001 · nhận 27/05/2026 · chờ đối chiếu lượt thuê',
-      'Phiếu đã thu quá 14 ngày, cần đối chiếu lượt thuê.',
+      'Phiếu PT2605004, PT2606001 · lập 27/05/2026 · chờ đối chiếu lượt thuê',
+      'Phiếu cọc quá 14 ngày, cần đối chiếu lượt thuê.',
     ]);
     expect(depositHoldLines({ ...d, codes: [], code: null, voucherId: null, voucherCount: 0 })).toEqual(['Đợt giữ chỗ từ 22/11/2026 · chưa có phiếu thu']);
   });

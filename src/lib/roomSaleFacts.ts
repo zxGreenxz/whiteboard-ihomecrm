@@ -37,7 +37,7 @@ export const DEPOSIT_HOLD_PUBLIC_LABEL = 'Đang giữ chỗ';
  */
 export function roomSaleDepositLabel(hold: { source?: 'hold' | 'voucher'; payerName?: string | null; heldDays: number }): string {
   const days = Number.isFinite(hold.heldDays) && hold.heldDays > 0 ? `${Math.floor(hold.heldDays)} ngày` : 'hôm nay';
-  if (hold.source === 'voucher') return 'Đã thu · Chưa xác định lượt thuê';
+  if (hold.source === 'voucher') return 'Phiếu cọc · Chưa xác định lượt thuê';
   return ['Đã cọc', hold.payerName?.trim() || null, days].filter(Boolean).join(' · ');
 }
 
