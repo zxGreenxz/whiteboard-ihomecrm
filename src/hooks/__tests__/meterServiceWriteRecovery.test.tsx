@@ -3,7 +3,7 @@
 // (đặt giá trị theo mã, xoá mềm theo mã, đồng bộ theo phần chênh, xoá rồi chèn lại). Rớt mạng không để lại dấu nào và
 // không khoá lần bấm sau; dấu của bản trước không chặn và được gỡ sau lần ghi thành công.
 import { renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeRecordServer, seedLegacyPending, pendingKeys, type FakeRecordServer } from './fakeRecordServer';
 
 const io = vi.hoisted(() => ({ server: undefined as unknown as FakeRecordServer }));
@@ -22,6 +22,10 @@ import { recordWriteBlocked } from '@/lib/recordWriteOutcome';
 type Row = Record<string, unknown>;
 type Mutation<I> = { mutationFn: (input: I) => Promise<unknown> };
 const OLD_DELETE = '2026-01-02T03:04:05.000Z';
+// Hai lần bấm ở hai giờ khác nhau thật: lần bấm lại mà đè giờ xoá thì test thấy được (cùng mili giây thì không).
+const FIRST_CLICK = '2026-11-26T01:00:00.000Z';
+const SECOND_CLICK = '2026-11-26T01:05:00.000Z';
+const setClock = (iso: string) => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(iso)); };
 const tenMinutesAgo = () => new Date(Date.now() - 10 * 60_000);
 const actorMark = (namespace: string, businessKey: string) => seedLegacyPending({ namespace, userId: 'actor', organizationId: 'actor-scope', businessKey }, tenMinutesAgo());
 const rows = (table: string): Row[] => io.server.rows[table] ?? [];
@@ -75,6 +79,7 @@ beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('ihomecrm.selectedOrganizationId', 'org-a');
 });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('sửa chỉ số (đặt giá trị theo mã)', () => {
   type Input = { id: string; current_reading?: number; reading_date?: string; notes?: string };
@@ -137,10 +142,12 @@ describe('xoá chỉ số (xoá mềm theo mã)', () => {
     io.server.rows.meter_readings = [reading('r1')];
     const run = remove();
     io.server.failNext('meter_readings', 'update', 'drop-after');
+    setClock(FIRST_CLICK);
     expectRepeatable(await rejection(run('r1')));
     const firstDelete = rowOf('meter_readings', 'r1')?.deleted_at;
-    expect(firstDelete).toEqual(expect.any(String));
-    await expect(run('r1')).resolves.toMatchObject({ id: 'r1' });
+    expect(firstDelete).toBe(FIRST_CLICK);
+    setClock(SECOND_CLICK);
+    await expect(run('r1')).resolves.toMatchObject({ id: 'r1', alreadyDeleted: true });
     expect(rowOf('meter_readings', 'r1')?.deleted_at).toBe(firstDelete);
   });
 
@@ -194,10 +201,12 @@ describe('xoá chỉ số hàng loạt', () => {
   it('tới nhưng mất phản hồi: bấm lại không tính dòng đã xoá là lệch', async () => {
     const run = removeMany();
     io.server.failNext('meter_readings', 'update', 'drop-after');
+    setClock(FIRST_CLICK);
     expectRepeatable(await rejection(run(['r1', 'r2'])));
-    const first = rows('meter_readings').map(row => row.deleted_at);
+    expect(rows('meter_readings').map(row => row.deleted_at)).toEqual([FIRST_CLICK, FIRST_CLICK]);
+    setClock(SECOND_CLICK);
     await expect(run(['r1', 'r2'])).resolves.toHaveLength(2);
-    expect(rows('meter_readings').map(row => row.deleted_at)).toEqual(first);
+    expect(rows('meter_readings').map(row => row.deleted_at)).toEqual([FIRST_CLICK, FIRST_CLICK]);
   });
 
   it('một dòng đã xoá từ trước, một dòng còn: xoá đủ, giữ giờ xoá cũ', async () => {
