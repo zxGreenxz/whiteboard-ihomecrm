@@ -437,6 +437,7 @@
     "src/components/deposits/ReservationSettlementDetails.tsx",
     "src/components/deposits/ReservationSettlementDialog.tsx",
     "src/components/deposits/ReservationSettlementStatus.tsx",
+    "src/components/deposits/ReconcileDepositReceipt.tsx",
     "src/components/deposits/RoomReservationPanel.tsx",
     "src/components/document-templates/CreateTemplateDialog.tsx",
     "src/components/document-templates/DeleteTemplateDialog.tsx",

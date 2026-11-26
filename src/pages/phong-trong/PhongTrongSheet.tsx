@@ -1,3 +1,4 @@
+import { hasPrecontractDeposit } from './depositHold';
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { Icon, amenIcon } from "./icons";
 import { STATUS_META, fmtPrice, genInfoLines, type Room, type Building } from "./sampleData";
@@ -170,7 +171,7 @@ export function DetailSheet({
   // Phong cung toa (con trong) de chuyen nhanh truoc/sau
   const building = buildings.find((b) => b.id === r.buildingId);
   const siblings = building
-    ? building.rooms.filter((x) => x.status !== "rented" || x.hasDepositHold || isExitHeld(x)).sort((a, b) => b.floor - a.floor || a.no - b.no)
+    ? building.rooms.filter((x) => x.status !== "rented" || hasPrecontractDeposit(x) || isExitHeld(x)).sort((a, b) => b.floor - a.floor || a.no - b.no)
     : [r];
   const idx = siblings.findIndex((x) => x.id === r.id);
   const prev = idx > 0 ? siblings[idx - 1] : null;
@@ -329,7 +330,7 @@ export function DetailSheet({
             )}
 
             {/* Phòng đang giữ cho khách sang nhượng: người khác vẫn cọc được (máy chủ quyết định). */}
-            {onQuickDeposit && (r.status !== "rented" || r.hasDepositHold || isExitHeld(r)) && r.status !== "pass" && (
+            {onQuickDeposit && (r.status !== "rented" || hasPrecontractDeposit(r) || isExitHeld(r)) && r.status !== "pass" && (
               <button className="qd-trigger" onClick={() => onQuickDeposit(r)}>
                 <Icon.Money />{r.status === "locked" ? "Tạo phiếu cọc" : "Tạo cọc giữ phòng"}
               </button>

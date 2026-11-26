@@ -10,8 +10,25 @@ const invoke:ReservationRpcInvoker=(name,args)=>{switch(name){
  case 'create_room_reservation_v1':return supabase.rpc('create_room_reservation_v1',args as Functions['create_room_reservation_v1']['Args']);
  case 'update_room_reservation_v1':return supabase.rpc('update_room_reservation_v1',args as Functions['update_room_reservation_v1']['Args']);
  case 'list_room_reservations_v1':return supabase.rpc('list_room_reservations_v1',args as Functions['list_room_reservations_v1']['Args']);
- case 'assign_room_reservation_customer_v1':return supabase.rpc('assign_room_reservation_customer_v1',args as Functions['assign_room_reservation_customer_v1']['Args']);
 }};
+export function useReconcileDepositReceipt() {
+  const {selectedOrganizationId} = useOrganization();
+  const cache = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: async (input: {holdId:string; revision:number; voucherId:string; amount:number; paid:number}) => {
+      if (!selectedOrganizationId) throw new Error('Chọn tổ chức để đối chiếu cọc.');
+      const {error} = await supabase.rpc('reconcile_deposit_income_hold_v1', {
+        p_organization_id:selectedOrganizationId, p_hold_id:input.holdId, p_revision:input.revision,
+        p_voucher_id:input.voucherId, p_voucher_amount:input.amount, p_hold_paid:input.paid,
+      });
+      if (error) throw error;
+    },
+    onSettled: () => Promise.all(['room-reservations','deposit-income-hold','reservation-deposits','deposits',
+      'deposit-dashboard','contract-deposit-vouchers','orphan-deposit-vouchers','contract-room-deposits','income-expenses','contracts','phong-trong',
+      'my-available-rooms','sale-room-inventory'].map(key => cache.invalidateQueries({queryKey:[key]}))),
+  });
+}
 async function listHoldPages(org:string,filters:RoomReservationFilters,buildingIds:string[]):Promise<RoomReservationList>{
   type Read=(name:'list_deposit_income_holds_v1',args:Record<string,string|string[]|number|null>)=>PromiseLike<{error:unknown;data:unknown}>;
   const client=supabase as unknown as { rpc: Read };

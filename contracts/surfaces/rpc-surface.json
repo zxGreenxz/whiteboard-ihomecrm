@@ -1,8 +1,8 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3282,
-    "catalogFunctions": 1702,
+    "sourceCallSites": 3284,
+    "catalogFunctions": 1703,
     "schemas": [
       "public",
       "api"
@@ -230,25 +230,6 @@
       ],
       "callers": [
         "src/hooks/useAccounts.ts"
-      ],
-      "risk": "normal"
-    },
-    "assign_room_reservation_customer_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_reservation_id uuid, p_expected_revision bigint, p_customer_id uuid, p_idempotency_key text",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useRoomReservations.ts"
       ],
       "risk": "normal"
     },
@@ -5952,6 +5933,25 @@
       ],
       "callers": [
         "src/lib/customerResidenceHistory.ts"
+      ],
+      "risk": "normal"
+    },
+    "reconcile_deposit_income_hold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_voucher_id uuid, p_hold_id uuid, p_revision bigint, p_voucher_amount numeric, p_hold_paid numeric",
+          "returns": "uuid",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useRoomReservations.ts"
       ],
       "risk": "normal"
     },

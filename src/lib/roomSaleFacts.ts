@@ -35,8 +35,9 @@ export const DEPOSIT_HOLD_PUBLIC_LABEL = 'Đang giữ chỗ';
  * «Đã cọc · người nộp · N ngày» — CHỈ cho bảng Sale nội bộ (QuickRoomBoard), không bao giờ vào saleFact.label: tên người
  * nộp không được theo tin chia sẻ ra ngoài. Người xem không có deposits.view thì máy chủ không trả tên ⇒ «Đã cọc · N ngày».
  */
-export function roomSaleDepositLabel(hold: { payerName?: string | null; heldDays: number }): string {
+export function roomSaleDepositLabel(hold: { source?: 'hold' | 'voucher'; payerName?: string | null; heldDays: number }): string {
   const days = Number.isFinite(hold.heldDays) && hold.heldDays > 0 ? `${Math.floor(hold.heldDays)} ngày` : 'hôm nay';
+  if (hold.source === 'voucher') return 'Phiếu cọc · Chưa xác định lượt thuê';
   return ['Đã cọc', hold.payerName?.trim() || null, days].filter(Boolean).join(' · ');
 }
 

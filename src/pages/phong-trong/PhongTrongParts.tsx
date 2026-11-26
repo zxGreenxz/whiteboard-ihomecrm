@@ -1,3 +1,4 @@
+import { hasPrecontractDeposit } from './depositHold';
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { isRoomVideo } from '@/lib/roomMedia';
 import { testMediaSource } from '@/lib/storage/testMedia';
@@ -151,7 +152,7 @@ export function OverviewView({
     .map((b) => ({
       b,
       rooms: b.rooms
-        .filter((r) => (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || r.hasDepositHold || isExitHeld(r) || (showRented && r.status === "rented")) && bandTest(r.price))
+        .filter((r) => (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || hasPrecontractDeposit(r) || isExitHeld(r) || (showRented && r.status === "rented")) && bandTest(r.price))
         .sort((a, z) => z.floor - a.floor || a.no - z.no),
     }))
     .filter((g) => g.rooms.length);
@@ -207,7 +208,7 @@ export function OverviewView({
               </div>
               <div className="ov-quick">
                 {rooms.slice(0, QUICK).map((r) => {
-                  const depositable = !!onQuickDeposit && (r.status === "free" || r.hasDepositHold) && (canQuickDeposit?.(r) ?? true);
+                  const depositable = !!onQuickDeposit && (r.status === "free" || hasPrecontractDeposit(r)) && (canQuickDeposit?.(r) ?? true);
                   return (
                     <span
                       className={"ovq" + (depositable ? " ovq-dep" : "")}
@@ -356,7 +357,7 @@ export function FloorPlan({
   bandTest: (p: number) => boolean;
   onOpen: (r: Room) => void;
 }) {
-  const visible = (r: Room) => (showRented || r.status !== "rented" || r.hasDepositHold || isExitHeld(r)) && bandTest(r.price);
+  const visible = (r: Room) => (showRented || r.status !== "rented" || hasPrecontractDeposit(r) || isExitHeld(r)) && bandTest(r.price);
   return (
     <div className="map-wrap">
       <div className="bld-card">

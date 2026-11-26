@@ -29461,6 +29461,17 @@ export type Database = {
         }
         Returns: Json
       }
+      reconcile_deposit_income_hold_v1: {
+        Args: {
+          p_hold_id: string
+          p_hold_paid: number
+          p_organization_id: string
+          p_revision: number
+          p_voucher_amount: number
+          p_voucher_id: string
+        }
+        Returns: string
+      }
       record_contract_commission_event_v1: {
         Args: {
           p_action: string

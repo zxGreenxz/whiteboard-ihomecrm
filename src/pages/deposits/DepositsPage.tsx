@@ -282,7 +282,7 @@ const ReservationRow = memo(function ReservationRow({
         <div className="flex flex-wrap gap-2">
         {r.settlement_status === "UNSETTLED" && canConvert &&
           r.approval_status === "APPROVED" &&
-          r.room_id && (
+          r.room_id && r.reservation_id && (
             <Button size="sm" onClick={() => onConvert(r)}>
               Tạo HĐ
             </Button>
@@ -701,7 +701,7 @@ const DepositsDesktop = () => {
         </Suspense>
 
         <Suspense fallback={<LoadingState label="hồ sơ giữ chỗ" rows={2} />}>
-          <RoomReservationPanel buildingIds={buildingIds} rows={reservations} onContract={canConvertDeposit?(buildingId,roomId)=>{setResvPrefill({buildingId,roomId});setResvContractOpen(true);}:undefined} onApprove={canApproveDeposit?v=>approveMutate({id:v.id,expectedApprovalVersion:v.approval_version}):undefined}/>
+          <RoomReservationPanel buildingIds={buildingIds} rows={reservations} balances={held} onContract={canConvertDeposit?(buildingId,roomId)=>{setResvPrefill({buildingId,roomId});setResvContractOpen(true);}:undefined} onApprove={canApproveDeposit?v=>approveMutate({id:v.id,expectedApprovalVersion:v.approval_version}):undefined}/>
         </Suspense>
 
         {/* ===== BÀN XỬ LÝ ===== */}

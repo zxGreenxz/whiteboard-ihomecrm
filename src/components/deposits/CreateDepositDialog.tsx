@@ -287,6 +287,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
 
   const onSubmit = async (data: DepositFormValues) => {
     if (submitting || completed || roomsQuery.isError || roomsQuery.isLoading || accountsQuery.isError || accountsQuery.isLoading) return;
+    if(holdQuery.destinationChanged){setSubmitError('Lượt giữ chỗ đã đổi. Mở lại phiếu để chọn đúng lượt thu.');return;}
     if(holdQuery.isLoading||holdQuery.isError){setSubmitError('Chưa tải được đợt giữ chỗ của phòng.');return;}
     setSubmitError(null);
     setSubmitting(true);
@@ -579,7 +580,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
                 />
 
               </div>
-              <DepositScheduleFields key={(selectedRoomId??'') + (holdQuery.data?.id??'')} voucherDate={depositDate}
+              <DepositScheduleFields destinationChanged={holdQuery.destinationChanged} targetHold={selectedRoomId ? holdQuery.data : undefined} key={(selectedRoomId??'') + (holdQuery.data?.id??'')} voucherDate={depositDate}
                 value={{holdUntil:holdUntil || '',moveIn:form.watch('intended_move_in_on') || '',topup:topupDue || ''}}
                 onChange={next=>{
                   form.setValue('hold_until',next.holdUntil,{shouldDirty:true});

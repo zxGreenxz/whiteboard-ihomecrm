@@ -68,6 +68,7 @@ const TONE_CLASS: Record<DepositTaskTone, string> = {
 
 function headline(task: DepositTask): string {
   switch (task.kind) {
+    case "RECONCILE": return `Đã thu · Chưa xác định lượt thuê · ${task.buildingName}`;
     case "HOLD_OVERDUE":
       return `⚠ QUÁ HẠN LÀM HĐ · ${task.buildingName}`;
     case "TOPUP_OVERDUE":
@@ -281,7 +282,7 @@ export default function DepositsMobilePage() {
           <div className="mbody dp-body" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <DepositRefundMobilePanel />
             <RoomSaleLocksPanel enabled={view === 'work'} />
-            <RoomReservationPanel enabled={view === 'work'} rows={reservations}
+            <RoomReservationPanel enabled={view === 'work'} rows={reservations} balances={held}
               onContract={canConvert?(buildingId,roomId)=>{setPrefill({buildingId,roomId});setContractOpen(true);}:undefined}
               onApprove={canApprove?v=>approveVoucher.mutate({id:v.id,expectedApprovalVersion:v.approval_version}):undefined}/>
             {/* Màn tiền: dải KPI cộng từ nhiều nguồn nên vẫn chờ đủ nguồn (thiếu một nguồn
@@ -551,7 +552,7 @@ export default function DepositsMobilePage() {
                   {openTask.voucherId && (
                     <Link to={`/income-expense/voucher/${openTask.voucherId}`}>Mở phiếu</Link>
                   )}
-                  {openTask.voucherId && openTask.kind !== "PENDING_APPROVAL" && canUse(perms, "deposits", "edit", openTask.buildingId) ? (
+                  {openTask.voucherId && openTask.kind !== "PENDING_APPROVAL" && openTask.kind !== "RECONCILE" && canUse(perms, "deposits", "edit", openTask.buildingId) ? (
                     <button
                       type="button"
                       onClick={() => {
