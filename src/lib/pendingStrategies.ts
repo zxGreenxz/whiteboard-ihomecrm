@@ -47,8 +47,8 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'payment-receipt-upload': tien('C', 'thêm ảnh chứng từ thanh toán'), // ô ảnh của phiếu thanh toán đã có = đã gắn
 
   // Đợt 3: lập phiếu, cọc, phí (họ runFinancialPending)
-  'voucher-form-create': tien('B', 'lập phiếu thu/chi'), // create_income_expense_v1 theo khoá; đường compat: mã phiếu do trình duyệt sinh (D); dấu cũ: tra gần đúng
-  'voucher-batch-create': tien('D', 'tạo phiếu tổng'), // mã đợt = mã yêu cầu của dấu; dọn sạch sau lỗi từ chối rõ thì gỡ dấu
+  'voucher-form-create': tien('B', 'lập phiếu thu/chi'), // create_income_expense_v1 theo khoá; đợt 10a: compat đi ie_compat_insert_keyed_v1 cùng khoá (thấy khoá đường chính đã ghi), tra phiếu compat theo khoá; đổi đường chờ 2 phút; dấu trước đợt 3: tra gần đúng một lần
+  'voucher-batch-create': tien('D', 'tạo phiếu tổng'), // mã đợt = mã yêu cầu của dấu; đợt 10a: phiếu con mang mã `<lượt>:<vị trí>`, đợt đã dọn ⇒ tra đúng từng phiếu con theo mã; dọn sạch sau lỗi từ chối rõ thì gỡ dấu
   'room-deposit-receipt': tien('D', 'thu cọc theo phòng'), // Tra đúng phiếu của mã yêu cầu, gửi lại cùng mã khi chưa ghi.
   'deposit-create': tien('B', 'tạo cọc giữ chỗ'), // create_room_reservation_v1 khoá phòng rồi tra khoá; thưởng Sale ngoài vùng giữ dấu
   'period-fee-pay': tien('A', 'đóng phí kỳ'), // pay_period_fee khoá slot rồi đếm phiếu; gửi lại KHÔNG ép, "đã có phiếu" = đã ghi
@@ -57,7 +57,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'utility-pay': tien('A', 'đóng điện nước'), // pay_utility_bill khoá công tơ × tháng, trùng ⇒ 55000 kèm mã phiếu
   'utility-cancel': tien('A', 'huỷ phiếu điện nước'), // như huỷ phiếu phí kỳ
   'special-fee-generate': tien('A', 'sinh phí đặc biệt'), // khoá theo kỳ, chỉ sinh ô còn thiếu (không trả kết quả cũ theo khoá)
-  'reconciliation-propose': tien('D', 'đề nghị đối soát sổ'), // tra gần đúng (sổ, ngày, người đề nghị, sau giờ kẹt) tới đợt 10
+  'reconciliation-propose': tien('B', 'đề nghị đối soát sổ'), // đợt 10a: propose_reconciliation nhận p_request_key, khoá sổ rồi giữ mã kèm băm nội dung; gửi lại ngay cùng mã; dấu bản trước: tra gần đúng một lần
   'invoice-cancel': tien('C', 'huỷ hoá đơn'), // huỷ hàng loạt (đợt 3) và huỷ lẻ (đợt 5) đọc trạng thái hoá đơn; cancel_invoice_with_credit_v1 khoá rồi trả noop
 
   // Đợt 4: tạo khách, khách hẹn, bàn giao. Bốn dòng `khac` không còn ghi dấu mới (luật 5: không khoá dữ liệu không phải
@@ -106,7 +106,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'profit-payout': tien('B', 'lập phiếu chi lương điều hành'), // manager_salary_payout_v1 khoá công ty rồi tra mã; không băm ghi chú
   'salary-lock': tien('B', 'chốt bảng lương'), // lock_salary_month_v2 khoá công ty rồi tra mã; gửi lại không rơi sang nhánh ghi cũ
   'salary-unlock': tien('C', 'mở khoá bảng lương'), // đọc trạng thái tháng; còn dòng khoá ⇒ gửi lại cùng mã (unlock_salary_month_v2 khoá công ty rồi tra mã)
-  'salary-adjustment': tien('D', 'lưu thưởng hoặc trừ lương'), // sửa: chạy lại (A); thêm: mã khoản = mã của dấu, khoá chính chặn khoản thứ hai; dấu bản trước tra gần đúng tới đợt 10
+  'salary-adjustment': tien('D', 'lưu thưởng hoặc trừ lương'), // sửa: chạy lại (A); thêm: mã khoản = mã của dấu, khoá chính chặn khoản thứ hai, so nội dung khi đối chiếu (đợt 10a: đã đủ, không thêm hàm); dấu bản trước tra gần đúng một lần
   'contract-create': tien('B', 'tạo hợp đồng'), // create_contract_v2 khoá phòng + công ty rồi tra mã; 23505 khi gửi lại ⇒ đọc hợp đồng hiệu lực của phòng
   'contract-renew': tien('B', 'gia hạn hợp đồng'), // apply_contract_notice_transition_v1 khoá công ty + hợp đồng rồi tra mã; đọc sự kiện theo mã trước khi gửi lại
   'contract-notice-transition': tien('B', 'gia hạn hoặc chuyển phòng hợp đồng'), // đợt 7: chuyển phòng đọc sự kiện theo mã rồi gửi lại cùng mã (apply_contract_notice_transition_v1 khoá công ty + phòng + hợp đồng rồi tra mã); dấu gia hạn bản trước: sự kiện có ⇒ báo đã ghi, vẫn chặn gia hạn qua `legacy`
@@ -183,7 +183,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'material-adjustment-batch': khac('C', 'kiểm kê nhiều vật tư'), // bỏ dấu lồng; mỗi vật tư đặt tồn như trên, bấm lại chạy cả vòng, vật tư đã khớp không ghi
   'material-manual-usage': khac('D', 'tạo phiếu xuất vật tư'), // đầu phiếu + dòng mã do trình duyệt sinh; phiếu đã có ⇒ đọc dòng của nó
   'income-expense-template-create': khac('D', 'tạo mẫu in thu chi'), // generate_template_code không đụng id
-  'voucher-excel-import': tien('D', 'nhập thu chi từ Excel'), // giữ dấu: mỗi dòng mang mã phiếu do trình duyệt sinh (ie_compat_insert_v2 nhận p_row.id), dòng cọc tra theo mã yêu cầu; ảnh chụp bản trước tra gần đúng ⇒ «có thể đã ghi», không tự gửi lại
+  'voucher-excel-import': tien('D', 'nhập thu chi từ Excel'), // giữ dấu: mỗi dòng mang mã phiếu do trình duyệt sinh + mã yêu cầu `<lượt>:<dòng>` (đợt 10a: ie_compat_insert_keyed_v1), tra theo mã phiếu rồi theo mã yêu cầu; ảnh chụp trước đợt 10a tra gần đúng ⇒ «có thể đã ghi», không tự gửi lại
   'useImportMeterReadings': khac('B', 'nhập chỉ số từ Excel'), // record_meter_readings_v2 khoá toà rồi mới tra mã; một mã cho mỗi nhóm toà + ngày, gửi lại ngay cùng mã
   'useBulkCreateMeterReadings': khac('B', 'tạo chỉ số hàng loạt'), // gửi lại ngay cùng khoá; 23505 (mã đã dùng với nội dung khác) = lần trước đã ghi
   // Viết thẳng, KHÔNG trải (`...khac(...)`): phép trải ở cấp tệp làm Rollup coi cả sổ là có tác dụng phụ, nên mọi chunk dính tới

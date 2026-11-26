@@ -1,4 +1,5 @@
 import {runFinancialPending} from '@/lib/financialPendingAction';
+import {FinancialAlreadyRecordedError} from '@/lib/financialWorkflowError';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {getSessionUser} from '@/lib/authSession';
 // =============================================
@@ -37,6 +38,8 @@ export function reconciliationReceipt(data:unknown) {
 }
 
 const reconciliationKey=(accountId:string,asOf:string)=>`${accountId}:${asOf}`;
+/** Dấu từ đợt 10a: mã yêu cầu của dấu đã lên máy chủ làm `p_request_key`. Dấu bản trước không có. */
+const CO_MA='request-key-v1';
 /** Cửa sổ tra đề nghị "tạo sau giờ kẹt" (giờ máy có thể lệch giờ máy chủ). Đề nghị đã gắn sổ và ngày nên cửa sổ rộng chỉ làm
  * báo "có thể đã tạo" nhiều hơn, không làm gửi trùng. */
 const CLOCK_SKEW_MS=24*60*60_000;
@@ -52,23 +55,38 @@ export const useProposeReconciliation = () => {
     meta:{handlesFeedback:true},
     mutationFn: async (args: ProposeReconArgs) => {
       const user=await getSessionUser();
+      let resend=false;
       return runFinancialPending({namespace:'reconciliation-propose',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:reconciliationKey(args.accountId,args.asOf)},async progress=>{
-      const { data, error } = await supabase.rpc('propose_reconciliation', {
+      // Đợt 10a: propose_reconciliation nhận mã yêu cầu tuỳ chọn (migration 20261126130735, md5 prosrc a264d586…): khoá theo
+      // sổ rồi mới giữ mã kèm băm nội dung; cùng mã cùng nội dung trả lại đúng dòng đã tạo, khác nội dung 23505. Tham số
+      // dựng trong biến: kiểu sinh tự động còn chưa có `p_request_key` cho tới khi sinh lại sau khi áp production.
+      const params={
         p_account_id: args.accountId,
         p_as_of: args.asOf,
         p_counted_balance: args.countedBalance,
         p_counterparty_id: args.counterpartyId ?? undefined,
         p_note: args.note ?? undefined,
-      });
+        p_request_key: progress.requestKey,
+      };
+      const { data, error } = await supabase.rpc('propose_reconciliation', params);
+      // Gửi lại cùng mã mà máy chủ báo mã đã dùng với nội dung khác: lần trước ĐÃ tạo đề nghị (với số đếm/ghi chú cũ).
+      // Chỉ nhận đúng lỗi «mã đã dùng» của hàm này; DETAIL là mã dòng đã có (chỉ nhận một mã gọn).
+      if (resend && error && String((error as {code?:unknown}).code??'')==='23505' && (error as {hint?:unknown}).hint==='reconciliation_request_key_payload_mismatch') {
+        const details=String((error as {details?:unknown}).details??'');
+        throw new FinancialAlreadyRecordedError('Đề nghị đối soát này đã được tạo ở lần gửi trước (nội dung lúc đó khác nội dung đang gửi). Mở danh sách đối soát để kiểm tra trước khi tạo lại.',/^[0-9a-z-]{1,64}$/i.test(details)?[details]:[]);
+      }
       if (error) throw error;
       const receipt=reconciliationReceipt(data);
       progress.recordCompleted([receipt.id]);
       return receipt;
-      },undefined,{operation:'đề nghị đối soát sổ',reconcile:async pending=>{
+      },undefined,{operation:'đề nghị đối soát sổ',meta:{dedupe:CO_MA},reconcile:async pending=>{
         if(pending.completedIds.length)return {outcome:'already-written',message:'Đề nghị đối soát này đã được tạo ở lần gửi trước.',recordIds:pending.completedIds};
-        // propose_reconciliation (production 24/11/2026) không có khoá chống trùng: tra gần đúng theo sổ, ngày,
-        // người đề nghị, tạo sau giờ kẹt (cách D, thay bằng mã chống trùng ở đợt 10). Thấy thì chỉ báo "có thể đã
-        // tạo", không tự gửi; không thấy thì lõi chỉ cho gửi lại khi lần trước đã quá 2 phút.
+        // Dấu từ đợt 10a: lần trước đã gửi đúng mã này ⇒ gửi lại ngay cùng mã (cách B): máy chủ chờ lệnh cũ còn chạy, rồi
+        // trả lại dòng đã tạo hoặc báo mã đã dùng với nội dung khác.
+        if(pending.meta?.dedupe===CO_MA&&pending.requestKey){resend=true;return {outcome:'not-written',serverDedupesRequestKey:true};}
+        // Dấu bản trước (mã yêu cầu chưa từng lên máy chủ): tra gần đúng theo sổ, ngày, người đề nghị, tạo sau giờ kẹt —
+        // lối ra một lần. Thấy thì chỉ báo "có thể đã tạo", không tự gửi; không thấy thì lõi chỉ cho gửi lại khi lần trước
+        // đã quá 2 phút.
         const since=new Date(Date.parse(pending.startedAt)-CLOCK_SKEW_MS).toISOString();
         const {data,error}=await supabase.from('cashbook_reconciliations').select('id,status,created_at')
           .eq('account_id',args.accountId).eq('as_of_date',args.asOf).eq('proposed_by',pending.userId)

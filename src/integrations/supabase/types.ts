@@ -25670,6 +25670,14 @@ export type Database = {
         Args: { p_organization_id: string; p_request_key: string }
         Returns: string
       }
+      get_own_income_expense_requests_v1: {
+        Args: { p_organization_id: string; p_request_keys: string[] }
+        Returns: {
+          request_key: string
+          voucher_id: string
+          write_path: string
+        }[]
+      }
       get_period_commissions: {
         Args: { p_building_ids?: string[]; p_period_month: string }
         Returns: {
@@ -26481,6 +26489,10 @@ export type Database = {
       }
       ie_compat_cancel_v2: {
         Args: { p_ids: string[]; p_reason?: string }
+        Returns: Json
+      }
+      ie_compat_insert_keyed_v1: {
+        Args: { p_items: Json; p_request_key: string; p_row: Json }
         Returns: Json
       }
       ie_compat_insert_v2: {
@@ -29120,6 +29132,7 @@ export type Database = {
           p_counted_balance: number
           p_counterparty_id?: string
           p_note?: string
+          p_request_key?: string
         }
         Returns: Json
       }

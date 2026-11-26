@@ -4,9 +4,10 @@
 // phản hồi; dấu cũ gieo sẵn (dạng trước 24/11/2026, không có tên thao tác). Máy chủ giả làm đúng phần luật
 // chống trùng của thân hàm production (đọc 24/11/2026): khoá slot rồi đếm phiếu, khoá dòng rồi xét trạng thái.
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-const io=vi.hoisted(()=>({rpc:vi.fn(),tables:{} as Record<string,Record<string,unknown>[]>,failRead:null as unknown}));
+const io=vi.hoisted(()=>({rpc:vi.fn(),tables:{} as Record<string,Record<string,unknown>[]>,failRead:null as unknown,reads:[] as string[]}));
 vi.mock('@tanstack/react-query',()=>({useMutation:(o:unknown)=>o,useQuery:(o:unknown)=>o,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:io.rpc,from:(table:string)=>{
+  io.reads.push(table);
   const filters:((row:Record<string,unknown>)=>boolean)[]=[];let limit=Infinity;
   const run=async(mode:'many'|'maybe'|'one')=>{
     if(io.failRead)return {data:null,error:io.failRead};
@@ -63,7 +64,7 @@ function seedOldMark(namespace:string,businessKey:string,extra:{completedIds?:st
 
 beforeEach(()=>{
   vi.useFakeTimers({toFake:['Date']});clock=T0;vi.setSystemTime(clock);
-  localStorage.clear();vi.clearAllMocks();io.tables={};io.failRead=null;next='ok';seq=0;
+  localStorage.clear();vi.clearAllMocks();io.tables={};io.failRead=null;io.reads=[];next='ok';seq=0;
   io.rpc.mockImplementation(async(name:string,args:Record<string,unknown>)=>{
     switch(name){
       // pay_period_fee: khoá tư vấn theo slot rồi đếm phiếu chưa huỷ của slot. Không ép ⇒ trả cảnh báo, không ghi.
@@ -108,10 +109,18 @@ beforeEach(()=>{
         }
         return {period:args.p_period,created:ids.length,posted:0,totalAmount:ids.length*100,voucherIds:ids,note:''};
       });
-      // propose_reconciliation: chèn một dòng mỗi lần gọi (không có khoá chống trùng).
+      // propose_reconciliation (đợt 10a): không mã ⇒ chèn một dòng mỗi lần gọi như cũ; có p_request_key ⇒ cùng mã cùng nội
+      // dung trả lại dòng đã tạo (replayed), khác nội dung 23505 kèm mã dòng (như thân migration 20261126130735).
       case 'propose_reconciliation':return server(()=>{
         const rows=io.tables.cashbook_reconciliations??(io.tables.cashbook_reconciliations=[]);
+        const key=typeof args.p_request_key==='string'?args.p_request_key:null;
+        const hash=JSON.stringify([args.p_account_id,args.p_as_of,args.p_counted_balance,args.p_counterparty_id??null,args.p_note??null]);
+        const claims=(io.tables.recon_claims??(io.tables.recon_claims=[])) as {key:string;hash:string;id:string}[];
+        const claim=key?claims.find(c=>c.key===key):undefined;
+        if(claim&&claim.hash!==hash)throw {code:'23505',message:'Mã yêu cầu đã dùng với nội dung khác',details:claim.id,hint:'reconciliation_request_key_payload_mismatch'};
+        if(claim)return {id:claim.id,status:'CONFIRMED',system_balance:0,diff:0,replayed:true};
         const id=newId('rc');rows.push({id,account_id:args.p_account_id,as_of_date:args.p_as_of,proposed_by:'u1',status:'CONFIRMED',created_at:new Date(clock).toISOString()});
+        if(key)claims.push({key,hash,id});
         return {id,status:'CONFIRMED',system_balance:0,diff:0};
       });
       default:throw new Error('rpc lạ '+name);
@@ -265,20 +274,35 @@ describe('sinh phí đặc biệt (cách A: máy chủ chỉ sinh ô còn thiế
 
 const reconArgs={accountId:'a1',asOf:'2026-11-24',countedBalance:0};
 const reconScope={namespace:'reconciliation-propose',userId:'u1',organizationId:'o1',businessKey:'a1:2026-11-24'};
-describe('đề nghị đối soát (cách D: tra theo sổ, ngày, người đề nghị, sau giờ kẹt)',()=>{
-  it('lệnh không tới máy chủ: dưới 2 phút chờ, quá 2 phút không thấy thì gửi lại, một đề nghị',async()=>{
+const reconKeys=()=>io.rpc.mock.calls.filter(c=>c[0]==='propose_reconciliation').map(c=>(c[1] as Record<string,unknown>).p_request_key);
+describe('đề nghị đối soát (đợt 10a, cách B: gửi lại cùng mã, máy chủ trả lại đúng dòng)',()=>{
+  it('lệnh không tới máy chủ: bấm lại gửi NGAY cùng mã (không chờ 2 phút), một đề nghị',async()=>{
     next='drop';await expect(call(useProposeReconciliation,reconArgs)).rejects.toThrow();
-    await expect(call(useProposeReconciliation,reconArgs)).rejects.toThrow(/đang chờ kết quả/);
-    expect(io.rpc).toHaveBeenCalledTimes(1);
-    advance(PENDING_SETTLE_MS+1);
     await expect(call(useProposeReconciliation,reconArgs)).resolves.toMatchObject({id:'rc-1'});
+    const keys=reconKeys();expect(keys).toHaveLength(2);expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);expect(keys[1]).toBe(keys[0]);
     expect(io.tables.cashbook_reconciliations).toHaveLength(1);expect(financialPending.read(reconScope)).toBeNull();
   });
-  it('tới nhưng mất phản hồi: bấm lại thấy đề nghị vừa tạo ⇒ báo mã, không tạo thêm',async()=>{
+  it('tới nhưng mất phản hồi: bấm lại gửi cùng mã ⇒ máy chủ trả lại đúng đề nghị cũ, không tạo thêm, không tra gần đúng',async()=>{
     next='lost';await expect(call(useProposeReconciliation,reconArgs)).rejects.toThrow();
-    await expect(call(useProposeReconciliation,reconArgs)).rejects.toThrow(/rc-1/);
-    expect(io.tables.cashbook_reconciliations).toHaveLength(1);expect(io.rpc).toHaveBeenCalledTimes(1);
+    await expect(call(useProposeReconciliation,reconArgs)).resolves.toMatchObject({id:'rc-1',replayed:true});
+    expect(io.tables.cashbook_reconciliations).toHaveLength(1);expect(io.reads).not.toContain('cashbook_reconciliations');
     expect(financialPending.read(reconScope)).toBeNull();
+  });
+  it('tới nhưng mất phản hồi, người dùng sửa số đếm rồi gửi: máy chủ báo mã đã dùng ⇒ báo đã tạo ở lần trước kèm mã, không tạo thêm',async()=>{
+    next='lost';await expect(call(useProposeReconciliation,reconArgs)).rejects.toThrow();
+    const error=await call(useProposeReconciliation,{...reconArgs,countedBalance:500}).then(()=>null,(e:unknown)=>e);
+    expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);expect((error as Error).message).toContain('rc-1');
+    expect(io.tables.cashbook_reconciliations).toHaveLength(1);expect(financialPending.read(reconScope)).toBeNull();
+  });
+  it('không có dấu: mỗi lần đề nghị một mã mới (hai đề nghị khác nhau vẫn tạo được)',async()=>{
+    await call(useProposeReconciliation,reconArgs);await call(useProposeReconciliation,reconArgs);
+    const keys=reconKeys();expect(keys[0]).not.toBe(keys[1]);expect(io.tables.cashbook_reconciliations).toHaveLength(2);
+  });
+  it('dấu bản trước (mã chưa từng lên máy chủ), có đề nghị của mình sau giờ kẹt ⇒ chỉ báo «có thể đã tạo» kèm mã, KHÔNG gửi lại',async()=>{
+    io.tables.cashbook_reconciliations=[{id:'rc-cu',account_id:'a1',as_of_date:'2026-11-24',proposed_by:'u1',created_at:new Date(T0-30_000).toISOString()}];
+    seedOldMark('reconciliation-propose',reconScope.businessKey);
+    await expect(call(useProposeReconciliation,reconArgs)).rejects.toThrow(/Có thể.*rc-cu/);
+    expect(io.rpc).not.toHaveBeenCalled();expect(financialPending.read(reconScope)).toBeNull();
   });
   it('dấu cũ gieo sẵn, không có đề nghị nào sau giờ kẹt ⇒ gửi lại',async()=>{
     seedOldMark('reconciliation-propose',reconScope.businessKey);advance(PENDING_SETTLE_MS);

@@ -61,6 +61,7 @@ const uuid = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`;
 /** Mỗi lần gọi ghi phiếu thường lấy một phần tử: rớt trước, rớt sau, từ chối rõ, hoặc chạy bình thường. */
 let plan: ('before' | 'after' | 'reject' | undefined)[] = [];
 const depositKeys = new Map<string, string>();
+const compatClaims = new Map<string, { hash: string; id: string }>();
 
 function voucher(row: Row, items: Row[], id: string, code: string) {
   return { id, code, user_id: 'u1', organization_id: 'o1', type: row.type, building_id: row.building_id, voucher_date: row.voucher_date,
@@ -71,20 +72,31 @@ function voucher(row: Row, items: Row[], id: string, code: string) {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }); clock = T0; vi.setSystemTime(clock);
   localStorage.clear(); localStorage.setItem('ihomecrm.selectedOrganizationId', 'o1');
-  seq = 0; plan = []; depositKeys.clear(); io.resolverFails = false; io.inSizes = []; io.inCalls = 0; io.failInCall = 0;
+  seq = 0; plan = []; depositKeys.clear(); compatClaims.clear(); io.resolverFails = false; io.inSizes = []; io.inCalls = 0; io.failInCall = 0;
   io.server = fakeRecordServer();
   const vouchers = () => (io.server.rows.income_expenses ??= []);
-  io.server.rpcHandlers.ie_compat_insert_v2 = args => {
+  // Đợt 10a: dòng thường đi ie_compat_insert_keyed_v1 — cùng mã cùng nội dung trả lại phiếu cũ, khác nội dung 23505.
+  const compat = (args: Row) => {
     const mode = plan.shift();
     if (mode === 'before') return { data: null, error: NETWORK_ERROR };
     if (mode === 'reject') return { data: null, error: { code: '23514', message: 'invalid row' } };
     const row = args.p_row as Row; const items = args.p_items as Row[];
+    const key = typeof args.p_request_key === 'string' ? args.p_request_key : null;
+    const hash = JSON.stringify([row, items]);
+    const claim = key ? compatClaims.get(key) : undefined;
+    if (claim) return claim.hash === hash ? { data: { id: claim.id, approval_status: 'UNAPPROVED', replayed: true }, error: null }
+      : { data: null, error: { code: '23505', message: 'Mã yêu cầu đã dùng với nội dung khác', details: claim.id, hint: 'ie_request_key_payload_mismatch' } };
     const id = typeof row.id === 'string' ? row.id : uuid();
     if (vouchers().some(v => v.id === id)) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "income_expenses_pkey"' } };
     vouchers().push(voucher(row, items, id, `PC${vouchers().length + 1}`));
+    if (key) compatClaims.set(key, { hash, id });
     // Production chỉ trả mã và trạng thái duyệt, không trả mã chứng từ.
     return mode === 'after' ? { data: null, error: NETWORK_ERROR } : { data: { id, approval_status: 'UNAPPROVED' }, error: null };
   };
+  io.server.rpcHandlers.ie_compat_insert_v2 = compat;
+  io.server.rpcHandlers.ie_compat_insert_keyed_v1 = compat;
+  io.server.rpcHandlers.get_own_income_expense_requests_v1 = args => ({
+    data: (args.p_request_keys as string[]).flatMap(k => (compatClaims.has(k) ? [{ voucher_id: compatClaims.get(k)!.id, write_path: 'compat', request_key: k }] : [])), error: null });
   io.server.rpcHandlers.create_deposit_income_v1 = args => {
     const request = String(args.p_request_key);
     let id = depositKeys.get(request);
@@ -103,7 +115,8 @@ const submit = (rows: Row[]) =>
   (renderHook(() => useImportIncomeExpenses()).result.current as unknown as { mutationFn: (input: Row[]) => Promise<ImportResult> }).mutationFn(rows);
 const line = (n: number, extra: Row = {}): Row => ({ type: 'EXPENSE', name: 'Chi sửa', building_id: 'b1', voucher_date: '2026-11-20',
   item_name: 'Sửa', income_expense_type_id: 't1', amount: 100 * n, source_row: n + 1, ...extra });
-const compatCalls = () => io.server.rpcCalls.filter(call => call.name === 'ie_compat_insert_v2');
+// Đợt 10a: mọi dòng thường đi hàm có mã yêu cầu; không còn lời gọi ie_compat_insert_v2 trần nào từ màn nhập Excel.
+const compatCalls = () => io.server.rpcCalls.filter(call => call.name === 'ie_compat_insert_keyed_v1' || call.name === 'ie_compat_insert_v2');
 const vouchers = () => io.server.rows.income_expenses ?? [];
 
 it('(i) lệnh không tới máy chủ: giữ dấu; dưới 2 phút chưa kết luận, không gửi; quá 2 phút không thấy ⇒ chưa ghi, nhập đúng một phiếu, gỡ dấu', async () => {
@@ -345,6 +358,63 @@ it('ảnh chụp của lượt khác (mã lượt lệch) không được dùng:
   localStorage.setItem(SNAPSHOT, JSON.stringify({ attemptId: 'lượt-khác', rows: [legacyRow(2, 100)], createdVouchers: [], unconfirmedRows: [], failedRows: [] }));
   await expect(submit([line(1)])).resolves.toMatchObject({ successCount: 1 });
   expect(pendingKeys()).toEqual([]);
+});
+
+it('đợt 10a: dòng thường gửi ie_compat_insert_keyed_v1 với mã yêu cầu <mã lượt>:<dòng Excel> (cùng dạng dòng thu cọc); ảnh chụp đánh dấu có mã', async () => {
+  plan.push(undefined, 'before');
+  await submit([line(1), line(2)]);
+  const calls = io.server.rpcCalls.filter(call => call.name === 'ie_compat_insert_keyed_v1');
+  expect(calls).toHaveLength(2);
+  expect(io.server.rpcCalls.some(call => call.name === 'ie_compat_insert_v2')).toBe(false);
+  const snapshot = JSON.parse(localStorage.getItem(SNAPSHOT)!) as { attemptId: string; keyed?: boolean };
+  expect(snapshot.keyed).toBe(true);
+  expect(calls.map(call => call.args.p_request_key)).toEqual([`${snapshot.attemptId}:2`, `${snapshot.attemptId}:3`]);
+});
+
+it('đợt 10a: mất phản hồi mà người nhập không đọc được phiếu (quyền đọc): tra theo mã yêu cầu thấy ⇒ đã ghi, không gửi lại, không «có thể»', async () => {
+  plan.push('after');
+  await submit([line(1)]);
+  io.server.visible.income_expenses = () => false;
+  const again = await submit([line(1)]);
+  expect(again.reconciledFrom).toBeTruthy();
+  expect(again.createdVouchers).toEqual([{ row: 2, id: vouchers()[0].id, code: null }]);
+  expect(again.possiblyWritten ?? []).toEqual([]);
+  expect(compatCalls()).toHaveLength(1);
+  expect(pendingKeys()).toEqual([]);
+});
+
+it('đợt 10a: dòng không tới máy chủ, có phiếu giống hệt của người nhập (lượt khác) ⇒ không bị nhận nhầm «có thể đã ghi»; quá 2 phút gửi lại cùng mã, ghi đúng một phiếu', async () => {
+  plan.push('before');
+  await submit([line(1)]);
+  io.server.rows.income_expenses = [serverVoucher('v-khac', 'PC-8', 100, T0 + 1_000)];
+  advance(PENDING_SETTLE_MS + 1_000);
+  const again = await submit([line(1)]);
+  expect(again.reconciledFrom).toBeUndefined();
+  expect(again).toMatchObject({ successCount: 1, failedCount: 0 });
+  expect(compatCalls()).toHaveLength(2);
+  expect(compatCalls()[1].args.p_request_key).toBe(compatCalls()[0].args.p_request_key);
+  expect(vouchers()).toHaveLength(2);
+  expect(pendingKeys()).toEqual([]);
+});
+
+it('đợt 10a: dưới 2 phút, dòng chưa thấy mà có phiếu giống hệt của người nhập ⇒ vẫn chưa kết luận, KHÔNG «có thể đã ghi» (ảnh chụp có mã không tra gần đúng)', async () => {
+  plan.push('before');
+  await submit([line(1)]);
+  io.server.rows.income_expenses = [serverVoucher('v-khac', 'PC-8', 100, T0 + 1_000)];
+  await expect(submit([line(1)])).rejects.toThrow(/đối chiếu/);
+  expect(compatCalls()).toHaveLength(1);
+  expect(pendingKeys()).toHaveLength(1);
+});
+
+it('đợt 10a: tra theo mã yêu cầu hỏng ⇒ chưa kết luận, không gửi, giữ dấu', async () => {
+  plan.push('after');
+  await submit([line(1)]);
+  io.server.visible.income_expenses = () => false;
+  io.server.failNext('get_own_income_expense_requests_v1', 'rpc', 'drop-before');
+  advance(PENDING_SETTLE_MS + 1_000);
+  await expect(submit([line(1)])).rejects.toThrow(/đối chiếu/);
+  expect(compatCalls()).toHaveLength(1);
+  expect(pendingKeys()).toHaveLength(1);
 });
 
 it('đọc hạng mục TRƯỚC khi ghi dấu: đọc hỏng ⇒ báo lỗi, không để lại dấu, không gửi', async () => {
