@@ -52,10 +52,9 @@ describe('Tổng quan và nguồn số dư', () => {
     const ledger = { marker: null, salary: [] };
     const end = overviewBalances(ledger, position(-10), alloc, cash, adv).get('2026-02-01');
     expect(end).toBe(-10);
-    expect(closingExplanation(end, '2026-02-01', null, undefined, adv, alloc)).toMatchObject({
-      fromAdvance: 6,
-      fromOther: 4,
-    });
+    expect(closingExplanation(end, '2026-02-01', null, undefined, adv, alloc, cash, [])).toBeNull();
+    expect(closingExplanation(-4, '2026-02-01', null, undefined, [], alloc, cash, [])?.fromOther).toBe(4);
+    expect(closingExplanation(-6, '2026-02-01', null, undefined, adv, alloc, [], ['2026-02-01'])).toBeNull();
     expect(overviewBalances(ledger, position(-9), alloc, cash, adv).size).toBe(0);
   });
   it('chuyển số dư qua mốc đúng một lần', () => {
@@ -72,6 +71,6 @@ describe('Tổng quan và nguồn số dư', () => {
       [marker, -5],
       ['2026-02-01', -2],
     ]);
-    expect(closingExplanation(-2, '2026-02-01', marker, 5, [row(12, marker)], [row(3)])?.fromAdvance).toBe(2);
+    expect(closingExplanation(-2, '2026-02-01', marker, 5, [row(12, marker)], [row(3)], [], [])?.fromAdvance).toBe(2);
   });
 });

@@ -73,6 +73,9 @@ export function ShareholderOverviewContent({
     position?.components.opening_advance,
     flows.advances,
     allocations,
+    flows.profit,
+    ledger.salary.filter(s => s.investment || s.advance_offset).map(s => s.period_month)
+      .concat((position?.settlements ?? []).filter(s => s.advance_offset_amount > 0).map(s => s.through_month)),
   );
   const pool = position?.house_pool;
   const fundPayments = position?.fund_payments?.filter((r) => inOverviewPeriod(r.date, year, month));

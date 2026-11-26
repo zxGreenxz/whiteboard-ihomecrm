@@ -39,7 +39,8 @@ CREATE OR REPLACE FUNCTION app_private.shareholder_receipt_sources_v1(p_receipt 
 RETURNS jsonb LANGUAGE sql STABLE SET search_path TO pg_catalog AS $sources$
   SELECT coalesce(jsonb_agg(jsonb_build_object('code',s.code,'date',s.voucher_date,'amount',s.amount,
     'live',(v.active_posting_id_v2=s.posting_id AND v.approval_status='APPROVED' AND v.posting_status='POSTED'
-      AND v.deleted_at IS NULL AND v.total_amount=s.amount AND v.voucher_date=s.voucher_date) IS TRUE)
+      AND v.deleted_at IS NULL AND v.total_amount=s.amount AND v.voucher_date=s.voucher_date
+      AND NOT EXISTS (SELECT 1 FROM public.income_expense_postings rev WHERE rev.organization_id=v.organization_id AND rev.reversal_of_id=s.posting_id)) IS TRUE)
     ORDER BY s.voucher_date,s.code),'[]'::jsonb)
   FROM app_private.shareholder_advance_receipt_sources s JOIN public.income_expenses v ON v.id=s.voucher_id
   WHERE s.receipt_id=p_receipt
@@ -77,21 +78,24 @@ BEGIN
   IF jsonb_array_length(p_receipts) NOT BETWEEN 1 AND 240 THEN
     RAISE EXCEPTION 'Kiểm tra số kỳ cần đối chiếu' USING ERRCODE='22023';
   END IF;
-  SELECT jsonb_agg(to_jsonb(r) || jsonb_build_object('source_codes',ARRAY(
-      SELECT code FROM unnest(r.source_codes) AS code ORDER BY code)) ORDER BY r.period_month), sum(r.amount), coalesce(sum(r.external_profit),0),
+  SELECT jsonb_agg(to_jsonb(r) || jsonb_build_object('source_refs',(
+      SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.date,x.code,x.amount),'[]'::jsonb)
+      FROM jsonb_to_recordset(coalesce(r.source_refs,'[]'::jsonb)) x(code text,date date,amount numeric))) ORDER BY r.period_month), sum(r.amount), coalesce(sum(r.external_profit),0),
     count(*) <> count(DISTINCT r.period_month)
     OR bool_or(r.period_month IS NULL OR NOT isfinite(r.period_month) OR r.period_month > opening.through_month
       OR extract(day FROM r.period_month)<>1 OR r.amount IS NULL OR r.amount NOT BETWEEN 1 AND 9999999999999
-      OR cardinality(r.source_codes)>100 OR r.amount<>trunc(r.amount) OR r.evidence IS NULL OR length(btrim(r.evidence)) NOT BETWEEN 8 AND 1000
+      OR jsonb_array_length(r.source_refs)>100 OR r.amount<>trunc(r.amount) OR r.evidence IS NULL OR length(btrim(r.evidence)) NOT BETWEEN 8 AND 1000
       OR (r.external_profit IS NOT NULL AND (r.external_profit<>trunc(r.external_profit)
         OR r.external_profit NOT BETWEEN -9999999999999 AND 9999999999999)))
     INTO submitted,gross,external_total,invalid
-    FROM jsonb_to_recordset(p_receipts) r(period_month date,amount numeric,external_profit numeric,evidence text,source_codes text[]);
+    FROM jsonb_to_recordset(p_receipts) r(period_month date,amount numeric,external_profit numeric,evidence text,source_refs jsonb);
   IF invalid THEN RAISE EXCEPTION 'Kỳ, số tiền hoặc căn cứ đối chiếu không hợp lệ' USING ERRCODE='22023'; END IF;
 
   SELECT jsonb_agg(jsonb_build_object('period_month',r.period_month,'amount',r.amount,
-    'external_profit',r.external_profit,'evidence',r.evidence,'source_codes',ARRAY(
-      SELECT s.code FROM app_private.shareholder_advance_receipt_sources s WHERE s.receipt_id=r.id ORDER BY s.code))
+    'external_profit',r.external_profit,'evidence',r.evidence,'source_refs',(
+      SELECT coalesce(jsonb_agg(jsonb_build_object('code',s.code,'date',s.voucher_date,'amount',s.amount)
+        ORDER BY s.voucher_date,s.code,s.amount),'[]'::jsonb)
+      FROM app_private.shareholder_advance_receipt_sources s WHERE s.receipt_id=r.id))
     ORDER BY r.period_month)
     INTO saved FROM app_private.shareholder_opening_advance_receipts r WHERE r.opening_id=p_opening_id;
   IF saved IS NOT NULL AND saved<>submitted THEN
@@ -120,19 +124,27 @@ BEGIN
     INSERT INTO app_private.shareholder_opening_advance_receipts(opening_id,period_month,amount,external_profit,evidence,recorded_by)
       SELECT p_opening_id,r.period_month,r.amount,r.external_profit,r.evidence,auth.uid()
       FROM jsonb_to_recordset(submitted) r(period_month date,amount numeric,external_profit numeric,evidence text);
-    SELECT coalesce(sum(cardinality(r.source_codes)),0) INTO wanted
-      FROM jsonb_to_recordset(submitted) r(source_codes text[]);
+    SELECT coalesce(sum(jsonb_array_length(r.source_refs)),0) INTO wanted
+      FROM jsonb_to_recordset(submitted) r(source_refs jsonb);
     -- Khoá phiếu đang có hiệu lực đến hết giao dịch. Phiếu thuộc kỳ sau, của đúng công ty,
     -- chưa nằm trong sổ cổ đông và chỉ giải trình được một kỳ ứng.
     WITH candidates AS MATERIALIZED (
       SELECT receipt.id AS receipt_id,v.id,v.active_posting_id_v2,v.code,v.voucher_date,v.total_amount
-      FROM jsonb_to_recordset(submitted) r(period_month date,source_codes text[])
+      FROM jsonb_to_recordset(submitted) r(period_month date,source_refs jsonb)
       JOIN app_private.shareholder_opening_advance_receipts receipt
         ON receipt.opening_id=p_opening_id AND receipt.period_month=r.period_month
-      CROSS JOIN LATERAL unnest(r.source_codes) c(code)
+      CROSS JOIN LATERAL jsonb_to_recordset(r.source_refs) c(code text,date date,amount numeric)
       JOIN public.income_expenses v ON v.organization_id=p_organization_id AND v.code=c.code
+        AND v.voucher_date=c.date AND v.total_amount=c.amount
+      JOIN public.income_expense_postings p ON p.id=v.active_posting_id_v2 AND p.organization_id=v.organization_id
+        AND p.voucher_id=v.id AND p.account_id=v.account_id AND p.direction='EXPENSE' AND p.event_kind='POSTING'
+        AND p.net_cash_effect=-v.total_amount AND p.amount_basis='VOUCHER_TOTAL'
       WHERE v.type='EXPENSE' AND v.approval_status='APPROVED' AND v.posting_status='POSTED'
         AND v.active_posting_id_v2 IS NOT NULL AND v.deleted_at IS NULL AND v.shareholder_id IS NULL
+        AND v.posting_mode='CASHBOOK' AND v.reversal_of_income_expense_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM public.income_expense_postings rev WHERE rev.organization_id=v.organization_id AND rev.reversal_of_id=p.id)
+        AND (SELECT allowed FROM app_private.authorize_tenant_action_v3(auth.uid(),v.organization_id,
+          'shareholder_profit.distribute',v.building_id,v.account_id)) IS TRUE
         AND v.voucher_date >= r.period_month + interval '1 month'
         AND v.voucher_date < r.period_month + interval '2 months'
       ORDER BY v.id FOR SHARE OF v
@@ -140,8 +152,12 @@ BEGIN
     INSERT INTO app_private.shareholder_advance_receipt_sources(receipt_id,voucher_id,posting_id,code,voucher_date,amount)
       SELECT receipt_id,id,active_posting_id_v2,code,voucher_date,total_amount FROM candidates;
     GET DIAGNOSTICS inserted = ROW_COUNT;
-    IF inserted <> wanted THEN
-      RAISE EXCEPTION 'Có phiếu nguồn sai kỳ, sai công ty hoặc chưa ghi chi' USING ERRCODE='22023';
+    IF inserted <> wanted OR EXISTS (
+      SELECT 1 FROM app_private.shareholder_advance_receipt_sources s
+      JOIN app_private.shareholder_opening_advance_receipts r ON r.id=s.receipt_id
+      WHERE r.opening_id=p_opening_id GROUP BY s.receipt_id,s.code,s.voucher_date,s.amount HAVING count(*)>1
+    ) THEN
+      RAISE EXCEPTION 'Có phiếu nguồn chưa khớp duy nhất với ngày, tiền, phạm vi hoặc bút toán chi' USING ERRCODE='22023';
     END IF;
   END IF;
   RETURN jsonb_build_object('opening_id',p_opening_id,'count',jsonb_array_length(submitted),'amount',gross);

@@ -56,11 +56,11 @@ describe('Phân bổ quỹ và ghi mốc', () => {
     fireEvent.change(screen.getByLabelText('Tạm ứng (đ)'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('Lợi nhuận ngoài sổ (đ)'), { target: { value: '60' } });
     fireEvent.change(screen.getByLabelText('Căn cứ đối chiếu'), { target: { value: 'Biên bản tháng một' } });
-    fireEvent.change(screen.getByLabelText('Mã phiếu tiền gốc (nếu có)'), { target: { value: 'PC-A, PC-B' } });
+    fireEvent.change(screen.getByLabelText('Phiếu tiền gốc (mã | ngày | số tiền)'), { target: { value: 'PC-A | 2025-02-01 | 40; PC-B | 2025-02-02 | 20' } });
     fireEvent.click(screen.getByRole('button', { name: 'Kiểm tra trước khi ghi' }));
     expect(mock.write).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Ghi phiếu lịch sử' }));
-    expect(mock.write).toHaveBeenCalledWith([{ period_month:'2025-01-01', amount:100, external_profit:60, source_codes:['PC-A','PC-B'], evidence:'Biên bản tháng một' }]);
+    expect(mock.write).toHaveBeenCalledWith([{ period_month:'2025-01-01', amount:100, external_profit:60, source_refs:[{code:'PC-A',date:'2025-02-01',amount:40},{code:'PC-B',date:'2025-02-02',amount:20}], evidence:'Biên bản tháng một' }]);
   });
   it('chia đều, giữ đồng lẻ, ghi 2 dòng bù và phải trả sau xác nhận', async () => {
     const settle = vi.fn();

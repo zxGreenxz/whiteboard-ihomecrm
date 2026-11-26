@@ -162,7 +162,7 @@ export function useSharedFund(org: string) {
   });
 }
 
-export type OpeningReceiptInput = { source_codes?: string[]; period_month: string; amount: number; external_profit: number | null; evidence: string };
+export type OpeningReceiptInput = { source_refs?: { code: string; date: string; amount: number }[]; period_month: string; amount: number; external_profit: number | null; evidence: string };
 
 export function useRecordOpeningReceipts(org: string, shareholderId: string, openingId: string) {
   const client = useQueryClient();

@@ -167,17 +167,17 @@ export function closingExplanation(
   opening: number | undefined,
   advances: OverviewFlow[],
   allocations: OverviewFlow[],
+  cash: OverviewFlow[],
+  otherMovements: readonly string[],
 ) {
   if (net == null || net >= 0 || !period) return null;
   const afterMarker = !!marker && period > marker;
-  const relevant = (r: OverviewFlow) =>
-    r.counted && r.period <= period && (!afterMarker || r.period > marker!);
-  const carried = afterMarker || (period === marker && !advances.some(relevant)) ? (opening ?? 0) : 0;
-  const grossAdvances = carried + flowTotal(advances.filter(relevant));
-  const nonAdvance = Math.max(0, -net - grossAdvances);
-  return {
-    fromAdvance: -net - nonAdvance,
-    fromOther: nonAdvance,
-    negativeProfit: allocations.filter(relevant).some((r) => r.amount < 0),
-  };
+  const inRange = (k: string) => k <= period && (!afterMarker || k > marker!);
+  const relevant = (r: OverviewFlow) => r.counted && inRange(r.period);
+  const hasAdvance = ((afterMarker || period === marker) && (opening ?? 0) > 0) || advances.some(relevant);
+  const negativeProfit = allocations.some(r => relevant(r) && r.amount < 0);
+  const hasOther = cash.some(relevant) || negativeProfit;
+  // Khi đã cấn hoặc nhiều nguyên nhân cùng tác động, từng phần cần sổ chi tiết để tách.
+  if (otherMovements.some(inRange) || (hasAdvance && hasOther) || (!hasAdvance && !hasOther)) return null;
+  return { fromAdvance: hasAdvance ? -net : 0, fromOther: hasOther ? -net : 0, negativeProfit };
 }

@@ -152,6 +152,11 @@ function CompanyOverviewBody({ year: externalYear, onYearChange, children }: Com
       pos?.components.opening_advance,
       flows.advances,
       allocations,
+      flows.profit,
+      salary.filter(s => s.investment || s.advance_offset).map(s => s.period_month)
+        .concat(doc.entries.filter(e => e.kind === 'SHARED_FUND' && e.period_month).map(e => e.period_month!),
+          doc.settlement_periods?.map(s => s.month) ?? [],
+          pos?.last_settled_through_month ? [pos.last_settled_through_month] : []),
     );
     balances.push({
       key: doc.shareholder.shareholder_id,

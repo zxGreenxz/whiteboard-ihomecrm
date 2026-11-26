@@ -1513,10 +1513,10 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
     }
     const opening = await goi<{opening_id:string}>(CHU,
       `SELECT public.shareholder_profit_opening_advance_v1('${ORG_A}','${CD1}','2026-10-01','2026-11-12',521,300,'Biên bản tổng hợp mười kỳ','history-monthly-fixture',300) AS v`);
-    await db.query("INSERT INTO public.income_expenses(id,user_id,organization_id,type,name,building_id,voucher_date,code,total_amount,account_id,approval_status,posting_status,active_posting_id_v2) VALUES ($1,$2,$3,'EXPENSE','Bàn giao tiền',$4,$5,'PC-SOURCE-TEST',23,$6,'APPROVED','POSTED',$7)",
+    await db.query("INSERT INTO public.income_expenses(id,user_id,organization_id,type,name,building_id,voucher_date,code,total_amount,account_id,approval_status,posting_status,active_posting_id_v2,posting_mode) VALUES ($1,$2,$3,'EXPENSE','Bàn giao tiền',$4,$5,'PC-SOURCE-TEST',23,$6,'APPROVED','POSTED',$7,'CASHBOOK')",
       [id(8900),CHU,ORG_A,TOA_1,month(2),SO_QUY,id(8901)]);
     const receipts = Array.from({length:7},(_,i)=>({period_month:month(i+1), amount:100+i,
-      source_codes:i===0?['PC-SOURCE-TEST']:[], external_profit:i<4?50:null, evidence:'Bảng đối chiếu kỳ '+(i+1)}));
+      source_refs:i===0?[{code:'PC-SOURCE-TEST',date:month(2),amount:23}]:[], external_profit:i<4?50:null, evidence:'Bảng đối chiếu kỳ '+(i+1)}));
     const save = (rows:typeof receipts, org=ORG_A, shareholder=CD1) =>
       `SELECT public.shareholder_record_opening_receipts_v1('${org}','${shareholder}','${opening.opening_id}','${JSON.stringify(rows)}') AS v`;
     const position = await viThe(CD1);
@@ -1527,9 +1527,14 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
     expect(await loiGoi(CHU,save([...receipts,receipts[0]]))).toMatchObject({code:'22023'});
     expect(await loiGoi(CHU,save([...receipts.slice(0,6),{...receipts[6],period_month:month(10)}]))).toMatchObject({code:'22023'});
     expect(await loiGoi(CHU,save(receipts.slice(1)))).toMatchObject({code:'22023'});
+    expect(await loiGoi(CHU,save(receipts))).toMatchObject({code:'22023'});
     expect(await dem('app_private.shareholder_opening_advance_receipts')).toBe(0);
-    expect(await loiGoi(CHU,save(receipts.map((r,i)=>({...r,source_codes:i===1?['PC-SOURCE-TEST']:[]}))))).toMatchObject({code:'22023'});
+    await db.query("INSERT INTO public.income_expense_postings(id,organization_id,voucher_id,posting_subject_id,direction,account_id,gross_amount,voucher_amount_snapshot,amount_basis,net_cash_effect,posted_on,posted_by_membership_id,posted_by_user_id,approval_version,event_kind,idempotency_key,source_kind,posting_generation) VALUES ($1,$2,$3,$3,'EXPENSE',$4,23,23,'VOUCHER_TOTAL',-23,$5,$6,$7,1,'POSTING','monthly-source-fixture','VOUCHER',1)",
+      [id(8901),ORG_A,id(8900),SO_QUY,month(2),id(8902),CHU]);
+
+    expect(await loiGoi(CHU,save(receipts.map((r,i)=>({...r,source_refs:i===1?receipts[0].source_refs:[]}))))).toMatchObject({code:'22023'});
     expect(await dem('app_private.shareholder_opening_advance_receipts')).toBe(0);
+    expect(await loiGoi(CHU,save(receipts.map(r=>({...r,source_refs:r.source_refs.map(x=>({...x,amount:x.amount+1}))}))))).toMatchObject({code:'22023'});
     expect(await goi(CHU,save(receipts))).toMatchObject({count:7,amount:721});
     expect(await goi(CHU,save([...receipts].reverse()))).toMatchObject({count:7,amount:721});
     expect(await loiGoi(CHU,save(receipts.slice(1)))).toMatchObject({code:'PT409'});
@@ -1543,7 +1548,7 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
     expect(other.historical_advances).toEqual([]);
     expect(await viThe(CD1)).toEqual(position);
     expect(await dem('public.income_expenses')).toBe(4);
-    expect(await dem('public.income_expense_postings')).toBe(postings);
+    expect(await dem('public.income_expense_postings')).toBe(postings+1);
   }));
 
   it("khôi phục khoản phải trả đúng tháng quỹ khi phiếu ứng đã cấn bị hủy", () => giaoDich(async () => {

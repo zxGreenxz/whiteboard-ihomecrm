@@ -962,7 +962,7 @@
       ]
     },
     "supabase/migrations/20261126034144_phieu_tam_ung_lich_su_theo_ky.sql": {
-      "sha256": "6177d56efb617c16222ea7b4b469e0f72db7181a38298ca0634b1e506f82097e",
+      "sha256": "7c35a7024b5e069f670c5386ea9cc911663356dafce90aff79346ad7e152642f",
       "missingObjects": [
         "table:app_private.shareholder_opening_advance_receipts",
         "table:app_private.shareholder_advance_receipt_sources",
