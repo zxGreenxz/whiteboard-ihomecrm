@@ -179,7 +179,8 @@ describe('lưu quản lý và lương điều hành', () => {
 
   it('sửa: chèn quy tắc tới nhưng mất phản hồi ⇒ bấm lại cho đúng một quy tắc, không nhân đôi lương', async () => {
     io.server.failNext('profit_manager_salaries', 'insert', 'drop-after');
-    await expect(save()(editInput)).rejects.toMatchObject({ outcome: 'unknown', repeatable: true, completed: expect.arrayContaining([expect.objectContaining({ id: 'm1' })]) });
+    // Quy tắc cũ đã xoá mà chưa rõ đã ghi lại: câu báo nói rõ quản lý có thể đang chưa có quy tắc lương (review đợt 8).
+    await expect(save()(editInput)).rejects.toMatchObject({ outcome: 'unknown', repeatable: true, message: expect.stringContaining('chưa có quy tắc lương'), completed: expect.arrayContaining([expect.objectContaining({ id: 'm1' })]) });
     expect(pendingKeys()).toEqual([]);
     await expect(save()(editInput)).resolves.toEqual({ managerId: 'm1' });
     expect(liveRules('m1')).toHaveLength(1);

@@ -58,8 +58,11 @@ const invalidate=(qc:ReturnType<typeof useQueryClient>)=>Promise.all([qc.invalid
 // thì báo rõ và cho bấm lại. Bộ nhớ dưới đây chỉ sống trong tab (không ghi xuống trình duyệt), để lần bấm sau trong tab biết
 // lần trước chưa rõ: tạo link thì tra link vừa tạo trước khi tạo thêm; thu hồi thì đọc lại trạng thái link trước khi gửi.
 // Dấu bản trước (namespace `public-room-admin`, phạm vi người dùng, khoá `token-create` / `token:<mã>`) gỡ sau lần ghi xong.
-/** Lần tạo link chưa rõ kết quả, theo người + công ty + nhãn: giờ gửi sớm nhất. */
-const uncertainCreates=new Map<string,number>();
+/**
+ * Lần tạo link chưa rõ kết quả, theo người + công ty + nhãn: giờ gửi sớm nhất và các mã link ĐÃ BIẾT lúc gửi (danh sách đang
+ * hiện trên màn), để link cùng nhãn có từ trước không bị nhận nhầm là link của lần chưa rõ.
+ */
+const uncertainCreates=new Map<string,{at:number;known:ReadonlySet<string>}>();
 /** Lần thu hồi / khôi phục / xoá chưa rõ kết quả, theo công ty + link: trạng thái đích. */
 const uncertainChanges=new Map<string,'revoke'|'restore'|'delete'>();
 /** Giờ máy và giờ máy chủ có thể lệch: tra link tạo trong khoảng này quanh lần gửi chưa rõ. */
@@ -78,7 +81,7 @@ async function forgetLegacyTokenPending(businessKey:string){
  * Link vừa được lần gửi chưa rõ tạo ra (của chính người dùng, đúng công ty, đúng nhãn, sau giờ gửi); `null` = đọc được và
  * KHÔNG có. Đọc hỏng không phải «không có»: ném lỗi chưa rõ, lần bấm sau đọc lại (không tạo link khi chưa biết lần trước).
  */
-async function findCreatedToken(userId:string,organizationId:string,label:string|null,since:number):Promise<PublicRoomToken|null>{
+async function findCreatedToken(userId:string,organizationId:string,label:string|null,since:number,known:ReadonlySet<string>):Promise<PublicRoomToken|null>{
  const unread=(cause:unknown)=>new RepeatableWriteUnknownError('tạo link chia sẻ',cause,[],'Chưa kiểm được link của lần bấm trước (lần đó mất phản hồi), nên chưa tạo thêm. Bấm tạo lại: máy đọc lại danh sách link trước.');
  let reply:{data:unknown;error:unknown};
  try{
@@ -87,19 +90,21 @@ async function findCreatedToken(userId:string,organizationId:string,label:string
  }catch(error){throw unread(error);}
  if(reply.error)throw unread(reply.error);
  if(!Array.isArray(reply.data)||!reply.data.every(validToken))throw unread(new TypeError('Invalid public room token list'));
- return reply.data.find(row=>row.label===label&&row.revoked===false)??null;
+ return reply.data.find(row=>row.label===label&&row.revoked===false&&!known.has(row.token))??null;
 }
 /** Link chia sẻ thuộc công ty đang chọn: máy chủ kiểm thành viên + quyền ở đúng công ty đó và ghi công ty vào link. */
 export function useCreatePublicRoomToken(options:Options={}){const qc=useQueryClient();const {selectedOrganizationId}=useOrganization();return useMutation({mutationFn:async(label?:string|null)=>{
  const organizationId=selectedOrganizationId;if(!organizationId)throw new FinancialWorkflowError(CREATE_TOKEN_NO_ORGANIZATION,'failure',[]);
  const user=await getSessionUser();if(!user)throw {code:'PGRST301',message:'Not authenticated'};const expectedLabel=normalizedTokenLabel(label);
- const memory=[user.id,organizationId,expectedLabel??''].join('\u0000');const priorAt=uncertainCreates.get(memory);
- if(priorAt!==undefined){
+ const memory=[user.id,organizationId,expectedLabel??''].join('\u0000');const prior=uncertainCreates.get(memory);
+ if(prior){
   // Luật 4: lần trước đã tạo thì báo mã link và thôi, không tự tạo thêm; bấm lần nữa là ý định tạo link mới.
-  const created=await findCreatedToken(user.id,organizationId,expectedLabel,priorAt);
-  if(created){uncertainCreates.delete(memory);throw new FinancialAlreadyRecordedError(`Link chia sẻ ${created.token} đã được tạo ở lần bấm trước (lần đó mất phản hồi); không tạo thêm. Bấm tạo lần nữa nếu vẫn cần một link mới.`,[created.token]);}
+  const created=await findCreatedToken(user.id,organizationId,expectedLabel,prior.at,prior.known);
+  if(created){uncertainCreates.delete(memory);throw new FinancialAlreadyRecordedError(`Link chia sẻ ${created.token} có thể đã được tạo ở lần bấm trước (lần đó mất phản hồi): cùng nhãn, tạo sau lần bấm đó. Kiểm tra danh sách; chưa tạo thêm. Bấm tạo lần nữa nếu vẫn cần một link mới.`,[created.token]);}
  }
  const startedAt=Date.now();
+ const known=new Set<string>();
+ for(const queryKey of [KEY,OWN_KEY])for(const [,rows] of qc.getQueriesData<PublicRoomToken[]>({queryKey}))if(Array.isArray(rows))rows.forEach(row=>known.add(row.token));
  try{
   const data=await repeatableWrite('tạo link chia sẻ',async()=>{
    const {data,error}=await supabase.rpc('create_public_room_token',{p_label:expectedLabel??undefined,p_organization_id:organizationId});if(error)throw error;
@@ -108,7 +113,7 @@ export function useCreatePublicRoomToken(options:Options={}){const qc=useQueryCl
   uncertainCreates.delete(memory);await forgetLegacyTokenPending('token-create');return data;
  }catch(error){
   if(error instanceof RepeatableWriteUnknownError){
-   if(priorAt===undefined)uncertainCreates.set(memory,startedAt);
+   if(!prior)uncertainCreates.set(memory,{at:startedAt,known});
    throw new RepeatableWriteUnknownError('tạo link chia sẻ',error.cause,[],'Bấm tạo lại: máy tìm link vừa tạo trước, có rồi thì báo mã link, không tạo thêm.');
   }
   throw error;

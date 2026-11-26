@@ -29,8 +29,8 @@ function managerReply(table: string, operation: string, patch: unknown) {
 beforeEach(() => { vi.clearAllMocks(); m.calls = []; localStorage.clear(); localStorage.setItem('ihomecrm.selectedOrganizationId', 'org-a'); m.reply.mockImplementation(managerReply); });
 afterEach(cleanup);
 // Đợt 8: quy tắc lương xoá rồi chèn lại cả bộ nên lần lưu sau sửa được mọi lần dở; không còn dấu chặn remount. Biên nhận
-// xoá không khớp vẫn KHÔNG phải thành công: hỏng dạng ⇒ chưa rõ; thiếu dòng mà đọc lại thấy quy tắc còn ⇒ từ chối rõ.
-it.each([{receipt:null,outcome:'unknown'}, {receipt:[],outcome:'failure'}, {receipt:[{id:'wrong-rule'}],outcome:'failure'}])('manager delete không xác nhận đủ old IDs giữ mã manager, không success, không giữ dấu: %j', async ({receipt,outcome}) => {
+// xoá không khớp vẫn KHÔNG phải thành công: hỏng dạng hoặc có mã lạ ⇒ chưa rõ; thiếu dòng mà đọc lại thấy quy tắc còn ⇒ từ chối rõ.
+it.each([{receipt:null,outcome:'unknown'}, {receipt:[],outcome:'failure'}, {receipt:[{id:'wrong-rule'}],outcome:'unknown'}])('manager delete không xác nhận đủ old IDs giữ mã manager, không success, không giữ dấu: %j', async ({receipt,outcome}) => {
  m.reply.mockImplementation((table, operation, patch) => table === 'profit_manager_salaries' && operation === 'delete' ? { data: receipt, error: null } : managerReply(table, operation, patch));
  const first = renderHook(useSaveManagerWithSalaries, { wrapper }); await act(async () => { await expect(first.result.current.mutateAsync({ ...managerInput, rules: [...managerInput.rules].map(r => ({...r, building_ids: [...r.building_ids]})) })).rejects.toMatchObject({ outcome, completed: expect.arrayContaining([{ id: 'm1', label: 'Đã lưu hồ sơ quản lý' }]) }); }); first.unmount();
  expect(m.calls.filter(c => c.table === 'profit_manager_salaries' && c.operation === 'insert')).toHaveLength(0);

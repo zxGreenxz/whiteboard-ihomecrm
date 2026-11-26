@@ -141,7 +141,9 @@ export const PROFIT_MANAGER_SAVED_STEP = 'Đã lưu hồ sơ quản lý';
 function managerSaveFailure(error: unknown, operation: string, managerId: string | undefined, rulesCleared: boolean): unknown {
   if (!managerId || error instanceof FinancialAlreadyRecordedError) return error;
   const saved = { id: managerId, label: PROFIT_MANAGER_SAVED_STEP };
-  if (error instanceof RepeatableWriteUnknownError) return new RepeatableWriteUnknownError(operation, error.cause, [saved]);
+  if (error instanceof RepeatableWriteUnknownError) return new RepeatableWriteUnknownError(operation, error.cause, [saved], rulesCleared
+    ? `Đã lưu hồ sơ quản lý (mã ${managerId}) và xoá quy tắc lương cũ nhưng chưa xác nhận được đã ghi lại quy tắc mới; quản lý có thể đang chưa có quy tắc lương nào (lợi nhuận tạm chưa trừ lương điều hành). Bấm Lưu lại: quy tắc xoá rồi tạo lại cả bộ nên không nhân đôi.`
+    : undefined);
   const done = rulesCleared ? `Đã lưu hồ sơ quản lý (mã ${managerId}) và xoá quy tắc lương cũ nhưng chưa ghi lại đủ quy tắc mới` : `Đã lưu hồ sơ quản lý (mã ${managerId}) nhưng chưa lưu xong quy tắc lương`;
   return new FinancialWorkflowError(`${done}: ${workflowErrorMessage(error, 'lưu quy tắc lương điều hành')} Bấm Lưu lại để ghi lại đúng bộ quy tắc này: hồ sơ sửa theo mã, quy tắc xoá rồi tạo lại cả bộ nên không nhân đôi.`, 'failure', [saved], error);
 }
@@ -249,6 +251,8 @@ export const useSaveManagerWithSalaries = () => {
           if (delErr) throw delErr;
           const deletedIds = requireProfitRows(deletedRules).map(row => row.id as string);
           if (deletedIds.length) rulesCleared = true;
+          // Biên nhận có mã ngoài các quy tắc vừa đọc: không tin (chưa rõ), không chèn bộ mới lên trên.
+          if (deletedIds.some(id => !expectedOldRules.includes(id))) throw new TypeError('Unexpected salary rule deletion receipt');
           // Xoá thiếu dòng đã đọc: dòng đó đã bị xoá ở nơi khác (đúng đích) hoặc RLS không cho xoá (từ chối rõ, không chèn tiếp).
           const missing = expectedOldRules.filter(id => !deletedIds.includes(id));
           if (missing.length) await settleZeroRowDelete('xoá quy tắc lương cũ', () => supabase.from('profit_manager_salaries').select('id').in('id', missing));

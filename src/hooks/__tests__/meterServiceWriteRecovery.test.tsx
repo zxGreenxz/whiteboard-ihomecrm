@@ -333,7 +333,7 @@ describe('sửa định mức (xoá rồi chèn lại bậc giá)', () => {
   it('lưu bậc mới mất phản hồi: báo đã gỡ bậc cũ, bấm lại cho đúng một bộ bậc', async () => {
     const save = update();
     io.server.failNext('service_quota_tiers', 'insert', 'drop-after');
-    expectRepeatable(await rejection(save(input)), /gỡ bậc/);
+    expectRepeatable(await rejection(save(input)), /gỡ bậc[\s\S]*thiếu bậc/);
     await save(input);
     expect(tiers()).toEqual(['1:120', '2:150']);
   });
@@ -382,7 +382,7 @@ describe('dịch vụ mặc định của toà (xoá rồi chèn lại)', () => 
   it('lưu danh sách mới mất phản hồi: báo đã gỡ danh sách cũ, bấm lại cho đúng một bộ', async () => {
     const run = save();
     io.server.failNext('building_services', 'insert', 'drop-after');
-    expectRepeatable(await rejection(run(input)), /gỡ danh sách/);
+    expectRepeatable(await rejection(run(input)), /gỡ danh sách[\s\S]*thiếu dịch vụ mặc định/);
     await run(input);
     expect(links()).toEqual(['s1:true', 's2:false']);
   });

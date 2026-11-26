@@ -305,6 +305,10 @@ export const useUpdateServiceQuota=()=>{
    const oldRows:unknown[]=deleted;
    if(!oldRows.every(row=>removedTier(row,params.id))||new Set(oldRows.map(row=>row.id)).size!==oldRows.length)throw new FinancialWorkflowError('Chưa xác nhận đúng các bậc giá đã gỡ; chưa gửi danh sách mới.','unknown',received,new TypeError('Mismatched quota tier deletion receipt'));
    return received.map(step=>({id:step.id,label:'Đã gỡ bậc giá cũ'}));
+  }).catch((error:unknown)=>{
+   // Chưa rõ bước gỡ: bậc cũ có thể đã gỡ. Nói rõ để người dùng biết định mức có thể đang thiếu bậc.
+   if(error instanceof RepeatableWriteUnknownError)throw new RepeatableWriteUnknownError('gỡ các bậc giá cũ của định mức',error.cause,error.completed,'Bậc giá cũ có thể đã được gỡ nên định mức có thể đang thiếu bậc. Bấm lại nút Cập nhật: bậc giá gỡ rồi ghi lại đúng danh sách đang nhập nên không nhân đôi.');
+   throw error;
   });
 
   if(params.tiers.length>0){
@@ -326,7 +330,7 @@ export const useUpdateServiceQuota=()=>{
     for(const row of newRows){const index=expected.findIndex(t=>t.tier_number===row.tier_number&&t.from_value===row.from_value&&t.to_value===row.to_value&&t.unit_price===row.unit_price);if(index<0)throw new FinancialWorkflowError('Biên nhận bậc giá mới chưa khớp các giá trị đã gửi.','unknown',steps,new TypeError('Mismatched quota tier insert values'));expected.splice(index,1);}
    });}
    catch(error){
-    if(error instanceof RepeatableWriteUnknownError)throw error;
+    if(error instanceof RepeatableWriteUnknownError)throw new RepeatableWriteUnknownError('lưu bậc giá mới sau khi đã gỡ bậc giá cũ',error.cause,error.completed,'Bậc giá cũ đã gỡ; định mức có thể đang thiếu bậc cho tới khi lưu xong. Bấm lại nút Cập nhật: bậc giá gỡ rồi ghi lại đúng danh sách đang nhập nên không nhân đôi.');
     // Máy chủ từ chối rõ lệnh chèn sau khi các bậc cũ đã gỡ: báo đúng tình trạng, lưu lại là ghi đủ bậc.
     throw refused(`Đã gỡ các bậc giá cũ của định mức (${removedSteps.length} bậc) nhưng chưa lưu được bậc giá mới. ${recordWriteMessage(error,'lưu bậc giá mới')} Bấm Cập nhật để lưu lại đủ bậc giá; trong lúc này định mức có thể thiếu bậc.`,error);
    }

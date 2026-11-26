@@ -95,6 +95,10 @@ export const useUpsertBuildingServices = ({ silent = false }: { silent?: boolean
           throw new FinancialWorkflowError("Chưa xác nhận đúng các liên kết dịch vụ đã gỡ; chưa gửi danh sách mới.",
             "unknown", received, new TypeError("Mismatched building service deletion receipt"));
         return received.map(step => ({ id: step.id, label: "Đã gỡ liên kết dịch vụ cũ của tòa" }));
+      }).catch((error: unknown) => {
+        // Chưa rõ bước gỡ: dịch vụ cũ có thể đã gỡ. Nói rõ để người dùng biết tòa có thể đang thiếu dịch vụ mặc định.
+        if (error instanceof RepeatableWriteUnknownError) throw new RepeatableWriteUnknownError("gỡ danh sách dịch vụ cũ của tòa", error.cause, error.completed, "Dịch vụ cũ có thể đã được gỡ nên tòa có thể đang thiếu dịch vụ mặc định. Bấm lại nút lưu: danh sách gỡ rồi ghi lại đúng danh sách đang chọn nên không nhân đôi.");
+        throw error;
       });
       let savedIds: string[] = [];
       if (services.length > 0) {
@@ -129,7 +133,7 @@ export const useUpsertBuildingServices = ({ silent = false }: { silent?: boolean
             return saved.map(row => row.id);
           });
         } catch (error) {
-          if (error instanceof RepeatableWriteUnknownError) throw error;
+          if (error instanceof RepeatableWriteUnknownError) throw new RepeatableWriteUnknownError("lưu danh sách dịch vụ mới sau khi đã gỡ danh sách cũ của tòa", error.cause, error.completed, "Danh sách dịch vụ cũ đã gỡ; tòa có thể đang thiếu dịch vụ mặc định cho tới khi lưu xong. Bấm lại nút lưu: danh sách gỡ rồi ghi lại đúng danh sách đang chọn nên không nhân đôi.");
           // Máy chủ từ chối rõ lệnh chèn sau khi danh sách cũ đã gỡ: báo đúng tình trạng, lưu lại là ghi đủ danh sách.
           const reason = friendlyError(error, "Chưa lưu danh sách dịch vụ mới", { operation: "lưu danh sách dịch vụ mới" });
           throw new FinancialWorkflowError(`Đã gỡ danh sách dịch vụ cũ của tòa (${removedSteps.length} dịch vụ) nhưng chưa lưu được danh sách mới. ${reason.description} Bấm lưu lại để ghi đủ dịch vụ; trong lúc này tòa có thể thiếu dịch vụ mặc định.`, "failure", [], error);

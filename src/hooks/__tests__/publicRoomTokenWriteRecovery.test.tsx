@@ -73,13 +73,25 @@ describe('tạo link', () => {
     const h = renderHook(() => hooks.useCreatePublicRoomToken({ inlineError: true }), { wrapper });
     await act(async () => { await expect(h.result.current.mutateAsync('Sale B')).rejects.toMatchObject({ outcome: 'unknown' }); });
     const first = io.server.rows[T]![0].token as string;
-    await act(async () => { await expect(h.result.current.mutateAsync('Sale B')).rejects.toMatchObject({ message: expect.stringContaining(first) }); });
+    await act(async () => { await expect(h.result.current.mutateAsync('Sale B')).rejects.toMatchObject({ outcome: 'failure', message: expect.stringMatching(new RegExp(first + '.*có thể đã được tạo')) }); });
     expect(calls()).toBe(1);
     expect(io.server.rows[T]).toHaveLength(1);
     expect(pendingKeys()).toEqual([]);
     // Người dùng đã thấy mã link cũ; bấm thêm lần nữa là ý định tạo link mới.
     await act(async () => { await expect(h.result.current.mutateAsync('Sale B')).resolves.toMatchObject({ label: 'Sale B' }); });
     expect(io.server.rows[T]).toHaveLength(2);
+  });
+
+  it('link cùng nhãn có từ trước (đang hiện trên danh sách) không bị nhận nhầm là link của lần chưa rõ', async () => {
+    seedLink('room-old', { label: 'Sale G', created_at: new Date(Date.now() - 60_000).toISOString() });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    client.setQueryData(['public-room-tokens', 'org-1'], [{ ...link('room-old'), owner_name: null, can_manage: true }]);
+    const shared = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    io.server.failNext('create_public_room_token', 'rpc', 'drop-before');
+    const h = renderHook(() => hooks.useCreatePublicRoomToken({ inlineError: true }), { wrapper: shared });
+    await act(async () => { await expect(h.result.current.mutateAsync('Sale G')).rejects.toMatchObject({ outcome: 'unknown' }); });
+    await act(async () => { await expect(h.result.current.mutateAsync('Sale G')).resolves.toMatchObject({ label: 'Sale G' }); });
+    expect(io.server.rows[T]!.map(row => row.token)).toEqual(['room-old', expect.any(String)]);
   });
 
   it('đọc link của lần chưa rõ bị hỏng ⇒ KHÔNG coi là «chưa có»: không tạo, báo chưa rõ; đọc được rồi mới quyết', async () => {
