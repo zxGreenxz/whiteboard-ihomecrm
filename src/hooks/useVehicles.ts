@@ -1,5 +1,5 @@
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { confirmedRecordId, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { confirmedRecordId, recordWriteMessage, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -271,10 +271,11 @@ export const useCreateVehicle = () => {
 
 export const useUpdateVehicle = () => {
   const queryClient = useQueryClient();
-  const guard=persistentFinancialWorkflow('vehicle-update', {scope:'actor'});
 
   return useMutation({
     meta:{handlesFeedback:true},
+    // Đợt 8 (luật 5): đặt giá trị theo mã, chạy lại cho cùng kết quả: không giữ dấu «chờ đối chiếu»; kết quả chưa rõ báo
+    // rõ và cho lưu lại. Khớp 0 dòng (RLS, xe đã mất) là PGRST116: từ chối rõ.
     mutationFn: async ({
       id,
       data: formData,
@@ -282,19 +283,21 @@ export const useUpdateVehicle = () => {
       id: string;
       data: Partial<VehicleFormData>;
     }) => {
-      return guard.run(id,'cập nhật phương tiện',async(progress)=>{
-      const { data, error } = await supabase
-        .from("vehicles")
-        .update(formData as any)
-        .eq("id", id)
-        .select()
-        .single();
+      const vehicle = await repeatableWrite('cập nhật phương tiện', async () => {
+        const { data, error } = await supabase
+          .from("vehicles")
+          .update(formData as any)
+          .eq("id", id)
+          .select()
+          .single();
 
-      if (error) throw error;
-      const savedId=confirmedRecordId(data,'cập nhật phương tiện',id);
-      progress.completed.push({id:savedId,label:'Phương tiện đã nhận mã'});
-      return data as unknown as Vehicle;
+        if (error) throw error;
+        confirmedRecordId(data,'cập nhật phương tiện',id);
+        return data as unknown as Vehicle;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'vehicle-update', businessKey: id }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần ghi sau gỡ lại. */ }
+      return vehicle;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });
@@ -318,25 +321,34 @@ export const useUpdateVehicle = () => {
 
 export const useDeleteVehicle = () => {
   const queryClient = useQueryClient();
-  const guard=persistentFinancialWorkflow('vehicle-delete', {scope:'actor'});
 
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn: async (id: string) => {
-      return guard.run(id,'xoá phương tiện',async(progress)=>{
-      const { data, error } = await supabase
-        .from("vehicles")
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .eq("id", id).select('id').single();
+    // Đợt 8 (luật 5): xoá mềm theo mã lặp lại được, không giữ dấu. Chỉ xoá xe còn sống: lần bấm lại sau một lần mất phản
+    // hồi khớp 0 dòng (không đổi giờ xoá), đọc lại thấy đã xoá ⇒ thành công «đã xoá trước đó»; còn nguyên ⇒ máy chủ không
+    // cho xoá (RLS) ⇒ báo không có quyền.
+    mutationFn: async (id: string): Promise<{ id: string; alreadyDeleted?: boolean }> => {
+      const result = await repeatableWrite('xoá phương tiện', async () => {
+        const { data, error } = await supabase
+          .from("vehicles")
+          .update({ deleted_at: new Date().toISOString() } as any)
+          .eq("id", id).is('deleted_at', null).select('id');
 
-      if (error) throw error;
-      confirmedRecordId(data,'xoá phương tiện',id);
-      progress.completed.push({id,label:'Phương tiện đã xoá'});
+        if (error) throw error;
+        if (Array.isArray(data) && data.length === 0) {
+          await settleZeroRowDelete('xoá phương tiện', () => supabase.from('vehicles').select('id, deleted_at').eq('id', id).maybeSingle());
+          return { id, alreadyDeleted: true };
+        }
+        confirmedRecordId(Array.isArray(data) && data.length === 1 ? data[0] : null,'xoá phương tiện',id);
+        return { id };
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'vehicle-delete', businessKey: id }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
+      return result;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      toast.success("Đã xóa phương tiện");
+      toast.success(result.alreadyDeleted ? 'Phương tiện đã được xoá trước đó.' : "Đã xóa phương tiện");
     },
     onError: (error: unknown) => {
       queryClient.invalidateQueries({queryKey:['vehicles']});
