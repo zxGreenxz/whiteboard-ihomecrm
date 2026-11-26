@@ -448,11 +448,11 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.replace_building_services_v1(uuid, jsonb) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.replace_service_quota_v1(uuid, text, text, jsonb) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.replace_material_purchase_v1(uuid, date, uuid, text, jsonb) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.save_job_material_usage_v1(uuid, date, text, jsonb) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.replace_contract_services_v1(uuid, jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.replace_building_services_v1(uuid, jsonb) FROM PUBLIC, anon, service_role;
+REVOKE ALL ON FUNCTION public.replace_service_quota_v1(uuid, text, text, jsonb) FROM PUBLIC, anon, service_role;
+REVOKE ALL ON FUNCTION public.replace_material_purchase_v1(uuid, date, uuid, text, jsonb) FROM PUBLIC, anon, service_role;
+REVOKE ALL ON FUNCTION public.save_job_material_usage_v1(uuid, date, text, jsonb) FROM PUBLIC, anon, service_role;
+REVOKE ALL ON FUNCTION public.replace_contract_services_v1(uuid, jsonb) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.replace_building_services_v1(uuid, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.replace_service_quota_v1(uuid, text, text, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.replace_material_purchase_v1(uuid, date, uuid, text, jsonb) TO authenticated;
