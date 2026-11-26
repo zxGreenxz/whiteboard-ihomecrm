@@ -1064,7 +1064,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all seventy-four reviewed forward migrations and their 151 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all reviewed forward migrations and their latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -1112,7 +1112,8 @@ test('all seventy-four reviewed forward migrations and their 151 latest definiti
   // chạy được; thân bước 025453 thành ghim superseded).
   // Kết nối tự hồi (13/11): hàm gia hạn của kho dựng lại ở 20261113131751 (bỏ trần created_at + 30 ngày, dời mốc created_at của token; +1
   // file, +1 tên mới: hàm hồi token hết hạn chưa quá 7 ngày, chỉ vai kho chạy được; thân gia hạn 20261019034754 thành ghim superseded).
-  assert.equal(paths.length, 74);
+  // Tìm khách theo tên: thêm một migration thay thân lõi danh sách khách hàng.
+  assert.equal(paths.length, 75);
   assert.equal(FORWARD_FUNCTIONS.length, 151);
   assert.equal(FORWARD_BY_NAME.size, 151, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
