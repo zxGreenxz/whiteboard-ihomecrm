@@ -81,9 +81,8 @@ interface PayoutFormProps {
 }
 
 export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
-  // Đợt 9: kho tệp chờ gắn không bao giờ khoá ô tải. Dấu «đã lên kế hoạch tải» của bản trước được đọc một lần rồi bỏ;
-  // tên tệp của nó chỉ dùng để nhắc khách chọn lại (tệp đó chưa từng được gắn vào đội).
-  const [initialPending] = useState(() => ({ proofs: readPendingLuckyProofs(eventId, team.id), lostUploads: takeLegacyPlannedLuckyUploads(eventId, team.id) }));
+  // Đợt 9: kho tệp chờ gắn không bao giờ khoá ô tải.
+  const [initialPending] = useState(() => ({ proofs: readPendingLuckyProofs(eventId, team.id) }));
   const [account, setAccount] = useState(team.payoutAccount ?? '');
   const [bank, setBank] = useState(team.payoutBank ?? '');
   const [holder, setHolder] = useState(team.payoutHolder ?? '');
@@ -102,9 +101,15 @@ export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const uploadRef = useRef<HTMLLabelElement>(null);
   const [pendingProofs, setPendingProofs] = useState<LuckyProof[]>(initialPending.proofs);
-  const [lostUploads, setLostUploads] = useState<string[]>(initialPending.lostUploads);
+  const [lostUploads, setLostUploads] = useState<string[]>([]);
   const [fileErrors, setFileErrors] = useState<ProofFailure[]>([]);
   const uploadLock = useRef(false);
+  // Dấu «đã lên kế hoạch tải» của bản trước: đọc một lần rồi bỏ (trong effect, để lần chạy kép của StrictMode không nuốt mất
+  // lời nhắc); tên tệp chỉ dùng để nhắc khách chọn lại, vì tệp đó chưa từng được gắn vào đội.
+  useEffect(() => {
+    const names = takeLegacyPlannedLuckyUploads(eventId, team.id);
+    if (names.length) setLostUploads(names);
+  }, [eventId, team.id]);
 
   // Thu hồi blob URL khi rời trang để không rò bộ nhớ.
   const urlsRef = useRef(localUrls);
