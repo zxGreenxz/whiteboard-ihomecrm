@@ -119,6 +119,12 @@ interface ExcelSnapshot {attemptId:string;rows:ExcelSnapshotRow[];createdVoucher
 const EXCEL_CLOCK_SKEW_MS=60*60_000;
 /** Số phiếu tối đa đọc một lần khi tra gần đúng; chạm trần thì dòng chưa thấy không được coi là chưa ghi. */
 const EXCEL_LOOKUP_LIMIT=1000;
+/**
+ * Mỗi lệnh đọc `.in(...)` của phép đối chiếu mang tối đa chừng này giá trị: PostgREST đọc qua GET, danh sách mã dài làm URL
+ * vượt giới hạn và máy chủ trả lỗi (án lệ `useInvoiceCollectors.ts`) ⇒ lượt nhập lớn sẽ hỏng đối chiếu ở MỌI lần bấm.
+ */
+const EXCEL_IN_CHUNK=100;
+const chunksOf=<T,>(items:readonly T[]):T[][]=>Array.from({length:Math.ceil(items.length/EXCEL_IN_CHUNK)},(_,part)=>items.slice(part*EXCEL_IN_CHUNK,(part+1)*EXCEL_IN_CHUNK));
 const isRowNumber=(value:unknown):value is number=>Number.isInteger(value)&&(value as number)>0;
 
 function readExcelSnapshot(key:string,attemptId:string):ExcelSnapshot|null{
@@ -183,26 +189,37 @@ async function reconcileExcelImport(pending:FinancialPendingRecord,snapshotKey:s
     const id=await findOwnDepositIncome(pending.organizationId,`${attemptKey}:${row.sourceRow}`);
     if(id){verdicts.set(index,{kind:'written',id,code:null});depositFound.add(index);}
   }
-  // Dòng thường mang mã phiếu dự kiến: tra đúng theo mã; cùng lượt đọc mã chứng từ của mọi phiếu đã biết.
+  // Dòng thường mang mã phiếu dự kiến: tra đúng theo mã; cùng lượt đọc mã chứng từ của phiếu đã biết mà chưa có mã chứng
+  // từ. Chỉ đọc mã còn mở / mã cần số chứng từ, chia lô; một lô đọc hỏng ⇒ cả lần đối chiếu chưa kết luận (ném lỗi).
   const planned=open.filter(({row,index})=>!verdicts.has(index)&&row.voucherId).map(({row,index})=>({index,id:row.voucherId!}));
   if(planned.length||depositFound.size){
-    const known=[...verdicts.values()].flatMap(verdict=>verdict.kind==='written'?[verdict.id]:[]);
-    const {data,error}=await supabase.from('income_expenses').select('id, code').in('id',[...new Set([...planned.map(row=>row.id),...known])]);
-    if(error)throw error;
-    const found=new Map(voucherRows(data,'phiếu của lượt nhập').map(row=>[row.id,row.code??null]));
+    const needCode=[...verdicts.values()].flatMap(verdict=>verdict.kind==='written'&&!verdict.code?[verdict.id]:[]);
+    const found=new Map<string,string|null>();
+    for(const part of chunksOf([...new Set([...planned.map(row=>row.id),...needCode])])){
+      const {data,error}=await supabase.from('income_expenses').select('id, code').in('id',part);
+      if(error)throw error;
+      for(const row of voucherRows(data,'phiếu của lượt nhập'))found.set(row.id,row.code??null);
+    }
     for(const [index,verdict] of verdicts)if(verdict.kind==='written'&&!verdict.code&&found.get(verdict.id))verdicts.set(index,{...verdict,code:found.get(verdict.id)!});
     for(const {index,id} of planned)if(found.has(id))verdicts.set(index,{kind:'written',id,code:found.get(id)??null});
   }
   // Còn chưa thấy (mã dự kiến không có trên máy chủ, hoặc ảnh chụp bản trước không có mã): tra gần đúng, trừ phiếu đã biết.
+  // Ngày phiếu chia lô như trên; lô chạm trần số dòng thì dòng chưa thấy ở các ngày đó không được coi là chưa ghi.
   const rest=open.filter(({index})=>!verdicts.has(index));
   if(rest.length){
     const since=new Date(Date.parse(pending.startedAt)-EXCEL_CLOCK_SKEW_MS).toISOString();
-    const {data,error}=await supabase.from('income_expenses')
-      .select('id, code, type, building_id, voucher_date, total_amount, created_at, income_expense_items(income_expense_type_id)')
-      .eq('user_id',pending.userId).eq('organization_id',pending.organizationId).gte('created_at',since)
-      .in('voucher_date',[...new Set(rest.map(({row})=>row.voucherDate))]).order('created_at',{ascending:false}).limit(EXCEL_LOOKUP_LIMIT);
-    if(error)throw error;
-    const candidates=voucherRows(data,'danh sách phiếu');
+    const candidates:VoucherCandidate[]=[];
+    const saturated=new Set<string>();
+    for(const part of chunksOf([...new Set(rest.map(({row})=>row.voucherDate))])){
+      const {data,error}=await supabase.from('income_expenses')
+        .select('id, code, type, building_id, voucher_date, total_amount, created_at, income_expense_items(income_expense_type_id)')
+        .eq('user_id',pending.userId).eq('organization_id',pending.organizationId).gte('created_at',since)
+        .in('voucher_date',part).order('created_at',{ascending:false}).limit(EXCEL_LOOKUP_LIMIT);
+      if(error)throw error;
+      const rows=voucherRows(data,'danh sách phiếu');
+      if(rows.length>=EXCEL_LOOKUP_LIMIT)part.forEach(date=>saturated.add(date));
+      candidates.push(...rows);
+    }
     const known=new Set([...verdicts.values()].flatMap(verdict=>verdict.kind==='written'?[verdict.id]:[]));
     for(const {row,index} of rest){
       const matches=candidates.filter(item=>!known.has(item.id)&&item.type===row.type&&item.building_id===row.buildingId
@@ -210,7 +227,7 @@ async function reconcileExcelImport(pending:FinancialPendingRecord,snapshotKey:s
         // Dòng hạng mục bị RLS che (hạng mục hạn chế) ⇒ không so được khoản mục: vẫn tính là ứng viên (nghiêng về an toàn).
         &&(!row.itemTypeId||!item.income_expense_items?.length||item.income_expense_items.some(line=>line.income_expense_type_id===row.itemTypeId)));
       if(matches.length)verdicts.set(index,{kind:'maybe',codes:matches.map(item=>item.code||item.id)});
-      else if(candidates.length>=EXCEL_LOOKUP_LIMIT)verdicts.set(index,{kind:'maybe',codes:[]});
+      else if(saturated.has(row.voucherDate))verdicts.set(index,{kind:'maybe',codes:[]});
       else if(settled)verdicts.set(index,{kind:'missing'});
     }
   }

@@ -455,9 +455,10 @@ export class MeterReadingImportUnconfirmedError extends FinancialWorkflowError {
 async function readImportMeters(userId: string, codes: string[]): Promise<Map<string, { id: string; buildingId: string | null }>> {
   const unique = [...new Set(codes.filter(code => typeof code === 'string' && code))];
   const meters = new Map<string, { id: string; buildingId: string | null }>();
-  for (let start = 0; start < unique.length; start += 200) {
+  // Chia lô 100 mã: PostgREST đọc qua GET, danh sách `.in(...)` dài làm URL vượt giới hạn (án lệ useInvoiceCollectors.ts).
+  for (let start = 0; start < unique.length; start += 100) {
     const { data, error } = await supabase.from('meters').select('id, code, building_id').eq('user_id', userId)
-      .in('code', unique.slice(start, start + 200)).is('deleted_at', null);
+      .in('code', unique.slice(start, start + 100)).is('deleted_at', null);
     if (error) throw error;
     if (!Array.isArray(data)) throw new TypeError('Chưa đọc được danh sách công tơ để nhập chỉ số.');
     for (const meter of data as { id: string; code: string | null; building_id: string | null }[]) {
@@ -534,9 +535,12 @@ export const useImportMeterReadings = () => {
               // Mã chống trùng gồm toà + ngày: lần gửi trước đã ghi đúng toà, ngày này với số liệu khác. Mã chỉ số để nêu.
               const codes = new Map<string, string>();
               try {
-                const { data, error: readError } = await supabase.from('meter_readings').select('id, reading_code, meter_id').eq('user_id', user.id)
-                  .eq('reading_date', batch.readingDate).in('meter_id', rows.map(row => row.meterId)).is('deleted_at', null);
-                if (!readError && Array.isArray(data)) for (const row of data as { id: string; reading_code: string | null; meter_id: string }[]) codes.set(row.meter_id, row.reading_code || row.id);
+                // Nhóm tới 500 công tơ: chia lô 100 mã mỗi lệnh đọc để URL không vượt giới hạn.
+                for (let start = 0; start < rows.length; start += 100) {
+                  const { data, error: readError } = await supabase.from('meter_readings').select('id, reading_code, meter_id').eq('user_id', user.id)
+                    .eq('reading_date', batch.readingDate).in('meter_id', rows.slice(start, start + 100).map(row => row.meterId)).is('deleted_at', null);
+                  if (!readError && Array.isArray(data)) for (const row of data as { id: string; reading_code: string | null; meter_id: string }[]) codes.set(row.meter_id, row.reading_code || row.id);
+                }
               } catch { /* 23505 đã chứng minh lần trước đã ghi; đọc hỏng chỉ làm câu báo thiếu mã chỉ số. */ }
               batch.indexes.forEach((index, position) => {
                 const code = codes.get(rows[position].meterId) ?? null;
