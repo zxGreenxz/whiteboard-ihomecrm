@@ -675,7 +675,7 @@ export const useVerifyIncomeExpense = () => {
       // trạng thái lúc bấm): giữ cách đọc trạng thái của đợt 5 — đã đổi so với lúc bấm thì báo, không gửi; như lúc bấm thì
       // chỉ gửi lại sau 2 phút, và lần gửi đó cũng là lệnh ĐẶT giá trị, không bao giờ là bật/tắt.
       // Thiếu giá trị đặt thì `p_verified` rơi khỏi JSON và máy chủ chạy kiểu bật/tắt: từ chối ngay, trước khi ghi dấu.
-      if(typeof input.verified!=='boolean')throw new TypeError('Thiếu trạng thái «Đã kiểm» cần đặt.');
+      if(typeof input.verified!=='boolean')throw new FinancialWorkflowError('Thiếu trạng thái «Đã kiểm» cần đặt. Chưa gửi gì lên máy chủ.','failure',[]);
       const before=await readVoucherState(input.id);
       const verifySignature=(row:VoucherState)=>row.verified_at??'chua-kiem';
       let resent=false;
@@ -723,11 +723,15 @@ export const useVerifyIncomeExpense = () => {
       if (!data || !("verified_at" in data)) toast.warning("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra trước khi thao tác tiếp.");
       else if ("changed" in data && data.changed === false) {
         const state = data.verified_at ? "Đã kiểm" : "Chưa kiểm";
-        // Phiếu đã đúng trạng thái thì máy chủ không ghi gì, kể cả ghi chú vừa nhập.
-        const noteDropped = input?.verified && input.note ? " Ghi chú vừa nhập không được lưu." : "";
-        toast.info("resent" in data && data.resent
-          ? `Phiếu ${data.code} đã ở đúng trạng thái ${state} (do lần bấm trước, hoặc đã đúng từ trước). Không có thay đổi mới.${noteDropped}`
-          : `Phiếu ${data.code} đã ở đúng trạng thái ${state} từ trước. Không có thay đổi mới.${noteDropped}`);
+        // Phiếu đã đúng trạng thái thì máy chủ không ghi gì, kể cả ghi chú vừa nhập. Lần GỬI LẠI thì ghi chú có thể đã
+        // được lưu bởi chính lần bấm trước (lệnh đó đã ghi nhưng mất phản hồi): không khẳng định là mất.
+        const resent = "resent" in data && data.resent;
+        const noteHint = input?.verified && input.note
+          ? (resent ? " Ghi chú có thể đã được lưu ở lần bấm trước; mở phiếu để xem." : " Ghi chú vừa nhập không được lưu.")
+          : "";
+        toast.info(resent
+          ? `Phiếu ${data.code} đã ở đúng trạng thái ${state} (do lần bấm trước, hoặc đã đúng từ trước). Không có thay đổi mới.${noteHint}`
+          : `Phiếu ${data.code} đã ở đúng trạng thái ${state} từ trước. Không có thay đổi mới.${noteHint}`);
       }
       else toast.success(data.verified_at ? `Đã đánh dấu phiếu ${data.code} là đã kiểm.` : `Đã bỏ đánh dấu đã kiểm của phiếu ${data.code}.`);
     },

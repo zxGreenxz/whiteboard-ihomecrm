@@ -302,7 +302,7 @@ describe('«đã kiểm» (đợt 10c: đặt giá trị, cách A)', () => {
     expect(pendingKeys()).toEqual([]);
   });
   it('thiếu giá trị đặt: từ chối trước khi ghi dấu, không gửi gì', async () => {
-    await expect(verify()({ id: 'v1', note: null } as unknown as { id: string; note: string | null; verified: boolean })).rejects.toThrow('Thiếu trạng thái');
+    await expect(verify()({ id: 'v1', note: null } as unknown as { id: string; note: string | null; verified: boolean })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('Thiếu trạng thái') });
     expect(verifyCalls()).toHaveLength(0);
     expect(pendingKeys()).toEqual([]);
   });

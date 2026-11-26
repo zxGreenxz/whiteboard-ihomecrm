@@ -163,6 +163,11 @@ describe('C16–C21 — một phần, không thay đổi và kết quả kiểm'
     expect(h.info).toHaveBeenCalledWith('Phiếu PT01 đã ở đúng trạng thái Đã kiểm từ trước. Không có thay đổi mới. Ghi chú vừa nhập không được lưu.');
     expect(h.success).not.toHaveBeenCalled();
   });
+  it('«Đã kiểm» không đổi ở lần GỬI LẠI có ghi chú: không khẳng định ghi chú mất (lần bấm trước có thể đã lưu)', () => {
+    const mutation=renderHook(()=>useVerifyIncomeExpense()).result.current as unknown as Mutation;
+    mutation.onSuccess({id:'v1',code:'PT01',verified_at:'2026-11-24T01:00:00.000Z',changed:false,resent:true},{id:'v1',note:'đã đối chiếu',verified:true});
+    expect(h.info).toHaveBeenCalledWith('Phiếu PT01 đã ở đúng trạng thái Đã kiểm (do lần bấm trước, hoặc đã đúng từ trước). Không có thay đổi mới. Ghi chú có thể đã được lưu ở lần bấm trước; mở phiếu để xem.');
+  });
 });
 
 it('C22 unknown giữ khóa toàn import qua lượt gọi mới, kể cả đổi nội dung dòng; mã và dòng gốc còn để đối chiếu',async()=>{
