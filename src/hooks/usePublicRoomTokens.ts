@@ -100,7 +100,7 @@ export function useCreatePublicRoomToken(options:Options={}){const qc=useQueryCl
  if(prior){
   // Luật 4: lần trước đã tạo thì báo mã link và thôi, không tự tạo thêm; bấm lần nữa là ý định tạo link mới.
   const created=await findCreatedToken(user.id,organizationId,expectedLabel,prior.at,prior.known);
-  if(created){uncertainCreates.delete(memory);throw new FinancialAlreadyRecordedError(`Link chia sẻ ${created.token} có thể đã được tạo ở lần bấm trước (lần đó mất phản hồi): cùng nhãn, tạo sau lần bấm đó. Kiểm tra danh sách; chưa tạo thêm. Bấm tạo lần nữa nếu vẫn cần một link mới.`,[created.token]);}
+  if(created){uncertainCreates.delete(memory);throw new FinancialAlreadyRecordedError(`Link chia sẻ ${created.token} có thể đã được tạo ở lần bấm trước (lần đó mất phản hồi): cùng nhãn, tạo quanh lần bấm đó. Kiểm tra danh sách; chưa tạo thêm. Bấm tạo lần nữa nếu vẫn cần một link mới.`,[created.token]);}
  }
  const startedAt=Date.now();
  const known=new Set<string>();

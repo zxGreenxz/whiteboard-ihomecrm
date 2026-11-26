@@ -307,7 +307,7 @@ export const useUpdateServiceQuota=()=>{
    return received.map(step=>({id:step.id,label:'Đã gỡ bậc giá cũ'}));
   }).catch((error:unknown)=>{
    // Chưa rõ bước gỡ: bậc cũ có thể đã gỡ. Nói rõ để người dùng biết định mức có thể đang thiếu bậc.
-   if(error instanceof RepeatableWriteUnknownError)throw new RepeatableWriteUnknownError('gỡ các bậc giá cũ của định mức',error.cause,error.completed,'Bậc giá cũ có thể đã được gỡ nên định mức có thể đang thiếu bậc. Bấm lại nút Cập nhật: bậc giá gỡ rồi ghi lại đúng danh sách đang nhập nên không nhân đôi.');
+   if(error instanceof RepeatableWriteUnknownError)throw new RepeatableWriteUnknownError('gỡ các bậc giá cũ của định mức (tên định mức đã lưu)',error.cause,error.completed,'Bậc giá cũ có thể đã được gỡ nên định mức có thể đang thiếu bậc. Bấm lại nút Cập nhật: bậc giá gỡ rồi ghi lại đúng danh sách đang nhập nên không nhân đôi.');
    throw error;
   });
 

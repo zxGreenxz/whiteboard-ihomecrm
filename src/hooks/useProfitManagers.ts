@@ -138,11 +138,12 @@ export const PROFIT_MANAGER_SAVED_STEP = 'Đã lưu hồ sơ quản lý';
  * Lượt lưu hỏng SAU khi hồ sơ quản lý đã ghi: giữ mã hồ sơ trong lỗi và nói đúng phần còn dở. Chưa rõ kết quả thì vẫn là
  * lỗi lặp lại được (không khoá); bị từ chối rõ thì nêu đã xoá quy tắc cũ hay chưa, để người dùng lưu lại.
  */
-function managerSaveFailure(error: unknown, operation: string, managerId: string | undefined, rulesCleared: boolean): unknown {
+function managerSaveFailure(error: unknown, operation: string, managerId: string | undefined, rulesCleared: boolean, rulesMaybeCleared = rulesCleared): unknown {
   if (!managerId || error instanceof FinancialAlreadyRecordedError) return error;
   const saved = { id: managerId, label: PROFIT_MANAGER_SAVED_STEP };
-  if (error instanceof RepeatableWriteUnknownError) return new RepeatableWriteUnknownError(operation, error.cause, [saved], rulesCleared
-    ? `Đã lưu hồ sơ quản lý (mã ${managerId}) và xoá quy tắc lương cũ nhưng chưa xác nhận được đã ghi lại quy tắc mới; quản lý có thể đang chưa có quy tắc lương nào (lợi nhuận tạm chưa trừ lương điều hành). Bấm Lưu lại: quy tắc xoá rồi tạo lại cả bộ nên không nhân đôi.`
+  // Chưa rõ: lệnh xoá quy tắc cũ đã gửi (kể cả khi chính lệnh đó mất phản hồi) thì quy tắc cũ CÓ THỂ đã mất ⇒ nói rõ.
+  if (error instanceof RepeatableWriteUnknownError) return new RepeatableWriteUnknownError(operation, error.cause, [saved], rulesMaybeCleared
+    ? `Đã lưu hồ sơ quản lý (mã ${managerId}); quy tắc lương cũ có thể đã bị xoá mà quy tắc mới chưa xác nhận được đã ghi, nên quản lý có thể đang chưa có quy tắc lương nào (lợi nhuận tạm chưa trừ lương điều hành). Bấm Lưu lại: quy tắc xoá rồi tạo lại cả bộ nên không nhân đôi.`
     : undefined);
   const done = rulesCleared ? `Đã lưu hồ sơ quản lý (mã ${managerId}) và xoá quy tắc lương cũ nhưng chưa ghi lại đủ quy tắc mới` : `Đã lưu hồ sơ quản lý (mã ${managerId}) nhưng chưa lưu xong quy tắc lương`;
   return new FinancialWorkflowError(`${done}: ${workflowErrorMessage(error, 'lưu quy tắc lương điều hành')} Bấm Lưu lại để ghi lại đúng bộ quy tắc này: hồ sơ sửa theo mã, quy tắc xoá rồi tạo lại cả bộ nên không nhân đôi.`, 'failure', [saved], error);
@@ -178,6 +179,8 @@ export const useSaveManagerWithSalaries = () => {
       // Mã hồ sơ đã xác nhận ghi ở lượt này, và lượt này đã xoá quy tắc cũ chưa: để lỗi nói đúng phần còn dở.
       let managerId: string | undefined;
       let rulesCleared = false;
+      // Đã gửi lệnh xoá quy tắc cũ (còn quy tắc để xoá): từ đây quy tắc cũ có thể đã mất dù chưa nhận biên nhận.
+      let rulesMaybeCleared = false;
       try {
         const user = await getSessionUser();
         if (!user) throw { code: 'PGRST301', message: 'Not authenticated' };
@@ -243,6 +246,7 @@ export const useSaveManagerWithSalaries = () => {
           const { data: oldRules, error: oldError } = await supabase.from('profit_manager_salaries' as any).select('id').eq('manager_id', savedManagerId);
           if (oldError) throw oldError;
           const expectedOldRules = requireProfitRows(oldRules).map(row => row.id as string);
+          if (expectedOldRules.length) rulesMaybeCleared = true;
           const { data: deletedRules, error: delErr } = await supabase
             .from('profit_manager_salaries' as any)
             .delete()
@@ -298,7 +302,7 @@ export const useSaveManagerWithSalaries = () => {
           catch { /* Gỡ hỏng thì lần lưu sau gỡ lại. */ }
           qc.invalidateQueries({ queryKey: ["profit-managers"] });
         }
-        throw managerSaveFailure(error, operation, managerId, rulesCleared);
+        throw managerSaveFailure(error, operation, managerId, rulesCleared, rulesCleared || rulesMaybeCleared);
       } finally {
         running.current.delete(key);
       }

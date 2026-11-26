@@ -188,6 +188,14 @@ describe('lưu quản lý và lương điều hành', () => {
     expect(io.server.rows.profit_managers[0]).toMatchObject({ name: 'An mới' });
   });
 
+  it('sửa: lệnh xoá quy tắc cũ mất phản hồi ⇒ câu báo nói quy tắc cũ có thể đã mất; bấm lại cho đúng một bộ', async () => {
+    io.server.failNext('profit_manager_salaries', 'delete', 'drop-after');
+    await expect(save()(editInput)).rejects.toMatchObject({ outcome: 'unknown', repeatable: true, message: expect.stringContaining('có thể đã bị xoá') });
+    expect(liveRules('m1')).toHaveLength(0);
+    await expect(save()(editInput)).resolves.toEqual({ managerId: 'm1' });
+    expect(liveRules('m1')).toHaveLength(1);
+  });
+
   it('sửa: dấu bản trước gieo sẵn ⇒ không chặn, gỡ sau lần lưu thành công', async () => {
     seedLegacyPending(scopeOf('profit-manager-save', 'm1'), new Date(Date.now() - TEN_PHUT));
     await expect(save()(editInput)).resolves.toEqual({ managerId: 'm1' });
