@@ -127,8 +127,9 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'residence-registration-save': khac('A', 'lưu mã hồ sơ tạm trú'), // upsert theo (công ty, mã hồ sơ), không ghi dấu mới; dấu bản trước gỡ sau lần lưu kế tiếp
   'ct01-declaration-create': khac('D', 'tạo tờ khai CT01'), // mã tờ khai do trình duyệt sinh, gửi lại cùng mã; không ghi dấu mới; dấu bản trước tra gần đúng một lần
 
-  // Đợt 8: dữ liệu ghi lặp lại được
-  'public-room-admin': khac('van', 'lưu link và cài đặt phòng công khai'), // link công khai ở đợt 8; cài đặt phòng công khai (usePublicRoomSettings) đã đúng
+  // Đợt 8: dữ liệu ghi lặp lại được. Dòng `khac` A/C/D ở khối này không ghi dấu mới (luật 5): kết quả chưa rõ thì báo rõ
+  // và cho bấm lại (`repeatableWrite`); dấu bản trước của đúng bản ghi gỡ sau lần ghi xong (`forgetLegacyPending`).
+  'public-room-admin': khac('A', 'lưu link và cài đặt phòng công khai'), // link: không dấu; tạo chưa rõ ⇒ lần sau tìm link vừa tạo (báo mã), thu hồi chưa rõ ⇒ đọc lại trạng thái rồi gửi; nhãn gửi đã cắt (btrim chỉ cắt dấu cách). Cài đặt (usePublicRoomSettings) giữ dấu, chạy lại theo CAS
   'customer-update': khac('van', 'cập nhật khách hàng'),
   'customer-delete': khac('van', 'xoá khách hàng'),
   'useUpdateLead': khac('van', 'cập nhật khách hẹn'),

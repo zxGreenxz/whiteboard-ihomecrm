@@ -3,9 +3,9 @@ import {supabase} from '@/integrations/supabase/client';
 import type {Database} from '@/integrations/supabase/types';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {getSessionUser} from '@/lib/authSession';
-import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {CREATE_TOKEN_NO_ORGANIZATION,rememberToken,unconfirmedPublicRoomReceipt,TOKEN_ADMIN_RULES,notifyRuleError} from '@/lib/publicRoomFeedback';
+import {FinancialAlreadyRecordedError,FinancialWorkflowError,RepeatableWriteUnknownError} from '@/lib/financialWorkflow';
+import {repeatableWrite} from '@/lib/recordWriteOutcome';
+import {CREATE_TOKEN_NO_ORGANIZATION,unconfirmedPublicRoomReceipt,TOKEN_ADMIN_RULES,notifyRuleError} from '@/lib/publicRoomFeedback';
 import {toast} from 'sonner';
 type TokenRow=Database['public']['Tables']['public_room_share_tokens']['Row'];
 /**
@@ -37,32 +37,77 @@ export function useBotShareTokens({enabled=true}:{enabled?:boolean}={}){const {s
  const {data,error}=await supabase.from('zalo_automations').select('config').eq('organization_id',selectedOrganizationId!).eq('kind','broadcast_vacant').limit(10);if(error)throw error;
  return [...new Set((data??[]).map(row=>{const c=row.config as {template?:{shareUrl?:unknown}}|null;return shareUrlToken(c?.template?.shareUrl);}).filter((t):t is string=>!!t))];
 }});}
-const writeGuard=()=>persistentFinancialWorkflow('public-room-admin',{scope:'actor'});
 const report=(error:unknown,options:Options,operation:string)=>{if(!options.inlineError)notifyRuleError(error,`Chưa ${operation}`,'quản lý link chia sẻ',TOKEN_ADMIN_RULES);};
 /**
  * Mọi link chia sẻ của CÔNG TY đang chọn (kể cả do người khác tạo), kèm tên người tạo. Cần quyền sale_phong.manage_tokens —
  * máy chủ kiểm (list_public_room_tokens_v1); màn không có quyền thì truyền enabled=false.
  */
-export function usePublicRoomTokens({enabled=true}:{enabled?:boolean}={}){const {selectedOrganizationId}=useOrganization();return useQuery({queryKey:[...KEY,selectedOrganizationId],enabled:enabled&&!!selectedOrganizationId,meta:{errorDisplay:"inline"},queryFn:async():Promise<PublicRoomToken[]>=>{
- const organizationId=selectedOrganizationId!;
+export function usePublicRoomTokens({enabled=true}:{enabled?:boolean}={}){const {selectedOrganizationId}=useOrganization();return useQuery({queryKey:[...KEY,selectedOrganizationId],enabled:enabled&&!!selectedOrganizationId,meta:{errorDisplay:"inline"},queryFn:()=>listCompanyTokens(selectedOrganizationId!)});}
+async function listCompanyTokens(organizationId:string):Promise<PublicRoomToken[]>{
  const {data,error}=await supabase.rpc('list_public_room_tokens_v1',{p_organization_id:organizationId});if(error)throw error;
  if(!Array.isArray(data)||!data.every(validToken)||data.some(row=>row.organization_id!==organizationId)||new Set(data.map(row=>row.token)).size!==data.length)throw new TypeError('Invalid public room token list');return data;
-}});}
+}
 /** Link của chính người dùng (RLS) — cho Thống kê, nơi người xem không cần quyền quản link. */
 export function useOwnPublicRoomTokens(){return useQuery({queryKey:OWN_KEY,meta:{errorDisplay:"inline"},queryFn:async():Promise<PublicRoomToken[]>=>{
  const {data,error}=await supabase.from('public_room_share_tokens').select('*').order('created_at',{ascending:false});if(error)throw error;
  if(!Array.isArray(data)||!data.every(validToken)||new Set(data.map(row=>row.token)).size!==data.length)throw new TypeError('Invalid public room token list');return data;
 }});}
 const invalidate=(qc:ReturnType<typeof useQueryClient>)=>Promise.all([qc.invalidateQueries({queryKey:KEY}),qc.invalidateQueries({queryKey:OWN_KEY})]);
-/** Link luôn thuộc công ty ĐANG CHỌN: máy chủ kiểm thành viên + quyền ở đúng công ty đó và ghi công ty vào link. */
+
+// Đợt 8 (luật 5, cách A): tạo / đổi nhãn / thu hồi / khôi phục / xoá link không giữ dấu «chờ đối chiếu» nào. Kết quả chưa rõ
+// thì báo rõ và cho bấm lại. Bộ nhớ dưới đây chỉ sống trong tab (không ghi xuống trình duyệt), để lần bấm sau trong tab biết
+// lần trước chưa rõ: tạo link thì tra link vừa tạo trước khi tạo thêm; thu hồi thì đọc lại trạng thái link trước khi gửi.
+// Dấu bản trước (namespace `public-room-admin`, phạm vi người dùng, khoá `token-create` / `token:<mã>`) gỡ sau lần ghi xong.
+/** Lần tạo link chưa rõ kết quả, theo người + công ty + nhãn: giờ gửi sớm nhất. */
+const uncertainCreates=new Map<string,number>();
+/** Lần thu hồi / khôi phục / xoá chưa rõ kết quả, theo công ty + link: trạng thái đích. */
+const uncertainChanges=new Map<string,'revoke'|'restore'|'delete'>();
+/** Giờ máy và giờ máy chủ có thể lệch: tra link tạo trong khoảng này quanh lần gửi chưa rõ. */
+const CREATE_LOOKBACK_MS=10*60_000;
+/**
+ * Nhãn gửi lên = nhãn đã cắt khoảng trắng ở hai đầu. Máy chủ cắt bằng btrim() — chỉ cắt dấu cách — nên trước đây nhãn có
+ * tab / xuống dòng / khoảng trắng Unicode ở hai đầu được LƯU NGUYÊN, lệch với nhãn trình duyệt so (đã trim) ⇒ biên nhận
+ * luôn «chưa rõ» và dấu kẹt. Gửi nhãn đã cắt thì btrim() không đổi gì và biên nhận khớp.
+ */
+function normalizedTokenLabel(label:string|null|undefined):string|null{return label?.trim()||null;}
+async function forgetLegacyTokenPending(businessKey:string){
+ try{const {forgetLegacyPending}=await import('@/lib/legacyPendingExit');await forgetLegacyPending({namespace:'public-room-admin',businessKey},{organizationId:'actor-scope'});}
+ catch{/* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần ghi sau gỡ lại. */}
+}
+/** Link vừa được lần gửi chưa rõ tạo ra (của chính người dùng, đúng công ty, đúng nhãn, sau giờ gửi). Đọc hỏng ⇒ `null`. */
+async function findCreatedToken(userId:string,organizationId:string,label:string|null,since:number):Promise<PublicRoomToken|null>{
+ try{
+  const {data,error}=await supabase.from('public_room_share_tokens').select('*').eq('owner_id',userId).eq('organization_id',organizationId)
+   .gte('created_at',new Date(since-CREATE_LOOKBACK_MS).toISOString()).order('created_at',{ascending:false});
+  if(error||!Array.isArray(data))return null;
+  return data.filter(validToken).find(row=>row.label===label&&row.revoked===false)??null;
+ }catch{return null;}
+}
+/** Link chia sẻ thuộc công ty đang chọn: máy chủ kiểm thành viên + quyền ở đúng công ty đó và ghi công ty vào link. */
 export function useCreatePublicRoomToken(options:Options={}){const qc=useQueryClient();const {selectedOrganizationId}=useOrganization();return useMutation({mutationFn:async(label?:string|null)=>{
  const organizationId=selectedOrganizationId;if(!organizationId)throw new FinancialWorkflowError(CREATE_TOKEN_NO_ORGANIZATION,'failure',[]);
- const user=await getSessionUser();if(!user)throw {code:'PGRST301',message:'Not authenticated'};const expectedLabel=label?.trim()||null;
- return writeGuard().run('token-create','tạo link chia sẻ',async progress=>{
-  const {data,error}=await supabase.rpc('create_public_room_token',{p_label:label??undefined,p_organization_id:organizationId});if(error)throw error;rememberToken(progress,data);
-  if(!validToken(data)||data.owner_id!==user.id||data.organization_id!==organizationId||data.label!==expectedLabel||data.revoked!==false)unconfirmedPublicRoomReceipt();return data;
- });
-},onSuccess:row=>{void invalidate(qc);toast.success(`Đã tạo link chia sẻ ${row.token}`);},onError:error=>report(error,options,'tạo link chia sẻ')});}
+ const user=await getSessionUser();if(!user)throw {code:'PGRST301',message:'Not authenticated'};const expectedLabel=normalizedTokenLabel(label);
+ const memory=[user.id,organizationId,expectedLabel??''].join('\u0000');const priorAt=uncertainCreates.get(memory);
+ if(priorAt!==undefined){
+  // Luật 4: lần trước đã tạo thì báo mã link và thôi, không tự tạo thêm; bấm lần nữa là ý định tạo link mới.
+  const created=await findCreatedToken(user.id,organizationId,expectedLabel,priorAt);
+  if(created){uncertainCreates.delete(memory);throw new FinancialAlreadyRecordedError(`Link chia sẻ ${created.token} đã được tạo ở lần bấm trước (lần đó mất phản hồi); không tạo thêm. Bấm tạo lần nữa nếu vẫn cần một link mới.`,[created.token]);}
+ }
+ const startedAt=Date.now();
+ try{
+  const data=await repeatableWrite('tạo link chia sẻ',async()=>{
+   const {data,error}=await supabase.rpc('create_public_room_token',{p_label:expectedLabel??undefined,p_organization_id:organizationId});if(error)throw error;
+   if(!validToken(data)||data.owner_id!==user.id||data.organization_id!==organizationId||data.label!==expectedLabel||data.revoked!==false)unconfirmedPublicRoomReceipt();return data;
+  });
+  uncertainCreates.delete(memory);await forgetLegacyTokenPending('token-create');return data;
+ }catch(error){
+  if(error instanceof RepeatableWriteUnknownError){
+   if(priorAt===undefined)uncertainCreates.set(memory,startedAt);
+   throw new RepeatableWriteUnknownError('tạo link chia sẻ',error.cause,[],'Bấm tạo lại: máy tìm link vừa tạo trước, có rồi thì báo mã link, không tạo thêm.');
+  }
+  throw error;
+ }
+},onSuccess:row=>{void invalidate(qc);toast.success(`Đã tạo link chia sẻ ${row.token}`);},onError:error=>{void invalidate(qc);report(error,options,'tạo link chia sẻ');}});}
 /** Đổi nhãn / thu hồi / khôi phục / xoá qua manage_public_room_token_v1 (kiểm quyền ở máy chủ; ghi thẳng bảng đã bị chặn). */
 async function manage(organizationId:string|null|undefined,args:ManageTokenArgs):Promise<Record<string,unknown>>{
  if(!organizationId)throw new FinancialWorkflowError('Chưa chọn công ty. Chọn công ty ở đầu trang rồi thao tác link.','failure',[]);
@@ -71,21 +116,63 @@ async function manage(organizationId:string|null|undefined,args:ManageTokenArgs)
  return data as Record<string,unknown>;
 }
 export function useUpdateTokenLabel(options:Options={}){const qc=useQueryClient();const {selectedOrganizationId}=useOrganization();return useMutation({mutationFn:async({token,label}:{token:string;label:string|null})=>{
- const expectedLabel=label?.trim()||null;return writeGuard().run(`token:${token}`,'đổi nhãn link',async progress=>{
-  const data=await manage(selectedOrganizationId,{p_token:token,p_action:'rename',p_label:expectedLabel});rememberToken(progress,data);
+ const expectedLabel=normalizedTokenLabel(label);
+ // Đặt giá trị theo mã link: ghi lại bao nhiêu lần cũng cùng nhãn.
+ const data=await repeatableWrite('đổi nhãn link',async()=>{
+  const data=await manage(selectedOrganizationId,{p_token:token,p_action:'rename',p_label:expectedLabel});
   if(!validToken(data)||data.label!==expectedLabel)unconfirmedPublicRoomReceipt();return data;
  });
-},onSuccess:row=>{void invalidate(qc);toast.success(`Đã cập nhật nhãn link ${row.token}`);},onError:error=>report(error,options,'đổi nhãn link')});}
-export function useSetTokenRevoked(options:Options={}){const qc=useQueryClient();const {selectedOrganizationId}=useOrganization();return useMutation({mutationFn:async({token,revoked}:{token:string;revoked:boolean})=>{
- return writeGuard().run(`token:${token}`,'đổi trạng thái link',async progress=>{
-  const data=await manage(selectedOrganizationId,{p_token:token,p_action:revoked?'revoke':'restore'});rememberToken(progress,data);
-  if(!validToken(data)||data.revoked!==revoked)unconfirmedPublicRoomReceipt();return data;
- });
-},onSuccess:row=>{void invalidate(qc);toast.success(row.revoked?`Đã thu hồi link ${row.token}`:`Đã khôi phục link ${row.token}`);},onError:error=>report(error,options,'đổi trạng thái link')});}
+ await forgetLegacyTokenPending(`token:${token}`);return data;
+},onSuccess:row=>{void invalidate(qc);toast.success(`Đã cập nhật nhãn link ${row.token}`);},onError:error=>{void invalidate(qc);report(error,options,'đổi nhãn link');}});}
+/** Trạng thái hiện tại của link trong công ty. `null` = không còn link đó; ném lỗi = chưa đọc được. */
+async function readCompanyToken(organizationId:string,token:string):Promise<PublicRoomToken|null>{
+ return (await listCompanyTokens(organizationId)).find(row=>row.token===token)??null;
+}
+export type TokenRevokeResult=PublicRoomToken&{alreadyApplied?:boolean};
+/**
+ * Thu hồi / khôi phục link — thao tác BẢO MẬT. Sau một lần chưa rõ kết quả, không bao giờ báo như đã thu hồi: lần bấm sau
+ * (trong tab, hoặc khi còn dấu bản trước của link) đọc lại trạng thái link trước. Đã đúng trạng thái ⇒ báo, không gửi lệnh.
+ * Chưa đúng, hoặc đọc hỏng ⇒ gửi ngay (thu hồi / khôi phục lặp lại không đổi gì thêm; không chờ 2 phút).
+ */
+export function useSetTokenRevoked(options:Options={}){const qc=useQueryClient();const {selectedOrganizationId}=useOrganization();return useMutation({mutationFn:async({token,revoked}:{token:string;revoked:boolean}):Promise<TokenRevokeResult>=>{
+ const organizationId=selectedOrganizationId;if(!organizationId)throw new FinancialWorkflowError('Chưa chọn công ty. Chọn công ty ở đầu trang rồi thao tác link.','failure',[]);
+ const memory=`${organizationId}\u0000${token}`;const target=revoked?'revoke':'restore';
+ let current:PublicRoomToken|null|undefined;
+ if(uncertainChanges.has(memory)){try{current=await readCompanyToken(organizationId,token);}catch{current=undefined;}}
+ else{
+  try{
+   const {settleLegacyPending}=await import('@/lib/legacyPendingExit');
+   current=(await settleLegacyPending({namespace:'public-room-admin',businessKey:`token:${token}`},()=>readCompanyToken(organizationId,token),{organizationId:'actor-scope'}))?.verdict;
+  }catch{current=undefined;}
+ }
+ if(current===null){uncertainChanges.delete(memory);throw {code:'P0002',message:'public_room_token_not_found'};}
+ if(current&&current.revoked===revoked){uncertainChanges.delete(memory);return {...current,alreadyApplied:true};}
+ try{
+  const data=await repeatableWrite(revoked?`thu hồi link ${token}`:`khôi phục link ${token}`,async()=>{
+   const data=await manage(organizationId,{p_token:token,p_action:target});
+   if(!validToken(data)||data.revoked!==revoked)unconfirmedPublicRoomReceipt();return data;
+  });
+  uncertainChanges.delete(memory);await forgetLegacyTokenPending(`token:${token}`);return data;
+ }catch(error){
+  if(error instanceof RepeatableWriteUnknownError){
+   uncertainChanges.set(memory,target);
+   throw new RepeatableWriteUnknownError(revoked?`thu hồi link ${token}`:`khôi phục link ${token}`,error.cause,[],revoked
+    ?'Link có thể vẫn đang hoạt động. Bấm Thu hồi lại: máy đọc lại trạng thái link, còn hoạt động thì thu hồi ngay (thu hồi lặp lại không đổi gì thêm).'
+    :'Link có thể vẫn đang bị thu hồi. Bấm Khôi phục lại: máy đọc lại trạng thái link rồi mới gửi.');
+  }
+  throw error;
+ }
+},onSuccess:row=>{void invalidate(qc);const done=row.revoked?`Đã thu hồi link ${row.token}`:`Đã khôi phục link ${row.token}`;toast.success(row.alreadyApplied?`${done} (lần bấm trước đã ghi; không gửi thêm).`:done);},
+onError:error=>{void invalidate(qc);report(error,options,'đổi trạng thái link');}});}
 export function useDeletePublicRoomToken(options:Options={}){const qc=useQueryClient();const {selectedOrganizationId}=useOrganization();return useMutation({mutationFn:async(token:string)=>{
- return writeGuard().run(`token:${token}`,'xóa link chia sẻ',async progress=>{
-  const data=await manage(selectedOrganizationId,{p_token:token,p_action:'delete'});
-  if(typeof data.removed!=='boolean')unconfirmedPublicRoomReceipt();if(data.removed)rememberToken(progress,data);
-  return {token,removed:data.removed?1:0};
- });
-},onSuccess:result=>{void invalidate(qc);if(result.removed)toast.success(`Đã xóa link ${result.token}`);else toast.info(`Link ${result.token} không còn trong danh sách; không có thay đổi mới.`);},onError:error=>report(error,options,'xóa link chia sẻ')});}
+ const memory=`${selectedOrganizationId}\u0000${token}`;
+ try{
+  // manage_public_room_token_v1 khoá dòng; xoá lại một link đã xoá trả removed:false (khớp 0 dòng nghĩa là đã xoá).
+  const result=await repeatableWrite('xóa link chia sẻ',async()=>{
+   const data=await manage(selectedOrganizationId,{p_token:token,p_action:'delete'});
+   if(typeof data.removed!=='boolean')unconfirmedPublicRoomReceipt();
+   return {token,removed:data.removed?1:0,...(!data.removed&&uncertainChanges.get(memory)==='delete'?{afterUnconfirmed:true}:{})};
+  });
+  uncertainChanges.delete(memory);await forgetLegacyTokenPending(`token:${token}`);return result;
+ }catch(error){if(error instanceof RepeatableWriteUnknownError)uncertainChanges.set(memory,'delete');throw error;}
+},onSuccess:result=>{void invalidate(qc);if(result.removed)toast.success(`Đã xóa link ${result.token}`);else if(result.afterUnconfirmed)toast.info(`Link ${result.token} đã được xoá ở lần bấm trước (lần đó mất phản hồi); không có thay đổi mới.`);else toast.info(`Link ${result.token} không còn trong danh sách; không có thay đổi mới.`);},onError:error=>{void invalidate(qc);report(error,options,'xóa link chia sẻ');}});}

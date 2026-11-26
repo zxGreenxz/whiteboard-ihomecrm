@@ -33,8 +33,9 @@ export class FinancialAlreadyRecordedError extends FinancialWorkflowError {
  */
 export class RepeatableWriteUnknownError extends FinancialWorkflowError {
   readonly repeatable = true;
-  constructor(operation: string, cause?: unknown, completed: readonly CompletedFinancialStep[] = []) {
-    super(`Chưa xác nhận được kết quả ${operation}. Bấm lại để thử lần nữa: thao tác này ghi lại đúng nội dung đó nên không tạo thêm bản ghi.`, 'unknown', completed, cause);
+  /** `advice`: thay câu dặn mặc định khi thao tác cần nói rõ hơn (ví dụ thu hồi link: link có thể vẫn đang hoạt động). */
+  constructor(operation: string, cause?: unknown, completed: readonly CompletedFinancialStep[] = [], advice = 'Bấm lại để thử lần nữa: thao tác này ghi lại đúng nội dung đó nên không tạo thêm bản ghi.') {
+    super(`Chưa xác nhận được kết quả ${operation}. ${advice}`, 'unknown', completed, cause);
   }
 }
 
