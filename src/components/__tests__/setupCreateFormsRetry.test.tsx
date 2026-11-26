@@ -134,7 +134,7 @@ it('tạo dịch vụ: kết quả chưa rõ (lỗi chưa rõ kiểu cũ) không
   expect(io.createService.mock.calls[0]?.[0]).toMatchObject({ name: 'Rác', fee_type: 'TIEN_PHI_DICH_VU', unit_price: 50000, building_ids: [BUILDING] });
 });
 
-it('tạo dịch vụ: đã tạo nhưng chưa gán đủ tòa thì báo mã dịch vụ, không khoá; bấm Lưu lại để gán tiếp', async () => {
+it('tạo dịch vụ: đã tạo nhưng chưa gán đủ tòa thì báo mã, khoá ô thông tin dịch vụ (vẫn chọn tòa được); bấm Lưu lại làm tiếp trên đúng mã đó', async () => {
   io.createService.mockRejectedValueOnce(new ServiceLinksPartialError('s1', new TypeError('Failed to fetch'))).mockResolvedValueOnce({ id: 's1', name: 'Rác' });
   const close = vi.fn();
   render(<CreateServiceDialog open onOpenChange={close} />);
@@ -142,11 +142,31 @@ it('tạo dịch vụ: đã tạo nhưng chưa gán đủ tòa thì báo mã d�
   fireEvent.click(button('Lưu'));
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('s1'));
   expect(button('Lưu').disabled).toBe(false);
+  // Ô bị khoá qua fieldset cha: thuộc tính disabled của chính ô không đổi, nên đo bằng :disabled.
+  expect(screen.getByPlaceholderText('Nhập tên dịch vụ').matches(':disabled')).toBe(true);
+  expect(screen.getByPlaceholderText('0').matches(':disabled')).toBe(true);
+  expect(screen.getByRole('checkbox').matches(':disabled')).toBe(false);
   fireEvent.click(button('Lưu'));
   await waitFor(() => expect(close).toHaveBeenCalledWith(false));
   expect(io.createService).toHaveBeenCalledTimes(2);
+  expect(io.createService.mock.calls[0]?.[0]).not.toHaveProperty('continueId');
+  expect(io.createService.mock.calls[1]?.[0]).toEqual({ ...io.createService.mock.calls[0]?.[0], continueId: 's1' });
 });
 
+it('tạo dịch vụ: đóng hộp khi đang ghi dở thì bỏ mã đã nhớ và xoá nội dung; lần mở sau là lượt mới', async () => {
+  io.createService.mockRejectedValueOnce(new ServiceLinksPartialError('s1', new TypeError('Failed to fetch')));
+  const close = vi.fn();
+  const view = render(<CreateServiceDialog open onOpenChange={close} />);
+  fillService();
+  fireEvent.click(button('Lưu'));
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('s1'));
+  view.rerender(<CreateServiceDialog open={false} onOpenChange={close} />);
+  view.rerender(<CreateServiceDialog open onOpenChange={close} />);
+  expect(screen.queryByText(/mã s1/)).toBeNull();
+  const name = screen.getByPlaceholderText('Nhập tên dịch vụ') as HTMLInputElement;
+  expect(name.matches(':disabled')).toBe(false);
+  expect(name.value).toBe('');
+});
 const fillQuota = () => {
   fireEvent.change(screen.getByPlaceholderText('Nhập tên định mức'), { target: { value: 'Bậc điện' } });
   fireEvent.change(screen.getAllByPlaceholderText('0')[1]!, { target: { value: '1800' } });
@@ -167,7 +187,7 @@ it('tạo định mức: kết quả chưa rõ (lỗi chưa rõ kiểu cũ) khô
   expect(io.createQuota.mock.calls[0]?.[0]).toMatchObject({ name: 'Bậc điện', tiers: [{ tier_number: 1, from_value: 0, to_value: null, unit_price: 1800 }] });
 });
 
-it('tạo định mức: đã tạo nhưng chưa ghi xong bậc giá thì báo mã định mức, không khoá; bấm Lưu lại để ghi tiếp', async () => {
+it('tạo định mức: đã tạo nhưng chưa ghi xong bậc giá thì báo mã, khoá tên / mô tả (bậc vẫn sửa được); bấm Lưu lại làm tiếp trên đúng mã đó', async () => {
   io.createQuota.mockRejectedValueOnce(new ServiceQuotaPartialError('q1', new TypeError('Failed to fetch'))).mockResolvedValueOnce({ id: 'q1', name: 'Bậc điện' });
   const close = vi.fn();
   render(<CreateQuotaDialog open onOpenChange={close} />);
@@ -175,7 +195,11 @@ it('tạo định mức: đã tạo nhưng chưa ghi xong bậc giá thì báo m
   fireEvent.click(button('Lưu'));
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('q1'));
   expect(button('Lưu').disabled).toBe(false);
+  expect(screen.getByPlaceholderText('Nhập tên định mức').matches(':disabled')).toBe(true);
+  expect(screen.getAllByPlaceholderText('0')[1]!.matches(':disabled')).toBe(false);
   fireEvent.click(button('Lưu'));
   await waitFor(() => expect(close).toHaveBeenCalledWith(false));
   expect(io.createQuota).toHaveBeenCalledTimes(2);
+  expect(io.createQuota.mock.calls[0]?.[0]).not.toHaveProperty('continueId');
+  expect(io.createQuota.mock.calls[1]?.[0]).toEqual({ ...io.createQuota.mock.calls[0]?.[0], continueId: 'q1' });
 });

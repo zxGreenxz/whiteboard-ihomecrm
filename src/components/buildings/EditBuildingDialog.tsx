@@ -149,7 +149,9 @@ export function EditBuildingDialog({
     if (!await owner.validate()) return;
     form.clearErrors('root.server');
     setPartialMessage(null);
-    const ownerSnapshot = savedOwner.current ?? owner.form.getValues();
+    // Như form tòa (review đợt 9): ô chủ sở hữu đã sửa thì gửi giá trị đang nhập; chưa sửa thì dùng ảnh chụp đã chốt, nếu có.
+    const ownerEdited = owner.form.formState.isDirty;
+    const ownerSnapshot = ownerEdited || !savedOwner.current ? owner.form.getValues() : savedOwner.current;
     let saved = coreSaved;
     try {
       if(!selectedOrganizationId)throw new Error('Chọn tổ chức trước khi lưu tòa.');
@@ -159,7 +161,7 @@ export function EditBuildingDialog({
         await repeatableWrite('cập nhật tòa nhà', async () => confirmedRecordId(
           await updateBuilding.mutateAsync({id:building.id,updates:corePayload,commissionChangeReason:tiersChanged?commissionChangeReason:undefined}),
           'cập nhật tòa nhà', building.id));
-        saved = true; setCoreSaved(true); savedOwner.current = ownerSnapshot;
+        saved = true; setCoreSaved(true); if (ownerEdited) savedOwner.current = ownerSnapshot;
       }
       await repeatableWrite('lưu chủ sở hữu của tòa', () => owner.save(building.id, ownerSnapshot, recovering));
       try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'building-owner-form-save', businessKey: `edit:${building.id}` }); }

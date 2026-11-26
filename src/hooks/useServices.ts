@@ -1,4 +1,4 @@
-import { FinancialAlreadyRecordedError, FinancialWorkflowError, RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
+import { FinancialWorkflowError, RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -109,21 +109,18 @@ const refreshServices=(queryClient:ReturnType<typeof useQueryClient>)=>{queryCli
 const canonical=(value:unknown):string=>JSON.stringify(value??null,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 const sentFieldsMatch=(saved:Record<string,unknown>,sent:Record<string,unknown>)=>Object.keys(sent).every(key=>key==='user_id'||canonical(saved[key])===canonical(sent[key]));
 /**
- * Đợt 9: dịch vụ / định mức đã TẠO ở một lần bấm trước mà bước sau (tòa áp dụng, bậc giá) chưa xong, theo (người, công ty, loại,
- * tên). Lần bấm sau cùng thông tin làm tiếp phần còn thiếu trên đúng bản ghi đó, không tạo bản thứ hai; thông tin chính đã đổi
- * thì báo mã bản ghi đã tạo và không ghi gì (lần bấm sau là lượt mới). Sống theo tab, không ghi vào trình duyệt: tải lại trang là
- * quên (bản ghi vẫn thấy trong danh sách).
+ * Đợt 9 (sửa theo review): dịch vụ / định mức đã TẠO ở lần bấm trước mà bước sau (tòa áp dụng, bậc giá) chưa xong. Hộp tạo giữ mã
+ * đó (khoá các ô thông tin chính) và gửi kèm `continueId`; trước khi làm tiếp thì đọc lại đúng mã: còn (chưa xoá) ⇒ làm tiếp phần
+ * còn thiếu trên bản ghi đó; không còn / đã xoá ⇒ bỏ mã, tạo bản mới (không gắn tòa, bậc vào bản ghi đã xoá); đọc hỏng ⇒ chưa rõ,
+ * không tạo gì. Không nhớ theo tên nữa: đổi tên giữa hai lần bấm không âm thầm ra bản thứ hai vì hộp đã khoá ô tên.
  */
-const createdAwaitingChildren=new Map<string,{row:Record<string,unknown>&{id:string};core:string}>();
-/** Xoá bộ nhớ trên (test). Khoá đã gồm mã người dùng nên đổi tài khoản không lẫn. */
-export function forgetCreatedAwaitingChildren():void{createdAwaitingChildren.clear();}
-const awaitingKey=(kind:'service'|'quota',userId:string,organizationId:string,name:unknown)=>`${kind}|${userId}|${organizationId}|${String(name??'').trim().toLowerCase()}`;
-/** Bản ghi đã tạo ở lần trước còn chờ bước sau: cùng thông tin thì trả nó; khác thông tin thì quên và báo mã, không ghi gì. */
-function awaitingChildren(key:string,core:string,already:(id:string)=>string){
- const known=createdAwaitingChildren.get(key);
- if(!known||known.core===core)return known?.row;
- createdAwaitingChildren.delete(key);
- throw new FinancialAlreadyRecordedError(already(known.row.id),[known.row.id]);
+async function createdStillThere<T extends {id:string}>(table:'services'|'service_quotas',id:string,operation:string):Promise<T|null>{
+ const {readRecordById}=await import('@/lib/clientRecordCreate');
+ const read=await readRecordById<T>(table,id);
+ if(read.state==='unreadable')throw new RepeatableWriteUnknownError(operation,undefined,[{id,label:'Bản ghi đã tạo ở lần trước, cần đối chiếu'}],'Chưa đọc lại được bản ghi đã tạo ở lần bấm trước nên chưa ghi gì thêm. Bấm lại để thử lần nữa.');
+ if(read.state==='missing')return null;
+ const deletedAt=(read.row as {deleted_at?:unknown}).deleted_at;
+ return typeof deletedAt==='string'&&deletedAt!==''?null:read.row;
 }
 const refused=(message:string,cause?:unknown)=>new FinancialWorkflowError(message,'failure',[],cause);
 /** Mã nhận lại sau lệnh sửa/xoá theo danh sách: phải là tập con không trùng của các mã đã gửi; biên nhận lạ thì không tin. */
@@ -164,29 +161,27 @@ async function syncServiceBuildings(id:string,buildingIds:string[],organizationI
  * Đợt 9 (luật 5): tạo dịch vụ không giữ dấu «chờ đối chiếu» nào. Lõi `services` mang mã do trình duyệt sinh
  * (`createRecordOnce`; bảng nhận `id`, không trigger nào gán `id` — production 26/11/2026): kết quả chưa rõ báo «bấm lại», lần
  * bấm lại cùng tên gửi ĐÚNG mã cũ. Tòa áp dụng đồng bộ theo phần chênh (`syncServiceBuildings`, duy nhất building_id+service_id)
- * nên lần bấm sau một lần gán dở chỉ gán phần còn thiếu trên đúng dịch vụ đã tạo. Dấu bản trước (`create`) gỡ sau khi xong.
+ * nên lần bấm sau một lần gán dở (hộp gửi kèm `continueId`, xem `createdStillThere`) chỉ gán phần còn thiếu trên đúng dịch vụ đã
+ * tạo. Dấu bản trước (`create`) gỡ sau khi xong.
  */
 export const useCreateService=()=>{
  const queryClient=useQueryClient();const {selectedOrganizationId}=useOrganization();
- return useMutation({meta:{handlesFeedback:true},mutationFn:async(params:Omit<ServiceInsert,'user_id'>&{building_ids?:string[]})=>{
+ return useMutation({meta:{handlesFeedback:true},mutationFn:async(params:Omit<ServiceInsert,'user_id'>&{building_ids?:string[];continueId?:string})=>{
   const user=await getSessionUser();if(!user)throw new Error('Not authenticated');
-  const {building_ids,...serviceData}=params;if(serviceData.unit_price!==undefined&&!Number.isFinite(serviceData.unit_price))throw new Error('Đơn giá chưa hợp lệ.');
+  const {building_ids,continueId,...serviceData}=params;if(serviceData.unit_price!==undefined&&!Number.isFinite(serviceData.unit_price))throw new Error('Đơn giá chưa hợp lệ.');
   const payload=withOrg({...serviceData,user_id:user.id},selectedOrganizationId);
-  const memory=awaitingKey('service',user.id,payload.organization_id,params.name);const core=canonical(payload);
-  const known=awaitingChildren(memory,core,id=>`Dịch vụ «${params.name}» đã được tạo ở lần bấm trước với thông tin lúc đó (mã ${id}) nhưng chưa gán xong tòa áp dụng. Mở dịch vụ đó trong danh sách để sửa và gán tòa; bấm Lưu lại nếu vẫn muốn tạo thêm.`);
+  const known=continueId?await createdStillThere<Service>('services',continueId,'kiểm tra dịch vụ đã tạo ở lần bấm trước'):null;
   const service=known??await repeatableWrite('tạo dịch vụ',async()=>{
    const {createRecordOnce,normalizeVietnameseName}=await import('@/lib/clientRecordCreate');
    const {row}=await createRecordOnce<Service>({table:'services',userId:user.id,organizationId:payload.organization_id,matchKeys:[`n:${normalizeVietnameseName(params.name)}`],
     payload,operation:'tạo dịch vụ',sameAs:saved=>sentFieldsMatch(saved,payload),describe:saved=>`Dịch vụ ${String(saved.name)}`});
    return row;
   });
-  createdAwaitingChildren.set(memory,{row:service as Record<string,unknown>&{id:string},core});
   const buildings=building_ids??[];
   if(buildings.length||known){
    try{await repeatableWrite('lưu tòa áp dụng (dịch vụ đã tạo)',()=>syncServiceBuildings(service.id,buildings,selectedOrganizationId));}
    catch(error){throw new ServiceLinksPartialError(service.id,error);}
   }
-  createdAwaitingChildren.delete(memory);
   try{const {forgetLegacyPending}=await import('@/lib/legacyPendingExit');await forgetLegacyPending({namespace:'service-create',businessKey:'create'});}
   catch{/* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */}
   return service as Service;
@@ -304,23 +299,21 @@ export const useCreateServiceQuota=()=>{
   const expected=[...tiers];
   for(const row of rows as Pick<ServiceQuotaTier,'tier_number'|'from_value'|'to_value'|'unit_price'>[]){const index=expected.findIndex(t=>t.tier_number===row.tier_number&&t.from_value===row.from_value&&t.to_value===row.to_value&&t.unit_price===row.unit_price);if(index<0)throw new FinancialWorkflowError('Biên nhận bậc giá chưa khớp các giá trị đã gửi.','unknown',received,new TypeError('Mismatched created quota tier values'));expected.splice(index,1);}
  };
- return useMutation({meta:{handlesFeedback:true},mutationFn:async(params:QuotaInput)=>{
+ return useMutation({meta:{handlesFeedback:true},mutationFn:async(params:QuotaInput&{continueId?:string})=>{
   const user=await getSessionUser();if(!user)throw new Error('Not authenticated');
   const payload=withOrg({name:params.name,description:params.description||null,user_id:user.id},selectedOrganizationId);
-  const memory=awaitingKey('quota',user.id,payload.organization_id,params.name);const core=canonical(payload);
-  const known=awaitingChildren(memory,core,id=>`Định mức «${params.name}» đã được tạo ở lần bấm trước với thông tin lúc đó (mã ${id}) nhưng chưa ghi xong bậc giá. Mở định mức đó trong danh sách để sửa bậc giá; bấm Lưu lại nếu vẫn muốn tạo thêm.`);
+  // Hộp gửi kèm mã định mức đã tạo ở lần bấm trước (bậc giá ghi dở): đọc lại đúng mã rồi mới làm tiếp (xem `createdStillThere`).
+  const known=params.continueId?await createdStillThere<ServiceQuota>('service_quotas',params.continueId,'kiểm tra định mức đã tạo ở lần bấm trước'):null;
   const quota=known??await repeatableWrite('tạo định mức dịch vụ',async()=>{
    const {createRecordOnce,normalizeVietnameseName}=await import('@/lib/clientRecordCreate');
    const {row}=await createRecordOnce<ServiceQuota>({table:'service_quotas',userId:user.id,organizationId:payload.organization_id,matchKeys:[`n:${normalizeVietnameseName(params.name)}`],
     payload,operation:'tạo định mức dịch vụ',sameAs:saved=>sentFieldsMatch(saved,payload),describe:saved=>`Định mức ${String(saved.name)}`});
    return row;
   });
-  createdAwaitingChildren.set(memory,{row:quota as Record<string,unknown>&{id:string},core});
   if(params.tiers.length>0||known){
    try{await repeatableWrite('ghi bậc giá (định mức đã tạo)',()=>writeTiers(quota,params.tiers,!!known));}
    catch(error){throw new ServiceQuotaPartialError(quota.id,error);}
   }
-  createdAwaitingChildren.delete(memory);
   try{const {forgetLegacyPending}=await import('@/lib/legacyPendingExit');await forgetLegacyPending({namespace:'quota-create',businessKey:'create'});}
   catch{/* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */}
   return quota as ServiceQuota;
