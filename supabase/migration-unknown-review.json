@@ -986,32 +986,6 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
-    },
-    "supabase/migrations/20261126180450_xoa_chen_mot_giao_dich.sql": {
-      "sha256": "4fd93294dfabedeb4d77b19e6ef8fc8f2487b758daf36d31a145bdb52c2ca585",
-      "missingObjects": [
-        "function:public.replace_building_services_v1",
-        "function:public.replace_service_quota_v1",
-        "function:public.replace_material_purchase_v1",
-        "function:public.save_job_material_usage_v1",
-        "function:public.replace_contract_services_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward migration đợt 10b (gộp «xoá rồi chèn lại» vào một giao dịch: dịch vụ mặc định của toà, bậc định mức, dòng phiếu nhập vật tư, vật tư của công việc, dịch vụ của hợp đồng khi sửa) chưa áp dụng production. Năm hàm SECURITY INVOKER mới vắng có chủ ý cho tới lần áp qua lane; không thay hàm nào, không đổi bảng/RLS. Đã chạy hai lượt trên PGlite (RLS chép đúng production, trigger thân sống); kết quả thử trên project TEST và dry-run production ghi ở mô tả PR. Hồ sơ này giải thích object vắng; không thay review độc lập, forward lane, backup.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261126180450_xoa_chen_mot_giao_dich.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.replace_building_services_v1(p_building_id uuid, p_services jsonb)"
-        },
-        {
-          "duong_dan": "supabase/migrations/20261126180450_xoa_chen_mot_giao_dich.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.save_job_material_usage_v1(p_job_id uuid, p_usage_date date, p_notes text, p_items jsonb)"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/xoaChenMotGiaoDichMigration.test.ts",
-          "trich_doan": "describe('quyền y như ghi thẳng bảng hôm nay', () => {"
-        }
-      ]
     }
   }
 }
