@@ -1,9 +1,9 @@
-import {recordDepositIncome} from '@/lib/depositIncomeRpc';
+import {findOwnDepositIncome,recordDepositIncome} from '@/lib/depositIncomeRpc';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,isConfirmedFinancialRejection,workflowErrorMessage,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
 import {financialReadRows} from '@/lib/financialReadValidation';
 import {runFinancialPending} from '@/lib/financialPendingAction';
-import {priorAttemptSettled,type FinancialPendingRecord,type PendingReconciliation} from '@/lib/financialPending';
+import {formatPendingTime,priorAttemptSettled,type FinancialPendingRecord,type PendingReconciliation} from '@/lib/financialPending';
 import { VoucherPartialError, voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,6 +86,13 @@ async function cancelVouchersSplitByType(
 
 interface ExcelImportResult {
   successCount:number;createdVouchers:Array<{row:number;id:string;code:string|null}>;failedCount:number;errors:Array<{row:number;message:string}>;
+  /**
+   * Đợt 9: kết quả ĐỐI CHIẾU lượt nhập trước còn chưa rõ (giờ gửi của lượt đó). Tệp vừa chọn CHƯA được nhập. Ở kết quả này
+   * `row` là số dòng Excel (không phải vị trí trong lượt vừa bấm).
+   */
+  reconciledFrom?:string;
+  /** Dòng của lượt trước tra gần đúng thấy phiếu giống: chỉ báo «có thể đã ghi», không gửi lại. */
+  possiblyWritten?:Array<{row:number;codes:string[]}>;
 }
 class ExcelImportUnconfirmed extends TypeError {
   constructor(readonly result:ExcelImportResult){super('Một số dòng Excel chưa được đối chiếu với máy chủ.');}
@@ -93,6 +100,132 @@ class ExcelImportUnconfirmed extends TypeError {
 // The compat writer has no server request key. This lock covers unresolved imports
 // for the actor/org; identical successful rows remain valid independent vouchers.
 const excelSnapshotKey=(userId:string,organizationId:string)=>`ihome:excel-import-pending:v1:${userId}:${organizationId}`;
+
+// ── Đợt 9: đối chiếu lượt nhập Excel chưa rõ kết quả (cách D) ──────────────────────────────────────────────────────────
+// Thân hàm production đã đọc (26/11/2026, chỉ đọc):
+//   - ie_compat_insert_v2 (md5 e77ca61f): không có mã yêu cầu, nhưng nhận `p_row.id` cho người gọi thường và chèn phiếu +
+//     dòng + nhật ký trong MỘT lời gọi. Mỗi dòng thường mang mã phiếu do trình duyệt sinh, ghi vào ảnh chụp TRƯỚC khi gửi:
+//     tra đúng phiếu theo mã đó; khoá chính chặn phiếu thứ hai nếu cùng mã bị gửi lại.
+//   - create_deposit_income_v1 → app_private.write_deposit_income_v1 (a276671a / 18a2d3e7): khoá phòng + công ty TRƯỚC khi
+//     claim mã yêu cầu (deposit_income_requests), claim và phiếu cùng giao dịch; get_own_deposit_income_v1 (9e07b513) tra
+//     đúng phiếu theo mã yêu cầu (`<mã lượt>:<dòng Excel>`).
+//   - RLS đọc income_expenses: thấy phiếu khi có phạm vi toà (accessible_building_ids) hoặc là quản trị; phiếu nhập Excel
+//     không gắn sổ nên quyền theo sổ không giúp. Người nhập chọn toà trong danh sách toà mình thấy.
+// Ảnh chụp bản trước không có mã phiếu dự kiến: dòng chưa rõ chỉ tra gần đúng (người tạo, loại, toà, khoản mục, ngày, số
+// tiền, tạo sau giờ kẹt, trừ phiếu đã biết) và chỉ được báo «có thể đã ghi», không gửi lại.
+interface ExcelSnapshotRow {sourceRow:number;type:string;buildingId:string;itemTypeId?:string;voucherDate:string;amount:number;deposit?:boolean;voucherId?:string}
+interface ExcelSnapshot {attemptId:string;rows:ExcelSnapshotRow[];createdVouchers:Array<{row:number;id:string;code:string|null}>;unconfirmedRows:number[];failedRows:number[]}
+/** Lệch giờ trình duyệt ↔ máy chủ chấp nhận khi tra phiếu «tạo sau giờ kẹt». Rộng chỉ làm báo «có thể đã ghi» nhiều hơn. */
+const EXCEL_CLOCK_SKEW_MS=60*60_000;
+/** Số phiếu tối đa đọc một lần khi tra gần đúng; chạm trần thì dòng chưa thấy không được coi là chưa ghi. */
+const EXCEL_LOOKUP_LIMIT=1000;
+const isRowNumber=(value:unknown):value is number=>Number.isInteger(value)&&(value as number)>0;
+
+function readExcelSnapshot(key:string,attemptId:string):ExcelSnapshot|null{
+  let parsed:unknown;
+  try{const raw=localStorage.getItem(key);if(!raw)return null;parsed=JSON.parse(raw);}
+  catch{/* Ảnh chụp không đọc được ⇒ coi như mất: đối chiếu theo khoảng giờ của dấu. */parsed=null;}
+  const value=parsed as Partial<ExcelSnapshot>|null;
+  if(!value||value.attemptId!==attemptId||!Array.isArray(value.rows)||!Array.isArray(value.createdVouchers)
+    ||!Array.isArray(value.unconfirmedRows)||!Array.isArray(value.failedRows))return null;
+  const rowsOk=value.rows.every(row=>row&&isRowNumber(row.sourceRow)&&typeof row.type==='string'&&typeof row.buildingId==='string'
+    &&(row.itemTypeId===undefined||typeof row.itemTypeId==='string')&&typeof row.voucherDate==='string'&&Number.isFinite(row.amount)
+    &&(row.voucherId===undefined||typeof row.voucherId==='string')&&(row.deposit===undefined||typeof row.deposit==='boolean'));
+  const createdOk=value.createdVouchers.every(row=>row&&isRowNumber(row.row)&&row.row<=value.rows!.length&&typeof row.id==='string'&&!!row.id);
+  if(!rowsOk||!createdOk||!value.unconfirmedRows.every(isRowNumber)||!value.failedRows.every(isRowNumber))return null;
+  return value as ExcelSnapshot;
+}
+
+interface VoucherCandidate {id:string;code:string|null;type?:string;building_id?:string;voucher_date?:string;total_amount?:number|string;income_expense_items?:Array<{income_expense_type_id?:string}>|null}
+const voucherRows=(data:unknown,what:string):VoucherCandidate[]=>{
+  if(!Array.isArray(data))throw new TypeError(`Chưa đọc được ${what} để đối chiếu lượt nhập Excel.`);
+  return data as VoucherCandidate[];
+};
+
+/** Không còn ảnh chụp đúng lượt: chỉ còn giờ của dấu. Phiếu của người nhập tạo quanh giờ đó ⇒ «có thể đã ghi». */
+async function reconcileExcelWithoutSnapshot(pending:FinancialPendingRecord,settled:boolean):Promise<PendingReconciliation<ExcelImportResult>>{
+  const since=new Date(Date.parse(pending.startedAt)-EXCEL_CLOCK_SKEW_MS).toISOString();
+  const until=new Date(Date.parse(pending.activeAt??pending.startedAt)+EXCEL_CLOCK_SKEW_MS).toISOString();
+  const {data,error}=await supabase.from('income_expenses').select('id, code, created_at')
+    .eq('user_id',pending.userId).eq('organization_id',pending.organizationId).gte('created_at',since).lte('created_at',until)
+    .order('created_at',{ascending:false}).limit(50);
+  if(error)throw error;
+  const found=voucherRows(data,'danh sách phiếu');
+  const codes=[...new Set([...found.map(row=>row.code||row.id),...pending.completedIds.filter(id=>!found.some(row=>row.id===id))])];
+  if(codes.length)return {outcome:'already-written',recordIds:codes,
+    message:`Lượt nhập Excel lúc ${formatPendingTime(pending.startedAt)} chưa đối chiếu được từng dòng (trình duyệt không còn danh sách dòng của lượt đó). Có thể lượt đó đã tạo các phiếu: ${codes.join(', ')}. Kiểm tra danh sách thu chi trước khi nhập lại; chỉ nhập lại các dòng chưa có phiếu.`};
+  return settled?{outcome:'not-written'}:null;
+}
+
+/**
+ * Kết luận từng dòng của lượt nhập trước từ ảnh chụp đã lưu. Luôn kết luận được khi đọc được máy chủ: dòng chưa thấy chỉ
+ * còn «mở» khi lượt đó chưa chắc đã kết thúc (dưới 2 phút); đọc hỏng thì ném lỗi (lõi giữ dấu, lần bấm sau đọc lại).
+ *  - Không dòng nào đã ghi / có thể đã ghi ⇒ `not-written`: lõi gỡ dấu và nhập tệp vừa chọn.
+ *  - Còn lại ⇒ `{result}`: màn kết quả từng dòng của lượt trước; tệp vừa chọn không được nhập (không tự nhập lại cả tệp).
+ */
+async function reconcileExcelImport(pending:FinancialPendingRecord,snapshotKey:string):Promise<PendingReconciliation<ExcelImportResult>>{
+  const attemptKey=pending.requestKey??pending.attemptId;
+  const settled=priorAttemptSettled(pending);
+  const snapshot=readExcelSnapshot(snapshotKey,attemptKey);
+  if(!snapshot)return reconcileExcelWithoutSnapshot(pending,settled);
+  type Verdict={kind:'written';id:string;code:string|null}|{kind:'maybe';codes:string[]}|{kind:'rejected'}|{kind:'missing'};
+  const verdicts=new Map<number,Verdict>();
+  snapshot.createdVouchers.forEach(created=>verdicts.set(created.row-1,{kind:'written',id:created.id,code:created.code??null}));
+  const unconfirmed=new Set(snapshot.unconfirmedRows);
+  snapshot.rows.forEach((row,index)=>{
+    if(!verdicts.has(index)&&snapshot.failedRows.includes(row.sourceRow)&&!unconfirmed.has(row.sourceRow))verdicts.set(index,{kind:'rejected'});
+  });
+  const open=snapshot.rows.map((row,index)=>({row,index})).filter(({index})=>!verdicts.has(index));
+  // Dòng thu cọc: tra đúng theo mã yêu cầu. Ảnh chụp bản trước không ghi cờ thu cọc ⇒ dòng THU nào cũng tra thử.
+  const depositFound=new Set<number>();
+  for(const {row,index} of open){
+    if(row.deposit===false||(row.deposit===undefined&&row.type!=='INCOME'))continue;
+    const id=await findOwnDepositIncome(pending.organizationId,`${attemptKey}:${row.sourceRow}`);
+    if(id){verdicts.set(index,{kind:'written',id,code:null});depositFound.add(index);}
+  }
+  // Dòng thường mang mã phiếu dự kiến: tra đúng theo mã; cùng lượt đọc mã chứng từ của mọi phiếu đã biết.
+  const planned=open.filter(({row,index})=>!verdicts.has(index)&&row.voucherId).map(({row,index})=>({index,id:row.voucherId!}));
+  if(planned.length||depositFound.size){
+    const known=[...verdicts.values()].flatMap(verdict=>verdict.kind==='written'?[verdict.id]:[]);
+    const {data,error}=await supabase.from('income_expenses').select('id, code').in('id',[...new Set([...planned.map(row=>row.id),...known])]);
+    if(error)throw error;
+    const found=new Map(voucherRows(data,'phiếu của lượt nhập').map(row=>[row.id,row.code??null]));
+    for(const [index,verdict] of verdicts)if(verdict.kind==='written'&&!verdict.code&&found.get(verdict.id))verdicts.set(index,{...verdict,code:found.get(verdict.id)!});
+    for(const {index,id} of planned)if(found.has(id))verdicts.set(index,{kind:'written',id,code:found.get(id)??null});
+  }
+  // Còn chưa thấy (mã dự kiến không có trên máy chủ, hoặc ảnh chụp bản trước không có mã): tra gần đúng, trừ phiếu đã biết.
+  const rest=open.filter(({index})=>!verdicts.has(index));
+  if(rest.length){
+    const since=new Date(Date.parse(pending.startedAt)-EXCEL_CLOCK_SKEW_MS).toISOString();
+    const {data,error}=await supabase.from('income_expenses')
+      .select('id, code, type, building_id, voucher_date, total_amount, created_at, income_expense_items(income_expense_type_id)')
+      .eq('user_id',pending.userId).eq('organization_id',pending.organizationId).gte('created_at',since)
+      .in('voucher_date',[...new Set(rest.map(({row})=>row.voucherDate))]).order('created_at',{ascending:false}).limit(EXCEL_LOOKUP_LIMIT);
+    if(error)throw error;
+    const candidates=voucherRows(data,'danh sách phiếu');
+    const known=new Set([...verdicts.values()].flatMap(verdict=>verdict.kind==='written'?[verdict.id]:[]));
+    for(const {row,index} of rest){
+      const matches=candidates.filter(item=>!known.has(item.id)&&item.type===row.type&&item.building_id===row.buildingId
+        &&item.voucher_date===row.voucherDate&&Number(item.total_amount)===row.amount
+        // Dòng hạng mục bị RLS che (hạng mục hạn chế) ⇒ không so được khoản mục: vẫn tính là ứng viên (nghiêng về an toàn).
+        &&(!row.itemTypeId||!item.income_expense_items?.length||item.income_expense_items.some(line=>line.income_expense_type_id===row.itemTypeId)));
+      if(matches.length)verdicts.set(index,{kind:'maybe',codes:matches.map(item=>item.code||item.id)});
+      else if(candidates.length>=EXCEL_LOOKUP_LIMIT)verdicts.set(index,{kind:'maybe',codes:[]});
+      else if(settled)verdicts.set(index,{kind:'missing'});
+    }
+  }
+  // Còn dòng chưa thấy mà lượt trước chưa chắc đã kết thúc: chưa kết luận (lõi báo «đang chờ kết quả»).
+  if(snapshot.rows.some((_,index)=>!verdicts.has(index)))return null;
+  const all=snapshot.rows.map((row,index)=>({row,verdict:verdicts.get(index)!}));
+  if(!all.some(({verdict})=>verdict.kind==='written'||verdict.kind==='maybe'))return {outcome:'not-written'};
+  const written=all.flatMap(({row,verdict})=>verdict.kind==='written'?[{row:row.sourceRow,id:verdict.id,code:verdict.code}]:[]);
+  const possiblyWritten=all.flatMap(({row,verdict})=>verdict.kind==='maybe'?[{row:row.sourceRow,codes:verdict.codes}]:[]);
+  const errors=all.flatMap(({row,verdict})=>verdict.kind==='rejected'
+    ?[{row:row.sourceRow,message:'Chưa ghi: dòng này bị từ chối ở lượt nhập trước. Sửa dòng rồi nhập lại.'}]
+    :verdict.kind==='missing'?[{row:row.sourceRow,message:'Chưa ghi: không thấy phiếu của dòng này trên máy chủ. Nhập lại dòng này.'}]:[]);
+  return {result:{successCount:written.length,createdVouchers:written,failedCount:errors.length+possiblyWritten.length,errors,possiblyWritten,
+    reconciledFrom:formatPendingTime(pending.startedAt)}};
+}
 
 // Import phiếu thu/chi hàng loạt từ Excel
 export const useImportIncomeExpenses = () => {
@@ -110,21 +243,35 @@ export const useImportIncomeExpenses = () => {
 
       if(rows.some(row=>!Number.isFinite(row.amount)||row.amount<=0))throw new Error('Nhập số tiền hợp lệ lớn hơn 0 ở từng dòng Excel.');
       const snapshotKey=excelSnapshotKey(user.id,selectedOrganizationId??'');
-      try { return await workflow.run('excel-import','nhập phiếu từ Excel',async progress=>{
-      let successCount = 0;
-      const createdVouchers: Array<{ row: number; id: string; code: string | null }> = [];
-      let failedCount = 0;
-      const errors: Array<{ row: number; message: string }> = [];
+      // Đợt 9: phép đọc hạng mục đưa ra TRƯỚC khi ghi dấu: đọc hỏng thì chưa gửi gì, báo lỗi ngay, không để lại dấu.
       const accountingClassFor =
         await loadIncomeExpenseAccountingClassResolver(
           rows.map((row) => row.income_expense_type_id),
         );
+      // Mỗi dòng thường mang một mã phiếu do trình duyệt sinh (ie_compat_insert_v2 nhận `p_row.id`): lần đối chiếu tra đúng
+      // phiếu theo mã. Hạng mục không đọc thấy ⇒ dòng đó bị từ chối rõ ở vòng ghi, không gửi.
+      const plan=rows.map((row,index)=>{
+        let accountingClass:ReturnType<typeof accountingClassFor>|null=null;
+        try{accountingClass=accountingClassFor(row.income_expense_type_id);}
+        catch{/* Hạng mục không có trong danh mục đọc được: vòng ghi từ chối rõ dòng này. */}
+        const deposit=row.type==='INCOME'&&accountingClass==='DEPOSIT';
+        return {sourceRow:row.source_row??index+1,accountingClass,deposit,voucherId:deposit?undefined:crypto.randomUUID()};
+      });
+      let reconciled=false;
+      try { const imported=await workflow.run('excel-import','nhập phiếu từ Excel',async progress=>{
+      let successCount = 0;
+      const createdVouchers: Array<{ row: number; id: string; code: string | null }> = [];
+      let failedCount = 0;
+      const errors: Array<{ row: number; message: string }> = [];
 
       const unconfirmedRows:number[]=[];
       const failedRows:number[]=[];
-      const snapshotRows=rows.map((row,index)=>({sourceRow:row.source_row??index+1,type:row.type,buildingId:row.building_id,itemTypeId:row.income_expense_type_id,voucherDate:row.voucher_date,amount:row.amount}));
-      const saveSnapshot=()=>localStorage.setItem(snapshotKey,JSON.stringify({attemptId:progress.requestKey,rows:snapshotRows,createdVouchers,unconfirmedRows,failedRows}));
-      saveSnapshot(); // Store real row positions before the first writer, without personal names/notes.
+      const snapshotRows:ExcelSnapshotRow[]=rows.map((row,index)=>({sourceRow:plan[index].sourceRow,type:row.type,buildingId:row.building_id,itemTypeId:row.income_expense_type_id,voucherDate:row.voucher_date,amount:row.amount,deposit:plan[index].deposit,...(plan[index].voucherId?{voucherId:plan[index].voucherId}:{})}));
+      const writeSnapshot=()=>localStorage.setItem(snapshotKey,JSON.stringify({attemptId:progress.requestKey,rows:snapshotRows,createdVouchers,unconfirmedRows,failedRows}));
+      // Ảnh chụp đầu (vị trí dòng thật, mã phiếu dự kiến; không tên người, không ghi chú) phải có TRƯỚC lệnh ghi đầu tiên.
+      try { writeSnapshot(); }
+      catch (storageError) { throw new FinancialWorkflowError('Trình duyệt chưa lưu được danh sách dòng của lượt nhập nên chưa gửi dòng nào. Kiểm tra quyền lưu dữ liệu của trình duyệt rồi nhập lại.','failure',[],storageError); }
+      const saveSnapshot=()=>{ try { writeSnapshot(); } catch { /* Ảnh chụp đầu đã có mã phiếu dự kiến của mọi dòng: bản lưu hỏng giữa chừng thì phép đối chiếu tra thẳng theo mã đó. */ } };
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         try {
@@ -132,8 +279,11 @@ export const useImportIncomeExpenses = () => {
           // strip field client gửi) — không đọc buildings ở client vì RLS chỉ mở
           // cho ai có scope buildings.view, còn Thu/Chi cho phép all_buildings.
           // Phiếu + item trong MỘT call server-side (birth UNAPPROVED — §8).
+          const accountingClass=plan[i].accountingClass;
+          if(!accountingClass)throw new FinancialWorkflowError('Không tìm thấy hạng mục thu/chi của dòng này. Kiểm tra lại hạng mục rồi nhập lại dòng này.','failure',[]);
           const args = {
             p_row: {
+              ...(plan[i].voucherId?{id:plan[i].voucherId}:{}),
               user_id: user.id,
               type: row.type,
               name: row.name,
@@ -143,16 +293,14 @@ export const useImportIncomeExpenses = () => {
             p_items: [
               {
                 income_expense_type_id: row.income_expense_type_id,
-                accounting_class: accountingClassFor(
-                  row.income_expense_type_id,
-                ),
+                accounting_class: accountingClass,
                 description: row.item_name,
                 quantity: 1,
                 unit_price: row.amount,
               },
             ],
           };
-          const incomeDeposit=row.type==='INCOME' && accountingClassFor(row.income_expense_type_id)==='DEPOSIT';
+          const incomeDeposit=plan[i].deposit;
           if(incomeDeposit && !row.room_id)throw {code:'22023',message:'Chọn phòng cho dòng thu cọc trước khi nhập.'};
           const {data:created,error:compatError}=incomeDeposit ?
             {data:await recordDepositIncome(selectedOrganizationId!,progress.requestKey+':'+snapshotRows[i].sourceRow,{
@@ -177,10 +325,19 @@ export const useImportIncomeExpenses = () => {
       }
 
       const result={successCount,failedCount,errors,createdVouchers};
+      // Còn dòng chưa rõ, hoặc đã có phiếu mà còn dòng lỗi: giữ dấu để lần bấm sau trả lại kết quả từng dòng của lượt này
+      // (hàm đối chiếu bên dưới luôn kết luận được), không nhập lại cả tệp.
       if(unconfirmedRows.length || (failedCount>0 && createdVouchers.length>0))throw new ExcelImportUnconfirmed(result);
       localStorage.removeItem(snapshotKey);
       return result;
-      },undefined,selectedOrganizationId??undefined);
+      },async pending=>{
+        const verdict=await reconcileExcelImport(pending,snapshotKey);
+        reconciled=!!verdict&&'result' in verdict;
+        return verdict;
+      },selectedOrganizationId??undefined);
+      // Đã trả kết quả của lượt trước: ảnh chụp của lượt đó không còn dùng tới (dấu đã gỡ).
+      if(reconciled){ try { localStorage.removeItem(snapshotKey); } catch { /* Ảnh chụp sót lại không chặn gì: không còn dấu nào trỏ tới mã lượt đó. */ } }
+      return imported;
       } catch(error) {
         // Preserve row outcomes for the result screen while the durable guard stays blocked.
         let cause:unknown=error;const seen=new Set<unknown>();
@@ -188,13 +345,11 @@ export const useImportIncomeExpenses = () => {
           if(cause instanceof ExcelImportUnconfirmed)return cause.result;
           seen.add(cause);cause=typeof cause==='object'?(cause as {cause?:unknown}).cause:undefined;
         }
-        if(error instanceof FinancialWorkflowError){
-          const raw=localStorage.getItem(snapshotKey);
-          if(raw){
-            const snapshot=JSON.parse(raw) as {unconfirmedRows?:unknown;failedRows?:unknown};
-            const rows=snapshot.failedRows??snapshot.unconfirmedRows;
-            if(Array.isArray(rows)&&rows.length>0&&rows.every(row=>Number.isInteger(row)&&row>0))throw new FinancialWorkflowError(`${workflowErrorMessage(error,'nhập phiếu từ Excel')} Dòng Excel chưa hoàn tất: ${rows.join(', ')}.`,error.outcome,error.completed,error);
-          }
+        if(error instanceof FinancialWorkflowError&&error.outcome!=='failure'){
+          let rows:unknown;
+          try{const raw=localStorage.getItem(snapshotKey);const snapshot=raw?JSON.parse(raw) as {unconfirmedRows?:unknown;failedRows?:unknown}:null;rows=snapshot?.failedRows??snapshot?.unconfirmedRows;}
+          catch{/* Ảnh chụp hỏng: câu báo của lõi vẫn đi nguyên, chỉ thiếu danh sách dòng. */rows=undefined;}
+          if(Array.isArray(rows)&&rows.length>0&&rows.every(row=>Number.isInteger(row)&&row>0))throw new FinancialWorkflowError(`${workflowErrorMessage(error,'nhập phiếu từ Excel')} Dòng Excel chưa hoàn tất: ${rows.join(', ')}.`,error.outcome,error.completed,error);
         }
         throw error;
       }
@@ -202,7 +357,11 @@ export const useImportIncomeExpenses = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
-      if (result.failedCount > 0) {
+      if (result.reconciledFrom) {
+        const maybe=result.possiblyWritten?.length??0;
+        const missing=result.errors.length;
+        toast.warning(`Đã đối chiếu lượt nhập Excel lúc ${result.reconciledFrom}: ${result.successCount} dòng đã có phiếu${maybe?`, ${maybe} dòng có thể đã ghi`:''}${missing?`, ${missing} dòng chưa ghi`:''}. Tệp vừa chọn chưa được nhập; xem từng dòng rồi chỉ nhập lại các dòng chưa ghi.`);
+      } else if (result.failedCount > 0) {
         toast.warning(`Đã tạo ${result.successCount} phiếu${result.createdVouchers.length?": "+result.createdVouchers.map(v=>v.code??v.id).join(", "):""}; ${result.failedCount} dòng chưa hoàn tất. Xem lỗi từng dòng và đối chiếu trước khi nhập lại.`);
       } else if (result.successCount > 0) {
         toast.success(`Đã tạo ${result.successCount} phiếu từ Excel. Xem trạng thái từng phiếu trong danh sách thu chi.`);

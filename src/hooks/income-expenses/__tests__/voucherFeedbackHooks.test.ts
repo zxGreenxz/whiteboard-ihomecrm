@@ -169,12 +169,16 @@ it('C22 hai dòng giống nhau vẫn là hai dòng hợp lệ, success giải ph
  await expect((useImportIncomeExpenses() as unknown as ImportMutation).mutationFn([row])).resolves.toMatchObject({successCount:1});expect(h.rpc).toHaveBeenCalledTimes(3);
 });
 
+// Đợt 9: lần bấm sau không bị khoá mãi nữa: hàm đối chiếu dựng kết quả lượt trước từ ảnh chụp (dòng 2 đã có phiếu, dòng 7
+// bị từ chối) và trả về màn từng dòng, KHÔNG nhập lại cả tệp; lần bấm sau nữa mới nhập.
 it('C22 partial known rejection giữ ID đã tạo và dòng lỗi sau mở lại, không nhập lại cả file',async()=>{
  const rows=[{...input,item_name:'A',amount:100,source_row:2},{...input,item_name:'B',amount:200,source_row:7}];
  h.rpc.mockResolvedValueOnce({data:{id:'v1',code:'PC01'},error:null}).mockResolvedValueOnce({data:null,error:{code:'23514',message:'invalid row'}});
  const result=await (useImportIncomeExpenses() as unknown as ImportMutation).mutationFn(rows);expect(result).toMatchObject({successCount:1,failedCount:1});
- await expect((useImportIncomeExpenses() as unknown as ImportMutation).mutationFn(rows)).rejects.toThrow(/Dòng Excel chưa hoàn tất: 7/);expect(h.rpc).toHaveBeenCalledTimes(2);
  const snapshot=JSON.parse(localStorage.getItem('ihome:excel-import-pending:v1:u1:o1')!) as {rows:{sourceRow:number}[];createdVouchers:{id:string}[];unconfirmedRows:number[];failedRows:number[]};expect(snapshot.createdVouchers[0].id).toBe('v1');expect(snapshot.failedRows).toEqual([7]);
+ await expect((useImportIncomeExpenses() as unknown as ImportMutation).mutationFn(rows)).resolves.toMatchObject({reconciledFrom:expect.any(String),createdVouchers:[{row:2,id:'v1',code:'PC01'}],errors:[{row:7}]});expect(h.rpc).toHaveBeenCalledTimes(2);
+ h.rpc.mockResolvedValueOnce({data:{id:'v2',code:'PC02'},error:null});
+ await expect((useImportIncomeExpenses() as unknown as ImportMutation).mutationFn([rows[1]])).resolves.toMatchObject({successCount:1});expect(h.rpc).toHaveBeenCalledTimes(3);
 });
 it('C22 mọi dòng bị từ chối chắc chắn và chưa có phiếu mới cho sửa file rồi gửi lại',async()=>{
  const row={...input,item_name:'A',amount:100,source_row:2};h.rpc.mockResolvedValueOnce({data:null,error:{code:'23514',message:'invalid row'}}).mockResolvedValueOnce({data:{id:'v2',code:'PC02'},error:null});
