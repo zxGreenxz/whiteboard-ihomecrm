@@ -17,7 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { todayISO } from '@/lib/collect';
 import { focusFirstError } from "@/lib/formErrors";
-import {recordWriteBlocked,recordWriteMessage} from "@/lib/recordWriteOutcome";
+import {recordWriteMessage} from "@/lib/recordWriteOutcome";
 
 const maintenanceSchema = z.object({
   asset_id: z.string().min(1, "Phải chọn tài sản"),
@@ -38,7 +38,7 @@ interface AssetMaintenanceDialogProps {
 
 export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceDialogProps) {
   const [failure,setFailure]=useState<unknown>();
-  const [blocked,setBlocked]=useState(false);
+  // Đợt 9 (luật 5): tạo phiếu bảo trì dùng mã do trình duyệt sinh, bấm lại gửi đúng mã cũ nên kết quả chưa rõ không khoá hộp.
   const draftKey=useRef<string|null>(null);
   const createMaintenance = useCreateAssetMaintenance();
   // CHƯA GATE: useAssets chưa nhận `enabled` (hook thuộc plan con E). Dialog
@@ -86,7 +86,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
   });
 
   const onSubmit = async (data: MaintenanceFormValues) => {
-    if(blocked||sourceBlocked)return;
+    if(sourceBlocked)return;
     form.clearErrors('root.server');
     try {
       const user = await getSessionUser();
@@ -105,7 +105,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);setBlocked(recordWriteBlocked(error));
+      setFailure(error);
       console.error("Failed to create maintenance:", error);
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo phiếu bảo trì') });
     }
@@ -122,7 +122,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
           <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
             {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
             {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ dữ liệu tài sản. Tải lại trước khi lưu.<Button type="button" variant="outline" onClick={()=>{for(const query of sources)void query.refetch();}}>Tải lại dữ liệu</Button></div>}
-            <fieldset disabled={blocked || sourceBlocked || form.formState.isSubmitting} className="space-y-4">
+            <fieldset disabled={sourceBlocked || form.formState.isSubmitting} className="space-y-4">
             <FormField
               control={form.control}
               name="asset_id"
@@ -274,7 +274,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={blocked || sourceBlocked || form.formState.isSubmitting || createMaintenance.isPending}>
+              <Button type="submit" disabled={sourceBlocked || form.formState.isSubmitting || createMaintenance.isPending}>
                 {createMaintenance.isPending ? "Đang tạo..." : "Tạo phiếu bảo trì"}
               </Button>
             </div>

@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { todayISO } from '@/lib/collect';
 import { validateMaterialUsageRows } from '@/lib/materialUsageValidation';
 import { focusFirstError } from '@/lib/formErrors';
-import { materialVoucherFailureMessage, materialVoucherRetryBlocked } from '@/lib/materialVoucherOutcome';
+import { materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 import { validateInputDrafts } from '@/lib/inputDraftValidation';
 
@@ -34,11 +34,14 @@ export default function MaterialUsageFormDialog({ open, onOpenChange }: Props) {
   const [items, setItems] = useState<UsageItemRow[]>([newUsageItemRow()]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [rootError, setRootError] = useState('');
-  const [blocked, setBlocked] = useState(false);
+  // Đợt 9: kết quả chưa rõ không khoá form (phiếu xuất dùng mã do trình duyệt sinh). `draft` cho hook biết các lần bấm
+  // của cùng bản nháp là cùng một phiếu: bấm lại sau khi sửa dòng vẫn không tạo phiếu thứ hai, không trừ tồn hai lần.
   const [saving, setSaving] = useState(false);
+  const draft = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
-    if (open && !rootError && !blocked) {
+    if (open && !rootError) {
+      draft.current = crypto.randomUUID();
       setUsageDate(todayISO());
       setNotes('');
       setItems([newUsageItemRow()]);
@@ -48,7 +51,7 @@ export default function MaterialUsageFormDialog({ open, onOpenChange }: Props) {
 
   const onSubmit = async () => {
     if(!validateInputDrafts(root.current))return;
-    if (blocked || saving || createMut.isPending) return;
+    if (saving || createMut.isPending) return;
     if (materialsQuery.isPending || materialsQuery.isError) {
       toast.error('Chưa tải được danh sách vật tư. Tải lại trước khi tạo phiếu xuất.');
       return;
@@ -85,12 +88,12 @@ export default function MaterialUsageFormDialog({ open, onOpenChange }: Props) {
         usage_date: usageDate,
         notes: notes.trim() || null,
         items: cleanItems,
+        draft: draft.current,
       });
       onOpenChange(false);
     } catch (error) {
       const ids = error instanceof FinancialWorkflowError ? error.completed.map(step => step.id) : [];
       setRootError(materialVoucherFailureMessage(error, 'tạo phiếu xuất') + (ids.length ? ` ID cần đối chiếu: ${ids.join(', ')}.` : ''));
-      setBlocked(materialVoucherRetryBlocked(error));
     } finally { setSaving(false); }
   };
 
@@ -104,7 +107,7 @@ export default function MaterialUsageFormDialog({ open, onOpenChange }: Props) {
         <div className="space-y-4">
           {rootError && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{rootError}</p>}
           {materialsQuery.isError && <Button type="button" variant="outline" onClick={() => void materialsQuery.refetch()}>Tải lại vật tư</Button>}
-          <fieldset disabled={saving || createMut.isPending || blocked} className="space-y-4">
+          <fieldset disabled={saving || createMut.isPending} className="space-y-4">
           <div className="space-y-1">
             <Label>Ngày xuất *</Label>
             <Input type="date" data-field-name="usage_date" aria-invalid={!!errors.usage_date}
@@ -142,9 +145,9 @@ export default function MaterialUsageFormDialog({ open, onOpenChange }: Props) {
             onClick={() => onOpenChange(false)}
             disabled={saving || createMut.isPending}
           >
-            {blocked ? 'Đóng để đối chiếu' : 'Huỷ'}
+            Huỷ
           </Button>
-          <Button type="button" onClick={onSubmit} disabled={saving || createMut.isPending || blocked || materialsQuery.isPending || materialsQuery.isError}>
+          <Button type="button" onClick={onSubmit} disabled={saving || createMut.isPending || materialsQuery.isPending || materialsQuery.isError}>
             {createMut.isPending ? 'Đang lưu…' : 'Tạo phiếu xuất'}
           </Button>
         </DialogFooter>
