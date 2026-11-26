@@ -172,6 +172,14 @@ describe('lưu quản lý và lương điều hành', () => {
     expect(pendingKeys()).toEqual([]);
   });
 
+  it('sửa: xoá quy tắc cũ khớp 0 dòng mà quy tắc còn nguyên (RLS) ⇒ từ chối rõ, không chèn quy tắc mới, không để dấu', async () => {
+    io.server.writable.profit_manager_salaries = () => false;
+    await expect(save()(editInput)).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('quyền') });
+    expect(liveRules('m1').map(row => row.id)).toEqual(['r-old']);
+    expect(io.server.inserts.filter(item => item.table === 'profit_manager_salaries')).toHaveLength(0);
+    expect(pendingKeys()).toEqual([]);
+  });
+
   it('sửa: chèn quy tắc mới bị từ chối rõ sau khi đã xoá quy tắc cũ ⇒ báo rõ đã xoá mà chưa ghi lại, không khoá, lưu lại được', async () => {
     io.server.rows.profit_manager_salaries.push({ id: 'r-other', manager_id: 'm2', label: 'Lương' });
     io.server.uniqueBy.profit_manager_salaries = row => String(row.label);
@@ -213,6 +221,21 @@ describe('lưu quản lý và lương điều hành', () => {
     expect(pendingKeys()).toEqual([]);
   });
 
+  it('thêm mới: dấu bản trước và lần tạo cũ đã ghi (tài khoản đã có hồ sơ) ⇒ báo mã, gỡ dấu, không chèn', async () => {
+    seedLegacyPending(scopeOf('profit-manager-save', 'new:acc2'), new Date(Date.now() - TEN_PHUT), ['m-old']);
+    io.server.rows.profit_managers.push({ id: 'm-old', name: 'Bình', auth_user_id: 'acc2', deleted_at: null, organization_id: 'org-a', user_id: 'actor' });
+    await expect(save()(createInput)).rejects.toMatchObject({ alreadyRecorded: true, recordIds: ['m-old'] });
+    expect(io.server.inserts).toHaveLength(0);
+    expect(pendingKeys()).toEqual([]);
+  });
+
+  it('thêm mới: không đọc được hồ sơ theo tài khoản ⇒ chưa rõ, không chèn, không để dấu', async () => {
+    io.server.failNext('profit_managers', 'read', 'drop-before');
+    await expect(save()(createInput)).rejects.toBeInstanceOf(RepeatableWriteUnknownError);
+    expect(io.server.inserts).toHaveLength(0);
+    expect(pendingKeys()).toEqual([]);
+  });
+
   it('bấm đúp: lượt thứ hai cùng hồ sơ bị từ chối khi lượt đầu chưa xong, không nhân đôi quy tắc', async () => {
     const writer = save();
     const [first, second] = await Promise.allSettled([writer(editInput), writer(editInput)]);
@@ -244,6 +267,12 @@ describe('hồ sơ cổ đông (form lưu cổ đông bỏ dấu lồng)', () =>
   it('tài khoản đã có hồ sơ cổ đông: báo mã, không gửi lệnh chèn', async () => {
     const error = await create()({ ...values, auth_user_id: 'acc1' }).catch((caught: unknown) => caught);
     expect(error).toMatchObject({ alreadyRecorded: true, recordIds: ['s1'] });
+    expect(io.server.inserts).toHaveLength(0);
+  });
+
+  it('không đọc được hồ sơ theo tài khoản: chưa rõ, không gửi lệnh chèn', async () => {
+    io.server.failNext('shareholders', 'read', 'drop-before');
+    await expect(create()(values)).rejects.toBeInstanceOf(RepeatableWriteUnknownError);
     expect(io.server.inserts).toHaveLength(0);
   });
 

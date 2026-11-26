@@ -3,7 +3,9 @@
 // 26/11/2026): update_cashbook_metadata_v1 khoá công ty rồi đặt giá trị tuyệt đối cho sổ chưa lưu trữ;
 // set_personal_cash_book_v1 khoá công ty + dòng đang hiệu lực, chỉ đổi khi khác; set_building_receiving_cashbooks_v1 đặt
 // cả bộ (sổ mặc định + sổ phụ) trong một giao dịch. Chạy lại cho cùng kết quả ⇒ không giữ dấu, chưa rõ thì báo và cho
-// lưu lại. Dấu `cashbook-lifecycle` bản trước có thể là của LƯU TRỮ: sửa sổ chỉ gỡ dấu mang tên sửa sổ.
+// lưu lại. Dấu `cashbook-lifecycle` bản trước có thể là của sửa sổ HOẶC của lưu trữ trước khi tách (đợt 5): sửa sổ thành
+// công chứng tỏ sổ chưa lưu trữ (hàm sửa chỉ nhận sổ `deleted_at is null`), tức lần lưu trữ cũ chưa ghi ⇒ gỡ. Sửa bị từ
+// chối (sổ đã lưu trữ) thì dấu giữ nguyên và lưu trữ đúng sổ đó vẫn bị chặn qua hộp cảnh báo.
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeRecordServer, seedLegacyPending, pendingKeys, type FakeRecordServer } from './fakeRecordServer';
@@ -109,22 +111,43 @@ describe('sửa sổ quỹ (update_cashbook_metadata_v1, cách A)', () => {
     expect(pendingKeys()).toEqual([]);
   });
 
-  it('dấu bản trước không tên (sửa hoặc LƯU TRỮ bản trước): không chặn sửa, KHÔNG bị gỡ, vẫn chặn lưu trữ đúng sổ đó', async () => {
-    const key = seedLegacyPending({ namespace: 'cashbook-lifecycle', userId: 'actor', organizationId: 'actor-scope', businessKey: 'book1' }, new Date(Date.now() - TEN_PHUT));
+  it('dấu bản trước không tên (sửa hoặc lưu trữ bản trước): sửa thành công ⇒ gỡ; lưu trữ sau đó gửi đúng một lần', async () => {
+    seedLegacyPending({ namespace: 'cashbook-lifecycle', userId: 'actor', organizationId: 'actor-scope', businessKey: 'book1' }, new Date(Date.now() - TEN_PHUT));
     await expect(update()({ id: 'book1', values: bookValues })).resolves.toBeUndefined();
+    expect(pendingKeys()).toEqual([]);
+    const archive = writerOf(renderHook(() => useDeleteAccount()).result.current);
+    await expect(archive('book1')).resolves.toBeUndefined();
+    expect(calls('archive_cashbook_v1')).toBe(1);
+  });
+
+  it('dấu bản trước mang tên LƯU TRỮ: sổ còn hoạt động nên lần lưu trữ đó chưa ghi; sửa thành công gỡ dấu', async () => {
+    seedNamed({ namespace: 'cashbook-lifecycle', userId: 'actor', organizationId: 'actor-scope', businessKey: 'book1' }, 'xóa sổ quỹ');
+    await expect(update()({ id: 'book1', values: bookValues })).resolves.toBeUndefined();
+    expect(pendingKeys()).toEqual([]);
+  });
+
+  it('sổ đã lưu trữ (sửa bị từ chối): dấu bản trước giữ nguyên, lưu trữ đúng sổ đó vẫn bị chặn qua hộp cảnh báo', async () => {
+    const key = seedLegacyPending({ namespace: 'cashbook-lifecycle', userId: 'actor', organizationId: 'actor-scope', businessKey: 'book-gone' }, new Date(Date.now() - TEN_PHUT));
+    await expect(update()({ id: 'book-gone', values: bookValues })).rejects.toMatchObject({ code: '42501' });
     expect(pendingKeys()).toEqual([key]);
     const archive = writerOf(renderHook(() => useDeleteAccount()).result.current);
-    await expect(archive('book1')).rejects.toMatchObject({ message: expect.stringContaining('đối chiếu') });
+    await expect(archive('book-gone')).rejects.toMatchObject({ message: expect.stringContaining('đối chiếu') });
     expect(calls('archive_cashbook_v1')).toBe(0);
   });
 
-  it('dấu bản trước mang tên LƯU TRỮ: sửa sổ thành công không gỡ, lưu trữ vẫn đọc dấu đó', async () => {
-    const key = seedNamed({ namespace: 'cashbook-lifecycle', userId: 'actor', organizationId: 'actor-scope', businessKey: 'book1' }, 'xóa sổ quỹ');
+  it('dấu bản trước của sổ KHÁC không bị gỡ và vẫn chặn lưu trữ sổ đó', async () => {
+    const key = seedLegacyPending({ namespace: 'cashbook-lifecycle', userId: 'actor', organizationId: 'actor-scope', businessKey: 'book2' }, new Date(Date.now() - TEN_PHUT));
     await expect(update()({ id: 'book1', values: bookValues })).resolves.toBeUndefined();
     expect(pendingKeys()).toEqual([key]);
     const archive = writerOf(renderHook(() => useDeleteAccount()).result.current);
-    await expect(archive('book1')).rejects.toBeTruthy();
+    await expect(archive('book2')).rejects.toBeTruthy();
     expect(calls('archive_cashbook_v1')).toBe(0);
+  });
+
+  it('dấu bản trước chưa «kết thúc» (dưới 2 phút, lượt cũ có thể còn chạy): sửa không bị chặn nhưng không gỡ dấu', async () => {
+    const key = seedLegacyPending({ namespace: 'cashbook-lifecycle', userId: 'actor', organizationId: 'actor-scope', businessKey: 'book1' }, new Date(Date.now() - 30_000));
+    await expect(update()({ id: 'book1', values: bookValues })).resolves.toBeUndefined();
+    expect(pendingKeys()).toEqual([key]);
   });
 
   it('sửa sổ chưa rõ không để dấu nên không chặn lưu trữ sổ đó', async () => {
@@ -173,6 +196,15 @@ describe('sổ tiền mặt riêng (set_personal_cash_book_v1, cách A)', () => 
     seedLegacyPending({ namespace: 'receiving-personal', userId: 'actor', organizationId: 'actor-scope', businessKey: 'm1' }, new Date(Date.now() - TEN_PHUT));
     await expect(save()({ membershipId: 'm1', accountId: 'acc1' })).resolves.toMatchObject({ membershipId: 'm1' });
     expect(pendingKeys()).toEqual([]);
+  });
+
+  it('máy chủ từ chối rõ (không phải chủ công ty): lời từ chối đi nguyên, không để dấu, không gỡ dấu bản trước', async () => {
+    const key = seedLegacyPending({ namespace: 'receiving-personal', userId: 'actor', organizationId: 'actor-scope', businessKey: 'm1' }, new Date(Date.now() - TEN_PHUT));
+    io.server.rpcHandlers.set_personal_cash_book_v1 = () => ({ data: null, error: { code: '42501', message: 'Chỉ chủ công ty cài được sổ nhận tiền' } });
+    const error = await save()({ membershipId: 'm1', accountId: 'acc1' }).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: '42501' });
+    expect(error).not.toBeInstanceOf(RepeatableWriteUnknownError);
+    expect(pendingKeys()).toEqual([key]);
   });
 
   it('biên nhận sai sổ không phải thành công: chưa rõ, không để dấu, bấm lại được', async () => {
