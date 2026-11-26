@@ -1,5 +1,3 @@
-import {useRef} from 'react';
-import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {financialReadNumber} from '@/lib/financialReadValidation';
 import {jsonProp} from '@/lib/jsonValue';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -28,17 +26,28 @@ export function useIeAutoApproveThreshold() {
   });
 }
 
+/**
+ * Đợt 8 (luật 5): set_ie_auto_approve_threshold_v1 (production 26/11/2026) upsert ĐÚNG một dòng cấu hình theo công ty với
+ * giá trị tuyệt đối (không cộng dồn, không so phiên bản), nên lưu lại cho cùng kết quả: không giữ dấu «chờ đối chiếu» nào.
+ * Chưa rõ kết quả (mất mạng, biên nhận lệch ngưỡng / thiếu công ty) ⇒ lỗi lặp lại được, nút không khoá, bấm lại gửi đúng
+ * ngưỡng đó. Dấu bản trước (phạm vi người dùng, khoá `settings`) gỡ sau khi lưu xong.
+ */
 export function useSetIeAutoApproveThreshold() {
   const qc = useQueryClient();
-  const workflow=useRef(persistentFinancialWorkflow("auto-approve-threshold",{scope:"actor"}));
-  return async (nguong: number | null): Promise<void> => workflow.current.run("settings","lưu ngưỡng tự duyệt phiếu chi",async () => {
-    const { data, error } = await supabase.rpc('set_ie_auto_approve_threshold_v1', {
-      p_threshold: rpcNullable(nguong),
+  return async (nguong: number | null): Promise<void> => {
+    // Nạp động: tệp này chưa từng nạp tĩnh module đó (cửa bundle-inventory).
+    const { repeatableWrite } = await import('@/lib/recordWriteOutcome');
+    await repeatableWrite("lưu ngưỡng tự duyệt phiếu chi", async () => {
+      const { data, error } = await supabase.rpc('set_ie_auto_approve_threshold_v1', {
+        p_threshold: rpcNullable(nguong),
+      });
+      if (error) throw error;
+      const orgId=jsonProp(data,"organization_id");
+      const returned=jsonProp(data,"threshold");
+      if(typeof orgId!=="string"||!orgId||returned===undefined||(nguong===null?returned!==null:financialReadNumber(returned)!==nguong))throw new TypeError("Chưa xác nhận được ngưỡng tự duyệt đã lưu.");
     });
-    if (error) throw error;
-    const orgId=jsonProp(data,"organization_id");
-    const returned=jsonProp(data,"threshold");
-    if(typeof orgId!=="string"||!orgId||returned===undefined||(nguong===null?returned!==null:financialReadNumber(returned)!==nguong))throw new TypeError("Chưa xác nhận được ngưỡng tự duyệt đã lưu.");
+    try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'auto-approve-threshold', businessKey: 'settings' }, { organizationId: 'actor-scope' }); }
+    catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
     await qc.invalidateQueries({ queryKey: [...KHOA_NGUONG_TU_DUYET] });
-  });
+  };
 }

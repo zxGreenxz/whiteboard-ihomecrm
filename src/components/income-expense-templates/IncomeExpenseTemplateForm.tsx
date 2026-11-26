@@ -110,7 +110,9 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setBlocked(recordWriteBlocked(error));
+      // Chỉ đường TẠO còn khoá khi chưa rõ kết quả (đợt 9 sửa). SỬA mẫu ghi theo mã, lưu lại cho cùng kết quả (đợt 8): báo
+      // rõ, giữ nội dung đang sửa, không khoá.
+      setBlocked(!isEditing && recordWriteBlocked(error));
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'lưu mẫu in thu chi') });
     } finally {busy.current=false;}
   };

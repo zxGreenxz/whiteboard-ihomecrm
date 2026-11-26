@@ -1,4 +1,3 @@
-import {hasUnconfirmedResponse} from '@/lib/operationOutcome';
 import { testMediaSource } from '@/lib/storage/testMedia';
 import {validateInputDrafts} from '@/lib/inputDraftValidation';
 import { QueryRegion, refetchStartedSources } from '@/components/errors/QueryRegion';
@@ -326,7 +325,8 @@ export function IeAutoApproveThresholdCard() {
   const [value, setValue] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [failure,setFailure]=useState<string|null>(null);
-  const [blocked,setBlocked]=useState(false);
+  // Đợt 8 (luật 5): ngưỡng đặt tuyệt đối (upsert theo công ty) nên lưu lại cho cùng kết quả: kết quả chưa rõ chỉ báo rõ,
+  // giữ số đang nhập, KHÔNG khoá nút (trước đợt 8: khoá tới khi tải lại trang).
   const edited=useRef(false);
   const inputRoot=useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -335,7 +335,7 @@ export function IeAutoApproveThresholdCard() {
   }, [threshold,thresholdQuery.isError]);
 
   const save = async (v: number | null) => {
-    if(blocked||thresholdQuery.isError||threshold===undefined||!validateInputDrafts(inputRoot.current))return;
+    if(thresholdQuery.isError||threshold===undefined||!validateInputDrafts(inputRoot.current))return;
     if(v!==null&&(!Number.isFinite(v)||v<=0))return;
     setFailure(null);
     setSaving(true);
@@ -349,7 +349,7 @@ export function IeAutoApproveThresholdCard() {
       );
     } catch (e) {
       const message=actionErrorMessage(e,"lưu ngưỡng tự duyệt phiếu chi");
-      setFailure(message);setBlocked(hasUnconfirmedResponse(e));
+      setFailure(message);
       notifyActionError(e, "Chưa xác nhận được kết quả lưu ngưỡng tự duyệt phiếu chi");
     } finally {
       setSaving(false);
@@ -375,7 +375,7 @@ export function IeAutoApproveThresholdCard() {
           <span className="text-sm text-muted-foreground">đ</span>
           <Button
             size="sm"
-            disabled={blocked || saving || isLoading || !Number.isFinite(value) || value <= 0}
+            disabled={saving || isLoading || !Number.isFinite(value) || value <= 0}
             onClick={() => save(value)}
           >
             Lưu ngưỡng
@@ -383,7 +383,7 @@ export function IeAutoApproveThresholdCard() {
           <Button
             size="sm"
             variant="outline"
-            disabled={blocked || saving || isLoading || threshold == null}
+            disabled={saving || isLoading || threshold == null}
             onClick={() => save(null)}
           >
             Bỏ ngưỡng (tự duyệt tất cả)
