@@ -82,6 +82,21 @@ const lastPayload = (table: string): Row[] => {
   const last = insertsInto(table).at(-1)!.payload;
   return Array.isArray(last) ? last : [last];
 };
+/** Lệnh chèn kế tiếp vào `table` được ghi thật, nhưng biên nhận trả mã dòng LẠ (không phải các mã trình duyệt đã gửi). */
+function foreignReceiptOnNextInsert(table: string) {
+  io.intercept = name => {
+    if (name !== table) return undefined;
+    const real = io.server.from(name) as Record<string, unknown> & { insert: (value: unknown) => { select: () => PromiseLike<{ data: unknown; error: unknown }> } };
+    return {
+      ...real,
+      insert: (value: unknown) => {
+        io.intercept = undefined;
+        const sent = real.insert(value);
+        return { select: async () => { const reply = await sent.select(); return reply.error ? reply : { data: (reply.data as Row[]).map((_row, index) => ({ id: `ma-la-${index}` })), error: null }; } };
+      },
+    };
+  };
+}
 
 type Run = (input: unknown) => Promise<unknown>;
 const createPurchase = (): Run => { const { result } = renderHook(() => useCreateMaterialPurchase()); return (result.current as unknown as { mutationFn: Run }).mutationFn; };
@@ -215,8 +230,42 @@ describe('tạo phiếu nhập (material-purchase, khoá create)', () => {
     const error = await createPurchase()({ ...purchase, notes: 'ghi chú khác' }).catch(failure => failure);
     expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);
     expect((error as Error).message).toContain(String(headers()[0].id));
+    // Phiếu của lần trước chưa có dòng nào: câu báo nói rõ để người dùng mở sửa hoặc xoá, không để phiếu rỗng sót lại im lặng.
+    expect((error as Error).message).toContain('CHƯA có dòng vật tư nào');
     expect(headers()).toHaveLength(1);
     expect(rows('material_purchase_items')).toHaveLength(2);
+  });
+
+  it('sửa đầu phiếu giữa hai lần bấm khi lần trước đã ghi trọn cả dòng: báo phiếu đã tạo kèm mã, không nói «chưa có dòng»', async () => {
+    lostResponse('material_purchase_items');
+    expectRetryable(await createPurchase()(purchase).catch(failure => failure));
+    const error = await createPurchase()({ ...purchase, notes: 'ghi chú khác' }).catch(failure => failure);
+    expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);
+    expect((error as Error).message).toContain(String(headers()[0].id));
+    expect((error as Error).message).not.toContain('CHƯA có dòng');
+    expect(headers()).toHaveLength(1);
+    expect(insertsInto('material_purchase_items')).toHaveLength(1);
+  });
+
+  it('hàng rào: biên nhận chèn dòng có mã lạ ⇒ không coi là xong, đọc lại dòng của phiếu để kết luận', async () => {
+    foreignReceiptOnNextInsert('material_purchase_items');
+    const created = await createPurchase()(purchase);
+    // Kết luận từ lần đọc lại đúng phiếu (đủ dòng), không từ biên nhận lạ; không gửi lần hai.
+    expect(created).toMatchObject({ id: headers()[0].id });
+    expect(insertsInto('material_purchase_items')).toHaveLength(1);
+    expect(stock('m-1')).toBe(14);
+  });
+
+  it('hàng rào: biên nhận chèn dòng có mã lạ và đọc lại hỏng ⇒ chưa rõ (không báo xong); bấm lại đọc dòng của phiếu, không chèn lần hai', async () => {
+    foreignReceiptOnNextInsert('material_purchase_items');
+    io.server.failNext('material_purchase_items', 'read', 'drop-before');
+    expectRetryable(await createPurchase()(purchase).catch(failure => failure));
+    const created = await createPurchase()(purchase);
+    expect(created).toMatchObject({ id: headers()[0].id, replayed: true });
+    expect(insertsInto('material_purchase_items')).toHaveLength(1);
+    expect(headers()).toHaveLength(1);
+    expect(stock('m-1')).toBe(14);
+    expect(stock('m-2')).toBe(12);
   });
 
   it('mở lại form (bản nháp mới) với đúng nội dung chưa rõ: vẫn nhận ra lần gửi trước, không tạo phiếu thứ hai', async () => {

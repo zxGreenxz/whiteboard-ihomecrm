@@ -148,12 +148,12 @@ it('SET: màn nói tồn đã khớp nhưng tồn trên máy chủ chưa khớp 
 
 // Đợt 9: trước đợt 9 test này tên «tạo phiếu nhập xác nhận ID dòng mặc định từ server, rồi mở khóa lượt tạo tiếp». Dòng nay
 // mang mã do trình duyệt sinh; biên nhận đủ dòng là xong; lượt tạo tiếp là phiếu mới.
-it('tạo phiếu nhập: dòng mang mã do trình duyệt sinh, biên nhận đủ dòng là xong; lượt tạo tiếp là phiếu mới', async () => {
-  const lineId = '22222222-2222-4222-8222-222222222222';
+it('tạo phiếu nhập: dòng mang mã do trình duyệt sinh, biên nhận trả đúng các mã đó là xong; lượt tạo tiếp là phiếu mới', async () => {
   const header = { insert: vi.fn(), select: vi.fn(), single: vi.fn().mockResolvedValue({ data: { id: 'purchase-1', organization_id: 'org-a' }, error: null }) };
   header.insert.mockReturnValue(header); header.select.mockReturnValue(header);
-  const lines = { insert: vi.fn(), select: vi.fn().mockResolvedValue({ data: [{ id: lineId }], error: null }) };
-  lines.insert.mockReturnValue(lines); io.from.mockImplementation((table: string) => table === 'material_purchases' ? header : lines);
+  // Máy chủ giữ `id` gửi lên (production): biên nhận trả đúng các mã dòng đã gửi.
+  const lines = { insert: vi.fn((sent: Array<{ id: string }>) => ({ select: async () => ({ data: sent.map(row => ({ id: row.id })), error: null }) })) };
+  io.from.mockImplementation((table: string) => table === 'material_purchases' ? header : lines);
   await expect((useCreateMaterialPurchase() as unknown as Mutation).mutationFn(purchase)).resolves.toMatchObject({ id: 'purchase-1' });
   expect(lines.insert).toHaveBeenCalledWith([{ purchase_id: 'purchase-1', material_id: 'm-1', quantity: 2, unit_price: 100, organization_id: 'org-a', id: expect.any(String) }]);
   await expect((useCreateMaterialPurchase() as unknown as Mutation).mutationFn(purchase)).resolves.toMatchObject({ id: 'purchase-1' });

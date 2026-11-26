@@ -46,7 +46,8 @@ function builder(table: string) {
   b.single = async () => ({ data: io.single[table] ?? { id: `${table}-id`, ...((table === "jobs" || table === "document_templates") && writtenPayload && typeof writtenPayload === "object" ? writtenPayload : {}) }, error: null });
   b.maybeSingle = async () => ({ data: (io.rows[table] ?? [])[0] ?? null, error: null });
   b.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-    Promise.resolve({ data: ['building_services','contract_customers','contract_services'].includes(table) && writtenPayload ? (Array.isArray(writtenPayload)?writtenPayload:[writtenPayload]).map((row,index)=>({id:"link-"+index,...row as object})) : io.rows[table] ?? [], error: null, count: (io.rows[table] ?? []).length })
+    // material_purchase_items (đợt 9): dòng mang mã do trình duyệt sinh, biên nhận trả đúng mã đã gửi.
+    Promise.resolve({ data: ['building_services','contract_customers','contract_services','material_purchase_items'].includes(table) && writtenPayload ? (Array.isArray(writtenPayload)?writtenPayload:[writtenPayload]).map((row,index)=>({id:"link-"+index,...row as object})) : io.rows[table] ?? [], error: null, count: (io.rows[table] ?? []).length })
       .then(res, rej);
   return b;
 }
