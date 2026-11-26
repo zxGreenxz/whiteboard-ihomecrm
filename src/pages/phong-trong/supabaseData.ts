@@ -230,7 +230,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
       // saleFact.label là nhãn CÔNG KHAI (tin «Chia sẻ» gửi khách, ảnh / xuất bảng, Copilot): phòng giữ bằng cọc chỉ ghi
       // «Đang giữ chỗ», không tên người cọc / mã phiếu — chi tiết nằm ở depositHold cho bảng Sale nội bộ. Ưu tiên trước giữ
       // cho khách sang nhượng như #499; phiếu cọc treo ở phòng còn khách ở thì vẫn theo tình trạng phòng.
-      const depositHeld = status === "rented" && (hasDepositHold || (depositHold !== null && !depositHold.roomOccupied));
+      const depositHeld = status === "rented" && (hasDepositHold || (depositHold?.source === 'hold' && !depositHold.roomOccupied));
       const saleFact = lock ? undefined
         : depositHeld ? roomSaleFacts({ status, hasDepositHold: true })
         : isExitHeld({ status, exitHold }) ? EXIT_HOLD_SALE_FACT

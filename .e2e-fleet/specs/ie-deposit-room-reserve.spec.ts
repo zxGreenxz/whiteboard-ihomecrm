@@ -106,6 +106,8 @@ test('phieu-coc-chon-phong-trong-tao-duoc-va-khoa-phong', async ({ page }) => {
     await page.getByRole('button', { name: 'Xác nhận' }).click();
     await page.getByRole('textbox', { name: 'Số tiền' }).first().fill('2000000');
 
+    await expect(page.getByText('Phiếu này mở lượt giữ chỗ mới.', { exact: false })).toBeVisible();
+    await expect(page.getByRole('button', { name: /gắn khách/i })).toHaveCount(0);
     await page.getByRole('textbox', { name: 'Người gửi' }).fill('Người gửi DEMO');
     await page.getByRole('button', { name: 'Sau ngày phiếu 4 ngày' }).click();
 

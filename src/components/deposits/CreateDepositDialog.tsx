@@ -579,7 +579,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId, initial
                 />
 
               </div>
-              <DepositScheduleFields key={(selectedRoomId??'') + (holdQuery.data?.id??'')} voucherDate={depositDate}
+              <DepositScheduleFields targetHold={selectedRoomId ? holdQuery.data : undefined} key={(selectedRoomId??'') + (holdQuery.data?.id??'')} voucherDate={depositDate}
                 value={{holdUntil:holdUntil || '',moveIn:form.watch('intended_move_in_on') || '',topup:topupDue || ''}}
                 onChange={next=>{
                   form.setValue('hold_until',next.holdUntil,{shouldDirty:true});

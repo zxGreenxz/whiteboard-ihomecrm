@@ -1320,12 +1320,6 @@ const IncomeExpenseFormInner = ({
                           })}
                         </SelectContent>
                       </Select>
-                      {hasDepositItem && !field.value && (
-                        <p className="text-xs text-amber-600">
-                          Phiếu cọc chưa gắn HĐ — sẽ tự link khi HĐ được tạo
-                          trên phòng này.
-                        </p>
-                      )}
                       <FormMessage />
                     </FormItem>
                     );
@@ -1334,7 +1328,7 @@ const IncomeExpenseFormInner = ({
               )}
 
               {isDepositIncome && !selectedContractId && selectedRoomId && (
-                <DepositScheduleFields key={holdQuery.data?.id??selectedRoomId} voucherDate={form.watch('voucher_date')}
+                <DepositScheduleFields targetHold={holdQuery.data} key={holdQuery.data?.id??selectedRoomId} voucherDate={form.watch('voucher_date')}
                   value={schedule} onChange={setSchedule} disabled={!canEdit || holdQuery.isLoading}/>
               )}
               {/* Row 2: Người gửi (INCOME) / Tên người nhận (EXPENSE) + Ngày — luôn cùng 1 dòng */}

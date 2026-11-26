@@ -47,6 +47,10 @@ export function parseRoomDepositHold(value: unknown): RoomDepositHoldInfo | null
   };
 }
 
+export function hasPrecontractDeposit(room: Pick<Room, 'depositHold' | 'hasDepositHold'>): boolean {
+  return room.hasDepositHold === true || (room.depositHold?.source === 'voucher' && !room.depositHold.roomOccupied);
+}
+
 /** Phòng bị che 'rented' vì đang giữ bằng cọc: có khối, hoặc chỉ có cờ has_deposit_hold của #499 (máy chủ cũ). */
 export function isDepositHeld(room: Pick<Room, 'status' | 'depositHold' | 'hasDepositHold'>): boolean {
   return room.status === 'rented' && (!!room.depositHold || room.hasDepositHold === true);
@@ -64,6 +68,11 @@ function dayLabel(day: string): string {
 /** Dòng chi tiết đi kèm nhãn «Đã cọc · …»: các mã phiếu + ngày nhận phiếu đầu, phiếu treo ngoài đợt, cảnh báo quá hạn. */
 export function depositHoldLines(hold: RoomDepositHoldInfo): string[] {
   const day = dayLabel(hold.voucherDate);
+  if (hold.source === 'voucher') {
+    const codes = hold.codes.length ? hold.codes : [hold.code].filter(Boolean);
+    const label = hold.detail && codes.length ? `Phiếu ${codes.join(', ')}` : `${hold.voucherCount} phiếu cọc`;
+    return [`${label} · nhận ${day} · chờ đối chiếu lượt thuê`];
+  }
   const first = !hold.detail
     ? hold.voucherCount > 0 ? `${hold.voucherCount} phiếu cọc · nhận đầu ${day}` : `Đợt giữ chỗ từ ${day} · chưa có phiếu thu`
     : hold.codes.length > 0
@@ -72,9 +81,6 @@ export function depositHoldLines(hold: RoomDepositHoldInfo): string[] {
   // Không có quyền xem phiếu cọc thì tên bị ẩn chứ không phải thiếu: không nhắc «chưa ghi người gửi».
   const lines = [hold.payerName || !hold.detail ? first : `${first} · chưa ghi người gửi`];
   // Đợt giữ chỗ gom nhiều lần thu là bình thường; phiếu treo NGOÀI đợt thì nhiều phiếu là dấu hiệu cần dọn.
-  if (hold.source === 'voucher' && hold.voucherCount > 1) {
-    lines.push(`Phòng có ${hold.voucherCount} phiếu cọc chờ hợp đồng ngoài đợt giữ chỗ — kiểm trước khi ký hợp đồng mới`);
-  }
   if (depositHoldStale(hold)) lines.push(`Quá ${DEPOSIT_HOLD_STALE_DAYS} ngày chưa có hợp đồng — kiểm lại phiếu cọc`);
   return lines;
 }

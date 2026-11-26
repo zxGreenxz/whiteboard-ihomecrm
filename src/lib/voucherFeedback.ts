@@ -14,6 +14,14 @@ export function voucherOutcomeUnknown(error: unknown): boolean {
 }
 
 const depositMessages=new Set([
+  'Phòng còn lượt giữ chỗ cũ đang hiệu lực. Kiểm tra lượt giữ chỗ của phòng.',
+  'Phòng đang được nhân viên khác khóa tạm. Kiểm tra khóa phòng trước khi tiếp tục.',
+  'Lượt giữ chỗ không thuộc phòng được chọn.',
+  'Lượt giữ chỗ đã đóng. Tải lại trước khi đối chiếu.',
+  'Phiếu hoặc lượt giữ chỗ đã đổi. Tải lại trước khi đối chiếu.',
+  'Hợp đồng của lượt đã đóng. Kiểm tra hồ sơ quyết toán.',
+  'Không có quyền đối chiếu cọc tại tòa này.',
+  'Phòng có lượt giữ chỗ đang mở. Ký từ form Hợp đồng để nhận đúng nguồn cọc.',
   'Đợt giữ chỗ của phòng đã đổi. Tải lại và chọn đúng lượt thu.',
   'Hồ sơ giữ chỗ đã thay đổi. Tải lại trước khi bổ sung.',
   'Phòng đang thuê. Chọn hợp đồng hiện tại hoặc ngày vào của lượt thuê kế tiếp sau ngày báo trả.',

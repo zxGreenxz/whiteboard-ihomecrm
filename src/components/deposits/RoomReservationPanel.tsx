@@ -1,3 +1,4 @@
+import { ReconcileDepositReceipt } from './ReconcileDepositReceipt';
 import { ConfirmedDepositIncome } from '@/lib/depositIncomeRpc';
 import type {ReservationDepositRow} from '@/hooks/useDeposits';
 import {DepositScheduleFields} from './DepositScheduleFields';
@@ -16,6 +17,7 @@ import {ReservationSettlementDialog} from './ReservationSettlementDialog';
 
 interface PanelActions {
   rows?: ReservationDepositRow[];
+  balances?: {contract_id:string;deposit_paid:number}[];
   onContract?: (building: string, room: string) => void;
   onApprove?: (voucher: ReservationDepositRow) => void;
 }
@@ -33,7 +35,7 @@ export function RoomReservationPanel({roomId,buildingId,enabled=true,buildingIds
 
  </section>;
 }
-function ReservationRow({reservation:r,onMoneyClosed,onContract,onApprove,rows=[]}:PanelActions & {reservation:RoomReservation;onMoneyClosed:()=>void}){
+function ReservationRow({reservation:r,onMoneyClosed,onContract,onApprove,rows=[],balances=[]}:PanelActions & {reservation:RoomReservation;onMoneyClosed:()=>void}){
  const{data:permissions}=useMyPermissions();const mutation=useUpdateRoomReservation();
  const[edit,setEdit]=useState<'deadline'|'topup'|null>(null);const[amount,setAmount]=useState('');const[accountId,setAccountId]=useState('');const[voucherDate,setVoucherDate]=useState(todayISO());const[error,setError]=useState('');const[settlementVoucher,setSettlementVoucher]=useState<string|null>(null);
  const[payer,setPayer]=useState(r.customer_hint??r.customer_name);
@@ -56,6 +58,10 @@ function ReservationRow({reservation:r,onMoneyClosed,onContract,onApprove,rows=[
  const sources=[...byVoucher.values()];
  const live=sources.filter(p=>!p.released);
  const ready=live.length>0 && live.every(p=>p.received);
+ const reconcileRows = rows.filter(v => v.room_id === r.room_id && v.building_id === r.building_id && !v.reservation_id &&
+   v.approval_status === 'APPROVED' && v.settlement_status === 'UNSETTLED' && v.received_fact_status === 'VERIFIED' && Number(v.received_amount)>0);
+ const paid = r.status === 'HOLD' ? r.received_amount : r.status === 'CONVERTED' && canUse(permissions,'contracts','edit',r.building_id)
+   ? balances.find(c=>c.contract_id===r.converted_contract_id)?.deposit_paid : undefined;
  const left=r.deposit_target===null?null:Math.max(0,r.deposit_target-r.received_amount);
  return<article className="space-y-2 rounded border p-3">
   <div>{hintOnly?<><strong>{r.customer_hint??r.customer_name}</strong> <span className="text-sm text-muted-foreground">(tên gợi nhớ)</span></>:<><strong>{r.customer_name}</strong>{r.customer_phone?<> · {r.customer_phone}</>:null}</>}<p className="text-sm">Phòng {r.room_name} · Tòa {r.building_name}</p></div>
@@ -74,6 +80,7 @@ function ReservationRow({reservation:r,onMoneyClosed,onContract,onApprove,rows=[
   {edit==='deadline'&&<div className="flex flex-wrap items-end gap-2"><DepositScheduleFields voucherDate={todayISO()} value={schedule} onChange={setSchedule} disabled={mutation.isPending}/><Button size="sm" onClick={()=>void submit('UPDATE')} disabled={mutation.isPending}>Lưu hạn</Button></div>}
   {edit==='topup'&&<div className="grid gap-2 sm:grid-cols-2"><label className="text-sm">Người gửi<Input value={payer} onChange={e=>setPayer(e.target.value)} disabled={mutation.isPending}/></label><DepositScheduleFields value={schedule} onChange={setSchedule} voucherDate={voucherDate} disabled={mutation.isPending}/><label className="text-sm">Số tiền bổ sung<Input inputMode="numeric" value={amount} onChange={e=>setAmount(e.target.value.replace(/\D/g,''))} disabled={mutation.isPending}/></label><label className="text-sm">Sổ quỹ<select aria-label="Sổ quỹ bổ sung cọc" className="block w-full rounded border p-2" value={accountId} onChange={e=>setAccountId(e.target.value)} disabled={mutation.isPending}><option value="">Chọn sổ quỹ</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label><label className="text-sm">Ngày phiếu<Input type="date" value={voucherDate} onChange={e=>setVoucherDate(e.target.value)} disabled={mutation.isPending}/></label><Button className="self-end" onClick={()=>void submit('TOPUP')} disabled={mutation.isPending}>Tạo phiếu bổ sung cọc</Button></div>}
   {edit&&<Button size="sm" variant="ghost" onClick={()=>setEdit(null)} disabled={mutation.isPending}>Đóng thao tác</Button>}{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
+  {canEdit && paid !== undefined && reconcileRows.length>0 && <ReconcileDepositReceipt hold={r} rows={reconcileRows} paid={paid}/>}
   {!!r.history.length&&<details className="text-xs"><summary>Lịch sử giữ chỗ ({r.history.length})</summary><ol>{r.history.map(h=><li key={h.revision}>{h.action} · {new Date(h.changed_at).toLocaleString('vi-VN')} · {h.changed_by}</li>)}</ol></details>}
   {settlementVoucher&&<ReservationSettlementDialog voucherId={settlementVoucher} open onOpenChange={open=>{if(!open){setSettlementVoucher(null);onMoneyClosed();}}}/>}
  </article>;
