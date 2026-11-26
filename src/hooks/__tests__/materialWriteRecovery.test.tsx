@@ -197,6 +197,23 @@ describe('vật tư của công việc (material-job-usage): sửa vật tư đ�
     expect(pendingKeys()).toEqual([]);
   });
 
+  it('hàng rào: biên nhận xoá vật tư cũ sai dạng thì dừng, không chèn dòng mới lên trên; bấm lại chạy lại cả lượt', async () => {
+    let malformed = true;
+    io.intercept = name => {
+      if (name !== 'material_usage_items' || !malformed) return undefined;
+      const real = io.server.from(name) as Record<string, unknown> & { delete: () => { eq: (column: string, value: unknown) => { select: () => PromiseLike<unknown> } } };
+      return { ...real, delete: () => ({ eq: (column: string, value: unknown) => ({ select: async () => { malformed = false; await real.delete().eq(column, value).select(); return { data: [{ id: null }], error: null }; } }) }) };
+    };
+    const error = await saveJob()(jobInput).catch(failure => failure);
+    expectRepeatable(error);
+    expect((error as Error).message).toMatch(/Chưa xác nhận được kết quả xoá các dòng vật tư cũ/);
+    expect(io.server.inserts.filter(item => item.table === 'material_usage_items')).toEqual([]);
+    io.intercept = undefined;
+    await expect(saveJob()(jobInput)).resolves.toBe('usage-1');
+    expect(usageLines('usage-1')).toHaveLength(1);
+    expect(onHand('m-1')).toBe(7);
+  });
+
   it('sửa đầu phiếu khớp 0 dòng (không thấy / không có quyền): từ chối rõ, không xoá dòng nào', async () => {
     io.server.writable.material_usages = () => false;
     const error = await saveJob()(jobInput).catch(failure => failure);
