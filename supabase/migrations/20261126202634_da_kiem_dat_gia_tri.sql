@@ -26,8 +26,11 @@
 -- TƯƠNG THÍCH NGƯỢC
 --   Phải DROP rồi CREATE: CREATE OR REPLACE với danh sách tham số / kiểu trả về khác sẽ hỏng hoặc để lại hai bản trùng
 --   tên. ACL cấp lại đúng như cũ (vai service_role và vai đăng nhập; không PUBLIC, không anon). SECURITY DEFINER, search_path
---   ghim như cũ, VOLATILE. Không đổi bảng, không thêm cột, không xoá dữ liệu. Phần không lùi được: không có (restore từ
---   bản dump của lane đưa hàm về bản hai tham số).
+--   ghim như cũ, VOLATILE. Không đổi bảng, không thêm cột, không xoá dữ liệu. Phần không lùi được: không có.
+--   LÙI (nếu cần): trong MỘT giao dịch, DROP FUNCTION public.verify_income_expense_v1(uuid, text, boolean); dựng lại bản
+--   hai tham số từ bản dump của lane (thân md5 prosrc 96dee08a…, RETURNS void); REVOKE ALL … FROM PUBLIC, anon; GRANT
+--   EXECUTE … cho service_role và vai đăng nhập. Chỉ dựng lại bản cũ mà không DROP bản ba tham số thì còn hai bản trùng tên
+--   và lời gọi {p_id, p_note} của bundle cũ thành mơ hồ (PGRST203). Web của đợt này phải lùi TRƯỚC (nó gửi p_verified).
 --
 -- AN TOÀN CHẠY LẠI: khối $requires$ nhận đúng hai trạng thái của verify_income_expense_v1 (bản hai tham số của
 -- production, hoặc bản ba tham số của chính tệp này ở lượt hai); DROP dùng IF EXISTS; CREATE OR REPLACE.
@@ -239,8 +242,9 @@ BEGIN
        SELECT 1 FROM pg_catalog.pg_proc p
         WHERE p.oid = to_regprocedure('public.verify_income_expense_v1(uuid,text,boolean)')
           AND p.prosecdef AND p.provolatile = 'v' AND p.prorettype = 'jsonb'::regtype
+          AND pg_catalog.pg_get_userbyid(p.proowner) = 'postgres'
           AND p.proconfig @> ARRAY['search_path=pg_catalog, public, app_private']) THEN
-    RAISE EXCEPTION 'da_kiem_dat_gia_tri: verify_income_expense_v1 sai ACL, không còn SECURITY DEFINER / VOLATILE / search_path ghim' USING ERRCODE = '55000';
+    RAISE EXCEPTION 'da_kiem_dat_gia_tri: verify_income_expense_v1 sai ACL / chủ sở hữu, không còn SECURITY DEFINER / VOLATILE / search_path ghim' USING ERRCODE = '55000';
   END IF;
   IF (SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname = 'public' AND p.proname = 'verify_income_expense_v1') <> 1 THEN

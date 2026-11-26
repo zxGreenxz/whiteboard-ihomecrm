@@ -54,7 +54,7 @@ export function IncomeExpenseVerifyDialog({
       // Đợt 10c: gửi GIÁ TRỊ MUỐN ĐẶT theo đúng trạng thái hộp đang hiện, không bật/tắt.
       const receipt = await verifyMutation.mutateAsync({id:voucher.id,note:note.trim() || null,verified:!isVerified});
       if (!receipt) {
-        setSubmitError("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra; không bấm đổi trạng thái thêm lần nữa.");
+        setSubmitError("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra trước khi thao tác tiếp.");
         setReconcileRequired(true); return;
       }
       onOpenChange(false);

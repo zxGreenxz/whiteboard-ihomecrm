@@ -669,10 +669,13 @@ export const useVerifyIncomeExpense = () => {
     mutationFn: async (input: { id: string; note: string | null; verified: boolean }) => {
       // Cách A (đợt 10c): verify_income_expense_v1 nhận p_verified (migration 20261126202634, md5 prosrc 5c6cc367…) — khoá
       // phiếu FOR UPDATE, kiểm quyền xem như cũ rồi mới so: đã đúng giá trị ⇒ {changed:false}, không ghi, không nhật ký;
-      // khác ⇒ đặt đúng giá trị (phiếu đường cũ đi nguyên thân verify_income_expense dưới cùng khoá). Gửi lại luôn an
-      // toàn nên dấu của bản này được gửi lại NGAY. Dấu BẢN TRƯỚC (ghi khi còn bật/tắt, chỉ có chữ ký trạng thái lúc
-      // bấm): giữ cách đọc trạng thái của đợt 5 — đã đổi so với lúc bấm thì báo, không gửi; như lúc bấm thì chỉ gửi lại
-      // sau 2 phút, và lần gửi đó cũng là lệnh ĐẶT giá trị, không bao giờ là bật/tắt.
+      // khác ⇒ đặt đúng giá trị (phiếu đường cũ đi nguyên thân verify_income_expense dưới cùng khoá). Gửi lại cùng giá
+      // trị luôn an toàn nên dấu của bản này được gửi lại NGAY; dấu mang giá trị KHÁC lần bấm này thì chờ 2 phút cho lệnh
+      // cũ chắc chắn đã xong (kẻo lệnh cũ tới sau ghi đè giá trị mới). Dấu BẢN TRƯỚC (ghi khi còn bật/tắt, chỉ có chữ ký
+      // trạng thái lúc bấm): giữ cách đọc trạng thái của đợt 5 — đã đổi so với lúc bấm thì báo, không gửi; như lúc bấm thì
+      // chỉ gửi lại sau 2 phút, và lần gửi đó cũng là lệnh ĐẶT giá trị, không bao giờ là bật/tắt.
+      // Thiếu giá trị đặt thì `p_verified` rơi khỏi JSON và máy chủ chạy kiểu bật/tắt: từ chối ngay, trước khi ghi dấu.
+      if(typeof input.verified!=='boolean')throw new TypeError('Thiếu trạng thái «Đã kiểm» cần đặt.');
       const before=await readVoucherState(input.id);
       const verifySignature=(row:VoucherState)=>row.verified_at??'chua-kiem';
       let resent=false;
@@ -690,11 +693,18 @@ export const useVerifyIncomeExpense = () => {
         if(receipt?.id!==input.id || typeof receipt.changed!=='boolean' || receipt.verified!==input.verified)throw new TypeError('Chưa xác nhận được trạng thái đã kiểm của đúng phiếu.');
         const status=await readStatusReceipt(input.id);
         if(status.verified_at!==null && (typeof status.verified_at!=='string' || !Number.isFinite(Date.parse(status.verified_at))))throw new TypeError('Chưa xác nhận được trạng thái đã kiểm.');
+        // Phép đọc lại phải thấy đúng giá trị vừa đặt; lệch (người khác vừa đổi) thì chưa kết luận, lần bấm sau gửi lại.
+        if((status.verified_at!==null)!==input.verified)throw new TypeError('Chưa xác nhận được trạng thái đã kiểm của đúng phiếu.');
         completedVoucher(progress,input.id,`Đã cập nhật trạng thái đã kiểm phiếu ${input.id}`);
         return {...status,changed:receipt.changed};
       },async pending=>{
-        // Dấu của bản đặt giá trị: máy chủ khoá rồi mới so ⇒ gửi lại ngay không đổi hai lần, không đảo ngược.
-        if(typeof pending.meta?.[VERIFY_TARGET]==='boolean'){resent=true;return {outcome:'not-written',serverDedupesRequestKey:true};}
+        // Dấu của bản đặt giá trị: máy chủ khoá rồi mới so ⇒ gửi lại CÙNG giá trị ngay không đổi hai lần, không đảo ngược.
+        // Giá trị khác lần trước: chỉ gửi khi lệnh cũ chắc chắn đã xong (lõi chờ 2 phút với `not-written` không khai trùng).
+        const target=pending.meta?.[VERIFY_TARGET];
+        if(typeof target==='boolean'){
+          if(target!==input.verified)return {outcome:'not-written'};
+          resent=true;return {outcome:'not-written',serverDedupesRequestKey:true};
+        }
         const row=await readVoucherState(input.id);
         const before=pending.meta?.[BEFORE_STATE];
         const flipped=!!row&&typeof before==='string'&&verifySignature(row)!==before;
@@ -704,7 +714,7 @@ export const useVerifyIncomeExpense = () => {
       },before?beforeStateMeta(verifySignature(before),{[VERIFY_TARGET]:input.verified}):{[VERIFY_TARGET]:input.verified});
       return resent?{...result,resent:true}:result;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, input) => {
       queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
@@ -713,15 +723,17 @@ export const useVerifyIncomeExpense = () => {
       if (!data || !("verified_at" in data)) toast.warning("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra trước khi thao tác tiếp.");
       else if ("changed" in data && data.changed === false) {
         const state = data.verified_at ? "Đã kiểm" : "Chưa kiểm";
+        // Phiếu đã đúng trạng thái thì máy chủ không ghi gì, kể cả ghi chú vừa nhập.
+        const noteDropped = input?.verified && input.note ? " Ghi chú vừa nhập không được lưu." : "";
         toast.info("resent" in data && data.resent
-          ? `Phiếu ${data.code} đã ở đúng trạng thái ${state} (do lần bấm trước, hoặc đã đúng từ trước). Không có thay đổi mới.`
-          : `Phiếu ${data.code} đã ở đúng trạng thái ${state} từ trước. Không có thay đổi mới.`);
+          ? `Phiếu ${data.code} đã ở đúng trạng thái ${state} (do lần bấm trước, hoặc đã đúng từ trước). Không có thay đổi mới.${noteDropped}`
+          : `Phiếu ${data.code} đã ở đúng trạng thái ${state} từ trước. Không có thay đổi mới.${noteDropped}`);
       }
       else toast.success(data.verified_at ? `Đã đánh dấu phiếu ${data.code} là đã kiểm.` : `Đã bỏ đánh dấu đã kiểm của phiếu ${data.code}.`);
     },
     onError: (error) => {
       console.error("Error verifying income expense:", error);
-      if(error instanceof FinancialWorkflowError && error.outcome!=="failure")toast.warning(`${workflowErrorMessage(error,"cập nhật trạng thái đã kiểm")} Bấm lại an toàn: lệnh chỉ đặt đúng trạng thái đã chọn, không đảo ngược.`);
+      if(error instanceof FinancialWorkflowError && error.outcome!=="failure")toast.warning(`${workflowErrorMessage(error,"cập nhật trạng thái đã kiểm")} Lệnh «Đã kiểm» chỉ đặt đúng trạng thái đã chọn: gửi lại không đảo ngược.`);
       else toast.error(voucherFailureMessage(error,"cập nhật trạng thái đã kiểm"));
     },
   });

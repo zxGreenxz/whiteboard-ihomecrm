@@ -150,12 +150,18 @@ describe('C16–C21 — một phần, không thay đổi và kết quả kiểm'
     expect(h.success).toHaveBeenCalledWith('Đã bỏ đánh dấu đã kiểm của phiếu PT01.');
     let caught:unknown;try{await mutation.mutationFn({id:'v1',note:null,verified:false});}catch(error){caught=error;}
     expect(caught).toBeDefined();mutation.onError(caught);
-    expect(h.warning.mock.calls[0][0]).toContain('Bấm lại an toàn');
+    expect(h.warning.mock.calls[0][0]).toContain('gửi lại không đảo ngược');
     const again=renderHook(()=>useVerifyIncomeExpense()).result.current as unknown as Mutation;
     again.onSuccess(await again.mutationFn({id:'v1',note:null,verified:false}));
     expect(h.info).toHaveBeenCalledWith('Phiếu PT01 đã ở đúng trạng thái Chưa kiểm (do lần bấm trước, hoặc đã đúng từ trước). Không có thay đổi mới.');
     expect(h.rpc).toHaveBeenCalledTimes(3);
     expect(h.rpc.mock.calls.map(call=>call[1].p_verified)).toEqual([false,false,false]);
+  });
+  it('«Đã kiểm» không đổi (người khác đã kiểm) mà có ghi chú vừa nhập: câu báo nói ghi chú không được lưu', () => {
+    const mutation=renderHook(()=>useVerifyIncomeExpense()).result.current as unknown as Mutation;
+    mutation.onSuccess({id:'v1',code:'PT01',verified_at:'2026-11-24T01:00:00.000Z',changed:false},{id:'v1',note:'đã đối chiếu',verified:true});
+    expect(h.info).toHaveBeenCalledWith('Phiếu PT01 đã ở đúng trạng thái Đã kiểm từ trước. Không có thay đổi mới. Ghi chú vừa nhập không được lưu.');
+    expect(h.success).not.toHaveBeenCalled();
   });
 });
 

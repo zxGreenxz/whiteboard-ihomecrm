@@ -257,30 +257,54 @@ describe('«đã kiểm» (đợt 10c: đặt giá trị, cách A)', () => {
     expect(voucher().verified_at).toBeNull();
     expect(io.verifyWrites).toBe(1);
   });
-  it('dấu đặt giá trị còn treo, người dùng chọn giá trị khác: gửi đúng giá trị mới', async () => {
+  it('dấu đặt giá trị còn treo, người dùng chọn giá trị KHÁC: chờ lệnh cũ xong (2 phút) rồi mới gửi giá trị mới', async () => {
     io.server.failNext('verify_income_expense_v1', 'rpc', 'drop-after');
     await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    await expect(verify()({ id: 'v1', note: null, verified: false })).rejects.toMatchObject({ message: expect.stringContaining('đang chờ kết quả') });
+    expect(verifyCalls()).toHaveLength(1);
+    later(130_000);
     await expect(verify()({ id: 'v1', note: null, verified: false })).resolves.toMatchObject({ changed: true, verified_at: null });
     expect(voucher().verified_at).toBeNull();
     expect(pendingKeys()).toEqual([]);
   });
-  it('biên nhận sai phiếu hoặc sai giá trị không phải thành công: giữ dấu, lần sau gửi lại', async () => {
+  it('biên nhận sai phiếu, sai giá trị, thiếu «changed» hay đọc lại lệch giá trị không phải thành công: giữ dấu, lần sau gửi lại', async () => {
     const real = io.server.rpcHandlers.verify_income_expense_v1;
-    io.server.rpcHandlers.verify_income_expense_v1 = args => ({ data: { id: 'v1', changed: true, verified: !args.p_verified }, error: null });
+    // Biên nhận nói giá trị ngược với giá trị đã gửi (dù phép đọc lại thấy đúng): không tin biên nhận.
+    io.server.rpcHandlers.verify_income_expense_v1 = args => { voucher().verified_at = args.p_verified ? new Date().toISOString() : null; return { data: { id: 'v1', changed: true, verified: !args.p_verified }, error: null }; };
     await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
     expect(pendingKeys()).toHaveLength(1);
+    voucher().verified_at = null;
     io.server.rpcHandlers.verify_income_expense_v1 = () => ({ data: { id: 'v2', changed: true, verified: true }, error: null });
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    io.server.rpcHandlers.verify_income_expense_v1 = () => ({ data: { id: 'v1', verified: true }, error: null });
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    // Máy chủ báo đã đặt nhưng phép đọc lại vẫn thấy «Chưa kiểm».
+    io.server.rpcHandlers.verify_income_expense_v1 = () => ({ data: { id: 'v1', changed: true, verified: true }, error: null });
     await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
     io.server.rpcHandlers.verify_income_expense_v1 = real;
     await expect(verify()({ id: 'v1', note: null, verified: true })).resolves.toMatchObject({ changed: true });
     expect(pendingKeys()).toEqual([]);
   });
-  it('web lên trước migration (PGRST202, hàm chưa có p_verified): từ chối rõ, không dấu, không đổi phiếu, không gọi bản bật/tắt', async () => {
-    io.serverBeforeMigration = true;
+  it.each([
+    ['PGRST202', 'Could not find the function public.verify_income_expense_v1(p_id, p_note, p_verified) in the schema cache'],
+    ['42883', 'function public.verify_income_expense_v1(p_id => uuid, p_note => text, p_verified => boolean) does not exist'],
+  ])('web lên trước migration (%s, hàm chưa có p_verified): từ chối rõ, không dấu, không đổi phiếu, không gọi bản bật/tắt', async (code, message) => {
+    io.server.rpcHandlers.verify_income_expense_v1 = () => ({ data: null, error: { code, message } });
     await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('Máy chủ chưa cập nhật') });
     expect(voucher().verified_at).toBeNull();
     expect(pendingKeys()).toEqual([]);
     expect(verifyCalls()).toHaveLength(1);
+  });
+  it('máy chủ thật trước migration (bản hai tham số): lời gọi có p_verified nhận PGRST202 ⇒ từ chối rõ', async () => {
+    io.serverBeforeMigration = true;
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('Máy chủ chưa cập nhật') });
+    expect(voucher().verified_at).toBeNull();
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('thiếu giá trị đặt: từ chối trước khi ghi dấu, không gửi gì', async () => {
+    await expect(verify()({ id: 'v1', note: null } as unknown as { id: string; note: string | null; verified: boolean })).rejects.toThrow('Thiếu trạng thái');
+    expect(verifyCalls()).toHaveLength(0);
+    expect(pendingKeys()).toEqual([]);
   });
   it('dấu bản trước (bật/tắt, đợt 5) mà trạng thái đã đổi so với lúc bấm: báo kèm mã phiếu, KHÔNG gửi', async () => {
     voucher().verified_at = '2026-11-24T01:00:00.000Z';

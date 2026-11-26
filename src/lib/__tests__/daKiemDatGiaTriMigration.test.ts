@@ -317,6 +317,10 @@ beforeAll(async () => {
     'app_private.is_income_expense_flow_owned(uuid)', 'app_private.append_income_expense_event_v1(uuid,uuid,text,uuid,text,text,text,text)',
     'app_private.ie_actor_display_name_v1(uuid)']) liveMd5[fn] = await md5Of(fn);
   oldMatrix = await runOldMatrix();
+  // Quyền mặc định của schema public trên Supabase (đo production pg_default_acl 26/11/2026): hàm postgres tạo tự cấp
+  // EXECUTE cho anon, service_role và authenticated. Migration phải tự thu của anon (và PUBLIC) — test ACL dưới đây chỉ
+  // có nghĩa khi quyền mặc định này có mặt.
+  await db.exec('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, service_role, authenticated');
   // Áp nguyên tệp HAI lượt (lượt hai đi nhánh «đã ở bản của tệp này» của $requires$).
   firstApply = await db.exec(migrationSql).then(() => 'ok', (e: Error) => e.message);
   secondApply = await db.exec(migrationSql).then(() => 'ok', (e: Error) => e.message);
@@ -466,6 +470,7 @@ describe('migration đợt 10c: «Đã kiểm» đặt giá trị', () => {
         RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path TO 'pg_catalog', 'public', 'app_private' AS $x$ SELECT NULL::jsonb $x$`);
       await expect(db.exec(migrationSql)).rejects.toThrow(/không ở bản hai tham số đã rà, cũng không ở bản của tệp này/);
     });
-    expect(await md5Of('public.verify_income_expense_v1(uuid,text,boolean)')).not.toBeNull();
+    // Các lần dừng không để lại gì: hàm vẫn đúng thân của tệp.
+    expect(await md5Of('public.verify_income_expense_v1(uuid,text,boolean)')).toBe(migrationSql.match(/IS DISTINCT FROM '([0-9a-f]{32})' THEN\n {6}RAISE EXCEPTION 'verify_income_expense_v1 không ở bản/)?.[1]);
   });
 });

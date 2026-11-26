@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-26T20:44:05.775Z",
+  "generatedAt": "2026-11-26T21:19:39.626Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -14897,7 +14897,7 @@
       "version": "20261126202634",
       "name": "da_kiem_dat_gia_tri",
       "scheme": "timestamp14",
-      "sha256": "85bc8fa24aa13925b65fad2f5802f5b4a087257c796f5b628f32c218556445ac",
+      "sha256": "a74bb3d4b5dd4774f4f8211e63a0b0596ff2b49052d4ac719572ed036cbc253e",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.verify_income_expense_v1"
