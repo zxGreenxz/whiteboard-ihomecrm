@@ -58,16 +58,36 @@ describe("useCreateIncomeExpense — khoá chống trùng", () => {
     expect(b).not.toBe(a);
   });
 
-  it("rơi sang ie_compat_insert_v2 ⇒ khoá KHÔNG lọt vào p_row", async () => {
+  it("đợt 10a: rơi sang compat ⇒ ie_compat_insert_keyed_v1 nhận ĐÚNG khoá đó (p_request_key), khoá KHÔNG lọt vào p_row", async () => {
     h.rpc
       .mockResolvedValueOnce({ data: null, error: { code: "PGRST202", message: "not found" } })
       .mockResolvedValueOnce({ data: { id: "v2" }, error: null });
     await (useCreateIncomeExpense() as unknown as Mutation).mutationFn(input({ idempotency_key: STABLE }));
-    expect(h.rpc.mock.calls[1][0]).toBe("ie_compat_insert_v2");
+    expect(h.rpc.mock.calls[1][0]).toBe("ie_compat_insert_keyed_v1");
+    expect(argsOf(h.rpc.mock.calls[1]).p_request_key).toBe(STABLE);
     expect(Object.keys(argsOf(h.rpc.mock.calls[1]).p_row as object)).not.toContain("idempotency_key");
   });
 
-  it("lỗi của CHÍNH lời gọi compat mang nhãn đường compat (compat không có khoá ⇒ người gọi không được gửi lại y nguyên)", async () => {
+  it("đợt 10a: không có khoá ⇒ compat vẫn đi ie_compat_insert_v2 như cũ, không p_request_key", async () => {
+    h.rpc.mockResolvedValueOnce({ data: { id: "v3" }, error: null });
+    await (useCreateIncomeExpense() as unknown as Mutation).mutationFn(input({ repeat_cycle: "MONTH", repeat_count: 2 }));
+    expect(h.rpc.mock.calls[0][0]).toBe("ie_compat_insert_v2");
+    expect(Object.keys(argsOf(h.rpc.mock.calls[0]))).toEqual(["p_row", "p_items"]);
+  });
+
+  it("đợt 10a: compat có khoá báo khoá đã dùng (đường chính đã lập / nội dung khác) ⇒ báo đã lập ở lần trước kèm mã phiếu", async () => {
+    const used = "11111111-2222-4333-8444-555555555555";
+    for (const hint of ["ie_request_key_used_by_canonical", "ie_request_key_payload_mismatch"]) {
+      h.rpc.mockReset();
+      h.rpc.mockResolvedValueOnce({ data: null, error: { code: "23505", message: "Mã yêu cầu đã dùng", details: used, hint } });
+      const err = await (useCreateIncomeExpense() as unknown as Mutation)
+        .mutationFn(input({ repeat_cycle: "MONTH", repeat_count: 2, idempotency_key: STABLE })).catch((e: unknown) => e);
+      expect(err).toMatchObject({ alreadyRecorded: true, recordIds: [used] });
+      expect(h.rpc).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("lỗi của CHÍNH lời gọi compat mang nhãn đường compat (người gọi không được gửi lại mà KHÔNG giữ khoá)", async () => {
     const net = { code: "", message: "TypeError: Failed to fetch", details: "", hint: "" };
     h.rpc
       .mockResolvedValueOnce({ data: null, error: { code: "PGRST202", message: "not found" } })

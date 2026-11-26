@@ -21,7 +21,7 @@ import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 // cho tới lần regen sau forward-apply — gọi qua cast (mẫu financeV2Mutations.ts).
 type CompatRpcResult = {
   data: unknown;
-  error: { code?: string; message?: string } | null;
+  error: { code?: string; message?: string; details?: string | null; hint?: string | null } | null;
 };
 const compatRpc = (
   fn: string,
@@ -180,7 +180,7 @@ export const useCreateIncomeExpense = (selectedOrganizationId?:string|null) => {
           input.items.map((item) => item.income_expense_type_id),
         );
 
-      const compat = await compatRpc("ie_compat_insert_v2", {
+      const compatArgs = {
         p_row: {
           // Mã phiếu do trình duyệt sinh (chỉ khi người gọi đưa): ie_compat_insert_v2 giữ `id` cho người gọi thường.
           ...(input.voucher_id ? { id: input.voucher_id } : {}),
@@ -222,12 +222,28 @@ export const useCreateIncomeExpense = (selectedOrganizationId?:string|null) => {
           start_date: item.start_date ?? null,
           end_date: item.end_date ?? null,
         })),
-      });
+      };
+      // Đợt 10a: người gọi có khoá chống trùng (form phiếu, Báo chi nhanh) ⇒ đường compat cũng nhận chính khoá đó qua
+      // ie_compat_insert_keyed_v1 (bọc ie_compat_insert_v2, thân giữ nguyên): gửi lại cùng khoá cùng nội dung trả lại phiếu
+      // đã lập; khác nội dung, hoặc đường chính đã lập phiếu với cùng khoá, thì 23505 kèm mã phiếu. Không có khoá ⇒ như cũ.
+      const dedupe = input.idempotency_key;
+      const compat = dedupe
+        ? await compatRpc("ie_compat_insert_keyed_v1", { ...compatArgs, p_request_key: dedupe })
+        : await compatRpc("ie_compat_insert_v2", compatArgs);
 
-      // Nhãn đường compat: compat KHÔNG nhận khoá chống trùng, nên lỗi chưa rõ kết quả ở đây mà người
-      // gọi gửi lại y nguyên (Báo chi nhanh) có thể ra phiếu đôi. Chỉ gắn nhãn, không đổi hành vi.
+      // Nhãn đường compat: lỗi chưa rõ kết quả ở đây mà người gọi gửi lại KHÔNG cùng khoá có thể ra phiếu đôi. Chỉ gắn
+      // nhãn, không đổi hành vi.
       const viaCompat = <E extends object>(e: E): E => Object.assign(e, { ieCreatePath: "compat" as const });
       if (compat.error) {
+        // Khoá đã được dùng: lần gửi trước đã lập phiếu (máy chủ chỉ giữ khoá khi phiếu đã ghi cùng giao dịch).
+        const hint = compat.error.hint ?? "";
+        if (dedupe && errorCode(compat.error) === "23505" && (hint === "ie_request_key_used_by_canonical" || hint === "ie_request_key_payload_mismatch")) {
+          // DETAIL của máy chủ = mã phiếu đã có (uuid); chỉ nhận một mã gọn, không nhận câu chữ.
+          const id = /^[0-9a-z-]{1,64}$/i.test(compat.error.details ?? "") ? [compat.error.details as string] : [];
+          throw new FinancialAlreadyRecordedError(hint === "ie_request_key_used_by_canonical"
+            ? "Phiếu đã được lập ở lần gửi trước. Mở danh sách phiếu để kiểm tra trước khi lập lại."
+            : "Lần gửi trước đã lập phiếu này (nội dung lúc đó khác nội dung đang lưu). Mở danh sách phiếu để kiểm tra trước khi lập lại.", id);
+        }
         // Gửi lại đúng mã phiếu mà máy chủ báo trùng khoá: phiếu mang mã đó đã có (lần trước đã lập).
         if (input.resend && input.voucher_id && errorCode(compat.error) === "23505") {
           throw new FinancialAlreadyRecordedError("Có thể phiếu đã được lập ở lần gửi trước. Kiểm tra danh sách phiếu trước khi lập lại.", [input.voucher_id]);

@@ -986,6 +986,29 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
+    },
+    "supabase/migrations/20261126130735_ma_chong_trung_phieu_tao_moi.sql": {
+      "sha256": "ed7a7f85ef6eb979e86dc8dcffe17fa1150ea0b8b3ac5341336a34b550effd44",
+      "missingObjects": [
+        "function:public.ie_compat_insert_keyed_v1",
+        "function:public.get_own_compat_inserts_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration đợt 10a (mã chống trùng cho đường compat lập phiếu và đề nghị đối soát) chưa áp dụng production. Hai hàm mới vắng có chủ ý cho tới lần áp qua lane; propose_reconciliation đổi chữ ký trong cùng tệp. Đã chạy hai lượt trong ROLLBACK trên TEST (test-env:thu-sql) và trên PGlite (thân sống của ie_compat_insert_v2 / propose_reconciliation). Hồ sơ này giải thích object vắng; không thay review độc lập, forward lane, backup.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261126130735_ma_chong_trung_phieu_tao_moi.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.ie_compat_insert_keyed_v1(p_row jsonb, p_items jsonb, p_request_key text)"
+        },
+        {
+          "duong_dan": "supabase/migrations/20261126130735_ma_chong_trung_phieu_tao_moi.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.get_own_compat_inserts_v1(p_organization_id uuid, p_request_keys text[])"
+        },
+        {
+          "duong_dan": "src/lib/__tests__/maChongTrungPhieuTaoMoiMigration.test.ts",
+          "trich_doan": "it('áp hai lượt liền không lỗi; ie_compat_insert_v2 giữ nguyên thân, chữ ký, ACL'"
+        }
+      ]
     }
   }
 }

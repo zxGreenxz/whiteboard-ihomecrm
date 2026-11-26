@@ -53,6 +53,29 @@ export async function findOwnDepositIncome(org: string, requestKey: string): Pro
   return z.string().uuid().nullable().parse(data);
 }
 
+/** Mỗi lần đọc mang tối đa chừng này mã (một lượt nhập Excel có thể có hàng trăm dòng). */
+const COMPAT_LOOKUP_CHUNK = 100;
+const compatInsertRows = z.array(z.object({ voucher_id: z.string().regex(/^[0-9a-z-]{1,64}$/i), request_key: z.string() }));
+
+/**
+ * Phiếu mà CHÍNH người đang đăng nhập đã lập qua `ie_compat_insert_keyed_v1` với từng mã yêu cầu (đợt 10a). Máy chủ trả
+ * theo sổ giữ mã, không theo quyền đọc phiếu. Mã chưa có phiếu thì vắng trong kết quả. Đọc hỏng thì ném (chưa kết luận).
+ */
+export async function findOwnCompatInserts(org: string, requestKeys: readonly string[]): Promise<Map<string, string>> {
+  type Read = (name: 'get_own_compat_inserts_v1', args: { p_organization_id: string; p_request_keys: string[] }) =>
+    PromiseLike<{ data: unknown; error: unknown }>;
+  const client = supabase as unknown as { rpc: Read };
+  const found = new Map<string, string>();
+  const keys = [...new Set(requestKeys)];
+  for (let start = 0; start < keys.length; start += COMPAT_LOOKUP_CHUNK) {
+    const part = keys.slice(start, start + COMPAT_LOOKUP_CHUNK);
+    const { data, error } = await client.rpc('get_own_compat_inserts_v1', { p_organization_id: org, p_request_keys: part });
+    if (error) throw error;
+    for (const row of compatInsertRows.parse(data)) if (part.includes(row.request_key)) found.set(row.request_key, row.voucher_id);
+  }
+  return found;
+}
+
 // The durable marker stores identifiers only. After a reload, ask the server about that exact request.
 export async function recoverableRoomDeposit<T extends {id:string}>(org:string, roomId:string, requestKey:string, save:(key:string)=>Promise<T>):Promise<T> {
   const actor=await getSessionUser();

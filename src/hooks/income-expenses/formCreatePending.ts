@@ -1,18 +1,25 @@
-import { ConfirmedDepositIncome, findOwnDepositIncome } from '@/lib/depositIncomeRpc';
+import { ConfirmedDepositIncome, findOwnCompatInserts, findOwnDepositIncome } from '@/lib/depositIncomeRpc';
 import { supabase } from "@/integrations/supabase/client";
 import { financialPending, type FinancialPendingRecord, type PendingReconciliation } from "@/lib/financialPending";
 import { runFinancialPending } from "@/lib/financialPendingAction";
 import { isCanonicalCreateEligible, prepareIncomeExpenseCreate } from "./mutations";
 import type { CreateIncomeExpenseInput } from "./types";
 
-// Lập phiếu Thu/Chi từ form, có đối chiếu sau một lần chưa rõ kết quả (đợt 3 plan sửa khoá vĩnh viễn).
+// Lập phiếu Thu/Chi từ form, có đối chiếu sau một lần chưa rõ kết quả (đợt 3 plan sửa khoá vĩnh viễn, đợt 10a).
 //
-// Mã yêu cầu của dấu (UUID) đi lên máy chủ theo hai đường, đọc thân hàm production 24/11/2026:
+// Mã yêu cầu của dấu (UUID) đi lên máy chủ theo hai đường, đọc thân hàm production 24/11/2026 và 26/11/2026:
 //   - create_income_expense_v1 nhận nó làm khoá `ie-create-<mã>`: claim canonical_write_operations là chốt tuyến tính
 //     (ON CONFLICT chờ lệnh cũ còn chạy), cùng nội dung trả lại phiếu cũ, khác nội dung trả 23505 (cách B);
-//   - ie_compat_insert_v2 (phiếu lặp, dòng thiếu kỳ, ảnh không https, hoặc đường chính rơi sang) nhận nó làm mã
-//     phiếu `p_row.id`: khoá chính chặn phiếu thứ hai, và phép đối chiếu tra đúng phiếu theo mã (cách D).
-// Dấu ghi trước bản này không mang hai mã đó nên chỉ tra gần đúng (cùng người tạo, loại, toà, phòng, sau giờ kẹt).
+//   - đường compat (phiếu lặp, dòng thiếu kỳ, ảnh không https, hoặc đường chính rơi sang) đi ie_compat_insert_keyed_v1
+//     với CÙNG khoá `ie-create-<mã>` và mã phiếu `p_row.id` = mã yêu cầu (đợt 10a, md5 prosrc fafe4725…): khoá (công ty,
+//     người, mã) rồi mới giữ mã; cùng nội dung trả lại phiếu cũ, khác nội dung 23505; đường chính đã lập phiếu với cùng
+//     khoá thì 23505 kèm mã phiếu đó. Bản trước đợt 10a gửi compat không khoá, chỉ có `p_row.id` (khoá chính chặn phiếu
+//     thứ hai).
+// Đối chiếu tra đúng theo mã: phiếu compat theo khoá (get_own_compat_inserts_v1, không cần quyền đọc phiếu) rồi theo mã
+// phiếu; không thấy thì gửi lại cùng khoá. Đổi đường giữa hai lần gửi thì chờ lần trước chắc chắn kết thúc (2 phút) rồi
+// gửi lại cùng khoá: đường compat tự thấy khoá đường chính đã ghi xong (23505 kèm mã phiếu); đường chính không đọc khoá
+// của compat, nhưng phép đối chiếu vừa tra phiếu compat theo khoá ngay trước đó và lần compat cũ đã kết thúc.
+// Dấu ghi trước đợt 3 không mang mã nên chỉ tra gần đúng (cùng người tạo, loại, toà, phòng, sau giờ kẹt) — lối ra một lần.
 
 /** Dấu mang mã yêu cầu đã gửi lên máy chủ theo hai đường trên. */
 const KEYED = "request-key-v1";
@@ -113,22 +120,21 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
         const id=await findOwnDepositIncome(ctx.organizationId,`ie-create-${pending.requestKey}`);
         if (id) return {result:new ConfirmedDepositIncome(id)};
       }
-      // Đường compat của lần trước dùng đúng mã này làm mã phiếu: tra thẳng.
-      const exact = await readVoucherById(pending.requestKey);
-      if (exact) {
-        return { outcome: "already-written", message: `Phiếu ${exact.code || exact.id} đã được lập ở lần gửi trước. Mở danh sách phiếu để kiểm tra trước khi lập thêm.`, recordIds: [exact.code || exact.id] };
+      // Đợt 10a: đường compat có khoá của lần trước — tra đúng phiếu theo khoá, không phụ thuộc quyền đọc phiếu.
+      const key = `ie-create-${pending.requestKey}`;
+      const keyedId = (await findOwnCompatInserts(ctx.organizationId, [key])).get(key);
+      // Đường compat của lần trước dùng đúng mã này làm mã phiếu: tra thẳng (dấu của bản trước đợt 10a, compat không khoá).
+      const exact = await readVoucherById(keyedId ?? pending.requestKey);
+      if (exact || keyedId) {
+        const code = exact?.code || exact?.id || keyedId!;
+        return { outcome: "already-written", message: `Phiếu ${code} đã được lập ở lần gửi trước. Mở danh sách phiếu để kiểm tra trước khi lập thêm.`, recordIds: [code] };
       }
       resend = true;
       // Đường ghi có thể đã khác giữa hai lần: điều kiện phía trình duyệt đổi (bật/tắt phiếu lặp…), hoặc hạng mục đổi
-      // (hạng mục chỉ-hệ-thống làm đường chính trả 0A000 TRƯỚC bước claim rồi rơi sang compat). Máy chủ không chống trùng
-      // chéo đường, nên không gửi ngay; lần trước đi đường chính thì phiếu mang mã do máy chủ sinh, chỉ tra gần đúng được.
-      if (pending.meta.canonical !== canonical || pending.meta.items !== items) {
-        if (pending.meta.canonical === true) {
-          const rows = await findRecentCandidates(data, pending);
-          if (rows.length) return maybeWritten(rows);
-        }
-        return { outcome: "not-written" };
-      }
+      // (hạng mục chỉ-hệ-thống làm đường chính trả 0A000 TRƯỚC bước claim rồi rơi sang compat). Gửi lại CÙNG khoá, nhưng
+      // chỉ sau khi lần trước chắc chắn đã kết thúc: compat thấy khoá đường chính đã ghi xong (23505 kèm mã phiếu), còn
+      // khoá compat thì vừa tra ở trên. Không còn tra gần đúng (đợt 10a).
+      if (pending.meta.canonical !== canonical || pending.meta.items !== items) return { outcome: "not-written" };
       // Cùng đường: gửi lại cùng mã. Máy chủ chờ lệnh cũ còn chạy rồi trả phiếu cũ hoặc báo mã đã dùng.
       return { outcome: "not-written", serverDedupesRequestKey: true };
     },
