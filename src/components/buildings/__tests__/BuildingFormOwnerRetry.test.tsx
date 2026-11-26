@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { BuildingWithRelations } from '@/types/building';
-const io = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), services: vi.fn(), save: vi.fn(), load: vi.fn() }));
+const io = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), services: vi.fn(), save: vi.fn(), load: vi.fn(), buildingGone: false }));
 vi.mock('@/hooks/useBuildings', () => ({useCreateBuilding:()=>({mutateAsync:io.create,isPending:false}),useUpdateBuilding:()=>({mutateAsync:io.update,isPending:false})}));
 vi.mock('@/hooks/useBuildingServices',()=>({BuildingServicesPartialError:class extends Error {},useBuildingServices:()=>({}),useUpsertBuildingServices:()=>({mutateAsync:io.services,isPending:false})}));
 vi.mock('@/hooks/useServices',()=>({useServices:()=>({})}));
@@ -15,14 +15,15 @@ vi.mock('@/components/residence/BuildingOwnershipDocs',()=>({default:()=>null}))
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor'})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{from:()=>{
- const writer={select:()=>writer,in:()=>writer,eq:()=>writer,is:async()=>({data:[{id:io.create.mock.results.length?'created-once':'toa-sua',organization_id:'org-a',...(io.create.mock.calls[0]?.[0]??io.update.mock.calls[0]?.[0]?.updates??{})}],error:null})};return writer;
+ // Đợt 9: đọc lại đúng tòa đã tạo theo mã trước khi làm tiếp (`maybeSingle`); `buildingGone` giả tòa đã bị xoá.
+ const writer={select:()=>writer,in:()=>writer,eq:()=>writer,maybeSingle:async()=>({data:io.buildingGone?null:{id:'created-once',organization_id:'org-a',deleted_at:null},error:null}),is:async()=>({data:[{id:io.create.mock.results.length?'created-once':'toa-sua',organization_id:'org-a',...(io.create.mock.calls[0]?.[0]??io.update.mock.calls[0]?.[0]?.updates??{})}],error:null})};return writer;
 }}}));
 vi.mock('@/lib/buildingLegalOwner',async importOriginal=>({...await importOriginal<typeof import('@/lib/buildingLegalOwner')>(),loadBuildingLegalOwner:io.load,saveBuildingLegalOwner:io.save}));
 import BuildingFormDialog from '../BuildingFormDialog';
 import { EditBuildingDialog } from '../EditBuildingDialog';
 import { seedLegacyPending, pendingKeys } from '@/hooks/__tests__/fakeRecordServer';
 vi.stubGlobal('ResizeObserver',class { observe() {} unobserve() {} disconnect() {} });
-beforeEach(()=>{localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org-a');});
+beforeEach(()=>{io.buildingGone=false;localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org-a');});
 afterEach(()=>{cleanup();vi.resetAllMocks();});
 // Sổ nhận TK/TT của toà chỉ cài ở màn "Sổ nhận tiền" (đợt 1 sửa phiếu): form toà không được gửi hai cột này, kể cả null.
 const COT_SO_NHAN = ['default_account_id_tk','default_account_id_tt'];
@@ -150,4 +151,39 @@ it('full remount resumes verified children and never creates the saved building 
  render(<BuildingFormDialog open onOpenChange={close}/>);
  fireEvent.change(screen.getByPlaceholderText('Nhập tên toà nhà'),{target:{value:'Tòa reload'}});fireEvent.click(screen.getByText('Địa chỉ thử'));fireEvent.change(screen.getByLabelText('Họ tên chủ sở hữu'),{target:{value:'Chủ đúng'}});
  fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(close).toHaveBeenCalledWith(false));expect(io.create).toHaveBeenCalledTimes(1);expect(io.save).toHaveBeenCalledTimes(1);expect(io.services).toHaveBeenCalledTimes(2);
+});
+const owned={full_name:'Chủ đúng',birth_year:null,id_number:'',id_issue_date:null,id_issue_place:'Cục Cảnh sát',permanent_address:''};
+// Review đợt 9: lần lưu chủ sở hữu mất phản hồi (nhưng đã ghi) rồi hộp dựng lại; lõi tòa nhận lại theo bộ nhớ của tab. Người dùng
+// chưa nhập chủ sở hữu ⇒ được nhắc nhập lại; nhập lại rồi Lưu ⇒ gửi ĐÚNG giá trị vừa nhập, không bao giờ gửi bản rỗng (xoá chủ cũ).
+it('after a remount the owner is never overwritten with an empty snapshot; the re-entered owner is what gets saved',async()=>{
+ io.create.mockResolvedValue({id:'created-once'});io.services.mockResolvedValue(undefined);io.load.mockResolvedValue(null);
+ io.save.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(undefined);
+ const close=vi.fn();const first=render(<BuildingFormDialog open onOpenChange={close}/>);
+ fireEvent.change(screen.getByPlaceholderText('Nhập tên toà nhà'),{target:{value:'Tòa chủ rỗng'}});fireEvent.click(screen.getByText('Địa chỉ thử'));
+ fireEvent.change(screen.getByLabelText('Họ tên chủ sở hữu'),{target:{value:'Chủ đúng'}});
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await screen.findByText(/Tòa nhà đã lưu với ID created-once/);first.unmount();
+ io.load.mockResolvedValue(owned);
+ render(<BuildingFormDialog open onOpenChange={close}/>);
+ fireEvent.change(screen.getByPlaceholderText('Nhập tên toà nhà'),{target:{value:'Tòa chủ rỗng'}});fireEvent.click(screen.getByText('Địa chỉ thử'));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Lưu'}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await screen.findByText(/Tòa nhà đã lưu \(mã created-once\)/);
+ expect(io.create).toHaveBeenCalledTimes(1);
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Lưu'}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.change(screen.getByLabelText('Họ tên chủ sở hữu'),{target:{value:'Chủ mới'}});
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(close).toHaveBeenCalledWith(false));
+ expect(io.save).toHaveBeenLastCalledWith('created-once',expect.objectContaining({full_name:'Chủ mới'}));
+ expect(io.save.mock.calls.some(call=>(call[1] as {full_name?:string}).full_name==='')).toBe(false);
+});
+// Review đợt 9: tòa nhớ theo tab đã bị xoá trước lần Lưu tiếp ⇒ không gắn chủ sở hữu / dịch vụ vào tòa đã xoá; tạo tòa mới.
+it('a remembered building that no longer exists is not reused: a new building is created',async()=>{
+ io.create.mockResolvedValue({id:'created-once'});io.services.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);io.load.mockResolvedValue(null);io.save.mockResolvedValue(undefined);
+ const close=vi.fn();const first=render(<BuildingFormDialog open onOpenChange={close}/>);
+ fireEvent.change(screen.getByPlaceholderText('Nhập tên toà nhà'),{target:{value:'Tòa đã xoá'}});fireEvent.click(screen.getByText('Địa chỉ thử'));
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await screen.findByText(/Tòa nhà đã lưu với ID created-once/);first.unmount();
+ io.buildingGone=true;
+ render(<BuildingFormDialog open onOpenChange={close}/>);
+ fireEvent.change(screen.getByPlaceholderText('Nhập tên toà nhà'),{target:{value:'Tòa đã xoá'}});fireEvent.click(screen.getByText('Địa chỉ thử'));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Lưu'}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(close).toHaveBeenCalledWith(false));
+ expect(io.create).toHaveBeenCalledTimes(2);
 });

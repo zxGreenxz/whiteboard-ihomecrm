@@ -58,7 +58,7 @@ import { useCreateMeter } from '../useMeters';
 import { useCreateBuilding } from '../useBuildings';
 import { useCreateVehicle } from '../useVehicles';
 import { useCreateArea } from '../useAreas';
-import { ServiceLinksPartialError, ServiceQuotaPartialError, forgetCreatedAwaitingChildren, useCreateService, useCreateServiceQuota } from '../useServices';
+import { ServiceLinksPartialError, ServiceQuotaPartialError, useCreateService, useCreateServiceQuota } from '../useServices';
 import { useCreateIncomeExpenseTemplate } from '../useIncomeExpenseTemplates';
 import { FinancialAlreadyRecordedError, FinancialWorkflowError, RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 import { recordWriteBlocked } from '@/lib/recordWriteOutcome';
@@ -84,7 +84,6 @@ beforeEach(() => {
   io.server.uniqueBy.service_quota_tiers = row => `${String(row.quota_id)}|${String(row.tier_number)}`;
   io.server.rows.services = [{ id: 'svc-dien', name: 'Tiền điện', fee_type: 'TIEN_DIEN', is_default: true, deleted_at: null, organization_id: 'org-a' }];
   forgetUnconfirmedCreates();
-  forgetCreatedAwaitingChildren();
   localStorage.clear();
   localStorage.setItem('ihomecrm.selectedOrganizationId', 'org-a');
 });
@@ -243,7 +242,8 @@ describe('tạo dịch vụ (service-create)', () => {
     expect(rowsOf('building_services')).toHaveLength(2);
     expect(pendingKeys()).toEqual([]);
   });
-  it('dịch vụ đã tạo nhưng gán tòa mất phản hồi: báo mã dịch vụ, không khoá; bấm lại chỉ gán phần còn thiếu trên đúng dịch vụ đó', async () => {
+  // Hộp tạo dịch vụ giữ mã dịch vụ đã tạo (khoá các ô thông tin dịch vụ) và gửi kèm `continueId` ở lần bấm sau.
+  it('dịch vụ đã tạo nhưng gán tòa mất phản hồi: báo mã dịch vụ, không khoá; bấm lại (kèm mã) chỉ gán phần còn thiếu trên đúng dịch vụ đó', async () => {
     io.server.failNext('building_services', 'insert', 'drop-after');
     const error = await failureOf(create()(serviceInput('Dịch vụ C') as never));
     expect(error).toBeInstanceOf(ServiceLinksPartialError);
@@ -251,30 +251,49 @@ describe('tạo dịch vụ (service-create)', () => {
     expect(error).toMatchObject({ serviceId });
     expect((error as Error).message).toContain(String(serviceId));
     expect(pendingKeys()).toEqual([]);
-    await create()(serviceInput('Dịch vụ C') as never);
+    await create()(serviceInput('Dịch vụ C', { continueId: serviceId }) as never);
     expect(serviceRows()).toHaveLength(1);
     expect(rowsOf('building_services').map(row => `${String(row.service_id)}:${String(row.building_id)}`).sort()).toEqual([`${String(serviceId)}:b1`, `${String(serviceId)}:b2`]);
   });
-  it('gán tòa bị từ chối rõ sau khi đã tạo dịch vụ: bấm lại (đổi tòa) gán trên đúng dịch vụ đó', async () => {
+  it('gán tòa bị từ chối rõ sau khi đã tạo dịch vụ: bấm lại (đổi tòa, kèm mã) gán trên đúng dịch vụ đó', async () => {
     io.refuseInsert.building_services = { code: '42501', message: 'new row violates row-level security policy' };
-    await expect(create()(serviceInput('Dịch vụ D') as never)).rejects.toBeInstanceOf(ServiceLinksPartialError);
+    const error = await failureOf(create()(serviceInput('Dịch vụ D') as never));
+    expect(error).toBeInstanceOf(ServiceLinksPartialError);
     expect(rowsOf('building_services')).toHaveLength(0);
-    await create()(serviceInput('Dịch vụ D', { building_ids: ['b3'] }) as never);
+    await create()(serviceInput('Dịch vụ D', { building_ids: ['b3'], continueId: (error as ServiceLinksPartialError).serviceId }) as never);
     expect(serviceRows()).toHaveLength(1);
     expect(rowsOf('building_services').map(row => row.building_id)).toEqual(['b3']);
   });
-  it('sau khi gán tòa hỏng, lần bấm với thông tin dịch vụ KHÁC: báo mã dịch vụ đã tạo, không ghi thêm; lần sau là lượt mới', async () => {
+  it('dịch vụ đã tạo bị xoá trước lần bấm tiếp: không gắn tòa vào dịch vụ đã xoá; tạo dịch vụ mới rồi gán tòa vào đó', async () => {
     io.server.failNext('building_services', 'insert', 'drop-before');
-    await expect(create()(serviceInput('Dịch vụ E') as never)).rejects.toBeInstanceOf(ServiceLinksPartialError);
-    const firstId = serviceRows()[0]?.id;
-    const error = await failureOf(create()(serviceInput('Dịch vụ E', { unit_price: 60_000 }) as never));
-    expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);
-    expect((error as Error).message).toContain(String(firstId));
-    expect(serviceRows()).toHaveLength(1);
-    await create()(serviceInput('Dịch vụ E', { unit_price: 60_000 }) as never);
-    expect(serviceRows()).toHaveLength(2);
+    const error = await failureOf(create()(serviceInput('Dịch vụ E') as never));
+    const oldId = (error as ServiceLinksPartialError).serviceId;
+    io.server.rows.services.find(row => row.id === oldId)!.deleted_at = '2026-11-26T08:00:00Z';
+    const saved = await create()(serviceInput('Dịch vụ E', { continueId: oldId }) as never) as Row;
+    expect(saved.id).not.toBe(oldId);
+    expect(serviceRows().filter(row => !row.deleted_at)).toHaveLength(1);
+    expect(rowsOf('building_services').map(row => row.service_id)).toEqual([saved.id, saved.id]);
   });
-  it('dấu bản trước gieo sẵn không chặn; tạo xong thì gỡ', async () => {
+  it('dịch vụ đã tạo không còn thấy (đã xoá hẳn): tạo dịch vụ mới, không báo thành công giả trên mã cũ', async () => {
+    io.server.failNext('building_services', 'insert', 'drop-before');
+    const error = await failureOf(create()(serviceInput('Dịch vụ G') as never));
+    const oldId = (error as ServiceLinksPartialError).serviceId;
+    io.server.rows.services = io.server.rows.services.filter(row => row.id !== oldId);
+    const saved = await create()(serviceInput('Dịch vụ G', { continueId: oldId }) as never) as Row;
+    expect(saved.id).not.toBe(oldId);
+    expect(rowsOf('building_services').every(row => row.service_id === saved.id)).toBe(true);
+  });
+  it('đọc lại dịch vụ đã tạo bị hỏng: chưa rõ, không tạo dịch vụ, không gán tòa', async () => {
+    io.server.failNext('building_services', 'insert', 'drop-before');
+    const first = await failureOf(create()(serviceInput('Dịch vụ H') as never));
+    const oldId = (first as ServiceLinksPartialError).serviceId;
+    io.server.failNext('services', 'read', 'drop-before');
+    const error = await failureOf(create()(serviceInput('Dịch vụ H', { continueId: oldId }) as never));
+    expect(error).toBeInstanceOf(RepeatableWriteUnknownError);
+    expect(serviceRows()).toHaveLength(1);
+    expect(rowsOf('building_services')).toHaveLength(0);
+    expect(io.server.inserts.filter(item => item.table === 'services')).toHaveLength(1);
+  });  it('dấu bản trước gieo sẵn không chặn; tạo xong thì gỡ', async () => {
     seedOld('service-create', 'create');
     await create()(serviceInput('Dịch vụ F') as never);
     expect(serviceRows()).toHaveLength(1);
@@ -302,7 +321,7 @@ describe('tạo định mức (quota-create)', () => {
     expect(rowsOf('service_quotas')).toHaveLength(1);
     expect(rowsOf('service_quota_tiers')).toHaveLength(2);
   });
-  it('định mức đã tạo nhưng ghi bậc mất phản hồi: báo mã định mức, không khoá; bấm lại ghi đúng một bộ bậc cho đúng định mức đó', async () => {
+  it('định mức đã tạo nhưng ghi bậc mất phản hồi: báo mã định mức, không khoá; bấm lại (kèm mã) ghi đúng một bộ bậc cho đúng định mức đó', async () => {
     io.server.failNext('service_quota_tiers', 'insert', 'drop-after');
     const error = await failureOf(create()({ name: 'Định mức C', description: null, tiers } as never));
     expect(error).toBeInstanceOf(ServiceQuotaPartialError);
@@ -310,11 +329,28 @@ describe('tạo định mức (quota-create)', () => {
     expect(error).toMatchObject({ quotaId });
     expect((error as Error).message).toContain(String(quotaId));
     expect(pendingKeys()).toEqual([]);
-    await create()({ name: 'Định mức C', description: null, tiers } as never);
+    await create()({ name: 'Định mức C', description: null, tiers, continueId: quotaId } as never);
     expect(rowsOf('service_quotas')).toHaveLength(1);
     expect(rowsOf('service_quota_tiers').map(row => `${String(row.quota_id)}:${String(row.tier_number)}`).sort()).toEqual([`${String(quotaId)}:1`, `${String(quotaId)}:2`]);
   });
-  it('dấu bản trước gieo sẵn không chặn; tạo xong thì gỡ', async () => {
+  it('định mức đã tạo bị xoá trước lần bấm tiếp: không ghi bậc vào định mức đã xoá; tạo định mức mới', async () => {
+    io.server.failNext('service_quota_tiers', 'insert', 'drop-before');
+    const error = await failureOf(create()({ name: 'Định mức E', description: null, tiers } as never));
+    const oldId = (error as ServiceQuotaPartialError).quotaId;
+    io.server.rows.service_quotas.find(row => row.id === oldId)!.deleted_at = '2026-11-26T08:00:00Z';
+    const saved = await create()({ name: 'Định mức E', description: null, tiers, continueId: oldId } as never) as Row;
+    expect(saved.id).not.toBe(oldId);
+    expect(rowsOf('service_quota_tiers').map(row => row.quota_id)).toEqual([saved.id, saved.id]);
+  });
+  it('đọc lại định mức đã tạo bị hỏng: chưa rõ, không tạo định mức, không ghi bậc', async () => {
+    io.server.failNext('service_quota_tiers', 'insert', 'drop-before');
+    const first = await failureOf(create()({ name: 'Định mức F', description: null, tiers } as never));
+    io.server.failNext('service_quotas', 'read', 'drop-before');
+    const error = await failureOf(create()({ name: 'Định mức F', description: null, tiers, continueId: (first as ServiceQuotaPartialError).quotaId } as never));
+    expect(error).toBeInstanceOf(RepeatableWriteUnknownError);
+    expect(rowsOf('service_quotas')).toHaveLength(1);
+    expect(rowsOf('service_quota_tiers')).toHaveLength(0);
+  });  it('dấu bản trước gieo sẵn không chặn; tạo xong thì gỡ', async () => {
     seedOld('quota-create', 'create');
     await create()({ name: 'Định mức D', description: null, tiers } as never);
     expect(rowsOf('service_quotas')).toHaveLength(1);
