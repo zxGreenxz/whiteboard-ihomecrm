@@ -83,6 +83,11 @@ beforeEach(()=>{
       return {data:wanted.flatMap(k=>io.claims.has(k)?[{voucher_id:io.claims.get(k),write_path:'compat',request_key:k}]:[]),error:null};
     }
     if(name==='get_own_deposit_income_v1')return {data:null,error:null};
+    if(name==='create_deposit_income_v1'){
+      const id=`00000000-0000-4000-8000-${String(++io.seq).padStart(12,'0')}`;
+      vouchers.push({id,code:'PT-'+io.seq,type:'INCOME',approval_status:'APPROVED',deleted_at:null,user_id:'u1',created_at:new Date(clock).toISOString()});
+      return {data:{id,code:'PT-'+io.seq,approval_status:'APPROVED',reservation_id:null,reservation:null},error:null};
+    }
     if(name==='ie_compat_cancel_v2'){
       const ids=args.p_ids as string[];for(const v of vouchers)if(ids.includes(String(v.id)))v.approval_status='CANCELLED';
       return {data:{cancelled:ids.length},error:null};
@@ -177,6 +182,17 @@ describe('phiếu tổng: mã đợt do trình duyệt sinh',()=>{
     advance(PENDING_SETTLE_MS*5);
     await expect(submitIncome()).rejects.toBeInstanceOf(FinancialPendingError);
     expect(batches()).toHaveLength(0);
+    expect(io.rpc.mock.calls.filter(c=>c[0]==='create_deposit_income_v1')).toHaveLength(1);
+  });
+  it('đợt 10a (review lượt 2): phiếu con thu cọc CHƯA TỪNG GỬI (phiếu thường trước nó rớt trước khi tới máy chủ) ⇒ chưa ghi; quá 2 phút lập lại một bộ',async()=>{
+    const mixed={...input,type:'INCOME',items:[{...item,building_id:'b2'},{...item,income_expense_type_id:'tcoc',room_id:'r1'}]};
+    const submitMixed=()=>(renderHook(()=>useCreateIncomeExpenseBatch()).result.current as unknown as {mutationFn:(i:unknown)=>Promise<{voucherIds:string[]}>}).mutationFn(mixed);
+    io.fail.ie_compat_insert_keyed_v1='drop';
+    await expect(submitMixed()).rejects.toBeInstanceOf(VoucherPartialError);
+    expect(io.rpc.mock.calls.filter(c=>c[0]==='create_deposit_income_v1')).toHaveLength(0);
+    advance(PENDING_SETTLE_MS);
+    const result=await submitMixed();
+    expect(result.voucherIds).toHaveLength(2);expect(batches()).toHaveLength(1);
     expect(io.rpc.mock.calls.filter(c=>c[0]==='create_deposit_income_v1')).toHaveLength(1);
   });
   it('dấu của bản trước đợt 10a (không số phiếu con): đợt đã dọn mà phiếu con chưa biết mã ⇒ giữ dấu, không gửi lại',async()=>{

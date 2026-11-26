@@ -1,4 +1,5 @@
 import { ConfirmedDepositIncome, findOwnVoucherRequests, findOwnDepositIncome } from '@/lib/depositIncomeRpc';
+import { FinancialAlreadyRecordedError } from "@/lib/financialWorkflowError";
 import { supabase } from "@/integrations/supabase/client";
 import { financialPending, type FinancialPendingRecord, type PendingReconciliation } from "@/lib/financialPending";
 import { runFinancialPending } from "@/lib/financialPendingAction";
@@ -89,15 +90,27 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
   const canonical = isCanonicalCreateEligible(data);
   const items = itemsSignature(data);
   let resend = false;
+  /** Phiếu đường chính của lần trước mà phép đối chiếu đã thấy theo khoá (gửi lại chỉ để nhận lại đúng phiếu đó). */
+  let knownVoucher: string | null = null;
   const receipt=await runFinancialPending<{id:string} | ConfirmedDepositIncome>({ namespace: "voucher-form-create", userId: ctx.userId, organizationId: ctx.organizationId, businessKey: voucherFormCreateKey(data) }, async (progress) => {
     // Cả hai đường ghi (create_income_expense_v1 / ie_compat_insert_v2) trả về phiếu có id.
-    const created = (await ctx.create({
-      ...data,
-      idempotency_key: `ie-create-${progress.requestKey}`,
-      voucher_id: progress.requestKey,
-      resend,
-      prepared,
-    })) as { id?: string } | null | undefined;
+    let created: { id?: string } | null | undefined;
+    try {
+      created = (await ctx.create({
+        ...data,
+        idempotency_key: `ie-create-${progress.requestKey}`,
+        voucher_id: progress.requestKey,
+        resend,
+        prepared,
+      })) as { id?: string } | null | undefined;
+    } catch (error) {
+      // Đã biết phiếu có (review đợt 10a): đường chính kiểm hợp lệ TRƯỚC bước giữ mã, nên nội dung vừa sửa có thể bị từ
+      // chối rõ dù phiếu cũ đã lập — khi đó lõi sẽ gỡ dấu và lần lưu sau là phiếu thứ hai. Báo «đã lập» kèm mã thay lỗi gốc.
+      if (knownVoucher && !(error instanceof FinancialAlreadyRecordedError)) {
+        throw new FinancialAlreadyRecordedError("Phiếu đã được lập ở lần gửi trước. Mở danh sách phiếu để kiểm tra trước khi lập thêm.", [knownVoucher]);
+      }
+      throw error;
+    }
     if (!created?.id) throw new TypeError("Chưa xác nhận mã phiếu vừa tạo");
     progress.recordCompleted([created.id]);
     return { id: created.id };
@@ -129,6 +142,7 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
       // Đường chính đã ghi, cùng đường: gửi lại cùng khoá để máy chủ trả lại đúng phiếu cũ (hoặc 23505 nếu nội dung khác).
       if (hit?.path === "canonical" && sameRoute) {
         resend = true;
+        knownVoucher = hit.id;
         return { outcome: "not-written", serverDedupesRequestKey: true };
       }
       // Đã ghi ở đường compat (theo khoá), hoặc dấu của bản trước đợt 10a (compat không khoá, mã phiếu = mã yêu cầu).

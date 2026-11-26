@@ -426,12 +426,20 @@ const CHILD_MODE_ATTEMPT = 'attempt-v1';
 async function reconcileKeyedBatchChildren<T>(pending: FinancialPendingRecord, batchId: string, children: number, depositAt: ReadonlySet<number>): Promise<PendingReconciliation<T>> {
   const keys = Array.from({ length: children }, (_, index) => `${pending.attemptId}:${index}`);
   const byKey = await findOwnVoucherRequests(pending.organizationId, keys);
-  const ids = new Set(pending.completedIds.filter(id => id !== batchId));
+  const confirmed = pending.completedIds.filter(id => id !== batchId);
+  const ids = new Set(confirmed);
   let depositUnseen = false;
+  // Phiếu con gửi lần lượt và dừng ở phiếu lỗi đầu tiên: vị trí < số phiếu đã nhận mã là đã xác nhận (mã có trong dấu), vị trí
+  // đúng bằng là phiếu chưa rõ, vị trí lớn hơn chưa từng gửi (review lượt 2).
   for (const [index, key] of keys.entries()) {
-    const id = depositAt.has(index) ? await findOwnDepositIncome(pending.organizationId, key) : byKey.get(key)?.id;
-    if (id) ids.add(id);
-    else if (depositAt.has(index)) depositUnseen = true;
+    if (depositAt.has(index)) {
+      if (index !== confirmed.length) continue;
+      const id = await findOwnDepositIncome(pending.organizationId, key);
+      if (id) ids.add(id); else depositUnseen = true;
+    } else {
+      const id = byKey.get(key)?.id;
+      if (id) ids.add(id);
+    }
   }
   if (ids.size) {
     const { data: rows, error } = await supabase.from('income_expenses').select('id, code, approval_status, deleted_at').in('id', [...ids]);

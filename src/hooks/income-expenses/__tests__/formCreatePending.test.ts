@@ -58,8 +58,10 @@ beforeEach(()=>{
       // Như thân production: kiểm hạng mục (chỉ-hệ-thống 0A000, hạn chế 42501) TRƯỚC bước giữ mã, rồi mới tra mã.
       const {p_idempotency_key:key,...payload}=args;const hash=JSON.stringify(payload);const claim=db.claims.get(String(key));
       const restricted=(args.p_items as {income_expense_type_id?:string}[]).some(item=>item.income_expense_type_id==='t-han-che');
+      const overLimit=(args.p_items as {unit_price?:number}[]).some(item=>Number(item.unit_price)>9_999_999);
       if(db.routeOff)result={data:null,error:{code:'0A000',message:'Hạng mục chỉ được sinh từ hệ thống'}};
       else if(restricted)result={data:null,error:{code:'42501',message:'Không có quyền tạo hạng mục thu/chi hạn chế'}};
+      else if(overLimit)result={data:null,error:{code:'P0001',message:'Thành tiền hạng mục 1 vượt giới hạn'}};
       else if(claim)result=claim.hash===hash?{data:db.vouchers.find(v=>v.id===claim.id),error:null}:{data:null,error:{code:'23505',message:'idempotency_key đã được dùng với payload khác'}};
       else{const v=newVoucher('v'+(++db.seq),{type:args.p_type,building_id:args.p_building_id,room_id:args.p_room_id});db.vouchers.push(v);db.claims.set(String(key),{hash,id:v.id});result={data:v,error:null};}
     }else if(name==='ie_compat_insert_v2'||name==='ie_compat_insert_keyed_v1'){
@@ -216,6 +218,15 @@ describe('review lượt 1: đổi phạm vi hoặc hạng mục sau một lần
     const error=await submit(restricted).then(()=>null,(e:unknown)=>e);
     expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);
     expect(rpcCalls('create_income_expense_v1')).toHaveLength(1);expect(db.vouchers).toHaveLength(1);
+  });
+  it('đợt 10a (review lượt 2): đã thấy phiếu đường chính, cùng hạng mục nhưng số tiền mới bị từ chối TRƯỚC bước giữ mã ⇒ báo đã lập kèm mã, không gỡ dấu rồi lập phiếu thứ hai',async()=>{
+    db.lost='create_income_expense_v1';await expect(submit(form())).rejects.toThrow();
+    const tooBig=form({items:[{...form().items[0],unit_price:99_999_999}]});
+    const error=await submit(tooBig).then(()=>null,(e:unknown)=>e);
+    expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);expect((error as FinancialAlreadyRecordedError).recordIds).toEqual(['v1']);
+    expect(db.vouchers).toHaveLength(1);
+    // Dấu đã gỡ vì đã biết phiếu: lần lưu kế tiếp là việc mới của người dùng sau khi xem phiếu v1.
+    expect(financialPending.read(scope)).toBeNull();
   });
   it('đợt 10a: cùng đường, cùng hạng mục, tra theo khoá thấy phiếu đường chính ⇒ gửi lại cùng khoá để máy chủ trả lại đúng phiếu cũ',async()=>{
     db.lost='create_income_expense_v1';await expect(submit(form())).rejects.toThrow();
