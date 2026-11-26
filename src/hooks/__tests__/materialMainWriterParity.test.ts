@@ -18,7 +18,10 @@ function fixture(table:string){let verb='read';let active:Write|undefined;
   if(verb==='read'&&table==='materials')return {data:{id:'m-1',on_hand:1},error:null};
   if(verb==='read'&&table.endsWith('_items'))return {data:[],error:null};
   if(verb==='read')return {data:table==='material_usages'?(existing?{id:'header-1'}:null):[{id:'old-1',material_id:'m-1'}],error:null};
-  if(table.endsWith('_items'))return {data:verb==='delete'?(missingDeleteReceipt?null:[{id:'old-1'}]):(missingInsertReceipt?[]:[{id:'new-1'}]),error:verb==='insert'?insertError:null};
+  // Đợt 9: dòng mang mã do trình duyệt sinh thì máy chủ trả đúng mã đó (production giữ `id` gửi lên); dòng không mang mã
+  // (vật tư công việc, sửa phiếu nhập) nhận mã máy chủ.
+  const sentLines=Array.isArray(active?.payload)?active!.payload as Array<{id?:unknown}>:[];
+  if(table.endsWith('_items'))return {data:verb==='delete'?(missingDeleteReceipt?null:[{id:'old-1'}]):(missingInsertReceipt?[]:sentLines.length?sentLines.map(row=>({id:row.id??'new-1'})):[{id:'new-1'}]),error:verb==='insert'?insertError:null};
   return {data:verb==='delete'&&cleanupMissing?null:{id:verb==='delete'&&cleanupWrongId?'other-header':'header-1',organization_id:'org-a'},error:verb==='delete'?cleanupError:null};
  };
  const q={insert:vi.fn(),update:vi.fn(),delete:vi.fn(),upsert:vi.fn(),eq:vi.fn(),in:vi.fn(),select:vi.fn(),single:vi.fn(),maybeSingle:vi.fn(),then:(resolve:(value:Result)=>unknown)=>resolve(result())};

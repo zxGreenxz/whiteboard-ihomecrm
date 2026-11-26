@@ -153,10 +153,20 @@ export async function createMaterialVoucherOnce<T extends { id: string }>(input:
   const { headerTable, lineTable, userId, organizationId } = input;
   // Có lần bấm trước còn chưa rõ của cùng phiếu không: chỉ khi đó «đã có trên máy chủ» mới là do lần bấm trước ghi.
   const prior = memory.pickClientId(headerTable, userId, organizationId, input.matchKeys).reused;
-  const { row: header, replayed: headerReplayed } = await memory.createRecordOnce<T>({
-    table: headerTable, userId, organizationId, matchKeys: input.matchKeys, payload: input.headerPayload,
-    operation: input.operation, sameAs: input.sameHeader, describe: row => voucherLabel(input.noun, row),
-  });
+  // Đầu phiếu của lần bấm trước mang thông tin khác bản đang nhập: giữ lại dòng đó để câu báo nói được phiếu đó có dòng chưa.
+  const earlier: { row?: VoucherRow } = {};
+  let created: { row: T; replayed: boolean };
+  try {
+    created = await memory.createRecordOnce<T>({
+      table: headerTable, userId, organizationId, matchKeys: input.matchKeys, payload: input.headerPayload, operation: input.operation,
+      sameAs: row => { const same = input.sameHeader(row); earlier.row = same ? undefined : row; return same; },
+      describe: row => voucherLabel(input.noun, row),
+    });
+  } catch (error) {
+    if (error instanceof FinancialAlreadyRecordedError && earlier.row) throw await explainEarlierHeader(error, earlier.row);
+    throw error;
+  }
+  const { row: header, replayed: headerReplayed } = created;
   if (!input.items.length) return { header, replayed: prior && headerReplayed, linesFromRead: false };
   const headerRow = header as unknown as VoucherRow;
   const id = header.id;
@@ -197,8 +207,11 @@ export async function createMaterialVoucherOnce<T extends { id: string }>(input:
   let reply: { data: unknown; error: unknown };
   try { reply = await db.from(lineTable).insert(rows).select('id'); }
   catch (error) { reply = { data: null, error }; }
-  const receipt = Array.isArray(reply.data) ? reply.data.map(row => (row as VoucherRow | null)?.id).filter(value => typeof value === 'string' && value) : [];
-  if (!reply.error && receipt.length === rows.length && new Set(receipt).size === rows.length) { settle(); return { header, replayed: false, linesFromRead: false }; }
+  // Dòng mang mã do trình duyệt sinh: biên nhận phải trả ĐÚNG các mã đã gửi (không lạ, không thiếu, không thừa) mới là xong;
+  // lệch thì đọc lại dòng của phiếu để kết luận (bên dưới).
+  const receipt = Array.isArray(reply.data) ? reply.data.map(row => (row as VoucherRow | null)?.id) : [];
+  const exactReceipt = receipt.length === lineIds.length && new Set(receipt).size === lineIds.length && lineIds.every(lineId => receipt.includes(lineId));
+  if (!reply.error && exactReceipt) { settle(); return { header, replayed: false, linesFromRead: false }; }
   const failure = reply.error;
   const duplicateLine = !!failure && typeof failure === 'object' && String((failure as { code?: unknown }).code ?? '') === '23505';
   if (failure && !duplicateLine && isConfirmedFinancialRejection(failure)) {
@@ -220,6 +233,22 @@ export async function createMaterialVoucherOnce<T extends { id: string }>(input:
   if (!same(existing)) throw differs();
   settle();
   return { header, replayed: prior && duplicateLine, linesFromRead: true };
+
+  /**
+   * Lần bấm trước đã tạo đầu phiếu với thông tin khác (người dùng sửa ngày / nhà cung cấp / ghi chú / chiều kiểm kê giữa hai
+   * lần bấm). Không điền dòng vào phiếu đó: phải đổi đầu phiếu của nó, mà dòng của lần trước có thể còn đang tới máy chủ
+   * (với phiếu kiểm kê, đổi chiều IN/OUT sẽ đảo dấu phần tồn của các dòng đó). Chỉ nói rõ phiếu đó đã có dòng chưa, để
+   * phiếu rỗng không sót lại im lặng. Đọc hỏng ⇒ giữ câu báo gốc (vẫn nêu mã phiếu).
+   */
+  async function explainEarlierHeader(error: FinancialAlreadyRecordedError, row: VoucherRow): Promise<FinancialAlreadyRecordedError> {
+    const earlierId = typeof row.id === 'string' ? row.id : '';
+    if (!earlierId) return error;
+    let lines: unknown;
+    try { const reply = await db.from(lineTable).select('id').eq(input.parentColumn, earlierId); lines = reply.error ? undefined : reply.data; }
+    catch { /* Đọc hỏng: giữ câu báo gốc. */ }
+    if (!Array.isArray(lines) || lines.length) return error;
+    return new FinancialAlreadyRecordedError(`${voucherLabel(input.noun, row)} (mã ${earlierId}) đã được tạo ở lần bấm trước với thông tin đầu phiếu khác bản đang nhập và hiện CHƯA có dòng vật tư nào (không làm đổi tồn kho). Mở phiếu đó để sửa hoặc xoá; bấm lưu lại nếu vẫn muốn tạo phiếu mới.`, [earlierId]);
+  }
 }
 
 export function readMaterialVoucherLines(value: unknown): Array<{ id: string; material_id: string }> {
