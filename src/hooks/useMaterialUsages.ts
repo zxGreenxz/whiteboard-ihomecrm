@@ -57,7 +57,8 @@ interface UpsertInput extends UsageInput { job_id: string }
  * (recompute_material_stock: nhập − xuất, không trừ dồn), nên chạy lại sau một lần chưa rõ kết quả cho cùng bộ dòng và
  * cùng tồn kho: không nhân đôi dòng, không trừ tồn hai lần. Mỗi công việc tối đa một phiếu (uq_material_usages_job), nên
  * lần chạy lại sau khi tạo đầu phiếu mất phản hồi đọc thấy phiếu đó, không tạo phiếu thứ hai. Chưa nguyên tử (đợt 10):
- * chèn hỏng SAU khi đã xoá thì công việc tạm không còn dòng vật tư nào tới lần bấm lưu lại; câu báo nói rõ điều đó.
+ * hỏng SAU khi đã xoá thì công việc tạm không còn dòng vật tư nào (tồn kho tạm cộng trả) tới lần bấm lưu lại; câu báo nói
+ * rõ điều đó. Hai lượt lưu CÙNG LÚC (hai tab) vẫn có thể chồng dòng như bản trước — chỉ hàm nguyên tử ở đợt 10 chặn được.
  */
 async function saveJobMaterialUsage(input: UpsertInput): Promise<string | null> {
   const { data: existing, error: readError } = await supabase.from('material_usages' as any).select('id').eq('job_id', input.job_id).maybeSingle();
@@ -70,10 +71,14 @@ async function saveJobMaterialUsage(input: UpsertInput): Promise<string | null> 
     const { data, error } = await supabase.from('material_usages' as any).update({ usage_date: input.usage_date, notes: input.notes }).eq('id', existingId).select('id').single();
     if (error) throw error;
     usageId = confirmedMaterialVoucherId(data, existingId);
-    const { data: removed, error: removeError } = await supabase.from('material_usage_items' as any).delete().eq('usage_id', existingId).select('id');
-    if (removeError) throw removeError;
-    // Biên nhận xoá sai dạng ⇒ chưa rõ: dừng, không chèn dòng mới lên trên.
-    confirmedRecordBatch(removed, Array.isArray(removed) ? removed.length : 0, 'xóa dòng vật tư công việc cũ');
+    try {
+      const { data: removed, error: removeError } = await supabase.from('material_usage_items' as any).delete().eq('usage_id', existingId).select('id');
+      if (removeError) throw removeError;
+      // Biên nhận xoá sai dạng ⇒ chưa rõ: dừng, không chèn dòng mới lên trên.
+      confirmedRecordBatch(removed, Array.isArray(removed) ? removed.length : 0, 'xóa dòng vật tư công việc cũ');
+    } catch (removeError) {
+      throw materialLinesRewriteError(null, 'Lưu vật tư', removeError);
+    }
   } else {
     const { data, error } = await supabase.from('material_usages' as any).insert({ job_id: input.job_id, usage_date: input.usage_date, notes: input.notes }).select().single();
     if (error) throw error;

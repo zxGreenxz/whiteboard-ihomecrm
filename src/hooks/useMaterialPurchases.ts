@@ -80,17 +80,22 @@ export const useCreateMaterialPurchase = () => {
  * bộ dòng đang nhập. Production (đọc 26/11/2026): tổng phiếu (material_purchase_recompute_total) và tồn kho / giá vốn bình
  * quân (recompute_material_stock) do trigger TÍNH LẠI từ toàn bộ dòng đang có, không cộng dồn; phiếu nhập không sinh phiếu
  * chi hay bút toán nào. Nên chạy lại cùng nội dung cho cùng kết quả: không nhân đôi dòng, tồn và tổng không cộng hai lần.
- * Chưa nguyên tử (đợt 10): chèn hỏng SAU khi đã xoá thì phiếu tạm không còn dòng nào tới lần bấm «Cập nhật» lại.
+ * Chưa nguyên tử (đợt 10): hỏng SAU khi đã xoá thì phiếu tạm không còn dòng nào (tồn kho tính như vậy) tới lần bấm
+ * «Cập nhật» lại; câu báo nói rõ điều đó.
  */
 async function replaceMaterialPurchase(id: string, input: PurchaseInput): Promise<void> {
   // Khớp 0 dòng (đã xoá / không có quyền sửa) ⇒ PGRST116: từ chối rõ, chưa xoá dòng nào.
   const { data: header, error } = await supabase.from('material_purchases' as any).update({ purchase_date: input.purchase_date, supplier_id: input.supplier_id, notes: input.notes }).eq('id', id).select('id, organization_id').single();
   if (error) throw error;
   confirmedMaterialVoucherId(header, id);
-  const { data: removed, error: removeError } = await supabase.from('material_purchase_items' as any).delete().eq('purchase_id', id).select('id');
-  if (removeError) throw removeError;
-  // Biên nhận xoá sai dạng ⇒ chưa rõ: dừng, không chèn dòng mới lên trên.
-  confirmedRecordBatch(removed, Array.isArray(removed) ? removed.length : 0, 'xóa dòng phiếu nhập cũ');
+  try {
+    const { data: removed, error: removeError } = await supabase.from('material_purchase_items' as any).delete().eq('purchase_id', id).select('id');
+    if (removeError) throw removeError;
+    // Biên nhận xoá sai dạng ⇒ chưa rõ: dừng, không chèn dòng mới lên trên.
+    confirmedRecordBatch(removed, Array.isArray(removed) ? removed.length : 0, 'xóa dòng phiếu nhập cũ');
+  } catch (removeError) {
+    throw materialLinesRewriteError(null, 'Cập nhật', removeError);
+  }
   if (input.items.length === 0) return;
   const lines = input.items.map(row => ({ purchase_id: id, material_id: row.material_id, quantity: row.quantity, unit_price: row.unit_price }));
   const headerOrg = (header as unknown as { organization_id?: string | null } | null)?.organization_id;

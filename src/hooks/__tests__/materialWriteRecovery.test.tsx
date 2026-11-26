@@ -106,6 +106,7 @@ describe('vật tư của công việc (material-job-usage): sửa vật tư đ�
     const error = await saveJob()(jobInput).catch(failure => failure);
     expectRepeatable(error);
     expect((error as Error).message).toMatch(/Đã xoá vật tư cũ của công việc/);
+    expect((error as Error).message).toMatch(/tồn kho/);
     expect((error as Error).message).toMatch(/Lưu vật tư/);
     // Rủi ro còn lại tới đợt 10: giữa hai lần bấm, công việc không còn dòng vật tư nào (tồn đã cộng trả).
     expect(usageLines('usage-1')).toEqual([]);
@@ -129,7 +130,13 @@ describe('vật tư của công việc (material-job-usage): sửa vật tư đ�
 
   it('xoá dòng cũ hoặc sửa đầu phiếu mất phản hồi: bấm lại cho đúng một kết quả', async () => {
     io.server.failNext('material_usage_items', 'delete', 'drop-after');
-    expectRepeatable(await saveJob()(jobInput).catch(failure => failure));
+    const lost = await saveJob()(jobInput).catch(failure => failure);
+    expectRepeatable(lost);
+    // Lệnh xoá có thể đã chạy: câu báo nói phiếu có thể đang không còn dòng nào và tồn kho tạm tính như vậy.
+    expect((lost as Error).message).toMatch(/Chưa xác nhận được kết quả xoá các dòng vật tư cũ/);
+    expect((lost as Error).message).toMatch(/tồn kho/);
+    expect((lost as Error).message).toMatch(/Lưu vật tư/);
+    expect(usageLines('usage-1')).toEqual([]);
     io.server.failNext('material_usages', 'update', 'drop-before');
     expectRepeatable(await saveJob()(jobInput).catch(failure => failure));
     await expect(saveJob()(jobInput)).resolves.toBe('usage-1');
@@ -242,6 +249,7 @@ describe('sửa phiếu nhập vật tư (material-purchase, đường sửa)', 
     const error = await updatePurchase()(purchaseEdit).catch(failure => failure);
     expectRepeatable(error);
     expect((error as Error).message).toMatch(/Đã xoá các dòng cũ của phiếu nhập/);
+    expect((error as Error).message).toMatch(/tồn kho/);
     expect((error as Error).message).toMatch(/Cập nhật/);
     expect(purchaseLines('p-1')).toEqual([]);
     expect(onHand('m-1')).toBe(10);
@@ -266,7 +274,12 @@ describe('sửa phiếu nhập vật tư (material-purchase, đường sửa)', 
 
   it('xoá dòng cũ hoặc sửa đầu phiếu mất phản hồi: bấm lại cho đúng một kết quả', async () => {
     io.server.failNext('material_purchase_items', 'delete', 'drop-after');
-    expectRepeatable(await updatePurchase()(purchaseEdit).catch(failure => failure));
+    const lost = await updatePurchase()(purchaseEdit).catch(failure => failure);
+    expectRepeatable(lost);
+    expect((lost as Error).message).toMatch(/Chưa xác nhận được kết quả xoá các dòng vật tư cũ/);
+    expect((lost as Error).message).toMatch(/Cập nhật/);
+    expect(purchaseLines('p-1')).toEqual([]);
+    expect(onHand('m-1')).toBe(10);
     io.server.failNext('material_purchases', 'update', 'drop-after');
     expectRepeatable(await updatePurchase()(purchaseEdit).catch(failure => failure));
     await updatePurchase()(purchaseEdit);

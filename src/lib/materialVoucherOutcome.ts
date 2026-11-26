@@ -25,16 +25,22 @@ export function materialVoucherRetryBlocked(error: unknown): boolean {
 
 /**
  * Đợt 8: lưu vật tư của công việc và sửa phiếu nhập «xoá rồi chèn lại» toàn bộ dòng (chưa nguyên tử; hàm máy chủ ở đợt
- * 10). Ghi dòng mới hỏng SAU khi đã xoá dòng cũ (hoặc sau khi vừa tạo đầu phiếu) thì phiếu đang không còn dòng nào: câu
- * báo nói rõ điều đó. Máy chủ từ chối rõ ⇒ `failure`; chưa rõ ⇒ lỗi lặp lại được. Cả hai không khoá form: lần lưu lại xoá
- * rồi ghi lại đúng bộ dòng đang nhập nên không nhân đôi dòng, và tồn kho do trigger tính lại từ toàn bộ dòng.
+ * 10). Hỏng giữa chừng thì phiếu có thể đang không còn dòng nào và tồn kho (trigger tính lại từ mọi dòng đang có) tạm tính
+ * như vậy: câu báo nói rõ điều đó. Cả hai kết quả không khoá form: lần lưu lại xoá rồi ghi lại đúng bộ dòng đang nhập nên
+ * không nhân đôi dòng, tồn kho tính lại theo đúng bộ dòng đó.
+ *
+ * `done`: việc ĐÃ CHẮC làm trên máy chủ trước bước hỏng («Đã xoá các dòng cũ của phiếu nhập») khi bước hỏng là ghi dòng
+ * mới; `null` khi chính lệnh xoá dòng cũ hỏng — từ chối rõ ở bước đó nghĩa là chưa xoá gì nên trả nguyên lỗi.
+ * Máy chủ từ chối rõ ⇒ `failure`; chưa rõ ⇒ `RepeatableWriteUnknownError`.
  */
-export function materialLinesRewriteError(done: string, button: string, error: unknown): FinancialWorkflowError {
+export function materialLinesRewriteError(done: string | null, button: string, error: unknown): unknown {
   if (isConfirmedFinancialRejection(error)) {
-    return new FinancialWorkflowError(`${done} nhưng máy chủ từ chối ghi các dòng vật tư mới; phiếu đang chưa có dòng vật tư nào. ${workflowErrorMessage(error, 'ghi các dòng vật tư mới')} Sửa lại rồi bấm «${button}».`, 'failure', [], error);
+    if (done === null) return error;
+    return new FinancialWorkflowError(`${done} nhưng máy chủ từ chối ghi các dòng vật tư mới; phiếu đang chưa có dòng vật tư nào và tồn kho đang tính như vậy. ${workflowErrorMessage(error, 'ghi các dòng vật tư mới')} Sửa lại rồi bấm «${button}».`, 'failure', [], error);
   }
-  const unknown = new RepeatableWriteUnknownError('ghi các dòng vật tư mới', error);
-  unknown.message = `${done} nhưng chưa xác nhận được đã ghi các dòng vật tư mới; phiếu có thể đang chưa có dòng vật tư nào. Bấm «${button}» lại: lần lưu lại xoá rồi ghi lại đúng bộ dòng đang nhập nên không nhân đôi.`;
+  const unknown = new RepeatableWriteUnknownError(done === null ? 'xoá các dòng vật tư cũ' : 'ghi các dòng vật tư mới', error);
+  const state = done === null ? 'Chưa xác nhận được kết quả xoá các dòng vật tư cũ' : `${done} nhưng chưa xác nhận được đã ghi các dòng vật tư mới`;
+  unknown.message = `${state}; phiếu có thể đang chưa có dòng vật tư nào và tồn kho tạm tính như vậy. Bấm «${button}» lại: lần lưu lại xoá rồi ghi lại đúng bộ dòng đang nhập nên không nhân đôi dòng, tồn kho tính lại theo đúng bộ dòng đó.`;
   return unknown;
 }
 
