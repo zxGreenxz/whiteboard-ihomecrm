@@ -473,7 +473,8 @@ export function planAdd(facts, rawRequest, config) {
     const matches = existing.labels[FLEET_LABELS.name] === name && existing.home === home;
     if (!matches) block('container_trung_ten');
     else if ((existing.labels[FLEET_LABELS.trial] === 'true') !== trial) block('container_khac_che_do');
-    else if (existing.running && existing.networkMode === `container:${workerId}` && restartState !== 'pending') containerState = 'done';
+    else if (existing.running && existing.labels[FLEET_LABELS.connection] === connectionId &&
+             existing.networkMode === `container:${workerId}` && restartState !== 'pending') containerState = 'done';
     else containerState = 'pending'; // sẽ được tạo lại theo worker hiện tại
   }
   // Cửa RAM áp cho mọi lần làm thêm một container chạy: container mới, hoặc container của người này đang dừng được dựng lại.

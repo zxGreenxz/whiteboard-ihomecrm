@@ -26,7 +26,7 @@ describe('hermesActivation: bước 6 theo bằng chứng trợ lý đã dùng C
     for (const state of ['pending', null, undefined] as const) {
       const result = linked(state, status(seen(LINKED), seen(OTHER)));
       expect(result.done).toBe(false); expect(result.waiting).toBe(true);
-      expect(result.summary).toBe('Chưa thấy trợ lý dùng kết nối này kể từ khi dịch vụ kết nối CRM chạy lại lúc t1000. Nếu bạn vừa liên kết, nhờ quản trị viên kích hoạt trợ lý; nếu trợ lý đã chạy, nhắn thử bot trên Zalo.');
+      expect(result.summary).toBe('Chưa thấy trợ lý dùng kết nối này kể từ khi dịch vụ kết nối CRM chạy lại lúc t1000. Hệ thống tự kích hoạt sau khi ghép nick. Khi trợ lý sẵn sàng, hãy nhắn thử bot trên Zalo.');
       expect(`${result.summary} ${result.note}`).not.toMatch(/[Đđ]ang đồng bộ/);
     }
   });
@@ -83,11 +83,11 @@ describe('hermesActivation: bước 6 theo bằng chứng trợ lý đã dùng C
     expect(linked('synchronized', quiet)).toEqual({ done: true, waiting: false, note: 'Đã đồng bộ với trợ lý.', summary: 'Trợ lý đã sẵn sàng.' });
     expect(linked('pending_credential', quiet)).toEqual({ done: false, waiting: true, note: 'Đang chờ kết nối CRM của trợ lý.',
       summary: 'Trợ lý chưa nhận được kết nối CRM. Kiểm tra bước 2, rồi bấm “Dùng kết nối này cho trợ lý” ở bước 3 nếu có.' });
-    expect(linked('restart_pending', quiet)).toEqual({ done: false, waiting: true, note: 'Đang chờ quản trị viên kích hoạt trợ lý.', summary: 'Đang chờ quản trị viên kích hoạt trợ lý.' });
+    expect(linked('restart_pending', quiet)).toEqual({ done: false, waiting: true, note: 'Hệ thống đang kích hoạt trợ lý.', summary: 'Hệ thống đang kích hoạt trợ lý.' });
     expect(linked('unavailable', quiet)).toEqual({ done: false, waiting: true, note: 'Chưa đồng bộ được với trợ lý. Hệ thống sẽ thử lại.',
       summary: 'Chưa đồng bộ được với trợ lý. Hệ thống sẽ tự thử lại.' });
-    // Bộ đồng bộ không tự xoá được restart_pending sau khi quản trị khởi động lại: thấy trợ lý gọi CRM là đủ.
-    expect(linked('restart_pending', status(seen(LINKED, { lastSuccessAt: SUCCESS }))).done).toBe(true);
+    expect(linked('restart_pending', status(seen(LINKED, { lastSuccessAt: SUCCESS }))).done).toBe(false);
+    expect(linked('restart_pending', status(seen(LINKED, { lastSuccessAt: SUCCESS, lastToolCallAt: SUCCESS }))).done).toBe(true);
     // Máy chủ báo đã đồng bộ nhưng dịch vụ kết nối đã từ chối chính kết nối này: không tin "đã đồng bộ".
     const refused = linked('synchronized', status(seen(LINKED, { lastErrorCode: 'unauthorized', lastErrorAt: FAILED }), seen(OTHER)));
     expect(refused.done).toBe(false); expect(refused.summary).toMatch(/^Trợ lý bị từ chối khi dùng kết nối này/);

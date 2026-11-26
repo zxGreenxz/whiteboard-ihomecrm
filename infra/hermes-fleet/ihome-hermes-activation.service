@@ -1,0 +1,11 @@
+[Unit]
+Description=Activate newly paired personal Hermes assistants
+After=docker.service hermes-connector.service network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/ihome-hermes-fleet/activation.env
+ExecStart=/opt/ihome-hermes/node/bin/node /opt/ihome-hermes/current/infra/hermes-fleet/auto-activate.mjs --run /etc/ihome-hermes-fleet/fleet.json prod ${HERMES_ORGANIZATION_ID} ${HERMES_ZALO_ACCOUNT_ID}
+TimeoutStartSec=infinity
+UMask=0077

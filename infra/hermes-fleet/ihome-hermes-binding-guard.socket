@@ -1,0 +1,13 @@
+[Unit]
+Description=CRM binding checks for automatic Hermes channels
+After=local-fs.target
+ConditionPathIsDirectory=/opt/ihome-zalo-worker/native-config
+
+[Socket]
+ListenStream=/opt/ihome-zalo-worker/native-config/activation.sock
+SocketMode=0600
+SocketUser=10002
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target
