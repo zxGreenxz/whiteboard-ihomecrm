@@ -870,7 +870,9 @@ const IncomeExpenseFormInner = ({
         ? "Chưa xác nhận được kết quả tạo phiếu. Giữ nguyên loại phiếu, toà và phòng rồi bấm Lưu lại để gửi lại: hệ thống nhận ra lần gửi trước nên không lập phiếu thứ hai."
         : voucherFailureMessage(error, isEditing ? "lưu thay đổi phiếu" : "tạo phiếu"));
       await applyFeedbackToForm(form,friendlyError(error,"Chưa lưu được phiếu",{operation:"lưu phiếu",financial:true,rules:VOUCHER_ERROR_RULES}),{root:formRef.current});
-      if (isEditing && voucherOutcomeUnknown(error)) setReconcileRequired(true);
+      // Cửa đổi KQKD phiếu bỏ cọc không khoá (đợt 8, cách A): máy chủ khoá phiếu rồi so cờ, đã đúng thì trả «không đổi»,
+      // nên lần bấm sau gửi lại đúng cờ đó an toàn.
+      if (isEditing && !forfeitKqkdMode && voucherOutcomeUnknown(error)) setReconcileRequired(true);
     }
   };
 

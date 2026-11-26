@@ -17,7 +17,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { FinancialAlreadyRecordedError, FinancialWorkflowError } from './financialWorkflowError';
 import { hasUnconfirmedResponse } from './operationOutcome';
 
-export type ClientCreateTable = 'customers' | 'leads';
+// `lead_activities` (đợt 8): thêm hoạt động khách hẹn dùng `insertWithClientId`; bảng nhận `id`, không trigger nào ghi đè,
+// chỉ mục duy nhất duy nhất là khoá chính (production 26/11/2026). Không dùng bộ nhớ chọn mã theo người ở dưới.
+export type ClientCreateTable = 'customers' | 'leads' | 'lead_activities';
 type Row = { id: string };
 
 interface UnconfirmedCreate { id: string; matchKeys: string[]; at: number }

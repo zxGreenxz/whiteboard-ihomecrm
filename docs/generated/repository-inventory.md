@@ -14,7 +14,7 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **2010** file test, **511** file đọc file bằng fs (1404 lời gọi)
+- **2024** file test, **511** file đọc file bằng fs (1405 lời gọi)
 - **615** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
@@ -25,11 +25,11 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 |---|---|---|
 | sql | 222 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
 | manifest | 75 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
-| ma-nguon | 67 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
+| ma-nguon | 68 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
 | tai-lieu | 19 | Đọc tài liệu/asset. |
 | powershell | 3 | Đọc script PowerShell. Hợp lệ vì lý do như SQL. |
 
-## 67 file đọc MÃ NGUỒN
+## 68 file đọc MÃ NGUỒN
 
 Đây là danh sách §0.2/C10 cần: những file nên chuyển sang data-driven.
 
@@ -93,6 +93,7 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 - `src/lib/__tests__/ieGuardHandoverScopeMigration.test.ts`
 - `src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts`
 - `src/lib/__tests__/networkCenterSettingsBoundsMatchDatabase.test.ts`
+- `src/lib/__tests__/pendingStrategies.test.ts`
 - `src/lib/__tests__/permissionPages.test.ts`
 - `src/lib/__tests__/profitClose.test.ts`
 - `src/lib/__tests__/salaryCompletionDate.test.ts`

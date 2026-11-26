@@ -58,6 +58,15 @@ export async function settleLegacyPending<T>(
   return cleared ? { pending, verdict: decided.verdict } : null;
 }
 
+/**
+ * Đợt 8 (luật 5): thao tác ghi lặp lại được không ghi dấu nào nữa. Dấu bản trước của ĐÚNG bản ghi đó (namespace + khoá,
+ * cùng phạm vi công ty như lúc ghi) được đọc một lần rồi gỡ SAU khi lần ghi mới xong: chính lần ghi lại đã đối chiếu nên
+ * không tra gì thêm. Không ném lỗi; dấu chưa «kết thúc» hoặc gỡ hỏng thì để nguyên (nó không chặn gì), lần ghi sau gỡ lại.
+ */
+export async function forgetLegacyPending(site: LegacyPendingSite, options: LegacyPendingOptions = {}): Promise<void> {
+  try { await settleLegacyPending(site, async () => true, options); } catch { /* settleLegacyPending tự nuốt từng bước; đây chỉ là lưới cuối. */ }
+}
+
 /** Cửa sổ thời gian quanh giờ kẹt để tra bản ghi lần kẹt có thể đã tạo (giờ máy và giờ máy chủ có thể lệch). */
 export function legacyWindow(pending: FinancialPendingRecord, marginMs = 60 * 60_000): { from: string; to: string } {
   const started = Date.parse(pending.startedAt);

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {FinancialWorkflowError, RepeatableWriteUnknownError} from '@/lib/financialWorkflow';
 import { cleanup, fireEvent, render, screen,waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 const actions = vi.hoisted(() => ({ mutate: vi.fn(), clear: vi.fn() }));
@@ -16,4 +16,19 @@ it('giữ xác nhận và ID đã chọn khi xóa hàng loạt chưa thành côn
   expect(screen.getByRole('alertdialog')).toBeTruthy();
 });
 
-it('unknown batch deletion displays IDs and blocks a repeated confirmation',async()=>{actions.mutate.mockImplementation((_ids,options)=>{options.onError?.(new FinancialWorkflowError('Chưa xác nhận xoá.','unknown',[{id:'r1',label:'Chỉ số cần đối chiếu'}]));});render(<MeterReadingActions selectedIds={['r1']} onClearSelection={actions.clear}/>);fireEvent.click(screen.getByRole('button',{name:'Xoá hàng loạt'}));fireEvent.click(screen.getByRole('button',{name:'Xoá'}));await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('r1'));fireEvent.click(screen.getByRole('button',{name:'Xoá'}));expect(actions.mutate).toHaveBeenCalledTimes(1);expect(actions.clear).not.toHaveBeenCalled();});
+// Đợt 8: xoá mềm theo mã lặp lại được ⇒ kết quả chưa rõ chỉ báo rõ (kèm mã), nút Xoá không khoá, bấm lại gửi lại.
+it.each([
+  ['lặp lại được', new RepeatableWriteUnknownError('xoá chỉ số hàng loạt', undefined, [{ id: 'r1', label: 'Chỉ số cần đối chiếu' }])],
+  ['chưa rõ kiểu cũ', new FinancialWorkflowError('Chưa xác nhận xoá.', 'unknown', [{ id: 'r1', label: 'Chỉ số cần đối chiếu' }])],
+])('xoá hàng loạt chưa rõ kết quả (%s): báo mã, không khoá nút Xoá, bấm lại gửi lại', async (_label, failure) => {
+  actions.mutate.mockImplementation((_ids, options) => { options.onError?.(failure); });
+  render(<MeterReadingActions selectedIds={['r1']} onClearSelection={actions.clear} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Xoá hàng loạt' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Xoá' }));
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('r1'));
+  const confirm = screen.getByRole('button', { name: 'Xoá' }) as HTMLButtonElement;
+  expect(confirm.disabled).toBe(false);
+  fireEvent.click(confirm);
+  await waitFor(() => expect(actions.mutate).toHaveBeenCalledTimes(2));
+  expect(actions.clear).not.toHaveBeenCalled();
+});

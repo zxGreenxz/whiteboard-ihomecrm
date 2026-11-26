@@ -8,7 +8,7 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{from:io.from}}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor-a'})}));
 vi.mock('sonner',()=>({toast:{error:io.toastError,success:io.toastSuccess}}));
 import {useUpsertBuildingServices,useBuildingServices} from '../useBuildingServices';
-import {FinancialWorkflowError} from '@/lib/financialWorkflowError';
+import {FinancialWorkflowError,RepeatableWriteUnknownError} from '@/lib/financialWorkflowError';
 
 type InsertRow=Pick<TablesInsert<'building_services'>,'building_id'|'service_id'|'is_active'|'unit_price_override'>;
 type ReceiptRow=Pick<Tables<'building_services'>,'id'|'building_id'|'service_id'|'is_active'|'unit_price_override'>;
@@ -31,17 +31,19 @@ const deleted={id:'old',building_id:'b1',service_id:'s0'};
 const inserted:ReceiptRow={id:'new',building_id:'b1',...input.services[0]};
 const useMutationConfig=()=>useUpsertBuildingServices() as unknown as Mutation;
 beforeEach(()=>{vi.clearAllMocks();localStorage.clear();});
-it('missing delete receipt blocks insert and does not claim old links were removed',async()=>{
+// Đợt 8: «xoá rồi chèn lại» dịch vụ mặc định của tòa lặp lại được ⇒ kết quả chưa rõ không giữ dấu, lần lưu sau chạy lại.
+const markerKeys=()=>Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'));
+it('missing delete receipt blocks insert and does not claim old links were removed; a retry runs again',async()=>{
  const del=chain({data:null,error:null});io.from.mockReturnValue(del);const config=useMutationConfig();
  const failure=await config.mutationFn(input).catch(error=>error);
- expect(failure).toBeInstanceOf(FinancialWorkflowError);expect(failure).toMatchObject({outcome:'unknown',completed:[]});
- config.onError(failure,input);expect(del.delete).toHaveBeenCalledOnce();expect(del.insert).not.toHaveBeenCalled();expect(io.toastSuccess).not.toHaveBeenCalled();
- await expect(useMutationConfig().mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});expect(del.delete).toHaveBeenCalledOnce();
+ expect(failure).toBeInstanceOf(RepeatableWriteUnknownError);expect(failure).toMatchObject({outcome:'unknown',completed:[]});
+ config.onError(failure,input);expect(del.delete).toHaveBeenCalledOnce();expect(del.insert).not.toHaveBeenCalled();expect(io.toastSuccess).not.toHaveBeenCalled();expect(markerKeys()).toEqual([]);
+ await expect(useMutationConfig().mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});expect(del.delete).toHaveBeenCalledTimes(2);expect(del.insert).not.toHaveBeenCalled();
 });
-it('confirmed delete followed by missing insert receipt reports partial and keeps removed IDs',async()=>{
+it('confirmed delete followed by missing insert receipt reports unknown and keeps removed IDs',async()=>{
  const del=chain({data:[deleted],error:null}),write=chain({data:null,error:null});io.from.mockReturnValueOnce(del).mockReturnValue(write);
  const config=useMutationConfig();const failure=await config.mutationFn(input).catch(error=>error);
- expect(failure).toMatchObject({outcome:'partial',completed:[{id:'old',label:expect.stringMatching(/đã gỡ/i)}]});
+ expect(failure).toBeInstanceOf(RepeatableWriteUnknownError);expect(failure).toMatchObject({outcome:'unknown',completed:[{id:'old',label:expect.stringMatching(/đã gỡ/i)}]});
  if(!(failure instanceof FinancialWorkflowError))throw new Error('Expected a financial workflow error');
  expect(failure.message).toMatch(/chưa xác nhận.*lưu/i);config.onError(failure,input);expect(io.toastSuccess).not.toHaveBeenCalled();
  expect(io.toastError).toHaveBeenCalledOnce();expect(io.toastError.mock.calls[0][1].description).toContain('old');
@@ -53,14 +55,21 @@ it('a matching old row still follows original delete-all then insert with only o
  expect(write.insert).toHaveBeenCalledWith([{building_id:'b1',service_id:'s1',is_active:true,unit_price_override:12,organization_id:'org-a'}]);
  expect(del.delete.mock.invocationCallOrder[0]).toBeLessThan(write.insert.mock.invocationCallOrder[0]);expect(write.upsert).not.toHaveBeenCalled();
 });
-it('incomplete insert preserves positive new and removed IDs before blocking a remounted retry',async()=>{
- const del=chain({data:[deleted],error:null}),write=chain({data:[inserted],error:null});io.from.mockReturnValueOnce(del).mockReturnValue(write);
+it('incomplete insert is not trusted; reports positive new and removed IDs, keeps no marker, and a retry runs again',async()=>{
+ const del=chain({data:[deleted],error:null}),write=chain({data:[inserted],error:null});io.from.mockReturnValueOnce(del).mockReturnValueOnce(write);
  const two:Input={...input,services:[...input.services,{service_id:'s2',is_active:false,unit_price_override:null}]};
  const failure=await useMutationConfig().mutationFn(two).catch(error=>error);
- expect(failure).toMatchObject({outcome:'partial',completed:expect.arrayContaining([{id:'old',label:expect.any(String)},{id:'new',label:expect.any(String)}])});
- const records=Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:')).map(key=>JSON.parse(localStorage.getItem(key)!));
- expect(records).toHaveLength(1);expect(records[0].completedIds).toEqual(['old','new']);
- await expect(useMutationConfig().mutationFn(two)).rejects.toMatchObject({outcome:'partial'});expect(del.delete).toHaveBeenCalledOnce();expect(write.insert).toHaveBeenCalledOnce();
+ expect(failure).toBeInstanceOf(RepeatableWriteUnknownError);
+ expect(failure).toMatchObject({outcome:'unknown',completed:expect.arrayContaining([{id:'old',label:expect.any(String)},{id:'new',label:expect.any(String)}])});
+ expect(markerKeys()).toEqual([]);
+ const del2=chain({data:[{id:'new',building_id:'b1',service_id:'s1'}],error:null}),write2=chain({data:[inserted,{id:'new-2',building_id:'b1',service_id:'s2',is_active:false,unit_price_override:null}],error:null});io.from.mockReturnValueOnce(del2).mockReturnValueOnce(write2);
+ await expect(useMutationConfig().mutationFn(two)).resolves.toEqual(['new','new-2']);expect(del2.delete).toHaveBeenCalledOnce();expect(write2.insert).toHaveBeenCalledOnce();
+});
+it('insert refused after the old list was removed: says so plainly and keeps the server cause',async()=>{
+ const error={code:'23505',message:'PRIVATE SQL DETAIL'};const del=chain({data:[deleted],error:null}),write=chain({data:null,error});io.from.mockReturnValueOnce(del).mockReturnValue(write);
+ const failure=await useMutationConfig().mutationFn(input).catch(caught=>caught);
+ expect(failure).toBeInstanceOf(FinancialWorkflowError);expect(failure).not.toBeInstanceOf(RepeatableWriteUnknownError);expect(failure).toMatchObject({outcome:'failure',cause:error});
+ expect((failure as Error).message).toMatch(/Đã gỡ danh sách dịch vụ cũ.*chưa lưu được danh sách mới/);expect((failure as Error).message).not.toContain('PRIVATE SQL DETAIL');expect(markerKeys()).toEqual([]);
 });
 it('a genuinely empty delete receipt allows the original empty-set completion without insert',async()=>{
  const del=chain({data:[],error:null});io.from.mockReturnValue(del);

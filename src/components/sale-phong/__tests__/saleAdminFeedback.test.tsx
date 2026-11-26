@@ -19,7 +19,7 @@ vi.mock('@/hooks/useMyAvailableRooms',()=>({useMyAvailableRooms:()=>m.rooms}));
 vi.mock('@/hooks/useSaveRoomListSheet',async original=>({...(await original<typeof import('@/hooks/useSaveRoomListSheet')>()),useSaveRoomListSheet:()=>({mutateAsync:m.sheetSave,isPending:false})}));
 vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
 import {MemoryRouter} from 'react-router-dom';
-import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {FinancialWorkflowError,RepeatableWriteUnknownError} from '@/lib/financialWorkflow';
 import DisplaySettingsTab from '../DisplaySettingsTab';
 import MobileDisplaySettings from '../mobile/MobileDisplaySettings';
 import ShareTokensTab from '../ShareTokensTab';
@@ -39,8 +39,23 @@ const openGear=(mobile:boolean)=>{if(mobile)act(()=>gear?.onClick());};
 const saveButton=(mobile:boolean)=>mobile?within(screen.getByRole('dialog')).getByRole('button',{name:'Lưu cài đặt'}):screen.getByRole('button',{name:'Lưu cài đặt'});
 function links(mobile:boolean){let header:{onClick:()=>void}|null=null;const node=mobile?<MobileShareTokens onHeaderAction={value=>{header=value;}}/>:<ShareTokensTab/>;return {node,create:()=>{if(mobile)header?.onClick();else fireEvent.click(screen.getByRole('button',{name:'Tạo link mới'}));}};}
 it.each([false,true])('token read failure is retryable and not empty mobile=%s',async mobile=>{m.tokens=failure(undefined);render(links(mobile).node);expect(screen.getByText('Chưa tải được link chia sẻ.')).toBeTruthy();expect(screen.queryByText(/Chưa có link chia sẻ nào/)).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Tải lại'}));await waitFor(()=>expect(m.retry).toHaveBeenCalledOnce());expect(document.body.textContent).not.toContain('SQL_PRIVATE');});
-it.each([false,true])('unknown create keeps label/dialog and blocks repeat mobile=%s',async mobile=>{const view=links(mobile);render(view.node);act(()=>view.create());const dialog=await screen.findByRole('dialog');const input=within(dialog).getByRole('textbox');fireEvent.change(input,{target:{value:'Draft Sale'}});fireEvent.click(within(dialog).getByRole('button',{name:'Tạo link'}));await waitFor(()=>expect(m.create).toHaveBeenCalledWith('Draft Sale'));expect(input).toHaveProperty('value','Draft Sale');await waitFor(()=>expect(within(dialog).getByRole('alert').textContent).toContain('room-a'));expect(within(dialog).getByRole('button',{name:'Tạo link'})).toHaveProperty('disabled',true);expect(screen.getByRole('dialog')).toBe(dialog);});
-it.each([false,true])('unknown delete keeps confirmation and token mobile=%s',async mobile=>{render(links(mobile).node);fireEvent.click(screen.getByTitle('Xoá'));const dialog=await screen.findByRole(mobile?'dialog':'alertdialog');fireEvent.click(within(dialog).getByRole('button',{name:'Xoá'}));await waitFor(()=>expect(m.remove).toHaveBeenCalledWith('room-a'));await waitFor(()=>expect(within(dialog).getByRole('alert').textContent).toContain('room-a'));expect(screen.getByRole(mobile?'dialog':'alertdialog')).toBe(dialog);expect(within(dialog).getByRole('button',{name:'Xoá'})).toHaveProperty('disabled',true);});
+// Đợt 8: kết quả chưa rõ không còn khoá màn link — giữ nhãn, giữ hộp, câu báo tại chỗ, bấm lại được (hook tự tìm link vừa tạo).
+it.each([false,true])('unknown create keeps label/dialog and lets the user create again mobile=%s',async mobile=>{const view=links(mobile);render(view.node);act(()=>view.create());const dialog=await screen.findByRole('dialog');const input=within(dialog).getByRole('textbox');fireEvent.change(input,{target:{value:'Draft Sale'}});fireEvent.click(within(dialog).getByRole('button',{name:'Tạo link'}));await waitFor(()=>expect(m.create).toHaveBeenCalledWith('Draft Sale'));expect(input).toHaveProperty('value','Draft Sale');await waitFor(()=>expect(within(dialog).getByRole('alert').textContent).toContain('room-a'));expect(within(dialog).getByRole('button',{name:'Tạo link'})).toHaveProperty('disabled',false);expect(screen.getByRole('dialog')).toBe(dialog);fireEvent.click(within(dialog).getByRole('button',{name:'Tạo link'}));await waitFor(()=>expect(m.create).toHaveBeenCalledTimes(2));});
+it.each([false,true])('unknown delete keeps confirmation and token, and lets the user delete again mobile=%s',async mobile=>{render(links(mobile).node);fireEvent.click(screen.getByTitle('Xoá'));const dialog=await screen.findByRole(mobile?'dialog':'alertdialog');fireEvent.click(within(dialog).getByRole('button',{name:'Xoá'}));await waitFor(()=>expect(m.remove).toHaveBeenCalledWith('room-a'));await waitFor(()=>expect(within(dialog).getByRole('alert').textContent).toContain('room-a'));expect(screen.getByRole(mobile?'dialog':'alertdialog')).toBe(dialog);expect(within(dialog).getByRole('button',{name:'Xoá'})).toHaveProperty('disabled',false);fireEvent.click(within(dialog).getByRole('button',{name:'Xoá'}));await waitFor(()=>expect(m.remove).toHaveBeenCalledTimes(2));});
+// Đợt 8, thu hồi là thao tác bảo mật: chưa rõ kết quả thì KHÔNG hiện như đã thu hồi (dòng vẫn theo danh sách đọc từ máy chủ),
+// câu báo nói link có thể vẫn hoạt động, nút bấm lại được; lần bấm sau xong thì hộp đóng.
+it.each([false,true])('unknown revoke never shows the link as revoked and lets the user revoke again mobile=%s',async mobile=>{
+  let attempt=0;m.revoke.mockImplementation(async()=>{if(++attempt===1)throw new RepeatableWriteUnknownError('thu hồi link room-a',new TypeError('Failed to fetch'),[],'Link có thể vẫn đang hoạt động. Bấm Thu hồi lại.');return {...token,revoked:true};});
+  render(links(mobile).node);fireEvent.click(screen.getByTitle('Thu hồi'));
+  const dialog=await screen.findByRole(mobile?'dialog':'alertdialog');
+  fireEvent.click(within(dialog).getByRole('button',{name:'Thu hồi'}));
+  await waitFor(()=>expect(within(dialog).getByRole('alert').textContent).toContain('có thể vẫn đang hoạt động'));
+  expect(document.body.textContent).toContain('Đang hoạt động');expect(document.body.textContent).not.toContain('Đã thu hồi');
+  expect(within(dialog).getByRole('button',{name:'Thu hồi'})).toHaveProperty('disabled',false);
+  fireEvent.click(within(dialog).getByRole('button',{name:'Thu hồi'}));
+  await waitFor(()=>expect(m.revoke).toHaveBeenCalledTimes(2));
+  await waitFor(()=>expect(screen.queryByRole(mobile?'dialog':'alertdialog')).toBeNull());
+});
 it.each([false,true])('settings source error never offers default save mobile=%s',mobile=>{m.settings=failure(undefined);render(settings(mobile));expect(screen.getByText('Chưa tải được cài đặt hiển thị.')).toBeTruthy();expect(screen.queryByRole('button',{name:'Lưu cài đặt'})).toBeNull();expect(m.save).not.toHaveBeenCalled();});
 // Hotline đi cùng lần đọc cài đặt chung: lỗi đọc đó (ở trên) chặn cả hotline; đọc được thì hiện hotline của người đứng tên chung.
 it.each([false,true])('owner hotlines ride on the company settings and a non-owner save carries the CAS key mobile=%s',async mobile=>{

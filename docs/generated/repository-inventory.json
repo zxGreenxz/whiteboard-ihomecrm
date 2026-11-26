@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 2010,
+  "tongSoFileTest": 2024,
   "soFileDocBangFs": 511,
-  "tongLoiGoi": 1404,
+  "tongLoiGoi": 1405,
   "khongPhanLoaiDuoc": 615,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 67,
+      "soFile": 68,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -88,6 +88,7 @@
     "src/lib/__tests__/ieGuardHandoverScopeMigration.test.ts",
     "src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts",
     "src/lib/__tests__/networkCenterSettingsBoundsMatchDatabase.test.ts",
+    "src/lib/__tests__/pendingStrategies.test.ts",
     "src/lib/__tests__/permissionPages.test.ts",
     "src/lib/__tests__/profitClose.test.ts",
     "src/lib/__tests__/salaryCompletionDate.test.ts",
@@ -2015,6 +2016,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/pendingStrategies.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/planHardeningMigration.test.ts",
       "soGoi": 2,
       "loai": {
@@ -3624,12 +3633,6 @@
     },
     {
       "file": "src/lib/__tests__/paidInvoiceAdjustmentGuard.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/pendingStrategies.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

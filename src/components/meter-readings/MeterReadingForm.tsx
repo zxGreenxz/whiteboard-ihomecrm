@@ -358,7 +358,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     } catch (error) {
       const message=recordWriteMessage(error,'lưu chỉ số');
       setSubmitFailure(message);
-      if(recordWriteBlocked(error))setUnknownBatchOutcome(message);
+      // Đợt 8: sửa một chỉ số là đặt giá trị theo mã, lặp lại được ⇒ báo rõ, giữ bản nháp, không khoá. Chỉ đường TẠO
+      // hàng loạt (đợt 9) còn khoá khi kết quả chưa rõ.
+      if(!isEditing && recordWriteBlocked(error))setUnknownBatchOutcome(message);
       // Từ chối cả lô (vd tháng này đã có chỉ số): đánh dấu đúng dòng, chưa ghi dòng nào.
       if(error instanceof MeterReadingsRejectedError){
         const rowErrors=Object.fromEntries(error.rows.flatMap(row=>row.n && sentIndexes[row.n-1]!==undefined?[[sentIndexes[row.n-1],meterRejectedRowText(row)]]:[]));

@@ -1,5 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
-import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {recordWriteMessage} from '@/lib/recordWriteOutcome';
 import {validateInputDrafts} from '@/lib/inputDraftValidation';
 import { useRef, useState } from "react";
 import { format } from "date-fns";
@@ -71,29 +71,30 @@ export function LeadActivityTimeline({ leadId }: LeadActivityTimelineProps) {
   const activitiesQuery=useLeadActivities(leadId);
   const {data:activities=[]}=activitiesQuery;
   const [failure,setFailure]=useState('');
-  const [blocked,setBlocked]=useState(false);
-  const [deleteFailures,setDeleteFailures]=useState<Record<string,{message:string;blocked:boolean}>>({});
+  // Đợt 8 (luật 5): thêm hoạt động gửi lại đúng mã do trình duyệt sinh, xoá theo mã lặp lại được; kết quả chưa rõ chỉ báo
+  // (giữ bản nháp và mã), không khoá nút.
+  const [deleteFailures,setDeleteFailures]=useState<Record<string,string>>({});
   const busy=useRef(false);
   const root=useRef<HTMLDivElement>(null);
   const createActivity = useCreateLeadActivity();
   const deleteActivity = useDeleteLeadActivity();
 
   const handleAddActivity = async () => {
-    if(busy.current || blocked || createActivity.isPending || activitiesQuery.isError || activitiesQuery.isLoading || !validateInputDrafts(root.current))return;
+    if(busy.current || createActivity.isPending || activitiesQuery.isError || activitiesQuery.isLoading || !validateInputDrafts(root.current))return;
     if(scheduledAt && !Number.isFinite(Date.parse(scheduledAt))){setFailure('Nhập lịch hẹn hợp lệ.');root.current?.querySelector<HTMLInputElement>('input[type="datetime-local"]')?.focus();return;}
     busy.current=true;
     try{
       await createActivity.mutateAsync({lead_id:leadId,activity_type:activityType,description:description || null,notes:notes || null,scheduled_at:scheduledAt || null,completed_at:scheduledAt ? null : new Date().toISOString()});
       setAddDialogOpen(false);setDescription('');setNotes('');setScheduledAt('');setActivityType('NOTE');setFailure('');
-    }catch(error){setFailure(recordWriteMessage(error,'thêm hoạt động khách hẹn'));setBlocked(recordWriteBlocked(error));}
+    }catch(error){setFailure(recordWriteMessage(error,'thêm hoạt động khách hẹn'));}
     finally{busy.current=false;}
   };
   const handleDeleteActivity = async (activity:LeadActivity) => {
-    if(busy.current || deleteActivity.isPending || deleteFailures[activity.id]?.blocked || activitiesQuery.isError)return;
+    if(busy.current || deleteActivity.isPending || activitiesQuery.isError)return;
     if(!confirm('Bạn có chắc muốn xóa hoạt động này?'))return;
     busy.current=true;
     try{await deleteActivity.mutateAsync({activityId:activity.id,leadId});}
-    catch(error){setDeleteFailures(previous=>({...previous,[activity.id]:{message:recordWriteMessage(error,'xoá hoạt động khách hẹn'),blocked:recordWriteBlocked(error)}}));}
+    catch(error){setDeleteFailures(previous=>({...previous,[activity.id]:recordWriteMessage(error,'xoá hoạt động khách hẹn')}));}
     finally{busy.current=false;}
   };
 
@@ -157,7 +158,7 @@ export function LeadActivityTimeline({ leadId }: LeadActivityTimelineProps) {
 
                     {/* Content */}
                     <div className="flex-1 pb-4">
-                      {deleteFailures[activity.id] && <p role="alert" className="text-destructive">{deleteFailures[activity.id].message}</p>}
+                      {deleteFailures[activity.id] && <p role="alert" className="text-destructive">{deleteFailures[activity.id]}</p>}
                       <div className="flex items-start justify-between">
                         <div>
                           <p className="font-medium text-sm">
@@ -183,7 +184,7 @@ export function LeadActivityTimeline({ leadId }: LeadActivityTimelineProps) {
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 text-gray-400 hover:text-red-500"
-                          disabled={deleteActivity.isPending || !!deleteFailures[activity.id]?.blocked}
+                          disabled={deleteActivity.isPending}
                           onClick={() => {void handleDeleteActivity(activity);}}
                         >
                           <Trash2 className="h-3 w-3" />
@@ -208,7 +209,7 @@ export function LeadActivityTimeline({ leadId }: LeadActivityTimelineProps) {
 
           {failure && <p role="alert" className="text-destructive">{failure}</p>}
           <div ref={root}>
-          <fieldset disabled={createActivity.isPending || blocked || activitiesQuery.isError || activitiesQuery.isLoading} className="space-y-4">
+          <fieldset disabled={createActivity.isPending || activitiesQuery.isError || activitiesQuery.isLoading} className="space-y-4">
             <div className="space-y-2">
               <Label>Loại hoạt động</Label>
               <Select
@@ -262,7 +263,7 @@ export function LeadActivityTimeline({ leadId }: LeadActivityTimelineProps) {
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
               Hủy
             </Button>
-            <Button onClick={handleAddActivity} disabled={createActivity.isPending || blocked || activitiesQuery.isError || activitiesQuery.isLoading}>
+            <Button onClick={handleAddActivity} disabled={createActivity.isPending || activitiesQuery.isError || activitiesQuery.isLoading}>
               {createActivity.isPending ? "Đang lưu..." : "Lưu"}
             </Button>
           </DialogFooter>

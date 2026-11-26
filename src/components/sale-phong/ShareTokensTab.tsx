@@ -1,6 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import {LoadingState} from '@/components/loading/LoadingState';
-import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import {createTokenErrorMessage,tokenAdminErrorMessage,tokenRemovalWarnings} from '@/lib/publicRoomFeedback';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import TokenRemovalWarnings from './TokenRemovalWarnings';
@@ -63,12 +62,13 @@ export default function ShareTokensTab() {
   };
 
   const [writeError,setWriteError]=useState('');
-  const [blocked,setBlocked]=useState(false);
-  const canWrite=!blocked&&!tokenQuery.isError&&tokenQuery.data!==undefined;
+  // Đợt 8: thao tác link không còn khoá màn khi kết quả chưa rõ — câu báo hiện tại chỗ, bấm lại được (hook tự đọc lại
+  // trạng thái link / tìm link vừa tạo trước khi gửi lần nữa).
+  const canWrite=!tokenQuery.isError&&tokenQuery.data!==undefined;
   const busy=createMut.isPending||labelMut.isPending||revokeMut.isPending||deleteMut.isPending;
   const perform=async(task:()=>Promise<unknown>,done:()=>void,message:(error:unknown)=>string=error=>tokenAdminErrorMessage(error,'Không thao tác được link'))=>{
     if(!canWrite||busy)return;setWriteError('');
-    try{await task();done();}catch(error){setWriteError(message(error));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
+    try{await task();done();}catch(error){setWriteError(message(error));}
   };
   const doCreate=()=>{if(orgReady)void perform(async()=>{const row=await createMut.mutateAsync(newLabel);await copyLink(row.token);},()=>{setCreateOpen(false);setNewLabel('');},createTokenErrorMessage);};
   const botTokens=useBotShareTokens().data;

@@ -250,7 +250,9 @@ export default function VehicleFormDialog({
     } catch (error) {
       console.error('Failed to save vehicle:', error);
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,isEditMode?'cập nhật phương tiện':'thêm phương tiện') });
-      setBlocked(recordWriteBlocked(error));
+      // Đợt 8 (luật 5): sửa xe đặt giá trị theo mã, lặp lại được — giữ bản nháp và câu báo, không khoá form. Đường THÊM xe
+      // (đợt 9) vẫn khoá khi kết quả chưa rõ.
+      setBlocked(!isEditMode && recordWriteBlocked(error));
     } finally {busy.current=false;}
   };
 

@@ -31,7 +31,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   useUpdateService,
-  ServiceLinksPartialError,
   FEE_TYPE_LABELS,
   PRICING_TYPE_LABELS,
   UNIT_OPTIONS,
@@ -40,7 +39,7 @@ import {
 } from "@/hooks/useServices";
 import { useBuildings } from "@/hooks/useBuildings";
 import { focusFirstError } from "@/lib/formErrors";
-import { recordWriteBlocked, recordWriteMessage } from "@/lib/recordWriteOutcome";
+import { recordWriteMessage } from "@/lib/recordWriteOutcome";
 
 const serviceSchema = z.object({
   name: z.string().min(1, "Tên dịch vụ là bắt buộc"),
@@ -62,11 +61,11 @@ interface EditServiceDialogProps {
 }
 
 export function EditServiceDialog({ open, onOpenChange, service }: EditServiceDialogProps) {
+  // Đợt 8: sửa dịch vụ lặp lại được (đặt giá trị theo mã, tòa áp dụng đồng bộ theo phần chênh) ⇒ lỗi giữ bản nháp và
+  // báo rõ, không khoá nút Cập nhật.
   const [failure,setFailure]=useState<unknown>();
-  const [blocked,setBlocked]=useState(false);
   const draftKey=useRef<string|null>(null);
   const updateService = useUpdateService();
-  const [partialMessage, setPartialMessage] = useState<string | null>(null);
   const buildingsQuery=useBuildings();
   const quotasQuery=useServiceQuotas();
   const {data:buildings}=buildingsQuery;
@@ -91,8 +90,9 @@ export function EditServiceDialog({ open, onOpenChange, service }: EditServiceDi
 
   useEffect(() => {
     if (service) {
-      if(draftKey.current===service.id && (failure || partialMessage || form.formState.isDirty))return;
-      draftKey.current=service.id;setFailure(undefined);setBlocked(false);setPartialMessage(null);
+      const serviceId=service.id;
+      if(serviceId===draftKey.current && (failure || form.formState.isDirty))return;
+      draftKey.current=serviceId;setFailure(undefined);
       form.reset({
         name: service.name,
         fee_type: service.fee_type || "",
@@ -110,7 +110,7 @@ export function EditServiceDialog({ open, onOpenChange, service }: EditServiceDi
   }, [service]);
 
   const onSubmit = async (data: ServiceFormValues) => {
-    if(blocked || sourceBlocked || partialMessage)return;
+    if(sourceBlocked)return;
     form.clearErrors('root.server');
     try {
       await updateService.mutateAsync({
@@ -128,9 +128,8 @@ export function EditServiceDialog({ open, onOpenChange, service }: EditServiceDi
       });
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);setBlocked(recordWriteBlocked(error) || error instanceof ServiceLinksPartialError);
-      if (error instanceof ServiceLinksPartialError) setPartialMessage(error.message);
-      else form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'cập nhật dịch vụ') });
+      setFailure(error);
+      form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'cập nhật dịch vụ') });
     }
   };
 
@@ -146,10 +145,9 @@ export function EditServiceDialog({ open, onOpenChange, service }: EditServiceDi
         <ScrollArea className="max-h-[calc(90vh-100px)] pr-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
-              {partialMessage && <p role="alert" className="rounded-md border border-amber-500 p-3 text-sm">{partialMessage}</p>}
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
               {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ tòa hoặc định mức. Tải lại trước khi lưu dịch vụ.<Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void quotasQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
-              <fieldset disabled={blocked || sourceBlocked || form.formState.isSubmitting} className="space-y-4">
+              <fieldset disabled={sourceBlocked || form.formState.isSubmitting} className="space-y-4">
               <FormField
                 control={form.control}
                 name="name"
@@ -328,7 +326,7 @@ export function EditServiceDialog({ open, onOpenChange, service }: EditServiceDi
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   Hủy
                 </Button>
-                <Button type="submit" disabled={blocked || sourceBlocked || !!partialMessage || form.formState.isSubmitting || updateService.isPending}>
+                <Button type="submit" disabled={sourceBlocked || form.formState.isSubmitting || updateService.isPending}>
                   {updateService.isPending ? "Đang cập nhật..." : "Cập nhật"}
                 </Button>
               </div>

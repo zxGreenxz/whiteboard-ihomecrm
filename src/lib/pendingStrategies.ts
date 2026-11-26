@@ -96,7 +96,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'closing-confirm': tien('C', 'xác nhận chốt sổ'), // còn chờ ⇒ gửi lại; đã có biên bản đúng ngày ⇒ báo
   'closing-cancel': tien('A', 'huỷ đề nghị chốt sổ'), // cancel_cashbook_closing_v1 khoá rồi trả {changed:false}
   'voucher-batch-cancel': tien('A', 'huỷ đợt phiếu'), // đọc lại phiếu còn hiệu lực, huỷ phần còn (sau 2 phút: đường phiếu chi không xét đã huỷ)
-  'cashbook-lifecycle': tien('van', 'sửa hoặc lưu trữ sổ quỹ'), // sửa sổ ở đợt 8; lưu trữ đã tách sang `cashbook-archive`, dấu ở đây vẫn chặn lưu trữ
+  'cashbook-lifecycle': tien('van', 'sửa hoặc lưu trữ sổ quỹ'), // dấu chung bản trước; đợt 8: sửa sổ không ghi dấu mới (A, update_cashbook_metadata_v1 đặt giá trị, từ chối sổ đã lưu trữ), sửa thành công gỡ dấu của đúng sổ; lưu trữ (`cashbook-archive`) vẫn đọc dấu này qua `legacy`
   'cashbook-archive': tien('C', 'lưu trữ sổ quỹ'), // archive_cashbook_v1 khoá sổ chưa lưu trữ rồi mới xét
 
   // Đợt 6: lương, tạo và gia hạn hợp đồng, lợi nhuận, sổ quỹ. Các hàm máy chủ đều khoá (công ty / dòng / khoá tư vấn theo
@@ -127,39 +127,41 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'residence-registration-save': khac('A', 'lưu mã hồ sơ tạm trú'), // upsert theo (công ty, mã hồ sơ), không ghi dấu mới; dấu bản trước gỡ sau lần lưu kế tiếp
   'ct01-declaration-create': khac('D', 'tạo tờ khai CT01'), // mã tờ khai do trình duyệt sinh, gửi lại cùng mã; không ghi dấu mới; dấu bản trước tra gần đúng một lần
 
-  // Đợt 8: dữ liệu ghi lặp lại được
-  'public-room-admin': khac('van', 'lưu link và cài đặt phòng công khai'), // link công khai ở đợt 8; cài đặt phòng công khai (usePublicRoomSettings) đã đúng
-  'customer-update': khac('van', 'cập nhật khách hàng'),
-  'customer-delete': khac('van', 'xoá khách hàng'),
-  'useUpdateLead': khac('van', 'cập nhật khách hẹn'),
-  'useDeleteLead': khac('van', 'xoá khách hẹn'),
-  'lead-activity-create': khac('van', 'thêm hoạt động khách hẹn'),
-  'lead-activity-delete': khac('van', 'xoá hoạt động khách hẹn'),
-  'useUpdateMeterReading': khac('van', 'cập nhật chỉ số'),
-  'useDeleteMeterReading': khac('van', 'xoá chỉ số'),
-  'useBulkDeleteMeterReadings': khac('van', 'xoá chỉ số hàng loạt'),
-  'service-update': khac('van', 'cập nhật dịch vụ'),
-  'quota-update': khac('van', 'cập nhật định mức'),
-  'building-services-replace': khac('van', 'lưu dịch vụ mặc định của toà'),
-  'area-write': khac('van', 'lưu khu vực'), // sửa, gán toà, xoá ở đợt 8; tạo khu vực ở đợt 9
-  'vehicle-update': khac('van', 'cập nhật xe'),
-  'vehicle-delete': khac('van', 'xoá xe'),
-  'material-purchase': khac('van', 'lưu phiếu nhập vật tư'), // sửa phiếu nhập ở đợt 8; tạo phiếu nhập ở đợt 9
-  'material-job-usage': khac('van', 'lưu vật tư của công việc'),
-  'income-expense-type-update': khac('van', 'cập nhật loại thu chi'),
-  'income-expense-type-delete': khac('van', 'xoá loại thu chi'),
-  'income-expense-template-update': khac('van', 'cập nhật mẫu in thu chi'),
-  'income-expense-template-delete': khac('van', 'xoá mẫu in thu chi'),
-  'income-expense-template-default': khac('van', 'đặt mẫu in thu chi mặc định'),
-  'voucher-recurring-stop': khac('van', 'ngừng lặp phiếu'),
-  'voucher-recurring-generate': tien('van', 'sinh phiếu định kỳ'),
-  'voucher-kqkd': tien('van', 'đổi cờ KQKD của phiếu bỏ cọc'),
-  'auto-approve-threshold': khac('van', 'lưu ngưỡng tự duyệt phiếu'),
-  'receiving-personal': khac('van', 'lưu sổ tiền mặt riêng'),
-  'receiving-building': khac('van', 'lưu sổ nhận tiền của toà'),
-  'shareholder-sync': khac('van', 'lưu tỷ lệ cổ đông'),
-  'profit-manager-save': khac('van', 'lưu quản lý và lương điều hành'),
-  'shareholder-save': khac('van', 'lưu cổ đông'),
+  // Đợt 8: dữ liệu ghi lặp lại được. Dòng `khac` ở khối này không ghi dấu mới (luật 5): kết quả chưa rõ thì báo rõ và cho
+  // bấm lại (`repeatableWrite`); dấu bản trước của đúng bản ghi gỡ sau lần ghi xong (`forgetLegacyPending`). Hai dòng `tien`
+  // (sinh phiếu định kỳ, cờ KQKD) vẫn giữ dấu nhưng hàm đối chiếu luôn cho gửi lại ngay (máy chủ khoá rồi mới xét).
+  'public-room-admin': khac('A', 'lưu link và cài đặt phòng công khai'), // link: không dấu; tạo chưa rõ ⇒ lần sau tìm link vừa tạo (báo mã), thu hồi chưa rõ ⇒ đọc lại trạng thái rồi gửi; nhãn gửi đã cắt (btrim chỉ cắt dấu cách). Cài đặt (usePublicRoomSettings) giữ dấu, chạy lại theo CAS
+  'customer-update': khac('A', 'cập nhật khách hàng'), // sửa theo mã; xe chưa có mã khớp xe hiện có theo biển số chuẩn hoá khi lưu lại; xe dở = khách đã cập nhật, lưu lại
+  'customer-delete': khac('C', 'xoá khách hàng'), // đọc deleted_at trước; soft_delete_customer khoá khách còn sống, 42501 + đã xoá = thành công
+  'useUpdateLead': khac('A', 'cập nhật khách hẹn'), // sửa theo mã; khớp 0 dòng = PGRST116, từ chối rõ
+  'useDeleteLead': khac('A', 'xoá khách hẹn'), // xoá mềm dòng còn sống; khớp 0 dòng ⇒ settleZeroRowDelete
+  'lead-activity-create': khac('D', 'thêm hoạt động khách hẹn'), // mã do trình duyệt sinh (insertWithClientId), bấm lại cùng nội dung gửi đúng mã cũ (nhớ theo tab)
+  'lead-activity-delete': khac('A', 'xoá hoạt động khách hẹn'), // xoá theo mã; khớp 0 dòng ⇒ settleZeroRowDelete
+  'useUpdateMeterReading': khac('A', 'cập nhật chỉ số'), // UPDATE thẳng bảng, đặt giá trị tuyệt đối, chỉ trigger BEFORE; hoá đơn chỉ đọc chỉ số lúc lập
+  'useDeleteMeterReading': khac('A', 'xoá chỉ số'), // xoá mềm dòng còn sống; khớp 0 dòng ⇒ settleZeroRowDelete
+  'useBulkDeleteMeterReadings': khac('A', 'xoá chỉ số hàng loạt'), // mã thiếu trong biên nhận được đọc lại; mã lạ = chưa rõ
+  'service-update': khac('A', 'cập nhật dịch vụ'), // đặt giá trị + đồng bộ toà áp dụng theo phần chênh, đọc lại mỗi lần
+  'quota-update': khac('A', 'cập nhật định mức'), // xoá rồi chèn lại bậc (duy nhất quota_id+tier_number); khoảng thiếu bậc chờ hàm nguyên tử đợt 10
+  'building-services-replace': khac('A', 'lưu dịch vụ mặc định của toà'), // xoá rồi chèn lại (duy nhất building_id+service_id); nguyên tử ở đợt 10
+  'area-write': khac('van', 'lưu khu vực'), // sửa, gán toà, xoá: đợt 8 không ghi dấu (A; xoá mềm khu còn sống, gỡ toà khớp thiếu cặp ⇒ đọc lại); TẠO khu vực (khoá new) còn dấu tới đợt 9
+  'vehicle-update': khac('A', 'cập nhật xe'), // sửa theo mã; khớp 0 dòng = PGRST116, từ chối rõ
+  'vehicle-delete': khac('A', 'xoá xe'), // xoá mềm xe còn sống; khớp 0 dòng ⇒ đọc lại (đã xoá = xong, còn nguyên = không có quyền)
+  'material-purchase': khac('van', 'lưu phiếu nhập vật tư'), // sửa phiếu nhập (khoá update:<id>): đợt 8 không ghi dấu (A; tổng, tồn, giá vốn do trigger tính lại từ mọi dòng; dấu bản trước gỡ sau lần sửa xong); TẠO phiếu nhập (khoá create) còn dấu tới đợt 9
+  'material-job-usage': khac('A', 'lưu vật tư của công việc'), // không ghi dấu; xoá rồi chèn lại toàn bộ dòng, tồn do trigger tính lại; một phiếu mỗi công việc (uq_material_usages_job); nguyên tử ở đợt 10
+  'income-expense-type-update': khac('A', 'cập nhật loại thu chi'), // sửa theo mã, đặt giá trị; khớp 0 dòng = từ chối rõ
+  'income-expense-type-delete': khac('A', 'xoá loại thu chi'), // khớp 0 dòng ⇒ đọc lại: không còn = đã xoá, còn = không có quyền
+  'income-expense-template-update': khac('A', 'cập nhật mẫu in thu chi'), // như sửa loại
+  'income-expense-template-delete': khac('A', 'xoá mẫu in thu chi'), // xoá mềm mẫu còn sống; khớp 0 dòng ⇒ đọc lại
+  'income-expense-template-default': khac('C', 'đặt mẫu in thu chi mặc định'), // mỗi lần đọc nhóm mẫu, chỉ làm phần còn thiếu; không ghi dấu
+  'voucher-recurring-stop': khac('A', 'ngừng lặp phiếu'), // ie_stop_recurring_v1 khoá phiếu FOR UPDATE, đã dừng ⇒ changed:false; không ghi dấu
+  'voucher-recurring-generate': tien('A', 'sinh phiếu định kỳ'), // generate_recurring_vouchers chỉ sinh kỳ chưa có phiếu con (uniq_ie_repeat_child_date); giữ dấu, gửi lại ngay
+  'voucher-kqkd': tien('A', 'đổi cờ KQKD của phiếu bỏ cọc'), // set_forfeit_voucher_kqkd_v1 khoá phiếu rồi so cờ, đã đúng ⇒ changed:false; giữ dấu, gửi lại ngay
+  'auto-approve-threshold': khac('A', 'lưu ngưỡng tự duyệt phiếu'), // set_ie_auto_approve_threshold_v1 upsert tuyệt đối theo công ty; không ghi dấu
+  'receiving-personal': khac('A', 'lưu sổ tiền mặt riêng'), // set_personal_cash_book_v1 khoá công ty + dòng hiệu lực, chỉ đổi khi khác; không ghi dấu
+  'receiving-building': khac('A', 'lưu sổ nhận tiền của toà'), // set_building_receiving_cashbooks_v1 khoá công ty, đặt cả bộ trong một giao dịch; không ghi dấu
+  'shareholder-sync': khac('A', 'lưu tỷ lệ cổ đông'), // xoá toà bỏ đi + upsert theo (toà, cổ đông), tỷ lệ tuyệt đối; không ghi dấu; chưa nguyên tử (đợt 10)
+  'profit-manager-save': khac('D', 'lưu quản lý và lương điều hành'), // sửa: A (hồ sơ theo mã, xoá rồi tạo lại cả bộ quy tắc); thêm: tra theo tài khoản (profit_managers.auth_user_id duy nhất); không ghi dấu
+  'shareholder-save': khac('D', 'lưu cổ đông'), // bỏ dấu lồng; sửa theo mã (A), thêm tra theo tài khoản (shareholders.auth_user_id duy nhất)
 
   // Đợt 9: tạo mới ở màn thiết lập, nhập Excel, Quay số
   'room-create': khac('van', 'tạo phòng'),
@@ -181,7 +183,9 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'voucher-excel-import': tien('van', 'nhập thu chi từ Excel'),
   'useImportMeterReadings': khac('van', 'nhập chỉ số từ Excel'),
   'useBulkCreateMeterReadings': khac('van', 'tạo chỉ số hàng loạt'),
-  'lucky-public-draw': { ...khac('van', 'quay số'), silent: true }, // trang công khai tự gọi khi mở; người xem ẩn danh không được thấy hộp gỡ khoá
+  // Viết thẳng, KHÔNG trải (`...khac(...)`): phép trải ở cấp tệp làm Rollup coi cả sổ là có tác dụng phụ, nên mọi chunk dính tới
+  // bộ chống ghi trùng phải nạp riêng sổ này (đợt 8 đo: chunk sổ tách riêng, bảng nạp trước của chunk entry vượt ngưỡng).
+  'lucky-public-draw': { money: false, reconcile: 'van', label: 'quay số', silent: true }, // trang công khai tự gọi khi mở; người xem ẩn danh không được thấy hộp gỡ khoá
   'lucky-admin': khac('van', 'thao tác quản trị Quay số'), // 9 thao tác quản trị Quay số chung một dấu
 
   // Đợt 11: mã chết, xoá cùng nơi gọi
