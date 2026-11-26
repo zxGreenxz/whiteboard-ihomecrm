@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -24,15 +24,15 @@ const MeterReadingActions = ({
 }: MeterReadingActionsProps) => {
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [failure, setFailure] = useState('');
-  const [blocked, setBlocked] = useState(false);
   const busy = useRef(false);
 
   const bulkDeleteMutation = useBulkDeleteMeterReadings();
 
   if (selectedIds.length === 0) return null;
 
+  // Đợt 8: xoá mềm theo mã lặp lại được (dòng đã xoá không tính là lệch) ⇒ lỗi chỉ báo rõ, hộp không khoá nút Xoá.
   const handleBulkDeleteConfirm = () => {
-    if (busy.current || blocked || bulkDeleteMutation.isPending) return;
+    if (busy.current || bulkDeleteMutation.isPending) return;
     busy.current = true;
     setFailure('');
     bulkDeleteMutation.mutate(selectedIds, {
@@ -43,7 +43,6 @@ const MeterReadingActions = ({
       },
       onError: (error) => {
         setFailure(recordWriteMessage(error, 'xoá chỉ số hàng loạt'));
-        setBlocked(recordWriteBlocked(error));
         busy.current = false;
       },
       onSettled: () => { busy.current = false; },
@@ -90,7 +89,7 @@ const MeterReadingActions = ({
             <Button
               type="button"
               onClick={handleBulkDeleteConfirm}
-              disabled={bulkDeleteMutation.isPending || blocked}
+              disabled={bulkDeleteMutation.isPending}
               className="bg-red-600 hover:bg-red-700"
             >
               Xoá

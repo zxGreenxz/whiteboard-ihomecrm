@@ -5,29 +5,34 @@ vi.mock('@tanstack/react-query',()=>({useMutation:(config:unknown)=>config,useQu
 vi.mock('@/integrations/supabase/client',()=>({supabase:{from:io.from}}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor'})}));vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
 import {useCreateService,useUpdateService,useCreateServiceQuota,useUpdateServiceQuota} from '../useServices';
+import {RepeatableWriteUnknownError} from '@/lib/financialWorkflowError';
+import {recordWriteMessage} from '@/lib/recordWriteOutcome';
 type Mutation={mutationFn:(input:unknown)=>Promise<unknown>};
+// Đợt 8: sửa dịch vụ / định mức lặp lại được, không còn giữ dấu «chờ đối chiếu» nào.
+const markerKeys=()=>Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'));
 function chain(result:{data:unknown;error:unknown}){const b={insert:vi.fn(),update:vi.fn(),upsert:vi.fn(),delete:vi.fn(),select:vi.fn(),eq:vi.fn(),in:vi.fn(),single:vi.fn().mockResolvedValue(result),then:(resolve:(value:unknown)=>void)=>resolve(result)};for(const method of ['insert','update','upsert','delete','select','eq','in'] as const)b[method].mockReturnValue(b);return b;}
 beforeEach(()=>{vi.clearAllMocks();io.from.mockReset();localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org-a');});
 it.each([['service',useCreateService,{name:'Điện',unit_price:100}],['quota',useCreateServiceQuota,{name:'Điện',tiers:[]}]])('%s core null blocks a repeat after remount',async(_name,hook,input)=>{const b=chain({data:null,error:null});io.from.mockReturnValue(b);await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});expect(b.insert).toHaveBeenCalledTimes(1);});
 it.each([['service',useUpdateService,{id:'s1',updates:{name:'Điện'},building_ids:[]}],['quota',useUpdateServiceQuota,{id:'q1',name:'Điện',tiers:[]}]])('%s update needs a core receipt before syncing children',async(_name,hook,input)=>{const core=chain({data:null,error:null});io.from.mockReturnValue(core);await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});expect(core.delete).not.toHaveBeenCalled();expect(core.upsert).not.toHaveBeenCalled();});
 it('service links null after confirmed core is partial, persists ID and never creates core twice',async()=>{const core=chain({data:{id:'s1'},error:null});const links=chain({data:null,error:null});io.from.mockImplementation(table=>table==='services'?core:links);const input={name:'Điện',unit_price:100,building_ids:['b1']};await expect((useCreateService() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({serviceId:'s1'});await expect((useCreateService() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial',completed:[{id:'s1'}]});expect(core.insert).toHaveBeenCalledTimes(1);});
-it('service read null cannot remove or insert links',async()=>{const core=chain({data:{id:'s1'},error:null});const links=chain({data:null,error:null});io.from.mockImplementation(table=>table==='services'?core:links);await expect((useUpdateService() as unknown as Mutation).mutationFn({id:'s1',updates:{name:'Điện'},building_ids:['b1']})).rejects.toMatchObject({serviceId:'s1'});expect(links.delete).not.toHaveBeenCalled();expect(links.insert).not.toHaveBeenCalled();});
-it('service follows main removal before insertion; failure preserves removed IDs and blocks replay',async()=>{
+it('service read null cannot remove or insert links; reports unknown without a marker',async()=>{const core=chain({data:{id:'s1'},error:null});const links=chain({data:null,error:null});io.from.mockImplementation(table=>table==='services'?core:links);await expect((useUpdateService() as unknown as Mutation).mutationFn({id:'s1',updates:{name:'Điện'},building_ids:['b1']})).rejects.toBeInstanceOf(RepeatableWriteUnknownError);expect(links.delete).not.toHaveBeenCalled();expect(links.insert).not.toHaveBeenCalled();expect(markerKeys()).toEqual([]);});
+it('service follows main removal before insertion; refusal after removal is reported clearly, no marker, retry re-syncs',async()=>{
  const core=chain({data:{id:'s1'},error:null}),links=chain({data:[{id:'old',building_id:'old-building',is_active:true}],error:null});
  links.insert.mockReturnValue({select:()=>Promise.resolve({data:null,error:{code:'42501',message:'raw SQL'}})});io.from.mockImplementation(table=>table==='services'?core:links);
  const input={id:'s1',updates:{name:'Điện'},building_ids:['new-building']};
- await expect((useUpdateService() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({serviceId:'s1'});
+ const failure:unknown=await (useUpdateService() as unknown as Mutation).mutationFn(input).catch(error=>error);
+ expect(failure).toMatchObject({outcome:'failure'});expect((failure as Error).message).toMatch(/Dịch vụ đã lưu nhưng chưa lưu xong tòa áp dụng/);expect((failure as Error).message).not.toContain('raw SQL');
  expect(links.delete).toHaveBeenCalledOnce();expect(links.delete.mock.invocationCallOrder[0]).toBeLessThan(links.insert.mock.invocationCallOrder[0]);
- const markers=Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:')).map(key=>JSON.parse(localStorage.getItem(key)!));expect(markers[0].completedIds).toEqual(['s1','old']);
- await expect((useUpdateService() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial'});expect(core.update).toHaveBeenCalledOnce();expect(links.delete).toHaveBeenCalledOnce();
+ expect(markerKeys()).toEqual([]);
+ await expect((useUpdateService() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'failure'});expect(core.update).toHaveBeenCalledTimes(2);expect(links.insert).toHaveBeenCalledTimes(2);
 });
 it('quota tiers null retains core ID and blocks remount retry',async()=>{const core=chain({data:{id:'q1',name:'Điện',description:null,user_id:'actor',organization_id:'org-a'},error:null});const tiers=chain({data:null,error:null});io.from.mockImplementation(table=>table==='service_quotas'?core:tiers);const input={name:'Điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:100}]};await expect((useCreateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({quotaId:'q1'});await expect((useCreateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial',completed:[{id:'q1'}]});expect(core.insert).toHaveBeenCalledTimes(1);});
-it('quota missing delete receipt keeps core ID, blocks insert and never replays after remount',async()=>{
+it('quota missing delete receipt blocks insert; reports unknown without a marker and a retry runs again',async()=>{
  const core=chain({data:{id:'q1',name:'Điện',description:null},error:null}),tiers=chain({data:null,error:null});io.from.mockImplementation(table=>table==='service_quotas'?core:tiers);
  const input={id:'q1',name:'Điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:100}]};
- await expect((useUpdateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({quotaId:'q1'});
- expect(tiers.delete).toHaveBeenCalledOnce();expect(tiers.insert).not.toHaveBeenCalled();expect(tiers.upsert).not.toHaveBeenCalled();
- await expect((useUpdateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial'});expect(core.update).toHaveBeenCalledOnce();expect(tiers.delete).toHaveBeenCalledOnce();
+ await expect((useUpdateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toBeInstanceOf(RepeatableWriteUnknownError);
+ expect(tiers.delete).toHaveBeenCalledOnce();expect(tiers.insert).not.toHaveBeenCalled();expect(tiers.upsert).not.toHaveBeenCalled();expect(markerKeys()).toEqual([]);
+ await expect((useUpdateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toBeInstanceOf(RepeatableWriteUnknownError);expect(core.update).toHaveBeenCalledTimes(2);expect(tiers.delete).toHaveBeenCalledTimes(2);expect(tiers.insert).not.toHaveBeenCalled();
 });
 
 it('quota create keeps the main header three fields and tier five fields; selected org remains marker-only',async()=>{
@@ -52,22 +57,24 @@ it('quota update follows main UPDATE then DELETE-all then INSERT with only origi
  expect(core.update.mock.invocationCallOrder[0]).toBeLessThan(del.delete.mock.invocationCallOrder[0]);expect(del.delete.mock.invocationCallOrder[0]).toBeLessThan(insert.insert.mock.invocationCallOrder[0]);
  expect(del.delete.mock.invocationCallOrder[0]).toBeLessThan(del.select.mock.invocationCallOrder[0]);
 });
-it('quota deleted tiers remain known when insert receipt is missing, and retry cannot repeat primary/delete',async()=>{
- const core=chain({data:header,error:null}),del=chain({data:[oldTier],error:null}),insert=chain({data:null,error:null});io.from.mockReturnValueOnce(core).mockReturnValueOnce(del).mockReturnValue(insert);
+it('quota deleted tiers stay known when insert receipt is missing; no marker, a retry writes the whole set again',async()=>{
+ const core=chain({data:header,error:null}),del=chain({data:[oldTier],error:null}),insert=chain({data:null,error:null});io.from.mockReturnValueOnce(core).mockReturnValueOnce(del).mockReturnValueOnce(insert);
  const failure:unknown=await useUpdateConfig().mutationFn(updateInput).catch(error=>error);
- expect(failure).toMatchObject({quotaId:'q1'});if(!(failure instanceof Error))throw new Error('Expected partial error');
- expect(failure.message).toMatch(/đã gỡ.*bậc/i);expect(failure.message).toContain('old-tier');expect(failure.message).toMatch(/chưa xác nhận/i);
- await expect(useUpdateConfig().mutationFn(updateInput)).rejects.toMatchObject({outcome:'partial'});expect(core.update).toHaveBeenCalledOnce();expect(del.delete).toHaveBeenCalledOnce();expect(insert.insert).toHaveBeenCalledOnce();
+ expect(failure).toBeInstanceOf(RepeatableWriteUnknownError);if(!(failure instanceof RepeatableWriteUnknownError))throw new Error('Expected repeatable error');
+ expect(failure.message).toMatch(/chưa xác nhận.*đã gỡ bậc giá cũ/i);expect(failure.completed).toEqual([{id:'old-tier',label:'Đã gỡ bậc giá cũ'}]);expect(recordWriteMessage(failure,'cập nhật định mức')).toContain('old-tier');
+ expect(markerKeys()).toEqual([]);
+ const core2=chain({data:header,error:null}),del2=chain({data:[],error:null}),insert2=chain({data:[newTier],error:null});io.from.mockReturnValueOnce(core2).mockReturnValueOnce(del2).mockReturnValueOnce(insert2);
+ await expect(useUpdateConfig().mutationFn(updateInput)).resolves.toEqual(header);expect(core2.update).toHaveBeenCalledOnce();expect(del2.delete).toHaveBeenCalledOnce();expect(insert2.insert).toHaveBeenCalledOnce();
 });
-it('quota incomplete inserted values keep every positive ID before validating the whole batch',async()=>{
+it('quota incomplete inserted values are not trusted; every positive ID is reported, no marker',async()=>{
  const core=chain({data:header,error:null}),del=chain({data:[oldTier],error:null}),insert=chain({data:[{...newTier,unit_price:999}],error:null});io.from.mockReturnValueOnce(core).mockReturnValueOnce(del).mockReturnValue(insert);
- const failure:unknown=await useUpdateConfig().mutationFn(updateInput).catch(error=>error);expect(failure).toMatchObject({quotaId:'q1'});
- const markers=Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:')).map(key=>JSON.parse(localStorage.getItem(key)!));expect(markers).toHaveLength(1);expect(markers[0].completedIds).toEqual(['q1','old-tier','new-tier']);
+ const failure:unknown=await useUpdateConfig().mutationFn(updateInput).catch(error=>error);expect(failure).toBeInstanceOf(RepeatableWriteUnknownError);
+ expect((failure as RepeatableWriteUnknownError).completed.map(step=>step.id)).toEqual(['old-tier','new-tier']);expect(markerKeys()).toEqual([]);
 });
-it('quota header values must match before deleting tiers; positive ID remains for reconciliation',async()=>{
+it('quota header values must match before deleting tiers; positive ID is reported, no marker',async()=>{
  const core=chain({data:{...header,name:'Old name'},error:null});io.from.mockReturnValue(core);
- await expect(useUpdateConfig().mutationFn(updateInput)).rejects.toBeTruthy();expect(core.delete).not.toHaveBeenCalled();
- const markers=Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:')).map(key=>JSON.parse(localStorage.getItem(key)!));expect(markers).toHaveLength(1);expect(markers[0].completedIds).toContain('q1');
+ const failure:unknown=await useUpdateConfig().mutationFn(updateInput).catch(error=>error);expect(failure).toBeInstanceOf(RepeatableWriteUnknownError);expect(core.delete).not.toHaveBeenCalled();
+ expect((failure as RepeatableWriteUnknownError).completed.map(step=>step.id)).toContain('q1');expect(markerKeys()).toEqual([]);
 });
 it.each([{...updateInput,name:''},{...updateInput,tiers:[{...updateInput.tiers[0],unit_price:-1.5}]},{...updateInput,tiers:[...updateInput.tiers,...updateInput.tiers]}])('quota hook does not add main-absent sign/empty/uniqueness limits before the server: %j',async input=>{
  const error={code:'42501',message:'SQL refusal'};const core=chain({data:null,error});io.from.mockReturnValue(core);
@@ -104,6 +111,7 @@ it.each([useCreateService,useUpdateService])('service does not silently deduplic
  const core=chain({data:{id:'s1'},error:null}),read=chain({data:[],error:null}),insert=chain({data:null,error:{code:'23505',message:'SQL refusal'}});
  io.from.mockImplementation(table=>table==='services'?core:hook===useCreateService?insert:io.from.mock.calls.filter(([table])=>table==='building_services').length===1?read:insert);
  const input=hook===useCreateService?{name:'Điện',building_ids:['b1','b1']}:{id:'s1',updates:{name:'Điện'},building_ids:['b1','b1']};
- await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({serviceId:'s1'});
+ // Tạo (đợt 9) còn báo ghi dở theo mã dịch vụ; sửa (đợt 8) báo từ chối rõ, lưu lại được.
+ await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject(hook===useCreateService?{serviceId:'s1'}:{outcome:'failure'});
  expect(insert.insert).toHaveBeenCalledWith([{service_id:'s1',building_id:'b1',is_active:true,organization_id:'org-a'},{service_id:'s1',building_id:'b1',is_active:true,organization_id:'org-a'}]);
 });

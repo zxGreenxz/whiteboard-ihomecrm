@@ -69,15 +69,19 @@ it.each([
   await expect((hook() as unknown as { mutationFn: (x: typeof input) => Promise<unknown> }).mutationFn(input)).rejects.toThrow('Chưa xác nhận');
 });
 
-it('xóa chỉ số không success nếu update không ảnh hưởng hàng nào', async () => {
-  const chain = { update: vi.fn(), eq: vi.fn(), select: vi.fn(), single: vi.fn().mockResolvedValue({ data: null, error: null }) };
-  chain.update.mockReturnValue(chain); chain.eq.mockReturnValue(chain); chain.select.mockReturnValue(chain); io.from.mockReturnValue(chain);
-  await expect((useDeleteMeterReading() as unknown as { mutationFn: (id: string) => Promise<unknown> }).mutationFn('reading-1')).rejects.toThrow('Chưa xác nhận');
+// Đợt 8: xoá mềm chỉ đóng dấu dòng còn sống; khớp 0 dòng thì đọc lại đúng chỉ số đó trước khi kết luận.
+it.each([
+  ['biên nhận rỗng (null)', null, 'Chưa xác nhận'],
+  ['khớp 0 dòng mà chỉ số vẫn còn', [], 'chưa có quyền xoá'],
+])('xóa chỉ số không success nếu update không ảnh hưởng hàng nào: %s', async (_label, receipt, message) => {
+  const chain = { update: vi.fn(), eq: vi.fn(), is: vi.fn(), select: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'reading-1', deleted_at: null }, error: null }), then: (resolve: (value: unknown) => void) => resolve({ data: receipt, error: null }) };
+  chain.update.mockReturnValue(chain); chain.eq.mockReturnValue(chain); chain.is.mockReturnValue(chain); chain.select.mockReturnValue(chain); io.from.mockReturnValue(chain);
+  await expect((useDeleteMeterReading() as unknown as { mutationFn: (id: string) => Promise<unknown> }).mutationFn('reading-1')).rejects.toThrow(message);
 });
 
 it('bulk create/delete không nhận kết quả null như 0 hàng thành công', async () => {
-  const chain = { insert: vi.fn(), update: vi.fn(), in: vi.fn(), select: vi.fn(), then: (resolve: (value: unknown) => void) => resolve({ data: null, error: null }) };
-  chain.insert.mockReturnValue(chain); chain.update.mockReturnValue(chain); chain.in.mockReturnValue(chain); chain.select.mockReturnValue(chain); io.from.mockReturnValue(chain);
+  const chain = { insert: vi.fn(), update: vi.fn(), in: vi.fn(), is: vi.fn(), select: vi.fn(), then: (resolve: (value: unknown) => void) => resolve({ data: null, error: null }) };
+  chain.insert.mockReturnValue(chain); chain.update.mockReturnValue(chain); chain.in.mockReturnValue(chain); chain.is.mockReturnValue(chain); chain.select.mockReturnValue(chain); io.from.mockReturnValue(chain);
   io.rpc.mockResolvedValueOnce({ data: null, error: null });
   await expect((useBulkCreateMeterReadings() as unknown as { mutationFn: (x: unknown[]) => Promise<unknown> }).mutationFn([{ building_id: B1, meter_id: M1, reading_date: '2026-09-30', current_reading: 1 }])).rejects.toThrow('Chưa xác nhận');
   await expect((useBulkDeleteMeterReadings() as unknown as { mutationFn: (x: string[]) => Promise<unknown> }).mutationFn(['reading-1'])).rejects.toThrow('Chưa xác nhận');

@@ -1,6 +1,6 @@
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {confirmedRecordId,recordWriteMessage,repeatableWrite,settleZeroRowDelete} from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -463,6 +463,11 @@ export const useImportMeterReadings = () => {
  * Mutation UPDATE meter_readings (chỉ UNAPPROVED).
  * Invalidate queries, toast thành công.
  * Requirements: 5.1, 5.2
+ *
+ * Đợt 8 (luật 5, cách A): sửa theo mã và ĐẶT giá trị tuyệt đối (chỉ số, ngày chốt, ghi chú, ảnh). Trên meter_readings chỉ
+ * có trigger BEFORE (giờ sửa, khoá công ty, chặn chỉ số có bằng chứng QR bằng 55000); không trigger nào cộng dồn hay đẩy
+ * số sang hoá đơn, hoá đơn chỉ đọc chỉ số lúc lập. Ghi lại bao nhiêu lần cũng cùng kết quả nên không giữ dấu «chờ đối
+ * chiếu»: rớt mạng thì báo rõ và cho bấm lại. Dấu bản trước của đúng chỉ số này được gỡ sau lần sửa thành công.
  */
 export const useUpdateMeterReading = () => {
   const queryClient = useQueryClient();
@@ -470,20 +475,23 @@ export const useUpdateMeterReading = () => {
   return useMutation({
     mutationFn: async (input: UpdateMeterReadingInput) => {
       const {id,...updates}=input;validateReadingWrite(input.current_reading,input.reading_date);
-      return persistentFinancialWorkflow('useUpdateMeterReading',{scope:'actor'}).run(id,'cập nhật chỉ số',async()=>{
+      const data = await repeatableWrite('cập nhật chỉ số', async () => {
+        const { data, error } = await (supabase
+          .from("meter_readings")
+          .update(updates as any)
+          .eq("id", id)
+          .select()
+          .single() as any);
 
-
-      const { data, error } = await (supabase
-        .from("meter_readings")
-        .update(updates as any)
-        .eq("id", id)
-        .select()
-        .single() as any);
-
-      if (error) throw error;
-      confirmedRecordId(data,'cập nhật chỉ số',id);
-      return data;
+        // Khớp 0 dòng (chỉ số không còn, hoặc tài khoản không được sửa): PostgREST lùi giao dịch, chưa ghi gì.
+        if (error?.code === 'PGRST116') throw new FinancialWorkflowError('Không tìm thấy chỉ số này hoặc tài khoản chưa có quyền sửa. Tải lại danh sách để kiểm tra.', 'failure', [], error);
+        if (error) throw error;
+        confirmedRecordId(data,'cập nhật chỉ số',id);
+        return data;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'useUpdateMeterReading', businessKey: id }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần sửa sau gỡ lại. */ }
+      return data;
     },
     onSuccess: () => {
       invalidateMeterReadingQueries(queryClient);
@@ -501,27 +509,36 @@ export const useUpdateMeterReading = () => {
  * Mutation soft-delete (UPDATE deleted_at).
  * Invalidate queries, toast thành công.
  * Requirements: 4.2
+ *
+ * Đợt 8 (luật 5): xoá mềm theo mã, lặp lại được, không giữ dấu. Chỉ đóng dấu dòng CÒN SỐNG nên gửi lại sau một lần đã xoá
+ * không đè giờ xoá cũ; khớp 0 dòng thì đọc lại đúng chỉ số đó (đã xoá ⇒ thành công, còn nguyên ⇒ không có quyền xoá).
  */
 export const useDeleteMeterReading = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      return persistentFinancialWorkflow('useDeleteMeterReading',{scope:'actor'}).run(id,'xoá chỉ số',async()=>{
-      const { data, error } = await supabase
-        .from("meter_readings")
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .eq("id", id)
-        .select('id')
-        .single();
+      const result = await repeatableWrite('xoá chỉ số', async () => {
+        const { data, error } = await supabase
+          .from("meter_readings")
+          .update({ deleted_at: new Date().toISOString() } as any)
+          .eq("id", id)
+          .is("deleted_at", null)
+          .select('id');
 
-      if (error) throw error;
-      confirmedRecordId(data,'xoá chỉ số',id);return data;
+        if (error) throw error;
+        if (!Array.isArray(data) || data.length > 1) throw new FinancialWorkflowError('Chưa xác nhận được kết quả xoá chỉ số.', 'unknown', [{ id, label: 'Chỉ số cần đối chiếu' }]);
+        if (data.length === 1) { confirmedRecordId(data[0], 'xoá chỉ số', id); return { id, alreadyDeleted: false }; }
+        await settleZeroRowDelete('xoá chỉ số', () => supabase.from('meter_readings').select('id,deleted_at').eq('id', id).maybeSingle());
+        return { id, alreadyDeleted: true };
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'useDeleteMeterReading', businessKey: id }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
+      return result;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidateMeterReadingQueries(queryClient);
-      toast.success("Đã xóa chỉ số công tơ");
+      toast.success(result.alreadyDeleted ? "Chỉ số công tơ này đã được xoá trước đó" : "Đã xóa chỉ số công tơ");
     },
     onError: (error) => {
       console.error("Error deleting meter reading:", error);
@@ -535,6 +552,10 @@ export const useDeleteMeterReading = () => {
  * Mutation soft-delete nhiều rows (chỉ UNAPPROVED).
  * Invalidate queries, toast kết quả.
  * Requirements: 5.5
+ *
+ * Đợt 8 (luật 5): như xoá một chỉ số, cho cả lựa chọn. Dòng đã xoá từ trước (lần gửi trước, người khác) không còn khớp và
+ * không tính là lệch: các mã không trả về được đọc lại, đã xoá ⇒ đủ, còn nguyên ⇒ không có quyền xoá. Biên nhận mang mã
+ * lạ hoặc trùng thì vẫn không tin (chưa rõ, bấm lại được).
  */
 export const useBulkDeleteMeterReadings = () => {
   const queryClient = useQueryClient();
@@ -542,19 +563,33 @@ export const useBulkDeleteMeterReadings = () => {
   return useMutation({
     mutationFn: async (ids: string[]) => {
       if(!ids.length || new Set(ids).size!==ids.length)throw new FinancialWorkflowError('Chọn các chỉ số có mã khác nhau trước khi tiếp tục.','failure',[]);
-      return persistentFinancialWorkflow('useBulkDeleteMeterReadings',{scope:'actor'}).run([...ids].sort().join(','),'xoá chỉ số hàng loạt',async()=>{
-      const { data, error } = await (supabase
-        .from("meter_readings")
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .in("id", ids)
-        .select("id") as any);
+      const operation = 'xoá chỉ số hàng loạt';
+      const result = await repeatableWrite(operation, async () => {
+        const { data, error } = await (supabase
+          .from("meter_readings")
+          .update({ deleted_at: new Date().toISOString() } as any)
+          .in("id", ids)
+          .is("deleted_at", null)
+          .select("id") as any);
 
-      if (error) throw error;
-      if (!Array.isArray(data)) throw new MeterReadingBatchPartialError([], ids.length, 'xóa');
-      const confirmedIds = data.map(row => row?.id).filter((id): id is string => typeof id === 'string' && !!id);
-      if (confirmedIds.length !== ids.length || new Set(confirmedIds).size !== ids.length || confirmedIds.some(id => !ids.includes(id))) throw new MeterReadingBatchPartialError(confirmedIds, ids.length, 'xóa');
-      return data as { id: string }[];
+        if (error) throw error;
+        if (!Array.isArray(data)) throw new MeterReadingBatchPartialError([], ids.length, 'xóa');
+        const rows: unknown[] = data;
+        const confirmedIds = rows.map(row => row && typeof row === 'object' ? (row as { id?: unknown }).id : undefined).filter((id): id is string => typeof id === 'string' && !!id);
+        if (confirmedIds.length !== rows.length || new Set(confirmedIds).size !== confirmedIds.length || confirmedIds.some(id => !ids.includes(id))) throw new MeterReadingBatchPartialError(confirmedIds.filter(id => ids.includes(id)), ids.length, 'xóa');
+        const missing = ids.filter(id => !confirmedIds.includes(id));
+        if (missing.length) {
+          try { await settleZeroRowDelete(operation, () => supabase.from('meter_readings').select('id,deleted_at').in('id', missing)); }
+          catch (failure) {
+            if (confirmedIds.length && failure instanceof FinancialWorkflowError && failure.outcome === 'failure') throw new FinancialWorkflowError(`Đã xoá ${confirmedIds.length}/${ids.length} chỉ số; các chỉ số còn lại vẫn còn nhưng máy chủ không xoá. Tài khoản có thể chưa có quyền xoá các chỉ số đó.`, 'failure', [], failure);
+            throw failure;
+          }
+        }
+        return ids.map(id => ({ id }));
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'useBulkDeleteMeterReadings', businessKey: [...ids].sort().join(',') }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
+      return result;
     },
     onSuccess: (data) => {
       invalidateMeterReadingQueries(queryClient);
