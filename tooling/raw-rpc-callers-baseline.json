@@ -26,7 +26,6 @@
     "src/hooks/income-expenses/statusMutations.ts::restore_income_expense",
     "src/hooks/income-expenses/statusMutations.ts::reverse_posted_income_expense_v2",
     "src/hooks/income-expenses/statusMutations.ts::unapprove_voucher",
-    "src/hooks/income-expenses/statusMutations.ts::verify_income_expense",
     "src/hooks/income-expenses/statusMutations.ts::verify_income_expense_v1",
     "src/hooks/income-expenses/supplements.ts::append_income_expense_supplement_v1",
     "src/hooks/profit-ledger/useProfitLedgerMutations.ts::profit_ledger_payout_cancel_v1",

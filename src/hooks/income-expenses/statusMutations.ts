@@ -680,9 +680,11 @@ export const useVerifyIncomeExpense = () => {
       const verifySignature=(row:VoucherState)=>row.verified_at??'chua-kiem';
       let resent=false;
       const result=await runVoucherLifecycle(workflow,input.id,'cập nhật trạng thái đã kiểm',async progress=>{
-        // Tham số dựng trong biến: kiểu sinh tự động chưa có p_verified cho tới khi sinh lại sau khi áp migration.
-        const args={p_id:input.id,p_note:input.note??undefined,p_verified:input.verified};
-        const {data,error}=await supabase.rpc("verify_income_expense_v1",args);
+        const {data,error}=await supabase.rpc("verify_income_expense_v1",{
+          p_id: input.id,
+          p_note: input.note ?? undefined,
+          p_verified: input.verified,
+        });
         if(error){
           // Web lên trước migration: máy chủ chưa nhận p_verified. Từ chối rõ (chưa ghi gì, gỡ dấu); không rơi về
           // verify_income_expense bật/tắt như bản trước.

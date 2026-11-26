@@ -16,10 +16,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 454 |
+| RPC được gọi từ mã nguồn | 453 |
 | Hàm trong catalog (public + api) | 1712 |
-| File mã nguồn đã quét | 3323 |
-| SECURITY DEFINER | 423 |
+| File mã nguồn đã quét | 3325 |
+| SECURITY DEFINER | 422 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
@@ -27,10 +27,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 344 | còn lại |
-| tiền | 109 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 108 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | hạ tầng | 1 | nơi gọi thuộc Network Center |
 
-## 109 RPC chạm TIỀN
+## 108 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -144,7 +144,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `v5_run_job` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `v5_shadow_report` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |
 | `v5_verdict` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |
-| `verify_income_expense` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `verify_income_expense_v1` | ✔ | hooks/income-expenses/statusMutations.ts |
 
 ## 0 RPC mức an ninh

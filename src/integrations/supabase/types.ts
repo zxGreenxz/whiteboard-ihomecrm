@@ -31787,8 +31787,8 @@ export type Database = {
         Returns: undefined
       }
       verify_income_expense_v1: {
-        Args: { p_id: string; p_note?: string }
-        Returns: undefined
+        Args: { p_id: string; p_note?: string; p_verified?: boolean }
+        Returns: Json
       }
       verify_rent_support_deposit_payee_v1: {
         Args: {
