@@ -1,4 +1,5 @@
 import { useState } from "react";
+import HousePoolExpenseLink from "./HousePoolExpenseLink";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -157,6 +158,35 @@ export default function HousePoolPanel({
               </div>
             ))}
           </div>
+          {enabled && !review && (
+            <HousePoolExpenseLink
+              key={org}
+              org={org}
+              available={data.quote.lines.reduce(
+                (sum, l) => sum + l.available,
+                0,
+              )}
+            />
+          )}
+          {!!data.expenses?.length && (
+            <details>
+              <summary>
+                Phiếu chi gốc đã liên kết ({data.expenses.length})
+              </summary>
+              {data.expenses.map((e) => (
+                <p key={e.id}>
+                  <a
+                    className="underline"
+                    href={"/income-expense/voucher/" + e.id}
+                  >
+                    {e.code ?? "Mở phiếu"}
+                  </a>{" "}
+                  · {e.date} · {formatVND(e.amount)} ·{" "}
+                  {e.live ? "Đang ghi giảm" : "Đã ngừng trừ quỹ"}
+                </p>
+              ))}
+            </details>
+          )}
           {enabled && !review && (
             <>
               <label>

@@ -60,6 +60,17 @@ const state = z.object({
       retained: z.number(),
     }),
   ),
+  expenses: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        code: z.string().nullable(),
+        date: z.string(),
+        amount: money,
+        live: z.boolean(),
+      }),
+    )
+    .optional(),
   batches: z.array(
     z.object({
       id: z.string().uuid(),
@@ -104,7 +115,8 @@ type HousePoolRpc = (
     | "house_pool_state_v1"
     | "house_pool_activate_v1"
     | "house_pool_return_v1"
-    | "house_pool_receipt_v1",
+    | "house_pool_receipt_v1"
+    | "house_pool_link_expenses_v1",
   args: Record<string, unknown>,
 ) => PromiseLike<{
   data: unknown;
@@ -129,6 +141,75 @@ async function readReceipt(
   });
   if (error) throw error;
   return storedReceipt.nullable().parse(data);
+}
+
+const expenseItem = z.object({
+  id: z.string().uuid(),
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  code: z.string().min(1),
+  amount: money.positive(),
+});
+export type PoolExpenseItem = z.infer<typeof expenseItem>;
+
+export async function readPoolExpenseCsv(
+  file: File,
+): Promise<PoolExpenseItem[]> {
+  if (file.size > 2_000_000) throw new Error("Tệp vượt quá 2 MB.");
+  const { read, utils } = await import("xlsx");
+  const workbook = read((await file.text()).replace(/^\uFEFF/, ""), {
+    type: "string",
+    raw: true,
+  });
+  const rows = utils.sheet_to_json<Record<string, string>>(
+    workbook.Sheets[workbook.SheetNames[0]],
+  );
+  const items = rows.map((row) =>
+    expenseItem.parse({
+      id: row["ID phiếu"],
+      day: row["Ngày"],
+      code: row["Mã phiếu"],
+      amount: Number(row["Số tiền (đ)"]),
+    }),
+  );
+  if (
+    !items.length ||
+    items.length > 500 ||
+    new Set(items.map((x) => x.id)).size !== items.length
+  )
+    throw new Error("Tệp phải có từ 1 đến 500 ID phiếu khác nhau.");
+  return items;
+}
+export function usePoolExpenseLink(org: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (op: {
+      items: PoolExpenseItem[];
+      before: number;
+      apply: boolean;
+    }) => {
+      const { data, error } = await rpc("house_pool_link_expenses_v1", {
+        p_org: org,
+        p_items: op.items,
+        p_expected_before: op.before,
+        p_apply: op.apply,
+      });
+      if (error) throw error;
+      return z
+        .object({
+          linked: z.boolean(),
+          count: money,
+          amount: money,
+          after: money,
+        })
+        .parse(data);
+    },
+    onSuccess: (result) => {
+      if (result.linked) {
+        void client.invalidateQueries({ queryKey: ["house-pool", org] });
+        invalidateProfitLedgerQueries(client);
+      }
+    },
+  });
 }
 
 export function useHousePoolRecovery(org: string) {

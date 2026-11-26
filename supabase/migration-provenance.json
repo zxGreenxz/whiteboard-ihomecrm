@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-26T03:30:32.393Z",
+  "generatedAt": "2026-11-26T04:20:36.264Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 994,
+    "ledger-applied": 995,
     "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
@@ -14824,6 +14824,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-26T03:29:47.063Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126035812_quy_gop_gan_phieu_chi_goc.sql",
+      "version": "20261126035812",
+      "name": "quy_gop_gan_phieu_chi_goc",
+      "scheme": "timestamp14",
+      "sha256": "03f0fdd3f3747078f32f83496e34dfd7221df4677867e08f1076bd18293be504",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T04:20:21.228Z|bien-nhan-backup"
       ]
     },
     {
