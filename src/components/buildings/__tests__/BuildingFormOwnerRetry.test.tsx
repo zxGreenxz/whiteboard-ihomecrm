@@ -19,6 +19,8 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{from:()=>{
 }}}));
 vi.mock('@/lib/buildingLegalOwner',async importOriginal=>({...await importOriginal<typeof import('@/lib/buildingLegalOwner')>(),loadBuildingLegalOwner:io.load,saveBuildingLegalOwner:io.save}));
 import BuildingFormDialog from '../BuildingFormDialog';
+import { EditBuildingDialog } from '../EditBuildingDialog';
+import { seedLegacyPending, pendingKeys } from '@/hooks/__tests__/fakeRecordServer';
 vi.stubGlobal('ResizeObserver',class { observe() {} unobserve() {} disconnect() {} });
 beforeEach(()=>{localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org-a');});
 afterEach(()=>{cleanup();vi.resetAllMocks();});
@@ -86,18 +88,49 @@ it('sửa toà không gửi sổ nhận chuyển khoản / thanh toán (không g
  for(const cot of COT_SO_NHAN)expect(Object.keys(updates)).not.toContain(cot);
 });
 
-it('core unknown keeps entered draft through close/reopen and never retries core in the same form',async()=>{
- const {FinancialWorkflowError}=await import('@/lib/financialWorkflow');
- io.create.mockRejectedValue(new FinancialWorkflowError('Chưa xác nhận kết quả tạo tòa.','unknown',[]));io.load.mockResolvedValue(null);
+// Đợt 9 (luật 5): lõi tòa chưa rõ không còn khoá form. Hook tạo tòa gửi lại đúng mã cũ (createRecordOnce) nên form chỉ việc gửi
+// lại rồi làm tiếp chủ sở hữu, dịch vụ. Trước đợt 9: «core unknown keeps entered draft … and never retries core in the same form».
+it('core unknown keeps the draft through close/reopen; the next Lưu re-sends the core and finishes owner and services',async()=>{
+ const {RepeatableWriteUnknownError}=await import('@/lib/financialWorkflow');
+ io.create.mockRejectedValueOnce(new RepeatableWriteUnknownError('tạo tòa nhà',new TypeError('Failed to fetch'))).mockResolvedValueOnce({id:'created-once'});
+ io.load.mockResolvedValue(null);io.save.mockResolvedValue(undefined);io.services.mockResolvedValue(undefined);
  const close=vi.fn();const view=render(<BuildingFormDialog open onOpenChange={close}/>);
  fireEvent.change(screen.getByPlaceholderText('Nhập tên toà nhà'),{target:{value:'Tòa draft'}});fireEvent.click(screen.getByText('Địa chỉ thử'));
  fireEvent.change(screen.getByLabelText('Họ tên chủ sở hữu'),{target:{value:'Chủ đúng'}});fireEvent.click(screen.getByRole('button',{name:'Lưu'}));
- await screen.findByRole('alert');expect(close).not.toHaveBeenCalled();
+ await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('Chưa xác nhận được kết quả tạo tòa nhà'));expect(close).not.toHaveBeenCalled();
  view.rerender(<BuildingFormDialog open={false} onOpenChange={close}/>);view.rerender(<BuildingFormDialog open onOpenChange={close}/>);
  expect((screen.getByPlaceholderText('Nhập tên toà nhà') as HTMLInputElement).value).toBe('Tòa draft');
- fireEvent.click(screen.getByRole('button',{name:'Lưu'}));expect(io.create).toHaveBeenCalledTimes(1);expect(io.services).not.toHaveBeenCalled();
+ expect((screen.getByRole('button',{name:'Lưu'}) as HTMLButtonElement).disabled).toBe(false);
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(close).toHaveBeenCalledWith(false));
+ expect(io.create).toHaveBeenCalledTimes(2);expect(io.create.mock.calls[1][0]).toEqual(io.create.mock.calls[0][0]);
+ expect(io.save).toHaveBeenCalledWith('created-once',expect.objectContaining({full_name:'Chủ đúng'}));expect(io.services).toHaveBeenCalledTimes(1);
 });
-it('closing partial for reconciliation preserves the saved core ID and draft on reopening',async()=>{
+// Đợt 9: dấu «lưu tòa» bản trước (khoá create) không còn chặn gì; form chỉ nhắc kiểm tra tòa có thể đã tạo, lưu xong thì gỡ dấu.
+it('legacy building-form-save marker is only a notice: saving is not blocked and the marker is removed afterwards',async()=>{
+ const marker=seedLegacyPending({namespace:'building-form-save',userId:'actor',organizationId:'org-a',businessKey:'create'},new Date(Date.now()-10*60_000));
+ io.create.mockResolvedValue({id:'created-once'});io.services.mockResolvedValue(undefined);io.load.mockResolvedValue(null);io.save.mockResolvedValue(undefined);
+ const close=vi.fn();render(<BuildingFormDialog open onOpenChange={close}/>);
+ await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('không bị chặn'));
+ fireEvent.change(screen.getByPlaceholderText('Nhập tên toà nhà'),{target:{value:'Tòa dấu cũ'}});fireEvent.click(screen.getByText('Địa chỉ thử'));
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(close).toHaveBeenCalledWith(false));
+ expect(io.create).toHaveBeenCalledTimes(1);expect(pendingKeys()).not.toContain(marker);
+});
+const toaSua={id:'toa-sua',name:'Toà sửa',code:'TS',type:'APARTMENT',status:'ACTIVE',province:'Tỉnh',district:'Quận',ward:'Phường',street_address:'1 Đường',total_floors:null,description:null,commission_tiers:[{min_months:5,max_months:6,rate_percent:50}]} as never;
+// Đợt 9: hộp «Chỉnh sửa tòa» (EditBuildingDialog) không còn dấu lồng: sửa tòa đặt giá trị theo mã (cách A), kết quả chưa rõ không
+// khoá, bấm Cập nhật lại gửi lại đúng thông tin; dấu bản trước của đúng tòa được gỡ sau khi lưu xong.
+it('EditBuildingDialog: unknown update does not lock; the next Cập nhật re-sends and the legacy marker of that building is removed',async()=>{
+ const {FinancialWorkflowError}=await import('@/lib/financialWorkflow');
+ const marker=seedLegacyPending({namespace:'building-owner-form-save',userId:'actor',organizationId:'org-a',businessKey:'edit:toa-sua'},new Date(Date.now()-10*60_000));
+ io.load.mockResolvedValue(null);io.update.mockRejectedValueOnce(new FinancialWorkflowError('Chưa xác nhận cập nhật tòa.','unknown',[{id:'toa-sua',label:'Tòa cần đối chiếu'}])).mockResolvedValueOnce({id:'toa-sua'});
+ const close=vi.fn();render(<EditBuildingDialog open onOpenChange={close} building={toaSua}/>);
+ const submit=()=>screen.getByRole('button',{name:'Cập nhật'}) as HTMLButtonElement;
+ await waitFor(()=>expect(submit().disabled).toBe(false));
+ fireEvent.click(submit());await waitFor(()=>expect(screen.getAllByRole('alert').map(node=>node.textContent).join(' ')).toContain('Chưa xác nhận'));
+ expect(close).not.toHaveBeenCalled();expect(submit().disabled).toBe(false);
+ fireEvent.click(submit());await waitFor(()=>expect(close).toHaveBeenCalledWith(false));
+ expect(io.update).toHaveBeenCalledTimes(2);expect(io.update.mock.calls[1][0]).toEqual(io.update.mock.calls[0][0]);
+ expect(pendingKeys()).not.toContain(marker);
+});it('closing partial for reconciliation preserves the saved core ID and draft on reopening',async()=>{
  io.create.mockResolvedValue({id:'created-once'});io.services.mockResolvedValue(undefined);io.load.mockResolvedValue(null);io.save.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
  const close=vi.fn();const view=render(<BuildingFormDialog open onOpenChange={close}/>);
  fireEvent.change(screen.getByPlaceholderText('Nhập tên toà nhà'),{target:{value:'Tòa partial'}});fireEvent.click(screen.getByText('Địa chỉ thử'));fireEvent.change(screen.getByLabelText('Họ tên chủ sở hữu'),{target:{value:'Chủ đúng'}});
