@@ -6,7 +6,8 @@ import type { Customer, CustomerFilters, CustomerStats } from '@/types/customer'
  * Màn Khách hàng đọc qua MỘT hàm database dùng chung: `public.customer_list_v1`
  * (migration 20261017115708). Web, Hermes và báo cáo gọi cùng công thức: RLS của người
  * gọi, lọc trạng thái/thẻ loại, tìm không dấu (customer_search_patterns_v1 = bản SQL của
- * customerSearchFilter), lọc toà/phòng theo lưu trú, sắp created_at desc, phân trang, tổng
+ * customerSearchFilter), lọc toà/phòng theo lưu trú, ưu tiên đúng tên khi tìm rồi sắp
+ * theo ngày tạo mới nhất, phân trang, tổng
  * và khối thống kê.
  *
  * File này chỉ dựng tham số và kiểm hình dạng câu trả lời — không chứa công thức nào.

@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 2024,
   "soFileDocBangFs": 511,
-  "tongLoiGoi": 1405,
-  "khongPhanLoaiDuoc": 615,
+  "tongLoiGoi": 1406,
+  "khongPhanLoaiDuoc": 616,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 68,
@@ -621,6 +621,14 @@
       "khongPhanLoaiDuoc": 5
     },
     {
+      "file": "src/lib/__tests__/customerListMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "src/lib/__tests__/customerResidenceMigration.test.ts",
       "soGoi": 5,
       "loai": {
@@ -903,14 +911,6 @@
     },
     {
       "file": "src/lib/__tests__/contractLifecyclePermissionGuardMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 3
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/customerListMigration.test.ts",
       "soGoi": 4,
       "loai": {
         "sql": 3
