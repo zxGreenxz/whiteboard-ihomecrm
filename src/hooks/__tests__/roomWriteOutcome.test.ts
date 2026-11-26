@@ -15,13 +15,17 @@ function writer(result:{data:unknown;error:unknown}){
  io.from.mockReturnValue(chain);return chain;
 }
 beforeEach(()=>{vi.clearAllMocks();localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org-a');});
-it('create missing receipt blocks retry after remount and keeps safe feedback',async()=>{
+// Đợt 9 (luật 5): tạo căn hộ không giữ dấu nữa. Thiếu biên nhận vẫn là chưa rõ (không báo thành công); lần sau gửi lại ĐÚNG mã
+// căn hộ cũ. Trước đợt 9: «create missing receipt blocks retry after remount and keeps safe feedback».
+it('create missing receipt stays unknown, keeps safe feedback and the retry after remount re-sends the same client ID',async()=>{
  const chain=writer({data:null,error:null});const input={building_id:'b1',name:'P101'};
  const mutation=useCreateRoom() as unknown as Mutation;
  const error=await mutation.mutationFn(input).catch(e=>e);
  expect(error).toMatchObject({outcome:'unknown'});mutation.onError(error);
  await expect((useCreateRoom() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
- expect(chain.insert).toHaveBeenCalledTimes(1);expect(toast.success).not.toHaveBeenCalled();expect(io.invalidate).toHaveBeenCalled();
+ expect(chain.insert).toHaveBeenCalledTimes(2);expect(chain.insert.mock.calls[1][0].id).toBe(chain.insert.mock.calls[0][0].id);
+ expect(toast.success).not.toHaveBeenCalled();expect(io.invalidate).toHaveBeenCalled();
+ expect(Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'))).toEqual([]);
 });
 it.each([
  ['update',useUpdateRoom,{id:'r1',updates:{name:'P101'}}],

@@ -203,9 +203,15 @@ export default function RoomFormDialog({
       draftKey.current = null;
       onOpenChange(false);
     } catch (error: unknown) {
-      const feedback = friendlyError(error, 'Chưa lưu được căn hộ', { operation: 'lưu căn hộ', rules: [{ code: '23505', message: /idx_rooms_unique_name_per_building/, description: 'Tên căn hộ đã có trong tòa nhà này.', fieldErrors: { name: 'Tên căn hộ đã có trong tòa nhà này.' } }] });
-      setFailure(error); setBlocked(recordWriteBlocked(error));
-      if (error instanceof FinancialWorkflowError) form.setError('root.server', {type:'server',message:recordWriteMessage(error,'lưu căn hộ')});
+      // Đợt 9: lời từ chối gốc có thể nằm trong `cause` (tên trùng căn hộ khác: câu báo nêu mã căn hộ đó) — vẫn đánh dấu ô tên.
+      const source = error instanceof FinancialWorkflowError && error.cause ? error.cause : error;
+      const feedback = friendlyError(source, 'Chưa lưu được căn hộ', { operation: 'lưu căn hộ', rules: [{ code: '23505', message: /idx_rooms_unique_name_per_building/, description: 'Tên căn hộ đã có trong tòa nhà này.', fieldErrors: { name: 'Tên căn hộ đã có trong tòa nhà này.' } }] });
+      // Đợt 9 (luật 5): đường TẠO không bao giờ khoá form (hook gửi lại đúng mã căn hộ cũ). Đường sửa giữ như trước.
+      setFailure(error); setBlocked(isEditMode && recordWriteBlocked(error));
+      if (error instanceof FinancialWorkflowError) {
+        form.setError('root.server', {type:'server',message:recordWriteMessage(error,'lưu căn hộ')});
+        if (feedback.fieldErrors?.name) form.setError('name', {type:'server',message:feedback.fieldErrors.name});
+      }
       else await applyFeedbackToForm(form, feedback);
     } finally {
       submitting.current = false; setSaving(false);

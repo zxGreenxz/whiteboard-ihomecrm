@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { useEffect, useState, useRef } from 'react';
+import { confirmedRecordId, recordWriteMessage, repeatableWrite } from '@/lib/recordWriteOutcome';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -46,12 +46,9 @@ import { CommissionTiersField } from './CommissionTiersField';
 import { BuildingLegalOwnerFields } from './BuildingLegalOwnerFields';
 import BuildingOwnershipDocs from '@/components/residence/BuildingOwnershipDocs';
 import { useBuildingLegalOwnerForm } from '@/hooks/useBuildingLegalOwnerForm';
-import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
+import { FinancialAlreadyRecordedError } from '@/lib/financialWorkflowError';
 import { focusFirstError } from '@/lib/formErrors';
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { runBuildingSaveWorkflow } from '@/lib/buildingSaveWorkflow';
 import { useBuildingSavePending } from '@/hooks/useBuildingSavePending';
-import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import type { BuildingLegalOwner } from '@/lib/buildingLegalOwner';
 import { hasCommissionTierChange, isCommissionReasonValid } from '@/lib/commissionAudit';
@@ -63,6 +60,13 @@ interface BuildingFormDialogProps {
   building?: BuildingWithRelations;
 }
 
+/**
+ * Đợt 9 (luật 5): tòa vừa TẠO trong tab này mà chủ sở hữu / dịch vụ chưa lưu xong, theo (công ty, tên). Hộp dựng lại (rời
+ * trang rồi quay lại) với cùng thông tin thì lần Lưu sau làm tiếp phần còn thiếu trên đúng tòa đó, không tạo tòa thứ hai; khác
+ * thông tin thì báo mã tòa đã tạo. Sống theo tab, không ghi vào trình duyệt: tải lại trang là quên (tòa vẫn thấy trong danh sách).
+ */
+const createdAwaitingChildren = new Map<string, { id: string; core: string }>();
+
 export default function BuildingFormDialog({
   open,
   onOpenChange,
@@ -73,11 +77,10 @@ export default function BuildingFormDialog({
   const [commissionReasonError, setCommissionReasonError] = useState(false);
   useEffect(() => { setCommissionChangeReason(''); setCommissionReasonError(false); }, [open, building?.id]);
   const {selectedOrganizationId}=useOrganization();
+  // Dấu «lưu tòa» bản trước (nếu còn) chỉ còn là lời nhắc chỉ đọc: không chặn gì, gỡ sau lần lưu xong.
   const priorSave=useBuildingSavePending(building?`edit:${building.id}`:'create',selectedOrganizationId,open);
-  const saveGuard=useMemo(()=>persistentFinancialWorkflow('building-form-save'),[]);
   const savedOwner=useRef<BuildingLegalOwner|null>(null);
   const [coreFailure, setCoreFailure] = useState<unknown>();
-  const [coreBlocked, setCoreBlocked] = useState(false);
   const draftKey = useRef<string | null>(null);
   const owner = useBuildingLegalOwnerForm(building?.id, open);
   const [createdBuildingId, setCreatedBuildingId] = useState<string | null>(null);
@@ -130,7 +133,7 @@ export default function BuildingFormDialog({
       const key = building?.id ?? 'create';
       if (draftKey.current === key && (coreFailure || createdBuildingId || updatedBuildingId || form.formState.isDirty)) return;
       draftKey.current = key;
-      setCoreFailure(undefined); setCoreBlocked(false);
+      setCoreFailure(undefined);
       if (building) {
         form.reset({
           name: building.name,
@@ -196,8 +199,12 @@ export default function BuildingFormDialog({
     setBuildingServices(servicesList);
   }, [allServices, existingBuildingServices]);
 
+  // Đợt 9 (luật 5): lưu tòa không giữ dấu «chờ đối chiếu» nào (trước đây ba dấu lồng: `building-form-save`, `building-create`,
+  // `building-owner-form-save`). Lõi: tạo bằng mã do trình duyệt sinh (hook `useCreateBuilding`, bấm lại gửi đúng mã cũ) hoặc
+  // sửa theo mã (đặt giá trị, cách A). Chủ sở hữu (`save_building_legal_owner` upsert theo tòa, md5 0977e010) và dịch vụ mặc
+  // định (gỡ rồi ghi lại cả bộ, đợt 8) lặp lại được: lõi đã lưu thì lần bấm sau chỉ làm tiếp hai bước đó trên đúng tòa đã lưu.
   const onSubmit = async (data: BuildingFormData) => {
-    if (coreBlocked || sourceBlocked) return;
+    if (sourceBlocked) return;
     const tiersChanged = !!building && hasCommissionTierChange(building.commission_tiers, data.commission_tiers);
     if (!createdBuildingId && !updatedBuildingId && tiersChanged && !isCommissionReasonValid(commissionChangeReason)) {
       setCommissionReasonError(true);
@@ -216,20 +223,34 @@ export default function BuildingFormDialog({
       contract_template_id:data.contract_template_id??null,invoice_template_id:data.invoice_template_id??null,
       commission_tiers:(data.commission_tiers??DEFAULT_COMMISSION_TIERS) as any,
     };
+    const memoryKey = !building && selectedOrganizationId ? `${selectedOrganizationId}|${data.name.trim().toLowerCase()}` : null;
+    const core = JSON.stringify(corePayload);
     try {
       if(!selectedOrganizationId)throw new Error('Chọn tổ chức trước khi lưu tòa.');
-      await runBuildingSaveWorkflow(saveGuard,{
-        key:building?`edit:${building.id}`:'create',organizationId:selectedOrganizationId,expectedCore:corePayload,
-        writeCore:()=>building?updateBuilding.mutateAsync({id:building.id,updates:corePayload,commissionChangeReason:tiersChanged?commissionChangeReason:undefined}):createBuilding.mutateAsync(corePayload),
-        readCore:async ids=>{const {data:rows,error}=await supabase.from('buildings').select('*').in('id',[...ids]).eq('organization_id',selectedOrganizationId).is('deleted_at',null);if(error)throw error;return rows;},
-        onCoreConfirmed:id=>{savedId=id;savedOwner.current=ownerSnapshot;setSavedServicesPayload(servicesPayload);if(building)setUpdatedBuildingId(id);else setCreatedBuildingId(id);},
-        saveRelated:async(id,progress,recovering)=>{
-          await owner.save(id,ownerSnapshot,recovering);
-          progress.stage='lưu dịch vụ tòa nhà';
-          try {const ids=await upsertServices.mutateAsync({buildingId:id,services:servicesPayload});progress.completed.push(...(ids??[]).map(serviceId=>({id:serviceId,label:'Đã đối chiếu dịch vụ tòa'})));}
-          catch(error){if(error instanceof FinancialWorkflowError)progress.completed.push(...error.completed);throw error;}
-        },
+      let recovering = !!savedId;
+      const remembered = !savedId && memoryKey ? createdAwaitingChildren.get(memoryKey) : undefined;
+      if (remembered && memoryKey && remembered.core !== core) {
+        createdAwaitingChildren.delete(memoryKey);
+        throw new FinancialAlreadyRecordedError(`Tòa «${data.name}» đã được tạo ở lần lưu trước với thông tin lúc đó (mã ${remembered.id}) nhưng chưa lưu xong chủ sở hữu và dịch vụ. Mở tòa đó để hoàn tất; bấm Lưu lại nếu vẫn muốn tạo thêm tòa mới.`, [remembered.id]);
+      }
+      if (remembered) { savedId = remembered.id; recovering = true; }
+      if (!savedId) {
+        const saved = await repeatableWrite('lưu tòa nhà', async () => confirmedRecordId(
+          building ? await updateBuilding.mutateAsync({id:building.id,updates:corePayload,commissionChangeReason:tiersChanged?commissionChangeReason:undefined}) : await createBuilding.mutateAsync(corePayload),
+          'lưu tòa nhà', building?.id));
+        savedId = saved;
+      }
+      const id = savedId;
+      savedOwner.current = ownerSnapshot; setSavedServicesPayload(servicesPayload);
+      if (building) setUpdatedBuildingId(id);
+      else { setCreatedBuildingId(id); if (memoryKey) createdAwaitingChildren.set(memoryKey, { id, core }); }
+      await repeatableWrite('lưu chủ sở hữu và dịch vụ của tòa', async () => {
+        await owner.save(id, ownerSnapshot, recovering);
+        await upsertServices.mutateAsync({ buildingId: id, services: servicesPayload });
       });
+      if (memoryKey) createdAwaitingChildren.delete(memoryKey);
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'building-form-save', businessKey: building ? `edit:${building.id}` : 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
       toast.success(`Đã ${building?'cập nhật':'tạo'} tòa nhà ${data.name}`);
       setCreatedBuildingId(null);
       setUpdatedBuildingId(null);
@@ -238,10 +259,9 @@ export default function BuildingFormDialog({
       onOpenChange(false);
     } catch (error: unknown) {
       if (savedId) {
-        const message = recordWriteMessage(error,'lưu tòa nhà và dữ liệu liên quan')+" Mở lại tòa có ID đã lưu để đối chiếu; không tạo lại tòa.";
-        setPartialMessage(message);
+        setPartialMessage(`Tòa nhà đã lưu (mã ${savedId}) nhưng chưa lưu xong chủ sở hữu hoặc dịch vụ: ${recordWriteMessage(error,'lưu chủ sở hữu và dịch vụ của tòa')} Bấm Lưu để lưu tiếp phần còn thiếu cho đúng tòa này; không tạo tòa thứ hai.`);
       } else {
-        setCoreFailure(error); setCoreBlocked(recordWriteBlocked(error));
+        setCoreFailure(error);
         form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'lưu tòa nhà') });
       }
     }
@@ -269,11 +289,11 @@ export default function BuildingFormDialog({
         <ScrollArea className="max-h-[calc(90vh-80px)] px-6 pb-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
-              {priorSave && <p role="alert" className="rounded border border-amber-500 p-3 text-sm">Yêu cầu lưu tòa trước chưa được xác nhận đầy đủ. {priorSave.ids.length>0?`ID cần đối chiếu: ${priorSave.ids.join(', ')}.`:'Giữ thông tin đã nhập và đối chiếu trước khi tạo lại.'} {priorSave.buildingId && <a className="underline" href={`/buildings/${priorSave.buildingId}`}>Mở tòa đã lưu</a>} Lần lưu tiếp chỉ được tiếp tục phần còn thiếu sau khi đối chiếu đúng tòa.</p>}
+              {priorSave && <p role="alert" className="rounded border border-amber-500 p-3 text-sm">Một lần lưu tòa ở phiên bản trước của ứng dụng chưa được xác nhận đầy đủ{priorSave.ids.length>0?` (mã cần kiểm tra: ${priorSave.ids.join(', ')})`:''}. {priorSave.buildingId && <a className="underline" href={`/buildings/${priorSave.buildingId}`}>Mở tòa đã lưu</a>} Kiểm tra danh sách tòa trước khi tạo thêm; lần lưu này không bị chặn.</p>}
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
               {partialMessage && <p role="alert" className="rounded-md border border-amber-500 p-3 text-sm">{partialMessage}</p>}
               {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ dịch vụ của tòa. Tải lại trước khi lưu.<Button type="button" variant="outline" onClick={() => {for(const query of sources)void query.refetch();}}>Tải lại dịch vụ</Button></div>}
-              <fieldset disabled={isPending || coreBlocked || sourceBlocked || !!createdBuildingId || !!updatedBuildingId} className="space-y-4">
+              <fieldset disabled={isPending || sourceBlocked || !!createdBuildingId || !!updatedBuildingId} className="space-y-4">
               {/* Section 1: Thông tin cơ bản */}
               <Card>
                 <CardContent className="pt-6 space-y-4">
@@ -493,7 +513,7 @@ export default function BuildingFormDialog({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isPending || coreBlocked || sourceBlocked || owner.loading || !!owner.error}
+                  disabled={isPending || sourceBlocked || owner.loading || !!owner.error}
                   className="bg-green-600 hover:bg-green-700"
                 >
                   {isPending ? 'Đang lưu...' : 'Lưu'}

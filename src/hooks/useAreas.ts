@@ -1,4 +1,3 @@
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError, RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 import { confirmedRecordId, recordWriteBlocked, recordWriteMessage, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -130,11 +129,18 @@ export const useArea = (id: string) => {
   });
 };
 
-// Create new area
+/** Đợt 9: so trường đã gửi với dòng đọc lại. Bỏ `user_id` (máy chủ có thể đặt). */
+const canonical = (value: unknown): string => JSON.stringify(value ?? null, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+const sentFieldsMatch = (saved: Record<string, unknown>, sent: Record<string, unknown>) => Object.keys(sent).every(key => key === 'user_id' || canonical(saved[key]) === canonical(sent[key]));
+
+/**
+ * Đợt 9 (luật 5): tạo khu vực không giữ dấu «chờ đối chiếu» nào. Mã khu do trình duyệt sinh (`createRecordOnce`; `areas` nhận
+ * `id`, không trigger nào gán `id` — production 26/11/2026): kết quả chưa rõ báo «bấm lại», lần bấm lại cùng tên gửi ĐÚNG mã
+ * cũ nên khoá chính chặn khu thứ hai. Dấu bản trước (khoá `new`, phạm vi người dùng) gỡ sau lần tạo xong.
+ */
 export const useCreateArea = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
-  const guard=persistentFinancialWorkflow('area-write',{scope:'actor'});
 
   return useMutation({
     meta:{handlesFeedback:true},
@@ -145,21 +151,20 @@ export const useCreateArea = () => {
         throw new Error("User not authenticated");
       }
 
-      return guard.run('new','tạo khu vực',async(progress)=>{
-      const { data, error } = await supabase
-        .from("areas")
-        .insert(withOrg({
-          ...area,
-          user_id: user.id,
-        }, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      const savedId=confirmedRecordId(data,'tạo khu vực');
-      progress.completed.push({id:savedId,label:'Khu vực đã nhận mã'});
-      return data;
+      const payload = withOrg({ ...area, user_id: user.id }, selectedOrganizationId);
+      const created = await repeatableWrite('tạo khu vực', async () => {
+        const { createRecordOnce, normalizeVietnameseName } = await import('@/lib/clientRecordCreate');
+        const { row } = await createRecordOnce<Database["public"]["Tables"]["areas"]["Row"]>({
+          table: 'areas', userId: user.id, organizationId: payload.organization_id,
+          matchKeys: [`n:${normalizeVietnameseName(area.name)}`],
+          payload, operation: 'tạo khu vực',
+          sameAs: saved => sentFieldsMatch(saved, payload), describe: saved => `Khu vực ${String(saved.name)}`,
+        });
+        return row;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'area-write', businessKey: 'new' }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
+      return created;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["areas"] });

@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { useEffect, useState, useRef } from 'react';
+import { confirmedRecordId, recordWriteMessage, repeatableWrite } from '@/lib/recordWriteOutcome';
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -38,10 +38,7 @@ import { DEFAULT_COMMISSION_TIERS, type CommissionTier } from "@/types/building"
 import { BuildingLegalOwnerFields } from './BuildingLegalOwnerFields';
 import { useBuildingLegalOwnerForm } from '@/hooks/useBuildingLegalOwnerForm';
 import { focusFirstError } from '@/lib/formErrors';
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { runBuildingSaveWorkflow } from '@/lib/buildingSaveWorkflow';
 import { useBuildingSavePending } from '@/hooks/useBuildingSavePending';
-import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import type { BuildingLegalOwner } from '@/lib/buildingLegalOwner';
 import { hasCommissionTierChange, isCommissionReasonValid } from '@/lib/commissionAudit';
@@ -88,14 +85,13 @@ export function EditBuildingDialog({
   const [commissionReasonError, setCommissionReasonError] = useState(false);
   useEffect(() => {setCommissionChangeReason('');setCommissionReasonError(false);}, [open, building.id]);
   const {selectedOrganizationId}=useOrganization();
+  // Dấu «lưu tòa và chủ sở hữu» bản trước (nếu còn) chỉ còn là lời nhắc chỉ đọc: không chặn gì, gỡ sau lần lưu xong.
   const priorSave=useBuildingSavePending(`edit:${building.id}`,selectedOrganizationId,open,'building-owner-form-save');
-  const saveGuard=useMemo(()=>persistentFinancialWorkflow('building-owner-form-save'),[]);
   const savedOwner=useRef<BuildingLegalOwner|null>(null);
   const updateBuilding = useUpdateBuilding({ silentSuccess: true });
   const owner = useBuildingLegalOwnerForm(building.id, open);
   const [coreSaved, setCoreSaved] = useState(false);
   const [coreFailure, setCoreFailure] = useState<unknown>();
-  const [coreBlocked, setCoreBlocked] = useState(false);
   const draftKey = useRef<string | null>(null);
   const [partialMessage, setPartialMessage] = useState<string | null>(null);
   useEffect(() => { setCoreSaved(false); setPartialMessage(null); }, [building.id]);
@@ -122,7 +118,8 @@ export function EditBuildingDialog({
   useEffect(() => {
     if (building) {
       if(draftKey.current === building.id && (coreFailure || coreSaved || form.formState.isDirty)) return;
-      draftKey.current = building.id; setCoreFailure(undefined); setCoreBlocked(false);
+      const editingId = building.id;
+      draftKey.current = editingId; setCoreFailure(undefined);
       form.reset({
         name: building.name,
         code: building.code || "",
@@ -141,8 +138,10 @@ export function EditBuildingDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [building]);
 
+  // Đợt 9 (luật 5): không còn dấu lồng «chờ đối chiếu». Sửa tòa là đặt giá trị theo mã (cách A; hoa hồng chỉ ghi lịch sử khi
+  // giá trị thật sự đổi — `guard_commission_basis_v1` md5 f64219a6), chủ sở hữu upsert theo tòa: kết quả chưa rõ báo rõ, không
+  // khoá, bấm Cập nhật lại gửi lại đúng thông tin. Lõi đã lưu thì lần bấm sau chỉ lưu tiếp chủ sở hữu.
   const onSubmit = async (data: BuildingFormValues) => {
-    if(coreBlocked)return;
     const tiersChanged = hasCommissionTierChange(building.commission_tiers, data.commission_tiers);
     if (!coreSaved && tiersChanged && !isCommissionReasonValid(commissionChangeReason)) {
       setCommissionReasonError(true);void focusFirstError({'edit-building-commission-reason':'Nhập lý do thay đổi cấu hình hoa hồng.'});return;
@@ -155,21 +154,24 @@ export function EditBuildingDialog({
     try {
       if(!selectedOrganizationId)throw new Error('Chọn tổ chức trước khi lưu tòa.');
       const corePayload={name:data.name,code:data.code||null,type:data.type,status:data.status,province:data.province,district:data.district,ward:data.ward,street_address:data.street_address||null,total_floors:data.total_floors?Number(data.total_floors):null,description:data.description||null,commission_tiers:data.commission_tiers as any};
-      await runBuildingSaveWorkflow(saveGuard,{
-        key:`edit:${building.id}`,organizationId:selectedOrganizationId,expectedCore:corePayload,
-        writeCore:()=>updateBuilding.mutateAsync({id:building.id,updates:corePayload,commissionChangeReason:tiersChanged?commissionChangeReason:undefined}),
-        readCore:async ids=>{const {data:rows,error}=await supabase.from('buildings').select('*').in('id',[...ids]).eq('organization_id',selectedOrganizationId).is('deleted_at',null);if(error)throw error;return rows;},
-        onCoreConfirmed:()=>{saved=true;setCoreSaved(true);savedOwner.current=ownerSnapshot;},
-        saveRelated:async(id,_progress,recovering)=>{await owner.save(id,ownerSnapshot,recovering);},
-      });
+      const recovering = saved;
+      if (!saved) {
+        await repeatableWrite('cập nhật tòa nhà', async () => confirmedRecordId(
+          await updateBuilding.mutateAsync({id:building.id,updates:corePayload,commissionChangeReason:tiersChanged?commissionChangeReason:undefined}),
+          'cập nhật tòa nhà', building.id));
+        saved = true; setCoreSaved(true); savedOwner.current = ownerSnapshot;
+      }
+      await repeatableWrite('lưu chủ sở hữu của tòa', () => owner.save(building.id, ownerSnapshot, recovering));
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'building-owner-form-save', businessKey: `edit:${building.id}` }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
       savedOwner.current=null;
       setCoreSaved(false);
       draftKey.current = null;
       onOpenChange(false);
     } catch (error) {
-      if (saved) setPartialMessage(recordWriteMessage(error,'lưu tòa và chủ sở hữu')+` Mở lại tòa có ID ${building.id} để đối chiếu; không tạo lại.`);
+      if (saved) setPartialMessage(`Tòa đã cập nhật (mã ${building.id}) nhưng chưa lưu xong chủ sở hữu: ${recordWriteMessage(error,'lưu chủ sở hữu của tòa')} Bấm Cập nhật để lưu tiếp chủ sở hữu cho đúng tòa này.`);
       else {
-        setCoreFailure(error); setCoreBlocked(recordWriteBlocked(error));
+        setCoreFailure(error);
         form.setError('root.server', {type:'server',message:recordWriteMessage(error,'cập nhật tòa nhà')});
       }
     }
@@ -188,10 +190,10 @@ export function EditBuildingDialog({
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
-              {priorSave && <p role="alert" className="rounded border border-amber-500 p-3 text-sm">Yêu cầu lưu tòa trước chưa được xác nhận đầy đủ. {priorSave.ids.length>0?`ID cần đối chiếu: ${priorSave.ids.join(', ')}.`:'Giữ thông tin đã nhập và đối chiếu trước khi tạo lại.'} {priorSave.buildingId && <a className="underline" href={`/buildings/${priorSave.buildingId}`}>Mở tòa đã lưu</a>} Lần lưu tiếp chỉ được tiếp tục phần còn thiếu sau khi đối chiếu đúng tòa.</p>}
+              {priorSave && <p role="alert" className="rounded border border-amber-500 p-3 text-sm">Một lần lưu tòa này ở phiên bản trước của ứng dụng chưa được xác nhận đầy đủ. Kiểm tra thông tin đang hiện rồi bấm Cập nhật để ghi lại đúng nội dung đang nhập; lần lưu này không bị chặn.</p>}
               {partialMessage && <p role="alert" className="rounded-md border border-amber-500 p-3 text-sm">{partialMessage}</p>}
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
-              <fieldset disabled={coreSaved || coreBlocked || form.formState.isSubmitting}>
+              <fieldset disabled={coreSaved || form.formState.isSubmitting}>
               {/* Basic Info */}
               <div className="space-y-4">
                 <h3 className="font-semibold text-sm">Thông tin cơ bản</h3>
@@ -417,7 +419,7 @@ export function EditBuildingDialog({
                 >
                   {coreSaved ? 'Đóng để đối chiếu tòa đã lưu' : 'Hủy'}
                 </Button>
-                <Button type="submit" disabled={coreBlocked || form.formState.isSubmitting || updateBuilding.isPending || owner.saving || owner.loading || !!owner.error}>
+                <Button type="submit" disabled={form.formState.isSubmitting || updateBuilding.isPending || owner.saving || owner.loading || !!owner.error}>
                   {form.formState.isSubmitting ? "Đang cập nhật..." : "Cập nhật"}
                 </Button>
               </div>

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -25,7 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, X } from "lucide-react";
 import { ServiceQuotaPartialError, useCreateServiceQuota } from "@/hooks/useServices";
 import { focusFirstError } from "@/lib/formErrors";
-import { recordWriteBlocked, recordWriteMessage } from "@/lib/recordWriteOutcome";
+import { recordWriteMessage } from "@/lib/recordWriteOutcome";
 
 const tierSchema = z.object({
   from_value: z.string().min(1, "Bắt buộc"),
@@ -47,11 +47,10 @@ interface CreateQuotaDialogProps {
 }
 
 export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps) {
-  const [failure,setFailure]=useState<unknown>();
-  const [blocked,setBlocked]=useState(false);
-  const draftKey=useRef<string|null>(null);
   const createMutation = useCreateServiceQuota();
-  const [partialQuotaId, setPartialQuotaId] = useState<string | null>(null);
+  // Đợt 9 (luật 5): tạo định mức không còn khoá form. Kết quả chưa rõ chỉ báo; định mức đã tạo mà chưa ghi xong bậc giá thì
+  // báo mã định mức, bấm Lưu lại (cùng tên, mô tả) thì hook ghi lại đúng bộ bậc đang nhập cho đúng định mức đó.
+  const [partialMessage, setPartialMessage] = useState<string | null>(null);
 
   const form = useForm<QuotaFormValues>({
     resolver: zodResolver(quotaSchema),
@@ -68,8 +67,9 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
   });
 
   const onSubmit = async (data: QuotaFormValues) => {
-    if (blocked || partialQuotaId) return;
+    if (createMutation.isPending) return;
     form.clearErrors('root.server');
+    setPartialMessage(null);
     try {
       await createMutation.mutateAsync({
         name: data.name,
@@ -84,8 +84,7 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);setBlocked(recordWriteBlocked(error) || error instanceof ServiceQuotaPartialError);
-      if (error instanceof ServiceQuotaPartialError) setPartialQuotaId(error.quotaId);
+      if (error instanceof ServiceQuotaPartialError) setPartialMessage(error.message);
       else form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo định mức') });
     }
   };
@@ -105,11 +104,9 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
         <ScrollArea className="max-h-[calc(90vh-100px)] pr-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
-              {partialQuotaId && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
-                Định mức đã tạo với ID {partialQuotaId}, nhưng bậc giá chưa hoàn tất. Mở định mức này trong danh sách để kiểm tra; không tạo lại.
-              </div>}
+              {partialMessage && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">{partialMessage}</div>}
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
-              <fieldset disabled={blocked || form.formState.isSubmitting} className="space-y-4">
+              <fieldset disabled={form.formState.isSubmitting} className="space-y-4">
               <FormField
                 control={form.control}
                 name="name"
@@ -246,7 +243,7 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={blocked || form.formState.isSubmitting || createMutation.isPending || !!partialQuotaId}>
+                <Button type="submit" disabled={form.formState.isSubmitting || createMutation.isPending}>
                   {createMutation.isPending ? "Đang lưu..." : "Lưu"}
                 </Button>
               </div>

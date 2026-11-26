@@ -20,11 +20,15 @@ it('new customer without a contract is a walk-in, not an asserted current renter
  expect(core.insert).toHaveBeenCalledWith(expect.objectContaining({status_v2:'WALK_IN',organization_id:'org-a'}));
  expect(io.from).toHaveBeenCalledTimes(1);
 });
-it.each([['building',useCreateBuilding,{name:'Tòa A'}]])('%s create needs an ID and blocks uncertain repeat across remount',async(_label,hook,input)=>{
+// Đợt 9 (luật 5): tạo tòa không còn giữ dấu chặn lần sau. Thiếu biên nhận vẫn là chưa rõ (hàng rào giữ nguyên); lần sau gửi lại
+// ĐÚNG mã tòa cũ (khoá chính chặn tòa thứ hai). Trước đợt 9: «building create needs an ID and blocks uncertain repeat across remount».
+it.each([['building',useCreateBuilding,{name:'Tòa A'}]])('%s create needs an ID and repeats the uncertain create with the same client ID across remount',async(_label,hook,input)=>{
  const writer=chain({data:null,error:null});io.from.mockReturnValue(writer);
  await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
  await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
- expect(writer.insert).toHaveBeenCalledTimes(1);
+ expect(writer.insert).toHaveBeenCalledTimes(2);
+ expect(writer.insert.mock.calls[1][0].id).toBe(writer.insert.mock.calls[0][0].id);
+ expect(Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'))).toEqual([]);
 });
 // Đợt 4: tạo khách không còn khoá chung. Thiếu biên nhận vẫn là chưa rõ; lần sau gửi lại ĐÚNG mã khách cũ (khoá chính
 // chặn khách thứ hai) thay vì bị chặn mãi.

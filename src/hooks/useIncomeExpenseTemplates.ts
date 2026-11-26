@@ -2,7 +2,6 @@ function feedbackRecordName(value:unknown,fallback?:string):string {
  const row=value&&typeof value==='object'?value as {name?:unknown;id?:unknown}:null;
  return typeof row?.name==='string'&&row.name.trim()?row.name: fallback?.trim()||(typeof row?.id==='string'?row.id:'bản ghi');
 }
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 import { confirmedRecordId, confirmedRecordBatch, recordWriteBlocked, recordWriteMessage, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -67,6 +66,10 @@ export const useIncomeExpenseTemplates = (filterIsIncome?: boolean) => {
 
 // --- Mutation Hooks ---
 
+/** Đợt 9: so trường đã gửi với dòng đọc lại (khoá jsonb xếp lại). Bỏ `user_id` (máy chủ có thể đặt). */
+const canonical = (value: unknown): string => JSON.stringify(value ?? null, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+const sentFieldsMatch = (saved: Record<string, unknown>, sent: Record<string, unknown>) => Object.keys(sent).every(key => key === 'user_id' || canonical(saved[key]) === canonical(sent[key]));
+
 export const useCreateIncomeExpenseTemplate = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
@@ -84,28 +87,32 @@ export const useCreateIncomeExpenseTemplate = () => {
 
       if (!user) throw new Error("User not authenticated");
 
-      return persistentFinancialWorkflow('income-expense-template-create').run('create', 'tạo mẫu in thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_templates")
-        .insert(withOrg({
-          user_id: user.id,
-          name: input.name,
-          description: input.description ?? null,
-          template_file_url: input.template_file_url ?? null,
-          is_default: input.is_default ?? false,
-          is_income_template: input.is_income_template ?? false,
-          field_mappings: input.field_mappings ?? null,
-        }, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      confirmedRecordId(data, 'tạo mẫu in thu chi');
-      return data;
+      // Đợt 9 (luật 5): tạo mẫu in không giữ dấu «chờ đối chiếu» nào. Mã mẫu do trình duyệt sinh (`createRecordOnce`; bảng
+      // nhận `id`; trigger `generate_template_code` md5 fca056c5 chỉ sinh mã MTyymmNNN khi trống, không đụng `id` — production
+      // 26/11/2026): kết quả chưa rõ báo «bấm lại», lần bấm lại cùng tên + loại gửi ĐÚNG mã cũ nên khoá chính chặn mẫu thứ
+      // hai. Dấu bản trước (khoá chung `create`, công ty đang chọn) gỡ sau lần tạo xong.
+      const payload = withOrg({
+        user_id: user.id,
+        name: input.name,
+        description: input.description ?? null,
+        template_file_url: input.template_file_url ?? null,
+        is_default: input.is_default ?? false,
+        is_income_template: input.is_income_template ?? false,
+        field_mappings: input.field_mappings ?? null,
+      }, selectedOrganizationId);
+      const created = await repeatableWrite('tạo mẫu in thu chi', async () => {
+        const { createRecordOnce, normalizeVietnameseName } = await import('@/lib/clientRecordCreate');
+        const { row } = await createRecordOnce<IncomeExpenseTemplate>({
+          table: 'income_expense_templates', userId: user.id, organizationId: payload.organization_id,
+          matchKeys: [`n:${normalizeVietnameseName(input.name)}|t:${payload.is_income_template}`],
+          payload, operation: 'tạo mẫu in thu chi',
+          sameAs: saved => sentFieldsMatch(saved, payload), describe: saved => `Mẫu in ${feedbackRecordName(saved)}`,
+        });
+        return row;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'income-expense-template-create', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
+      return created;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["income-expense-templates"] });

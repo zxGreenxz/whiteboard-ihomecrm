@@ -1,4 +1,4 @@
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -137,7 +137,6 @@ export default function VehicleFormDialog({
   const {data:selectedCustomer}=selectedCustomerQuery;
   const sourceError=buildingsQuery.isError || roomsQuery.isError || customersQuery.isError || (!!selectedCustomerId && !selectedInList && selectedCustomerQuery.isError);
   const sourcePending=buildingsQuery.isLoading || roomsQuery.isLoading || customersQuery.isLoading || (!!selectedCustomerId && !selectedInList && selectedCustomerQuery.isLoading);
-  const [blocked,setBlocked]=useState(false);
   const busy=useRef(false);
   const draftKey=useRef<string>();
   const formRef=useRef<HTMLFormElement>(null);
@@ -192,8 +191,7 @@ export default function VehicleFormDialog({
   useEffect(() => {
     if (open) {
       const key=vehicle?.id ?? 'new';
-      if(draftKey.current===key && (form.formState.isDirty || form.formState.errors.root?.server || blocked))return;
-      if(draftKey.current!==key)setBlocked(false);
+      if(draftKey.current===key && (form.formState.isDirty || form.formState.errors.root?.server))return;
       draftKey.current=key;
       setShowAllCustomers(false);
       if (vehicle) {
@@ -228,14 +226,14 @@ export default function VehicleFormDialog({
 
   // Reset room when building changes
   useEffect(() => {
-    if (blocked || form.formState.errors.root?.server)return;
+    if (form.formState.errors.root?.server)return;
     if (!isEditMode || form.getValues('building_id') !== vehicle?.building_id) {
       form.setValue('room_id', undefined);
     }
   }, [selectedBuildingId]);
 
   const onSubmit = async (data: VehicleFormValues) => {
-    if(busy.current || blocked || sourceError || sourcePending || createVehicle.isPending || updateVehicle.isPending)return;
+    if(busy.current || sourceError || sourcePending || createVehicle.isPending || updateVehicle.isPending)return;
     busy.current=true;
     form.clearErrors('root.server');
     try {
@@ -250,9 +248,8 @@ export default function VehicleFormDialog({
     } catch (error) {
       console.error('Failed to save vehicle:', error);
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,isEditMode?'cập nhật phương tiện':'thêm phương tiện') });
-      // Đợt 8 (luật 5): sửa xe đặt giá trị theo mã, lặp lại được — giữ bản nháp và câu báo, không khoá form. Đường THÊM xe
-      // (đợt 9) vẫn khoá khi kết quả chưa rõ.
-      setBlocked(!isEditMode && recordWriteBlocked(error));
+      // Đợt 8 (luật 5): sửa xe đặt giá trị theo mã, lặp lại được — giữ bản nháp và câu báo, không khoá form. Đợt 9: THÊM xe
+      // cũng không khoá (hook gửi lại đúng mã xe cũ nên bấm lại không ra xe thứ hai).
     } finally {busy.current=false;}
   };
 
@@ -277,7 +274,7 @@ export default function VehicleFormDialog({
                   không in chữ đỏ "Đang tải…" (chủ chốt 02/10/2026). Lỗi thật giữ nguyên. */}
               {!sourceError && sourcePending && <LoadingState label="dữ liệu biểu mẫu" variant="none" />}
               {sourceError && <div role="alert" className="text-sm text-destructive">Chưa tải đủ tòa, phòng hoặc khách để lưu phương tiện.{sourceError && <Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void roomsQuery.refetch();void customersQuery.refetch();if(selectedCustomerId && !selectedInList)void selectedCustomerQuery.refetch();}}>Tải lại dữ liệu</Button>}</div>}
-              <fieldset disabled={isPending || blocked || sourceError || sourcePending} className="space-y-4">
+              <fieldset disabled={isPending || sourceError || sourcePending} className="space-y-4">
               {/* Image upload */}
               <FormField
                 control={form.control}
@@ -522,7 +519,7 @@ export default function VehicleFormDialog({
                 >
                   Huỷ
                 </Button>
-                <Button type="submit" disabled={isPending || blocked || sourceError || sourcePending} className="bg-green-600 hover:bg-green-700">
+                <Button type="submit" disabled={isPending || sourceError || sourcePending} className="bg-green-600 hover:bg-green-700">
                   {isPending
                     ? (isEditMode ? 'Đang cập nhật...' : 'Đang tạo...')
                     : (isEditMode ? 'Cập nhật' : 'Thêm phương tiện')}

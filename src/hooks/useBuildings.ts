@@ -1,6 +1,5 @@
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
-import { confirmedRecordId, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { confirmedRecordId, recordWriteMessage, repeatableWrite } from '@/lib/recordWriteOutcome';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { withOrg } from '@/lib/orgPayload';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -95,20 +94,37 @@ export const useBuilding = (id: string) => {
   });
 };
 
-// Confirm the core before any owner/service caller may continue.
+/** Đợt 9: so trường đã gửi với dòng đọc lại (khoá jsonb xếp lại). Bỏ `user_id`: trigger `buildings_nguoi_dung_ten_theo_cong_ty_v1` đặt lại người đứng tên. */
+const canonical = (value: unknown): string => JSON.stringify(value ?? null, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+const sentFieldsMatch = (saved: Record<string, unknown>, sent: Record<string, unknown>) => Object.keys(sent).every(key => key === 'user_id' || canonical(saved[key]) === canonical(sent[key]));
+/**
+ * Đợt 9 (luật 5): tạo tòa (lõi) không giữ dấu «chờ đối chiếu» nào. Mã tòa do trình duyệt sinh (`createRecordOnce`; `buildings`
+ * nhận `id`; production 26/11/2026: `buildings_nguoi_dung_ten_theo_cong_ty_v1` md5 7a264f7c chỉ đặt `user_id`,
+ * `sinh_authorization_scope_toa_v1` md5 0c854a50 là AFTER INSERT `ON CONFLICT DO NOTHING` nên lần gửi lại cùng mã chỉ vấp khoá
+ * chính): kết quả chưa rõ báo «bấm lại», lần bấm lại cùng tên gửi ĐÚNG mã cũ nên không ra tòa thứ hai. Nơi gọi (form tòa) làm
+ * tiếp chủ sở hữu, dịch vụ trên đúng mã tòa nhận về. Dấu bản trước (khoá `create`, công ty đang chọn) gỡ sau lần tạo xong.
+ */
 export const useCreateBuilding = (options:{silentSuccess?:boolean}={}) => {
   const queryClient=useQueryClient();const {selectedOrganizationId}=useOrganization();
-  const guard=persistentFinancialWorkflow('building-create');
   const refresh=()=>queryClient.invalidateQueries({queryKey:['buildings']});
   return useMutation({
     meta:{handlesFeedback:true},
     mutationFn:async(building:Omit<BuildingInsert,'user_id'>)=>{
       const user=await getSessionUser();if(!user)throw new Error('Not authenticated');
       const payload=withOrg({...building,user_id:user.id},selectedOrganizationId);
-      return guard.run('create','tạo tòa nhà',async()=>{
-        const {data,error}=await supabase.from('buildings').insert(payload).select().single();
-        if(error)throw error;confirmedRecordId(data,'tạo tòa nhà');return data;
-      },undefined,payload.organization_id);
+      const created=await repeatableWrite('tạo tòa nhà',async()=>{
+        const {createRecordOnce,normalizeVietnameseName}=await import('@/lib/clientRecordCreate');
+        const {row}=await createRecordOnce<Building>({
+          table:'buildings',userId:user.id,organizationId:payload.organization_id,
+          matchKeys:[`n:${normalizeVietnameseName(building.name)}`],
+          payload,operation:'tạo tòa nhà',
+          sameAs:saved=>sentFieldsMatch(saved,payload),describe:saved=>`Tòa nhà ${String(saved.name)}`,
+        });
+        return row;
+      });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'building-create', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
+      return created;
     },
     onSuccess:data=>{refresh();if(!options.silentSuccess)toast.success(`Đã tạo tòa nhà ${data.name || data.id}`);},
     onError:error=>{refresh();toast.error('Chưa tạo được tòa nhà',{description:recordWriteMessage(error,'tạo tòa nhà')});},

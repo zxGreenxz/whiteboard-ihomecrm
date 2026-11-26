@@ -47,15 +47,18 @@ it('area soft-deleted but not yet removed from buildings offers «Xoá lại» (
   await waitFor(()=>expect(screen.queryByRole('button',{name:'Xoá lại «Khu A»'})).toBeNull());
 });
 
-// Đường TẠO khu vực là đợt 9: kết quả chưa rõ vẫn khoá ô thêm, nhưng không còn khoá sửa / gán / xoá các khu khác.
-it('unknown create still locks the add box but no longer locks rename, assignment or delete',async()=>{
-  io.create.mockImplementation((_input,options)=>options.onError(new FinancialWorkflowError('Chưa xác nhận tạo khu.','unknown',[])));
-  const view=render(<ManageAreasDialog open onOpenChange={vi.fn()}/>);
+// Đợt 9 (luật 5): TẠO khu vực không còn khoá ô thêm — kết quả chưa rõ chỉ báo, giữ tên đang nhập; bấm «Thêm» lại gửi lại (hook
+// gửi lại đúng mã khu cũ nên không ra khu thứ hai). Trước đợt 9: «unknown create still locks the add box …».
+it('unknown create reports, keeps the name and lets «Thêm» re-send (no lock since đợt 9)',async()=>{
+  io.create.mockImplementationOnce((_input,options)=>options.onError(new FinancialWorkflowError('Chưa xác nhận tạo khu.','unknown',[])));
+  render(<ManageAreasDialog open onOpenChange={vi.fn()}/>);
   fireEvent.change(screen.getByRole('textbox',{name:'Tên khu vực mới'}),{target:{value:'Khu mới'}});fireEvent.click(screen.getByRole('button',{name:'Thêm'}));
   await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('Chưa xác nhận tạo khu'));
-  expect((screen.getByRole('button',{name:'Thêm'}) as HTMLButtonElement).disabled).toBe(true);expect((screen.getByRole('textbox',{name:'Tên khu vực mới'}) as HTMLInputElement).disabled).toBe(true);
-  expect(screen.getByRole('button',{name:'Tải lại để đối chiếu'})).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:'Đổi tòa'}));expect(io.assign).toHaveBeenCalledTimes(1);
-  fireEvent.click(iconButton('trash2'));expect(io.remove).toHaveBeenCalledTimes(1);
-  expect(io.create).toHaveBeenCalledTimes(1);
+  expect((screen.getByRole('button',{name:'Thêm'}) as HTMLButtonElement).disabled).toBe(false);expect((screen.getByRole('textbox',{name:'Tên khu vực mới'}) as HTMLInputElement).disabled).toBe(false);
+  expect((screen.getByRole('textbox',{name:'Tên khu vực mới'}) as HTMLInputElement).value).toBe('Khu mới');
+  expect(screen.queryByRole('button',{name:'Tải lại để đối chiếu'})).toBeNull();
+  io.create.mockImplementationOnce((_input,options)=>{options.onSuccess();options.onSettled?.();});
+  fireEvent.click(screen.getByRole('button',{name:'Thêm'}));
+  expect(io.create).toHaveBeenCalledTimes(2);expect(io.create.mock.calls[1][0]).toEqual({name:'Khu mới'});
+  await waitFor(()=>expect((screen.getByRole('textbox',{name:'Tên khu vực mới'}) as HTMLInputElement).value).toBe(''));
 });
