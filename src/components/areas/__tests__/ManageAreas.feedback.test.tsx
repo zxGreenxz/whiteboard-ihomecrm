@@ -39,8 +39,12 @@ it('area soft-deleted but not yet removed from buildings offers «Xoá lại» (
   io.remove.mockImplementationOnce((_id,options)=>options.onError(new AreaDeletePartialError('a1',new TypeError('Failed to fetch'),true)));
   const view=render(<ManageAreasDialog open onOpenChange={vi.fn()}/>);
   fireEvent.click(iconButton('trash2'));await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('a1'));
+  // Làm việc khác (gán tòa) không làm mất nút «Xoá lại»: khu đã xoá mềm không còn trong danh sách để bấm xoá lần nữa.
+  fireEvent.click(screen.getByRole('button',{name:'Đổi tòa'}));expect(io.assign).toHaveBeenCalledTimes(1);
+  io.remove.mockImplementationOnce((_id,options)=>options.onSuccess());
   fireEvent.click(screen.getByRole('button',{name:'Xoá lại «Khu A»'}));
   expect(io.remove).toHaveBeenCalledTimes(2);expect(io.remove.mock.calls[1][0]).toBe('a1');expect(confirm).toHaveBeenCalledTimes(1);
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'Xoá lại «Khu A»'})).toBeNull());
 });
 
 // Đường TẠO khu vực là đợt 9: kết quả chưa rõ vẫn khoá ô thêm, nhưng không còn khoá sửa / gán / xoá các khu khác.

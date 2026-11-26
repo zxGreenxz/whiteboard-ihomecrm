@@ -60,8 +60,9 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
   const [editingName, setEditingName] = useState("");
   // Đường TẠO khu vực (đợt 9) vẫn khoá ô thêm khi kết quả chưa rõ, cho tới khi đối chiếu xong.
   const [createUnknown, setCreateUnknown] = useState<string | null>(null);
-  // Xoá chưa xong (khu có thể đã xoá mềm nên không còn trong danh sách): giữ tên để bấm «Xoá lại» không cần hỏi lại.
-  const [retryDelete, setRetryDelete] = useState<{ id: string; name: string } | null>(null);
+  // Xoá chưa xong (khu có thể đã xoá mềm nên không còn trong danh sách): giữ tên và câu báo riêng, để nút «Xoá lại» còn
+  // đó cả khi người dùng làm việc khác, và bấm lại không cần hỏi lại.
+  const [retryDelete, setRetryDelete] = useState<{ id: string; name: string; message: string } | null>(null);
 
   // building_ids hiện tại của từng khu (N-N: từ buildings.area_ids).
   const membersByArea = useMemo(() => {
@@ -102,7 +103,11 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
     busy.current=true;setFailure('');
     deleteArea.mutate(area.id, {
       onSuccess: () => {setRetryDelete(null);busy.current=false;},
-      onError: error => {onFailure(error,'xoá khu vực');setRetryDelete(error instanceof AreaDeletePartialError ? area : null);},onSettled:()=>{busy.current=false;},
+      onError: error => {
+        if (error instanceof AreaDeletePartialError) {setRetryDelete({ id: area.id, name: area.name, message: recordWriteMessage(error,'xoá khu vực') });busy.current=false;}
+        else {setRetryDelete(null);onFailure(error,'xoá khu vực');}
+      },
+      onSettled:()=>{busy.current=false;},
     });
   };
 
@@ -140,11 +145,12 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
           </DialogDescription>
         </DialogHeader>
 
-        {failure && <div role="alert" className="text-sm text-destructive">
-          <p>{failure}</p>
-          {retryDelete && <Button type="button" variant="outline" size="sm" className="mt-2" disabled={deleteArea.isPending} onClick={() => {if(!busy.current)runDelete(retryDelete);}}>
+        {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
+        {retryDelete && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
+          {retryDelete.message}
+          <Button type="button" variant="outline" size="sm" className="mt-2 block" disabled={deleteArea.isPending} onClick={() => {if(!busy.current)runDelete(retryDelete);}}>
             Xoá lại «{retryDelete.name}»
-          </Button>}
+          </Button>
         </div>}
         {createUnknown && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
           {createUnknown}
