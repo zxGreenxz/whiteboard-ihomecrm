@@ -1,6 +1,5 @@
-import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {confirmedRecordId,recordWriteMessage,repeatableWrite} from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -16,6 +15,50 @@ function reportAssetFailure(error: unknown, title: string, operation: string) {
   const feedback = friendlyError(error, title, { operation });
   toast.error(feedback.title, { description: feedback.description });
 }
+
+// Đợt 9 (plan sửa khoá vĩnh viễn sau rớt mạng, luật 5): TẠO tài sản / biên bản bàn giao / di chuyển / bảo trì không giữ
+// dấu «chờ đối chiếu» nữa (trước đây mỗi loại một khoá chung `create`: một lần rớt mạng chặn mọi lần tạo sau). Production
+// 26/11/2026: bốn bảng có `id uuid default gen_random_uuid()`, trigger BEFORE INSERT (`set_user_id_from_auth`,
+// `autofill_org_strict`) không đụng `new.id`, chỉ mục duy nhất duy nhất là khoá chính; `asset_movements` không có trigger
+// AFTER nào (di chuyển không đổi phòng của tài sản, hộp cũng không đổi). Nên mã do trình duyệt sinh (`createRecordOnce`):
+// lần bấm lại gửi ĐÚNG mã cũ, khoá chính chặn bản thứ hai, đọc đúng mã cho biết lần trước đã ghi chưa.
+type AssetCreateTable = 'assets' | 'asset_handovers' | 'asset_movements' | 'asset_maintenance';
+export type CreatedAssetRecord<T> = T & { /** Lần bấm trước đã ghi đúng bản ghi này; lần này không ghi thêm. */ replayed: boolean };
+
+/** Trường người dùng nhập có giống nhau không giữa dòng đọc lại của lần gửi trước và dòng đang tạo (rỗng / null như nhau). */
+function sameEnteredFields(stored: Record<string, unknown>, payload: Record<string, unknown>, fields: readonly string[]): boolean {
+  const norm = (value: unknown) => value === undefined || value === null || value === '' ? null : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return fields.every(field => norm(stored[field]) === norm(payload[field]));
+}
+
+async function createAssetRecordOnce<T extends { id: string }>(input: {
+  table: AssetCreateTable; userId: string; organizationId: string | null; operation: string;
+  /** Dòng gửi đi, đã bọc `withOrg(...)` ở nơi gọi. */
+  payload: Record<string, unknown>;
+  /** Các trường người dùng nhập, để nhận ra lần trước đã ghi với thông tin khác. */
+  fields: readonly string[];
+  /** Khoá nhận ra «cùng bản ghi đang tạo» giữa hai lần bấm trong tab. */
+  matchKey: (normalize: (value: unknown) => string) => string;
+  describe: (row: Record<string, unknown>) => string;
+}): Promise<CreatedAssetRecord<T>> {
+  return repeatableWrite(input.operation, async () => {
+    const { createRecordOnce, normalizeVietnameseName, pickClientId } = await import('@/lib/clientRecordCreate');
+    const organizationId = input.organizationId ?? '';
+    const matchKeys = [input.matchKey(normalizeVietnameseName)];
+    // Có lần bấm trước còn chưa rõ của cùng bản ghi không: chỉ khi đó «đã có trên máy chủ» mới là do lần bấm trước ghi.
+    // Không có thì đó là chính lần gửi này (mất phản hồi nhưng đọc lại thấy), báo tạo xong như thường.
+    const prior = pickClientId(input.table, input.userId, organizationId, matchKeys).reused;
+    const { row, replayed } = await createRecordOnce<T>({
+      table: input.table, userId: input.userId, organizationId, matchKeys,
+      payload: input.payload, operation: input.operation, sameAs: stored => sameEnteredFields(stored, input.payload, input.fields), describe: input.describe,
+    });
+    return { ...row, replayed: replayed && prior };
+  });
+}
+const ASSET_FIELDS = ['name', 'code', 'category_id', 'supplier_id', 'quantity', 'condition', 'purchase_date', 'purchase_price', 'building_id', 'room_id', 'description'] as const;
+const HANDOVER_FIELDS = ['contract_id', 'type', 'handover_date', 'items'] as const;
+const MOVEMENT_FIELDS = ['asset_id', 'from_room_id', 'to_room_id', 'quantity', 'movement_date', 'from_location', 'to_location', 'reason'] as const;
+const MAINTENANCE_FIELDS = ['asset_id', 'issue_description', 'maintenance_date', 'status', 'cost', 'assigned_to', 'notes'] as const;
 
 type Asset = Database["public"]["Tables"]["assets"]["Row"];
 type AssetInsert = Database["public"]["Tables"]["assets"]["Insert"];
@@ -251,31 +294,26 @@ export const useCreateAsset = () => {
   // thay vì rơi về hằng org THẬT. Client phải tự khai.
   const { selectedOrganizationId } = useOrganization();
 
-  const guard=persistentFinancialWorkflow('asset-create');
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn: async (data: AssetInsert) => {
+    mutationFn: async (data: AssetInsert): Promise<CreatedAssetRecord<Asset>> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      return guard.run('create','tạo tài sản',async()=>{
-      const { data: asset, error } = await supabase
-        .from("assets")
-        .insert(withOrg({
-          ...data,
-          user_id: user.id,
-        }, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      confirmedRecordId(asset,'tạo tài sản');
+      const payload = withOrg({ ...data, user_id: user.id }, selectedOrganizationId);
+      // Cùng tài sản giữa hai lần bấm: cùng mã tài sản, không có mã thì cùng tên chuẩn hoá.
+      const asset = await createAssetRecordOnce<Asset>({
+        table: 'assets', userId: user.id, organizationId: selectedOrganizationId, operation: 'tạo tài sản', payload, fields: ASSET_FIELDS,
+        matchKey: normalize => normalize(data.code) ? `c:${normalize(data.code)}` : `n:${normalize(data.name)}`,
+        describe: row => `Tài sản ${String(row.name ?? '')}`,
+      });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'asset-create', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
       return asset;
-      },undefined,selectedOrganizationId??undefined);
     },
     onSuccess: (asset) => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
-      toast.success(`Đã tạo tài sản ${asset.name}`);
+      toast.success(asset.replayed ? `Tài sản ${asset.name} đã được tạo ở lần bấm trước (mã ${asset.id}); không tạo thêm.` : `Đã tạo tài sản ${asset.name}`);
     },
     onError: (error: unknown) => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
@@ -380,32 +418,26 @@ export const useAssetHandovers = (contract_id?: string) => {
 export const useCreateAssetHandover = () => {
   const queryClient = useQueryClient();
   const {selectedOrganizationId}=useOrganization();
-  const guard=persistentFinancialWorkflow('asset-handover-create');
 
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn: async (data: Omit<AssetHandoverInsert, "organization_id">) => {
+    mutationFn: async (data: Omit<AssetHandoverInsert, "organization_id">): Promise<CreatedAssetRecord<AssetHandover>> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      return guard.run('create','tạo biên bản bàn giao',async()=>{
-      const { data: handover, error } = await supabase
-        .from("asset_handovers")
-        .insert(withOrg({
-          ...data,
-          user_id: user.id,
-        },selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      confirmedRecordId(handover,'tạo biên bản bàn giao');
+      const payload = withOrg({ ...data, user_id: user.id }, selectedOrganizationId);
+      const handover = await createAssetRecordOnce<AssetHandover>({
+        table: 'asset_handovers', userId: user.id, organizationId: selectedOrganizationId, operation: 'tạo biên bản bàn giao', payload, fields: HANDOVER_FIELDS,
+        matchKey: () => `h:${data.contract_id}|${data.type}`,
+        describe: row => `Biên bản ${row.type === 'CHECK_OUT' ? 'trả' : 'nhận'} căn hộ`,
+      });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'asset-handover-create', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
       return handover;
-      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (handover) => {
       queryClient.invalidateQueries({ queryKey: ["asset-handovers"] });
-      toast.success("Biên bản bàn giao đã được tạo thành công");
+      toast.success(handover.replayed ? `Biên bản bàn giao đã được tạo ở lần bấm trước (mã ${handover.id}); không tạo thêm.` : "Biên bản bàn giao đã được tạo thành công");
     },
     onError: (error: unknown) => {
       queryClient.invalidateQueries({ queryKey: ["asset-handovers"] });
@@ -465,32 +497,27 @@ export const useAssetMovements = (asset_id?: string) => {
 export const useCreateAssetMovement = () => {
   const queryClient = useQueryClient();
   const {selectedOrganizationId}=useOrganization();
-  const guard=persistentFinancialWorkflow('asset-movement-create');
 
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn: async (data: Omit<AssetMovementInsert, "organization_id">) => {
+    mutationFn: async (data: Omit<AssetMovementInsert, "organization_id">): Promise<CreatedAssetRecord<AssetMovement>> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      return guard.run('create','ghi di chuyển tài sản',async()=>{
-      const { data: movement, error } = await supabase
-        .from("asset_movements")
-        .insert(withOrg({
-          ...data,
-          user_id: user.id,
-        },selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      confirmedRecordId(movement,'ghi di chuyển tài sản');
+      const payload = withOrg({ ...data, user_id: user.id }, selectedOrganizationId);
+      // Chỉ ghi một dòng lịch sử di chuyển: không có bước đổi phòng của tài sản ở trình duyệt hay trigger nào phải lặp lại.
+      const movement = await createAssetRecordOnce<AssetMovement>({
+        table: 'asset_movements', userId: user.id, organizationId: selectedOrganizationId, operation: 'ghi di chuyển tài sản', payload, fields: MOVEMENT_FIELDS,
+        matchKey: () => `m:${data.asset_id}`,
+        describe: row => `Di chuyển tài sản ngày ${String(row.movement_date ?? '')}`,
+      });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'asset-movement-create', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần ghi sau gỡ lại. */ }
       return movement;
-      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (movement) => {
       queryClient.invalidateQueries({ queryKey: ["asset-movements"] });
-      toast.success("Di chuyển tài sản đã được ghi nhận thành công");
+      toast.success(movement.replayed ? `Di chuyển tài sản đã được ghi ở lần bấm trước (mã ${movement.id}); không ghi thêm.` : "Di chuyển tài sản đã được ghi nhận thành công");
     },
     onError: (error: unknown) => {
       queryClient.invalidateQueries({ queryKey: ["asset-movements"] });
@@ -547,32 +574,26 @@ export const useAssetMaintenance = (filters?: {
 export const useCreateAssetMaintenance = () => {
   const queryClient = useQueryClient();
   const {selectedOrganizationId}=useOrganization();
-  const guard=persistentFinancialWorkflow('asset-maintenance-create');
 
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn: async (data: Omit<AssetMaintenanceInsert, "organization_id">) => {
+    mutationFn: async (data: Omit<AssetMaintenanceInsert, "organization_id">): Promise<CreatedAssetRecord<AssetMaintenance>> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      return guard.run('create','tạo phiếu bảo trì',async()=>{
-      const { data: maintenance, error } = await supabase
-        .from("asset_maintenance")
-        .insert(withOrg({
-          ...data,
-          user_id: user.id,
-        },selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      confirmedRecordId(maintenance,'tạo phiếu bảo trì');
+      const payload = withOrg({ ...data, user_id: user.id }, selectedOrganizationId);
+      const maintenance = await createAssetRecordOnce<AssetMaintenance>({
+        table: 'asset_maintenance', userId: user.id, organizationId: selectedOrganizationId, operation: 'tạo phiếu bảo trì', payload, fields: MAINTENANCE_FIELDS,
+        matchKey: () => `mt:${data.asset_id}`,
+        describe: row => `Phiếu bảo trì ngày ${String(row.maintenance_date ?? '')}`,
+      });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'asset-maintenance-create', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
       return maintenance;
-      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (maintenance) => {
       queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });
-      toast.success("Phiếu bảo trì đã được tạo thành công");
+      toast.success(maintenance.replayed ? `Phiếu bảo trì đã được tạo ở lần bấm trước (mã ${maintenance.id}); không tạo thêm.` : "Phiếu bảo trì đã được tạo thành công");
     },
     onError: (error: unknown) => {
       queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });

@@ -95,7 +95,9 @@ describe.each(CASES)('%s', (_label, item) => {
     await item.fill();
     const submit = () => screen.getByRole('button', { name: item.button }) as HTMLButtonElement;
     await waitFor(() => expect(submit().disabled).toBe(false));
+    // Lệnh tới máy chủ và đã ghi, phản hồi mất, đọc lại ngay cũng hỏng: kết quả chưa rõ.
     io.server.failNext(item.table, 'insert', 'drop-after');
+    io.server.failNext(item.table, 'read', 'drop-before');
     fireEvent.click(submit());
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Bấm lại'));
     expect(close).not.toHaveBeenCalled();

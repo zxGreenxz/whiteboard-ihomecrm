@@ -73,8 +73,18 @@ describe.each(KINDS)('tạo %s', (_label, kind) => {
     expect(rows(kind.table)[0]).toMatchObject({ ...kind.input, user_id: 'actor', organization_id: 'org-a' });
   });
 
-  it('tới nhưng mất phản hồi: bấm lại gửi đúng mã cũ, báo đã tạo ở lần trước, không có bản thứ hai', async () => {
+  it('tới nhưng mất phản hồi, đọc lại ngay thấy bản ghi: báo tạo xong (không phải chưa rõ), không gửi lần hai', async () => {
     io.server.failNext(kind.table, 'insert', 'drop-after');
+    const created = await kind.run()(kind.input);
+    expect(created).toMatchObject({ id: rows(kind.table)[0].id, replayed: false });
+    expect(rows(kind.table)).toHaveLength(1);
+    expect(sentIds(kind.table)).toHaveLength(1);
+    expect(pendingKeys()).toEqual([]);
+  });
+
+  it('tới nhưng mất phản hồi và đọc lại ngay cũng hỏng: báo rõ, không khoá; bấm lại gửi đúng mã cũ, báo đã tạo ở lần trước, không có bản thứ hai', async () => {
+    io.server.failNext(kind.table, 'insert', 'drop-after');
+    io.server.failNext(kind.table, 'read', 'drop-before');
     const error = await kind.run()(kind.input).catch(failure => failure);
     expect(error).toBeInstanceOf(RepeatableWriteUnknownError);
     expect(recordWriteBlocked(error)).toBe(false);
@@ -86,8 +96,9 @@ describe.each(KINDS)('tạo %s', (_label, kind) => {
     expect(sentIds(kind.table)).toHaveLength(2);
   });
 
-  it('mất phản hồi và đọc lại cũng hỏng: vẫn chưa rõ (không báo xong); bấm lại sau đó ra đúng một bản', async () => {
+  it('hàng rào: mất phản hồi rồi đọc lại hỏng hai lần liền ⇒ vẫn chưa rõ (không báo xong); bấm lại sau đó ra đúng một bản', async () => {
     io.server.failNext(kind.table, 'insert', 'drop-after');
+    io.server.failNext(kind.table, 'read', 'drop-before');
     await kind.run()(kind.input).catch(failure => failure);
     io.server.failNext(kind.table, 'read', 'drop-before');
     expect(await kind.run()(kind.input).catch(failure => failure)).toBeInstanceOf(RepeatableWriteUnknownError);
@@ -98,6 +109,7 @@ describe.each(KINDS)('tạo %s', (_label, kind) => {
 
   it('sửa thông tin giữa hai lần bấm khi lần trước đã ghi: báo đã tạo kèm mã, không tạo thêm; bấm lại nữa là lượt mới', async () => {
     io.server.failNext(kind.table, 'insert', 'drop-after');
+    io.server.failNext(kind.table, 'read', 'drop-before');
     await kind.run()(kind.input).catch(failure => failure);
     const id = String(rows(kind.table)[0].id);
     const changed = { ...kind.input, ...kind.changed };

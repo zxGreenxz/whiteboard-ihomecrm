@@ -33,10 +33,17 @@ it.each([
   await expect((hook() as unknown as { mutationFn: (value: unknown) => Promise<unknown> }).mutationFn(input)).rejects.toThrow('Chưa xác nhận');
 });
 
+// Đợt 9 (luật 5): tạo tài sản / bàn giao / di chuyển / bảo trì dùng mã do trình duyệt sinh, không giữ dấu. Trước đợt 9 test
+// này tên «%s unknown receipt is durable and cannot be created again by a new hook» và chốt lần tạo sau bị chặn. Hàng rào
+// giữ: biên nhận thiếu mã vẫn là chưa rõ (không báo xong); nay không khoá, hook mới gửi lại ĐÚNG mã cũ (khoá chính chặn trùng).
 it.each([
  ['asset',useCreateAsset,{name:'Ghế'}],['handover',useCreateAssetHandover,{contract_id:'c1'}],['movement',useCreateAssetMovement,{asset_id:'a1'}],['maintenance',useCreateAssetMaintenance,{asset_id:'a1'}],
-])('%s unknown receipt is durable and cannot be created again by a new hook',async(_name,hook,input)=>{
+])('%s unknown receipt is not a success, does not lock, and a new hook resends the same client ID',async(_name,hook,input)=>{
  const writer={insert:vi.fn(),select:vi.fn(),single:vi.fn().mockResolvedValue({data:null,error:null})};writer.insert.mockReturnValue(writer);writer.select.mockReturnValue(writer);io.from.mockReturnValue(writer);
  const mutation=()=>hook() as unknown as {mutationFn:(input:unknown)=>Promise<unknown>};
- await expect(mutation().mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});await expect(mutation().mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});expect(writer.insert).toHaveBeenCalledTimes(1);
+ await expect(mutation().mutationFn(input)).rejects.toMatchObject({outcome:'unknown',repeatable:true});await expect(mutation().mutationFn(input)).rejects.toMatchObject({outcome:'unknown',repeatable:true});
+ expect(writer.insert).toHaveBeenCalledTimes(2);
+ const ids=writer.insert.mock.calls.map(call=>(call[0] as {id?:unknown}).id);
+ expect(typeof ids[0]).toBe('string');expect(ids[1]).toBe(ids[0]);
+ expect(localStorage.length).toBe(1);
 });
