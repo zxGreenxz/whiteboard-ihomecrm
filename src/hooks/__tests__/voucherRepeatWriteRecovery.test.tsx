@@ -160,7 +160,8 @@ describe('sinh phiếu định kỳ (voucher-recurring-generate, tiền, cách A
   it('biên nhận hỏng dạng: không báo đã sinh, giữ dấu; lần bấm sau gửi lại và máy chủ chỉ sinh phần còn thiếu', async () => {
     const mutation = generate();
     const real = io.server.rpcHandlers.generate_recurring_vouchers_v2;
-    io.server.rpcHandlers.generate_recurring_vouchers_v2 = args => { real(args); return { data: [{ parent_id: 'p1' }], error: null }; };
+    // Có mã phiếu con nhưng thiếu mã phiếu cha: không đủ để khẳng định đã sinh đúng kỳ của đúng phiếu cha.
+    io.server.rpcHandlers.generate_recurring_vouchers_v2 = args => { real(args); return { data: [{ child_id: 'c-2026-11-01' }], error: null }; };
     await expect(mutation.mutationFn(undefined)).rejects.toThrow(/Chưa xác nhận/);
     expect(pendingKeys()).toHaveLength(1);
     io.server.rpcHandlers.generate_recurring_vouchers_v2 = real;
@@ -216,6 +217,18 @@ describe('cờ KQKD phiếu bỏ cọc (voucher-kqkd, tiền, cách A)', () => {
   it('dấu bản trước của đúng phiếu (≥ 10 phút, không tên thao tác) không chặn; đổi xong dấu được gỡ', async () => {
     marker('voucher-kqkd', 'v1');
     await expect(setKqkd().mutationFn(input)).resolves.toMatchObject({ changed: true });
+    expect(pendingKeys()).toEqual([]);
+  });
+
+  it('biên nhận sai mã phiếu: không báo đã đổi, giữ dấu; lần bấm sau gửi lại và máy chủ trả «không đổi»', async () => {
+    const mutation = setKqkd();
+    const real = io.server.rpcHandlers.set_forfeit_voucher_kqkd_v1;
+    io.server.rpcHandlers.set_forfeit_voucher_kqkd_v1 = args => { real(args); return { data: { id: 'v2', changed: true, business_result_accounting: true }, error: null }; };
+    await expect(mutation.mutationFn(input)).rejects.toMatchObject({ outcome: 'unknown' });
+    expect(pendingKeys()).toHaveLength(1);
+    io.server.rpcHandlers.set_forfeit_voucher_kqkd_v1 = real;
+    await expect(mutation.mutationFn(input)).resolves.toMatchObject({ id: 'v1', changed: false, resent: true });
+    expect(events).toBe(1);
     expect(pendingKeys()).toEqual([]);
   });
 
