@@ -142,9 +142,10 @@ it('tạo dịch vụ: đã tạo nhưng chưa gán đủ tòa thì báo mã, kh
   fireEvent.click(button('Lưu'));
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('s1'));
   expect(button('Lưu').disabled).toBe(false);
-  expect((screen.getByPlaceholderText('Nhập tên dịch vụ') as HTMLInputElement).disabled).toBe(true);
-  expect((screen.getByPlaceholderText('0') as HTMLInputElement).disabled).toBe(true);
-  expect((screen.getByRole('checkbox') as HTMLButtonElement).disabled).toBe(false);
+  // Ô bị khoá qua fieldset cha: thuộc tính disabled của chính ô không đổi, nên đo bằng :disabled.
+  expect(screen.getByPlaceholderText('Nhập tên dịch vụ').matches(':disabled')).toBe(true);
+  expect(screen.getByPlaceholderText('0').matches(':disabled')).toBe(true);
+  expect(screen.getByRole('checkbox').matches(':disabled')).toBe(false);
   fireEvent.click(button('Lưu'));
   await waitFor(() => expect(close).toHaveBeenCalledWith(false));
   expect(io.createService).toHaveBeenCalledTimes(2);
@@ -163,7 +164,7 @@ it('tạo dịch vụ: đóng hộp khi đang ghi dở thì bỏ mã đã nhớ 
   view.rerender(<CreateServiceDialog open onOpenChange={close} />);
   expect(screen.queryByText(/mã s1/)).toBeNull();
   const name = screen.getByPlaceholderText('Nhập tên dịch vụ') as HTMLInputElement;
-  expect(name.disabled).toBe(false);
+  expect(name.matches(':disabled')).toBe(false);
   expect(name.value).toBe('');
 });
 const fillQuota = () => {
@@ -194,8 +195,8 @@ it('tạo định mức: đã tạo nhưng chưa ghi xong bậc giá thì báo m
   fireEvent.click(button('Lưu'));
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('q1'));
   expect(button('Lưu').disabled).toBe(false);
-  expect((screen.getByPlaceholderText('Nhập tên định mức') as HTMLInputElement).disabled).toBe(true);
-  expect((screen.getAllByPlaceholderText('0')[1] as HTMLInputElement).disabled).toBe(false);
+  expect(screen.getByPlaceholderText('Nhập tên định mức').matches(':disabled')).toBe(true);
+  expect(screen.getAllByPlaceholderText('0')[1]!.matches(':disabled')).toBe(false);
   fireEvent.click(button('Lưu'));
   await waitFor(() => expect(close).toHaveBeenCalledWith(false));
   expect(io.createQuota).toHaveBeenCalledTimes(2);

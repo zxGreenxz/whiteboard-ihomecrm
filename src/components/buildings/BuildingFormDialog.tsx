@@ -46,7 +46,7 @@ import { CommissionTiersField } from './CommissionTiersField';
 import { BuildingLegalOwnerFields } from './BuildingLegalOwnerFields';
 import BuildingOwnershipDocs from '@/components/residence/BuildingOwnershipDocs';
 import { useBuildingLegalOwnerForm } from '@/hooks/useBuildingLegalOwnerForm';
-import { FinancialAlreadyRecordedError } from '@/lib/financialWorkflowError';
+import { FinancialAlreadyRecordedError, RepeatableWriteUnknownError } from '@/lib/financialWorkflowError';
 import { focusFirstError } from '@/lib/formErrors';
 import { useBuildingSavePending } from '@/hooks/useBuildingSavePending';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -215,7 +215,11 @@ export default function BuildingFormDialog({
     form.clearErrors('root.server');
     setPartialMessage(null); setCoreFailure(undefined);
     let savedId: string | null = createdBuildingId ?? updatedBuildingId;
-    const ownerSnapshot = savedOwner.current ?? owner.form.getValues();
+    // Ảnh chụp chủ sở hữu (review đợt 9): ô chủ sở hữu đã sửa thì luôn gửi giá trị đang nhập (ý định mới nhất); chưa sửa thì dùng
+    // ảnh chụp đã chốt ở lần lưu trước, nếu có. Chỉ chốt khi người dùng đã nhập, để một bản rỗng chưa ai nhập (hộp vừa dựng lại)
+    // không bao giờ được gửi đè lên chủ sở hữu đã lưu.
+    const ownerEdited = owner.form.formState.isDirty;
+    const ownerSnapshot = ownerEdited || !savedOwner.current ? owner.form.getValues() : savedOwner.current;
     const servicesPayload = savedServicesPayload ?? buildingServices.map(s=>({service_id:s.service_id,is_active:s.is_active,unit_price_override:s.unit_price_override}));
     const corePayload={
       name:data.name,code:data.code||null,province:data.province,district:data.district,ward:data.ward,street_address:data.street_address,
@@ -233,7 +237,16 @@ export default function BuildingFormDialog({
         createdAwaitingChildren.delete(memoryKey);
         throw new FinancialAlreadyRecordedError(`Tòa «${data.name}» đã được tạo ở lần lưu trước với thông tin lúc đó (mã ${remembered.id}) nhưng chưa lưu xong chủ sở hữu và dịch vụ. Mở tòa đó để hoàn tất; bấm Lưu lại nếu vẫn muốn tạo thêm tòa mới.`, [remembered.id]);
       }
-      if (remembered) { savedId = remembered.id; recovering = true; }
+      // Tòa đã tạo ở lần lưu trước (trong hộp này hoặc nhớ theo tab): đọc lại đúng mã trước khi làm tiếp. Không còn / đã xoá ⇒ bỏ
+      // mã, tạo tòa mới (không gắn chủ sở hữu, dịch vụ vào tòa đã xoá); đọc hỏng ⇒ chưa rõ, không ghi gì.
+      const reuse = building ? null : savedId ?? remembered?.id ?? null;
+      if (reuse) {
+        const { readRecordById } = await import('@/lib/clientRecordCreate');
+        const read = await readRecordById<{ id: string; deleted_at?: string | null }>('buildings', reuse);
+        if (read.state === 'unreadable') throw new RepeatableWriteUnknownError('kiểm tra tòa đã tạo ở lần lưu trước', undefined, [{ id: reuse, label: 'Tòa đã tạo, cần đối chiếu' }], 'Chưa đọc lại được tòa đã tạo nên chưa ghi gì thêm. Bấm Lưu lại để thử lần nữa.');
+        if (read.state === 'found' && !read.row.deleted_at) { savedId = reuse; recovering = true; }
+        else { savedId = null; recovering = false; setCreatedBuildingId(null); if (memoryKey) createdAwaitingChildren.delete(memoryKey); }
+      }
       if (!savedId) {
         const saved = await repeatableWrite('lưu tòa nhà', async () => confirmedRecordId(
           building ? await updateBuilding.mutateAsync({id:building.id,updates:corePayload,commissionChangeReason:tiersChanged?commissionChangeReason:undefined}) : await createBuilding.mutateAsync(corePayload),
@@ -241,7 +254,8 @@ export default function BuildingFormDialog({
         savedId = saved;
       }
       const id = savedId;
-      savedOwner.current = ownerSnapshot; setSavedServicesPayload(servicesPayload);
+      if (ownerEdited) savedOwner.current = ownerSnapshot;
+      setSavedServicesPayload(servicesPayload);
       if (building) setUpdatedBuildingId(id);
       else { setCreatedBuildingId(id); if (memoryKey) createdAwaitingChildren.set(memoryKey, { id, core }); }
       await repeatableWrite('lưu chủ sở hữu và dịch vụ của tòa', async () => {
