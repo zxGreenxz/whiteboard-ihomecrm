@@ -133,19 +133,29 @@ function invalidateReceiving(client: ReturnType<typeof useQueryClient>) {
 
 export function useSetPersonalCashBook(memberName?: string) {
   const client = useQueryClient();
-  const guard = useRef(persistentFinancialWorkflow('receiving-personal',{scope:'actor'}));
   return useMutation({
     meta: {handlesFeedback:true},
-    mutationFn: async (input: { membershipId: string; accountId: string | null }) => guard.current.run(input.membershipId, "lưu sổ tiền mặt riêng", async () => {
-      const { data, error } = await supabase.rpc("set_personal_cash_book_v1", {
-        p_membership_id: input.membershipId,
-        p_account_id: rpcNullable(input.accountId),
+    // Đợt 8 (cách A): set_personal_cash_book_v1 (production 26/11/2026) khoá công ty và dòng đang hiệu lực FOR UPDATE, chỉ
+    // đóng/mở dòng lịch sử khi sổ khác sổ đang cài. Chạy lại cùng sổ cho cùng kết quả ⇒ không giữ dấu; chưa rõ thì báo và
+    // cho chọn lại. Biên nhận sai thành viên / sai sổ vẫn KHÔNG phải thành công.
+    mutationFn: async (input: { membershipId: string; accountId: string | null }) => {
+      const { repeatableWrite } = await import('@/lib/recordWriteOutcome');
+      const data = await repeatableWrite("lưu sổ tiền mặt riêng", async () => {
+        const { data, error } = await supabase.rpc("set_personal_cash_book_v1", {
+          p_membership_id: input.membershipId,
+          p_account_id: rpcNullable(input.accountId),
+        });
+        if (error) throw error;
+        const parsed = z.object({membershipId:z.string().min(1),personalCashBook:z.object({id:z.string().min(1),name:z.string()}).nullable()}).safeParse(data);
+        if (!parsed.success || parsed.data.membershipId !== input.membershipId || (parsed.data.personalCashBook === null ? null : parsed.data.personalCashBook.id) !== input.accountId) throw new FinancialWorkflowError('Chưa xác nhận được sổ tiền mặt riêng đã lưu. Tải lại cấu hình để đối chiếu trước khi đổi tiếp.', 'unknown', []);
+        return data;
       });
-      if (error) throw error;
-      const parsed = z.object({membershipId:z.string().min(1),personalCashBook:z.object({id:z.string().min(1),name:z.string()}).nullable()}).safeParse(data);
-      if (!parsed.success || parsed.data.membershipId !== input.membershipId || (parsed.data.personalCashBook === null ? null : parsed.data.personalCashBook.id) !== input.accountId) throw new FinancialWorkflowError('Chưa xác nhận được sổ tiền mặt riêng đã lưu. Tải lại cấu hình để đối chiếu trước khi đổi tiếp.', 'unknown', []);
+      // Khoá của dấu bản trước: mã thành viên, phạm vi người dùng.
+      const id = input.membershipId;
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'receiving-personal', businessKey: id }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
       return data;
-    }),
+    },
     onSuccess: async () => {
       await invalidateReceiving(client);
       toast.success("Đã lưu sổ tiền mặt riêng" + (memberName ? " của " + memberName : "") + ".");
@@ -155,26 +165,36 @@ export function useSetPersonalCashBook(memberName?: string) {
 
 export function useSetBuildingReceivingCashbooks(buildingName?: string) {
   const client = useQueryClient();
-  const guard = useRef(persistentFinancialWorkflow('receiving-building',{scope:'actor'}));
   return useMutation({
     meta: {handlesFeedback:true},
+    // Đợt 8 (cách A, đặt cả bộ): set_building_receiving_cashbooks_v1 (production 26/11/2026) khoá công ty rồi đặt sổ mặc
+    // định và đúng danh sách sổ phụ trong MỘT giao dịch (xoá sổ phụ ngoài danh sách, chèn ON CONFLICT DO NOTHING). Chạy lại
+    // cùng bộ cho cùng kết quả ⇒ không giữ dấu; chưa rõ thì báo và cho lưu lại. Biên nhận lệch bộ sổ vẫn KHÔNG là thành công.
     mutationFn: async (input: {
       buildingId: string;
       method: "TK" | "TT";
       defaultAccountId: string | null;
       extraAccountIds: string[];
-    }) => guard.current.run(input.buildingId + input.method, "lưu sổ nhận tiền của tòa", async () => {
-      const { data, error } = await supabase.rpc("set_building_receiving_cashbooks_v1", {
-        p_building_id: input.buildingId,
-        p_method: input.method,
-        p_default_account_id: rpcNullable(input.defaultAccountId),
-        p_extra_account_ids: input.extraAccountIds,
+    }) => {
+      const { repeatableWrite } = await import('@/lib/recordWriteOutcome');
+      const data = await repeatableWrite("lưu sổ nhận tiền của tòa", async () => {
+        const { data, error } = await supabase.rpc("set_building_receiving_cashbooks_v1", {
+          p_building_id: input.buildingId,
+          p_method: input.method,
+          p_default_account_id: rpcNullable(input.defaultAccountId),
+          p_extra_account_ids: input.extraAccountIds,
+        });
+        if (error) throw error;
+        const value = data as {buildingId?:string;method?:string;defaultAccountId?:string|null;extraAccountIds?:unknown} | null;
+        if (!value || value.buildingId !== input.buildingId || value.method !== input.method || value.defaultAccountId !== input.defaultAccountId || !Array.isArray(value.extraAccountIds) || [...value.extraAccountIds].sort().join('|') !== [...new Set(input.extraAccountIds)].filter(id => id !== input.defaultAccountId).sort().join('|')) throw new FinancialWorkflowError('Chưa xác nhận được cấu hình sổ nhận tiền đã lưu. Tải lại cấu hình của tòa để đối chiếu trước khi đổi tiếp.', 'unknown', []);
+        return data;
       });
-      if (error) throw error;
-      const value = data as {buildingId?:string;method?:string;defaultAccountId?:string|null;extraAccountIds?:unknown} | null;
-      if (!value || value.buildingId !== input.buildingId || value.method !== input.method || value.defaultAccountId !== input.defaultAccountId || !Array.isArray(value.extraAccountIds) || [...value.extraAccountIds].sort().join('|') !== [...new Set(input.extraAccountIds)].filter(id => id !== input.defaultAccountId).sort().join('|')) throw new FinancialWorkflowError('Chưa xác nhận được cấu hình sổ nhận tiền đã lưu. Tải lại cấu hình của tòa để đối chiếu trước khi đổi tiếp.', 'unknown', []);
+      // Khoá của dấu bản trước: mã toà ghép hình thức (như guard cũ), phạm vi người dùng.
+      const id = input.buildingId + input.method;
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'receiving-building', businessKey: id }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
       return data;
-    }),
+    },
     onSuccess: async () => {
       await invalidateReceiving(client);
       toast.success("Đã lưu cấu hình sổ nhận tiền của tòa" + (buildingName ? " " + buildingName : "") + ".");

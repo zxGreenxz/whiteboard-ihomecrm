@@ -72,11 +72,16 @@ it('a cashbook create timeout retains the exact idempotency key; the next create
  expect(h.rpc).toHaveBeenCalledTimes(2);
  expect(h.rpc.mock.calls[1][1].p_idempotency_key).toBe(saved?.requestKey);
 });
-// Đợt 5: lưu trữ tách khỏi dấu `cashbook-lifecycle` của sửa sổ, nhưng dấu ở đó vẫn chặn lưu trữ đúng sổ đó (hộp cảnh báo).
-it('an unknown cashbook metadata update blocks archive on that cashbook after remount',async()=>{
+// Đợt 5: lưu trữ tách khỏi dấu `cashbook-lifecycle` của sửa sổ; dấu bản trước ở đó vẫn chặn lưu trữ đúng sổ đó (hộp cảnh
+// báo). Đợt 8: sửa sổ đặt giá trị tuyệt đối (update_cashbook_metadata_v1) nên không ghi dấu nào nữa; lần sửa chưa rõ kết
+// quả không còn chặn lưu trữ (archive_cashbook_v1 khoá sổ rồi mới xét, đòi sổ hết phiếu; sửa sổ không thêm phiếu nào).
+it('an unknown cashbook metadata update leaves no marker and no longer blocks archive on that cashbook',async()=>{
  h.rpc.mockResolvedValue(timeout);
  const {useUpdateAccount,useDeleteAccount}=await import('../useAccounts');
- await expect(writer(useUpdateAccount())({id:'book1',values:{name:'Sổ A',initial_amount:0,initial_date:'2026-09-30'}})).rejects.toBeInstanceOf(FinancialWorkflowError);
+ const {RepeatableWriteUnknownError}=await import('@/lib/financialWorkflow');
+ const {financialPending}=await import('@/lib/financialPending');
+ await expect(writer(useUpdateAccount())({id:'book1',values:{name:'Sổ A',initial_amount:0,initial_date:'2026-09-30'}})).rejects.toBeInstanceOf(RepeatableWriteUnknownError);
+ expect(financialPending.read({namespace:'cashbook-lifecycle',userId:'u',organizationId:'actor-scope',businessKey:'book1'})).toBeNull();
  await expect(writer(useDeleteAccount())('book1')).rejects.toBeInstanceOf(FinancialWorkflowError);
- expect(h.rpc).toHaveBeenCalledTimes(1);
+ expect(h.rpc.mock.calls.map(call=>call[0])).toEqual(['update_cashbook_metadata_v1','archive_cashbook_v1']);
 });

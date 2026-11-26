@@ -21,14 +21,15 @@ it('tài khoản trống hiển thị đỏ và focus, không tạo hồ sơ',as
  expect(document.activeElement?.getAttribute('aria-invalid')).toBe('true');
  expect(m.create).not.toHaveBeenCalled();
 });
-it('giữ draft và mã cổ đông khi tỷ lệ lỗi sau khi lưu hồ sơ; không lưu lại',async()=>{
+// Đợt 8 (luật 5): hồ sơ sửa theo mã và tỷ lệ đặt cả bộ nên lưu lại không tạo thêm gì; nút Lưu không khoá nữa.
+it('giữ mã cổ đông khi tỷ lệ lỗi sau khi lưu hồ sơ, không lộ lỗi máy chủ; bấm Lưu lại ghi lại cả hai bước',async()=>{
  m.update.mockResolvedValue(undefined);m.sync.mockRejectedValue({message:'relation private_table'});
  render(<ShareholderForm open onOpenChange={vi.fn()} shareholder={{id:'s1',name:'An',auth_user_id:'u',note:null,is_active:true} as never}/>);
  fireEvent.click(screen.getByRole('button',{name:'Lưu'}));
  await screen.findByText('s1');
- expect((screen.getByRole('button',{name:'Lưu'}) as HTMLButtonElement).disabled).toBe(true);
+ expect((screen.getByRole('button',{name:'Lưu'}) as HTMLButtonElement).disabled).toBe(false);
  expect(screen.getByRole('alert').textContent).not.toContain('private_table');
- fireEvent.click(screen.getByRole('button',{name:'Lưu'}));expect(m.update).toHaveBeenCalledTimes(1);
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(m.sync).toHaveBeenCalledTimes(2));expect(m.update).toHaveBeenCalledTimes(2);
 });
 it('cấu hình lỗi không hiển thị form hoặc tỷ lệ trống để lưu',()=>{
  m.queryError=true;render(<ShareholderForm open onOpenChange={vi.fn()} shareholder={null}/>);
@@ -36,9 +37,9 @@ it('cấu hình lỗi không hiển thị form hoặc tỷ lệ trống để l�
  expect(screen.queryByRole('button',{name:'Lưu'})).toBeNull();
 });
 
-it('shareholder full-save partial không ghi primary lại sau remount',async()=>{
+it('shareholder full-save chưa rõ tỷ lệ: sau remount bấm lại ghi lại hồ sơ theo mã và tỷ lệ, không bị chặn',async()=>{
  m.update.mockResolvedValue(undefined);m.sync.mockRejectedValue(new TypeError('Failed to fetch'));
  const props={open:true,onOpenChange:vi.fn(),shareholder:{id:'s1',name:'An',auth_user_id:'u',note:null,is_active:true} as never};
  const first=render(<ShareholderForm {...props}/>);fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await screen.findByText('s1');first.unmount();
- render(<ShareholderForm {...props}/>);fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await screen.findByRole('alert');expect(m.update).toHaveBeenCalledTimes(1);expect(props.onOpenChange).not.toHaveBeenCalled();
+ render(<ShareholderForm {...props}/>);fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await screen.findByRole('alert');await waitFor(()=>expect(m.sync).toHaveBeenCalledTimes(2));expect(m.update).toHaveBeenCalledTimes(2);expect(props.onOpenChange).not.toHaveBeenCalled();
 });

@@ -409,9 +409,10 @@ const CashbookFormEditor = ({ open, onOpenChange, account, blockedDraft, onBlock
   }, [blockedDraft, form]);
   const saveSources = [v2Routes, staffQuery, buildingsQuery, ...(isEditing && !orgFromAccount ? [orgIdQuery] : []), ...(v2AccessMode && canEditShared ? [accessQuery, ...(accessUserIds.length ? [profileQuery] : [])] : [])];
   const sourceBlocked = saveSources.some(query => query.isError || query.isLoading);
-  // Đợt 6: bỏ dấu ngoài bao các lệnh con. Tạo sổ (dấu `cashbook-create`) và sửa sổ (dấu `cashbook-lifecycle`) tự giữ dấu
-  // của mình; phân quyền sổ gửi mã ổn định (`cashbookAccessRequestKey`). Lần chưa rõ kết quả không khoá nút Lưu nữa: bấm
-  // lại là đối chiếu (tạo sổ gửi lại cùng mã; phân quyền cùng lựa chọn nhận lại kết quả cũ). Bản nháp vẫn được giữ.
+  // Đợt 6: bỏ dấu ngoài bao các lệnh con. Tạo sổ (dấu `cashbook-create`) tự giữ dấu của mình; phân quyền sổ gửi mã ổn
+  // định (`cashbookAccessRequestKey`). Đợt 8: sửa sổ đặt giá trị tuyệt đối nên không giữ dấu nào (chưa rõ thì báo «bấm
+  // lại»). Lần chưa rõ kết quả không khoá nút Lưu: bấm lại là đối chiếu (tạo sổ gửi lại cùng mã; sửa sổ ghi lại đúng nội
+  // dung; phân quyền cùng lựa chọn nhận lại kết quả cũ). Bản nháp vẫn được giữ.
   const onSubmit = async (values: FormValues) => {
     if (sourceBlocked) return;
     form.clearErrors("root.server");
