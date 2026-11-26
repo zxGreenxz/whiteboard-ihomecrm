@@ -1,0 +1,13 @@
+[Unit]
+Description=Check current CRM authority for a personal Zalo channel
+
+[Service]
+User=ihome-hermes
+Group=ihome-hermes
+EnvironmentFile=/etc/ihome-hermes-fleet/activation.env
+ExecStart=/opt/ihome-hermes/node/bin/node /opt/ihome-hermes/current/infra/hermes-fleet/binding-guard.mjs /etc/ihome-hermes/connector.json ${HERMES_ORGANIZATION_ID} ${HERMES_ZALO_ACCOUNT_ID}
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0077
