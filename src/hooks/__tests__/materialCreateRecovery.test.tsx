@@ -73,6 +73,11 @@ function lateArrivalBeforeNextInsert(table: string, late: Row[]) {
     return { ...real, insert: (value: unknown) => { io.intercept = undefined; io.server.rows[table] = [...rows(table), ...late.map(row => ({ ...row }))]; return real.insert(value); } };
   };
 }
+/** Lệnh chèn kế tiếp vào `table` tới máy chủ và đã ghi, phản hồi mất, lần đọc lại ngay sau đó cũng hỏng: kết quả chưa rõ. */
+function lostResponse(table: string) {
+  io.server.failNext(table, 'insert', 'drop-after');
+  io.server.failNext(table, 'read', 'drop-before');
+}
 const lastPayload = (table: string): Row[] => {
   const last = insertsInto(table).at(-1)!.payload;
   return Array.isArray(last) ? last : [last];
@@ -84,9 +89,9 @@ const createAdjustment = (): Run => { const { result } = renderHook(() => useCre
 const setStock = (): Run => { const { result } = renderHook(() => useSetMaterialStock({ silent: true })); return (result.current as unknown as { mutationFn: Run }).mutationFn; };
 const createUsage = (): Run => { const { result } = renderHook(() => useCreateMaterialUsage()); return (result.current as unknown as { mutationFn: Run }).mutationFn; };
 
-const purchase = { purchase_date: '2026-11-26', supplier_id: null, notes: 'nhập tháng', draftKey: 'nhap-1', items: [{ material_id: 'm-1', quantity: 4, unit_price: 120 }, { material_id: 'm-2', quantity: 2, unit_price: 50 }] };
-const adjustment = { adjustment_date: '2026-11-26', type: 'IN', reason: 'tìm thấy thừa', draftKey: 'kiem-1', items: [{ material_id: 'm-1', quantity: 3 }] };
-const usage = { usage_date: '2026-11-26', notes: 'xuất sửa', draftKey: 'xuat-1', items: [{ material_id: 'm-1', quantity: 2, unit_cost_at_usage: 100 }] };
+const purchase = { purchase_date: '2026-11-26', supplier_id: null, notes: 'nhập tháng', draft: 'nhap-1', items: [{ material_id: 'm-1', quantity: 4, unit_price: 120 }, { material_id: 'm-2', quantity: 2, unit_price: 50 }] };
+const adjustment = { adjustment_date: '2026-11-26', type: 'IN', reason: 'tìm thấy thừa', draft: 'kiem-1', items: [{ material_id: 'm-1', quantity: 3 }] };
+const usage = { usage_date: '2026-11-26', notes: 'xuất sửa', draft: 'xuat-1', items: [{ material_id: 'm-1', quantity: 2, unit_cost_at_usage: 100 }] };
 
 beforeEach(() => {
   io.server = fakeRecordServer();
@@ -118,8 +123,18 @@ describe('tạo phiếu nhập (material-purchase, khoá create)', () => {
     expect(pendingKeys()).toEqual([]);
   });
 
-  it('đầu phiếu tới nhưng mất phản hồi: bấm lại gửi đúng mã cũ, ghi dòng vào đúng phiếu đó, không có phiếu thứ hai', async () => {
+  it('đầu phiếu mất phản hồi nhưng đọc lại ngay thấy: ghi tiếp dòng ngay trong lần bấm đó, không chưa rõ', async () => {
     io.server.failNext('material_purchases', 'insert', 'drop-after');
+    const created = await createPurchase()(purchase);
+    expect(created).toMatchObject({ id: headers()[0].id, replayed: false });
+    expect(headers()).toHaveLength(1);
+    expect(linesOf(headers()[0].id)).toHaveLength(2);
+    expect(stock('m-1')).toBe(14);
+  });
+
+  it('đầu phiếu tới nhưng mất phản hồi và đọc lại cũng hỏng: bấm lại gửi đúng mã cũ, ghi dòng vào đúng phiếu đó, không có phiếu thứ hai', async () => {
+    io.server.failNext('material_purchases', 'insert', 'drop-after');
+    io.server.failNext('material_purchases', 'read', 'drop-before');
     expectRetryable(await createPurchase()(purchase).catch(failure => failure));
     expect(headers()).toHaveLength(1);
     expect(linesOf(headers()[0].id)).toEqual([]);
@@ -131,8 +146,18 @@ describe('tạo phiếu nhập (material-purchase, khoá create)', () => {
     expect(stock('m-1')).toBe(14);
   });
 
-  it('dòng tới nhưng mất phản hồi: bấm lại thấy đủ dòng, không gửi lệnh chèn dòng nào nữa, báo đã lưu ở lần trước', async () => {
+  it('dòng mất phản hồi nhưng đọc lại ngay thấy đủ dòng: báo tạo xong, không gửi lần hai', async () => {
     io.server.failNext('material_purchase_items', 'insert', 'drop-after');
+    const created = await createPurchase()(purchase);
+    expect(created).toMatchObject({ id: headers()[0].id, replayed: false });
+    expect(insertsInto('material_purchase_items')).toHaveLength(1);
+    expect(linesOf(headers()[0].id)).toHaveLength(2);
+    expect(stock('m-1')).toBe(14);
+  });
+
+  it('dòng tới nhưng mất phản hồi và đọc lại cũng hỏng: bấm lại thấy đủ dòng, không gửi lệnh chèn dòng nào nữa, báo đã lưu ở lần trước', async () => {
+    io.server.failNext('material_purchase_items', 'insert', 'drop-after');
+    io.server.failNext('material_purchase_items', 'read', 'drop-before');
     const lost = await createPurchase()(purchase).catch(failure => failure);
     expectRetryable(lost);
     expect((lost as FinancialWorkflowError).completed.map(step => step.id)).toEqual([headers()[0].id]);
@@ -168,7 +193,7 @@ describe('tạo phiếu nhập (material-purchase, khoá create)', () => {
   });
 
   it('sửa dòng giữa hai lần bấm (cùng bản nháp) khi lần trước đã ghi: báo phiếu đã tạo kèm mã, không chèn dòng', async () => {
-    io.server.failNext('material_purchase_items', 'insert', 'drop-after');
+    lostResponse('material_purchase_items');
     expectRetryable(await createPurchase()(purchase).catch(failure => failure));
     const id = String(headers()[0].id);
     const edited = { ...purchase, items: [{ material_id: 'm-1', quantity: 5, unit_price: 120 }] };
@@ -185,7 +210,7 @@ describe('tạo phiếu nhập (material-purchase, khoá create)', () => {
   });
 
   it('sửa đầu phiếu giữa hai lần bấm (cùng bản nháp) khi lần trước đã ghi: báo phiếu đã tạo kèm mã, không tạo phiếu thứ hai', async () => {
-    io.server.failNext('material_purchases', 'insert', 'drop-after');
+    lostResponse('material_purchases');
     expectRetryable(await createPurchase()(purchase).catch(failure => failure));
     const error = await createPurchase()({ ...purchase, notes: 'ghi chú khác' }).catch(failure => failure);
     expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);
@@ -195,9 +220,9 @@ describe('tạo phiếu nhập (material-purchase, khoá create)', () => {
   });
 
   it('mở lại form (bản nháp mới) với đúng nội dung chưa rõ: vẫn nhận ra lần gửi trước, không tạo phiếu thứ hai', async () => {
-    io.server.failNext('material_purchase_items', 'insert', 'drop-after');
+    lostResponse('material_purchase_items');
     expectRetryable(await createPurchase()(purchase).catch(failure => failure));
-    await createPurchase()({ ...purchase, draftKey: 'nhap-2' });
+    await createPurchase()({ ...purchase, draft: 'nhap-2' });
     expect(headers()).toHaveLength(1);
     expect(stock('m-1')).toBe(14);
   });
@@ -217,8 +242,8 @@ describe('tạo phiếu nhập (material-purchase, khoá create)', () => {
     expect(stock('m-1')).toBe(14);
   });
 
-  it('hàng rào: dòng mất phản hồi rồi đọc lại dòng cũng hỏng ⇒ vẫn chưa rõ, không chèn chồng; bấm lại sau đó đúng một bộ dòng', async () => {
-    io.server.failNext('material_purchase_items', 'insert', 'drop-after');
+  it('hàng rào: dòng mất phản hồi rồi đọc lại dòng hỏng hai lần liền ⇒ vẫn chưa rõ, không chèn chồng; bấm lại sau đó đúng một bộ dòng', async () => {
+    lostResponse('material_purchase_items');
     expectRetryable(await createPurchase()(purchase).catch(failure => failure));
     io.server.failNext('material_purchase_items', 'read', 'drop-before');
     expectRetryable(await createPurchase()(purchase).catch(failure => failure));
@@ -249,7 +274,7 @@ describe('tạo phiếu kiểm kê IN/OUT (material-adjustment, khoá create)', 
   });
 
   it('đầu phiếu mất phản hồi: bấm lại dùng đúng phiếu đó, tồn cộng một lần', async () => {
-    io.server.failNext('material_adjustments', 'insert', 'drop-after');
+    lostResponse('material_adjustments');
     expectRetryable(await createAdjustment()(adjustment).catch(failure => failure));
     await createAdjustment()(adjustment);
     expect(headers()).toHaveLength(1);
@@ -258,7 +283,7 @@ describe('tạo phiếu kiểm kê IN/OUT (material-adjustment, khoá create)', 
   });
 
   it('dòng mất phản hồi: bấm lại không chèn thêm, tồn cộng một lần', async () => {
-    io.server.failNext('material_adjustment_items', 'insert', 'drop-after');
+    lostResponse('material_adjustment_items');
     expectRetryable(await createAdjustment()(adjustment).catch(failure => failure));
     await expect(createAdjustment()(adjustment)).resolves.toMatchObject({ replayed: true });
     expect(insertsInto('material_adjustment_items')).toHaveLength(1);
@@ -285,7 +310,7 @@ describe('tạo phiếu xuất tay (material-manual-usage, khoá create)', () =>
   });
 
   it('đầu phiếu mất phản hồi: bấm lại dùng đúng phiếu đó', async () => {
-    io.server.failNext('material_usages', 'insert', 'drop-after');
+    lostResponse('material_usages');
     expectRetryable(await createUsage()(usage).catch(failure => failure));
     await createUsage()(usage);
     expect(headers()).toHaveLength(1);
@@ -294,7 +319,7 @@ describe('tạo phiếu xuất tay (material-manual-usage, khoá create)', () =>
   });
 
   it('dòng mất phản hồi: bấm lại không trừ tồn lần hai', async () => {
-    io.server.failNext('material_usage_items', 'insert', 'drop-after');
+    lostResponse('material_usage_items');
     expectRetryable(await createUsage()(usage).catch(failure => failure));
     await createUsage()(usage);
     expect(insertsInto('material_usage_items')).toHaveLength(1);
@@ -355,7 +380,7 @@ describe('đặt tồn theo kiểm kê (material-adjustment, khoá create): phé
   });
 
   it('đầu phiếu mất phản hồi: bấm lại dùng đúng phiếu đó, ghi dòng một lần', async () => {
-    io.server.failNext('material_adjustments', 'insert', 'drop-after');
+    lostResponse('material_adjustments');
     expectRetryable(await setStock()(target(13)).catch(failure => failure));
     await setStock()(target(13));
     expect(headers()).toHaveLength(1);
@@ -363,8 +388,16 @@ describe('đặt tồn theo kiểm kê (material-adjustment, khoá create): phé
     expect(stock('m-1')).toBe(13);
   });
 
-  it('dòng mất phản hồi (đã ghi): bấm lại đọc tồn mới thấy đã khớp, KHÔNG gửi lại số chênh cũ', async () => {
+  it('dòng mất phản hồi nhưng đọc lại ngay thấy, tồn đã về đích: báo xong ngay trong lần bấm đó', async () => {
     io.server.failNext('material_adjustment_items', 'insert', 'drop-after');
+    const result = await setStock()(target(13));
+    expect(result).toMatchObject({ id: headers()[0].id, replayed: false });
+    expect(insertsInto('material_adjustment_items')).toHaveLength(1);
+    expect(stock('m-1')).toBe(13);
+  });
+
+  it('dòng mất phản hồi (đã ghi): bấm lại đọc tồn mới thấy đã khớp, KHÔNG gửi lại số chênh cũ', async () => {
+    lostResponse('material_adjustment_items');
     expectRetryable(await setStock()(target(13)).catch(failure => failure));
     expect(stock('m-1')).toBe(13);
     await expect(setStock()(target(13))).resolves.toBeNull();
@@ -385,7 +418,7 @@ describe('đặt tồn theo kiểm kê (material-adjustment, khoá create): phé
   });
 
   it('lần trước đã ghi trọn rồi phiếu khác làm tồn lệch đúng bằng phần chênh cũ: không coi là xong, báo mã phiếu trước; bấm lại đặt đúng', async () => {
-    io.server.failNext('material_adjustment_items', 'insert', 'drop-after');
+    lostResponse('material_adjustment_items');
     expectRetryable(await setStock()(target(13)).catch(failure => failure));
     const first = String(headers()[0].id);
     // Người khác xuất 3 m-1 ngay sau đó: tồn về 10, phần chênh mới lại đúng +3 như lần trước.

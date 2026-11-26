@@ -51,7 +51,7 @@ it.each(unclear('purchase-1', 'phiếu nhập'))('phiếu nhập chưa rõ kết
   fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu nhập' }));
   await waitFor(() => expect(state.createPurchase).toHaveBeenCalledTimes(2));
   expect(state.createPurchase.mock.calls[1][0]).toEqual(state.createPurchase.mock.calls[0][0]);
-  expect(state.createPurchase.mock.calls[0][0]).toMatchObject({ draftKey: expect.any(String), items: [{ material_id: 'm-1', quantity: 3 }] });
+  expect(state.createPurchase.mock.calls[0][0]).toMatchObject({ draft: expect.any(String), items: [{ material_id: 'm-1', quantity: 3 }] });
   await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   view.rerender(<MaterialPurchaseFormDialog open={false} onOpenChange={onOpenChange} editing={null}/>);
   view.rerender(<MaterialPurchaseFormDialog open onOpenChange={onOpenChange} editing={null}/>);
@@ -59,7 +59,7 @@ it.each(unclear('purchase-1', 'phiếu nhập'))('phiếu nhập chưa rõ kết
   fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu nhập' }));
   await waitFor(() => expect(state.createPurchase).toHaveBeenCalledTimes(3));
-  expect((state.createPurchase.mock.calls[2][0] as { draftKey: string }).draftKey).not.toBe((state.createPurchase.mock.calls[0][0] as { draftKey: string }).draftKey);
+  expect((state.createPurchase.mock.calls[2][0] as { draft: string }).draft).not.toBe((state.createPurchase.mock.calls[0][0] as { draft: string }).draft);
 });
 
 it('phiếu nhập giữ dòng nhập dở để sửa và không gửi thiếu dòng', async () => {
@@ -144,7 +144,7 @@ it.each(unclear('adjustment-1', 'phiếu kiểm kê'))('phiếu kiểm kê IN ch
   fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu kiểm kê' }));
   await waitFor(() => expect(state.createAdjustment).toHaveBeenCalledTimes(2));
   expect(state.createAdjustment.mock.calls[1][0]).toEqual(state.createAdjustment.mock.calls[0][0]);
-  expect(state.createAdjustment.mock.calls[0][0]).toMatchObject({ type: 'IN', draftKey: expect.any(String), items: [{ material_id: 'm-1', quantity: 2 }] });
+  expect(state.createAdjustment.mock.calls[0][0]).toMatchObject({ type: 'IN', draft: expect.any(String), items: [{ material_id: 'm-1', quantity: 2 }] });
   await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 });
 
@@ -165,7 +165,7 @@ it.each(unclear('usage-1', 'phiếu xuất'))('phiếu xuất chưa rõ kết qu
   fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu xuất' }));
   await waitFor(() => expect(state.createUsage).toHaveBeenCalledTimes(2));
   expect(state.createUsage.mock.calls[1][0]).toEqual(state.createUsage.mock.calls[0][0]);
-  expect(state.createUsage.mock.calls[0][0]).toMatchObject({ draftKey: expect.any(String), items: [{ material_id: 'm-1', quantity: 3 }] });
+  expect(state.createUsage.mock.calls[0][0]).toMatchObject({ draft: expect.any(String), items: [{ material_id: 'm-1', quantity: 3 }] });
   await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 });
 

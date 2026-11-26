@@ -18,10 +18,9 @@ import { useMaterials } from '@/hooks/useMaterials';
 import { toast } from 'sonner';
 import { todayISO } from '@/lib/collect';
 import { focusFirstError } from '@/lib/formErrors';
-import { materialVoucherFailureMessage, materialVoucherRetryBlocked } from '@/lib/materialVoucherOutcome';
+import { materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 import { validateInputDrafts } from '@/lib/inputDraftValidation';
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 
 interface Props {
   open: boolean;
@@ -48,7 +47,6 @@ export default function MaterialAdjustmentFormDialog({ open, onOpenChange }: Pro
   const setStock = useSetMaterialStock({ silent: true });
   const materialsQuery = useMaterials({});
   const materials = materialsQuery.data ?? [];
-  const [batchGuard] = useState(() => persistentFinancialWorkflow('material-adjustment-batch'));
 
   const [type, setType] = useState<AdjType>('SET');
   const [date, setDate] = useState(todayISO());
@@ -57,11 +55,14 @@ export default function MaterialAdjustmentFormDialog({ open, onOpenChange }: Pro
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [rootError, setRootError] = useState('');
-  const [blocked, setBlocked] = useState(false);
+  // Đợt 9: kết quả chưa rõ không khoá form. Phiếu IN/OUT dùng mã do trình duyệt sinh (`draft`: các lần bấm của cùng
+  // bản nháp là cùng một phiếu); kiểm kê SET đọc lại tồn trên máy chủ cho từng vật tư ở mỗi lần bấm (xem useSetMaterialStock).
   const [saving, setSaving] = useState(false);
+  const draft = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
-    if (open && !rootError && !blocked) {
+    if (open && !rootError) {
+      draft.current = crypto.randomUUID();
       setType('SET');
       setDate(todayISO());
       setReason('');
@@ -79,7 +80,7 @@ export default function MaterialAdjustmentFormDialog({ open, onOpenChange }: Pro
 
   const onSubmit = async () => {
     if(!validateInputDrafts(root.current))return;
-    if (blocked || saving || createMut.isPending || setStock.isPending) return;
+    if (saving || createMut.isPending || setStock.isPending) return;
     const rowErrors: Record<string, string> = {};
     const seen = new Set<string>();
     items.forEach((row, index) => {
@@ -95,35 +96,34 @@ export default function MaterialAdjustmentFormDialog({ open, onOpenChange }: Pro
     if (materialsQuery.isPending || materialsQuery.isError) { setRootError('Chưa tải được tồn kho. Tải lại vật tư trước khi điều chỉnh.'); return; }
     setErrors({}); setRootError(''); setSaving(true);
     const clean = items.map(row => ({ material_id: row.material_id!, quantity: Number(row.quantity) }));
+    // Kiểm kê nhiều vật tư (SET): không giữ dấu lồng nào. Mỗi vật tư một lần đặt tồn; hook đọc tồn hiện tại TRÊN MÁY CHỦ
+    // (không dùng số tồn của màn) rồi chỉ ghi phần chênh, nên bấm lại sau một lần dở chạy lại cả vòng: vật tư đã khớp
+    // không ghi thêm, vật tư còn dở được đặt tiếp.
+    const saved: string[] = [];
+    let failedRow = -1;
     try {
       if (type === 'SET') {
-        const changed = await batchGuard.run('create', 'kiểm kê nhiều vật tư', async progress => {
-          let count = 0;
-          for (const [index, row] of clean.entries()) {
-            progress.stage = `điều chỉnh vật tư dòng ${index + 1}`;
-            try {
-              const material = materials.find(item => item.id === row.material_id)!;
-              if (!Number.isFinite(Number(material.on_hand))) throw new Error('Chưa xác nhận được tồn kho hiện tại.');
-              const result = await setStock.mutateAsync({ material_id: row.material_id, target_quantity: row.quantity, current_quantity: Number(material.on_hand), reason: reason.trim() || `Kiểm kê ${date}` });
-              if (result) { count++; progress.completed.push({ id: result.id, label: `Phiếu kiểm kê ID ${result.id} đã lưu` }); }
-            } catch (error) {
-              if (error instanceof FinancialWorkflowError) progress.completed.push(...error.completed.filter(step => !progress.completed.some(previous => previous.id === step.id)));
-              if (progress.completed.length) throw new FinancialWorkflowError(`Kiểm kê mới hoàn tất một phần. ID phiếu đã nhận: ${progress.completed.map(step => step.id).join(', ')}. Đối chiếu các phiếu và tồn kho trước khi thực hiện tiếp.`, 'partial', [...progress.completed], error);
-              throw error;
-            }
-          }
-          return count;
-        });
-        if (changed) toast.success(`Đã lưu ${changed} phiếu kiểm kê.`); else toast.info('Tồn đã khớp — không cần điều chỉnh');
+        for (const [index, row] of clean.entries()) {
+          failedRow = index;
+          const result = await setStock.mutateAsync({ material_id: row.material_id, target_quantity: row.quantity, reason: reason.trim() || `Kiểm kê ${date}` });
+          if (result) saved.push(result.id);
+        }
+        failedRow = -1;
+        try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'material-adjustment-batch', businessKey: 'create' }); }
+        catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần kiểm kê sau gỡ lại. */ }
+        if (saved.length) toast.success(`Đã lưu ${saved.length} phiếu kiểm kê.`); else toast.info('Tồn đã khớp — không cần điều chỉnh');
       } else {
-        await createMut.mutateAsync({ adjustment_date: date, type, reason: reason.trim() || null, items: clean });
+        await createMut.mutateAsync({ adjustment_date: date, type, reason: reason.trim() || null, items: clean, draft: draft.current });
       }
       onOpenChange(false);
     } catch (error) {
       const ids = error instanceof FinancialWorkflowError ? error.completed.map(step => step.id) : [];
-      setRootError(materialVoucherFailureMessage(error, 'kiểm kê vật tư') + (ids.length ? ` ID cần đối chiếu: ${ids.join(', ')}.` : ''));
-      setBlocked(materialVoucherRetryBlocked(error));
-      if (type === 'SET') toast.error('Chưa hoàn tất kiểm kê vật tư', { description: materialVoucherFailureMessage(error, 'kiểm kê vật tư') });
+      const done = saved.length ? `Đã lưu phiếu kiểm kê cho ${saved.length} vật tư đầu (mã phiếu: ${saved.join(', ')}). ` : '';
+      const where = type === 'SET' && failedRow >= 0 ? `Vật tư dòng ${failedRow + 1}: ` : '';
+      const retry = type === 'SET' && saved.length ? ' Bấm lại để chạy lại cả lượt: máy đọc lại tồn trên máy chủ, vật tư đã khớp không ghi thêm.' : '';
+      const message = `${done}${where}${materialVoucherFailureMessage(error, 'kiểm kê vật tư')}${ids.length ? ` ID cần đối chiếu: ${ids.join(', ')}.` : ''}${retry}`;
+      setRootError(message);
+      if (type === 'SET') toast.error('Chưa hoàn tất kiểm kê vật tư', { description: message });
     } finally { setSaving(false); }
   };
   const isSubmitting = saving || createMut.isPending || setStock.isPending;
@@ -137,7 +137,7 @@ export default function MaterialAdjustmentFormDialog({ open, onOpenChange }: Pro
         <div className="space-y-4">
           {rootError && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{rootError}</p>}
           {materialsQuery.isError && <Button type="button" variant="outline" onClick={() => void materialsQuery.refetch()}>Tải lại vật tư</Button>}
-          <fieldset disabled={isSubmitting || blocked} className="space-y-4">
+          <fieldset disabled={isSubmitting} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Ngày kiểm kê</Label>
@@ -255,9 +255,9 @@ export default function MaterialAdjustmentFormDialog({ open, onOpenChange }: Pro
 
         <DialogFooter className="pt-3">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-            {blocked ? 'Đóng để đối chiếu' : 'Huỷ'}
+            Huỷ
           </Button>
-          <Button type="button" onClick={onSubmit} disabled={isSubmitting || blocked || materialsQuery.isPending || materialsQuery.isError}>
+          <Button type="button" onClick={onSubmit} disabled={isSubmitting || materialsQuery.isPending || materialsQuery.isError}>
             {isSubmitting ? 'Đang lưu…' : 'Tạo phiếu kiểm kê'}
           </Button>
         </DialogFooter>
