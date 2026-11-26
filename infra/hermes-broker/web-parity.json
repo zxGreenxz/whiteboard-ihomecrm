@@ -454,7 +454,7 @@
         },
         {
           "function": "public.customer_list_core_v1",
-          "sha256": "8924cd3114425a3fa35bdd6d6d2160bd9eaed5c2cf4dd2c6218e83d32b30ac3b"
+          "sha256": "32a9ce2897f323e681a0a3db9487505f3891429d7126344062f8304007393d67"
         }
       ],
       "hermes": [
@@ -2439,7 +2439,7 @@
         },
         {
           "function": "public.customer_list_core_v1",
-          "sha256": "8924cd3114425a3fa35bdd6d6d2160bd9eaed5c2cf4dd2c6218e83d32b30ac3b"
+          "sha256": "32a9ce2897f323e681a0a3db9487505f3891429d7126344062f8304007393d67"
         }
       ],
       "hermes": [
