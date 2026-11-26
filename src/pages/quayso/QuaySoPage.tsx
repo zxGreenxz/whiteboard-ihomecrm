@@ -1,5 +1,5 @@
 import { uploadProofBatch, type ProofFailure } from '@/lib/luckyProofUpload';
-import { readPendingLuckyProofs, readUnconfirmedLuckyUploads, retainPlannedLuckyUpload, confirmPlannedLuckyUpload, retainUploadedLuckyProof, confirmPendingLuckyProofs } from '@/lib/luckyProofPending';
+import { readPendingLuckyProofs, takeLegacyPlannedLuckyUploads, retainUploadedLuckyProof, confirmPendingLuckyProofs, discardPendingLuckyProofs } from '@/lib/luckyProofPending';
 import { publicFailure, checkinCodeError } from '@/lib/publicFeedback';
 /**
  * Trang CÔNG KHAI /quayso — sale không đăng nhập.
@@ -81,16 +81,14 @@ interface PayoutFormProps {
 }
 
 export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
-  const [initialPending] = useState(() => {
-    try { return { proofs: readPendingLuckyProofs(eventId, team.id), uploads: readUnconfirmedLuckyUploads(eventId, team.id), error: null as string | null }; }
-    catch { return { proofs: [] as LuckyProof[], uploads: [] as LuckyProof[], error: 'Chưa đọc được các tệp đang chờ xác nhận. Kiểm tra quyền lưu dữ liệu của trình duyệt trước khi tải thêm tệp.' }; }
-  });
+  // Đợt 9: kho tệp chờ gắn không bao giờ khoá ô tải.
+  const [initialPending] = useState(() => ({ proofs: readPendingLuckyProofs(eventId, team.id) }));
   const [account, setAccount] = useState(team.payoutAccount ?? '');
   const [bank, setBank] = useState(team.payoutBank ?? '');
   const [holder, setHolder] = useState(team.payoutHolder ?? '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(initialPending.error);
+  const [err, setErr] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [proofs, setProofs] = useState<LuckyProof[]>(team.proofs ?? []);
   // Đã có STK thì mở ở chế độ xem gọn; chưa có gì thì mở sẵn ô điền.
@@ -103,9 +101,15 @@ export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const uploadRef = useRef<HTMLLabelElement>(null);
   const [pendingProofs, setPendingProofs] = useState<LuckyProof[]>(initialPending.proofs);
-  const [unconfirmedUploads, setUnconfirmedUploads] = useState<LuckyProof[]>(initialPending.uploads);
+  const [lostUploads, setLostUploads] = useState<string[]>([]);
   const [fileErrors, setFileErrors] = useState<ProofFailure[]>([]);
   const uploadLock = useRef(false);
+  // Dấu «đã lên kế hoạch tải» của bản trước: đọc một lần rồi bỏ (trong effect, để lần chạy kép của StrictMode không nuốt mất
+  // lời nhắc); tên tệp chỉ dùng để nhắc khách chọn lại, vì tệp đó chưa từng được gắn vào đội.
+  useEffect(() => {
+    const names = takeLegacyPlannedLuckyUploads(eventId, team.id);
+    if (names.length) setLostUploads(names);
+  }, [eventId, team.id]);
 
   // Thu hồi blob URL khi rời trang để không rò bộ nhớ.
   const urlsRef = useRef(localUrls);
@@ -128,18 +132,14 @@ export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
 
   const pickFiles = async (files: FileList | File[] | null) => {
     const list = Array.from(files ?? []);
-    if (!list.length || uploadLock.current || pendingProofs.length || unconfirmedUploads.length || initialPending.error) return;
+    if (!list.length || uploadLock.current || pendingProofs.length) return;
     uploadLock.current = true;
-    setErr(null); setMsg(null); setBusy(true);
+    setErr(null); setMsg(null); setBusy(true); setLostUploads([]);
     try {
       const result = await uploadProofBatch(eventId, list, proofs.length, undefined,
         (index, total) => setProgress(`Đang tải ${index}/${total}…`), proof => {
           setPendingProofs(current => [...new Map([...current, proof].map(p => [p.path, p])).values()]);
           retainUploadedLuckyProof(eventId, team.id, proof);
-          setUnconfirmedUploads(confirmPlannedLuckyUpload(eventId, team.id, proof));
-        }, {
-          onPlanned: proof => setUnconfirmedUploads(retainPlannedLuckyUpload(eventId, team.id, proof)),
-          onRejected: proof => setUnconfirmedUploads(confirmPlannedLuckyUpload(eventId, team.id, proof)),
         });
       setFileErrors(current => [...current.filter(item => !list.includes(item.file)), ...result.failed]);
       const added = result.uploaded.map(item => item.proof);
@@ -179,8 +179,16 @@ export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
     finally { uploadLock.current = false; setBusy(false); }
   };
 
+  // Lối ra khi các tệp đã tải không gắn được nữa (đội bị bỏ điểm danh, sự kiện đổi…): bỏ chúng khỏi danh sách chờ để tải
+  // tiếp. Tệp đã nằm trong kho chỉ còn là tệp mồ côi; giấy cọc đã lưu của đội (trên máy chủ) không bị đụng tới.
+  const discardPending = () => {
+    if (uploadLock.current) return;
+    discardPendingLuckyProofs(eventId, team.id);
+    setPendingProofs([]); setErr(null);
+  };
+
   const removeProof = async (path: string) => {
-    if (uploadLock.current || pendingProofs.length || unconfirmedUploads.length || initialPending.error) return;
+    if (uploadLock.current || pendingProofs.length) return;
     uploadLock.current = true;
     setErr(null);
     setMsg(null);
@@ -259,7 +267,7 @@ export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
                 type="button"
                 className="qs-proof-x"
                 aria-label={`Bỏ ${p.name}`}
-                disabled={busy || pendingProofs.length > 0 || unconfirmedUploads.length > 0 || !!initialPending.error}
+                disabled={busy || pendingProofs.length > 0}
                 onClick={() => void removeProof(p.path)}
               >
                 ✕
@@ -269,13 +277,13 @@ export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
         </ul>
       )}
 
-      <label className="qs-uploadbox" ref={uploadRef} tabIndex={0} role="button" aria-label="Thêm giấy cọc" aria-invalid={fileErrors.length > 0 || pendingProofs.length > 0 || unconfirmedUploads.length > 0} aria-describedby={fileErrors.length || pendingProofs.length || unconfirmedUploads.length ? "qs-proof-errors" : undefined} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); if (!busy && !pendingProofs.length && !unconfirmedUploads.length) fileRef.current?.click(); } }}>
+      <label className="qs-uploadbox" ref={uploadRef} tabIndex={0} role="button" aria-label="Thêm giấy cọc" aria-invalid={fileErrors.length > 0 || pendingProofs.length > 0} aria-describedby={fileErrors.length || pendingProofs.length || lostUploads.length ? "qs-proof-errors" : undefined} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); if (!busy && !pendingProofs.length) fileRef.current?.click(); } }}>
         <input
           ref={fileRef}
           type="file"
           accept="image/*,application/pdf"
           multiple
-          disabled={busy || pendingProofs.length > 0 || unconfirmedUploads.length > 0 || !!initialPending.error}
+          disabled={busy || pendingProofs.length > 0}
           onChange={(e) => void pickFiles(e.target.files)}
         />
         <span className="qs-up-empty">
@@ -288,14 +296,14 @@ export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
         </span>
       </label>
 
-      {(fileErrors.length > 0 || pendingProofs.length > 0 || unconfirmedUploads.length > 0) && <div id="qs-proof-errors" role="alert" className="qs-codeerr">
+      {(fileErrors.length > 0 || pendingProofs.length > 0 || lostUploads.length > 0) && <div id="qs-proof-errors" role="alert" className="qs-codeerr">
         {fileErrors.map((failure, index) => <div key={index}>
           <p>{failure.message}</p>
-          <button type="button" disabled={busy || pendingProofs.length > 0 || unconfirmedUploads.length > 0 || !!initialPending.error} onClick={() => void pickFiles([failure.file])}>Thử lại {failure.file.name}</button>
+          <button type="button" disabled={busy || pendingProofs.length > 0} onClick={() => void pickFiles([failure.file])}>Thử lại {failure.file.name}</button>
           <button type="button" disabled={busy} onClick={() => setFileErrors(current => current.filter(item => item !== failure))}>Gỡ {failure.file.name} khỏi biểu mẫu</button>
         </div>)}
-        {unconfirmedUploads.length > 0 && <p>Chưa xác nhận được kết quả tải: {unconfirmedUploads.map(item => item.name).join(", ")}. Không tải lại các tệp này để tránh tạo trùng. Liên hệ ban tổ chức để kiểm tra tệp đã gửi.</p>}
-        {pendingProofs.length > 0 && <><p>Tệp đã tải lên, đang chờ xác nhận: {pendingProofs.map(item => item.name).join(', ')}.</p><button type="button" disabled={busy} onClick={() => void reconcileProofs()}>Kiểm tra và gắn các tệp đã tải</button></>}
+        {lostUploads.length > 0 && <p>Lần trước chưa tải xong: {lostUploads.join(', ')}. Các tệp này chưa được gắn vào đội; chọn lại tệp nếu vẫn cần nộp.</p>}
+        {pendingProofs.length > 0 && <><p>Tệp đã tải lên, đang chờ xác nhận: {pendingProofs.map(item => item.name).join(', ')}.</p><button type="button" disabled={busy} onClick={() => void reconcileProofs()}>Kiểm tra và gắn các tệp đã tải</button> <button type="button" disabled={busy} onClick={discardPending}>Bỏ qua các tệp này</button></>}
       </div>}
       {editing ? (
         <div className="qs-fields">
