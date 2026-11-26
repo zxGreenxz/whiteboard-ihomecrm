@@ -12,6 +12,7 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{}}));
 vi.mock('@/lib/actionFeedback',async original=>({...await original<typeof import('@/lib/actionFeedback')>(),notifyActionError:h.notify}));
 vi.mock('sonner',()=>({toast:{success:vi.fn()}}));
 import {IeAutoApproveThresholdCard} from '../GeneralSettingsPage';
+import {RepeatableWriteUnknownError} from '@/lib/financialWorkflowError';
 beforeEach(()=>{h.save.mockReset();h.notify.mockReset();h.query={data:100,status:'success',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:vi.fn()};});
 afterEach(cleanup);
 it('does not present read failure as no approval threshold',()=>{
@@ -28,16 +29,21 @@ it('preserves an edited amount when the server value refreshes',()=>{
  h.query={...h.query,data:150};view.rerender(<IeAutoApproveThresholdCard/>);
  expect((input as HTMLInputElement).value).toBe('200');
 });
-it('keeps the draft and a visible warning after uncertain save and blocks resending',async()=>{
- h.save.mockRejectedValue({status:504,message:'upstream timeout'});
+// Đợt 8 (luật 5): ngưỡng là giá trị đặt tuyệt đối (upsert theo công ty), lưu lại cho cùng kết quả. Kết quả chưa rõ báo rõ,
+// giữ số đang nhập, KHÔNG khoá nút: bấm lại gửi đúng ngưỡng đó. (Trước đợt 8: nút khoá tới khi tải lại trang.)
+it('keeps the draft and a visible warning after uncertain save and lets the owner save again',async()=>{
+ h.save.mockRejectedValueOnce(new RepeatableWriteUnknownError('lưu ngưỡng tự duyệt phiếu chi',{status:504,message:'upstream timeout'})).mockResolvedValueOnce(undefined);
  render(<IeAutoApproveThresholdCard/>);
  const input=screen.getByRole('textbox',{name:'Ngưỡng tự duyệt phiếu chi'});
  fireEvent.change(input,{target:{value:'200'}});
  fireEvent.click(screen.getByRole('button',{name:'Lưu ngưỡng'}));
- await waitFor(()=>expect(screen.getByRole('alert')).toBeTruthy());
+ await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('Bấm lại'));
  expect((input as HTMLInputElement).value).toBe('200');
  const save=screen.getByRole('button',{name:'Lưu ngưỡng'}) as HTMLButtonElement;
- expect(save.disabled).toBe(true);
- fireEvent.click(save);expect(h.save).toHaveBeenCalledTimes(1);
+ expect(save.disabled).toBe(false);
+ expect((screen.getByRole('button',{name:'Bỏ ngưỡng (tự duyệt tất cả)'}) as HTMLButtonElement).disabled).toBe(false);
+ fireEvent.click(save);
+ await waitFor(()=>expect(h.save).toHaveBeenCalledTimes(2));
+ expect(h.save.mock.calls.map(call=>call[0])).toEqual([200,200]);
  expect(h.notify).toHaveBeenCalledTimes(1);
 });

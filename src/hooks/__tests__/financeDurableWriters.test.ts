@@ -222,11 +222,15 @@ it('upload raw SQL error không xuất hiện trong description người dùng',
  const mutation=mount(useUploadPaymentReceipt).result.current as unknown as {onError:(error:unknown,variables:Parameters<ReturnType<typeof useUploadPaymentReceipt>['mutateAsync']>[0])=>void};mutation.onError({code:'42501',message:'private_policy_name SQL leaked'},{payment_id:'p1',file:new File(['x'],'receipt.png')});expect(h.toast.mock.calls[0][0].description).not.toContain('private_policy_name');
 });
 
-it('sinh định kỳ timeout giữ marker actor toàn lượt, reload/orgchange không sinh lại',async()=>{
- h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(useGenerateRecurringVouchers).mutation.mutationFn(undefined)).rejects.toThrow();expect(financialPending.read({...scope('voucher-recurring-generate','generate'),organizationId:'actor-scope'})).not.toBeNull();localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(mount(useGenerateRecurringVouchers).mutation.mutationFn(undefined)).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledOnce();
+// Đợt 8 (cách A): generate_recurring_vouchers chỉ sinh kỳ chưa có phiếu con (chỉ mục duy nhất phiếu cha × ngày kỳ). Dấu actor
+// vẫn giữ qua reload/đổi công ty, nhưng lần bấm sau gửi lại NGAY thay vì bị chặn mãi; máy chủ chỉ sinh phần còn thiếu.
+it('sinh định kỳ timeout giữ marker actor; reload/orgchange gửi lại ngay, máy chủ chỉ sinh phần còn thiếu',async()=>{
+ h.rpc.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({data:[],error:null});await expect(mount(useGenerateRecurringVouchers).mutation.mutationFn(undefined)).rejects.toThrow();expect(financialPending.read({...scope('voucher-recurring-generate','generate'),organizationId:'actor-scope'})).not.toBeNull();localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(mount(useGenerateRecurringVouchers).mutation.mutationFn(undefined)).resolves.toHaveLength(0);expect(h.rpc).toHaveBeenCalledTimes(2);expect(financialPending.read({...scope('voucher-recurring-generate','generate'),organizationId:'actor-scope'})).toBeNull();
 });
-it('dừng lặp receipt cần exact ID/changed từ RPC',async()=>{
- h.rpc.mockResolvedValue({data:null,error:null});h.read.mockResolvedValue({data:{id:'other',is_recurring:false},error:null});await expect(mount(useStopRecurring).mutation.mutationFn('v1')).rejects.toThrow();expect(financialPending.read({...scope('voucher-recurring-stop','v1'),organizationId:'actor-scope'})).not.toBeNull();
+// Đợt 8 (luật 5): dừng lặp đặt repeat_cycle tuyệt đối (ie_stop_recurring_v1 khoá phiếu, đã dừng ⇒ changed:false) nên không giữ
+// dấu; biên nhận sai vẫn không được coi là đã dừng.
+it('dừng lặp receipt cần exact ID/changed từ RPC; không giữ dấu',async()=>{
+ h.rpc.mockResolvedValue({data:null,error:null});h.read.mockResolvedValue({data:{id:'other',is_recurring:false},error:null});await expect(mount(useStopRecurring).mutation.mutationFn('v1')).rejects.toMatchObject({outcome:'unknown'});expect(financialPending.read({...scope('voucher-recurring-stop','v1'),organizationId:'actor-scope'})).toBeNull();
 });
 it('KQKD changed thật nhưng thiếu/sai flag không khẳng định trạng thái và giữ marker',async()=>{
  h.rpc.mockResolvedValue({data:{id:'v1',changed:true,business_result_accounting:null},error:null});await expect(mount(useSetForfeitVoucherKqkd).mutation.mutationFn({voucherId:'v1',kqkd:true,reason:'Bổ sung báo cáo'})).rejects.toThrow();expect(financialPending.read({...scope('voucher-kqkd','v1'),organizationId:'actor-scope'})).not.toBeNull();

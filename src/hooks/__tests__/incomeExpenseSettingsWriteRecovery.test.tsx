@@ -251,12 +251,42 @@ describe('đặt mẫu in mặc định (income-expense-template-default)', () =
     expect(pendingKeys()).toEqual([]);
   });
 
-  it('mẫu đích đã bị xoá sau khi bỏ mặc định cũ: báo rõ những mẫu đã bỏ chọn, không khoá', async () => {
+  it('mẫu đích đã bị xoá: báo rõ, không bỏ chọn mẫu mặc định đang có, không khoá', async () => {
     io.server.rows.income_expense_templates[1].deleted_at = '2026-11-20T01:00:00.000Z';
     const error = await toggle()({ id: 'm2', is_default: true, is_income_template: true }).catch((caught: unknown) => caught);
     expect(error).toMatchObject({ outcome: 'failure', message: expect.stringContaining('m2') });
     expect(error).not.toBeInstanceOf(RepeatableWriteUnknownError);
+    expect(incomeDefaults()).toEqual(['m1']);
     expect(pendingKeys()).toEqual([]);
+  });
+
+  it('mẫu đích bị xoá giữa chừng (sau khi bỏ mặc định cũ): báo rõ mẫu nào đã bị bỏ chọn, không khoá', async () => {
+    const realFrom = io.server.from;
+    let updates = 0;
+    io.server.from = (table: string) => {
+      const query = realFrom(table) as { update: (value: Row) => unknown };
+      const update = query.update;
+      query.update = (value: Row) => {
+        updates += 1;
+        // Người khác xoá mẫu đích đúng lúc lệnh thứ hai (đặt mặc định) sắp chạy.
+        if (table === 'income_expense_templates' && updates === 2) io.server.rows.income_expense_templates[1].deleted_at = '2026-11-20T01:00:00.000Z';
+        return update(value);
+      };
+      return query;
+    };
+    const error = await toggle()({ id: 'm2', is_default: true, is_income_template: true }).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ outcome: 'failure', message: expect.stringMatching(/m1[\s\S]*m2|m2[\s\S]*m1/) });
+    expect(error).not.toBeInstanceOf(RepeatableWriteUnknownError);
+    expect(incomeDefaults()).toEqual([]);
+    expect(pendingKeys()).toEqual([]);
+  });
+
+  it('nhóm mẫu đọc hỏng trước khi ghi: không ghi gì, không dấu, bấm lại được', async () => {
+    io.server.failNext('income_expense_templates', 'read', 'drop-before');
+    await expect(toggle()({ id: 'm2', is_default: true, is_income_template: true })).rejects.toThrow();
+    expect(incomeDefaults()).toEqual(['m1']);
+    expect(pendingKeys()).toEqual([]);
+    await expect(toggle()({ id: 'm2', is_default: true, is_income_template: true })).resolves.toMatchObject({ id: 'm2', is_default: true });
   });
 });
 
