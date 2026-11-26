@@ -76,7 +76,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'voucher-unapprove': tien('C', 'bỏ duyệt phiếu'), // unapprove_voucher không xét trạng thái hiện tại: so trạng thái trước khi bấm, chờ 2 phút
   'voucher-cancel': tien('C', 'huỷ phiếu'), // thang huỷ cũ nhiều bước: đã hoàn tác mà chưa huỷ thì chỉ chạy bước huỷ
   'voucher-restore': tien('C', 'khôi phục phiếu'), // restore_income_expense không khoá dòng: chỉ gửi lại sau 2 phút
-  'voucher-verify': tien('C', 'cập nhật trạng thái đã kiểm'), // nút bật/tắt: trạng thái đã đổi so với lúc bấm thì không gửi lần hai
+  'voucher-verify': tien('A', 'cập nhật trạng thái đã kiểm'), // đợt 10c: verify_income_expense_v1(p_verified) khoá phiếu rồi so, đúng giá trị ⇒ {changed:false}; dấu bản trước (bật/tắt) vẫn đọc trạng thái, chờ 2 phút
   'voucher-flex-cancel': tien('A', 'huỷ phiếu'), // cancel_income_expense_flex_v1 khoá phiếu rồi trả {changed:false}
   'voucher-income-cancel': tien('A', 'huỷ phiếu thu'), // cancel_income_voucher_v1 khoá phiếu rồi trả {changed:false}
   'voucher-v2-approve': tien('B', 'duyệt phiếu'), // khoá phiếu rồi tra mã yêu cầu (finance_v2_begin_canonical_op); nội dung đổi ⇒ đọc trạng thái
