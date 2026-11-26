@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -34,19 +34,19 @@ export default function DeleteVehicleDialog({
 }: DeleteVehicleDialogProps) {
   const deleteMutation = useDeleteVehicle();
   const [failure,setFailure]=useState<unknown>(null);
-  const [blocked,setBlocked]=useState(false);
   const busy=useRef(false);
-  useEffect(()=>{setFailure(null);setBlocked(false);},[vehicleId]);
+  useEffect(()=>{setFailure(null);},[vehicleId]);
 
+  // Đợt 8 (luật 5): xoá mềm xe lặp lại được — kết quả chưa rõ chỉ báo (kèm mã), nút Xoá không khoá, bấm lại gửi lần nữa.
   const handleDelete = () => {
-    if (busy.current || deleteMutation.isPending || blocked) return;
+    if (busy.current || deleteMutation.isPending) return;
     busy.current=true;setFailure(null);
     deleteMutation.mutate(vehicleId, {
       onSuccess: () => {
         busy.current=false;onOpenChange(false);
         onSuccess?.();
       },
-      onError: (error) => {busy.current=false;setFailure(error);setBlocked(recordWriteBlocked(error));},
+      onError: (error) => {busy.current=false;setFailure(error);},
       onSettled: () => {busy.current=false;},
     });
   };
@@ -80,7 +80,7 @@ export default function DeleteVehicleDialog({
           <Button
             variant="destructive"
             onClick={handleDelete}
-            disabled={deleteMutation.isPending || blocked}
+            disabled={deleteMutation.isPending}
           >
             {deleteMutation.isPending ? 'Đang xoá...' : 'Xoá'}
           </Button>

@@ -28,8 +28,10 @@ export class AreaMembershipPartialError extends FinancialWorkflowError {
  */
 export class AreaDeletePartialError extends RepeatableWriteUnknownError {
   constructor(public readonly areaId: string, cause: unknown, readonly softDeleted = true) {
-    super('xoá khu vực', cause, softDeleted ? [{ id: areaId, label: 'Khu vực đã xoá mềm' }] : []);
-    if (softDeleted) this.message = 'Khu vực đã xoá nhưng chưa gỡ xong khỏi các tòa. Bấm «Xoá lại» để gỡ tiếp; thao tác này không xoá thêm gì khác.';
+    super('xoá khu vực', cause, [{ id: areaId, label: softDeleted ? 'Khu vực đã xoá mềm' : 'Khu vực cần đối chiếu' }]);
+    this.message = softDeleted
+      ? 'Khu vực đã xoá nhưng chưa gỡ xong khỏi các tòa. Bấm «Xoá lại» để gỡ tiếp; thao tác này không xoá thêm gì khác.'
+      : 'Chưa xác nhận được khu vực đã xoá hay chưa. Bấm «Xoá lại» để thử lần nữa: khu đã xoá thì lần này chỉ gỡ nốt khỏi các tòa.';
   }
 }
 
@@ -56,6 +58,22 @@ function confirmPairs(rows: unknown, areaId: string, ids: readonly string[]): vo
   if (!Array.isArray(rows) || rows.length !== ids.length || new Set(rows.map(row => row?.building_id)).size !== ids.length || rows.some(row => !row || row.area_id !== areaId || !row.building_id || !ids.includes(row.building_id))) {
     throw new FinancialWorkflowError('Chưa xác nhận đủ các tòa đã thay đổi trong khu vực.', 'unknown', received.map(row => ({ id: `${areaId}:${row.building_id}`, label: 'Liên kết khu và tòa đã nhận mã, cần đối chiếu' })));
   }
+}
+
+/**
+ * Biên nhận lệnh gỡ liên kết theo mã khu. Gỡ khớp THIẾU cặp (RLS không cho gỡ, hoặc cặp đã gỡ trước đó) thì đọc lại đúng
+ * các cặp chưa nhận: không còn ⇒ đã gỡ; còn nguyên ⇒ từ chối rõ «chưa có quyền» (không phải chưa rõ, bấm lại vô ích).
+ * Biên nhận lạ dạng hoặc có cặp ngoài danh sách vẫn là chưa rõ (`confirmPairs`).
+ */
+async function confirmRemovedPairs(rows: unknown, areaId: string, expected: readonly string[], operation: string): Promise<void> {
+  const got = Array.isArray(rows) && rows.every(row => row && typeof row === 'object' && row.area_id === areaId && typeof row.building_id === 'string' && expected.includes(row.building_id))
+    ? rows.map(row => row.building_id as string) : null;
+  if (got && new Set(got).size === got.length && got.length < expected.length) {
+    const left = expected.filter(id => !got.includes(id));
+    await settleZeroRowDelete(operation, () => supabase.from('area_buildings').select('area_id,building_id').eq('area_id', areaId).in('building_id', left), () => false);
+    return;
+  }
+  confirmPairs(rows, areaId, expected);
 }
 
 type AreaInsert = Database["public"]["Tables"]["areas"]["Insert"];
@@ -227,7 +245,7 @@ export const useAssignBuildingsToArea = () => {
         // Keep main's DELETE then UPSERT, including original arrays and overlap.
         if(toRemoveIds.length){
           const {data:rows,error}=await supabase.from('area_buildings').delete().eq('area_id',areaId).in('building_id',toRemoveIds).select('area_id,building_id');
-          if(error)throw error;confirmPairs(rows,areaId,removed);
+          if(error)throw error;await confirmRemovedPairs(rows,areaId,removed,'gán tòa vào khu vực');
         }
         if(toAddIds.length){
           const {data:rows,error}=await supabase.from('area_buildings').upsert(withOrgAll(toAddIds.map(building_id=>({area_id:areaId,building_id,user_id:user.id})),selectedOrganizationId),{onConflict:'area_id,building_id',ignoreDuplicates:true}).select('area_id,building_id');
@@ -303,7 +321,7 @@ export const useDeleteArea = () => {
             .eq("area_id", id).select('area_id,building_id');
 
           if (unassignError) throw unassignError;
-          if(!Array.isArray(removed)||removed.length!==before.length||new Set(removed.map(row=>row.building_id)).size!==before.length||removed.some(row=>row.area_id!==id||!before.some(old=>old.building_id===row.building_id)))throw new FinancialWorkflowError('Chưa xác nhận đủ liên kết khu vực đã gỡ.','unknown',[]);
+          await confirmRemovedPairs(removed, id, before.map(row => row.building_id), 'xoá khu vực');
         });
       } catch (error) {
         // Lời từ chối rõ trước khi khu được xoá mềm (khu là phạm vi phân quyền, không có quyền xoá): chưa xoá gì, đi nguyên.

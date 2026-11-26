@@ -153,6 +153,17 @@ describe('gán tòa vào khu vực (area-write)', () => {
     expect(members()).toEqual(['b-new']);
     expect(pendingKeys()).toEqual([]);
   });
+
+  it('máy chủ không cho gỡ tòa (RLS, khớp 0 dòng): báo không có quyền, chưa gán gì, không dấu', async () => {
+    io.server.writable.area_buildings = () => false;
+    const error = await failureOf(assign()(input));
+    expect(error).toBeInstanceOf(FinancialWorkflowError);
+    expect(error).not.toBeInstanceOf(RepeatableWriteUnknownError);
+    expect(error).toMatchObject({ outcome: 'failure', message: expect.stringContaining('chưa có quyền xoá') });
+    expect(members()).toEqual(['b-old']);
+    expect(io.server.inserts).toEqual([]);
+    expect(pendingKeys()).toEqual([]);
+  });
 });
 
 describe('xoá khu vực (area-write)', () => {
@@ -164,6 +175,9 @@ describe('xoá khu vực (area-write)', () => {
     io.server.failNext('areas', 'update', 'drop-before');
     const error = await failureOf(mutate('a1'));
     expect(error).toBeInstanceOf(RepeatableWriteUnknownError);
+    // Chưa rõ khu đã xoá chưa: vẫn giữ mã khu trong câu báo để đối chiếu, không khoá.
+    expect(error).toMatchObject({ areaId: 'a1', softDeleted: false, completed: [{ id: 'a1', label: 'Khu vực cần đối chiếu' }] });
+    expect(recordWriteBlocked(error)).toBe(false);
     expect(io.server.rows.areas[0].deleted_at).toBeNull();
     expect(pendingKeys()).toEqual([]);
     await mutate('a1');
@@ -222,6 +236,16 @@ describe('xoá khu vực (area-write)', () => {
     seedOld('area-write', 'a1');
     await remove()('a1');
     expect(members()).toEqual([]);
+    expect(pendingKeys()).toEqual([]);
+  });
+
+  it('đã xoá mềm nhưng máy chủ không cho gỡ một tòa: báo xoá một phần kèm mã khu, không khoá, không dấu', async () => {
+    io.server.writable.area_buildings = row => row.building_id !== 'b2';
+    const error = await failureOf(remove()('a1'));
+    expect(error).toBeInstanceOf(RepeatableWriteUnknownError);
+    expect(error).toMatchObject({ areaId: 'a1', softDeleted: true, completed: [{ id: 'a1', label: 'Khu vực đã xoá mềm' }] });
+    expect(recordWriteBlocked(error)).toBe(false);
+    expect(members()).toEqual(['b2']);
     expect(pendingKeys()).toEqual([]);
   });
 });
