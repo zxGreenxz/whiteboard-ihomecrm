@@ -5,6 +5,10 @@
   "generated": "2026-09-15",
   "allow": [
     {
+      "function": "public.house_pool_state_v1",
+      "reason": "RPC từ chối trước khi đọc sổ nếu app_private.shared_fund_owner_v1(p_organization_id) không trả membership. Helper lọc auth.uid(), đúng công ty hoạt động, membership OWNER còn hiệu lực và quyền shareholder_profit.distribute. Truy vấn nguồn, đợt hoàn và phiếu đều giới hạn theo công ty. Kiểm PGlite từ chối cổ đông chỉ xem và chủ ở công ty khác."
+    },
+    {
       "function": "public.get_public_available_rooms",
       "reason": "Trang 'Phòng trống' công khai. Hàng rào là TOKEN CHIA SẺ: thân hàm tra public_room_share_tokens theo p_token và RETURN NULL khi token không tồn tại hoặc revoked = true. Không có auth.uid() là ĐÚNG — người xem chưa đăng nhập. Cấp cho anon + authenticated có chủ đích, đã nằm trong allowlist của check-definer-acl."
     },

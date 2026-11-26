@@ -348,6 +348,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     () => (state?.rows ?? []).map((row): ProfitLockDisplayRow => ({
       building_id: row.building_id,
       building_name: row.building_name,
+      house_pool_amount: row.house_pool_amount,
       revenue: row.source_revenue,
       expense: row.source_expense,
       computed_profit: row.computed_profit,
@@ -1669,6 +1670,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                       </TableCell>
                       <TableCell className="align-top text-right font-medium tabular-nums">
                         {formatCurrency(row.shareholder_allocated_amount)}
+                        {row.house_pool_amount !== undefined && (
+                          <p className="text-xs text-muted-foreground">Góp quỹ chung {formatCurrency(row.house_pool_amount)}</p>
+                        )}
                       </TableCell>
                       <TableCell className="align-top">
                         <div className="space-y-2">

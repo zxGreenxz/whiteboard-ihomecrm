@@ -16025,6 +16025,7 @@ export type Database = {
           building_id: string
           computed_profit: number
           created_at: string
+          house_pool_amount: number
           id: string
           is_stale: boolean
           locked_at: string | null
@@ -16058,6 +16059,7 @@ export type Database = {
           building_id: string
           computed_profit?: number
           created_at?: string
+          house_pool_amount?: number
           id?: string
           is_stale?: boolean
           locked_at?: string | null
@@ -16091,6 +16093,7 @@ export type Database = {
           building_id?: string
           computed_profit?: number
           created_at?: string
+          house_pool_amount?: number
           id?: string
           is_stale?: boolean
           locked_at?: string | null
@@ -26413,6 +26416,41 @@ export type Database = {
           organization_id: string
           phone_number: string
         }[]
+      }
+      house_pool_activate_v1: {
+        Args: {
+          p_automatic_from: string
+          p_history_from: string
+          p_opening_id?: string
+          p_organization_id: string
+          p_partner: string
+          p_request_key?: string
+          p_rules: Json
+        }
+        Returns: Json
+      }
+      house_pool_receipt_v1: {
+        Args: {
+          p_kind: string
+          p_organization_id: string
+          p_request_key: string
+        }
+        Returns: Json
+      }
+      house_pool_return_v1: {
+        Args: {
+          p_account: string
+          p_expected_hash: string
+          p_organization_id: string
+          p_rate: number
+          p_request_key: string
+          p_voucher_date: string
+        }
+        Returns: Json
+      }
+      house_pool_state_v1: {
+        Args: { p_organization_id: string; p_rate?: number }
+        Returns: Json
       }
       ie_all_buildings_action_ids: {
         Args: { _action: string }

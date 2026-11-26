@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const PATCH = 'supabase/migrations/20261022172459_dau_van_tay_chot_ln_theo_so_tien.sql';
 const PAYOUT_V2 = 'supabase/migrations/20260721120000_profit_payout_reservations_v2.sql';
+const HOUSE_POOL = 'supabase/migrations/20261126015743_gom_loi_nhuan_va_hoan_quy_dong_loat.sql';
 const BASELINE = 'supabase/baseline/schema.sql';
 
 const SIG = {
@@ -417,6 +418,14 @@ beforeAll(async () => {
   // Lane kiểm idempotency: áp HAI lượt; rồi nạp định nghĩa SỐNG của mọi hàm migration định nghĩa.
   await sau.exec(PATCH_SQL);
   await sau.exec(PATCH_SQL);
+  // Các nhà trong bộ kiểm này chưa gom. Nạp đúng wrapper sống cùng lõi mà migration chuyển vào schema riêng.
+  const poolMigration = readFileSync(HOUSE_POOL, 'utf8');
+  const wrap = poolMigration.match(/DO \$wrap\$[\s\S]*?\$wrap\$;/)?.[0];
+  if (!wrap) throw new Error('Thiếu bước chuyển lõi xem trước lợi nhuận');
+  await sau.exec(`CREATE TABLE app_private.house_pool_rules(id uuid, organization_id uuid, building_id uuid, from_month date, baseline_revision uuid,
+    first_shareholder uuid,second_shareholder uuid);
+    CREATE FUNCTION app_private.lock_org_for_decision_v1(uuid) RETURNS uuid LANGUAGE sql AS $$ SELECT $1 $$;`);
+  await sau.exec(wrap);
   for (const [schema, fn] of LIVE_PATCHED) await sau.exec(liveFunctionSql(schema, fn));
 
   // Tháng 8 chốt bằng thuật toán MỚI.
@@ -436,7 +445,8 @@ describe('tiền kiểm + idempotency của migration', () => {
       const [schema, fn] = signature.split('(')[0].split('.');
       return !definitionsOf(schema, fn).some((d) => d.file > patchFile);
     });
-    expect(stillPinned).toEqual(expect.arrayContaining([SIG.preview, SIG.dispatch]));
+    expect(stillPinned).toContain(SIG.dispatch);
+    expect(md5Truoc[SIG.preview]).toEqual(PROD_MD5[SIG.preview]);
     expect(Object.fromEntries(stillPinned.map((s) => [s, md5Truoc[s]])))
       .toEqual(Object.fromEntries(stillPinned.map((s) => [s, PROD_MD5[s]])));
   });
