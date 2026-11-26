@@ -172,6 +172,14 @@ it('nhiều dòng: đã nhận mã / mất phản hồi / không tới ⇒ kết
   expect(vouchers()).toHaveLength(3);
 });
 
+it('một dòng đã có phiếu, dòng kia chưa thấy mà lượt trước chưa quá 2 phút ⇒ chưa kết luận (không báo «chưa ghi» sớm), không gửi', async () => {
+  plan.push(undefined, 'before');
+  await submit([line(1), line(2)]);
+  await expect(submit([line(1), line(2)])).rejects.toThrow(/đối chiếu/);
+  expect(compatCalls()).toHaveLength(2);
+  expect(pendingKeys()).toHaveLength(1);
+});
+
 it('đã biết một phần (dòng bị từ chối rõ): lần bấm sau trả kết quả lượt trước, không nhập lại cả tệp; lần sau nữa nhập', async () => {
   plan.push(undefined, 'reject');
   const rows = [line(1), line(2)];
@@ -237,6 +245,17 @@ it('ảnh chụp bản trước: dòng thường chưa rõ tra gần đúng ⇒ 
   expect(compatCalls()).toHaveLength(0);
   expect(pendingKeys()).toEqual([]);
   expect(localStorage.getItem(SNAPSHOT)).toBeNull();
+});
+
+it('ảnh chụp bản trước: chỉ có dòng «có thể đã ghi» ⇒ trả kết quả từng dòng, KHÔNG gửi lại tệp nào, gỡ dấu', async () => {
+  const started = T0 - 10 * 60_000;
+  seedLegacyImport(started, [legacyRow(2, 300)], [], [2]);
+  io.server.rows.income_expenses = [serverVoucher('v-maybe', 'PC-9', 300, started + 3_000)];
+  const result = await submit([line(1)]);
+  expect(result.possiblyWritten).toEqual([{ row: 2, codes: ['PC-9'] }]);
+  expect(result.createdVouchers).toEqual([]);
+  expect(compatCalls()).toHaveLength(0);
+  expect(pendingKeys()).toEqual([]);
 });
 
 it('ảnh chụp bản trước: tra gần đúng không thấy dưới 2 phút ⇒ chưa kết luận, không gửi', async () => {

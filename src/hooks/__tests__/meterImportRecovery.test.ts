@@ -132,6 +132,16 @@ it('nhập chỉ số: nhóm có tháng đã có chỉ số ⇒ nêu đúng dòn
   expect(pendingKeys()).toEqual([]);
 });
 
+it('nhập chỉ số: biên nhận không khớp đúng công tơ đã gửi ⇒ chưa rõ (không tin là đã ghi), giữ dấu', async () => {
+  const handler = io.server.rpcHandlers.record_meter_readings_v2;
+  io.server.rpcHandlers.record_meter_readings_v2 = args => {
+    const result = handler(args) as { data: { created: Row[] } | null; error: unknown };
+    return result.data ? { data: { ...result.data, created: result.data.created.map(row => ({ ...row, meterId: M9 })) }, error: null } : result;
+  };
+  await expect(importReadings([excel('DH1', 10)])).rejects.toThrow(/Chưa xác nhận/);
+  expect(pendingKeys()).toHaveLength(1);
+});
+
 it('nhập chỉ số: dấu bản trước gieo sẵn ≥ 10 phút (không tên thao tác) ⇒ không chặn, ghi, gỡ dấu', async () => {
   seedLegacyPending(importScope, new Date(T0 - 10 * 60_000));
   await expect(importReadings([excel('DH1', 10)])).resolves.toMatchObject([{ success: true }]);
