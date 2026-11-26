@@ -18,7 +18,6 @@
 
 import { useId, useMemo, useState } from "react";
 import { receivingCashbookError } from "@/lib/receivingCashbookFeedback";
-import { FinancialWorkflowError } from "@/lib/financialWorkflow";
 import { AlertTriangle, Banknote, ChevronDown, Landmark, Loader2, Lock, Save } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -247,7 +246,8 @@ function DongSoTienMat({
       <div className="w-full space-y-1 sm:w-72 sm:shrink-0">
         {luu.isError && <p role="alert" className="text-sm text-red-600">{receivingCashbookError(luu.error, `lưu sổ tiền mặt riêng của ${ten}`)}</p>}
         <div className="flex items-center gap-2">
-          <Select value={dangChon ?? CHUA_CAI} onValueChange={doiSo} disabled={luu.isPending || luu.error instanceof FinancialWorkflowError || khongGiuSoNao}>
+          {/* Đợt 8: lần lưu chưa rõ kết quả không khoá ô chọn; hàm máy chủ đặt giá trị nên chọn lại là gửi lại đúng sổ đó. */}
+          <Select value={dangChon ?? CHUA_CAI} onValueChange={doiSo} disabled={luu.isPending || khongGiuSoNao}>
             <SelectTrigger aria-label={`Sổ tiền mặt riêng của ${ten}`} className="min-w-0 flex-1">
               <SelectValue />
             </SelectTrigger>
@@ -381,7 +381,7 @@ function CaiSoTheoHinhThuc({
         <Label htmlFor={idMacDinh} className="text-xs font-normal text-muted-foreground">
           Sổ mặc định
         </Label>
-        <Select value={dangSua.defaultAccountId ?? CHUA_CAI} onValueChange={chonMacDinh} disabled={luu.isPending || luu.error instanceof FinancialWorkflowError}>
+        <Select value={dangSua.defaultAccountId ?? CHUA_CAI} onValueChange={chonMacDinh} disabled={luu.isPending}>
           <SelectTrigger id={idMacDinh} aria-label={`Sổ mặc định ${nhan}`} className="bg-background">
             <SelectValue />
           </SelectTrigger>
@@ -478,7 +478,7 @@ function CaiSoTheoHinhThuc({
           type="button"
           size="sm"
           onClick={luuLai}
-          disabled={!coThayDoi || macDinhHong || luu.isPending || luu.error instanceof FinancialWorkflowError}
+          disabled={!coThayDoi || macDinhHong || luu.isPending}
           aria-label={`Lưu ${nhan}`}
         >
           {luu.isPending ? (

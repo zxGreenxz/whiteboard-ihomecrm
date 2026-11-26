@@ -20,7 +20,7 @@ const managerInput = { values: { name: 'An', auth_user_id: 'actor-a' }, rules: [
 const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>{children}</QueryClientProvider>;
 function managerReply(table: string, operation: string, patch: unknown) {
  if (operation === 'lookup') return { data: null, error: null };
- if (table === 'profit_managers') return { data: operation === 'update' ? [{ id: 'm1', ...patch as object }] : { id: 'm1', ...patch as object }, error: null };
+ if (table === 'profit_managers') return { data: operation === 'update' ? [{ id: 'm1', organization_id: 'org-a', ...patch as object }] : { id: 'm1', ...patch as object }, error: null };
  if (table === 'profit_manager_salaries' && operation === 'read') return { data: [{ id: 'old-r1' }], error: null };
  if (table === 'profit_manager_salaries' && operation === 'delete') return { data: [{ id: 'old-r1' }], error: null };
  if (table === 'profit_manager_salaries') return { data: { id: 'r1', ...patch as object }, error: null };
