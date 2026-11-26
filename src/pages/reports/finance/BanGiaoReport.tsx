@@ -277,8 +277,8 @@ export function ReconcileDialog({
         {message:'Bạn không có quyền đối soát sổ này',description:'Bạn chưa có quyền đối soát sổ này. Nhờ chủ sổ kiểm tra quyền.'},
         {message:'Không tìm thấy sổ quỹ',description:'Sổ quỹ không còn khả dụng. Tải lại danh sách sổ để kiểm tra.'},
       ]}).description;
-      // Chưa rõ kết quả: lần bấm sau tự tra đề nghị vừa gửi (sổ, ngày, người đề nghị) trước khi tạo thêm.
-      const hint=!pendingNotice&&voucherOutcomeUnknown(e)?' Bấm lại sau ít phút: hệ thống tra đề nghị vừa gửi trước khi tạo thêm.':'';
+      // Chưa rõ kết quả: lần bấm sau gửi lại đúng mã yêu cầu cũ (đợt 10a), máy chủ trả lại đề nghị đã tạo thay vì tạo thêm.
+      const hint=!pendingNotice&&voucherOutcomeUnknown(e)?' Bấm lại để gửi lại: hệ thống nhận ra đề nghị vừa gửi nên không tạo thêm.':'';
       setSubmitError(message+hint);toast.error(message);
     }
   };

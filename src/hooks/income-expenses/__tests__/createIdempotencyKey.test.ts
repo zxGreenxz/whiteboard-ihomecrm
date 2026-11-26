@@ -77,10 +77,11 @@ describe("useCreateIncomeExpense — khoá chống trùng", () => {
 
   it("đợt 10a: compat có khoá báo khoá đã dùng (đường chính đã lập / nội dung khác) ⇒ báo đã lập ở lần trước kèm mã phiếu", async () => {
     const used = "11111111-2222-4333-8444-555555555555";
+    const m = useCreateIncomeExpense() as unknown as Mutation;
     for (const hint of ["ie_request_key_used_by_canonical", "ie_request_key_payload_mismatch"]) {
       h.rpc.mockReset();
       h.rpc.mockResolvedValueOnce({ data: null, error: { code: "23505", message: "Mã yêu cầu đã dùng", details: used, hint } });
-      const err = await (useCreateIncomeExpense() as unknown as Mutation)
+      const err = await m
         .mutationFn(input({ repeat_cycle: "MONTH", repeat_count: 2, idempotency_key: STABLE })).catch((e: unknown) => e);
       expect(err).toMatchObject({ alreadyRecorded: true, recordIds: [used] });
       expect(h.rpc).toHaveBeenCalledTimes(1);
