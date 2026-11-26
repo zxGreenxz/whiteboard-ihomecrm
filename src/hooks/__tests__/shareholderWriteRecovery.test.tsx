@@ -9,7 +9,7 @@ import { fakeRecordServer, seedLegacyPending, pendingKeys, NETWORK_ERROR, type F
 
 type Row = Record<string, unknown>;
 type Drop = 'drop-before' | 'drop-after';
-const io = vi.hoisted(() => ({ server: undefined as unknown as FakeRecordServer, upsertDrops: {} as Record<string, Drop[]> }));
+const io = vi.hoisted(() => ({ server: undefined as unknown as FakeRecordServer, upsertDrops: {} as Record<string, Drop[]>, upsertRejects: {} as Record<string, unknown[]>, upsertShort: {} as Record<string, boolean> }));
 
 /** Máy chủ giả chưa có `upsert`: thêm cục bộ, theo cột xung đột như PostgREST (`onConflict`). */
 function withUpsert(table: string) {
@@ -18,6 +18,9 @@ function withUpsert(table: string) {
     const run = () => {
       const drop = io.upsertDrops[table]?.shift();
       if (drop === 'drop-before') return { data: null, error: NETWORK_ERROR };
+      // Máy chủ từ chối rõ (RLS, ràng buộc): không ghi gì.
+      const rejected = io.upsertRejects[table]?.shift();
+      if (rejected) return { data: null, error: rejected };
       const rows = (io.server.rows[table] ??= []);
       const columns = (options?.onConflict ?? 'id').split(',');
       const stored = (Array.isArray(payload) ? payload : [payload]).map((row, index) => {
@@ -28,6 +31,8 @@ function withUpsert(table: string) {
         return created;
       });
       if (drop === 'drop-after') return { data: null, error: NETWORK_ERROR };
+      // Biên nhận thiếu dòng (đã ghi đủ nhưng trả về thiếu).
+      if (io.upsertShort[table]) return { data: stored.slice(0, 1).map(row => ({ ...row })), error: null };
       return { data: stored.map(row => ({ ...row })), error: null };
     };
     const chain = { select: () => chain, then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => Promise.resolve(run()).then(resolve, reject) };
@@ -57,6 +62,8 @@ beforeEach(() => {
   localStorage.setItem('ihomecrm.selectedOrganizationId', 'org-a');
   io.server = fakeRecordServer();
   io.upsertDrops = {};
+  io.upsertRejects = {};
+  io.upsertShort = {};
 });
 
 describe('đồng bộ tỷ lệ toà của cổ đông (cách A đặt cả bộ)', () => {
@@ -99,6 +106,27 @@ describe('đồng bộ tỷ lệ toà của cổ đông (cách A đặt cả b�
     await expect(sync()(input)).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('quyền') });
     expect(shares()).toEqual(['b-old:10', 'b1:20']);
     expect(pendingKeys()).toEqual([]);
+  });
+
+  it('đã xoá tỷ lệ toà bỏ đi mà upsert bị từ chối rõ ⇒ báo rõ phần dở, không để dấu, lưu lại ra đúng bộ', async () => {
+    io.upsertRejects.building_shareholders = [{ code: '42501', message: 'new row violates row-level security policy' }];
+    const error = await sync()(input).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ outcome: 'failure' });
+    expect((error as Error).message).toContain('Đã xoá tỷ lệ ở 1 tòa bỏ đi');
+    expect((error as Error).message).toContain('Lưu lại');
+    expect(shares()).toEqual(['b1:20']);
+    expect(pendingKeys()).toEqual([]);
+    await expect(sync()(input)).resolves.toBeUndefined();
+    expect(shares()).toEqual(['b1:30', 'b2:40']);
+  });
+
+  it('biên nhận upsert thiếu dòng ⇒ chưa rõ (không phải thành công), không để dấu, bấm lại được', async () => {
+    io.upsertShort.building_shareholders = true;
+    await expect(sync()(input)).rejects.toBeInstanceOf(RepeatableWriteUnknownError);
+    expect(pendingKeys()).toEqual([]);
+    io.upsertShort.building_shareholders = false;
+    await expect(sync()(input)).resolves.toBeUndefined();
+    expect(shares()).toEqual(['b1:30', 'b2:40']);
   });
 
   it('dòng toà cũ đã bị xoá ở nơi khác (khớp 0 dòng, không còn): coi như đã xoá, lưu tiếp phần còn lại', async () => {
