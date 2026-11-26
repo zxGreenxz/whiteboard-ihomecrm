@@ -276,6 +276,14 @@ describe('splitLockedProfit (F21)', () => {
     );
   });
 
+  it.each([100, -100])('đối chiếu phần góp theo dấu của kỳ %d', (profit) => {
+    const s = splitLockedProfit([{ status: 'LOCKED', adjusted_profit: profit, management_salary: 0,
+      shareholder_allocated_amount: profit * 0.11, house_pool_amount: profit * 0.88, unallocated_profit: profit * 0.01,
+      unallocated_disposition: 'RETAINED_EARNINGS' }]);
+    expect(s.unexplained).toBe(0);
+    expect(lockedSplitTitle(s, fmt)).toContain('góp vào quỹ công ty');
+  });
+
   it('snapshot không cộng đủ thì tooltip nói còn lệch', () => {
     const s = splitLockedProfit([{ status: 'LOCKED', adjusted_profit: 100, management_salary: 10, shareholder_allocated_amount: 50 }]);
     expect(s.unexplained).toBe(40);

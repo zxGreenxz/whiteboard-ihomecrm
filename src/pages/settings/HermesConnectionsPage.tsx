@@ -346,7 +346,7 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
     <HermesStep label="3–5" state={zaloState} title="Liên kết Zalo để nhắn Hermes" who="Bạn · Zalo"
       summary={linked ? 'Đã liên kết nick Zalo của bạn.' : 'Làm lần lượt 3 việc nhỏ dưới đây.'}>
       {model.connections && <HermesZaloBindings key={botGeneration} userId={userId} organizationId={organizationId} currentScope={currentScope}
-        connections={model.connections} disabled={disabled} onSummary={setZalo} activationNote={activation.note} />}
+        connections={model.connections} disabled={disabled} onSummary={setZalo} activationNote={activation.note} activationCheck={activationChecks} />}
     </HermesStep>
 
     <HermesStep label="6" state={stateOf(5, done[5])} title="Trợ lý được kích hoạt" who="Tự động" summary={activationSummary} />

@@ -1,0 +1,41 @@
+{
+  "file": "supabase/migrations/20261126035812_quy_gop_gan_phieu_chi_goc.sql",
+  "sha256": "03f0fdd3f3747078f32f83496e34dfd7221df4677867e08f1076bd18293be504",
+  "appliedAt": "2026-11-26T04:20:21.228Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "environment": "prod",
+  "evidenceComplete": true,
+  "lockName": "ihomecrm:forward-migration:v1",
+  "statementTimeout": "120s",
+  "authorization": {
+    "loai": "bien-nhan-backup",
+    "chiTiet": "072bb7591f7574eb",
+    "backupFile": "ihomecrm-full-2026-11-26T04-17-54-409Z.dump",
+    "backupSha256": "5931df7a67b7c991d7e54851d4e2ef7e8a279dfd58a746f269c145be5024a281",
+    "backupCreatedAt": "2026-11-26T04:20:17.005Z",
+    "backupTablesWithData": 749,
+    "backupProjectRef": "tryymsxyyckgbrmmvozx",
+    "backupEnvironment": "prod"
+  },
+  "actor": "sha256:f300f0639d8811fa28482d8eee7a29951664b8057d36dd110d677214549a0c61",
+  "repoCommit": "27a1605b27f3efba040291c8ac268ed9e2546a37",
+  "reviewedBlob": "826b01d4b2cc9f28e9c9dcbd9a05bab1a61174cb",
+  "statementBytes": 11589,
+  "normalizedDigest": "722a31c6c419e0fcaef747943315642f6ed457044bf7e72048bf84a664a22eb2",
+  "catalog": {
+    "before": "64e67fff4144392747bbb86bf6181ebf3869b1f5b28e4194fc9d7e6fe5750948",
+    "after": "2d8bc8943f096b71c50f793a527329ad007405192fb5dbf441a5c12dfbd36ae5",
+    "changed": true,
+    "countsAfter": {
+      "logicalTables": 293,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 2949,
+      "securityDefinerFunctions": 2148,
+      "enums": 30,
+      "realtimeTables": 29
+    }
+  },
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này.",
+  "originalReceiptSha256": "77673712eb7ada36730dfb140ec052f8294f12c6cfecf0ddbf0629914339a32c"
+}

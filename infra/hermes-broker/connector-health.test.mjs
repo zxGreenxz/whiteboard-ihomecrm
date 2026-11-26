@@ -7,7 +7,9 @@ const id = n => `30000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 test('health keeps last success, last tool call and last error code per connection only', () => {
   let now = 1_800_000_000_000;
   const health = createConnectorHealth({ clock: () => now });
-  health.record({ connectionId: id(1), operation: 'authenticate' }); now += 10;
+  health.record({ connectionId: id(1), operation: 'authenticate' });
+  assert.equal(health.snapshot([id(1)]).connections[0].lastSuccessAt, null);
+  now += 10;
   health.record({ connectionId: id(1), operation: 'tools/call' }); now += 10;
   health.record({ connectionId: id(1), operation: 'tools/call', code: 'rate_limited' });
   const snapshot = health.snapshot([id(1), id(2)]);

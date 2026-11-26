@@ -17,7 +17,9 @@ export function addDepositDays(date: string, days: number): string {
   return result.toISOString().slice(0, 10);
 }
 
-export function DepositScheduleFields({ value, voucherDate, onChange, disabled = false }: {
+export function DepositScheduleFields({ value, voucherDate, onChange, disabled = false, targetHold, destinationChanged }: {
+  destinationChanged?: boolean;
+  targetHold?: {id:string; payer?:string|null} | null;
   value: DepositSchedule;
   voucherDate: string;
   onChange: (value: DepositSchedule) => void;
@@ -35,6 +37,10 @@ export function DepositScheduleFields({ value, voucherDate, onChange, disabled =
   }, [offset, voucherDate, value, onChange]);
 
   return <fieldset disabled={disabled} className="grid gap-3">
+    {destinationChanged && <p role="alert" className="text-sm text-destructive">Lượt giữ chỗ đã đổi. Mở lại phiếu để chọn đúng lượt thu.</p>}
+    {!destinationChanged && targetHold !== undefined && <p className="text-sm" role="status">{targetHold
+      ? `Phiếu này bổ sung vào lượt đang giữ${targetHold.payer ? ' · '+targetHold.payer : ''}.`
+      : 'Phiếu này mở lượt giữ chỗ mới. Các phiếu cũ chưa xác định lượt được đối chiếu riêng.'}</p>}
     <div className="grid grid-cols-2 gap-2">
       <label className="grid gap-1 text-sm">Giữ chỗ đến
         <DateInput aria-label="Giữ chỗ đến" name="hold_until" value={value.holdUntil} onChange={holdUntil => onChange({

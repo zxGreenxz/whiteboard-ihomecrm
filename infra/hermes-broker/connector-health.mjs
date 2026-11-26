@@ -25,6 +25,8 @@ export function createConnectorHealth({ clock = Date.now, version = CONNECTOR_VE
       const at = now();
       if (at === null || !event || typeof event !== 'object' || typeof event.connectionId !== 'string' || !UUID.test(event.connectionId) ||
           !OPERATIONS.has(event.operation) || (event.code !== undefined && (typeof event.code !== 'string' || !CODE.test(event.code)))) return;
+      // Fleet preflight pings authenticate even when no assistant exists yet.
+      if (event.operation === 'authenticate' && event.code === undefined) return;
       const previous = entries.get(event.connectionId) ?? { lastSuccessAt: null, lastToolCallAt: null, lastErrorCode: null, lastErrorAt: null };
       const next = event.code === undefined
         ? { ...previous, lastSuccessAt: at, ...(event.operation === 'tools/call' ? { lastToolCallAt: at } : {}) }

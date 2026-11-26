@@ -28,9 +28,16 @@ export function MyFundBreakdown({ view }: { view: MyPositionView }) {
   const payable = parts?.shared_fund_payable ?? 0;
   const offset = parts?.shared_fund_offset ?? 0;
   const opening = parts?.opening_advance ?? 0;
-  if (payable + offset + opening === 0) return null;
+  const pool = view.position?.house_pool;
+  if (!pool && payable + offset + opening === 0) return null;
   return (
     <dl className="grid gap-2 rounded-xl border bg-card p-4 text-sm sm:grid-cols-2" aria-label="Quỹ chung và tạm ứng đầu kỳ của bạn">
+      {pool && <>
+        <div><dt className="font-semibold">Phần góp của bạn trong quỹ công ty</dt><dd>{formatCurrency(pool.available)}</dd></div>
+        <div><dt>Đã góp</dt><dd>{formatCurrency(pool.contributed)}</dd></div>
+        <div><dt>Đang chờ hoàn</dt><dd>{formatCurrency(pool.reserved)}</dd></div>
+        <div><dt>Đã hoàn qua phiếu chi</dt><dd>{formatCurrency(pool.paid)}</dd></div>
+      </>}
       {payable + offset > 0 && <>
         <div><dt className="font-semibold">Được chia từ quỹ chung</dt><dd>{formatCurrency(payable + offset)}</dd></div>
         <div><dt>Phần dùng để cấn tạm ứng</dt><dd>{formatCurrency(offset)}</dd></div>

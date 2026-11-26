@@ -17,7 +17,7 @@ export const roomReservationSchema=z.object({id:uuid,organization_id:uuid,buildi
 export type RoomReservation=z.infer<typeof roomReservationSchema> & {writtenVoucherId?:string};
 export const roomReservationListSchema=z.object({server_today:date,reservations:z.array(roomReservationSchema)});
 export type RoomReservationList=z.infer<typeof roomReservationListSchema>;
-export type ReservationRpcName='create_room_reservation_v1'|'update_room_reservation_v1'|'list_room_reservations_v1'|'assign_room_reservation_customer_v1';
+export type ReservationRpcName='create_room_reservation_v1'|'update_room_reservation_v1'|'list_room_reservations_v1';
 export type ReservationRpcInvoker=(name:ReservationRpcName,args:Record<string,Json>)=>PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>;
 export function buildReservationReceiptPayload(input:ReservationReceiptInput):Json {const r=receiptSchema.parse(input);return{amount:r.amount,account_id:r.accountId??null,voucher_date:r.voucherDate,name:r.name??null,description:r.description??null,attachments:r.attachments??[]};}
 export function buildCreateRoomReservationArgs(organizationId:string,input:CreateRoomReservationInput){
@@ -38,8 +38,6 @@ export function buildUpdateRoomReservationArgs(organizationId:string,input:Updat
 async function invoke(rpc:ReservationRpcInvoker,name:ReservationRpcName,args:Record<string,Json>){const r=await rpc(name,args);if(r.error)throw r.error;return r.data;}
 export async function createRoomReservation(rpc:ReservationRpcInvoker,organizationId:string,input:CreateRoomReservationInput):Promise<RoomReservation>{const data=await invoke(rpc,'create_room_reservation_v1',buildCreateRoomReservationArgs(organizationId,input));const parsed=roomReservationSchema.safeParse(data);if(!parsed.success)throw new TypeError('Chưa xác nhận được hồ sơ giữ chỗ đã lưu');return parsed.data;}
 export async function updateRoomReservation(rpc:ReservationRpcInvoker,organizationId:string,input:UpdateRoomReservationInput):Promise<RoomReservation>{const data=await invoke(rpc,'update_room_reservation_v1',buildUpdateRoomReservationArgs(organizationId,input));const parsed=roomReservationSchema.safeParse(data);if(!parsed.success)throw new TypeError('Chưa xác nhận được hồ sơ giữ chỗ đã lưu');return parsed.data;}
-export interface AssignRoomReservationCustomerInput {reservationId:string;expectedRevision:number;customerId:string;idempotencyKey:string}
-export async function assignRoomReservationCustomer(rpc:ReservationRpcInvoker,organizationId:string,input:AssignRoomReservationCustomerInput):Promise<RoomReservation>{const v=z.object({reservationId:uuid,expectedRevision:z.number().int().positive(),customerId:uuid,idempotencyKey:key}).strict().parse(input);const data=await invoke(rpc,'assign_room_reservation_customer_v1',{p_organization_id:uuid.parse(organizationId),p_reservation_id:v.reservationId,p_expected_revision:v.expectedRevision,p_customer_id:v.customerId,p_idempotency_key:v.idempotencyKey});const parsed=roomReservationSchema.safeParse(data);if(!parsed.success)throw new TypeError('Chưa xác nhận được hồ sơ giữ chỗ đã lưu');return parsed.data;}
 export async function listRoomReservations(rpc:ReservationRpcInvoker,organizationId:string,filters:RoomReservationFilters={}):Promise<RoomReservationList>{return roomReservationListSchema.parse(await invoke(rpc,'list_room_reservations_v1',{p_organization_id:uuid.parse(organizationId),p_room_id:filters.roomId?uuid.parse(filters.roomId):null,p_customer_id:filters.customerId?uuid.parse(filters.customerId):null,p_status:filters.status??null,p_limit:z.number().int().min(1).max(200).parse(filters.limit??100)}));}
 // Reasons verified in 20260928025848_room_reservation_workflow.sql.
 const reservationReasons = [
@@ -50,8 +48,7 @@ const reservationReasons = [
  // 20261010114500: tên khách gợi nhớ + gắn khách.
  'Chọn khách trong danh bạ hoặc gõ tên gợi nhớ, không cả hai', 'Tên khách gợi nhớ tối đa 120 ký tự',
  'Tên khách gợi nhớ chỉ dùng cho phiếu cọc có tiền. Giữ phòng không thu tiền thì dùng Lock tạm.',
- 'Giữ chỗ mới có tên khách gợi nhớ, chưa gắn khách trong danh bạ. Gắn khách ở Quản lý cọc trước khi ký.',
- 'Giữ chỗ đã gắn khách trong danh bạ', 'Giữ chỗ đã thay đổi',
+ 'Giữ chỗ đã thay đổi',
 ];
 export function reservationErrorMessage(error: unknown): string {
  if(error instanceof FinancialPendingError||error instanceof FinancialPendingStorageError||error instanceof FinancialWorkflowError)return voucherFailureMessage(error,'lưu giữ chỗ/cọc');

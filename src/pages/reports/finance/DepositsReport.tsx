@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/utils";
 
 const STATUS_MAP: Record<string,string> = {
-  HOLD:'Giữ chỗ trước hợp đồng', CONTRACT:'Đang giữ theo hợp đồng', REVIEW:'Cần đối chiếu',
+  HOLD:'Giữ chỗ trước hợp đồng', CONTRACT:'Đang giữ theo hợp đồng', REVIEW:'Chưa xác định lượt thuê',
   PENDING:'Chờ duyệt / ghi sổ', REFUND_DUE:'Phải hoàn khách', REFUNDED:'Đã hoàn khách', RETAINED:'Đã bỏ cọc',
 };
 type ReportRow={id:string;buildingId:string;building:string;room:string;person:string;status:string;amount:number;code:string};

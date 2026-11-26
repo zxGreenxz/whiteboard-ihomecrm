@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -12,7 +13,7 @@ const snapshot = z.object({ hold: z.object({
 
 export function useDepositIncomeHold(roomId?: string | null, enabled = true) {
   const { selectedOrganizationId } = useOrganization();
-  return useQuery({
+  const query = useQuery({
     queryKey: ['deposit-income-hold', selectedOrganizationId, roomId],
     enabled: !!roomId && !!selectedOrganizationId && enabled,
     queryFn: async () => {
@@ -25,4 +26,15 @@ export function useDepositIncomeHold(roomId?: string | null, enabled = true) {
       return snapshot.parse(data).hold;
     },
   });
+  // A refetch can replace a hold while someone is entering money. Pin the first
+  // resolved destination, including an empty room, until this form or room changes.
+  const key = enabled && roomId && selectedOrganizationId ? selectedOrganizationId + '/' + roomId : null;
+  const current = key && query.isSuccess ? query.data : undefined;
+  const [first, setFirst] = useState<{key: string | null; hold: typeof query.data}>({key, hold: current});
+  if (first.key !== key || (first.hold === undefined && current !== undefined)) {
+    setFirst({key, hold: current});
+  }
+  const destinationChanged = first.key === key && first.hold !== undefined && current !== undefined &&
+    (first.hold?.id ?? null) !== (current?.id ?? null);
+  return { ...query, data: destinationChanged ? first.hold : query.data, destinationChanged };
 }

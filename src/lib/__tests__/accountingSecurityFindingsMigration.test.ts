@@ -11,14 +11,14 @@ const readNormalized = (path: string) =>
  * file migration. Dùng cho hàm đã được forward-fix thay ở file sau (vd kiểm độ tươi chốt
  * LN: 20261022172459 so theo phiên bản dấu vân tay).
  */
-function liveFunctionBody(schema: string, fnName: string): string {
+function liveFunctionBody(schema: string, fnName: string, beforeFile?: string): string {
   const dir = "supabase/migrations";
   const re = new RegExp(
     `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${schema}\\.${fnName}\\s*\\(`,
     "gi",
   );
   let hit: { sql: string; start: number } | null = null;
-  for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql") && (!beforeFile || f < beforeFile)).sort()) {
     const sql = readNormalized(join(dir, file));
     if (!sql.includes(`${schema}.${fnName}`)) continue;
     for (const m of sql.matchAll(re)) {
@@ -44,7 +44,9 @@ const rolloutSql = readNormalized(
   "supabase/migrations/20260721140500_accounting_rollout_gate_v1.sql",
 );
 // Preview core chốt LN: thân SỐNG (forward-fix sau cùng), không phải file 20260720215000.
-const finalProfitCloseSql = liveFunctionBody("public", "_profit_close_preview_core_v2");
+const poolMigration = "20261126015743_gom_loi_nhuan_va_hoan_quy_dong_loat.sql";
+const previewWrapper = liveFunctionBody("public", "_profit_close_preview_core_v2");
+const finalProfitCloseSql = liveFunctionBody("public", "_profit_close_preview_core_v2", poolMigration);
 
 function functionBody(sql: string, signature: string): string {
   const start = sql.indexOf(signature);
@@ -221,6 +223,10 @@ describe("accounting security migration regressions", () => {
       "profit_monthly_source_is_current_v1",
     );
 
+    const poolSql = readNormalized(join("supabase/migrations", poolMigration));
+    expect(poolSql).toContain("ALTER FUNCTION public._profit_close_preview_core_v2(uuid,date,uuid[],jsonb,text,boolean) SET SCHEMA app_private");
+    expect(poolSql).toContain("RENAME TO profit_preview_before_house_pool_v1");
+    expect(previewWrapper).toContain("doc := app_private.profit_preview_before_house_pool_v1(p_organization_id,p_period_month,p_building_ids,p_adjustments,p_permission_key,p_lock_sources)");
     expect(hashHelper).toContain("revision.operation IN ('CLOSE', 'RECLOSE')");
     expect(hashHelper).toContain("'algorithm_version', 'profit-close-v2.1'");
     expect(hashHelper).toContain("'source_building_bases'");

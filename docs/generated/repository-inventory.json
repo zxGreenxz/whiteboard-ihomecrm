@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 2020,
+  "tongSoFileTest": 2023,
   "soFileDocBangFs": 511,
-  "tongLoiGoi": 1400,
-  "khongPhanLoaiDuoc": 614,
+  "tongLoiGoi": 1404,
+  "khongPhanLoaiDuoc": 615,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 67,
+      "soFile": 68,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -88,6 +88,7 @@
     "src/lib/__tests__/ieGuardHandoverScopeMigration.test.ts",
     "src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts",
     "src/lib/__tests__/networkCenterSettingsBoundsMatchDatabase.test.ts",
+    "src/lib/__tests__/pendingStrategies.test.ts",
     "src/lib/__tests__/permissionPages.test.ts",
     "src/lib/__tests__/profitClose.test.ts",
     "src/lib/__tests__/salaryCompletionDate.test.ts",
@@ -147,9 +148,9 @@
     },
     {
       "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
-      "soGoi": 15,
+      "soGoi": 16,
       "loai": {
-        "sql": 12
+        "sql": 13
       },
       "khongPhanLoaiDuoc": 3
     },
@@ -399,6 +400,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "scripts/__tests__/hermes-durable-schema.test.mjs",
+      "soGoi": 7,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 5
+    },
+    {
       "file": "src/lib/__tests__/commissionReasonAuditMigration.test.ts",
       "soGoi": 7,
       "loai": {
@@ -457,14 +466,6 @@
       "soGoi": 6,
       "loai": {},
       "khongPhanLoaiDuoc": 6
-    },
-    {
-      "file": "scripts/__tests__/hermes-durable-schema.test.mjs",
-      "soGoi": 6,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 4
     },
     {
       "file": "scripts/__tests__/hermes-task-function-catalog.test.mjs",
@@ -626,6 +627,15 @@
         "sql": 5
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/dauVanTayChotLnMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 2,
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/gd3RaoBangAnToanMigration.test.ts",
@@ -914,15 +924,6 @@
         "sql": 4
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/dauVanTayChotLnMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 1,
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/profitClose.test.ts",
@@ -2013,6 +2014,14 @@
       "soGoi": 2,
       "loai": {},
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/lib/__tests__/pendingStrategies.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/planHardeningMigration.test.ts",
@@ -3624,12 +3633,6 @@
     },
     {
       "file": "src/lib/__tests__/paidInvoiceAdjustmentGuard.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/pendingStrategies.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
