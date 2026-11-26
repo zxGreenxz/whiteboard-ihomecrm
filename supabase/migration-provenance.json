@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-26T02:21:12.191Z",
+  "generatedAt": "2026-11-26T02:42:20.124Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 992,
-    "unknown": 81,
+    "ledger-applied": 993,
+    "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14810,14 +14810,9 @@
       "name": "gom_loi_nhuan_va_hoan_quy_dong_loat",
       "scheme": "timestamp14",
       "sha256": "0009fac3f817672b95f5441ed8e21ef9dec7cd7b5bf078b7e556f9a6ac9e1be0",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.house_pool_rules",
-        "table:app_private.house_pool_contributions",
-        "table:app_private.house_pool_openings",
-        "table:app_private.house_pool_activations",
-        "table:app_private.house_pool_returns"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T02:41:17.036Z|bien-nhan-backup"
       ]
     },
     {
