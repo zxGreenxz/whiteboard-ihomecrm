@@ -6,6 +6,7 @@ DECLARE
   actor uuid; org_building uuid; book uuid; category uuid; room uuid; old uuid; customer uuid;
   first_v uuid; second_v uuid; hold_id uuid; contract_id_new uuid; revision bigint;
   first_channel text; second_channel text; day date:=public.org_today_v1(org);
+  draft uuid; doc uuid; parties jsonb;
   row_data jsonb; terms jsonb; result jsonb; state jsonb; payload jsonb;
 BEGIN
   IF to_regclass('test_env.danh_dau') IS NULL OR NOT EXISTS (SELECT FROM public.organizations WHERE id=org AND is_demo)
@@ -35,6 +36,10 @@ BEGIN
         RAISE EXCEPTION 'Legacy trigger guessed ownership'; END IF;
 
       SET LOCAL ROLE authenticated;
+      BEGIN
+        PERFORM public.create_room_reservation_v1(org,room||'-legacy',jsonb_build_object('room_id',room,'customer_hint','Lộc','existing_voucher_ids',jsonb_build_array(old)));
+        RAISE EXCEPTION 'Legacy RPC accepted ambiguous money'; EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL;
+      END;
       row_data:=jsonb_build_object('type','INCOME','name','QA Lộc','room_id',room,'building_id',org_building,'account_id',book,'payer_name','Lộc','voucher_date',day,'amount',400000);
       result:=public.create_deposit_income_v1(org,room||'-first',row_data,'[]',jsonb_build_object('channel',first_channel,'expected_hold',NULL));
       first_v:=(result->>'id')::uuid; hold_id:=(result->>'reservation_id')::uuid;
@@ -52,8 +57,15 @@ BEGIN
         RAISE EXCEPTION 'Preview merged unrelated money'; END IF;
       terms:=jsonb_build_object('room_id',room,'start_date',day,'signed_date',day,'end_date',day+90,'rent_price',1000000,'total_deposit',1000000,
         'payment_cycle','MONTHLY','start_billing_date',day,'end_billing_date',day+5,'discount_months',0,'discount_amount_per_month',0,'notes','');
+      IF first_channel='sale' AND second_channel='reservation' THEN
+        terms:=terms||jsonb_build_object('total_deposit',5100000,'deposit_debt_mode','DEBT','deposit_debt_reason','QA','deposit_topup_due_date',day+7);
+      END IF;
       payload:=jsonb_build_object('contract',terms,'customers',jsonb_build_array(jsonb_build_object('customer_id',customer,'is_representative',true)),
         'services','[]'::jsonb,'expected_room_deposit_amount',1000000,'existing_deposit_voucher_ids',jsonb_build_array(first_v,second_v),'reservation_id',hold_id,'reservation_revision',revision);
+      IF first_channel='reservation' AND second_channel='sale' THEN
+        payload:=payload||jsonb_build_object('contract',terms||jsonb_build_object('total_deposit',5100000,'deposit_debt_mode','FIRST_INVOICE'),
+          'first_invoice',jsonb_build_object('items',jsonb_build_array(jsonb_build_object('type','OTHER','accounting_class','DEPOSIT','description','Cọc còn thiếu','unit_price',4100000,'quantity',1))));
+      END IF;
       BEGIN
         PERFORM public.create_contract_v2(payload||jsonb_build_object('existing_deposit_voucher_ids',jsonb_build_array(old,first_v,second_v)),gen_random_uuid()::text);
         RAISE EXCEPTION 'Unassigned voucher was accepted at signing'; EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL;
@@ -74,14 +86,36 @@ BEGIN
         IF jsonb_array_length(state->'vouchers')<>3 OR (SELECT sum((v->>'total_amount')::numeric) FROM jsonb_array_elements(state->'vouchers') v)<>5100000
           THEN RAISE EXCEPTION 'Explicit hold link failed'; END IF;
       ELSE
-        result:=public.create_contract_v2(payload,gen_random_uuid()::text);
-        contract_id_new:=(result->'contract'->>'id')::uuid;
+        IF first_channel='finance' AND second_channel='sale' THEN
+          draft:=gen_random_uuid(); doc:=gen_random_uuid();
+          SELECT jsonb_build_array(jsonb_build_object('id',id,'full_name',full_name,'phone',phone,'is_representative',true,'notes',NULL,'id_number',NULL))
+            INTO parties FROM public.customers WHERE id=customer;
+          PERFORM public.save_contract_draft(org,org_building,room,jsonb_build_object('form',terms,'customers',parties,'services','[]'::jsonb,'use_custom_services',false),NULL,draft,NULL,gen_random_uuid());
+          RESET ROLE;
+          INSERT INTO public.contract_draft_documents(id,draft_id,revision,organization_id,building_id,document_path,template_path,document_sha256,template_sha256,template_snapshot,document_data,created_by)
+            VALUES(doc,draft,1,org,org_building,'QA/'||doc,'QA/template/'||doc,repeat('a',64),repeat('b',64),'{}','{}',actor);
+          SET LOCAL ROLE authenticated;
+          result:=public.sign_and_checkin_contract_draft_v1(org,draft,1,doc,repeat('a',64),gen_random_uuid(),day,true,true,'{"state":"VERIFIED","readings":[]}',jsonb_build_object('expected_room_deposit_amount',1000000,'existing_deposit_voucher_ids',jsonb_build_array(first_v,second_v)),hold_id,revision,ARRAY[first_v,second_v]);
+          contract_id_new:=(result->>'contract_id')::uuid;
+        ELSE
+          result:=public.create_contract_v2(payload,gen_random_uuid()::text);
+          contract_id_new:=(result->'contract'->>'id')::uuid;
+        END IF;
         RESET ROLE;
         IF NOT EXISTS (SELECT FROM public.contracts WHERE id=contract_id_new AND deposit_paid=1000000)
           OR EXISTS (SELECT FROM public.income_expenses WHERE id=old AND contract_id IS NOT NULL)
           OR EXISTS (SELECT FROM public.reservation_receipts WHERE source_voucher_id=old)
           OR EXISTS (SELECT FROM public.contract_deposit_links WHERE income_expense_id=old)
           THEN RAISE EXCEPTION 'Contract used unrelated pre-existing money'; END IF;
+        IF (first_channel IN ('finance','reservation') AND second_channel='sale') THEN
+          SELECT h.revision INTO revision FROM public.room_reservations h WHERE h.id=hold_id;
+          SET LOCAL ROLE authenticated;
+          BEGIN
+            PERFORM public.reconcile_deposit_income_hold_v1(org,old,hold_id,revision,4100000,1000000);
+            RAISE EXCEPTION 'Already funded or billed deposit accepted more money'; EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL;
+          END;
+          RESET ROLE;
+        END IF;
         IF first_channel='sale' AND second_channel='reservation' THEN
           SELECT h.revision INTO revision FROM public.room_reservations h WHERE h.id=hold_id;
           SET LOCAL ROLE authenticated;

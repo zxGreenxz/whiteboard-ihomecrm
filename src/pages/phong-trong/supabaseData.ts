@@ -15,7 +15,7 @@ import {
 } from "./sampleData";
 import { applyStoredLayout, type StoredFloorLayout } from "./floorLayoutShared";
 import { EXIT_HOLD_SALE_FACT, isExitHeld, parseRoomExitHold } from "./exitHold";
-import { parseRoomDepositHold } from "./depositHold";
+import { hasPrecontractDeposit, parseRoomDepositHold } from "./depositHold";
 
 /** Bucket Storage PUBLIC cho ảnh sale (phòng + tòa). Ảnh thường lưu dạng URL đầy đủ
  *  (imageUrl pass-through); bucket dùng khi giá trị là storage PATH. */
@@ -282,7 +282,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
     // Chỉ giữ tầng có ≥1 phòng trống/sắp trống/khách-pass (ẩn tầng đã full khỏi Sơ đồ); trong app thêm phòng
     // chốt tạm và phòng đang giữ cho khách sang nhượng.
     const floorNums = Array.from(new Set(rooms.map((r) => r.floor)))
-      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || isExitHeld(r) || r.hasDepositHold)))
+      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || isExitHeld(r) || hasPrecontractDeposit(r))))
       .sort((a, z) => z - a);
     const floors = floorNums.map((f) => {
       const floorRooms = rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no);

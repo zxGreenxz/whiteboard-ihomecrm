@@ -280,7 +280,7 @@ const IncomeExpenseQuickCreateDialog = ({
   const canSubmit =
     !!parsed.buildingId &&
     (!!parsed.roomId || parsed.isBuildingWide) &&
-    !depositNeedsRoom && (!isDeposit||(!hold.isError&&!hold.isLoading)) &&
+    !depositNeedsRoom && (!isDeposit||(!hold.destinationChanged&&!hold.isError&&!hold.isLoading)) &&
     !!parsed.typeId &&
     parsed.amount != null &&
     !!accountId &&
@@ -348,7 +348,7 @@ const IncomeExpenseQuickCreateDialog = ({
       {saveError && <p role="alert">{saveError}</p>}
       {isDeposit&&parsed.roomId&&<div className="space-y-2">
         <label className="block text-sm">Người gửi<input className="block w-full rounded border p-2" value={payer} onChange={e=>setPayer(e.target.value)}/></label>
-        <DepositScheduleFields targetHold={hold.data} key={hold.data?.id??parsed.roomId} voucherDate={today()} value={schedule} onChange={setSchedule}/>
+        <DepositScheduleFields destinationChanged={hold.destinationChanged} targetHold={hold.data} key={hold.data?.id??parsed.roomId} voucherDate={today()} value={schedule} onChange={setSchedule}/>
         {hold.isError&&<button type="button" onClick={()=>void hold.refetch()}>Tải lại đợt giữ chỗ</button>}
       </div>}
       {/* Dòng 1: Thu / Chi */}

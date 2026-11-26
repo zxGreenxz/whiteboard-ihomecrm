@@ -829,7 +829,8 @@ const IncomeExpenseFormInner = ({
         // trình duyệt sinh (đường compat). Xem hooks/income-expenses/formCreatePending.ts.
         if(isDepositIncome){
           if(!data.contract_id){
-            if(!selectedRoomId || holdQuery.isLoading || holdQuery.isError){setSubmitError('Chưa tải được đợt giữ chỗ của phòng.');return;}
+            if(holdQuery.destinationChanged){setSubmitError('Lượt giữ chỗ đã đổi. Mở lại phiếu để chọn đúng lượt thu.');return;}
+    if(!selectedRoomId || holdQuery.isLoading || holdQuery.isError){setSubmitError('Chưa tải được đợt giữ chỗ của phòng.');return;}
             if(roomContracts.some(c=>c.status==='ACTIVE'||c.status==='EXTENDED') && depositTargetChoice!=='__none__'){
               setSubmitError('Chọn bổ sung cho hợp đồng đang thuê hoặc giữ chỗ cho lượt thuê kế tiếp.');return;
             }
@@ -1328,7 +1329,7 @@ const IncomeExpenseFormInner = ({
               )}
 
               {isDepositIncome && !selectedContractId && selectedRoomId && (
-                <DepositScheduleFields targetHold={holdQuery.data} key={holdQuery.data?.id??selectedRoomId} voucherDate={form.watch('voucher_date')}
+                <DepositScheduleFields destinationChanged={holdQuery.destinationChanged} targetHold={holdQuery.data} key={holdQuery.data?.id??selectedRoomId} voucherDate={form.watch('voucher_date')}
                   value={schedule} onChange={setSchedule} disabled={!canEdit || holdQuery.isLoading}/>
               )}
               {/* Row 2: Người gửi (INCOME) / Tên người nhận (EXPENSE) + Ngày — luôn cùng 1 dòng */}

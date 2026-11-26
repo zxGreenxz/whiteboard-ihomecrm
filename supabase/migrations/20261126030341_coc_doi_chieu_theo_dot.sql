@@ -69,8 +69,7 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $fn$
    AND v.contract_id IS NULL AND v.type='INCOME' AND v.deleted_at IS NULL AND v.approval_status IS DISTINCT FROM 'CANCELLED'
    AND public.ie_has_deposit_item(v.id) AND NOT app_private.reservation_deposit_is_settled_v1(v.id)
    AND NOT EXISTS (SELECT 1 FROM public.reservation_receipts rr WHERE rr.source_voucher_id=v.id)
-   AND NOT EXISTS (SELECT 1 FROM public.contract_deposit_links l WHERE l.income_expense_id=v.id)
-   AND NOT EXISTS (SELECT 1 FROM public.deposit_management_exclusions ex WHERE ex.voucher_id=v.id))
+   AND NOT EXISTS (SELECT 1 FROM public.contract_deposit_links l WHERE l.income_expense_id=v.id))
 $fn$;
 REVOKE ALL ON FUNCTION app_private.room_has_unallocated_deposit_v1(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
 
@@ -99,6 +98,9 @@ BEGIN
   SELECT * INTO h FROM public.room_reservations WHERE id=p_hold_id AND organization_id=p_organization_id FOR UPDATE;
   IF h.status='CONVERTED' THEN
     PERFORM app_private.assert_room_reservation_scope_v1(p_organization_id,rm.building_id,'contracts.edit');
+    IF NOT coalesce((SELECT allowed FROM app_private.authorize_tenant_action_v3(actor,p_organization_id,'contracts.edit',rm.building_id,NULL)),false) THEN
+      RAISE EXCEPTION 'Không có quyền đối chiếu cọc tại tòa này.' USING ERRCODE='42501';
+    END IF;
     SELECT * INTO ct FROM public.contracts WHERE id=h.converted_contract_id AND room_id=rm.id
       AND organization_id=p_organization_id AND deleted_at IS NULL AND status IN ('ACTIVE','EXTENDED') FOR UPDATE;
     IF ct.id IS NULL THEN RAISE EXCEPTION 'Hợp đồng của lượt đã đóng. Kiểm tra hồ sơ quyết toán.' USING ERRCODE='PT409'; END IF;
@@ -124,6 +126,12 @@ BEGIN
     OR NOT coalesce((basis->>'received')::boolean,false) OR coalesce((basis->>'mismatch')::boolean,true) THEN
     RAISE EXCEPTION 'Phiếu hoặc lượt giữ chỗ đã đổi. Tải lại trước khi đối chiếu.' USING ERRCODE='PT409'; END IF;
   IF ct.id IS NOT NULL THEN
+    IF EXISTS (SELECT 1 FROM app_private.contract_exit_settlement_drafts d JOIN public.contract_exit_cases e ON e.id=d.case_id WHERE e.contract_id=ct.id) THEN
+      RAISE EXCEPTION 'Hợp đồng đang có hồ sơ quyết toán. Kiểm tra hồ sơ trước khi nối phiếu.' USING ERRCODE='PT409';
+    END IF;
+    IF coalesce((app_private.quote_room_transfer_deposit_v1(ct.id,rm.id,ct.total_deposit)->>'deposit_unbilled_shortfall')::numeric,0)<p_voucher_amount THEN
+      RAISE EXCEPTION 'Số tiền phiếu vượt phần cọc còn thiếu chưa lên hóa đơn của hợp đồng.' USING ERRCODE='PT409';
+    END IF;
     PERFORM app_private.bind_reservation_source_voucher_v1(h.id,v.id);
     INSERT INTO public.contract_deposit_links (organization_id,contract_id,income_expense_id,link_source,linked_by)
       VALUES(p_organization_id,ct.id,v.id,'EXPLICIT_V2',actor);
@@ -145,6 +153,16 @@ DO $patch$
 DECLARE x record; body text; newbody text;
 BEGIN
   FOR x IN SELECT * FROM (VALUES
+    ('public.get_my_available_rooms(uuid)'::regprocedure,
+      $a$OR exit_hold IS NOT NULL OR has_deposit_hold
+  ),$a$,
+      $b$OR exit_hold IS NOT NULL OR has_deposit_hold
+      OR (deposit_hold->>'source'='voucher' AND deposit_hold->>'room_occupied'='false')
+  ),$b$),
+    ('public.create_room_reservation_v1(uuid,text,jsonb)'::regprocedure,
+      $a$IF cardinality(ids)<>(SELECT count(DISTINCT x)$a$,
+      $b$IF cardinality(ids)>0 THEN RAISE EXCEPTION 'Mở lượt giữ chỗ rồi đối chiếu phiếu đã thu.' USING ERRCODE='PT409'; END IF;
+ IF cardinality(ids)<>(SELECT count(DISTINCT x)$b$),
     ('app_private.attach_deposit_income_v1(uuid,jsonb,uuid,uuid[])'::regprocedure,
       $a$CASE WHEN existing IS NULL THEN 'CREATE' ELSE 'TOPUP' END$a$,
       $b$CASE WHEN existing IS NULL THEN 'CREATE' WHEN p_terms->>'reconcile'='true' THEN 'RECONCILE' ELSE 'TOPUP' END$b$),

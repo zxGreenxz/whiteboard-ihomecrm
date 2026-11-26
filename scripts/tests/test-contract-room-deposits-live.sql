@@ -37,9 +37,17 @@ BEGIN
         VALUES(actor,org,'INCOME','QA cọc cũ',building,room,book,day,amount,CASE WHEN scenario='moved-source' THEN 'UNAPPROVED' ELSE 'APPROVED' END,CASE WHEN scenario<>'moved-source' THEN actor END,CASE WHEN scenario<>'moved-source' THEN clock_timestamp() END) RETURNING id INTO original;
       INSERT INTO public.income_expense_items(income_expense_id,organization_id,income_expense_type_id,description,quantity,unit_price,amount,start_date,end_date,accounting_class)
         VALUES(original,org,dep_type,'Tiền cọc thử',1,amount,amount,day,day,'DEPOSIT');
+      -- Seed a historical hold and its original source as stored before the legacy input was retired.
+      INSERT INTO public.room_reservations(organization_id,building_id,room_id,customer_id,customer_hint,created_by,idempotency_key,payload_hash)
+        VALUES(org,building,room,CASE WHEN scenario='legacy-customer' THEN old_customer END,
+          CASE WHEN scenario<>'legacy-customer' THEN 'Tên nhắc khác tên ký' END,actor,'qa-hold-'||room,md5(room::text)) RETURNING id INTO source;
+      INSERT INTO public.room_next_claims(organization_id,room_id,reservation_id) VALUES(org,room,source);
+      PERFORM app_private.bind_reservation_source_voucher_v1(source,original);
+      hold:=app_private.room_reservation_response_v1(source);
+      INSERT INTO app_private.room_reservation_history(reservation_id,revision,action,actor_id,idempotency_key,payload_hash,response)
+        VALUES(source,1,'CREATE',actor,'qa-hold-'||room,md5(room::text),hold);
+      UPDATE public.room_reservations SET initial_response=hold WHERE id=source;
       SET LOCAL ROLE authenticated;
-      hold:=public.create_room_reservation_v1(org,'qa-hold-'||room,jsonb_build_object('room_id',room,'existing_voucher_ids',jsonb_build_array(original)) ||
-        CASE WHEN scenario='legacy-customer' THEN jsonb_build_object('customer_id',old_customer) ELSE jsonb_build_object('customer_hint','Tên nhắc khác tên ký') END);
       IF original IS NULL OR (scenario<>'legacy-customer' AND hold->>'customer_id' IS NOT NULL) THEN RAISE EXCEPTION 'Expected hint-only hold'; END IF;
       IF scenario='legacy-customer' AND (hold->>'customer_id')::uuid IS DISTINCT FROM old_customer THEN RAISE EXCEPTION 'Missing historical customer'; END IF;
       IF scenario='abandon' THEN
