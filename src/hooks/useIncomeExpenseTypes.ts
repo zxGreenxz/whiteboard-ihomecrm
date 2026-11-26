@@ -4,9 +4,8 @@ function feedbackRecordName(value:unknown,fallback?:string):string {
 }
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {withOrg} from '@/lib/orgPayload';
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
-import { confirmedRecordId, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { confirmedRecordId, recordWriteMessage, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
 // Nạp động: hai module của đợt 4 chỉ cần lúc tạo, nạp tĩnh từ nhiều trang làm Vite tách thành chunk dùng chung và
 // thêm tên chunk vào danh sách phụ thuộc của chunk entry (cửa bundle-inventory).
 import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
@@ -411,18 +410,25 @@ export const useUpdateIncomeExpenseType = () => {
         hide_in_report?: boolean;
       } & IncomeExpenseTypeCatalogUpdates;
     }) => {
-      return persistentFinancialWorkflow('income-expense-type-update').run(id, 'cập nhật loại thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_types" as any)
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
+      // Đợt 8 (luật 5): sửa theo mã, đặt giá trị tuyệt đối ⇒ lưu lại cho cùng kết quả, không giữ dấu «chờ đối chiếu» nào.
+      // Chưa rõ kết quả (mất mạng, biên nhận sai mã) ⇒ báo rõ, form không khoá, bấm lại ghi lại đúng nội dung đó. Khớp 0
+      // dòng (PGRST116: RLS không cho sửa, loại đã bị xoá) là chưa ghi gì: lời từ chối rõ, đi nguyên.
+      const data = await repeatableWrite('cập nhật loại thu chi', async () => {
+        const { data, error } = await supabase
+          .from("income_expense_types" as any)
+          .update(updates)
+          .eq("id", id)
+          .select()
+          .single();
 
-      if (error) throw error;
-      confirmedRecordId(data, 'cập nhật loại thu chi', id);
-      return data;
+        if (error) throw error;
+        confirmedRecordId(data, 'cập nhật loại thu chi', id);
+        return data;
       });
+      // Dấu bản trước của đúng loại này (công ty đang chọn) không còn chặn gì: gỡ sau khi lưu xong.
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'income-expense-type-update', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
+      return data;
     },
     onSuccess: (data) => {
       invalidateIeTypesCache();
@@ -468,20 +474,27 @@ export const useDeleteIncomeExpenseType = () => {
         );
       }
 
-      return persistentFinancialWorkflow('income-expense-type-delete').run(id, 'xoá loại thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_types" as any)
-        .delete()
-        .eq("id", id)
-        .select('id,name')
-        .single();
+      // Đợt 8 (luật 5): xoá theo mã ⇒ xoá lại cho cùng kết quả, không giữ dấu nào. Khớp 0 dòng (PGRST116) thì đọc lại đúng
+      // loại đó: không còn ⇒ đã xoá ở lần gửi trước (báo thành công); còn nguyên ⇒ RLS không cho xoá (từ chối rõ).
+      const deleted = await repeatableWrite('xoá loại thu chi', async (): Promise<unknown> => {
+        const { data, error } = await supabase
+          .from("income_expense_types" as any)
+          .delete()
+          .eq("id", id)
+          .select('id,name')
+          .single();
 
-      if (error) {
-        throw error;
-      }
-      confirmedRecordId(data, 'xoá loại thu chi', id);
-      return data;
+        if (error) {
+          if ((error as { code?: unknown }).code !== 'PGRST116') throw error;
+          await settleZeroRowDelete('xoá loại thu chi', () => supabase.from('income_expense_types').select('id,name').eq('id', id));
+          return { id, alreadyDeleted: true };
+        }
+        confirmedRecordId(data, 'xoá loại thu chi', id);
+        return data;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'income-expense-type-delete', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
+      return deleted;
     },
     onSuccess: (data) => {
       invalidateIeTypesCache();
@@ -489,6 +502,10 @@ export const useDeleteIncomeExpenseType = () => {
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],
       });
+      if ((data as { alreadyDeleted?: unknown } | null)?.alreadyDeleted === true) {
+        toast.success('Loại thu chi này đã được xoá ở lần gửi trước (hoặc bởi người khác). Không còn gì để xoá thêm.');
+        return;
+      }
       toast.success(`Đã xóa loại thu chi ${feedbackRecordName(data)}`);
     },
     onError: (error) => {

@@ -56,7 +56,7 @@ import { useCanManageIeTypes } from '@/hooks/useCanManageIeTypes';
 import { catalogFormDefaults, catalogUpdatesFromForm } from '@/lib/ieTypeCatalogDraft';
 import { QueryRegion } from '@/components/errors/QueryRegion';
 import { focusFirstError } from '@/lib/formErrors';
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
 
 export default function IncomeExpenseTypesPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -73,8 +73,9 @@ export default function IncomeExpenseTypesPage() {
   // Người khác xem danh mục ở chế độ chỉ đọc; RLS máy chủ vẫn là hàng rào thật.
   const { canManage, isLoading: manageLoading } = useCanManageIeTypes();
   const isEditing = !!editingType;
-  const [blocked,setBlocked]=useState(false);
-  const [deleteFailures,setDeleteFailures]=useState<Record<string,{message:string;blocked:boolean}>>({});
+  // Không cờ tự khoá nào: tạo loại tự đối chiếu theo tên duy nhất (đợt 4); sửa và xoá ghi lặp lại được (đợt 8). Kết quả
+  // chưa rõ chỉ báo rõ, giữ nội dung đang nhập, bấm lại được.
+  const [deleteFailures,setDeleteFailures]=useState<Record<string,string>>({});
   const busy=useRef(false);
   const draftKey=useRef<string|null>(null);
 
@@ -98,8 +99,8 @@ export default function IncomeExpenseTypesPage() {
   useEffect(() => {
     if(!isFormOpen) return;
     const key=editingType?.id ?? 'new';
-    if(draftKey.current===key && (form.formState.isDirty || form.formState.errors.root?.server || blocked)) return;
-    draftKey.current=key;setBlocked(false);
+    if(draftKey.current===key && (form.formState.isDirty || form.formState.errors.root?.server)) return;
+    draftKey.current=key;
     if (editingType && isFormOpen) {
       form.reset({
         name: editingType.name,
@@ -124,7 +125,7 @@ export default function IncomeExpenseTypesPage() {
   }, [editingType, isFormOpen, form]);
 
   const onSubmit = async (data: IncomeExpenseTypeFormValues) => {
-    if(!canManage || blocked || busy.current || createType.isPending || updateType.isPending || sourceBlocked) return;
+    if(!canManage || busy.current || createType.isPending || updateType.isPending || sourceBlocked) return;
     busy.current=true;form.clearErrors('root.server');
     try {
       const normalizedCategory = data.category?.trim()
@@ -158,8 +159,8 @@ export default function IncomeExpenseTypesPage() {
       }
       draftKey.current=null;form.reset();setIsFormOpen(false);setEditingType(null);
     } catch (error) {
-      // Tạo mới không khoá form (đợt 4): tên loại là duy nhất trong công ty, bấm lại tự đối chiếu theo tên. Sửa giữ như cũ.
-      setBlocked(isEditing && recordWriteBlocked(error));
+      // Tạo mới không khoá form (đợt 4): tên loại là duy nhất trong công ty, bấm lại tự đối chiếu theo tên. Sửa cũng không
+      // khoá (đợt 8): sửa theo mã, lưu lại cho cùng kết quả.
       form.setError('root.server',{type:'server',message:recordWriteMessage(error,'lưu loại thu chi')});
     } finally {busy.current=false;}
   };
@@ -178,10 +179,10 @@ export default function IncomeExpenseTypesPage() {
   };
 
   const confirmDelete = async () => {
-    if(!deletingTypeId || busy.current || deleteType.isPending || deleteFailures[deletingTypeId]?.blocked) return;
+    if(!deletingTypeId || busy.current || deleteType.isPending) return;
     busy.current=true;
     try {await deleteType.mutateAsync(deletingTypeId);setDeletingTypeId(null);}
-    catch(error) {setDeleteFailures(previous=>({...previous,[deletingTypeId]:{message:recordWriteMessage(error,'xoá loại thu chi'),blocked:recordWriteBlocked(error)}}));}
+    catch(error) {setDeleteFailures(previous=>({...previous,[deletingTypeId]:recordWriteMessage(error,'xoá loại thu chi')}));}
     finally {busy.current=false;}
   };
 
@@ -229,7 +230,7 @@ export default function IncomeExpenseTypesPage() {
               <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
                 {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
                 {sourceBlocked && <div role="alert">Chưa tải đủ nhóm loại thu chi. <Button type="button" variant="outline" onClick={()=>{void categoriesQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
-                <fieldset disabled={isPending || blocked || sourceBlocked} className="space-y-4">
+                <fieldset disabled={isPending || sourceBlocked} className="space-y-4">
                 <FormField
                   control={form.control}
                   name="name"
@@ -352,7 +353,7 @@ export default function IncomeExpenseTypesPage() {
                   >
                     Hủy
                   </Button>
-                  <Button type="submit" disabled={isPending || blocked || sourceBlocked}>
+                  <Button type="submit" disabled={isPending || sourceBlocked}>
                     {isPending ? 'Đang lưu...' : 'Lưu'}
                   </Button>
                 </div>
@@ -374,12 +375,12 @@ export default function IncomeExpenseTypesPage() {
                 Bạn đang thực hiện thao tác xoá loại thu chi. Bạn có chắc chắn muốn xoá không?
               </AlertDialogDescription>
             </AlertDialogHeader>
-            {deletingTypeId && deleteFailures[deletingTypeId] && <p role="alert" className="text-destructive">{deleteFailures[deletingTypeId].message}</p>}
+            {deletingTypeId && deleteFailures[deletingTypeId] && <p role="alert" className="text-destructive">{deleteFailures[deletingTypeId]}</p>}
             <AlertDialogFooter>
               <AlertDialogCancel>Hủy</AlertDialogCancel>
               <Button variant="destructive"
                 onClick={() => { void confirmDelete(); }}
-                disabled={deleteType.isPending || !!(deletingTypeId && deleteFailures[deletingTypeId]?.blocked)}
+                disabled={deleteType.isPending}
               >
                 {deleteType.isPending ? 'Đang xoá...' : 'Xoá'}
               </Button>

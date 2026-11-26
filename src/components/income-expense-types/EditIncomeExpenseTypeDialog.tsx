@@ -1,4 +1,4 @@
-import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {recordWriteMessage} from '@/lib/recordWriteOutcome';
 import {focusFirstError} from '@/lib/formErrors';
 import { useEffect, useRef, useState } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
@@ -73,7 +73,8 @@ const EditIncomeExpenseTypeDialog = ({
   const updateType = useUpdateIncomeExpenseType();
   const deleteType = useDeleteIncomeExpenseType();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [blocked,setBlocked]=useState(false);
+  // Đợt 8 (luật 5): sửa và xoá loại thu chi ghi lặp lại được nên hộp không tự khoá sau kết quả chưa rõ: báo rõ, giữ nội
+  // dung đang sửa, bấm lại ghi lại đúng nội dung đó.
   const [deleteFailure,setDeleteFailure]=useState('');
   const busy=useRef(false);
   const draftKey=useRef<string|null>(null);
@@ -97,8 +98,8 @@ const EditIncomeExpenseTypeDialog = ({
 
   useEffect(() => {
     if(open && type) {
-      if(draftKey.current===type.id && (form.formState.isDirty || form.formState.errors.root?.server || blocked || deleteFailure)) return;
-      draftKey.current=type.id;setBlocked(false);setDeleteFailure('');
+      if(draftKey.current===type.id && (form.formState.isDirty || form.formState.errors.root?.server || deleteFailure)) return;
+      draftKey.current=type.id;setDeleteFailure('');
       form.reset({
         name: type.name,
         type: type.type,
@@ -119,7 +120,7 @@ const EditIncomeExpenseTypeDialog = ({
   const sourceBlocked=categoriesQuery.isLoading || categoriesQuery.isError;
 
   const onSubmit = async (data: IncomeExpenseTypeFormValues) => {
-    if(!type || blocked || busy.current || updateType.isPending || deleteType.isPending || sourceBlocked) return;
+    if(!type || busy.current || updateType.isPending || deleteType.isPending || sourceBlocked) return;
     busy.current=true;form.clearErrors('root.server');
     try {
       await updateType.mutateAsync({
@@ -139,13 +140,12 @@ const EditIncomeExpenseTypeDialog = ({
       });
       onOpenChange(false);
     } catch(error) {
-      setBlocked(recordWriteBlocked(error));
       form.setError('root.server',{type:'server',message:recordWriteMessage(error,'cập nhật loại thu chi')});
     } finally {busy.current=false;}
   };
 
   const handleDelete = async () => {
-    if(!type || blocked || busy.current || updateType.isPending || deleteType.isPending) return;
+    if(!type || busy.current || updateType.isPending || deleteType.isPending) return;
     busy.current=true;
     try {
       await deleteType.mutateAsync(type.id);
@@ -153,7 +153,6 @@ const EditIncomeExpenseTypeDialog = ({
       setConfirmDelete(false);
       onOpenChange(false);
     } catch(error) {
-      setBlocked(recordWriteBlocked(error));
       setDeleteFailure(recordWriteMessage(error,'xoá loại thu chi'));
     } finally {busy.current=false;}
   };
@@ -172,7 +171,7 @@ const EditIncomeExpenseTypeDialog = ({
             >
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-destructive">{form.formState.errors.root.server.message}</p>}
               {sourceBlocked && <div role="alert">Chưa tải đủ nhóm loại thu chi. <Button type="button" variant="outline" onClick={()=>{void categoriesQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
-              <fieldset disabled={updateType.isPending || deleteType.isPending || blocked || sourceBlocked} className="space-y-3">
+              <fieldset disabled={updateType.isPending || deleteType.isPending || sourceBlocked} className="space-y-3">
               <FormField
                 control={form.control}
                 name="name"
@@ -312,7 +311,7 @@ const EditIncomeExpenseTypeDialog = ({
                   variant="destructive"
                   size="sm"
                   onClick={() => setConfirmDelete(true)}
-                  disabled={deleteType.isPending || blocked}
+                  disabled={deleteType.isPending}
                 >
                   <Trash2 className="h-4 w-4 mr-1" />
                   Xoá
@@ -329,7 +328,7 @@ const EditIncomeExpenseTypeDialog = ({
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={updateType.isPending || blocked || sourceBlocked}
+                    disabled={updateType.isPending || sourceBlocked}
                   >
                     {updateType.isPending ? 'Đang lưu...' : 'Lưu'}
                   </Button>
@@ -355,7 +354,7 @@ const EditIncomeExpenseTypeDialog = ({
             {deleteFailure && <p role="alert" className="text-destructive">{deleteFailure}</p>}
             <AlertDialogAction
               onClick={event=>{event.preventDefault();void handleDelete();}}
-              disabled={deleteType.isPending || blocked}
+              disabled={deleteType.isPending}
               className="bg-red-600 hover:bg-red-700"
             >
               {deleteType.isPending ? 'Đang xoá...' : 'Xoá'}
