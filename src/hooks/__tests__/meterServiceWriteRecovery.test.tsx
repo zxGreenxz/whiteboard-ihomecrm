@@ -48,6 +48,27 @@ function expectRefusal(error: unknown, text: RegExp) {
   expect(pendingKeys()).toEqual([]);
 }
 const reading = (id: string, extra: Row = {}): Row => ({ id, building_id: 'b1', meter_id: 'm1', previous_reading: 5, current_reading: 10, reading_date: '2026-11-01', status: 'APPROVED', deleted_at: null, ...extra });
+type Reply = { data: unknown; error: unknown };
+type Settle = (ok: (value: Reply) => unknown, fail?: (reason: unknown) => unknown) => unknown;
+/**
+ * Hàng rào: lệnh kế tiếp trên `table` đã ghi thật nhưng biên nhận trả về bị sửa (mã lạ, sai mã). Phiên bản đợt 8 không
+ * được coi đó là thành công; chỉ báo chưa rõ và cho bấm lại.
+ */
+function tamperNextReceipt(table: string, tamper: (data: unknown) => unknown, skip = 0) {
+  const from = io.server.from;
+  let left = skip;
+  io.server.from = (name: string) => {
+    const query = from(name) as { then: Settle; single: () => Promise<Reply>; maybeSingle: () => Promise<Reply> };
+    if (name !== table) return query;
+    if (left-- > 0) return query;
+    io.server.from = from;
+    const { then, single, maybeSingle } = query;
+    query.then = (ok, fail) => then(value => ok({ ...value, data: tamper(value.data) }), fail);
+    query.single = async () => { const value = await single(); return { ...value, data: tamper(value.data) }; };
+    query.maybeSingle = async () => { const value = await maybeSingle(); return { ...value, data: tamper(value.data) }; };
+    return query;
+  };
+}
 
 beforeEach(() => {
   io.server = fakeRecordServer();
@@ -89,6 +110,13 @@ describe('sửa chỉ số (đặt giá trị theo mã)', () => {
     io.server.writable.meter_readings = () => false;
     expectRefusal(await rejection(update()({ id: 'r1', current_reading: 12 })), /Không tìm thấy chỉ số|chưa có quyền/);
     expect(rowOf('meter_readings', 'r1')?.current_reading).toBe(10);
+  });
+
+  it('hàng rào: biên nhận mang mã khác không được tính là đã sửa; bấm lại ghi được', async () => {
+    const save = update();
+    tamperNextReceipt('meter_readings', data => ({ ...(data as Row), id: 'r9' }));
+    expectRepeatable(await rejection(save({ id: 'r1', current_reading: 12 })));
+    await expect(save({ id: 'r1', current_reading: 12 })).resolves.toMatchObject({ id: 'r1', current_reading: 12 });
   });
 });
 
@@ -185,6 +213,13 @@ describe('xoá chỉ số hàng loạt', () => {
     expect(rowOf('meter_readings', 'r2')?.deleted_at).toBeNull();
   });
 
+  it('hàng rào: biên nhận có mã ngoài lựa chọn không được tính là đã xoá; bấm lại thì xong', async () => {
+    const run = removeMany();
+    tamperNextReceipt('meter_readings', data => [...(data as Row[]), { id: 'r9' }]);
+    expectRepeatable(await rejection(run(['r1', 'r2'])));
+    await expect(run(['r1', 'r2'])).resolves.toHaveLength(2);
+  });
+
   it('dấu bản trước của đúng lựa chọn không chặn; xoá xong thì gỡ', async () => {
     const key = actorMark('useBulkDeleteMeterReadings', 'r1,r2');
     await removeMany()(['r2', 'r1']);
@@ -250,6 +285,15 @@ describe('sửa dịch vụ (đặt giá trị + đồng bộ toà áp dụng th
   it('gỡ toà bị RLS chặn: báo rõ không có quyền, không khoá', async () => {
     io.server.writable.building_services = row => row.id !== 'l-old';
     expectRefusal(await rejection(update()(input)), /chưa có quyền xoá/);
+  });
+
+  it('hàng rào: biên nhận gỡ toà có mã lạ không được tính là xong; bấm lại thì đủ', async () => {
+    const save = update();
+    // Lệnh thứ hai trên building_services là lệnh gỡ (lệnh đầu đọc toà áp dụng hiện tại).
+    tamperNextReceipt('building_services', data => [...(data as Row[]), { id: 'l-9' }], 1);
+    expectRepeatable(await rejection(save(input)), /tòa áp dụng/);
+    await save(input);
+    expect(links()).toEqual(['b-kept:true', 'b-new:true']);
   });
 });
 
