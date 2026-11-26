@@ -12,10 +12,11 @@ import { EditQuotaDialog } from '../EditQuotaDialog';
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 afterEach(() => { cleanup(); update.mockReset(); });
 
-// Đợt 8: sửa định mức lặp lại được (xoá rồi chèn lại bậc giá cho đúng một bộ) ⇒ lỗi sau khi đã gỡ bậc cũ chỉ báo rõ,
-// nút Cập nhật không khoá: bấm lại là ghi lại đủ bậc giá.
-it('core đã lưu nhưng bậc giá lỗi: báo rõ đã gỡ bậc cũ, không khoá, bấm Cập nhật lại gửi lại', async () => {
-  update.mockRejectedValueOnce(new FinancialWorkflowError('Đã gỡ các bậc giá cũ của định mức (1 bậc) nhưng chưa lưu được bậc giá mới. Bấm Cập nhật để lưu lại đủ bậc giá.', 'failure', []))
+// Đợt 8: sửa định mức lặp lại được ⇒ lỗi chỉ báo rõ, nút Cập nhật không khoá: bấm lại là ghi lại đủ bậc giá.
+// Đợt 10b: trước đợt 10b test này tên «core đã lưu nhưng bậc giá lỗi: báo rõ đã gỡ bậc cũ, không khoá…» và giả câu «Đã gỡ các
+// bậc giá cũ … chưa lưu được bậc giá mới». Nay tên, mô tả và bậc đi MỘT hàm máy chủ nguyên tử: lời từ chối là câu của máy chủ.
+it('máy chủ từ chối rõ (câu của hàm nguyên tử): báo rõ, không khoá, bấm Cập nhật lại gửi lại', async () => {
+  update.mockRejectedValueOnce(new FinancialWorkflowError('Chưa gỡ được bậc giá cũ của định mức: tài khoản chưa có quyền gỡ bậc. Chưa lưu thay đổi nào.', 'failure', []))
     .mockResolvedValueOnce({ id: 'quota-1' });
   const close = vi.fn();
   render(<EditQuotaDialog open onOpenChange={close} quota={{
@@ -23,7 +24,7 @@ it('core đã lưu nhưng bậc giá lỗi: báo rõ đã gỡ bậc cũ, không
     service_quota_tiers: [{ tier_number: 1, from_value: 0, to_value: null, unit_price: 1000 }],
   } as never} />);
   fireEvent.click(screen.getByRole('button', { name: 'Cập nhật' }));
-  await screen.findByText(/Đã gỡ các bậc giá cũ.*chưa lưu được bậc giá mới/);
+  await screen.findByText(/chưa có quyền gỡ bậc.*Chưa lưu thay đổi nào/);
   expect(close).not.toHaveBeenCalled();
   const submit = screen.getByRole('button', { name: 'Cập nhật' }) as HTMLButtonElement;
   expect(submit.disabled).toBe(false);
@@ -33,7 +34,7 @@ it('core đã lưu nhưng bậc giá lỗi: báo rõ đã gỡ bậc cũ, không
 });
 
 it.each([
- ['lặp lại được',()=>new RepeatableWriteUnknownError('lưu bậc giá mới sau khi đã gỡ bậc giá cũ',undefined,[{id:'quota-1',label:'Đã lưu định mức'}])],
+ ['lặp lại được',()=>new RepeatableWriteUnknownError('cập nhật định mức dịch vụ',undefined,[{id:'quota-1',label:'Đã lưu định mức'}])],
  ['chưa rõ kiểu cũ',()=>new FinancialWorkflowError('Chưa xác nhận định mức.','unknown',[{id:'quota-1',label:'Đã lưu định mức'}])],
 ])('unknown outcome (%s) keeps draft after refreshed quota and close/reopen, and allows another submit',async(_label,failure)=>{
  update.mockRejectedValueOnce(failure());

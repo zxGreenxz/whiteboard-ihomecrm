@@ -50,8 +50,8 @@ interface EditQuotaDialogProps {
 }
 
 export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogProps) {
-  // Đợt 8: sửa định mức lặp lại được (xoá rồi chèn lại bậc giá cho đúng một bộ) ⇒ lỗi giữ bản nháp và báo rõ, không
-  // khoá nút Cập nhật; bấm lại là ghi lại đủ bậc giá.
+  // Đợt 8: sửa định mức lặp lại được ⇒ lỗi giữ bản nháp và báo rõ, không khoá nút Cập nhật; bấm lại là ghi lại đủ bậc giá.
+  // Đợt 10b: một hàm máy chủ ghi tên, mô tả và cả bộ bậc trong một giao dịch (không còn lúc định mức thiếu bậc).
   const [failure,setFailure]=useState<unknown>();
   const draftKey=useRef<string|null>(null);
   const updateMutation = useUpdateServiceQuota();

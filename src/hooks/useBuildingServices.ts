@@ -3,31 +3,49 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { BuildingServiceWithDetails } from "@/types/building";
 import { friendlyError } from "@/lib/friendlyError";
-import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import type { Tables } from "@/integrations/supabase/types";
 import { readRecord, readString } from "@/lib/accountProfitReadModels";
 import { FinancialWorkflowError, RepeatableWriteUnknownError } from "@/lib/financialWorkflowError";
-import { useOrganization } from "@/contexts/OrganizationContext";
-import { withOrgAll } from "@/lib/orgPayload";
 
-type RemovedServiceReceipt = Pick<Tables<"building_services">, "id" | "building_id" | "service_id">;
+type ServiceLinkReceipt = Pick<Tables<"building_services">, "id" | "building_id" | "service_id">;
 type SavedServiceReceipt = Pick<Tables<"building_services">, "id" | "building_id" | "service_id" | "is_active" | "unit_price_override">;
-type ServiceInsert = Pick<TablesInsert<"building_services">, "building_id" | "service_id" | "is_active" | "unit_price_override">;
-interface ServiceWriteReply { data: unknown; error: unknown }
 
-function removedReceipt(value: unknown, buildingId: string): value is RemovedServiceReceipt {
+function linkReceipt(value: unknown, buildingId: string): value is ServiceLinkReceipt {
   return readRecord(value) && readString(value.id) && value.building_id === buildingId && readString(value.service_id);
 }
 function savedReceipt(value: unknown, buildingId: string): value is SavedServiceReceipt {
   if (!readRecord(value)) return false;
   const active = value.is_active;
   const price = value.unit_price_override;
-  return removedReceipt(value, buildingId) && typeof active === "boolean"
+  return linkReceipt(value, buildingId) && typeof active === "boolean"
     && (price === null || (typeof price === "number" && Number.isFinite(price)));
 }
-function receivedIds(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
+type BuildingServiceTarget = Pick<SavedServiceReceipt, "service_id" | "is_active" | "unit_price_override">;
+type ReplaceBuildingServicesRpc = (name: "replace_building_services_v1", args: { p_building_id: string; p_services: BuildingServiceTarget[] }) =>
+  PromiseLike<{ data: unknown; error: unknown }>;
+/**
+ * Biên nhận của replace_building_services_v1 phải khớp ĐÚNG bộ đã gửi: đúng số dòng, mã dòng là chuỗi không trùng, đúng mã
+ * toà, đa tập (dịch vụ, bật/tắt, giá riêng) khớp từng dòng đã gửi. Lệch hay sai dạng ⇒ chưa rõ (không bao giờ là đã lưu).
+ */
+function confirmedServices(value: unknown, buildingId: string, sent: readonly BuildingServiceTarget[]): string[] {
+  const mismatch = () => new FinancialWorkflowError("Biên nhận dịch vụ mặc định của tòa chưa khớp danh sách đã gửi.", "unknown", [], new TypeError("Mismatched building services receipt"));
+  if (!Array.isArray(value)) throw mismatch();
   const rows: unknown[] = value;
-  return [...new Set(rows.flatMap(row => readRecord(row) && readString(row.id) ? [row.id] : []))];
+  if (rows.length !== sent.length || !rows.every(row => savedReceipt(row, buildingId))) throw mismatch();
+  const saved = rows as SavedServiceReceipt[];
+  if (new Set(saved.map(row => row.id)).size !== saved.length) throw mismatch();
+  const expected = [...sent];
+  for (const row of saved) {
+    const index = expected.findIndex(value => value.service_id === row.service_id && value.is_active === row.is_active && value.unit_price_override === row.unit_price_override);
+    if (index < 0) throw mismatch();
+    expected.splice(index, 1);
+  }
+  return saved.map(row => row.id);
+}
+/** Lời từ chối do chính hàm máy chủ viết (tiếng Việt, không lộ SQL): giữ nguyên câu đó cho màn hình. */
+function serverWorded(error: unknown): unknown {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+  return typeof message === "string" && code === "42501" && message.startsWith("Chưa ") ? new FinancialWorkflowError(message, "failure", [], error) : error;
 }
 
 // Fetch building services with service details for a building
@@ -61,14 +79,14 @@ export const useBuildingServices = (buildingId: string) => {
   });
 };
 
-// Keep the original workflow: delete all existing links, then insert the new set.
-// Đợt 8 (luật 5): dịch vụ mặc định của tòa là thiết lập, không phải khoản tiền; «xoá rồi chèn lại» chạy lại cho đúng một bộ
-// (khoá duy nhất building_id + service_id), không cộng dồn, nên không giữ dấu «chờ đối chiếu» nữa: rớt mạng ở bước nào
-// cũng báo rõ và cho bấm lại. Chèn hỏng SAU khi đã gỡ danh sách cũ thì báo rõ là tòa có thể đang thiếu dịch vụ và cần lưu
-// lại. Ghi nguyên tử trên máy chủ (không còn khoảng thiếu dịch vụ): đợt 10.
+// Đợt 8 (luật 5): dịch vụ mặc định của tòa là thiết lập, không phải khoản tiền; ghi lặp lại được nên không giữ dấu «chờ đối
+// chiếu»: rớt mạng báo rõ và cho bấm lại. Đợt 10b: «xoá rồi chèn lại» đi MỘT hàm máy chủ (replace_building_services_v1,
+// SECURITY INVOKER: RLS và trigger như ghi thẳng) thay cả bộ trong một giao dịch: hoặc chưa ghi gì, hoặc đã ghi đủ, không còn
+// lúc tòa thiếu dịch vụ. Không gửi organization_id: trigger suy công ty từ tòa.
+const BUILDING_SERVICES_OPERATION = "lưu dịch vụ mặc định của tòa";
+const BUILDING_SERVICES_ADVICE = "Máy chủ thay cả danh sách dịch vụ của tòa trong một lần: lần trước hoặc chưa ghi gì, hoặc đã ghi đủ, tòa không ở trạng thái dở. Bấm lại nút lưu để ghi đúng danh sách đang chọn; không nhân đôi dịch vụ.";
 export const useUpsertBuildingServices = ({ silent = false }: { silent?: boolean } = {}) => {
   const queryClient = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     meta: { handlesFeedback: true },
@@ -78,67 +96,16 @@ export const useUpsertBuildingServices = ({ silent = false }: { silent?: boolean
     }) => {
       // Chỉ cần lúc lưu: không kéo thêm module vào gói tải trang.
       const { repeatableWrite } = await import("@/lib/recordWriteOutcome");
-      const removedSteps = await repeatableWrite("gỡ danh sách dịch vụ cũ của tòa", async () => {
-        // The legacy API casts and four-field payload match main; select adds only receipts.
-        const { data: deleted, error: deleteError }: ServiceWriteReply = await (supabase
-          .from("building_services" as any)
-          .delete()
-          .eq("building_id", buildingId)
-          .select("id,building_id,service_id") as any);
-        if (deleteError) throw deleteError;
-        const received = receivedIds(deleted).map(id => ({ id, label: "Mã liên kết nhận sau bước gỡ, cần đối chiếu" }));
-        if (!Array.isArray(deleted)) throw new FinancialWorkflowError(
-          "Chưa xác nhận được kết quả gỡ dịch vụ cũ. Chưa gửi bước lưu danh sách mới.",
-          "unknown", received, new TypeError("Unconfirmed building service deletion receipt"));
-        const removed: unknown[] = deleted;
-        if (!removed.every(row => removedReceipt(row, buildingId)) || new Set(removed.map(row => row.id)).size !== removed.length)
-          throw new FinancialWorkflowError("Chưa xác nhận đúng các liên kết dịch vụ đã gỡ; chưa gửi danh sách mới.",
-            "unknown", received, new TypeError("Mismatched building service deletion receipt"));
-        return received.map(step => ({ id: step.id, label: "Đã gỡ liên kết dịch vụ cũ của tòa" }));
+      const sent: BuildingServiceTarget[] = services.map(s => ({ service_id: s.service_id, is_active: s.is_active, unit_price_override: s.unit_price_override }));
+      const savedIds = await repeatableWrite(BUILDING_SERVICES_OPERATION, async () => {
+        const client = supabase as unknown as { rpc: ReplaceBuildingServicesRpc };
+        const { data, error } = await client.rpc("replace_building_services_v1", { p_building_id: buildingId, p_services: sent });
+        if (error) throw serverWorded(error);
+        return confirmedServices(data, buildingId, sent);
       }).catch((error: unknown) => {
-        // Chưa rõ bước gỡ: dịch vụ cũ có thể đã gỡ. Nói rõ để người dùng biết tòa có thể đang thiếu dịch vụ mặc định.
-        if (error instanceof RepeatableWriteUnknownError) throw new RepeatableWriteUnknownError("gỡ danh sách dịch vụ cũ của tòa", error.cause, error.completed, "Dịch vụ cũ có thể đã được gỡ nên tòa có thể đang thiếu dịch vụ mặc định. Bấm lại nút lưu: danh sách gỡ rồi ghi lại đúng danh sách đang chọn nên không nhân đôi.");
+        if (error instanceof RepeatableWriteUnknownError) throw new RepeatableWriteUnknownError(BUILDING_SERVICES_OPERATION, error.cause, error.completed, BUILDING_SERVICES_ADVICE);
         throw error;
       });
-      let savedIds: string[] = [];
-      if (services.length > 0) {
-        const rows: ServiceInsert[] = services.map(s => ({
-          building_id: buildingId,
-          service_id: s.service_id,
-          is_active: s.is_active,
-          unit_price_override: s.unit_price_override,
-        }));
-        try {
-          savedIds = await repeatableWrite("lưu danh sách dịch vụ mới sau khi đã gỡ danh sách cũ của tòa", async () => {
-            const { data: inserted, error: insertError }: ServiceWriteReply = await (supabase
-              .from("building_services" as any)
-              .insert(withOrgAll(rows, selectedOrganizationId))
-              .select("id,building_id,service_id,is_active,unit_price_override") as any);
-            if (insertError) throw insertError;
-            const steps = [...removedSteps, ...receivedIds(inserted).map(id => ({ id, label: "Đã nhận mã liên kết dịch vụ mới; chưa xác nhận đủ danh sách" }))];
-            if (!Array.isArray(inserted)) throw new FinancialWorkflowError(
-              "Chưa xác nhận được danh sách dịch vụ mới đã lưu.",
-              "unknown", steps, new TypeError("Unconfirmed building service insert receipt"));
-            const saved: unknown[] = inserted;
-            if (!saved.every(row => savedReceipt(row, buildingId)) || saved.length !== rows.length || new Set(saved.map(row => row.id)).size !== saved.length)
-              throw new FinancialWorkflowError("Chưa xác nhận đủ và đúng các liên kết dịch vụ mới đã lưu.",
-                "unknown", steps, new TypeError("Incomplete building service insert receipt"));
-            const expected = [...rows];
-            for (const row of saved) {
-              const index = expected.findIndex(value => value.service_id === row.service_id && value.is_active === row.is_active && value.unit_price_override === row.unit_price_override);
-              if (index < 0) throw new FinancialWorkflowError("Biên nhận dịch vụ mới chưa khớp danh sách đã gửi.",
-                "unknown", steps, new TypeError("Mismatched building service insert values"));
-              expected.splice(index, 1);
-            }
-            return saved.map(row => row.id);
-          });
-        } catch (error) {
-          if (error instanceof RepeatableWriteUnknownError) throw new RepeatableWriteUnknownError("lưu danh sách dịch vụ mới sau khi đã gỡ danh sách cũ của tòa", error.cause, error.completed, "Danh sách dịch vụ cũ đã gỡ; tòa có thể đang thiếu dịch vụ mặc định cho tới khi lưu xong. Bấm lại nút lưu: danh sách gỡ rồi ghi lại đúng danh sách đang chọn nên không nhân đôi.");
-          // Máy chủ từ chối rõ lệnh chèn sau khi danh sách cũ đã gỡ: báo đúng tình trạng, lưu lại là ghi đủ danh sách.
-          const reason = friendlyError(error, "Chưa lưu danh sách dịch vụ mới", { operation: "lưu danh sách dịch vụ mới" });
-          throw new FinancialWorkflowError(`Đã gỡ danh sách dịch vụ cũ của tòa (${removedSteps.length} dịch vụ) nhưng chưa lưu được danh sách mới. ${reason.description} Bấm lưu lại để ghi đủ dịch vụ; trong lúc này tòa có thể thiếu dịch vụ mặc định.`, "failure", [], error);
-        }
-      }
       try { const { forgetLegacyPending } = await import("@/lib/legacyPendingExit"); await forgetLegacyPending({ businessKey: buildingId, namespace: "building-services-replace" }, { organizationId: "actor-scope" }); }
       catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
       return savedIds;

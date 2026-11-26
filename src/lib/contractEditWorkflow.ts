@@ -11,7 +11,8 @@ import type {UpdateContractPayload} from '@/hooks/useContracts';
 // Kho dấu riêng của SỬA HỢP ĐỒNG (đợt 7 plan sửa khoá vĩnh viễn, cách A).
 //
 // Một lần sửa ghi ba phần: thông tin hợp đồng (đặt giá trị), khách của hợp đồng (đối chiếu nguyên tử với danh sách lúc mở
-// form) và dịch vụ của hợp đồng (xoá rồi chèn lại). Dấu lưu giá trị ĐÍCH của cả ba phần cùng pha của từng phần. Trước đợt 7,
+// form) và dịch vụ của hợp đồng (đợt 10b: thay nguyên tử bằng replace_contract_services_v1, pha `reconciling`; các pha xoá /
+// chèn dưới đây chỉ còn ở dấu bản trước). Dấu lưu giá trị ĐÍCH của cả ba phần cùng pha của từng phần. Trước đợt 7,
 // một lần gửi chưa rõ kết quả mà đọc lại chưa khớp giá trị đích là khoá vĩnh viễn. Nay:
 //   - thông tin hợp đồng chưa khớp ⇒ gửi lại ĐÚNG giá trị đã lưu trong dấu (đặt giá trị lặp lại cho cùng kết quả), CHỈ khi các
 //     trường đó còn đúng như lúc tạo dấu (`before`); người khác đã đổi thì không ghi đè. Dấu bản trước không có `before`

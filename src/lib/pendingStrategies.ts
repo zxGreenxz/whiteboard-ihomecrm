@@ -120,7 +120,8 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'profit-reset': tien('B', 'đặt lại lợi nhuận'),
 
   // Đợt 7: hợp đồng, chuyển khách hẹn, tạm trú (chuyển phòng ở dòng `contract-notice-transition` của khối đợt 6). Sửa hợp
-  // đồng dùng kho riêng `contractEditWorkflow.ts` (cách A, nối hộp cảnh báo chung), không nằm ở sổ này. Dấu chuyển khách hẹn
+  // đồng dùng kho riêng `contractEditWorkflow.ts` (cách A, nối hộp cảnh báo chung), không nằm ở sổ này; đợt 10b: bước dịch vụ
+  // của nó là MỘT giao dịch (replace_contract_services_v1, pha `reconciling` như phần khách). Dấu chuyển khách hẹn
   // bản trước (`lead-conversion`) chỉ còn được hộp chuyển khách hẹn đọc một lần; `tenant-legacy-create` bỏ cùng hook chết.
   'contract-signing': tien('B', 'ký hợp đồng'), // sign_and_checkin_contract_draft_v1 khoá phòng + công ty + nháp rồi tra lần ký theo nháp (một lần ký mỗi nháp)
   'contract-excel-import': tien('D', 'nhập hợp đồng từ Excel'), // dòng chưa rõ: tra hợp đồng hiệu lực của phòng (contracts_one_active_per_room_uq); mỗi dòng độc lập
@@ -141,13 +142,13 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'useDeleteMeterReading': khac('A', 'xoá chỉ số'), // xoá mềm dòng còn sống; khớp 0 dòng ⇒ settleZeroRowDelete
   'useBulkDeleteMeterReadings': khac('A', 'xoá chỉ số hàng loạt'), // mã thiếu trong biên nhận được đọc lại; mã lạ = chưa rõ
   'service-update': khac('A', 'cập nhật dịch vụ'), // đặt giá trị + đồng bộ toà áp dụng theo phần chênh, đọc lại mỗi lần
-  'quota-update': khac('A', 'cập nhật định mức'), // xoá rồi chèn lại bậc (duy nhất quota_id+tier_number); khoảng thiếu bậc chờ hàm nguyên tử đợt 10
-  'building-services-replace': khac('A', 'lưu dịch vụ mặc định của toà'), // xoá rồi chèn lại (duy nhất building_id+service_id); nguyên tử ở đợt 10
+  'quota-update': khac('A', 'cập nhật định mức'), // đợt 10b: replace_service_quota_v1 ghi tên, mô tả và cả bộ bậc trong MỘT giao dịch (khoá định mức FOR UPDATE), không còn khoảng thiếu bậc; không ghi dấu
+  'building-services-replace': khac('A', 'lưu dịch vụ mặc định của toà'), // đợt 10b: replace_building_services_v1 thay cả bộ trong MỘT giao dịch (khoá tư vấn theo toà); không ghi dấu
   'area-write': khac('A', 'lưu khu vực'), // sửa, gán toà, xoá: A (xoá mềm khu còn sống, gỡ toà khớp thiếu cặp ⇒ đọc lại); TẠO khu vực (khoá new, đợt 9): mã do trình duyệt sinh, không ghi dấu
   'vehicle-update': khac('A', 'cập nhật xe'), // sửa theo mã; khớp 0 dòng = PGRST116, từ chối rõ
   'vehicle-delete': khac('A', 'xoá xe'), // xoá mềm xe còn sống; khớp 0 dòng ⇒ đọc lại (đã xoá = xong, còn nguyên = không có quyền)
-  'material-purchase': khac('D', 'lưu phiếu nhập vật tư'), // sửa (khoá update:<id>): A, tổng, tồn, giá vốn do trigger tính lại từ mọi dòng; TẠO (khoá create, đợt 9): đầu phiếu + dòng mã do trình duyệt sinh, phiếu đã có ⇒ đọc dòng của nó; không ghi dấu
-  'material-job-usage': khac('A', 'lưu vật tư của công việc'), // không ghi dấu; xoá rồi chèn lại toàn bộ dòng, tồn do trigger tính lại; một phiếu mỗi công việc (uq_material_usages_job); nguyên tử ở đợt 10
+  'material-purchase': khac('D', 'lưu phiếu nhập vật tư'), // sửa (khoá update:<id>): A, đợt 10b replace_material_purchase_v1 thay đầu phiếu + cả bộ dòng trong MỘT giao dịch (khoá đầu phiếu FOR UPDATE), tổng, tồn, giá vốn do trigger tính lại từ mọi dòng; TẠO (khoá create, đợt 9): đầu phiếu + dòng mã do trình duyệt sinh, phiếu đã có ⇒ đọc dòng của nó; không ghi dấu
+  'material-job-usage': khac('A', 'lưu vật tư của công việc'), // không ghi dấu; đợt 10b save_job_material_usage_v1: tạo/sửa phiếu + thay cả bộ dòng (bộ rỗng ⇒ gỡ phiếu) trong MỘT giao dịch, khoá tư vấn theo công việc; tồn do trigger tính lại; một phiếu mỗi công việc (uq_material_usages_job)
   'income-expense-type-update': khac('A', 'cập nhật loại thu chi'), // sửa theo mã, đặt giá trị; khớp 0 dòng = từ chối rõ
   'income-expense-type-delete': khac('A', 'xoá loại thu chi'), // khớp 0 dòng ⇒ đọc lại: không còn = đã xoá, còn = không có quyền
   'income-expense-template-update': khac('A', 'cập nhật mẫu in thu chi'), // như sửa loại

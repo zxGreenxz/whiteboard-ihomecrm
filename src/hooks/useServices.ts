@@ -320,73 +320,43 @@ export const useCreateServiceQuota=()=>{
  },onSuccess:data=>{queryClient.invalidateQueries({queryKey:['service_quotas']});toast.success(`Đã tạo định mức ${data.name || data.id} và các bậc giá.`);},onError:error=>{queryClient.invalidateQueries({queryKey:['service_quotas']});toast.error('Chưa hoàn tất tạo định mức',{description:error instanceof ServiceQuotaPartialError?error.message:recordWriteMessage(error,'tạo định mức')});}});
 };
 /**
- * Đợt 8 (luật 5): sửa định mức = đặt tên/mô tả theo mã, rồi «xoá rồi chèn lại» toàn bộ bậc giá. Bậc giá là thiết lập,
- * không phải khoản tiền; chạy lại cho đúng một bộ bậc (khoá duy nhất quota_id + tier_number), không cộng dồn, nên không
- * giữ dấu «chờ đối chiếu» nữa: rớt mạng ở bước nào cũng báo rõ và cho bấm lại. Chèn hỏng SAU khi đã gỡ bậc cũ thì báo rõ
- * là định mức có thể đang thiếu bậc và cần bấm lưu lại. Ghi nguyên tử trên máy chủ (không còn khoảng thiếu bậc): đợt 10.
+ * Đợt 8 (luật 5): sửa định mức (tên, mô tả, toàn bộ bậc giá) là thiết lập, không phải khoản tiền, ghi lặp lại được nên không
+ * giữ dấu «chờ đối chiếu»: rớt mạng báo rõ và cho bấm lại. Đợt 10b: cả ba phần đi MỘT hàm máy chủ (replace_service_quota_v1,
+ * SECURITY INVOKER: RLS và trigger như ghi thẳng; khoá dòng định mức FOR UPDATE) trong một giao dịch: hoặc chưa ghi gì, hoặc
+ * đã ghi đủ, không còn lúc định mức thiếu bậc. Không gửi organization_id: trigger suy công ty từ định mức. Biên nhận phải khớp
+ * ĐÚNG đầu định mức và bộ bậc đã gửi; lệch ⇒ chưa rõ. Dấu bản trước (phạm vi người dùng, khoá = mã định mức) gỡ sau khi lưu.
  */
+const QUOTA_UPDATE_OPERATION='cập nhật định mức dịch vụ';
+const QUOTA_UPDATE_ADVICE='Máy chủ ghi tên, mô tả và cả bộ bậc giá trong một lần: lần trước hoặc chưa ghi gì, hoặc đã ghi đủ, định mức không ở trạng thái dở. Bấm lại nút Cập nhật để ghi đúng các bậc đang nhập; không nhân đôi bậc.';
+type ReplaceServiceQuotaRpc=(name:'replace_service_quota_v1',args:{p_quota_id:string;p_name:string;p_description:string|null;p_tiers:QuotaTierInput[]})=>PromiseLike<{data:unknown;error:unknown}>;
+/** Lời từ chối do chính hàm máy chủ viết (tiếng Việt, không lộ SQL): P0002 không thấy / không có quyền sửa, 42501 «Chưa …». */
+const serverWorded=(error:unknown):unknown=>{const {code,message}=(error??{}) as {code?:unknown;message?:unknown};return typeof message==='string'&&message&&(code==='P0002'||(code==='42501'&&message.startsWith('Chưa ')))?refused(message,error):error;};
 export const useUpdateServiceQuota=()=>{
  const queryClient=useQueryClient();
  const record=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
- const ids=(value:unknown):string[]=>{if(!Array.isArray(value))return [];const rows:unknown[]=value;return [...new Set(rows.flatMap(row=>record(row)&&typeof row.id==='string'&&row.id?[row.id]:[]))];};
- const removedTier=(value:unknown,quotaId:string):value is Pick<ServiceQuotaTier,'id'|'quota_id'|'tier_number'>=>record(value)&&typeof value.id==='string'&&!!value.id&&value.quota_id===quotaId&&typeof value.tier_number==='number';
  const savedTier=(value:unknown,quotaId:string):value is Pick<ServiceQuotaTier,'id'|'quota_id'|'tier_number'|'from_value'|'to_value'|'unit_price'>=>{
   if(!record(value))return false;const from=value.from_value,to=value.to_value,price=value.unit_price;
-  return removedTier(value,quotaId)&&typeof from==='number'&&(to===null||typeof to==='number')&&typeof price==='number';
+  return typeof value.id==='string'&&!!value.id&&value.quota_id===quotaId&&typeof value.tier_number==='number'&&typeof from==='number'&&(to===null||typeof to==='number')&&typeof price==='number';
  };
  return useMutation({meta:{handlesFeedback:true},mutationFn:async(params:QuotaInput&{id:string})=>{
-  // Main sequence and payload: UPDATE header, DELETE all old tiers, INSERT the new set.
-  const data=await repeatableWrite('cập nhật định mức dịch vụ',async()=>{
-   const {data,error}=await supabase.from('service_quotas')
-    .update({name:params.name,description:params.description||null}).eq('id',params.id)
-    .select('id,name,description,organization_id').single();
-   // Khớp 0 dòng (định mức không còn, hoặc không được sửa): PostgREST lùi giao dịch, chưa ghi gì.
-   if(error?.code==='PGRST116')throw refused('Không tìm thấy định mức này hoặc tài khoản chưa có quyền sửa. Tải lại danh sách để kiểm tra.',error);
-   if(error)throw error;
-   const coreId=confirmedRecordId(data,'cập nhật định mức',params.id);
-   if(data.name!==params.name||data.description!==(params.description||null))throw new FinancialWorkflowError('Chưa xác nhận đúng nội dung định mức đã cập nhật; chưa gỡ các bậc giá.','unknown',[{id:coreId,label:'Định mức đã nhận mã; cần đối chiếu nội dung'}],new TypeError('Mismatched quota header receipt'));
-   return data;
-  });
-
-  const removedSteps=await repeatableWrite('gỡ các bậc giá cũ của định mức (tên định mức đã lưu)',async()=>{
-   const {data:deleted,error:deleteError}=await supabase.from('service_quota_tiers')
-    .delete().eq('quota_id',params.id).select('id,quota_id,tier_number');
-   if(deleteError)throw deleteError;
-   const received=ids(deleted).map(id=>({id,label:'Mã bậc nhận sau bước gỡ; cần đối chiếu'}));
-   if(!Array.isArray(deleted))throw new FinancialWorkflowError('Chưa xác nhận được việc gỡ bậc giá cũ; chưa gửi danh sách bậc mới.','unknown',received,new TypeError('Unconfirmed quota tier deletion receipt'));
-   const oldRows:unknown[]=deleted;
-   if(!oldRows.every(row=>removedTier(row,params.id))||new Set(oldRows.map(row=>row.id)).size!==oldRows.length)throw new FinancialWorkflowError('Chưa xác nhận đúng các bậc giá đã gỡ; chưa gửi danh sách mới.','unknown',received,new TypeError('Mismatched quota tier deletion receipt'));
-   return received.map(step=>({id:step.id,label:'Đã gỡ bậc giá cũ'}));
+  const description=params.description||null;
+  const tiers:QuotaTierInput[]=params.tiers.map(t=>({tier_number:t.tier_number,from_value:t.from_value,to_value:t.to_value,unit_price:t.unit_price}));
+  const data=await repeatableWrite(QUOTA_UPDATE_OPERATION,async()=>{
+   const client=supabase as unknown as {rpc:ReplaceServiceQuotaRpc};
+   const {data:reply,error}=await client.rpc('replace_service_quota_v1',{p_quota_id:params.id,p_name:params.name,p_description:description,p_tiers:tiers});
+   if(error)throw serverWorded(error);
+   const mismatch=()=>new FinancialWorkflowError('Biên nhận định mức chưa khớp tên, mô tả và các bậc giá đã gửi.','unknown',[],new TypeError('Mismatched quota receipt'));
+   const quota=record(reply)?reply.quota:undefined;const saved=record(reply)?reply.tiers:undefined;
+   if(!record(quota)||quota.id!==params.id||quota.name!==params.name||quota.description!==description||!Array.isArray(saved))throw mismatch();
+   const rows:unknown[]=saved;
+   if(rows.length!==tiers.length||!rows.every(row=>savedTier(row,params.id))||new Set(rows.map(row=>(row as {id:string}).id)).size!==rows.length)throw mismatch();
+   const expected=[...tiers];
+   for(const row of rows as ServiceQuotaTier[]){const index=expected.findIndex(t=>t.tier_number===row.tier_number&&t.from_value===row.from_value&&t.to_value===row.to_value&&t.unit_price===row.unit_price);if(index<0)throw mismatch();expected.splice(index,1);}
+   return quota as Pick<ServiceQuota,'id'|'name'|'description'|'organization_id'>;
   }).catch((error:unknown)=>{
-   // Chưa rõ bước gỡ: bậc cũ có thể đã gỡ. Nói rõ để người dùng biết định mức có thể đang thiếu bậc.
-   if(error instanceof RepeatableWriteUnknownError)throw new RepeatableWriteUnknownError('gỡ các bậc giá cũ của định mức (tên định mức đã lưu)',error.cause,error.completed,'Bậc giá cũ có thể đã được gỡ nên định mức có thể đang thiếu bậc. Bấm lại nút Cập nhật: bậc giá gỡ rồi ghi lại đúng danh sách đang nhập nên không nhân đôi.');
+   if(error instanceof RepeatableWriteUnknownError)throw new RepeatableWriteUnknownError(QUOTA_UPDATE_OPERATION,error.cause,error.completed,QUOTA_UPDATE_ADVICE);
    throw error;
   });
-
-  if(params.tiers.length>0){
-   try{await repeatableWrite('lưu bậc giá mới sau khi đã gỡ bậc giá cũ',async()=>{
-    const {data:inserted,error:tierError}=await supabase.from('service_quota_tiers')
-     .insert(withOrgAll(params.tiers.map((t)=>({
-      quota_id:params.id,
-      tier_number:t.tier_number,
-      from_value:t.from_value,
-      to_value:t.to_value,
-      unit_price:t.unit_price,
-     })),data.organization_id)).select('id,quota_id,tier_number,from_value,to_value,unit_price');
-    if(tierError)throw tierError;
-    const steps=[...removedSteps,...ids(inserted).map(id=>({id,label:'Đã nhận mã bậc giá mới; chưa xác nhận đủ danh sách'}))];
-    if(!Array.isArray(inserted))throw new FinancialWorkflowError('Chưa xác nhận được các bậc giá mới đã lưu.','unknown',steps,new TypeError('Unconfirmed quota tier insert receipt'));
-    const newRows:unknown[]=inserted;
-    if(!newRows.every(row=>savedTier(row,params.id))||newRows.length!==params.tiers.length||new Set(newRows.map(row=>row.id)).size!==newRows.length)throw new FinancialWorkflowError('Chưa xác nhận đủ và đúng các bậc giá mới đã lưu.','unknown',steps,new TypeError('Incomplete quota tier insert receipt'));
-    const expected=[...params.tiers];
-    for(const row of newRows){const index=expected.findIndex(t=>t.tier_number===row.tier_number&&t.from_value===row.from_value&&t.to_value===row.to_value&&t.unit_price===row.unit_price);if(index<0)throw new FinancialWorkflowError('Biên nhận bậc giá mới chưa khớp các giá trị đã gửi.','unknown',steps,new TypeError('Mismatched quota tier insert values'));expected.splice(index,1);}
-   });}
-   catch(error){
-    if(error instanceof RepeatableWriteUnknownError)throw new RepeatableWriteUnknownError('lưu bậc giá mới sau khi đã gỡ bậc giá cũ',error.cause,error.completed,'Bậc giá cũ đã gỡ; định mức có thể đang thiếu bậc cho tới khi lưu xong. Bấm lại nút Cập nhật: bậc giá gỡ rồi ghi lại đúng danh sách đang nhập nên không nhân đôi.');
-    // Máy chủ từ chối rõ lệnh chèn sau khi các bậc cũ đã gỡ: báo đúng tình trạng, lưu lại là ghi đủ bậc.
-    throw refused(`Đã gỡ các bậc giá cũ của định mức (${removedSteps.length} bậc) nhưng chưa lưu được bậc giá mới. ${recordWriteMessage(error,'lưu bậc giá mới')} Bấm Cập nhật để lưu lại đủ bậc giá; trong lúc này định mức có thể thiếu bậc.`,error);
-   }
-  }
   try{const {forgetLegacyPending}=await import('@/lib/legacyPendingExit');await forgetLegacyPending({namespace:'quota-update',businessKey:params.id},{organizationId:'actor-scope'});}
   catch{/* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */}
   return data;
