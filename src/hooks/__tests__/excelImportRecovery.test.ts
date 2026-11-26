@@ -10,10 +10,7 @@ import type { FakeRecordServer } from './fakeRecordServer';
 
 type Row = Record<string, unknown>;
 const io = vi.hoisted(() => ({ server: null as unknown as FakeRecordServer, resolverFails: false }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: {
-  from: (table: string) => io.server.from(table),
-  rpc: (name: string, args: Record<string, unknown>) => io.server.rpc(name, args),
-} }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), get rpc() { return io.server.rpc; } } }));
 vi.mock('@tanstack/react-query', () => ({ useMutation: (options: unknown) => options, useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'u1' }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'o1' }) }));
