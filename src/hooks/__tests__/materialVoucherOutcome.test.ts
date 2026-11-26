@@ -58,8 +58,8 @@ it('sửa phiếu nhập: INSERT mới bị từ chối sau khi đã xoá dòng 
   const input = { id: 'voucher-1', input: purchase };
   const error = await (useUpdateMaterialPurchase() as unknown as Mutation).mutationFn(input).catch(error => error);
   expect(error).toMatchObject({ outcome: 'failure', completed: [] });
-  expect(String(error.message)).toContain('Đã xoá các dòng cũ của phiếu nhập');
-  expect(String(error.message)).not.toContain('raw SQL');
+  expect(String((error as Error).message)).toContain('Đã xoá các dòng cũ của phiếu nhập');
+  expect(String((error as Error).message)).not.toContain('raw SQL');
   expect(lines.delete).toHaveBeenCalledTimes(1);
   expect(lines.delete.mock.invocationCallOrder[0]).toBeLessThan(lines.insert.mock.invocationCallOrder[0]);
   await expect((useUpdateMaterialPurchase() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({ outcome: 'failure' });
@@ -99,8 +99,8 @@ it('vật tư công việc: INSERT mới bị từ chối sau khi đã xoá dòn
   const input = { job_id: 'job-1', usage_date: '2026-09-30', notes: null, items: [{ material_id: 'm-1', quantity: 2, unit_cost_at_usage: 100 }] };
   const error = await (useUpsertJobMaterialUsage() as unknown as Mutation).mutationFn(input).catch(error => error);
   expect(error).toMatchObject({ outcome: 'failure', completed: [] });
-  expect(String(error.message)).toContain('Đã xoá vật tư cũ của công việc');
-  expect(String(error.message)).not.toContain('raw SQL');
+  expect(String((error as Error).message)).toContain('Đã xoá vật tư cũ của công việc');
+  expect(String((error as Error).message)).not.toContain('raw SQL');
   expect(lines.delete).toHaveBeenCalledTimes(1);
   expect(lines.delete.mock.invocationCallOrder[0]).toBeLessThan(lines.insert.mock.invocationCallOrder[0]);
   await expect((useUpsertJobMaterialUsage() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({ outcome: 'failure' });
@@ -149,7 +149,7 @@ it('biên nhận DELETE dòng phiếu nhập malformed: không bao giờ chèn d
   const input = { id: 'purchase-1', input: purchase };
   const error = await (useUpdateMaterialPurchase() as unknown as Mutation).mutationFn(input).catch(error => error);
   expect(error).toBeInstanceOf(RepeatableWriteUnknownError);
-  expect(String(error.message)).toContain('Chưa xác nhận được kết quả xoá các dòng vật tư cũ');
+  expect(String((error as Error).message)).toContain('Chưa xác nhận được kết quả xoá các dòng vật tư cũ');
   await expect((useUpdateMaterialPurchase() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({ outcome: 'unknown' });
   expect(header.update).toHaveBeenCalledTimes(2); expect(lines.delete).toHaveBeenCalledTimes(2); expect(lines.insert).not.toHaveBeenCalled();
 });

@@ -98,7 +98,7 @@ async function saveJobMaterialUsage(input: UpsertInput): Promise<string | null> 
     if (error && (error as { code?: unknown }).code === 'PGRST116') {
       // Gỡ phiếu khớp 0 dòng: đọc lại đúng phiếu. Không còn ⇒ đã gỡ (lần trước / người khác); còn ⇒ không có quyền xoá.
       try {
-        await settleZeroRowDelete('gỡ phiếu xuất công việc không còn vật tư', () => supabase.from('material_usages' as any).select('id').eq('id', existingId).maybeSingle());
+        await settleZeroRowDelete('gỡ phiếu xuất công việc không còn vật tư', () => supabase.from('material_usages').select('id').eq('id', existingId).maybeSingle());
       } catch (refusal) {
         if (refusal instanceof RepeatableWriteUnknownError || !(refusal instanceof FinancialWorkflowError)) throw refusal;
         throw new FinancialWorkflowError(`Đã xoá hết vật tư của công việc. ${refusal.message}`, 'failure', [], refusal);
