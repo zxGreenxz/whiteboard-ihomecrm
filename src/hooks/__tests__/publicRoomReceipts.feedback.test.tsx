@@ -30,7 +30,7 @@ type SaveArgs={p_soon_days:number;p_show_rented:boolean;p_hotline_id:string|null
 const echo=(_name:string,args:SaveArgs)=>({data:company({soon_days:args.p_soon_days,show_rented:args.p_show_rented,hotline_id:args.p_hotline_id,sale_policy:args.p_sale_policy,updated_at:'2026-11-25T02:00:00+00:00',changed:true}),error:null});
 const saves=()=>m.rpc.mock.calls.filter(([name])=>name==='save_public_room_settings_v1').length;
 const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})}>{children}</QueryClientProvider>;
-beforeEach(()=>{vi.clearAllMocks();localStorage.clear();m.org='org-1';m.reply.mockResolvedValue({data:null,error:null});m.rpc.mockResolvedValue({data:null,error:null});});afterEach(cleanup);
+beforeEach(()=>{vi.clearAllMocks();localStorage.clear();m.org='org-1';m.reply.mockResolvedValue({data:[],error:null});m.rpc.mockResolvedValue({data:null,error:null});});afterEach(cleanup);
 
 // Danh sách link của CÔNG TY (cần sale_phong.manage_tokens, máy chủ kiểm).
 it.each([null,{},[{}],[{...listed,revoked:'false'}],[{...listed,created_at:'BAD'}],[{...listed,organization_id:'org-2'}],[row],[listed,listed],[{...listed,owner_name:1}]])('company token list rejects malformed source %j',async data=>{m.rpc.mockResolvedValue({data,error:null});const h=renderHook(usePublicRoomTokens,{wrapper});await waitFor(()=>expect(h.result.current.isError).toBe(true));expect(h.result.current.data).toBeUndefined();});

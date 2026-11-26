@@ -8,7 +8,7 @@ import { fakeRecordServer, seedLegacyPending, pendingKeys, type FakeRecordServer
 
 const io = vi.hoisted(() => ({ server: undefined as unknown as FakeRecordServer }));
 vi.mock('@tanstack/react-query', () => ({ useMutation: (config: unknown) => config, useQuery: (config: unknown) => config, useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), rpc: (name: string, args: Record<string, unknown>) => io.server.rpc(name, args) } }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), get rpc() { return io.server.rpc; } } }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor' }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() } }));

@@ -74,14 +74,20 @@ async function forgetLegacyTokenPending(businessKey:string){
  try{const {forgetLegacyPending}=await import('@/lib/legacyPendingExit');await forgetLegacyPending({namespace:'public-room-admin',businessKey},{organizationId:'actor-scope'});}
  catch{/* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần ghi sau gỡ lại. */}
 }
-/** Link vừa được lần gửi chưa rõ tạo ra (của chính người dùng, đúng công ty, đúng nhãn, sau giờ gửi). Đọc hỏng ⇒ `null`. */
+/**
+ * Link vừa được lần gửi chưa rõ tạo ra (của chính người dùng, đúng công ty, đúng nhãn, sau giờ gửi); `null` = đọc được và
+ * KHÔNG có. Đọc hỏng không phải «không có»: ném lỗi chưa rõ, lần bấm sau đọc lại (không tạo link khi chưa biết lần trước).
+ */
 async function findCreatedToken(userId:string,organizationId:string,label:string|null,since:number):Promise<PublicRoomToken|null>{
+ const unread=(cause:unknown)=>new RepeatableWriteUnknownError('tạo link chia sẻ',cause,[],'Chưa kiểm được link của lần bấm trước (lần đó mất phản hồi), nên chưa tạo thêm. Bấm tạo lại: máy đọc lại danh sách link trước.');
+ let reply:{data:unknown;error:unknown};
  try{
-  const {data,error}=await supabase.from('public_room_share_tokens').select('*').eq('owner_id',userId).eq('organization_id',organizationId)
+  reply=await supabase.from('public_room_share_tokens').select('*').eq('owner_id',userId).eq('organization_id',organizationId)
    .gte('created_at',new Date(since-CREATE_LOOKBACK_MS).toISOString()).order('created_at',{ascending:false});
-  if(error||!Array.isArray(data))return null;
-  return data.filter(validToken).find(row=>row.label===label&&row.revoked===false)??null;
- }catch{return null;}
+ }catch(error){throw unread(error);}
+ if(reply.error)throw unread(reply.error);
+ if(!Array.isArray(reply.data)||!reply.data.every(validToken))throw unread(new TypeError('Invalid public room token list'));
+ return reply.data.find(row=>row.label===label&&row.revoked===false)??null;
 }
 /** Link chia sẻ thuộc công ty đang chọn: máy chủ kiểm thành viên + quyền ở đúng công ty đó và ghi công ty vào link. */
 export function useCreatePublicRoomToken(options:Options={}){const qc=useQueryClient();const {selectedOrganizationId}=useOrganization();return useMutation({mutationFn:async(label?:string|null)=>{

@@ -12,7 +12,7 @@ const io = vi.hoisted(() => ({ server: undefined as unknown as FakeRecordServer,
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-1' }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor' }) }));
 vi.mock('sonner', () => ({ toast: { success: io.success, info: io.info, error: io.error } }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), rpc: (name: string, args: Record<string, unknown>) => io.server.rpc(name, args) } }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), get rpc() { return io.server.rpc; } } }));
 
 type Hooks = typeof import('../usePublicRoomTokens');
 let hooks: Hooks;
@@ -80,6 +80,19 @@ describe('tạo link', () => {
     // Người dùng đã thấy mã link cũ; bấm thêm lần nữa là ý định tạo link mới.
     await act(async () => { await expect(h.result.current.mutateAsync('Sale B')).resolves.toMatchObject({ label: 'Sale B' }); });
     expect(io.server.rows[T]).toHaveLength(2);
+  });
+
+  it('đọc link của lần chưa rõ bị hỏng ⇒ KHÔNG coi là «chưa có»: không tạo, báo chưa rõ; đọc được rồi mới quyết', async () => {
+    io.server.failNext('create_public_room_token', 'rpc', 'drop-after');
+    const h = renderHook(() => hooks.useCreatePublicRoomToken({ inlineError: true }), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync('Sale E')).rejects.toMatchObject({ outcome: 'unknown' }); });
+    io.server.failNext(T, 'read', 'drop-before');
+    await act(async () => { await expect(h.result.current.mutateAsync('Sale E')).rejects.toMatchObject({ outcome: 'unknown', message: expect.stringContaining('Chưa kiểm được link') }); });
+    expect(calls()).toBe(1);
+    const first = io.server.rows[T]![0].token as string;
+    await act(async () => { await expect(h.result.current.mutateAsync('Sale E')).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining(first) }); });
+    expect(calls()).toBe(1);
+    expect(io.server.rows[T]).toHaveLength(1);
   });
 
   it('dấu khoá chung bản trước gieo sẵn: không chặn, tạo xong thì dấu được gỡ', async () => {
