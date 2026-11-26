@@ -36,9 +36,11 @@ it('tạo công tơ cần bản ghi mới được xác nhận sau khi tìm dị
   await expect((useCreateMeter() as unknown as { mutationFn: (x: unknown) => Promise<unknown> }).mutationFn({ room_id: 'room-1', meter_type: 'ELECTRICITY', code: 'CT-01' })).rejects.toThrow('Chưa xác nhận');
 });
 
-it('missing created meter ID is durable and cannot replay after remount',async()=>{
+// Đợt 9 (luật 5): tạo công tơ không giữ dấu nữa. Thiếu biên nhận vẫn là chưa rõ; lần sau gửi lại ĐÚNG mã công tơ cũ (khoá chính
+// chặn công tơ thứ hai). Trước đợt 9: «missing created meter ID is durable and cannot replay after remount».
+it('missing created meter ID stays unknown and the retry after remount re-sends the same client ID',async()=>{
  const service={select:vi.fn(),is:vi.fn(),order:vi.fn(),limit:vi.fn(),eq:vi.fn(),maybeSingle:vi.fn().mockResolvedValue({data:{id:'s1'},error:null})};for(const method of ['select','is','order','limit','eq'] as const)service[method].mockReturnValue(service);
  const writer={insert:vi.fn(),select:vi.fn(),single:vi.fn().mockResolvedValue({data:null,error:null})};writer.insert.mockReturnValue(writer);writer.select.mockReturnValue(writer);io.from.mockImplementation(table=>table==='services'?service:writer);
  const input={room_id:'r1',meter_type:'ELECTRICITY',code:'CT-1'};const useMeterMutation=()=>useCreateMeter() as unknown as {mutationFn:(input:unknown)=>Promise<unknown>};
- await expect(useMeterMutation().mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});await expect(useMeterMutation().mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});expect(writer.insert).toHaveBeenCalledTimes(1);
+ await expect(useMeterMutation().mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});await expect(useMeterMutation().mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});expect(writer.insert).toHaveBeenCalledTimes(2);expect(writer.insert.mock.calls[1][0].id).toBe(writer.insert.mock.calls[0][0].id);expect(Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'))).toEqual([]);
 });

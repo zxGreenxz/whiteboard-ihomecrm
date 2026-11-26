@@ -115,6 +115,8 @@ const sentFieldsMatch=(saved:Record<string,unknown>,sent:Record<string,unknown>)
  * quên (bản ghi vẫn thấy trong danh sách).
  */
 const createdAwaitingChildren=new Map<string,{row:Record<string,unknown>&{id:string};core:string}>();
+/** Xoá bộ nhớ trên (test). Khoá đã gồm mã người dùng nên đổi tài khoản không lẫn. */
+export function forgetCreatedAwaitingChildren():void{createdAwaitingChildren.clear();}
 const awaitingKey=(kind:'service'|'quota',userId:string,organizationId:string,name:unknown)=>`${kind}|${userId}|${organizationId}|${String(name??'').trim().toLowerCase()}`;
 /** Bản ghi đã tạo ở lần trước còn chờ bước sau: cùng thông tin thì trả nó; khác thông tin thì quên và báo mã, không ghi gì. */
 function awaitingChildren(key:string,core:string,already:(id:string)=>string){

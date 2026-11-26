@@ -58,7 +58,7 @@ import { useCreateMeter } from '../useMeters';
 import { useCreateBuilding } from '../useBuildings';
 import { useCreateVehicle } from '../useVehicles';
 import { useCreateArea } from '../useAreas';
-import { ServiceLinksPartialError, ServiceQuotaPartialError, useCreateService, useCreateServiceQuota } from '../useServices';
+import { ServiceLinksPartialError, ServiceQuotaPartialError, forgetCreatedAwaitingChildren, useCreateService, useCreateServiceQuota } from '../useServices';
 import { useCreateIncomeExpenseTemplate } from '../useIncomeExpenseTemplates';
 import { FinancialAlreadyRecordedError, FinancialWorkflowError, RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 import { recordWriteBlocked } from '@/lib/recordWriteOutcome';
@@ -84,6 +84,7 @@ beforeEach(() => {
   io.server.uniqueBy.service_quota_tiers = row => `${String(row.quota_id)}|${String(row.tier_number)}`;
   io.server.rows.services = [{ id: 'svc-dien', name: 'Tiền điện', fee_type: 'TIEN_DIEN', is_default: true, deleted_at: null, organization_id: 'org-a' }];
   forgetUnconfirmedCreates();
+  forgetCreatedAwaitingChildren();
   localStorage.clear();
   localStorage.setItem('ihomecrm.selectedOrganizationId', 'org-a');
 });

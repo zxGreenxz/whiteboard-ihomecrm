@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Đợt 8 (luật 5): sửa / xoá loại thu chi, sửa / xoá / đặt mặc định mẫu in ghi lặp lại được. Sau một kết quả CHƯA RÕ (mất
 // phản hồi) form và hộp xác nhận KHÔNG tự khoá: báo rõ, giữ nội dung đang nhập, bấm lại cho đúng một kết quả. Chạy với hook
-// thật trên máy chủ giả. Đường TẠO mẫu in (đợt 9) vẫn khoá như cũ.
+// thật trên máy chủ giả. Đợt 9: đường TẠO mẫu in cũng không khoá (mã mẫu do trình duyệt sinh).
 import { QueryClient } from '@tanstack/react-query';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -147,13 +147,21 @@ describe('form mẫu in thu chi', () => {
     expect(rowOf('income_expense_templates', 'm2')?.name).toBe('Mẫu thu C');
   });
 
-  it('TẠO mẫu mất phản hồi vẫn khoá như cũ (đường tạo là việc của đợt 9)', async () => {
-    renderWithClient(<IncomeExpenseTemplateForm open onOpenChange={vi.fn()} template={null} />);
+  // Đợt 9 (luật 5): TẠO mẫu cũng không khoá — mã mẫu do trình duyệt sinh, bấm lại gửi đúng mã cũ. Trước đợt 9: «TẠO mẫu mất
+  // phản hồi vẫn khoá như cũ».
+  it('TẠO mẫu mất phản hồi (đọc lại cũng hỏng): form không khoá, không dấu; bấm lại ra đúng một mẫu', async () => {
+    const close = vi.fn();
+    renderWithClient(<IncomeExpenseTemplateForm open onOpenChange={close} template={null} />);
     io.server.failNext('income_expense_templates', 'insert', 'drop-after');
+    io.server.failNext('income_expense_templates', 'read', 'drop-before');
     fireEvent.change(screen.getByPlaceholderText('VD: Mẫu biên lai thu tiền'), { target: { value: 'Mẫu mới' } });
     fireEvent.click(button('Lưu'));
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
-    expect(button('Lưu').disabled).toBe(true);
+    expect(button('Lưu').disabled).toBe(false);
+    expect(pendingKeys()).toEqual([]);
+    fireEvent.click(button('Lưu'));
+    await waitFor(() => expect(close).toHaveBeenCalledWith(false));
+    expect((io.server.rows.income_expense_templates ?? []).filter(row => row.name === 'Mẫu mới')).toHaveLength(1);
   });
 });
 
