@@ -29693,6 +29693,33 @@ export type Database = {
         }
         Returns: Json
       }
+      replace_building_services_v1: {
+        Args: { p_building_id: string; p_services: Json }
+        Returns: Json
+      }
+      replace_contract_services_v1: {
+        Args: { p_contract_id: string; p_services: Json }
+        Returns: Json
+      }
+      replace_material_purchase_v1: {
+        Args: {
+          p_items: Json
+          p_notes: string
+          p_purchase_date: string
+          p_purchase_id: string
+          p_supplier_id: string
+        }
+        Returns: Json
+      }
+      replace_service_quota_v1: {
+        Args: {
+          p_description: string
+          p_name: string
+          p_quota_id: string
+          p_tiers: Json
+        }
+        Returns: Json
+      }
       report_device_issue: {
         Args: { p_reason: string; p_session: string }
         Returns: Json
@@ -30249,6 +30276,15 @@ export type Database = {
           p_expected_version: number
           p_organization_id: string
           p_payload: Json
+        }
+        Returns: Json
+      }
+      save_job_material_usage_v1: {
+        Args: {
+          p_items: Json
+          p_job_id: string
+          p_notes: string
+          p_usage_date: string
         }
         Returns: Json
       }

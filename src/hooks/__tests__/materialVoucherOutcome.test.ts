@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const io = vi.hoisted(() => ({ from: vi.fn() }));
+const io = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: (config: unknown) => config, useMutation: (config: unknown) => config, useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: io }));
@@ -15,7 +15,7 @@ import { useCreateMaterialUsage, useUpsertJobMaterialUsage } from '../useMateria
 interface Mutation { mutationFn: (x: unknown) => Promise<unknown>; onSuccess: (x: unknown) => void; onError: (x: unknown) => void }
 const purchase = { purchase_date: '2026-09-30', supplier_id: null, notes: null, items: [{ material_id: 'm-1', quantity: 2, unit_price: 100 }] };
 beforeEach(() => { localStorage.clear(); localStorage.setItem('ihomecrm.selectedOrganizationId', 'org-a'); vi.clearAllMocks(); forgetUnconfirmedCreates(); });
-afterEach(() => io.from.mockReset());
+afterEach(() => { io.from.mockReset(); io.rpc.mockReset(); });
 /** Đợt 9: đặt tồn đọc tồn hiện tại của vật tư trên máy chủ trước khi tính phần chênh. */
 const serverStock = (onHand: number) => { const chain = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'm-1', on_hand: onHand }, error: null }) }; chain.select.mockReturnValue(chain); chain.eq.mockReturnValue(chain); return chain; };
 const sentId = (mock: { mock: { calls: unknown[][] } }, call: number) => (mock.mock.calls[call][0] as { id?: unknown }).id;
@@ -60,23 +60,22 @@ it('SET tồn không báo đã cập nhật khi tồn trên máy chủ đã kh�
 });
 
 // Đợt 8 (luật 5): sửa phiếu nhập ghi lặp lại được. Trước đợt 8 test này tên «sửa phiếu nhập giữ ID header và dòng cũ đã
-// xóa khi INSERT mới bị từ chối, không replay» và chốt lần bấm sau bị chặn. Nay: báo rõ đã xoá dòng cũ, không khoá.
-it('sửa phiếu nhập: INSERT mới bị từ chối sau khi đã xoá dòng cũ ⇒ báo rõ đã xoá, không khoá; bấm lại chạy lại cả lượt', async () => {
-  const header = { update: vi.fn(), eq: vi.fn(), select: vi.fn(), single: vi.fn().mockResolvedValue({ data: { id: 'voucher-1', organization_id: 'org-a' }, error: null }) };
-  header.update.mockReturnValue(header); header.eq.mockReturnValue(header); header.select.mockReturnValue(header);
-  const lines = { select: vi.fn(), eq: vi.fn(), insert: vi.fn(), delete: vi.fn() };
-  lines.select.mockResolvedValue({ data: [{ id: 'old-1' }], error: null }); lines.eq.mockReturnValue(lines); lines.delete.mockReturnValue(lines);
-  lines.insert.mockReturnValue({ select: () => Promise.resolve({ data: null, error: { code: '42501', message: 'raw SQL' } }) });
-  io.from.mockImplementation((table: string) => table === 'material_purchases' ? header : lines);
+// xóa khi INSERT mới bị từ chối, không replay» và chốt lần bấm sau bị chặn. Đợt 10b: trước đó test tên «sửa phiếu nhập: INSERT
+// mới bị từ chối sau khi đã xoá dòng cũ ⇒ báo rõ đã xoá, không khoá…». Nay cả đầu phiếu + dòng đi MỘT hàm máy chủ nguyên tử:
+// từ chối là lùi cả, không còn «đã xoá dòng cũ»; không khoá, bấm lại gửi lại cả bộ.
+it('sửa phiếu nhập: máy chủ từ chối hàm nguyên tử ⇒ báo từ chối (không lộ lỗi gốc, không còn câu «đã xoá dòng cũ»), không khoá; bấm lại gửi lại cả bộ', async () => {
+  io.rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'raw SQL' } });
   const input = { id: 'voucher-1', input: purchase };
-  const error = await (useUpdateMaterialPurchase() as unknown as Mutation).mutationFn(input).catch(error => error);
-  expect(error).toMatchObject({ outcome: 'failure', completed: [] });
-  expect(String((error as Error).message)).toContain('Đã xoá các dòng cũ của phiếu nhập');
-  expect(String((error as Error).message)).not.toContain('raw SQL');
-  expect(lines.delete).toHaveBeenCalledTimes(1);
-  expect(lines.delete.mock.invocationCallOrder[0]).toBeLessThan(lines.insert.mock.invocationCallOrder[0]);
-  await expect((useUpdateMaterialPurchase() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({ outcome: 'failure' });
-  expect(header.update).toHaveBeenCalledTimes(2); expect(lines.delete).toHaveBeenCalledTimes(2); expect(lines.insert).toHaveBeenCalledTimes(2);
+  const mutation = useUpdateMaterialPurchase() as unknown as Mutation;
+  const error = await mutation.mutationFn(input).catch(error => error);
+  expect(error).toMatchObject({ code: '42501' });
+  mutation.onError(error);
+  expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('raw SQL');
+  expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('Đã xoá các dòng cũ');
+  expect(io.from).not.toHaveBeenCalled();
+  await expect((useUpdateMaterialPurchase() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({ code: '42501' });
+  expect(io.rpc).toHaveBeenCalledTimes(2);
+  expect(io.rpc).toHaveBeenLastCalledWith('replace_material_purchase_v1', { p_purchase_id: 'voucher-1', p_purchase_date: '2026-09-30', p_supplier_id: null, p_notes: null, p_items: purchase.items });
 });
 
 // Đợt 9: trước đợt 9 test này tên «header không trả ID là bất định và chặn gửi lại sau remount». Hàng rào giữ: biên nhận
@@ -109,23 +108,21 @@ it('phiếu xuất tay: dòng bị từ chối, gỡ phiếu tạm cũng bị t�
 });
 
 // Đợt 8 (luật 5): vật tư công việc ghi lặp lại được. Trước đợt 8 test này tên «vật tư công việc giữ ID header và dòng đã
-// xóa khi INSERT mới bị từ chối, không replay» và chốt lần lưu sau bị chặn. Nay: báo rõ đã xoá vật tư cũ, không khoá.
-it('vật tư công việc: INSERT mới bị từ chối sau khi đã xoá dòng cũ ⇒ báo rõ đã xoá, không khoá; bấm lại chạy lại cả lượt', async () => {
-  const header = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'usage-1', organization_id: 'org-a' }, error: null }), update: vi.fn(), single: vi.fn().mockResolvedValue({ data: { id: 'usage-1', organization_id: 'org-a' }, error: null }) };
-  header.select.mockReturnValue(header); header.eq.mockReturnValue(header); header.update.mockReturnValue(header);
-  const lines = { select: vi.fn(), eq: vi.fn(), insert: vi.fn(), delete: vi.fn() };
-  lines.select.mockResolvedValue({ data: [{ id: 'old-1' }], error: null }); lines.eq.mockReturnValue(lines); lines.delete.mockReturnValue(lines);
-  lines.insert.mockReturnValue({ select: () => Promise.resolve({ data: null, error: { code: '42501', message: 'raw SQL' } }) });
-  io.from.mockImplementation((table: string) => table === 'material_usages' ? header : lines);
+// xóa khi INSERT mới bị từ chối, không replay» và chốt lần lưu sau bị chặn. Đợt 10b: trước đó test tên «vật tư công việc: INSERT
+// mới bị từ chối sau khi đã xoá dòng cũ ⇒ báo rõ đã xoá…». Nay MỘT hàm máy chủ nguyên tử: từ chối là lùi cả.
+it('vật tư công việc: máy chủ từ chối hàm nguyên tử ⇒ báo từ chối (không lộ lỗi gốc, không còn câu «đã xoá vật tư cũ»), không khoá; bấm lại gửi lại cả bộ', async () => {
+  io.rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'raw SQL' } });
   const input = { job_id: 'job-1', usage_date: '2026-09-30', notes: null, items: [{ material_id: 'm-1', quantity: 2, unit_cost_at_usage: 100 }] };
-  const error = await (useUpsertJobMaterialUsage() as unknown as Mutation).mutationFn(input).catch(error => error);
-  expect(error).toMatchObject({ outcome: 'failure', completed: [] });
-  expect(String((error as Error).message)).toContain('Đã xoá vật tư cũ của công việc');
-  expect(String((error as Error).message)).not.toContain('raw SQL');
-  expect(lines.delete).toHaveBeenCalledTimes(1);
-  expect(lines.delete.mock.invocationCallOrder[0]).toBeLessThan(lines.insert.mock.invocationCallOrder[0]);
-  await expect((useUpsertJobMaterialUsage() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({ outcome: 'failure' });
-  expect(header.update).toHaveBeenCalledTimes(2); expect(lines.delete).toHaveBeenCalledTimes(2); expect(lines.insert).toHaveBeenCalledTimes(2);
+  const mutation = useUpsertJobMaterialUsage() as unknown as Mutation & { onError: (error: unknown, variables: unknown) => void };
+  const error = await mutation.mutationFn(input).catch(error => error);
+  expect(error).toMatchObject({ code: '42501' });
+  mutation.onError(error, input);
+  expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('raw SQL');
+  expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('Đã xoá vật tư cũ');
+  expect(io.from).not.toHaveBeenCalled();
+  await expect((useUpsertJobMaterialUsage() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({ code: '42501' });
+  expect(io.rpc).toHaveBeenCalledTimes(2);
+  expect(io.rpc).toHaveBeenLastCalledWith('save_job_material_usage_v1', { p_job_id: 'job-1', p_usage_date: '2026-09-30', p_notes: null, p_items: input.items });
 });
 
 // Đợt 9: trước đợt 9 test này tên «SET đã có phiếu partial không được coi tồn khớp là biên nhận hoàn tất» và chốt lần sau
@@ -176,24 +173,23 @@ it('biên nhận thiếu mã dòng: không báo hoàn tất (chưa rõ, kèm mã
 });
 
 // Đợt 8 (luật 5): trước đợt 8 test này tên «biên nhận DELETE dòng phiếu nhập malformed giữ header và chặn INSERT
-// mới/replay» và chốt lần bấm sau bị chặn. Hàng rào giữ nguyên: biên nhận sai dạng thì không chèn dòng mới, ở mọi lần bấm.
-it('biên nhận DELETE dòng phiếu nhập malformed: không bao giờ chèn dòng mới lên trên; không khoá, bấm lại chạy lại cả lượt', async () => {
-  const header = { update: vi.fn(), eq: vi.fn(), select: vi.fn(), single: vi.fn().mockResolvedValue({ data: { id: 'purchase-1', organization_id: 'org-a' }, error: null }) };
-  header.update.mockReturnValue(header); header.eq.mockReturnValue(header); header.select.mockReturnValue(header);
-  const lines = { delete: vi.fn(), eq: vi.fn(), select: vi.fn().mockResolvedValue({ data: [{ id: null }], error: null }), insert: vi.fn() };
-  lines.delete.mockReturnValue(lines); lines.eq.mockReturnValue(lines);
-  io.from.mockImplementation((table: string) => table === 'material_purchases' ? header : lines);
+// mới/replay». Đợt 10b: trước đó test tên «biên nhận DELETE dòng phiếu nhập malformed: không bao giờ chèn dòng mới lên trên…».
+// Không còn lệnh xoá riêng; hàng rào giữ nguyên ở dạng mới: biên nhận sai dạng của hàm nguyên tử không bao giờ là đã lưu.
+it('biên nhận sai dạng của hàm sửa phiếu nhập: chưa rõ, không bao giờ báo đã lưu; không khoá, bấm lại gửi lại cả bộ', async () => {
+  io.rpc.mockResolvedValue({ data: { purchase: { id: 'purchase-1' }, items: [{ id: null }] }, error: null });
   const input = { id: 'purchase-1', input: purchase };
   const error = await (useUpdateMaterialPurchase() as unknown as Mutation).mutationFn(input).catch(error => error);
   expect(error).toBeInstanceOf(RepeatableWriteUnknownError);
-  expect(String((error as Error).message)).toContain('Chưa xác nhận được kết quả xoá các dòng vật tư cũ');
+  expect(String((error as Error).message)).toMatch(/một lần/);
+  expect(String((error as Error).message)).not.toMatch(/chưa có dòng vật tư nào|Đã xoá các dòng cũ/);
   await expect((useUpdateMaterialPurchase() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({ outcome: 'unknown' });
-  expect(header.update).toHaveBeenCalledTimes(2); expect(lines.delete).toHaveBeenCalledTimes(2); expect(lines.insert).not.toHaveBeenCalled();
+  expect(io.rpc).toHaveBeenCalledTimes(2); expect(io.from).not.toHaveBeenCalled();
 });
 
-it('lỗi đọc phiếu vật tư công việc không trở thành chưa có phiếu để tạo mới', async () => {
-  const header = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({ data: null, error: { code: '42501', message: 'raw SQL' } }), insert: vi.fn(), update: vi.fn() };
-  header.select.mockReturnValue(header); header.eq.mockReturnValue(header); io.from.mockReturnValue(header);
+// Đợt 10b: trước đợt 10b test này tên «lỗi đọc phiếu vật tư công việc không trở thành chưa có phiếu để tạo mới» (bước đọc phiếu
+// ở trình duyệt). Nay máy chủ tự tra phiếu trong cùng giao dịch; lỗi của hàm đi nguyên, trình duyệt không đoán «chưa có phiếu».
+it('lỗi máy chủ khi lưu vật tư công việc đi nguyên lỗi, trình duyệt không tự đọc / tạo phiếu', async () => {
+  io.rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'raw SQL' } });
   await expect((useUpsertJobMaterialUsage() as unknown as Mutation).mutationFn({ job_id: 'job-1', usage_date: '2026-09-30', notes: null, items: [{ material_id: 'm-1', quantity: 2, unit_cost_at_usage: 100 }] })).rejects.toMatchObject({ code: '42501' });
-  expect(header.insert).not.toHaveBeenCalled(); expect(header.update).not.toHaveBeenCalled();
+  expect(io.from).not.toHaveBeenCalled(); expect(io.rpc).toHaveBeenCalledOnce();
 });

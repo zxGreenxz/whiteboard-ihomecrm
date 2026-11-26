@@ -32,6 +32,8 @@ export function materialVoucherRetryBlocked(error: unknown): boolean {
  * `done`: việc ĐÃ CHẮC làm trên máy chủ trước bước hỏng («Đã xoá các dòng cũ của phiếu nhập») khi bước hỏng là ghi dòng
  * mới; `null` khi chính lệnh xoá dòng cũ hỏng — từ chối rõ ở bước đó nghĩa là chưa xoá gì nên trả nguyên lỗi.
  * Máy chủ từ chối rõ ⇒ `failure`; chưa rõ ⇒ `RepeatableWriteUnknownError`.
+ *
+ * Đợt 10b: hết nơi gọi (hai nơi đó nay gọi hàm máy chủ nguyên tử, xem `confirmReplacedMaterialLines`); mã chết, xoá ở đợt 11.
  */
 export function materialLinesRewriteError(done: string | null, button: string, error: unknown): unknown {
   if (isConfirmedFinancialRejection(error)) {
@@ -98,6 +100,57 @@ export function sameVoucherHeader(row: VoucherRow, payload: VoucherRow, fields: 
 export function materialVoucherMatchKeys(draft: string | undefined, header: readonly unknown[], items: ReadonlyArray<VoucherRow>, compare: readonly string[]): string[] {
   const signature = `s:${JSON.stringify([header.map(comparable), lineSignature(items, compare)])}`;
   return draft ? [`d:${draft}`, signature] : [signature];
+}
+
+/*
+ * Đợt 10b (plan sửa khoá vĩnh viễn sau rớt mạng): SỬA phiếu nhập và lưu vật tư của công việc gọi MỘT hàm máy chủ thay nguyên
+ * tử đầu phiếu + cả bộ dòng (`replace_material_purchase_v1`, `save_job_material_usage_v1`; SECURITY INVOKER nên RLS và trigger
+ * như ghi thẳng; một giao dịch: hoặc chưa ghi gì, hoặc đã ghi đủ; tồn kho, giá vốn, tổng phiếu do trigger tính lại từ mọi dòng).
+ * Không còn lúc phiếu không có dòng nào giữa hai lệnh. Ba hàm dưới đây dùng chung cho hai nơi gọi đó.
+ */
+
+/** Biên nhận lệch / sai dạng của hàm nguyên tử: chưa rõ (`repeatableWrite` biến thành bấm lại được), không bao giờ là đã lưu. */
+const replaceMismatch = (part: string) => new FinancialWorkflowError(`Biên nhận ${part} chưa khớp đúng nội dung đã gửi.`, 'unknown', [], new TypeError('Mismatched atomic material receipt'));
+const sameDate = (a: unknown, b: unknown) => String(a ?? '').slice(0, 10) === String(b ?? '').slice(0, 10);
+
+/**
+ * Đầu phiếu trong biên nhận phải đúng mã và đúng các trường đã gửi (rỗng / null như nhau, số theo giá trị, ngày so theo
+ * ngày). Trả lại đầu phiếu đó.
+ */
+export function confirmReplacedHeader(value: unknown, id: string, sent: VoucherRow, fields: readonly string[]): VoucherRow {
+  const row = value && typeof value === 'object' && !Array.isArray(value) ? value as VoucherRow : null;
+  if (!row || row.id !== id || !fields.every(field => field.endsWith('_date') ? sameDate(row[field], sent[field]) : comparable(row[field]) === comparable(sent[field]))) throw replaceMismatch('đầu phiếu vật tư');
+  return row;
+}
+
+/**
+ * Các dòng trong biên nhận phải khớp ĐÚNG bộ đã gửi: đúng số dòng, mã dòng là chuỗi không trùng, đúng mã phiếu, đa tập giá
+ * trị theo các cột đã gửi (số so theo giá trị). Trả mã các dòng đã ghi.
+ */
+export function confirmReplacedMaterialLines(value: unknown, parentColumn: 'purchase_id' | 'usage_id', parentId: string, items: ReadonlyArray<VoucherRow>, compare: readonly string[]): string[] {
+  const rows: unknown[] = Array.isArray(value) ? value : [];
+  const ids = rows.map(row => row && typeof row === 'object' ? (row as VoucherRow).id : undefined);
+  const exact = Array.isArray(value) && rows.length === items.length
+    && ids.every(id => typeof id === 'string' && id !== '') && new Set(ids).size === ids.length
+    && rows.every(row => (row as VoucherRow)[parentColumn] === parentId && typeof (row as VoucherRow).material_id === 'string')
+    && lineSignature(rows as VoucherRow[], compare) === lineSignature(items, compare);
+  if (!exact) throw replaceMismatch('các dòng vật tư');
+  return ids as string[];
+}
+
+/**
+ * Lời từ chối do chính hàm máy chủ viết (tiếng Việt, không lộ SQL: P0002 không thấy / không có quyền sửa, 42501 «Chưa …») ⇒
+ * giữ câu đó cho màn hình (`failure`). Lỗi khác đi nguyên (câu báo do `workflowErrorMessage` / `friendlyError` dựng).
+ */
+export function materialServerRefusal(error: unknown): unknown {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+  return typeof message === 'string' && message !== '' && (code === 'P0002' || (code === '42501' && message.startsWith('Chưa ')))
+    ? new FinancialWorkflowError(message, 'failure', [], error) : error;
+}
+
+/** Kết quả chưa rõ của một lần thay nguyên tử: thay câu dặn mặc định bằng câu nói rõ máy chủ thay cả bộ trong MỘT lần. */
+export function materialReplaceUnknown(error: unknown, operation: string, advice: string): unknown {
+  return error instanceof RepeatableWriteUnknownError ? new RepeatableWriteUnknownError(operation, error.cause, error.completed, advice) : error;
 }
 
 export interface MaterialVoucherCreate {

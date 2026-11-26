@@ -3,8 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { friendlyError } from '@/lib/friendlyError';
 import type { Material, MaterialPurchase, MaterialPurchaseItem } from '@/types/material';
-import { confirmedRecordBatch, repeatableWrite } from '@/lib/recordWriteOutcome';
-import { confirmedMaterialVoucherId, createMaterialVoucherOnce, materialLinesRewriteError, materialVoucherFailureMessage, sameVoucherHeader, materialVoucherMatchKeys } from '@/lib/materialVoucherOutcome';
+import { repeatableWrite } from '@/lib/recordWriteOutcome';
+import { confirmReplacedHeader, confirmReplacedMaterialLines, createMaterialVoucherOnce, materialReplaceUnknown, materialServerRefusal, materialVoucherFailureMessage, sameVoucherHeader, materialVoucherMatchKeys } from '@/lib/materialVoucherOutcome';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { withOrg, withOrgAll } from '@/lib/orgPayload';
 
@@ -65,37 +65,29 @@ export const useCreateMaterialPurchase = () => {
     onError: error => { refresh(); toast.error('Chưa hoàn tất tạo phiếu nhập', { description: materialVoucherFailureMessage(error, 'tạo phiếu nhập') }); },
   });
 };
+type PurchaseLine = PurchaseInput['items'][number];
+type ReplacePurchaseRpc = (name: 'replace_material_purchase_v1', args: { p_purchase_id: string; p_purchase_date: string; p_supplier_id: string | null; p_notes: string | null; p_items: PurchaseLine[] }) =>
+  PromiseLike<{ data: unknown; error: unknown }>;
+const PURCHASE_UPDATE_OPERATION = 'cập nhật phiếu nhập';
+const PURCHASE_UPDATE_ADVICE = 'Máy chủ ghi đầu phiếu và cả bộ dòng trong một lần: lần trước hoặc chưa ghi gì, hoặc đã ghi đủ, tồn kho tính theo đúng bộ đó. Bấm lại «Cập nhật» để ghi đúng các dòng đang nhập; không nhân đôi dòng, tồn kho không cộng hai lần.';
 /**
- * Một lượt SỬA phiếu nhập, CHẠY LẠI ĐƯỢC: đặt ngày / nhà cung cấp / ghi chú theo mã phiếu, xoá MỌI dòng cũ rồi chèn đúng
- * bộ dòng đang nhập. Production (đọc 26/11/2026): tổng phiếu (material_purchase_recompute_total) và tồn kho / giá vốn bình
- * quân (recompute_material_stock) do trigger TÍNH LẠI từ toàn bộ dòng đang có, không cộng dồn; phiếu nhập không sinh phiếu
- * chi hay bút toán nào. Nên chạy lại cùng nội dung cho cùng kết quả: không nhân đôi dòng, tồn và tổng không cộng hai lần.
- * Chưa nguyên tử (đợt 10): hỏng SAU khi đã xoá thì phiếu tạm không còn dòng nào (tồn kho tính như vậy) tới lần bấm
- * «Cập nhật» lại; câu báo nói rõ điều đó.
+ * Một lượt SỬA phiếu nhập, CHẠY LẠI ĐƯỢC. Đợt 10b: MỘT lời gọi `replace_material_purchase_v1` (SECURITY INVOKER: RLS và
+ * trigger như ghi thẳng; khoá đầu phiếu FOR UPDATE) đặt ngày / nhà cung cấp / ghi chú, xoá MỌI dòng cũ rồi chèn đúng bộ dòng
+ * đang nhập trong một giao dịch: hoặc chưa ghi gì, hoặc đã ghi đủ. Tổng phiếu (material_purchase_recompute_total) và tồn kho /
+ * giá vốn bình quân (recompute_material_stock) do trigger TÍNH LẠI từ toàn bộ dòng đang có, nên chạy lại cùng nội dung cho cùng
+ * kết quả: không nhân đôi dòng, tồn và tổng không cộng hai lần. Không gửi organization_id: trigger suy công ty từ đầu phiếu.
+ * Biên nhận phải khớp ĐÚNG đầu phiếu và bộ dòng đã gửi; lệch ⇒ chưa rõ.
  */
 async function replaceMaterialPurchase(id: string, input: PurchaseInput): Promise<void> {
-  // Khớp 0 dòng (đã xoá / không có quyền sửa) ⇒ PGRST116: từ chối rõ, chưa xoá dòng nào.
-  const { data: header, error } = await supabase.from('material_purchases' as any).update({ purchase_date: input.purchase_date, supplier_id: input.supplier_id, notes: input.notes }).eq('id', id).select('id, organization_id').single();
-  if (error) throw error;
-  confirmedMaterialVoucherId(header, id);
-  try {
-    const { data: removed, error: removeError } = await supabase.from('material_purchase_items' as any).delete().eq('purchase_id', id).select('id');
-    if (removeError) throw removeError;
-    // Biên nhận xoá sai dạng ⇒ chưa rõ: dừng, không chèn dòng mới lên trên.
-    confirmedRecordBatch(removed, Array.isArray(removed) ? removed.length : 0, 'xóa dòng phiếu nhập cũ');
-  } catch (removeError) {
-    throw materialLinesRewriteError(null, 'Cập nhật', removeError);
-  }
-  if (input.items.length === 0) return;
-  const lines = input.items.map(row => ({ purchase_id: id, material_id: row.material_id, quantity: row.quantity, unit_price: row.unit_price }));
-  const headerOrg = (header as unknown as { organization_id?: string | null } | null)?.organization_id;
-  try {
-    const { data, error: lineError } = await supabase.from('material_purchase_items' as any).insert(withOrgAll(lines, headerOrg)).select('id');
-    if (lineError) throw lineError;
-    confirmedRecordBatch(data, input.items.length, 'lưu dòng phiếu nhập mới');
-  } catch (lineError) {
-    throw materialLinesRewriteError('Đã xoá các dòng cũ của phiếu nhập', 'Cập nhật', lineError);
-  }
+  const header = { purchase_date: input.purchase_date, supplier_id: input.supplier_id, notes: input.notes };
+  const items: PurchaseLine[] = input.items.map(row => ({ material_id: row.material_id, quantity: row.quantity, unit_price: row.unit_price }));
+  const client = supabase as unknown as { rpc: ReplacePurchaseRpc };
+  const { data, error } = await client.rpc('replace_material_purchase_v1', { p_purchase_id: id, p_purchase_date: header.purchase_date, p_supplier_id: header.supplier_id, p_notes: header.notes, p_items: items });
+  // Từ chối rõ (P0002 không thấy / không có quyền sửa, 42501, 23514…): cả giao dịch đã lùi, dòng cũ còn nguyên.
+  if (error) throw materialServerRefusal(error);
+  const reply = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {};
+  confirmReplacedHeader(reply.purchase, id, header, ['purchase_date', 'supplier_id', 'notes']);
+  confirmReplacedMaterialLines(reply.items, 'purchase_id', id, items, ['material_id', 'quantity', 'unit_price']);
 }
 export const useUpdateMaterialPurchase = () => {
   const qc = useQueryClient();
@@ -104,7 +96,8 @@ export const useUpdateMaterialPurchase = () => {
     mutationFn: async ({ id, input }: { id: string; input: PurchaseInput }) => {
       // Đợt 8 (luật 5, cách A): đường SỬA không giữ dấu; kết quả chưa rõ báo rõ, form không khoá, bấm lại ghi lại.
       // Đường TẠO phiếu nhập (cùng namespace, khoá `create`) không giữ dấu từ đợt 9 (cách D, mã do trình duyệt sinh).
-      await repeatableWrite('cập nhật phiếu nhập', () => replaceMaterialPurchase(id, input));
+      await repeatableWrite(PURCHASE_UPDATE_OPERATION, () => replaceMaterialPurchase(id, input))
+        .catch((error: unknown) => { throw materialReplaceUnknown(error, PURCHASE_UPDATE_OPERATION, PURCHASE_UPDATE_ADVICE); });
       try {
         const { forgetLegacyPending } = await import('@/lib/legacyPendingExit');
         await forgetLegacyPending({ namespace: 'material-purchase', businessKey: `update:${id}` });

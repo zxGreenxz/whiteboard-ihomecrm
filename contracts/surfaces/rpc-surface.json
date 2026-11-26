@@ -1,17 +1,17 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3321,
-    "catalogFunctions": 1707,
+    "sourceCallSites": 3323,
+    "catalogFunctions": 1712,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 449,
+    "calledRpcs": 454,
     "byRisk": {
-      "normal": 339,
+      "normal": 344,
       "financial": 109,
       "infrastructure": 1
     },
@@ -6203,6 +6203,82 @@
       ],
       "risk": "normal"
     },
+    "replace_building_services_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_services jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useBuildingServices.ts"
+      ],
+      "risk": "normal"
+    },
+    "replace_contract_services_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_contract_id uuid, p_services jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContracts.ts"
+      ],
+      "risk": "normal"
+    },
+    "replace_material_purchase_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_purchase_id uuid, p_purchase_date date, p_supplier_id uuid, p_notes text, p_items jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMaterialPurchases.ts"
+      ],
+      "risk": "normal"
+    },
+    "replace_service_quota_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_quota_id uuid, p_name text, p_description text, p_tiers jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useServices.ts"
+      ],
+      "risk": "normal"
+    },
     "request_cancel_handover": {
       "definitions": [
         {
@@ -6806,6 +6882,25 @@
       ],
       "callers": [
         "src/hooks/useContractExitSettlementDrafts.ts"
+      ],
+      "risk": "normal"
+    },
+    "save_job_material_usage_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_job_id uuid, p_usage_date date, p_notes text, p_items jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMaterialUsages.ts"
       ],
       "risk": "normal"
     },

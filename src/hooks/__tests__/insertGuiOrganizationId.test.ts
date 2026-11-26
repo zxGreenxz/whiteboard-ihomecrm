@@ -113,12 +113,14 @@ import { useCreateLead } from "../useLeads";
 import { useBulkCreateMeterReadings, useCreateMeterReading } from "../useMeterReadings";
 import { useCreateMeter } from "../useMeters";
 import { useCreateMaterial } from "../useMaterials";
-import { useCreateMaterialPurchase } from "../useMaterialPurchases";
+import { useCreateMaterialPurchase, useUpdateMaterialPurchase } from "../useMaterialPurchases";
+import { useUpsertJobMaterialUsage } from "../useMaterialUsages";
+import { useUpsertBuildingServices } from "../useBuildingServices";
 import { useCreateHotline } from "../useHotlines";
 import { useCreateJobGroup } from "../useJobGroups";
 import { useCreatePayment } from "../usePayments";
 import { useBulkCreateRooms, useCreateRoom } from "../useRooms";
-import { useCreateService, useUpdateService } from "../useServices";
+import { useCreateService, useUpdateService, useUpdateServiceQuota } from "../useServices";
 import { useCreateVehicle } from "../useVehicles";
 import { useCreateIncomeExpenseBatch } from "../income-expenses/batch";
 import { useSubmitExcelInvoices } from "../invoices/useExcelInvoiceData";
@@ -169,9 +171,22 @@ describe("useContracts", () => {
     expect(io.inserts).toEqual([]);
   });
 
-  it("useSyncContractServices gửi organization_id cho từng dòng contract_services", async () => {
-    await run(useSyncContractServices, { contractId: "c1", services: [{ service_id: "s1", unit_price: 3500 }] });
-    expectOrg("contract_services");
+  // Đợt 10b: trước đợt 10b ca này tên «useSyncContractServices gửi organization_id cho từng dòng contract_services» (chèn
+  // thẳng bảng, bọc withOrgAll). Nay dịch vụ của hợp đồng đi MỘT hàm máy chủ thay nguyên tử: hàm không nhận organization_id,
+  // trigger autofill_org_strict suy công ty từ hợp đồng cha. Không còn lệnh ghi thẳng bảng nào để quên công ty.
+  it("useSyncContractServices gọi replace_contract_services_v1: KHÔNG gửi organization_id, công ty do hợp đồng cha quyết định", async () => {
+    // mockImplementation (không «Once»): lời gọi không dùng tới thì không rò sang ca sau (clearAllMocks không xoá hàng đợi «Once»).
+    io.goiRpc.mockImplementation(async () => ({ data: [{ id: "cs-1", contract_id: "c1", service_id: "s1", unit_price: 3500, initial_reading: null }], error: null }));
+    await run(useSyncContractServices, { contractId: "c1", organizationId: "khac-cong-ty", services: [{ service_id: "s1", unit_price: 3500 }] });
+    expect(io.goiRpc).toHaveBeenCalledTimes(1);
+    expect(io.goiRpc).toHaveBeenCalledWith("replace_contract_services_v1", {
+      p_contract_id: "c1",
+      p_services: [{ service_id: "s1", unit_price: 3500, initial_reading: null }],
+    });
+    expect(JSON.stringify(io.goiRpc.mock.calls)).not.toContain("organization_id");
+    expect(JSON.stringify(io.goiRpc.mock.calls)).not.toContain("khac-cong-ty");
+    expect(io.goiBang).not.toHaveBeenCalled();
+    expect(io.inserts).toEqual([]);
   });
 
   it("useBulkCreateContracts gửi organization_id cho tenants, contracts, contract_tenants", async () => {
@@ -319,6 +334,29 @@ describe("hook tạo một dòng", () => {
   it("useCreateVehicle → vehicles", async () => {
     await run(useCreateVehicle, { vehicle_type: "MOTORBIKE", license_plate: "59A1-00002" });
     expectOrg("vehicles");
+  });
+});
+
+// Đợt 10b: bốn nơi «xoá rồi chèn lại» dòng con (dịch vụ mặc định của toà, bậc định mức, dòng phiếu nhập khi sửa, vật tư của
+// công việc) không còn chèn thẳng bảng con nên không còn gì để bọc withOrg: mỗi nơi là MỘT lời gọi hàm máy chủ không nhận
+// organization_id; trigger autofill_org_strict suy công ty từ dòng cha (toà, định mức, phiếu nhập, phiếu xuất).
+describe("đợt 10b — thay nguyên tử dòng con: hàm không nhận organization_id, cha quyết định công ty", () => {
+  it.each([
+    ["useUpsertBuildingServices", useUpsertBuildingServices, { buildingId: "b1", services: [{ service_id: "s1", is_active: true, unit_price_override: null }] },
+      "replace_building_services_v1", [{ id: "bs-1", building_id: "b1", service_id: "s1", is_active: true, unit_price_override: null }]],
+    ["useUpdateServiceQuota", useUpdateServiceQuota, { id: "q1", name: "Điện", tiers: [{ tier_number: 1, from_value: 0, to_value: null, unit_price: 100 }] },
+      "replace_service_quota_v1", { quota: { id: "q1", name: "Điện", description: null, organization_id: "org-cha" }, tiers: [{ id: "t1", quota_id: "q1", tier_number: 1, from_value: 0, to_value: null, unit_price: 100 }] }],
+    ["useUpdateMaterialPurchase", useUpdateMaterialPurchase, { id: "p1", input: { purchase_date: "2026-10-11", supplier_id: null, notes: null, items: [{ material_id: "m1", quantity: 2, unit_price: 100 }] } },
+      "replace_material_purchase_v1", { purchase: { id: "p1", organization_id: "org-cha", code: "PN-1", purchase_date: "2026-10-11", supplier_id: null, notes: null, total: 200 }, items: [{ id: "l1", purchase_id: "p1", material_id: "m1", quantity: 2, unit_price: 100 }] }],
+    ["useUpsertJobMaterialUsage", useUpsertJobMaterialUsage, { job_id: "j1", usage_date: "2026-10-11", notes: null, items: [{ material_id: "m1", quantity: 2, unit_cost_at_usage: 100 }] },
+      "save_job_material_usage_v1", { usage_id: "u1", usage: { id: "u1", job_id: "j1", code: "PX-1", usage_date: "2026-10-11", notes: null, organization_id: "org-cha" }, removed: false, items: [{ id: "l1", usage_id: "u1", material_id: "m1", quantity: 2, unit_cost_at_usage: 100 }] }],
+  ])("%s: MỘT lời gọi hàm, không gửi organization_id, không chèn thẳng bảng con", async (_name, hook, input, rpcName, receipt) => {
+    io.goiRpc.mockImplementation(async () => ({ data: receipt, error: null }));
+    await run(hook, input);
+    expect(io.goiRpc).toHaveBeenCalledTimes(1);
+    expect(io.goiRpc.mock.calls[0][0]).toBe(rpcName);
+    expect(JSON.stringify(io.goiRpc.mock.calls[0][1])).not.toContain("organization_id");
+    expect(io.inserts).toEqual([]);
   });
 });
 

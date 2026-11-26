@@ -33,8 +33,8 @@ export default function MaterialUsageSection({ jobId, className }: Props) {
   const [rootError, setRootError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Đợt 8: lưu vật tư công việc ghi lặp lại được (xoá rồi chèn lại toàn bộ dòng) nên lỗi không khoá form. Sau một lần
-  // lưu hỏng, giữ nguyên các dòng đang nhập (kể cả khi máy chủ đã xoá dòng cũ) để bấm «Lưu vật tư» lại.
+  // Đợt 8: lưu vật tư công việc ghi lặp lại được nên lỗi không khoá form. Sau một lần lưu hỏng, giữ nguyên các dòng đang
+  // nhập để bấm «Lưu vật tư» lại. Đợt 10b: một hàm máy chủ thay cả bộ dòng trong một giao dịch (hoặc chưa ghi gì, hoặc đủ).
   useEffect(() => {
     if (dirty || rootError) return;
     if (usage && usage.items.length > 0) {

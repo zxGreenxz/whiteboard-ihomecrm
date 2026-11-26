@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// Đợt 8 (luật 5): sửa / xoá chỉ số, sửa dịch vụ, sửa định mức, lưu dịch vụ mặc định của toà là thao tác ghi LẶP LẠI ĐƯỢC
-// (đặt giá trị theo mã, xoá mềm theo mã, đồng bộ theo phần chênh, xoá rồi chèn lại). Rớt mạng không để lại dấu nào và
+// Đợt 8 (luật 5): sửa / xoá chỉ số, sửa dịch vụ là thao tác ghi LẶP LẠI ĐƯỢC
+// (đặt giá trị theo mã, xoá mềm theo mã, đồng bộ theo phần chênh). Rớt mạng không để lại dấu nào và
 // không khoá lần bấm sau; dấu của bản trước không chặn và được gỡ sau lần ghi thành công.
 import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,8 +14,7 @@ vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor'
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() } }));
 
 import { useBulkDeleteMeterReadings, useDeleteMeterReading, useUpdateMeterReading } from '../useMeterReadings';
-import { useUpdateService, useUpdateServiceQuota } from '../useServices';
-import { useUpsertBuildingServices } from '../useBuildingServices';
+import { useUpdateService } from '../useServices';
 import { RepeatableWriteUnknownError } from '@/lib/financialWorkflowError';
 import { recordWriteBlocked } from '@/lib/recordWriteOutcome';
 
@@ -306,97 +305,6 @@ describe('sửa dịch vụ (đặt giá trị + đồng bộ toà áp dụng th
   });
 });
 
-describe('sửa định mức (xoá rồi chèn lại bậc giá)', () => {
-  type Tier = { tier_number: number; from_value: number; to_value: number | null; unit_price: number };
-  type Input = { id: string; name: string; description?: string | null; tiers: Tier[] };
-  const update = () => (renderHook(() => useUpdateServiceQuota()).result.current as unknown as Mutation<Input>).mutationFn;
-  const input: Input = { id: 'q1', name: 'Điện bậc', description: null, tiers: [
-    { tier_number: 1, from_value: 0, to_value: 50, unit_price: 120 },
-    { tier_number: 2, from_value: 50, to_value: null, unit_price: 150 },
-  ] };
-  const tiers = () => rows('service_quota_tiers').filter(row => row.quota_id === 'q1').map(row => `${row.tier_number}:${row.unit_price}`).sort();
-  beforeEach(() => {
-    io.server.rows.service_quotas = [{ id: 'q1', name: 'Điện', description: null, organization_id: 'org-a' }];
-    io.server.rows.service_quota_tiers = [{ id: 't-old', quota_id: 'q1', tier_number: 1, from_value: 0, to_value: null, unit_price: 100, organization_id: 'org-a' }];
-    io.server.uniqueBy.service_quota_tiers = row => `${row.quota_id}:${row.tier_number}`;
-  });
-
-  it('lệnh không tới máy chủ: báo rõ, không dấu, bấm lại ghi đủ bậc', async () => {
-    const save = update();
-    io.server.failNext('service_quotas', 'update', 'drop-before');
-    expectRepeatable(await rejection(save(input)), /định mức/);
-    expect(tiers()).toEqual(['1:100']);
-    await save(input);
-    expect(tiers()).toEqual(['1:120', '2:150']);
-  });
-
-  it('lưu bậc mới mất phản hồi: báo đã gỡ bậc cũ, bấm lại cho đúng một bộ bậc', async () => {
-    const save = update();
-    io.server.failNext('service_quota_tiers', 'insert', 'drop-after');
-    expectRepeatable(await rejection(save(input)), /gỡ bậc[\s\S]*thiếu bậc/);
-    await save(input);
-    expect(tiers()).toEqual(['1:120', '2:150']);
-  });
-
-  it('gỡ bậc cũ mất phản hồi: bấm lại ghi đủ bậc', async () => {
-    const save = update();
-    io.server.failNext('service_quota_tiers', 'delete', 'drop-after');
-    expectRepeatable(await rejection(save(input)));
-    await save(input);
-    expect(tiers()).toEqual(['1:120', '2:150']);
-  });
-
-  it('chèn bậc mới bị từ chối sau khi đã gỡ bậc cũ: báo rõ đã gỡ, bấm lưu lại', async () => {
-    io.server.rows.service_quota_tiers.push({ id: 't-kept', quota_id: 'q1', tier_number: 2, from_value: 9, to_value: null, unit_price: 9, organization_id: 'org-a' });
-    io.server.writable.service_quota_tiers = row => row.id !== 't-kept';
-    expectRefusal(await rejection(update()(input)), /Đã gỡ các bậc giá cũ.*chưa lưu/);
-  });
-
-  it('dấu bản trước không chặn; lưu xong thì gỡ', async () => {
-    const key = actorMark('quota-update', 'q1');
-    await update()(input);
-    expect(localStorage.getItem(key)).toBeNull();
-    expect(pendingKeys()).toEqual([]);
-  });
-});
-
-describe('dịch vụ mặc định của toà (xoá rồi chèn lại)', () => {
-  type Input = { buildingId: string; services: { service_id: string; is_active: boolean; unit_price_override: number | null }[] };
-  const save = () => (renderHook(() => useUpsertBuildingServices({ silent: true })).result.current as unknown as Mutation<Input>).mutationFn;
-  const input: Input = { buildingId: 'b1', services: [{ service_id: 's1', is_active: true, unit_price_override: 12 }, { service_id: 's2', is_active: false, unit_price_override: null }] };
-  const links = () => rows('building_services').filter(row => row.building_id === 'b1').map(row => `${row.service_id}:${row.is_active}`).sort();
-  beforeEach(() => {
-    io.server.rows.building_services = [{ id: 'bs-old', building_id: 'b1', service_id: 's0', is_active: true, unit_price_override: null, organization_id: 'org-a' }];
-    io.server.uniqueBy.building_services = row => `${row.building_id}:${row.service_id}`;
-  });
-
-  it('lệnh không tới máy chủ: báo rõ, không dấu, bấm lại ghi đủ', async () => {
-    const run = save();
-    io.server.failNext('building_services', 'delete', 'drop-before');
-    expectRepeatable(await rejection(run(input)), /dịch vụ/);
-    expect(links()).toEqual(['s0:true']);
-    await expect(run(input)).resolves.toHaveLength(2);
-    expect(links()).toEqual(['s1:true', 's2:false']);
-  });
-
-  it('lưu danh sách mới mất phản hồi: báo đã gỡ danh sách cũ, bấm lại cho đúng một bộ', async () => {
-    const run = save();
-    io.server.failNext('building_services', 'insert', 'drop-after');
-    expectRepeatable(await rejection(run(input)), /gỡ danh sách[\s\S]*thiếu dịch vụ mặc định/);
-    await run(input);
-    expect(links()).toEqual(['s1:true', 's2:false']);
-  });
-
-  it('chèn danh sách mới bị từ chối sau khi đã gỡ danh sách cũ: báo rõ đã gỡ, bấm lưu lại', async () => {
-    io.server.rows.building_services.push({ id: 'bs-kept', building_id: 'b1', service_id: 's1', is_active: false, unit_price_override: null, organization_id: 'org-a' });
-    io.server.writable.building_services = row => row.id !== 'bs-kept';
-    expectRefusal(await rejection(save()(input)), /Đã gỡ danh sách dịch vụ cũ.*chưa lưu/);
-  });
-
-  it('dấu bản trước không chặn; lưu xong thì gỡ', async () => {
-    const key = actorMark('building-services-replace', 'b1');
-    await save()(input);
-    expect(localStorage.getItem(key)).toBeNull();
-    expect(pendingKeys()).toEqual([]);
-  });
-});
+// Đợt 10b: hai khối «sửa định mức (xoá rồi chèn lại bậc giá)» và «dịch vụ mặc định của toà (xoá rồi chèn lại)» chuyển sang
+// xoaChenMotGiaoDichWriters.test.tsx: hai nơi đó nay gọi MỘT hàm máy chủ thay nguyên tử (replace_service_quota_v1,
+// replace_building_services_v1), không còn bước gỡ / chèn riêng để rớt mạng giữa chừng.

@@ -1,7 +1,7 @@
 import {reconcileResidenceMembers} from '@/lib/customerResidenceHistory';
 import {matchesContractMoneyReceipt} from '@/lib/contractMoneyReceipt';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {FinancialAlreadyRecordedError} from '@/lib/financialWorkflow';
+import {FinancialAlreadyRecordedError,FinancialWorkflowError} from '@/lib/financialWorkflow';
 import {sameContractFields,type ContractRelationWriteProgress} from '@/lib/contractEditWorkflow';
 import {sameContractServices} from '@/lib/contractRelationReconcile';
 import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
@@ -703,22 +703,27 @@ export const useSyncContractCustomers = () => {
 };
 
 // =============================================
-// useSyncContractServices — replace contract_services for a contract.
-// Dùng cho luồng Cập nhật hợp đồng: xoá hết dòng dịch vụ cũ rồi insert lại
-// theo danh sách trong form (đổi loại điện, đơn giá, chỉ số đầu, …). Luồng
-// update không tự đụng contract_services nên phải gọi tay sau khi update HĐ
-// — giống useSyncContractCustomers.
+// useSyncContractServices — thay toàn bộ dịch vụ của hợp đồng khi SỬA hợp đồng.
+// Luồng update không tự đụng contract_services nên `runContractEdit` gọi bước này sau khi lưu thông tin hợp đồng — giống
+// useSyncContractCustomers. Đợt 10b: MỘT lời gọi `replace_contract_services_v1` (SECURITY INVOKER: RLS và trigger như ghi
+// thẳng; khoá tư vấn theo hợp đồng) xoá mọi dòng cũ rồi chèn đúng danh sách trong form (loại điện, đơn giá, chỉ số đầu…)
+// trong một giao dịch: hoặc chưa ghi gì, hoặc đã ghi đủ. Dùng pha `reconciling` của thao tác nguyên tử (máy chủ không so bộ
+// trước như CAS của phần khách; `runContractEdit` tự đọc lại và so với lúc mở form): không chờ 2 phút,
+// đọc lại thấy còn nguyên như lúc mở form thì gửi lại ngay, khớp đích thì xong, bị từ chối rõ thì `rejected`. `skipDelete` không
+// còn nghĩa (hàm luôn thay nguyên tử). Không gửi organization_id: trigger suy công ty từ hợp đồng.
 // =============================================
 
+type ContractServiceTarget = { service_id: string; unit_price: number; initial_reading: number | null };
+type ReplaceContractServicesRpc = (name: "replace_contract_services_v1", args: { p_contract_id: string; p_services: ContractServiceTarget[] }) =>
+  PromiseLike<{ data: unknown; error: unknown }>;
 export const useSyncContractServices = () => {
   const queryClient = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({
       contractId,
       services,
-      organizationId,skipDelete,onPhase,
+      onPhase,
     }: {
       contractId: string;
       services: Array<{
@@ -727,30 +732,33 @@ export const useSyncContractServices = () => {
         initial_reading?: number | null;
       }>;
     } & ContractRelationWriteProgress) => {
-      if(!skipDelete){
-      onPhase?.("deleting");
-      const { data: deleted,error: delErr } = await supabase
-        .from("contract_services")
-        .delete()
-        .eq("contract_id", contractId).select("service_id,unit_price,initial_reading");
-      if (delErr) throw delErr;
-      financialReadRows(deleted);onPhase?.("deleted");
-      }
-      if (services.length === 0) {onPhase?.("done");return;}
-
-      const rows = services.map((s) => ({
-        contract_id: contractId,
+      const sent: ContractServiceTarget[] = services.map((s) => ({
         service_id: s.service_id,
         unit_price: s.unit_price,
         initial_reading: s.initial_reading ?? null,
       }));
-
-      onPhase?.("inserting");
-      const {data:inserted,error: insErr } = await supabase
-        .from("contract_services")
-        .insert(withOrgAll(rows, organizationId??selectedOrganizationId)).select("service_id,unit_price,initial_reading");
-      if (insErr) throw insErr;
-      if(!sameContractServices(financialReadRows(inserted),services))throw new TypeError("Chưa xác nhận được đầy đủ dịch vụ của hợp đồng.");onPhase?.("done");
+      // Chỉ cần lúc lưu: không kéo thêm module vào gói tải trang.
+      const { repeatableWrite } = await import("@/lib/recordWriteOutcome");
+      onPhase?.("reconciling");
+      await repeatableWrite("lưu dịch vụ của hợp đồng", async () => {
+        const client = supabase as unknown as { rpc: ReplaceContractServicesRpc };
+        const { data, error } = await client.rpc("replace_contract_services_v1", { p_contract_id: contractId, p_services: sent });
+        // Từ chối rõ đi nguyên (giữ mã lỗi) để `runContractEdit` đặt pha `rejected`; cả giao dịch đã lùi.
+        if (error) throw error;
+        // Biên nhận phải khớp ĐÚNG bộ đã gửi: đúng số dòng, mã dòng là chuỗi không trùng, đúng hợp đồng, cùng dịch vụ / đơn giá /
+        // chỉ số đầu. Lệch hay sai dạng ⇒ chưa rõ (pha giữ `reconciling`, lần bấm sau đọc lại).
+        const rows: unknown[] = Array.isArray(data) ? data : [];
+        const ids = rows.map(row => (row && typeof row === "object" ? (row as { id?: unknown }).id : undefined));
+        let same = false;
+        try {
+          same = Array.isArray(data) && rows.length === sent.length
+            && ids.every(id => typeof id === "string" && id !== "") && new Set(ids).size === ids.length
+            && rows.every(row => (row as { contract_id?: unknown }).contract_id === contractId)
+            && sameContractServices(rows as ContractServiceTarget[], sent);
+        } catch { same = false; /* Đơn giá rỗng / sai dạng: financialReadNumber ném, coi là biên nhận lệch. */ }
+        if (!same) throw new FinancialWorkflowError("Chưa xác nhận được đầy đủ dịch vụ của hợp đồng.", "unknown", [], new TypeError("Mismatched contract services receipt"));
+      });
+      onPhase?.("done");
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
