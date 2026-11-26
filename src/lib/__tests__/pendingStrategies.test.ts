@@ -157,6 +157,20 @@ describe("sổ chiến lược đối chiếu", () => {
     expect(scan.staleDeclarations).toEqual([]);
   });
 
+  // Đợt 8: một dòng `{ ...khac(...), silent: true }` làm Rollup coi cả sổ là có tác dụng phụ; khi bớt nơi dùng guard, sổ bị tách
+  // thành chunk riêng mà mọi trang phải nạp (bảng nạp trước của chunk entry vượt ngưỡng bundle-inventory). Sổ phải thuần dữ liệu.
+  it("sổ không có phép trải (spread) nào trong bảng, để Rollup coi sổ là thuần dữ liệu", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/pendingStrategies.ts"), "utf8");
+    const file = ts.createSourceFile("pendingStrategies.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const spreads: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isSpreadAssignment(node) || ts.isSpreadElement(node)) spreads.push(node.getText(file));
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    expect(spreads).toEqual([]);
+  });
+
   it("mỗi dòng có nhãn đọc được và một cách đối chiếu hợp lệ", () => {
     for (const [namespace, strategy] of Object.entries(PENDING_STRATEGIES)) {
       expect(strategy.label.trim(), namespace).toBe(strategy.label);

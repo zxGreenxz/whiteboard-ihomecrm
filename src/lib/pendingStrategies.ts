@@ -183,7 +183,9 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'voucher-excel-import': tien('van', 'nhập thu chi từ Excel'),
   'useImportMeterReadings': khac('van', 'nhập chỉ số từ Excel'),
   'useBulkCreateMeterReadings': khac('van', 'tạo chỉ số hàng loạt'),
-  'lucky-public-draw': { ...khac('van', 'quay số'), silent: true }, // trang công khai tự gọi khi mở; người xem ẩn danh không được thấy hộp gỡ khoá
+  // Viết thẳng, KHÔNG trải (`...khac(...)`): phép trải ở cấp tệp làm Rollup coi cả sổ là có tác dụng phụ, nên mọi chunk dính tới
+  // bộ chống ghi trùng phải nạp riêng sổ này (đợt 8 đo: chunk sổ tách riêng, bảng nạp trước của chunk entry vượt ngưỡng).
+  'lucky-public-draw': { money: false, reconcile: 'van', label: 'quay số', silent: true }, // trang công khai tự gọi khi mở; người xem ẩn danh không được thấy hộp gỡ khoá
   'lucky-admin': khac('van', 'thao tác quản trị Quay số'), // 9 thao tác quản trị Quay số chung một dấu
 
   // Đợt 11: mã chết, xoá cùng nơi gọi
