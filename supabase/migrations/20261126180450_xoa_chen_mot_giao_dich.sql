@@ -94,7 +94,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- Trigger tính tồn kho / tổng phiếu phải đang gắn và đang bật trên đúng bảng (theo tên và hàm).
+  -- Trigger tính tồn kho / tổng phiếu phải đang gắn và đang chạy ở phiên thường (O / A; 'R' chỉ chạy khi sao chép) trên đúng bảng.
   FOR r IN SELECT * FROM (VALUES
       ('public.material_purchase_items', 'trg_mpi_recompute', 'public.material_items_after_change()'),
       ('public.material_purchase_items', 'trg_mpi_total',     'public.material_purchase_recompute_total()'),
@@ -102,7 +102,7 @@ BEGIN
     ) AS v(tbl, tg, fn) LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
                     WHERE t.tgrelid = r.tbl::regclass AND t.tgname = r.tg
-                      AND t.tgfoid = to_regprocedure(r.fn) AND t.tgenabled <> 'D') THEN
+                      AND t.tgfoid = to_regprocedure(r.fn) AND t.tgenabled IN ('O', 'A')) THEN
       RAISE EXCEPTION 'xoa_chen_mot_giao_dich: trigger % trên % không còn như đã rà — DỪNG', r.tg, r.tbl USING ERRCODE = '55000';
     END IF;
   END LOOP;
@@ -116,7 +116,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
                     WHERE t.tgrelid = r.tbl::regclass AND NOT t.tgisinternal
                       AND t.tgfoid = 'app_private.autofill_org_strict()'::regprocedure
-                      AND (t.tgtype & 7) = 7 AND t.tgenabled <> 'D') THEN
+                      AND (t.tgtype & 7) = 7 AND t.tgenabled IN ('O', 'A')) THEN
       RAISE EXCEPTION 'xoa_chen_mot_giao_dich: % không còn trigger BEFORE INSERT gọi autofill_org_strict — DỪNG', r.tbl USING ERRCODE = '55000';
     END IF;
   END LOOP;
