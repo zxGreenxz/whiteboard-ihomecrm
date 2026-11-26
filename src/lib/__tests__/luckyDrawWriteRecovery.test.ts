@@ -209,12 +209,14 @@ describe('quay quản trị: chỉ lệnh quay giữ dấu, mỗi lượt quay �
     expect(world.calls('lucky_draw_round_v1')).toBe(2);
   });
 
-  it('không nhận biên nhận quay của sự kiện khác', async () => {
+  it('không nhận biên nhận quay của sự kiện khác (dù lượt đó của sự kiện kia đã quay)', async () => {
     const event = roundsEvent();
     const other = roundsEvent();
+    world.server.rpcHandlers.lucky_draw_round_v1!({ p_event: other.id, p_ordinal: 1 });
     world.server.rpcHandlers.lucky_draw_round_v1 = () => world.server.rpcHandlers.lucky_public_state_v1!({ p_event: other.id });
     const api = await load();
     expect(await caught(api.luckyAdminApi.drawRound(event.id, 1))).toMatchObject({ outcome: 'unknown' });
+    expect(await api.luckyAdminApi.hasPendingAction(event.id)).toBe(true);
   });
 });
 

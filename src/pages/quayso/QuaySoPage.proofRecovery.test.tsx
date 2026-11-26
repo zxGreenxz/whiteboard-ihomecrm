@@ -78,6 +78,16 @@ describe('giấy cọc: tải hỏng thì tải lại được, không khoá ô 
     expect(team.proofs[0]!.path).toBe(world.stored[0]);
   });
 
+  it('tệp chờ gắn nằm ngoài thư mục của sự kiện không bao giờ được đem gắn (hàng rào giữ nguyên)', async () => {
+    localStorage.setItem(uploadedKey(), JSON.stringify([{ path: 'event-khac/x.png', name: 'x.png' }]));
+    const view = await mount();
+    expect(view.container.textContent).not.toContain('x.png');
+    expect(fileInput(view).disabled).toBe(false);
+    pick(view);
+    await screen.findByText(/Đã nộp 1\/1 giấy cọc/);
+    expect(team.proofs.map(p => p.name)).toEqual(['coc.png']);
+  });
+
   it('bản lưu tệp chờ gắn hỏng dạng không khoá ô tải', async () => {
     localStorage.setItem(uploadedKey(), '{hỏng');
     const view = await mount();
