@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-26T04:20:36.264Z",
+  "generatedAt": "2026-11-26T05:13:57.747Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 995,
+    "ledger-applied": 997,
     "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
@@ -14827,6 +14827,17 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261126034144_phieu_tam_ung_lich_su_theo_ky.sql",
+      "version": "20261126034144",
+      "name": "phieu_tam_ung_lich_su_theo_ky",
+      "scheme": "timestamp14",
+      "sha256": "7c35a7024b5e069f670c5386ea9cc911663356dafce90aff79346ad7e152642f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T05:09:48.597Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261126035812_quy_gop_gan_phieu_chi_goc.sql",
       "version": "20261126035812",
       "name": "quy_gop_gan_phieu_chi_goc",
@@ -14835,6 +14846,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-26T04:20:21.228Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126041014_lich_chi_quy_cua_co_dong.sql",
+      "version": "20261126041014",
+      "name": "lich_chi_quy_cua_co_dong",
+      "scheme": "timestamp14",
+      "sha256": "8fe619a0cec99477b7bee83f56a235d5593d7c2c67e5f74123ee5273bf6bafa3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T05:13:07.728Z|bien-nhan-backup"
       ]
     },
     {

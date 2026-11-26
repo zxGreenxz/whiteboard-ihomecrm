@@ -30732,6 +30732,15 @@ export type Database = {
         }
         Returns: Json
       }
+      shareholder_record_opening_receipts_v1: {
+        Args: {
+          p_opening_id: string
+          p_organization_id: string
+          p_receipts: Json
+          p_shareholder_id: string
+        }
+        Returns: Json
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       sign_and_checkin_contract_draft_v1: {

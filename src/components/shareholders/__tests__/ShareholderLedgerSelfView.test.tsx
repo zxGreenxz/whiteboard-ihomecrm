@@ -155,12 +155,12 @@ describe('ShareholderLedgerSelfView — tiền của chính mình', () => {
     expect(amounts.textContent).toMatch(/Được chia từ quỹ chung100\.000.*cấn tạm ứng40\.000.*khi chia quỹ60\.000.*đầu kỳ đã đối soát50\.000/);
   });
 
-  it('tạm ứng chờ duyệt / tiền chốt chờ chi hiện ở dòng phụ; mốc ⇒ "sau mốc đã trả đủ hết MM/YYYY"', () => {
+  it('tạm ứng chờ duyệt / tiền chốt chờ chi hiện ở dòng phụ; mốc ⇒ "sau mốc đối chiếu hết MM/YYYY"', () => {
     h.position = myPosition({ unpaid_profit: 4_000_000, advance_outstanding: 350_000, advance_pending: 650_000, settlement_cash_pending: 3_000_000, balance: 3_000_000 });
     view(ledger({ marker: { settled_through_month: '2026-08-01' } }));
     expect(within(kpis()).getByTestId('self-kpi-unpaid').textContent).toMatch(/4\.000\.000.*đang chờ chi 3\.000\.000/);
     expect(within(kpis()).getByTestId('self-kpi-advance').textContent).toMatch(/350\.000.*chờ duyệt 650\.000/);
-    expect(within(kpis()).getByTestId('self-kpi-allocated').textContent).toContain('sau mốc đã trả đủ hết 08/2026');
+    expect(within(kpis()).getByTestId('self-kpi-allocated').textContent).toContain('sau mốc đối chiếu hết 08/2026');
   });
 
   it('lợi nhuận chưa chi ÂM vẫn hiện đúng dấu, kèm một dòng giải thích', () => {

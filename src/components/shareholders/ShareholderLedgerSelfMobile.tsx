@@ -3,6 +3,8 @@
 
 import { useMemo, useState } from 'react';
 import ShareholderPeriodStatement from './ShareholderPeriodStatement';
+import { flowTotal, overviewVouchers } from '@/lib/profitLedger/overviewFlows';
+import { HistoricalAdvanceList } from './HistoricalAdvanceList';
 import { postedCash } from '@/lib/profitLedger/periodStatement';
 import { HandCoins } from 'lucide-react';
 import { useMyPositionView } from '@/hooks/profit-ledger/useMyPositionView';
@@ -69,6 +71,10 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
   }, [scoped]);
   const buildingsEver = useMemo(() => buildingColumns(ledger.months).length, [ledger.months]);
   const payouts = useMemo(() => newestFirst(ledger.payouts), [ledger.payouts]);
+  const voucherTotals = useMemo(() => {
+    const flows = overviewVouchers(ledger.payouts, ledger.historical_advances ?? [], positionView.position?.settlements ?? []);
+    return { advance: flowTotal(flows.advances), cash: flowTotal(flows.profit) };
+  }, [ledger.payouts, ledger.historical_advances, positionView.position]);
   // Hai phần nhạy cảm: cần CẢ quyền của người xem LẪN khoá máy chủ gửi.
   const percentRows = access.canViewPercent ? ledger.percent_rows : undefined;
   const pct = percentRows ? uniformPercent(percentRows) : null;
@@ -129,7 +135,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
         <div className={`${CARD} !rounded-2xl px-3 py-3`}>
           <span className={KPI_LABEL}>Đã chi qua phiếu</span>
           <div className={`${KPI_VAL} text-[#c97a10]`}>{fmtShort(postedCash(ledger.payouts))}</div>
-          <div className={KPI_SUB}>Gồm ứng và chi lợi nhuận đã ghi sổ</div>
+          <div className={KPI_SUB}>{marker ? 'Phiếu tiền ghi sổ sau mốc đối chiếu' : 'Gồm ứng và chi lợi nhuận đã ghi sổ'}</div>
         </div>
         {viaSalary !== null && (
           <div className={`${CARD} !rounded-2xl px-3 py-3`}>
@@ -199,7 +205,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
           <p className="m-0 px-[15px] pb-4 pt-1 text-[12.5px] font-semibold text-[#8d8678]">Chưa có phần chia trong {scopeLabel}.</p>
         )}
         {marker && matrix.some((r) => r.excluded) && (
-          <p className="m-0 px-[15px] pb-3 text-[11px] font-semibold text-[#8d8678]">* Đã trả đủ theo mốc (đến hết {marker}) — không tính vào lợi nhuận chưa chi.</p>
+          <p className="m-0 px-[15px] pb-3 text-[11px] font-semibold text-[#8d8678]">* Đã đối chiếu đến hết {marker}.</p>
         )}
       </div>
 
@@ -208,9 +214,9 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
       <div className={`${CARD} !rounded-2xl overflow-hidden`}>
         <div className="flex items-center gap-2 px-[15px] py-3.5 border-b border-[#efece4]">
           <span className={TITLE}>Phiếu chi lợi nhuận và tạm ứng</span>
-          <span className="ml-auto font-mono text-[12px] font-bold text-[#c97a10]">đã ghi chi {fmtShort(postedCash(ledger.payouts))}</span>
+          <span className="ml-auto font-mono text-[12px] font-bold text-[#c97a10]">ứng {fmtShort(voucherTotals.advance)} · chi lợi nhuận {fmtShort(voucherTotals.cash)}</span>
         </div>
-        {payouts.length === 0 && <p className={EMPTY}>Chưa có phiếu chi lợi nhuận hay tạm ứng nào.</p>}
+        {payouts.length === 0 && !ledger.historical_advances?.length && <p className={EMPTY}>Chưa có phiếu chi lợi nhuận hay tạm ứng nào.</p>}
         {payouts.map((p) => {
           const target = cancelTargetFromMyPayout(p, { organizationId: ledger.organization_id, subjectName: ledger.shareholder.name });
           return (
@@ -240,8 +246,8 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
             </div>
           );
         })}
+        <HistoricalAdvanceList receipts={ledger.historical_advances} />
       </div>
-
       {ledger.salary.length > 0 && (
         <div className={`${CARD} !rounded-2xl overflow-hidden`}>
           <div className="px-[15px] py-3.5 border-b border-[#efece4]"><span className={TITLE}>Lợi nhuận trả qua lương</span></div>

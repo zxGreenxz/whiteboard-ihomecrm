@@ -30,6 +30,7 @@ function Page() {
       onValueChange={setTab}
     >
       <ProfitHubTabPanel value="report">
+        <ProfitHubSlot name="overview"><div>Chỉ số tổng quan</div></ProfitHubSlot>
         <ProfitHubSlot name="kpis">
           <span>KPI báo cáo</span>
         </ProfitHubSlot>
@@ -54,6 +55,9 @@ describe("ProfitHubTabPanel keepMounted", () => {
   it("chưa mở lần nào thì chưa mount; mở rồi rời đi thì giữ nháp, ẩn tab và tắt KPI của nó", () => {
     render(<Page />);
     expect(screen.queryByLabelText("nháp")).toBeNull();
+    const overview = screen.getByText("Chỉ số tổng quan");
+    expect(overview.compareDocumentPosition(screen.getByText("KPI báo cáo")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(overview.compareDocumentPosition(screen.getByText("Nội dung báo cáo")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("KPI báo cáo")).toBeTruthy();
 
     openTab("Chốt");
