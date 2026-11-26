@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -1324,6 +1324,84 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
     }
   }, 180000);
 
+  it("hoàn đồng thời mọi người góp bằng một phiếu qua hai giao dịch đã commit", async () => {
+    const local = await PGlite.create({ loadDataDir: await db.dumpDataDir() });
+    try {
+      // Nền này chuyên kiểm đường tiền. Phép xem trước/chốt nhà được kiểm riêng bằng RPC trên project TEST.
+      await local.exec(`
+        CREATE TABLE public.profit_close_revisions(id uuid PRIMARY KEY, organization_id uuid, building_id uuid,
+          profit_monthly_id uuid, period_month date, revision_number integer, operation text, created_at timestamptz DEFAULT now());
+        ALTER TABLE public.profit_monthly ADD COLUMN management_salary numeric DEFAULT 0, ADD COLUMN revision_number integer DEFAULT 1,
+          ADD COLUMN IF NOT EXISTS shareholder_percent_total numeric, ADD COLUMN IF NOT EXISTS shareholder_allocated_amount numeric,
+          ADD COLUMN IF NOT EXISTS unallocated_profit numeric, ADD COLUMN IF NOT EXISTS unallocated_disposition text,
+          ADD COLUMN IF NOT EXISTS unallocated_disposition_reason text;
+        CREATE OR REPLACE FUNCTION app_private.org_timezone_v1(uuid) RETURNS text LANGUAGE sql AS $$ SELECT 'Asia/Ho_Chi_Minh'::text $$;
+        CREATE FUNCTION public._profit_close_preview_core_v2(uuid,date,uuid[],jsonb,text,boolean DEFAULT false)
+          RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;
+      `);
+      const migration = readFileSync(`${DIR}/20261126015743_gom_loi_nhuan_va_hoan_quy_dong_loat.sql`, 'utf8');
+      for (const name of ['recompute_ie_business_result','trg_ie_items_recompute_business_result','trg_ie_recompute_business_result']) {
+        await local.exec(dinhNghiaTruocM1('public.'+name));
+      }
+      await local.exec(`CREATE TRIGGER ie_business_result AFTER INSERT OR UPDATE OF business_result_accounting,total_amount
+        ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION public.trg_ie_recompute_business_result();
+        CREATE TRIGGER ie_items_business_result AFTER INSERT OR UPDATE OR DELETE ON public.income_expense_items
+        FOR EACH ROW EXECUTE FUNCTION public.trg_ie_items_recompute_business_result();`);
+      await local.exec(dinhNghiaTrong("public._profit_write_close_v2","20260721110000_profit_unallocated_integrity_v3.sql").stmt);
+      await local.exec(migration);
+      await local.exec(migration);
+      const periodId = id(8001);
+      await local.exec(`INSERT INTO app_private.house_pool_rules(organization_id,building_id,first_shareholder,second_shareholder,
+        share_percent,retained_percent,from_month,automatic_from,activated_by) VALUES ('${ORG_A}','${TOA_1}','${CD_CHU}','${CD1}',44,1,'2026-06-01','2026-11-01','${CHU}');
+        INSERT INTO public.profit_monthly(id,organization_id,building_id,period_month,status,adjusted_profit)
+        VALUES ('${periodId}','${ORG_A}','${TOA_1}','2026-11-01','LOCKED',1000);
+        INSERT INTO public.profit_close_revisions(id,organization_id,building_id,profit_monthly_id,period_month,revision_number,operation,created_at)
+        VALUES (gen_random_uuid(),'${ORG_A}','${TOA_1}','${periodId}','2026-11-01',1,'CLOSE','2026-11-10T00:00:00Z');`);
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)", [CHU]);
+      const quote = async () => (await local.query<{q:{hash:string;lines:{available:number;paid:number;reserved:number;amount:number}[]}}>(
+        "SELECT public.house_pool_state_v1($1,2500)->'quote' q",[ORG_A])).rows[0].q;
+      const first = await quote();
+      expect(first.lines.map(l => l.amount)).toEqual([110,110]);
+      await local.exec('SET ROLE authenticated');
+      const args=[ORG_A,SO_QUY,NGAY,first.hash,randomUUID()];
+      const create="SELECT public.house_pool_return_v1($1,2500,$2,$3,$4,$5) AS v";
+      await expect(local.query(create,[ORG_A,SO_QUY,"2026-11-09",first.hash,randomUUID()])).rejects.toMatchObject({code:"22023"});
+      const {voucher_id,total}=(await local.query<{v:{voucher_id:string;total:number}}>(create,args)).rows[0].v;
+      expect(total).toBe(220);
+      expect((await local.query("SELECT public.house_pool_receipt_v1($1,$2,'return') AS receipt",[ORG_A,args[4]])).rows)
+        .toEqual([{receipt:{voucher:voucher_id,imported:null}}]);
+      expect((await local.query<{v:{voucher_id:string}}>(create,args)).rows[0].v).toMatchObject({voucher_id});
+      expect((await quote()).lines.map(l=>l.reserved)).toEqual([110,110]);
+      await local.exec('RESET ROLE');
+      await expect(local.query(sqlDuyetChi(voucher_id,SO_QUY,{anh:false}))).rejects.toMatchObject({code:'55000'});
+      expect((await quote()).lines.map(l=>l.paid)).toEqual([0,0]);
+      await local.query("UPDATE app_private.server_feature_flags SET force_freeze=true WHERE feature_key=$1",[CO]);
+      await expect(local.query(sqlDuyetChi(voucher_id,SO_QUY))).rejects.toMatchObject({code:'42501'});
+      await local.query("UPDATE app_private.server_feature_flags SET force_freeze=false WHERE feature_key=$1",[CO]);
+      await local.query("DELETE FROM public.role_permissions WHERE role_id=$1 AND permission_key='shareholder_profit.distribute'",[VAI_CHU_A]);
+      await expect(local.query(sqlDuyetChi(voucher_id,SO_QUY))).rejects.toMatchObject({code:'42501'});
+      await local.query("INSERT INTO public.role_permissions(organization_id,role_id,permission_key) VALUES($1,$2,'shareholder_profit.distribute')",[ORG_A,VAI_CHU_A]);
+      await local.query(sqlDuyetChi(voucher_id,SO_QUY));
+      expect((await quote()).lines.map(l=>[l.paid,l.reserved,l.available])).toEqual([[110,0,330],[110,0,330]]);
+      expect((await local.query('SELECT net_cash_effect::int AS amount FROM public.income_expense_postings WHERE voucher_id=$1 AND event_kind=\'POSTING\'',[voucher_id])).rows).toEqual([{amount:-220}]);
+      await local.exec(dinhNghiaTrong("public.reverse_posted_income_expense_v2","20260723050000_finance_v2_writers.sql").stmt);
+      const reversal = [voucher_id,SO_QUY,NGAY,'Đảo toàn bộ đợt thử',randomUUID()];
+      const undo = "SELECT public.reverse_posted_income_expense_v2($1,$2,$3,$4,$5)";
+      await expect(local.query(undo, reversal)).rejects.toMatchObject({code:'42501'});
+      await local.exec(`INSERT INTO public.permission_definitions(key,resource,action,sensitivity)
+        VALUES ('income_expenses.reverse','income_expenses','reverse','MANAGE');
+        INSERT INTO public.role_permissions(organization_id,role_id,permission_key)
+        VALUES ('${ORG_A}','${VAI_CHU_A}','income_expenses.reverse');`);
+      await local.query(undo, reversal);
+      expect((await quote()).lines.map(l=>[l.paid,l.reserved,l.available])).toEqual([[0,0,440],[0,0,440]]);
+      expect((await local.query('SELECT sum(net_cash_effect)::int AS amount FROM public.income_expense_postings WHERE voucher_id=$1',[voucher_id])).rows).toEqual([{amount:0}]);
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[NGOAI]);
+      await local.exec('SET ROLE authenticated');
+      await expect(local.query(create,[ORG_A,SO_QUY,NGAY,first.hash,randomUUID()])).rejects.toMatchObject({code:'42501'});
+    } finally {
+      await local.close();
+    }
+  }, 180000);
   it("chia từ số đã đối chiếu, cấn đúng một lần, chi khoản phải trả qua W2", () => giaoDich(async () => {
     await chotThang("2026-10-01", TOA_1, { [CD1]: 120 });
     const opening = openAdvance(500, 120);

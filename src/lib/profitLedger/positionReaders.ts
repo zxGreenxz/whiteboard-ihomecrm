@@ -214,6 +214,7 @@ export function readShareholderPositions(value: unknown, organizationId: string)
 /* ───────────────────────────── R2 shareholder_profit_my_position_v1 ───────────────────────────── */
 
 export interface MyShareholderPosition extends ShareholderPosition {
+  house_pool?: { contributed: number; reserved: number; paid: number; available: number };
   organization_id: string;
   route: ProfitLedgerRoute;
   shareholder: { id: string; name: string };
@@ -225,11 +226,18 @@ export function readMyShareholderPosition(value: unknown, organizationId: string
   const root = obj(value, 'R2');
   if (root.organization_id !== organizationId) fail('R2.organization_id');
   const shareholder = obj(root.shareholder, 'R2.shareholder');
+  const pool = optObj(root.house_pool ?? null, 'R2.house_pool');
   return {
     organization_id: organizationId,
     route: readProfitLedgerRoute(str(root.route, 'R2.route')),
     shareholder: { id: str(shareholder.id, 'R2.shareholder.id'), name: str(shareholder.name, 'R2.shareholder.name') },
     ...readPosition(root, 'R2'),
+    ...(pool && { house_pool: {
+      contributed: money(pool.contributed, 'R2.house_pool.contributed'),
+      reserved: nonNegative(money(pool.reserved, 'R2.house_pool.reserved'), 'R2.house_pool.reserved'),
+      paid: nonNegative(money(pool.paid, 'R2.house_pool.paid'), 'R2.house_pool.paid'),
+      available: money(pool.available, 'R2.house_pool.available'),
+    } }),
     settlements: readSettlements(root.settlements, 'R2.settlements'),
   };
 }

@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 2006,
   "soFileDocBangFs": 511,
-  "tongLoiGoi": 1400,
-  "khongPhanLoaiDuoc": 614,
+  "tongLoiGoi": 1401,
+  "khongPhanLoaiDuoc": 615,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 67,
@@ -147,11 +147,11 @@
     },
     {
       "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
-      "soGoi": 15,
+      "soGoi": 16,
       "loai": {
         "sql": 12
       },
-      "khongPhanLoaiDuoc": 3
+      "khongPhanLoaiDuoc": 4
     },
     {
       "file": "scripts/__tests__/generate-repository-inventory.test.mjs",

@@ -961,6 +961,28 @@
         }
       ]
     },
+    "supabase/migrations/20261126015743_gom_loi_nhuan_va_hoan_quy_dong_loat.sql": {
+      "sha256": "0009fac3f817672b95f5441ed8e21ef9dec7cd7b5bf078b7e556f9a6ac9e1be0",
+      "missingObjects": [
+        "table:app_private.house_pool_rules",
+        "table:app_private.house_pool_contributions",
+        "table:app_private.house_pool_openings",
+        "table:app_private.house_pool_activations",
+        "table:app_private.house_pool_returns"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration bổ sung sổ góp và hoàn theo tỷ lệ. Đã đối chiếu danh mục production và kiểm ghi lịch sử, kỳ tự gom, lợi nhuận âm cùng dòng thực chi/đảo phiếu trên dữ liệu thử. Đang chờ phát hành qua forward lane.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261126015743_gom_loi_nhuan_va_hoan_quy_dong_loat.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.house_pool_contributions ("
+        },
+        {
+          "duong_dan": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
+          "trich_doan": "hoàn đồng thời mọi người góp bằng một phiếu qua hai giao dịch đã commit"
+        }
+      ]
+    },
     "supabase/migrations/20261112093443_manager_collaboration_scopes_v1.sql": {
       "sha256": "c4ba047a2ed12c2fcacc80f59c6ce9bd93552fa8c4b63cb41f8d046b0be4f905",
       "missingObjects": [

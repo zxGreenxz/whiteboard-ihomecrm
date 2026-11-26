@@ -37,6 +37,7 @@ export interface MonthlyBuildingProfit {
 }
 
 export interface ProfitMonthly {
+  house_pool_amount?: number;
   id: string;
   user_id: string;
   building_id: string;
@@ -56,6 +57,7 @@ export interface ProfitMonthly {
 }
 
 export interface ProfitCloseSnapshot {
+  house_pool_amount?: number;
   id: string;
   status: "DRAFT" | "LOCKED";
   computed_profit: number;
@@ -74,6 +76,7 @@ export interface ProfitCloseSnapshot {
 }
 
 export interface ProfitClosePreviewRow {
+  house_pool_amount?: number;
   building_id: string;
   building_name: string;
   revenue: number;
@@ -375,6 +378,7 @@ export interface ProfitCloseOrganizationScope {
 }
 
 export interface ProfitCloseStateRow {
+  house_pool_amount?: number;
   id: string;
   building_id: string;
   building_name: string;
@@ -535,6 +539,7 @@ export interface CloseProfitPeriodInput {
 }
 
 function invalidateProfitCloseQueries(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["house-pool"] });
   qc.invalidateQueries({ queryKey: ["profit-close-preview"] });
   qc.invalidateQueries({ queryKey: ["profit-close-state"] });
   qc.invalidateQueries({ queryKey: ["monthly-building-profit"] });
