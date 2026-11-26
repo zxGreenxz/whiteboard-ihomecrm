@@ -9,8 +9,23 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { FakeRecordServer } from './fakeRecordServer';
 
 type Row = Record<string, unknown>;
-const io = vi.hoisted(() => ({ server: null as unknown as FakeRecordServer, resolverFails: false }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), get rpc() { return io.server.rpc; } } }));
+const io = vi.hoisted(() => ({ server: null as unknown as FakeRecordServer, resolverFails: false, inSizes: [] as number[], inCalls: 0, failInCall: 0 }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: {
+  from: (table: string) => {
+    const query = io.server.from(table) as Record<string, unknown>;
+    const filterIn = query.in as (column: string, values: unknown[]) => unknown;
+    query.in = (column: string, values: unknown[]) => {
+      io.inSizes.push(values.length);
+      // PostgREST đọc qua GET: danh sách `.in(...)` quá dài làm URL vượt giới hạn ⇒ máy chủ trả lỗi (án lệ
+      // useInvoiceCollectors.ts). Giả bằng một lần đọc hỏng.
+      if (values.length > 100) io.server.failNext(table, 'read', 'drop-before');
+      if (table === 'income_expenses' && ++io.inCalls === io.failInCall) io.server.failNext(table, 'read', 'drop-before');
+      return filterIn(column, values);
+    };
+    return query;
+  },
+  get rpc() { return io.server.rpc; },
+} }));
 vi.mock('@tanstack/react-query', () => ({ useMutation: (options: unknown) => options, useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'u1' }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'o1' }) }));
@@ -56,7 +71,7 @@ function voucher(row: Row, items: Row[], id: string, code: string) {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }); clock = T0; vi.setSystemTime(clock);
   localStorage.clear(); localStorage.setItem('ihomecrm.selectedOrganizationId', 'o1');
-  seq = 0; plan = []; depositKeys.clear(); io.resolverFails = false;
+  seq = 0; plan = []; depositKeys.clear(); io.resolverFails = false; io.inSizes = []; io.inCalls = 0; io.failInCall = 0;
   io.server = fakeRecordServer();
   const vouchers = () => (io.server.rows.income_expenses ??= []);
   io.server.rpcHandlers.ie_compat_insert_v2 = args => {
@@ -178,6 +193,38 @@ it('một dòng đã có phiếu, dòng kia chưa thấy mà lượt trước ch
   await expect(submit([line(1), line(2)])).rejects.toThrow(/đối chiếu/);
   expect(compatCalls()).toHaveLength(2);
   expect(pendingKeys()).toHaveLength(1);
+});
+
+// Review độc lập: lượt nhập lớn từng làm lệnh đọc `.in('id', …)` của phép đối chiếu dài quá cỡ URL ⇒ đối chiếu hỏng ở MỌI lần bấm.
+const bigImport = () => Array.from({ length: 350 }, (_, index) => line(index + 1));
+const loseOneOf350 = () => plan.push(...Array.from({ length: 350 }, (_, index) => (index === 199 ? 'after' as const : undefined)));
+
+it('lượt nhập lớn (350 dòng), một dòng mất phản hồi ⇒ đối chiếu chia lô đọc (≤ 100 mã mỗi lệnh), kết luận được, không gửi lại', async () => {
+  loseOneOf350();
+  const first = await submit(bigImport());
+  expect(first.successCount).toBe(349);
+  io.inSizes = [];
+  const reconciled = await submit(bigImport());
+  expect(reconciled.reconciledFrom).toBeTruthy();
+  expect(reconciled.createdVouchers).toHaveLength(350);
+  expect(reconciled.errors).toEqual([]);
+  expect(io.inSizes.length).toBeGreaterThan(1);
+  expect(Math.max(...io.inSizes)).toBeLessThanOrEqual(100);
+  expect(compatCalls()).toHaveLength(350);
+  expect(pendingKeys()).toEqual([]);
+});
+
+it('lượt nhập lớn: một lô đọc hỏng ⇒ cả lần đối chiếu chưa kết luận (không coi lô hỏng là «không có»), không gửi; đọc được thì kết luận', async () => {
+  loseOneOf350();
+  await submit(bigImport());
+  io.inCalls = 0; io.failInCall = 2;
+  await expect(submit(bigImport())).rejects.toThrow(/đối chiếu/);
+  expect(compatCalls()).toHaveLength(350);
+  expect(pendingKeys()).toHaveLength(1);
+  io.failInCall = 0;
+  const reconciled = await submit(bigImport());
+  expect(reconciled.createdVouchers).toHaveLength(350);
+  expect(compatCalls()).toHaveLength(350);
 });
 
 it('đã biết một phần (dòng bị từ chối rõ): lần bấm sau trả kết quả lượt trước, không nhập lại cả tệp; lần sau nữa nhập', async () => {
