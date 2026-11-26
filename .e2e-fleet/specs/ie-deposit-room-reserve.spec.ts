@@ -22,6 +22,20 @@ import { login, trackConsoleErrors } from './auth';
 const CANONICAL = /\/rest\/v1\/rpc\/create_deposit_income_v1\b/;
 const BUILDING = 'DEMO Toà A';
 
+test('Sale mobile mở phiếu thu cọc bằng người gửi và lịch giữ phòng', async ({ page }) => {
+  await page.setViewportSize({width:390,height:844});
+  await login(page, 'chunha');
+  await page.goto('/sale-phong');
+  await page.getByRole('button',{name:'Phòng trống',exact:true}).click();
+  await page.getByTitle('Tạo cọc giữ phòng',{exact:true}).first().click();
+  await page.getByRole('textbox',{name:'Người gửi',exact:true}).fill('Lộc QA');
+  await expect(page.getByText(/Phiếu này (mở lượt giữ chỗ mới|bổ sung vào lượt đang giữ)/)).toBeVisible();
+  await expect(page.getByRole('button',{name:/gắn khách/i})).toHaveCount(0);
+  await page.getByRole('button',{name:'Sau ngày phiếu 5 ngày'}).click();
+  await expect(page.getByRole('button',{name:'Sau ngày phiếu 5 ngày'})).toHaveAttribute('aria-pressed','true');
+  await page.getByRole('button',{name:'Hủy',exact:true}).click();
+});
+
 async function captureSupabaseAuth(page: Page) {
   const req = await page.waitForRequest((r) => /\/rest\/v1\//.test(r.url()), { timeout: 30_000 });
   const h = req.headers();

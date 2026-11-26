@@ -739,14 +739,14 @@ it('U41 — Sale: bộ lọc «Đã cọc chờ hợp đồng» gồm cả phòn
     flagOnly, room('room-b', 'building-b', 'rented'), room()];
   render(<QuickRoomBoard />);
   fireEvent.change(screen.getByLabelText('Tình trạng'), { target: { value: 'deposit-hold' } });
-  expect(screen.getByText('Đã cọc · Chị Lan · 20 ngày')).toBeTruthy();
+  expect(screen.getByText('Đã thu · Chưa xác định lượt thuê')).toBeTruthy();
   expect(screen.getByText('Đang giữ chỗ')).toBeTruthy();
   expect(screen.queryByText('Tòa Bình Minh · 101 (room-b)')).toBeNull();
   expect(screen.getAllByRole('row')).toHaveLength(3); // tiêu đề + hai phòng đang giữ bằng cọc
   const summary = screen.getByTestId('deposit-hold-summary');
   expect(summary.className).toContain('bg-amber-50');
-  expect(within(summary).getByText('Quá 14 ngày chưa có hợp đồng — kiểm lại phiếu cọc')).toBeTruthy();
-  expect(within(summary).getByText('Phòng có 2 phiếu cọc chờ hợp đồng ngoài đợt giữ chỗ — kiểm trước khi ký hợp đồng mới')).toBeTruthy();
+  expect(within(summary).getByText('Phiếu đã thu quá 14 ngày, cần đối chiếu lượt thuê.')).toBeTruthy();
+  expect(within(summary).getByText('Phiếu PT2605004, PT2606001 · nhận 22/11/2026 · chờ đối chiếu lượt thuê')).toBeTruthy();
 });
 
 it('U43 — Sale không có deposits.view: bảng ghi «Đã cọc · N ngày» + số phiếu, không tên / mã phiếu', () => {
@@ -761,7 +761,7 @@ it('U42 — Quản lý: phòng còn khách ở mà có phiếu cọc treo (ca 10
   state.query.data!.rooms = [depositRow({ source: 'voucher', holdId: null, roomOccupied: true, heldDays: 182, code: 'PT2605004', codes: ['PT2605004'],
     voucherDate: '2026-05-27' }, 'room-c', 'building-b', false)];
   render(<QuickRoomBoard />); showAllStatuses(false);
-  expect(screen.getByText('Đã cọc · Chị Lan · 182 ngày')).toBeTruthy();
+  expect(screen.getByText('Đã thu · Chưa xác định lượt thuê')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Báo sắp trống' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Báo pass' })).toBeTruthy();
 });

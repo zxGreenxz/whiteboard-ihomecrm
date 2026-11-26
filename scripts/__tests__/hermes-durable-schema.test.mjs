@@ -173,6 +173,8 @@ const TABLES = ['capabilities', 'assistants', 'org_policies', 'sessions', 'conne
 const TYPE = /^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*(?:\[\])?$/;
 const REVIEWED_DEFAULTS = new Map([
   ...FORWARD_DEFAULTS,
+  // The deposit migration retires the Hermes customer-assignment operation and preserves this existing default.
+  ['app_private.assert_room_reservation_legacy_sources_v1', [["p_allowed_vouchers uuid[] DEFAULT '{}'::uuid[]", 'p_allowed_vouchers uuid[]']]],
   ['public.hermes_room_schedule_due_v1', [["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']]],
   ['public.hermes_room_schedule_sweep_v1', [["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']]],
   ['app_private.hermes_task_follow_tick_v1', [['p_limit integer DEFAULT 500', 'p_limit integer']]],
@@ -862,6 +864,8 @@ function securityContract(sql = all, registry = functions) {
     ['authenticated', new Set([...PUBLIC.map(name => `public.${name}`), ...TASK_FUNCTIONS.filter(spec => spec.authenticated).map(spec => spec.signature),
       ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target), ...TASK_FOLLOW_STEPS,
       ...ZALO_ONESHOT_CALLER, ...W2_CALLER, ...INHERITED_CRM_ACL.map(spec => spec.signature),
+      // CRM-only reconciliation in the migration that retires Hermes customer assignment.
+      'public.reconcile_deposit_income_hold_v1(uuid,uuid,uuid,bigint,numeric,numeric)',
       ...FORWARD_ACL_BLOCKS.find(block => block.name === 'shared-read').targets.map(([target]) => target),
       'public.vehicles_list_core_v1(uuid,uuid[],uuid[],boolean,text,text,uuid,uuid,integer,integer,boolean)',
       'app_private.hermes_domain_read_scope_fast_v1(jsonb,text,jsonb,text)',
