@@ -1,4 +1,4 @@
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useMemo, useRef, useState } from "react";
 import {
   Dialog,
@@ -58,8 +58,6 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
   const onFailure=(error:unknown,operation:string)=>{setFailure(recordWriteMessage(error,operation));busy.current=false;};
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
-  // Đường TẠO khu vực (đợt 9) vẫn khoá ô thêm khi kết quả chưa rõ, cho tới khi đối chiếu xong.
-  const [createUnknown, setCreateUnknown] = useState<string | null>(null);
   // Xoá chưa xong (khu có thể đã xoá mềm nên không còn trong danh sách): giữ tên và câu báo riêng, để nút «Xoá lại» còn
   // đó cả khi người dùng làm việc khác, và bấm lại không cần hỏi lại.
   const [retryDelete, setRetryDelete] = useState<{ id: string; name: string; message: string } | null>(null);
@@ -77,14 +75,16 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
     return map;
   }, [buildings]);
 
+  // Đợt 9 (luật 5): TẠO khu vực cũng không khoá ô thêm — kết quả chưa rõ chỉ báo và giữ tên đang nhập; bấm «Thêm» lại thì
+  // hook gửi lại đúng mã khu cũ nên không ra khu thứ hai.
   const handleCreate = () => {
     const name = newName.trim();
-    if (busy.current || createUnknown || areasQuery.isError || buildingsQuery.isError)return;
+    if (busy.current || areasQuery.isError || buildingsQuery.isError)return;
     if (!name) {setInvalidName(true);setFailure('Nhập tên khu vực.');newNameInput.current?.focus();return;}
     busy.current=true;setFailure('');setInvalidName(false);
     createArea.mutate(
       { name },
-      { onSuccess: () => {setNewName("");busy.current=false;}, onError:error=>{if(recordWriteBlocked(error)){setCreateUnknown(recordWriteMessage(error,'tạo khu vực'));busy.current=false;}else onFailure(error,'tạo khu vực');},onSettled:()=>{busy.current=false;} },
+      { onSuccess: () => {setNewName("");busy.current=false;}, onError:error=>onFailure(error,'tạo khu vực'),onSettled:()=>{busy.current=false;} },
     );
   };
 
@@ -152,14 +152,6 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
             Xoá lại «{retryDelete.name}»
           </Button>
         </div>}
-        {createUnknown && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
-          {createUnknown}
-          <Button type="button" variant="outline" size="sm" className="mt-2 block" onClick={async () => {
-            const results = await Promise.all([areasQuery.refetch(), buildingsQuery.refetch()]);
-            // Refresh shows current state; it cannot prove completion or clear the pending request.
-            if(results.some(result=>result.isError))setFailure('Chưa tải đủ trạng thái khu vực để đối chiếu.');
-          }}>Tải lại để đối chiếu</Button>
-        </div>}
 
         {/* Ô thêm khu vực cố ý nằm trong vùng chờ: tạo/gán khu cần danh sách khu + toà đã về. */}
         <QueryRegion label="khu vực và tòa nhà" queries={[areasQuery, buildingsQuery]} skeleton="detail" rows={4}>
@@ -167,7 +159,7 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
         {/* Thêm khu vực mới */}
         <div className="flex items-center gap-2">
           <Input
-            ref={newNameInput} aria-label="Tên khu vực mới" aria-invalid={invalidName} disabled={!!createUnknown}
+            ref={newNameInput} aria-label="Tên khu vực mới" aria-invalid={invalidName}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Tên khu vực mới (vd: Quận 7, Khu A...)"
@@ -177,7 +169,7 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
           />
           <Button
             onClick={handleCreate}
-            disabled={!newName.trim() || createArea.isPending || !!createUnknown}
+            disabled={!newName.trim() || createArea.isPending}
           >
             <Plus className="h-4 w-4 mr-1" />
             Thêm

@@ -101,6 +101,8 @@ it('core unknown keeps the draft through close/reopen; the next Lưu re-sends th
  view.rerender(<BuildingFormDialog open={false} onOpenChange={close}/>);view.rerender(<BuildingFormDialog open onOpenChange={close}/>);
  expect((screen.getByPlaceholderText('Nhập tên toà nhà') as HTMLInputElement).value).toBe('Tòa draft');
  expect((screen.getByRole('button',{name:'Lưu'}) as HTMLButtonElement).disabled).toBe(false);
+ // Ô chủ sở hữu nạp lại từ máy chủ mỗi lần mở hộp (hành vi sẵn có của form chủ sở hữu): nhập lại rồi lưu.
+ fireEvent.change(screen.getByLabelText('Họ tên chủ sở hữu'),{target:{value:'Chủ đúng'}});
  fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(close).toHaveBeenCalledWith(false));
  expect(io.create).toHaveBeenCalledTimes(2);expect(io.create.mock.calls[1][0]).toEqual(io.create.mock.calls[0][0]);
  expect(io.save).toHaveBeenCalledWith('created-once',expect.objectContaining({full_name:'Chủ đúng'}));expect(io.services).toHaveBeenCalledTimes(1);
