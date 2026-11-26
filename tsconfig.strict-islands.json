@@ -1986,6 +1986,7 @@
     "src/components/shareholders/SharedFundForm.tsx",
     "src/components/shareholders/SharedFundPanel.tsx",
     "src/components/shareholders/HousePoolPanel.tsx",
+    "src/components/shareholders/HousePoolExpenseLink.tsx",
     "src/components/shareholders/ProfitPayoutCancelDialog.tsx",
     "src/lib/profitLedger/selfView.ts",
     "src/components/shareholders/MyProfitLedgerGate.tsx",

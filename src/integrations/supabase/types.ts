@@ -26429,6 +26429,15 @@ export type Database = {
         }
         Returns: Json
       }
+      house_pool_link_expenses_v1: {
+        Args: {
+          p_apply?: boolean
+          p_expected_before: number
+          p_items: Json
+          p_org: string
+        }
+        Returns: Json
+      }
       house_pool_receipt_v1: {
         Args: {
           p_kind: string

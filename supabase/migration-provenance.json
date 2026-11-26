@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-26T04:13:11.176Z",
+  "generatedAt": "2026-11-26T04:20:36.264Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 994,
-    "unknown": 81,
+    "ledger-applied": 995,
+    "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14832,13 +14832,9 @@
       "name": "quy_gop_gan_phieu_chi_goc",
       "scheme": "timestamp14",
       "sha256": "03f0fdd3f3747078f32f83496e34dfd7221df4677867e08f1076bd18293be504",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.house_pool_expenses",
-        "function:public.house_pool_link_expenses_v1",
-        "view:app_private.house_pool_expense_status",
-        "index:app_private.house_pool_expenses_org_idx"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T04:20:21.228Z|bien-nhan-backup"
       ]
     },
     {
