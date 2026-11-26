@@ -23,6 +23,7 @@ interface Props {
   onSummary?: (summary: HermesZaloSummary) => void;
   /** Câu trạng thái trợ lý do trang tính từ bằng chứng (bước 6); có thì thay cho trạng thái hàng chờ dưới dòng nick. */
   activationNote?: string | null;
+  activationCheck?: number;
 }
 interface State {
   bots: HermesZaloBot[] | null; bindings: HermesZaloBinding[] | null;
@@ -56,7 +57,7 @@ function messageFor(error: unknown, write: boolean) {
 
 /** Parent keys this workspace by user/company generation. Challenges stay in
  * component memory only and are cleared on expiry, scope change or unmount. */
-export function HermesZaloBindings({ userId, organizationId, currentScope, connections, disabled, onSummary, activationNote }: Props) {
+export function HermesZaloBindings({ userId, organizationId, currentScope, connections, disabled, onSummary, activationNote, activationCheck = 0 }: Props) {
   const client = useMemo(() => createHermesZaloClient({ userId, organizationId, currentScope }), [userId, organizationId, currentScope]);
   const [state, setState] = useState<State>(initial);
   const [accountId, setAccountId] = useState(''), [connectionId, setConnectionId] = useState('');
@@ -182,11 +183,26 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
   const showLinkSteps = !linked || linkAnother || Boolean(state.challenge);
   const botCount = state.bots?.length ?? null, provisioningState = linked?.provisioningState ?? null;
   const linkedConnectionId = linked?.connectionId ?? null;
+  const linkedBindingId = linked?.bindingId;
+  useEffect(() => {
+    if (!activationCheck || !linkedBindingId || document.visibilityState === 'hidden') return;
+    void run(false, async signal => {
+      let cursor: string | null = null;
+      do {
+        const page = await client.list({ afterBindingId: cursor }, { signal });
+        const row = page.bindings.find(item => item.bindingId === linkedBindingId);
+        if (row) return row;
+        cursor = page.nextCursor;
+      } while (cursor);
+      return null;
+    }, (row, previous) => ({ ...previous, bindings: row ? mergeBindings(previous.bindings ?? [], [row])
+      : previous.bindings?.filter(item => item.bindingId !== linkedBindingId) ?? null }));
+  }, [activationCheck, linkedBindingId, client, run]);
   useEffect(() => { onSummary?.({ bots: botCount, stage, provisioningState, connectionId: linkedConnectionId }); },
     [onSummary, botCount, stage, provisioningState, linkedConnectionId]);
   // `pending` không có câu riêng: nơi không chạy bộ đồng bộ thì hàng chờ đứng mãi ở đó, câu "đang đồng bộ" sẽ sai vô thời hạn.
   const queueNote = (value: HermesZaloBinding) => value.provisioningState === 'pending_credential' ? 'Đang chờ kết nối CRM của trợ lý.'
-    : value.provisioningState === 'restart_pending' ? 'Đang chờ quản trị viên kích hoạt trợ lý.'
+    : value.provisioningState === 'restart_pending' ? 'Hệ thống đang kích hoạt trợ lý.'
       : value.provisioningState === 'unavailable' ? 'Chưa đồng bộ được với trợ lý. Hệ thống sẽ thử lại.'
         : value.provisioningState === 'synchronized' ? 'Đã đồng bộ với trợ lý.' : null;
   const bindingNote = (value: HermesZaloBinding) => value.state !== 'active' ? null : activationNote ?? queueNote(value);

@@ -690,8 +690,8 @@ describe('one-column setup guide', () => {
     fetchMock.mockImplementation(zalo(linked('restart_pending')));
     const second = render(<HermesConnectionsPage />);
     await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
-    expect(screen.getByText('Đang chờ quản trị viên kích hoạt trợ lý.')).toBeTruthy();
-    expect(screen.getByText('Đang chờ quản trị viên kích hoạt trợ lý. Trang tự kiểm lại sau mỗi 30 giây.')).toBeTruthy();
+    expect(screen.getByText('Hệ thống đang kích hoạt trợ lý.')).toBeTruthy();
+    expect(screen.getByText('Hệ thống đang kích hoạt trợ lý. Trang tự kiểm lại sau mỗi 30 giây.')).toBeTruthy();
     expect(screen.queryByText(/Tải lại liên kết”/)).toBeNull();
     second.unmount();
     fetchMock.mockImplementation(zalo(linked('synchronized')));
@@ -701,8 +701,18 @@ describe('one-column setup guide', () => {
     expect(screen.getByText(/còn phòng nào trống/)).toBeTruthy();
     expect(fetchMock.mock.calls.some(([path]) => /\/zalo\/(begin|confirm|selectCredential|unlink)$/.test(String(path)))).toBe(false);
   });
-  // Production không chạy bộ đồng bộ hồ sơ trợ lý: hàng chờ đứng mãi ở `pending`. Bước 6 phải theo bằng chứng trợ lý đã gọi CRM.
   const quiet = { lastSuccessAt: null, lastToolCallAt: null, lastErrorCode: null, lastErrorAt: null };
+  it('finishes on the same open page when the host verifies the pairing while the connector activity is quiet', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet }]);
+    fetchMock.mockImplementation(zalo(linked('restart_pending')));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
+    fetchMock.mockImplementation(zalo(linked('synchronized')));
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await screen.findByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.');
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/zalo/list')).length).toBeGreaterThan(1);
+  });
   it('finishes step 6 from connector evidence while the queue row stays pending, without claiming "syncing"', async () => {
     statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }]);
     fetchMock.mockImplementation(zalo(linked('pending')));
@@ -720,7 +730,7 @@ describe('one-column setup guide', () => {
     fetchMock.mockImplementation(zalo(linked('pending')));
     render(<HermesConnectionsPage />);
     await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
-    expect(screen.getByText(`Chưa thấy trợ lý dùng kết nối này kể từ khi dịch vụ kết nối CRM chạy lại lúc ${at(STARTED)}. Nếu bạn vừa liên kết, nhờ quản trị viên kích hoạt trợ lý; nếu trợ lý đã chạy, nhắn thử bot trên Zalo. Trang tự kiểm lại sau mỗi 30 giây.`)).toBeTruthy();
+    expect(screen.getByText(`Chưa thấy trợ lý dùng kết nối này kể từ khi dịch vụ kết nối CRM chạy lại lúc ${at(STARTED)}. Hệ thống tự kích hoạt sau khi ghép nick. Khi trợ lý sẵn sàng, hãy nhắn thử bot trên Zalo. Trang tự kiểm lại sau mỗi 30 giây.`)).toBeTruthy();
     expect(screen.queryByText(/[Đđ]ang đồng bộ/)).toBeNull(); expect(screen.queryByText(/Tải lại liên kết”/)).toBeNull();
     expect(calls('status')).toHaveLength(0);
     statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }]);
