@@ -1,4 +1,4 @@
-import {findOwnCompatInserts,findOwnDepositIncome,recordDepositIncome} from '@/lib/depositIncomeRpc';
+import {findOwnVoucherRequests,findOwnDepositIncome,recordDepositIncome} from '@/lib/depositIncomeRpc';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,isConfirmedFinancialRejection,workflowErrorMessage,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
 import {financialReadRows} from '@/lib/financialReadValidation';
@@ -114,9 +114,10 @@ const excelSnapshotKey=(userId:string,organizationId:string)=>`ihome:excel-impor
 // Ảnh chụp bản trước không có mã phiếu dự kiến: dòng chưa rõ chỉ tra gần đúng (người tạo, loại, toà, khoản mục, ngày, số
 // tiền, tạo sau giờ kẹt, trừ phiếu đã biết) và chỉ được báo «có thể đã ghi», không gửi lại.
 // Đợt 10a: dòng thường đi ie_compat_insert_keyed_v1 với mã yêu cầu `<mã lượt>:<dòng Excel>` (cùng dạng dòng thu cọc), ảnh
-// chụp đánh dấu `keyed`. Dòng của ảnh chụp đó mà không đọc thấy phiếu theo mã phiếu thì tra đúng theo mã yêu cầu
-// (get_own_compat_inserts_v1: phiếu của chính người nhập, không cần quyền đọc phiếu); không thấy nữa là chưa ghi. Không
-// tra gần đúng cho ảnh chụp có `keyed`.
+// chụp đánh dấu `keyed`. Dòng thường của ảnh chụp đó mà không đọc thấy phiếu theo mã phiếu thì tra đúng theo mã yêu cầu
+// (get_own_income_expense_requests_v1: phiếu của chính người nhập, không cần quyền đọc phiếu); không thấy nữa là chưa ghi.
+// Dòng thu cọc vẫn tra qua get_own_deposit_income_v1 — hàm đó chỉ thấy phiếu người nhập đọc được (như bản trước). Không tra
+// gần đúng cho ảnh chụp có `keyed`.
 interface ExcelSnapshotRow {sourceRow:number;type:string;buildingId:string;itemTypeId?:string;voucherDate:string;amount:number;deposit?:boolean;voucherId?:string}
 interface ExcelSnapshot {attemptId:string;keyed?:boolean;rows:ExcelSnapshotRow[];createdVouchers:Array<{row:number;id:string;code:string|null}>;unconfirmedRows:number[];failedRows:number[]}
 /** Lệch giờ trình duyệt ↔ máy chủ chấp nhận khi tra phiếu «tạo sau giờ kẹt». Rộng chỉ làm báo «có thể đã ghi» nhiều hơn. */
@@ -212,8 +213,8 @@ async function reconcileExcelImport(pending:FinancialPendingRecord,snapshotKey:s
   if(snapshot.keyed){
     const keyedOpen=open.filter(({row,index})=>!verdicts.has(index)&&row.voucherId);
     if(keyedOpen.length){
-      const byKey=await findOwnCompatInserts(pending.organizationId,keyedOpen.map(({row})=>`${attemptKey}:${row.sourceRow}`));
-      for(const {row,index} of keyedOpen){const id=byKey.get(`${attemptKey}:${row.sourceRow}`);if(id)verdicts.set(index,{kind:'written',id,code:null});}
+      const byKey=await findOwnVoucherRequests(pending.organizationId,keyedOpen.map(({row})=>`${attemptKey}:${row.sourceRow}`));
+      for(const {row,index} of keyedOpen){const id=byKey.get(`${attemptKey}:${row.sourceRow}`)?.id;if(id)verdicts.set(index,{kind:'written',id,code:null});}
     }
     for(const {index} of open)if(!verdicts.has(index)&&settled)verdicts.set(index,{kind:'missing'});
   }
@@ -408,22 +409,29 @@ export const useImportIncomeExpenses = () => {
 
 /** Dấu ghi từ bản này: mã đợt chính là mã yêu cầu của dấu. Dấu cũ hơn chỉ biết mã đợt khi đã nhận (completedIds[0]). */
 const BATCH_ID_FROM_KEY = 'request-key';
-/** Đợt 10a: phiếu con thứ i của lượt gửi mang mã yêu cầu `<attemptId>:<i>`; dấu ghi kèm số phiếu con (`children`). */
+/**
+ * Đợt 10a: phiếu con thứ i của lượt gửi mang mã yêu cầu `<attemptId>:<i>`; dấu ghi kèm số phiếu con (`children`) và vị trí
+ * các phiếu con thu cọc (`depositAt`, chuỗi "0,3"; rỗng nếu không có).
+ */
 const CHILD_MODE_ATTEMPT = 'attempt-v1';
 
 /**
  * Đợt đã nhận mã rồi bị xoá (lỗi giữa chừng, đã dọn): tra ĐÚNG từng phiếu con của lượt trước theo mã yêu cầu (đường thường:
- * get_own_compat_inserts_v1; phiếu cọc: get_own_deposit_income_v1), cộng các phiếu con đã nhận mã. Còn phiếu nào hiệu lực
- * ⇒ báo mã để huỷ; không còn phiếu nào hiệu lực ⇒ lần trước không để lại gì: chưa ghi (lõi chỉ nhận sau 2 phút), lần gửi
- * lại là lượt mới với mã phiếu con mới. Phiếu tìm thấy mà không đọc được trạng thái ⇒ chưa kết luận.
+ * get_own_income_expense_requests_v1, không qua quyền đọc phiếu; phiếu cọc: get_own_deposit_income_v1), cộng các phiếu con
+ * đã nhận mã. Còn phiếu nào hiệu lực ⇒ báo mã để huỷ; không còn phiếu nào hiệu lực ⇒ lần trước không để lại gì: chưa ghi
+ * (lõi chỉ nhận sau 2 phút), lần gửi lại là lượt mới với mã phiếu con mới. Chưa kết luận (giữ dấu) khi: phiếu tìm thấy mà
+ * không đọc được trạng thái; hoặc phiếu con thu cọc không thấy theo mã — get_own_deposit_income_v1 chỉ thấy phiếu người gọi
+ * đọc được, nên «không thấy» chưa chắc là «chưa ghi» (review đợt 10a).
  */
-async function reconcileKeyedBatchChildren<T>(pending: FinancialPendingRecord, batchId: string, children: number): Promise<PendingReconciliation<T>> {
+async function reconcileKeyedBatchChildren<T>(pending: FinancialPendingRecord, batchId: string, children: number, depositAt: ReadonlySet<number>): Promise<PendingReconciliation<T>> {
   const keys = Array.from({ length: children }, (_, index) => `${pending.attemptId}:${index}`);
-  const byKey = await findOwnCompatInserts(pending.organizationId, keys);
+  const byKey = await findOwnVoucherRequests(pending.organizationId, keys);
   const ids = new Set(pending.completedIds.filter(id => id !== batchId));
-  for (const key of keys) {
-    const id = byKey.get(key) ?? await findOwnDepositIncome(pending.organizationId, key);
+  let depositUnseen = false;
+  for (const [index, key] of keys.entries()) {
+    const id = depositAt.has(index) ? await findOwnDepositIncome(pending.organizationId, key) : byKey.get(key)?.id;
     if (id) ids.add(id);
+    else if (depositAt.has(index)) depositUnseen = true;
   }
   if (ids.size) {
     const { data: rows, error } = await supabase.from('income_expenses').select('id, code, approval_status, deleted_at').in('id', [...ids]);
@@ -437,6 +445,7 @@ async function reconcileKeyedBatchChildren<T>(pending: FinancialPendingRecord, b
       return { outcome: 'already-written', message: `Phiếu tổng lần trước chưa hoàn tất; còn phiếu con chưa huỷ (mã ${codes.join(', ')}). Kiểm tra và huỷ các phiếu này trước khi lập lại.`, recordIds: codes };
     }
   }
+  if (depositUnseen) return null;
   return { outcome: 'not-written' };
 }
 /** Lệch giờ trình duyệt ↔ máy chủ chấp nhận khi tra đợt "tạo sau giờ kẹt" (chỉ cho dấu cũ chưa nhận mã đợt). */
@@ -473,7 +482,10 @@ async function reconcileBatchCreate<T>(pending: FinancialPendingRecord, type: st
   const batchConfirmed = pending.completedIds.includes(batchId);
   if (!batchConfirmed) return { outcome: 'not-written' };
   const children = pending.meta?.childMode === CHILD_MODE_ATTEMPT ? pending.meta.children : undefined;
-  if (typeof children === 'number' && Number.isInteger(children) && children > 0 && children <= 500) return reconcileKeyedBatchChildren(pending, batchId, children);
+  const depositAt = pending.meta?.childMode === CHILD_MODE_ATTEMPT ? pending.meta.depositAt : undefined;
+  if (typeof children === 'number' && Number.isInteger(children) && children > 0 && children <= 500 && typeof depositAt === 'string' && /^(\d+(,\d+)*)?$/.test(depositAt)) {
+    return reconcileKeyedBatchChildren(pending, batchId, children, new Set(depositAt ? depositAt.split(',').map(Number) : []));
+  }
   const childIds = pending.completedIds.filter(id => id !== batchId);
   if (childIds.length) {
     const { data: rows, error } = await supabase.from('income_expenses').select('id, code, approval_status, deleted_at').in('id', childIds);
@@ -506,6 +518,11 @@ export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => 
         await loadIncomeExpenseAccountingClassResolver(
           input.items.map((item) => item.income_expense_type_id),
         );
+      // Đợt 10a: vị trí các phiếu con thu cọc ghi vào dấu (phép đối chiếu không kết luận «chưa ghi» cho chúng khi không thấy).
+      // Xét TRƯỚC khi ghi dấu: hạng mục không đọc được thì báo lỗi ngay, chưa ghi gì.
+      const depositAt = input.type === 'INCOME'
+        ? input.items.flatMap((item, index) => accountingClassFor(item.income_expense_type_id) === 'DEPOSIT' ? [index] : []).join(',')
+        : '';
 
       return runFinancialPending({namespace:"voucher-batch-create",userId:user.id,organizationId:selectedOrganizationId ?? "",businessKey:input.type},async progress=>{
       // 1. INSERT batch metadata. Mã đợt = mã yêu cầu của dấu (UUID do trình duyệt sinh): phép đối chiếu tra đúng
@@ -628,7 +645,7 @@ export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => 
       }
 
       return { batch, voucherCount: childVouchers.length, voucherIds: childVouchers.map(v=>v.id) };
-      },undefined,{operation:'tạo phiếu tổng',meta:{batchId:BATCH_ID_FROM_KEY,childMode:CHILD_MODE_ATTEMPT,children:input.items.length},reconcile:pending=>reconcileBatchCreate(pending,input.type)});
+      },undefined,{operation:'tạo phiếu tổng',meta:{batchId:BATCH_ID_FROM_KEY,childMode:CHILD_MODE_ATTEMPT,children:input.items.length,depositAt},reconcile:pending=>reconcileBatchCreate(pending,input.type)});
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });

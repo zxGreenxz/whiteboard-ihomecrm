@@ -54,24 +54,27 @@ export async function findOwnDepositIncome(org: string, requestKey: string): Pro
 }
 
 /** Mỗi lần đọc mang tối đa chừng này mã (một lượt nhập Excel có thể có hàng trăm dòng). */
-const COMPAT_LOOKUP_CHUNK = 100;
-const compatInsertRows = z.array(z.object({ voucher_id: z.string().regex(/^[0-9a-z-]{1,64}$/i), request_key: z.string() }));
+const VOUCHER_LOOKUP_CHUNK = 100;
+const voucherRequestRows = z.array(z.object({ voucher_id: z.string().regex(/^[0-9a-z-]{1,64}$/i), write_path: z.enum(['compat', 'canonical']), request_key: z.string() }));
+export interface OwnVoucherRequest { id: string; path: 'compat' | 'canonical' }
 
 /**
- * Phiếu mà CHÍNH người đang đăng nhập đã lập qua `ie_compat_insert_keyed_v1` với từng mã yêu cầu (đợt 10a). Máy chủ trả
- * theo sổ giữ mã, không theo quyền đọc phiếu. Mã chưa có phiếu thì vắng trong kết quả. Đọc hỏng thì ném (chưa kết luận).
+ * Phiếu thu chi mà CHÍNH người đang đăng nhập đã lập XONG với từng mã yêu cầu (đợt 10a), qua đường compat có mã
+ * (`ie_compat_insert_keyed_v1`) hoặc đường chính (`create_income_expense_v1`). Máy chủ trả theo sổ giữ mã, không theo quyền
+ * đọc phiếu. Mã chưa có phiếu thì vắng trong kết quả. Đọc hỏng thì ném (chưa kết luận). Mã máy chủ trả ngoài danh sách
+ * đã hỏi bị bỏ qua.
  */
-export async function findOwnCompatInserts(org: string, requestKeys: readonly string[]): Promise<Map<string, string>> {
-  type Read = (name: 'get_own_compat_inserts_v1', args: { p_organization_id: string; p_request_keys: string[] }) =>
+export async function findOwnVoucherRequests(org: string, requestKeys: readonly string[]): Promise<Map<string, OwnVoucherRequest>> {
+  type Read = (name: 'get_own_income_expense_requests_v1', args: { p_organization_id: string; p_request_keys: string[] }) =>
     PromiseLike<{ data: unknown; error: unknown }>;
   const client = supabase as unknown as { rpc: Read };
-  const found = new Map<string, string>();
+  const found = new Map<string, OwnVoucherRequest>();
   const keys = [...new Set(requestKeys)];
-  for (let start = 0; start < keys.length; start += COMPAT_LOOKUP_CHUNK) {
-    const part = keys.slice(start, start + COMPAT_LOOKUP_CHUNK);
-    const { data, error } = await client.rpc('get_own_compat_inserts_v1', { p_organization_id: org, p_request_keys: part });
+  for (let start = 0; start < keys.length; start += VOUCHER_LOOKUP_CHUNK) {
+    const part = keys.slice(start, start + VOUCHER_LOOKUP_CHUNK);
+    const { data, error } = await client.rpc('get_own_income_expense_requests_v1', { p_organization_id: org, p_request_keys: part });
     if (error) throw error;
-    for (const row of compatInsertRows.parse(data)) if (part.includes(row.request_key)) found.set(row.request_key, row.voucher_id);
+    for (const row of voucherRequestRows.parse(data)) if (part.includes(row.request_key)) found.set(row.request_key, { id: row.voucher_id, path: row.write_path });
   }
   return found;
 }

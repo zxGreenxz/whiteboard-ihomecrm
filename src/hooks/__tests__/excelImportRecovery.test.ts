@@ -95,8 +95,8 @@ beforeEach(() => {
   };
   io.server.rpcHandlers.ie_compat_insert_v2 = compat;
   io.server.rpcHandlers.ie_compat_insert_keyed_v1 = compat;
-  io.server.rpcHandlers.get_own_compat_inserts_v1 = args => ({
-    data: (args.p_request_keys as string[]).flatMap(k => (compatClaims.has(k) ? [{ voucher_id: compatClaims.get(k)!.id, request_key: k }] : [])), error: null });
+  io.server.rpcHandlers.get_own_income_expense_requests_v1 = args => ({
+    data: (args.p_request_keys as string[]).flatMap(k => (compatClaims.has(k) ? [{ voucher_id: compatClaims.get(k)!.id, write_path: 'compat', request_key: k }] : [])), error: null });
   io.server.rpcHandlers.create_deposit_income_v1 = args => {
     const request = String(args.p_request_key);
     let id = depositKeys.get(request);
@@ -410,7 +410,7 @@ it('đợt 10a: tra theo mã yêu cầu hỏng ⇒ chưa kết luận, không g�
   plan.push('after');
   await submit([line(1)]);
   io.server.visible.income_expenses = () => false;
-  io.server.failNext('get_own_compat_inserts_v1', 'rpc', 'drop-before');
+  io.server.failNext('get_own_income_expense_requests_v1', 'rpc', 'drop-before');
   advance(PENDING_SETTLE_MS + 1_000);
   await expect(submit([line(1)])).rejects.toThrow(/đối chiếu/);
   expect(compatCalls()).toHaveLength(1);

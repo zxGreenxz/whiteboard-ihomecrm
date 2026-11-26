@@ -44,7 +44,7 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:io.rpc,from:(table:
 vi.mock('@tanstack/react-query',()=>({useMutation:(o:unknown)=>o,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1',user_metadata:{full_name:'Tâm'}})}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'o1'})}));
-vi.mock('../accountingClass',()=>({loadIncomeExpenseAccountingClassResolver:async()=>()=>'PNL'}));
+vi.mock('../accountingClass',()=>({loadIncomeExpenseAccountingClassResolver:async()=>(id:string)=>id==='tcoc'?'DEPOSIT':'PNL'}));
 vi.mock('sonner',()=>({toast:{error:vi.fn(),success:vi.fn(),info:vi.fn(),warning:vi.fn()}}));
 import {useCreateIncomeExpenseBatch} from '../batch';
 import {FinancialPendingError,PENDING_SETTLE_MS,financialPending} from '@/lib/financialPending';
@@ -78,9 +78,9 @@ beforeEach(()=>{
       if(f==='lost')throw new TypeError('Failed to fetch');
       return {data:{id},error:null};
     }
-    if(name==='get_own_compat_inserts_v1'){
+    if(name==='get_own_income_expense_requests_v1'){
       const wanted=args.p_request_keys as string[];
-      return {data:wanted.flatMap(k=>io.claims.has(k)?[{voucher_id:io.claims.get(k),request_key:k}]:[]),error:null};
+      return {data:wanted.flatMap(k=>io.claims.has(k)?[{voucher_id:io.claims.get(k),write_path:'compat',request_key:k}]:[]),error:null};
     }
     if(name==='get_own_deposit_income_v1')return {data:null,error:null};
     if(name==='ie_compat_cancel_v2'){
@@ -166,6 +166,18 @@ describe('phiếu tổng: mã đợt do trình duyệt sinh',()=>{
     const calls=io.rpc.mock.calls.filter(c=>c[0]==='ie_compat_insert_keyed_v1').length;
     await expect(submit()).rejects.toBeInstanceOf(FinancialPendingError);
     expect(io.rpc.mock.calls.filter(c=>c[0]==='ie_compat_insert_keyed_v1')).toHaveLength(calls);
+  });
+  it('đợt 10a (review N2): phiếu con thu cọc không tới / không thấy theo mã ⇒ chưa kết luận (tra cọc chỉ thấy phiếu đọc được), không lập lượt mới',async()=>{
+    const depositInput={...input,type:'INCOME',items:[{...item,income_expense_type_id:'tcoc',room_id:'r1'},{...item,building_id:'b2'}]};
+    const submitIncome=()=>(renderHook(()=>useCreateIncomeExpenseBatch()).result.current as unknown as {mutationFn:(i:unknown)=>Promise<unknown>}).mutationFn(depositInput);
+    io.fail.create_deposit_income_v1='drop';
+    await expect(submitIncome()).rejects.toBeInstanceOf(VoucherPartialError);
+    expect(batches()).toHaveLength(0);
+    expect(financialPending.read({...scope,businessKey:'INCOME'})?.meta).toMatchObject({depositAt:'0',children:2});
+    advance(PENDING_SETTLE_MS*5);
+    await expect(submitIncome()).rejects.toBeInstanceOf(FinancialPendingError);
+    expect(batches()).toHaveLength(0);
+    expect(io.rpc.mock.calls.filter(c=>c[0]==='create_deposit_income_v1')).toHaveLength(1);
   });
   it('dấu của bản trước đợt 10a (không số phiếu con): đợt đã dọn mà phiếu con chưa biết mã ⇒ giữ dấu, không gửi lại',async()=>{
     const batchId='00000000-0000-4000-8000-0000000000bb';

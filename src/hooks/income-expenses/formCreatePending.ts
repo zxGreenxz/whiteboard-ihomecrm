@@ -1,4 +1,4 @@
-import { ConfirmedDepositIncome, findOwnCompatInserts, findOwnDepositIncome } from '@/lib/depositIncomeRpc';
+import { ConfirmedDepositIncome, findOwnVoucherRequests, findOwnDepositIncome } from '@/lib/depositIncomeRpc';
 import { supabase } from "@/integrations/supabase/client";
 import { financialPending, type FinancialPendingRecord, type PendingReconciliation } from "@/lib/financialPending";
 import { runFinancialPending } from "@/lib/financialPendingAction";
@@ -15,10 +15,10 @@ import type { CreateIncomeExpenseInput } from "./types";
 //     người, mã) rồi mới giữ mã; cùng nội dung trả lại phiếu cũ, khác nội dung 23505; đường chính đã lập phiếu với cùng
 //     khoá thì 23505 kèm mã phiếu đó. Bản trước đợt 10a gửi compat không khoá, chỉ có `p_row.id` (khoá chính chặn phiếu
 //     thứ hai).
-// Đối chiếu tra đúng theo mã: phiếu compat theo khoá (get_own_compat_inserts_v1, không cần quyền đọc phiếu) rồi theo mã
-// phiếu; không thấy thì gửi lại cùng khoá. Đổi đường giữa hai lần gửi thì chờ lần trước chắc chắn kết thúc (2 phút) rồi
-// gửi lại cùng khoá: đường compat tự thấy khoá đường chính đã ghi xong (23505 kèm mã phiếu); đường chính không đọc khoá
-// của compat, nhưng phép đối chiếu vừa tra phiếu compat theo khoá ngay trước đó và lần compat cũ đã kết thúc.
+// Đối chiếu tra đúng theo khoá (get_own_income_expense_requests_v1: phiếu của chính người gọi đã ghi XONG qua đường compat
+// có mã HOẶC đường chính, không cần quyền đọc phiếu) rồi theo mã phiếu; thấy ⇒ báo đã lập, không gửi. Không thấy thì gửi
+// lại cùng khoá. Đổi đường hoặc đổi hạng mục giữa hai lần gửi thì chờ lần trước chắc chắn kết thúc (2 phút — lệnh còn
+// chạy chưa có claim để tra) rồi gửi lại cùng khoá; compat còn tự thấy khoá đường chính đã ghi xong (23505 kèm mã phiếu).
 // Dấu ghi trước đợt 3 không mang mã nên chỉ tra gần đúng (cùng người tạo, loại, toà, phòng, sau giờ kẹt) — lối ra một lần.
 
 /** Dấu mang mã yêu cầu đã gửi lên máy chủ theo hai đường trên. */
@@ -120,21 +120,27 @@ export async function createVoucherFromForm(data: CreateIncomeExpenseInput, ctx:
         const id=await findOwnDepositIncome(ctx.organizationId,`ie-create-${pending.requestKey}`);
         if (id) return {result:new ConfirmedDepositIncome(id)};
       }
-      // Đợt 10a: đường compat có khoá của lần trước — tra đúng phiếu theo khoá, không phụ thuộc quyền đọc phiếu.
+      // Đợt 10a: tra đúng phiếu của lần trước theo khoá (cả hai đường), không phụ thuộc quyền đọc phiếu.
       const key = `ie-create-${pending.requestKey}`;
-      const keyedId = (await findOwnCompatInserts(ctx.organizationId, [key])).get(key);
-      // Đường compat của lần trước dùng đúng mã này làm mã phiếu: tra thẳng (dấu của bản trước đợt 10a, compat không khoá).
-      const exact = await readVoucherById(keyedId ?? pending.requestKey);
-      if (exact || keyedId) {
-        const code = exact?.code || exact?.id || keyedId!;
+      const hit = (await findOwnVoucherRequests(ctx.organizationId, [key])).get(key);
+      // Đường ghi có thể đã khác giữa hai lần: điều kiện phía trình duyệt đổi (bật/tắt phiếu lặp…), hoặc hạng mục đổi
+      // (hạng mục hạn chế / chỉ-hệ-thống làm đường chính từ chối hoặc rơi sang compat TRƯỚC bước claim).
+      const sameRoute = pending.meta.canonical === canonical && pending.meta.items === items;
+      // Đường chính đã ghi, cùng đường: gửi lại cùng khoá để máy chủ trả lại đúng phiếu cũ (hoặc 23505 nếu nội dung khác).
+      if (hit?.path === "canonical" && sameRoute) {
+        resend = true;
+        return { outcome: "not-written", serverDedupesRequestKey: true };
+      }
+      // Đã ghi ở đường compat (theo khoá), hoặc dấu của bản trước đợt 10a (compat không khoá, mã phiếu = mã yêu cầu).
+      const exact = await readVoucherById(hit?.id ?? pending.requestKey);
+      if (exact || hit) {
+        const code = exact?.code || exact?.id || hit!.id;
         return { outcome: "already-written", message: `Phiếu ${code} đã được lập ở lần gửi trước. Mở danh sách phiếu để kiểm tra trước khi lập thêm.`, recordIds: [code] };
       }
       resend = true;
-      // Đường ghi có thể đã khác giữa hai lần: điều kiện phía trình duyệt đổi (bật/tắt phiếu lặp…), hoặc hạng mục đổi
-      // (hạng mục chỉ-hệ-thống làm đường chính trả 0A000 TRƯỚC bước claim rồi rơi sang compat). Gửi lại CÙNG khoá, nhưng
-      // chỉ sau khi lần trước chắc chắn đã kết thúc: compat thấy khoá đường chính đã ghi xong (23505 kèm mã phiếu), còn
-      // khoá compat thì vừa tra ở trên. Không còn tra gần đúng (đợt 10a).
-      if (pending.meta.canonical !== canonical || pending.meta.items !== items) return { outcome: "not-written" };
+      // Chưa thấy phiếu ở cả hai đường. Đổi đường / hạng mục: gửi lại CÙNG khoá nhưng chỉ khi lần trước chắc chắn đã kết
+      // thúc (lệnh còn chạy chưa có claim để tra); compat còn tự thấy khoá đường chính đã ghi xong. Không tra gần đúng.
+      if (!sameRoute) return { outcome: "not-written" };
       // Cùng đường: gửi lại cùng mã. Máy chủ chờ lệnh cũ còn chạy rồi trả phiếu cũ hoặc báo mã đã dùng.
       return { outcome: "not-written", serverDedupesRequestKey: true };
     },

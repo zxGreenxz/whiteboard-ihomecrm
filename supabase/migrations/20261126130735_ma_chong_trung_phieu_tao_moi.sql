@@ -13,10 +13,11 @@
 --      dung → cùng mã cùng nội dung đã xong thì trả lại kết quả đã lưu; khác nội dung thì 23505; đường chính
 --      (create_income_expense_v1) đã ghi xong với đúng mã này cho cùng người, cùng toà thì 23505 kèm mã phiếu → mới gọi
 --      ie_compat_insert_v2 → lưu kết quả. Giữ mã, ghi phiếu và lưu kết quả cùng một giao dịch.
---   2. public.get_own_compat_inserts_v1(p_organization_id, p_request_keys[]) — HÀM MỚI chỉ đọc: với từng mã yêu cầu, mã
---      phiếu mà CHÍNH người gọi đã lập qua hàm 1 (như get_own_deposit_income_v1 của phiếu cọc). Trình duyệt dùng để đối
---      chiếu đúng từng dòng nhập Excel / từng phiếu con của phiếu tổng / phiếu của form, không cần quyền đọc phiếu và không
---      phải dựng lại nội dung để gửi lại. Chỉ trả mã phiếu, không trả nội dung.
+--   2. public.get_own_income_expense_requests_v1(p_organization_id, p_request_keys[]) — HÀM MỚI chỉ đọc: với từng mã yêu
+--      cầu, mã phiếu mà CHÍNH người gọi đã lập xong qua hàm 1 hoặc qua đường chính create_income_expense_v1 (như
+--      get_own_deposit_income_v1 của phiếu cọc). Trình duyệt dùng để đối chiếu đúng từng dòng nhập Excel / từng phiếu con
+--      của phiếu tổng / phiếu của form (kể cả khi đổi đường hay đổi hạng mục giữa hai lần gửi), không cần quyền đọc phiếu
+--      và không phải dựng lại nội dung để gửi lại. Chỉ trả mã phiếu và đường ghi, không trả nội dung.
 --   3. public.propose_reconciliation(…, p_request_key DEFAULT NULL) — THAY hàm 5 tham số (md5 prosrc 8fc864e0…) bằng hàm
 --      6 tham số. Không truyền mã ⇒ chạy đúng từng câu của thân cũ (chỉ thêm hai phép thử `v_key IS NOT NULL`). Phải
 --      DROP rồi CREATE: CREATE OR REPLACE với danh sách tham số khác sẽ để lại hai bản trùng tên và PostgREST không chọn
@@ -32,6 +33,7 @@
 
 DO $requires$
 DECLARE
+  r record;
   v_md5 text;
 BEGIN
   IF to_regclass('app_private.canonical_write_operations') IS NULL
@@ -46,13 +48,21 @@ BEGIN
     RAISE EXCEPTION 'ma_chong_trung_phieu_tao_moi: thiếu nền (bảng giữ mã, hàm thành viên hoặc bảng phiếu)' USING ERRCODE = '55000';
   END IF;
 
-  -- ie_compat_insert_v2 KHÔNG bị thay, nhưng hàm bọc chép cách suy công ty và dựa vào phiếu trả về {id, approval_status}:
-  -- thân đổi thì dừng để rà lại hàm bọc.
-  SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5 FROM pg_catalog.pg_proc p
-   WHERE p.oid = to_regprocedure('public.ie_compat_insert_v2(jsonb,jsonb)');
-  IF v_md5 IS DISTINCT FROM '342adaf725191f931739db5ef8c54620' THEN
-    RAISE EXCEPTION 'ie_compat_insert_v2 KHÁC thân đã rà (md5 %) — DỪNG, đối chiếu thân đang chạy', v_md5 USING ERRCODE = '55000';
-  END IF;
+  -- Ba hàm KHÔNG bị thay nhưng được dựa vào — thân đổi thì dừng để rà lại:
+  --   ie_compat_insert_v2: hàm bọc chép cách suy công ty và dựa vào phiếu trả về {id, approval_status};
+  --   create_income_expense_v1: hàm bọc và hàm tra đọc claim của nó (thao tác income_expense.create_draft.v1, phạm vi = toà,
+  --     claim chỉ còn khi đã ghi xong cùng giao dịch với phiếu);
+  --   ie_compat_actor_v2: phép kiểm thành viên trước khi khoá.
+  FOR r IN SELECT * FROM (VALUES
+      ('public.ie_compat_insert_v2(jsonb,jsonb)', '342adaf725191f931739db5ef8c54620'),
+      ('public.create_income_expense_v1(text,text,uuid,uuid,uuid,uuid,text,text,text,uuid,jsonb,boolean,text,date,jsonb,text)', '2a410d8a20e58251ec8fa5974078c00e'),
+      ('app_private.ie_compat_actor_v2(uuid)', '541d14304ddcb274c30eeb74a873504d')
+    ) AS v(fn, base_md5) LOOP
+    SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5 FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure(r.fn);
+    IF v_md5 IS DISTINCT FROM r.base_md5 THEN
+      RAISE EXCEPTION '% KHÁC thân đã rà (md5 %) — DỪNG, đối chiếu thân đang chạy', r.fn, v_md5 USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
 
   -- propose_reconciliation: [thân production 5 tham số, thân của chính tệp này 6 tham số (lượt hai)].
   IF to_regprocedure('public.propose_reconciliation(uuid,date,numeric,uuid,text)') IS NOT NULL THEN
@@ -208,18 +218,22 @@ REVOKE ALL ON FUNCTION public.ie_compat_insert_keyed_v1(jsonb, jsonb, text) FROM
 GRANT EXECUTE ON FUNCTION public.ie_compat_insert_keyed_v1(jsonb, jsonb, text) TO authenticated;
 
 -- ── 2. Tra phiếu của chính mình theo mã yêu cầu (chỉ đọc) ──────────────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION public.get_own_compat_inserts_v1(p_organization_id uuid, p_request_keys text[])
- RETURNS TABLE(voucher_id uuid, request_key text)
+-- Hai đường ghi phiếu thu chi giữ mã ở cùng sổ: compat (hàm 1, phạm vi = công ty) và đường chính create_income_expense_v1
+-- (income_expense.create_draft.v1, phạm vi = toà). Claim chỉ còn khi giao dịch đã ghi xong phiếu, nên «có dòng» = đã ghi.
+CREATE OR REPLACE FUNCTION public.get_own_income_expense_requests_v1(p_organization_id uuid, p_request_keys text[])
+ RETURNS TABLE(voucher_id uuid, write_path text, request_key text)
  LANGUAGE sql
  STABLE
  SECURITY DEFINER
  SET search_path TO ''
 AS $function$
-  SELECT o.subject_id, o.idempotency_key
+  SELECT o.subject_id,
+         CASE o.operation WHEN 'income_expense.compat_insert.v1' THEN 'compat' ELSE 'canonical' END,
+         o.idempotency_key
     FROM app_private.canonical_write_operations o
    WHERE o.organization_id = p_organization_id
-     AND o.operation = 'income_expense.compat_insert.v1'
-     AND o.subject_scope = p_organization_id::text
+     AND ((o.operation = 'income_expense.compat_insert.v1' AND o.subject_scope = p_organization_id::text)
+          OR o.operation = 'income_expense.create_draft.v1')
      AND o.actor_id = auth.uid()
      AND o.idempotency_key = ANY(p_request_keys)
      AND o.completed_at IS NOT NULL
@@ -227,10 +241,10 @@ AS $function$
      AND NOT (public.is_super_admin() AND p_organization_id = ANY(public.sandbox_org_ids()))
 $function$;
 
-COMMENT ON FUNCTION public.get_own_compat_inserts_v1(uuid, text[]) IS
-  'For each request key: the voucher id created by the calling user through ie_compat_insert_keyed_v1. Keys without a completed voucher are absent.';
-REVOKE ALL ON FUNCTION public.get_own_compat_inserts_v1(uuid, text[]) FROM PUBLIC, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.get_own_compat_inserts_v1(uuid, text[]) TO authenticated;
+COMMENT ON FUNCTION public.get_own_income_expense_requests_v1(uuid, text[]) IS
+  'For each request key: the voucher id the calling user created through ie_compat_insert_keyed_v1 (write_path compat) or create_income_expense_v1 (write_path canonical). Keys without a completed voucher are absent.';
+REVOKE ALL ON FUNCTION public.get_own_income_expense_requests_v1(uuid, text[]) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.get_own_income_expense_requests_v1(uuid, text[]) TO authenticated;
 
 -- ── 3. Đề nghị đối soát sổ nhận mã yêu cầu tuỳ chọn ─────────────────────────────────────────────────────────────────────
 DROP FUNCTION IF EXISTS public.propose_reconciliation(uuid, date, numeric, uuid, text);
@@ -381,7 +395,7 @@ DECLARE
 BEGIN
   FOR r IN SELECT * FROM (VALUES
       ('public.ie_compat_insert_keyed_v1(jsonb,jsonb,text)', 'fafe4725225e43f7198f6143558bbedd', false),
-      ('public.get_own_compat_inserts_v1(uuid,text[])', '336c87ce66829951e117bd0af50e8cc4', false),
+      ('public.get_own_income_expense_requests_v1(uuid,text[])', '7a73bd188218812f42d0dcb84631f1b2', false),
       ('public.propose_reconciliation(uuid,date,numeric,uuid,text,text)', 'a264d586a81778bbeaab4ee60bca50c9', true),
       ('public.ie_compat_insert_v2(jsonb,jsonb)', '342adaf725191f931739db5ef8c54620', false)
     ) AS v(fn, file_md5, service_role_ok) LOOP
@@ -401,7 +415,7 @@ BEGIN
     RAISE EXCEPTION 'ma_chong_trung_phieu_tao_moi: propose_reconciliation phải còn đúng một bản' USING ERRCODE = '55000';
   END IF;
   IF (SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-       WHERE n.nspname = 'public' AND p.proname IN ('ie_compat_insert_v2', 'ie_compat_insert_keyed_v1', 'get_own_compat_inserts_v1')) <> 3 THEN
+       WHERE n.nspname = 'public' AND p.proname IN ('ie_compat_insert_v2', 'ie_compat_insert_keyed_v1', 'get_own_income_expense_requests_v1')) <> 3 THEN
     RAISE EXCEPTION 'ma_chong_trung_phieu_tao_moi: số bản của ba hàm phiếu compat sai' USING ERRCODE = '55000';
   END IF;
 END

@@ -70,9 +70,10 @@ export const useProposeReconciliation = () => {
       };
       const { data, error } = await supabase.rpc('propose_reconciliation', params);
       // Gửi lại cùng mã mà máy chủ báo mã đã dùng với nội dung khác: lần trước ĐÃ tạo đề nghị (với số đếm/ghi chú cũ).
-      if (resend && error && String((error as {code?:unknown}).code??'')==='23505') {
+      // Chỉ nhận đúng lỗi «mã đã dùng» của hàm này; DETAIL là mã dòng đã có (chỉ nhận một mã gọn).
+      if (resend && error && String((error as {code?:unknown}).code??'')==='23505' && (error as {hint?:unknown}).hint==='reconciliation_request_key_payload_mismatch') {
         const details=String((error as {details?:unknown}).details??'');
-        throw new FinancialAlreadyRecordedError('Đề nghị đối soát này đã được tạo ở lần gửi trước (nội dung lúc đó khác nội dung đang gửi). Mở danh sách đối soát để kiểm tra trước khi tạo lại.',details?[details]:[]);
+        throw new FinancialAlreadyRecordedError('Đề nghị đối soát này đã được tạo ở lần gửi trước (nội dung lúc đó khác nội dung đang gửi). Mở danh sách đối soát để kiểm tra trước khi tạo lại.',/^[0-9a-z-]{1,64}$/i.test(details)?[details]:[]);
       }
       if (error) throw error;
       const receipt=reconciliationReceipt(data);

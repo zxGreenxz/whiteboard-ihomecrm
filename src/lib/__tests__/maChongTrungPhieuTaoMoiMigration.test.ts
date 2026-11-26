@@ -27,10 +27,12 @@ function liveBefore(name: string): string {
       const tag = text.slice(start).match(/\bAS\s+(\$[A-Za-z_]*\$)/i);
       if (!tag || tag.index === undefined) break;
       const bodyStart = start + tag.index + tag[0].length;
-      const end = text.indexOf(`${tag[1]};`, bodyStart);
-      if (end < 0) break;
-      sql = text.slice(start, end + tag[1].length + 1);
-      from = end + 1;
+      // Thẻ đóng có thể đứng riêng một dòng rồi mới tới `;` (hoặc tới LANGUAGE …;): câu lệnh hết ở `;` đầu tiên sau thẻ.
+      const end = text.indexOf(tag[1], bodyStart);
+      const stop = end < 0 ? -1 : text.indexOf(';', end + tag[1].length);
+      if (stop < 0) break;
+      sql = text.slice(start, stop + 1);
+      from = stop + 1;
     }
   }
   if (!sql) throw new Error(`Không thấy định nghĩa trước của ${name}`);
@@ -89,7 +91,7 @@ const keyed = (actor: string, row: Row, items: Row[], key: string | null) =>
 /** Mã phiếu theo mã yêu cầu như trình duyệt đọc (một hàng mỗi mã đã xong), gom lại thành {mã yêu cầu: mã phiếu}. */
 const lookup = async (actor: string, organization: string, keys: string[]) => {
   const r = await asUser(actor, `SELECT coalesce(jsonb_object_agg(x.request_key, x.voucher_id), '{}'::jsonb) AS r
-    FROM public.get_own_compat_inserts_v1($1::uuid, $2::text[]) x`, [organization, keys]);
+    FROM public.get_own_income_expense_requests_v1($1::uuid, $2::text[]) x`, [organization, keys]);
   return r.r as Record<string, string>;
 };
 const propose = (actor: string, args: { counted: number; note?: string | null; ma?: string | null; counterparty?: string | null }) =>
@@ -172,9 +174,6 @@ beforeAll(async () => {
     ${GUARD}
     CREATE TRIGGER canonical_write_operations_immutable BEFORE DELETE OR UPDATE ON app_private.canonical_write_operations
       FOR EACH ROW EXECUTE FUNCTION app_private.guard_canonical_write_operation();
-    CREATE FUNCTION app_private.ie_compat_actor_v2(p_org uuid) RETURNS TABLE(user_id uuid, membership_id uuid) LANGUAGE sql STABLE AS
-      $$ SELECT m.user_id, m.id FROM public.organization_memberships m
-          WHERE m.user_id = auth.uid() AND m.organization_id = p_org AND m.status = 'ACTIVE' LIMIT 1 $$;
     CREATE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE AS
       $$ SELECT coalesce(array_agg(m.organization_id), '{}') FROM public.organization_memberships m
           WHERE m.user_id = auth.uid() AND m.status = 'ACTIVE' $$;
@@ -195,8 +194,12 @@ beforeAll(async () => {
     INSERT INTO income_expenses(organization_id, type, name, account_id, voucher_date, total_amount, approval_status)
       VALUES ('${org}', 'INCOME', 'Thu tiền phòng', '${account}', '2026-11-10', 250000, 'APPROVED');
   `);
+  // Thân đang sống (md5 = production) của các hàm bị thay / được dựa vào. create_income_expense_v1 chỉ cần có mặt đúng
+  // thân cho khối ghim md5 (test không gọi nó; claim của nó được dựng tay): tạo không kiểm thân vì PGlite thiếu bảng nó đọc.
+  await db.exec(liveBefore('app_private.ie_compat_actor_v2'));
   await db.exec(liveBefore('public.ie_compat_insert_v2'));
   await db.exec(liveBefore('public.propose_reconciliation'));
+  await db.exec(`SET check_function_bodies = off; ${liveBefore('public.create_income_expense_v1')} RESET check_function_bodies;`);
   await db.exec(`
     REVOKE ALL ON FUNCTION public.ie_compat_insert_v2(jsonb, jsonb) FROM PUBLIC;
     GRANT EXECUTE ON FUNCTION public.ie_compat_insert_v2(jsonb, jsonb) TO authenticated;
@@ -212,6 +215,8 @@ beforeAll(async () => {
   });
   expect(await md5Of('public.ie_compat_insert_v2(jsonb,jsonb)')).toBe('342adaf725191f931739db5ef8c54620');
   expect(await md5Of('public.propose_reconciliation(uuid,date,numeric,uuid,text)')).toBe('8fc864e0c24e2809cb5ef9fa3b67de66');
+  expect(await md5Of('public.create_income_expense_v1(text,text,uuid,uuid,uuid,uuid,text,text,text,uuid,jsonb,boolean,text,date,jsonb,text)')).toBe('2a410d8a20e58251ec8fa5974078c00e');
+  expect(await md5Of('app_private.ie_compat_actor_v2(uuid)')).toBe('541d14304ddcb274c30eeb74a873504d');
   await db.exec(migrationSql);
   await db.exec(migrationSql);
 }, 60000);
@@ -235,7 +240,7 @@ describe('migration 10a: chạy lại và hình dạng', () => {
   });
 
   it('hai hàm mới: DEFINER, search_path ghim, chỉ authenticated gọi được', async () => {
-    for (const fn of ['public.ie_compat_insert_keyed_v1(jsonb,jsonb,text)', 'public.get_own_compat_inserts_v1(uuid,text[])']) {
+    for (const fn of ['public.ie_compat_insert_keyed_v1(jsonb,jsonb,text)', 'public.get_own_income_expense_requests_v1(uuid,text[])']) {
       const r = await one(`SELECT prosecdef AS definer, proconfig IS NOT NULL AS pinned,
         has_function_privilege('authenticated', '${fn}', 'EXECUTE') AS a, has_function_privilege('anon', '${fn}', 'EXECUTE') AS n,
         has_function_privilege('service_role', '${fn}', 'EXECUTE') AS s FROM pg_proc WHERE oid = to_regprocedure('${fn}')`);
@@ -355,7 +360,7 @@ describe('ie_compat_insert_keyed_v1 — gửi lại cùng mã', () => {
   }));
 });
 
-describe('get_own_compat_inserts_v1 — tra phiếu của chính mình theo mã', () => {
+describe('get_own_income_expense_requests_v1 — tra phiếu của chính mình theo mã', () => {
   it('trả mã phiếu cho đúng người, đúng công ty, đúng mã; mã chưa xong / của người khác / công ty khác không có', () => rollback(async () => {
     const id = ((await keyed(staff, row(), items(), 'lk-00001')).r as Row).id as string;
     const id2 = ((await keyed(staff, row({ name: 'Dòng 2' }), items(), 'lk-00003')).r as Row).id as string;
@@ -366,11 +371,21 @@ describe('get_own_compat_inserts_v1 — tra phiếu của chính mình theo mã'
     expect(await lookup(staff, org, [])).toEqual({});
   }));
 
-  it('không thấy claim của đường khác (đường chính cùng mã)', () => rollback(async () => {
+  it('thấy cả phiếu đường chính đã ghi xong với mã đó (phạm vi = toà), kèm đường ghi; claim CHƯA xong hay của thao tác khác thì không', () => rollback(async () => {
     await db.exec(`INSERT INTO app_private.canonical_write_operations(organization_id, operation, subject_scope, actor_id, idempotency_key,
-      payload_hash, subject_id, response_payload, completed_at) VALUES ('${org}', 'income_expense.create_draft.v1', '${org}', '${staff}',
-      'other-op-key-1', md5('x'), '${canonicalVoucher}', '{}', now())`);
-    expect(await lookup(staff, org, ['other-op-key-1'])).toEqual({});
+      payload_hash, subject_id, response_payload, completed_at) VALUES ('${org}', 'income_expense.create_draft.v1', '${building}', '${staff}',
+      'ie-create-55556666', md5('x'), '${canonicalVoucher}', '{}', now());
+      INSERT INTO app_private.canonical_write_operations(organization_id, operation, subject_scope, actor_id, idempotency_key, payload_hash)
+      VALUES ('${org}', 'income_expense.create_draft.v1', '${building}', '${staff}', 'ie-create-77778888', md5('x'));
+      INSERT INTO app_private.canonical_write_operations(organization_id, operation, subject_scope, actor_id, idempotency_key,
+      payload_hash, subject_id, response_payload, completed_at) VALUES ('${org}', 'cashbook.reconciliation.propose.v1', '${account}', '${staff}',
+      'rc-99990000', md5('x'), '${canonicalVoucher}', '{}', now())`);
+    expect(await lookup(staff, org, ['ie-create-55556666', 'ie-create-77778888', 'rc-99990000'])).toEqual({ 'ie-create-55556666': canonicalVoucher });
+    expect(await lookup(staff2, org, ['ie-create-55556666'])).toEqual({});
+    const path = await asUser(staff, `SELECT x.write_path AS r FROM public.get_own_income_expense_requests_v1($1::uuid, ARRAY['ie-create-55556666']) x`, [org]);
+    expect(path.r).toBe('canonical');
+    await keyed(staff, row(), items(), 'lk-00009');
+    expect((await asUser(staff, `SELECT x.write_path AS r FROM public.get_own_income_expense_requests_v1($1::uuid, ARRAY['lk-00009']) x`, [org])).r).toBe('compat');
   }));
 });
 
