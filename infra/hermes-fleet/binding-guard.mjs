@@ -2,7 +2,7 @@
 import http from 'node:http';
 import { loadHostConfiguration } from '../hermes-runtime/host-config.mjs';
 import { createStorePool } from '../hermes-broker/store-pool.mjs';
-import { createStoreTransport } from '../hermes-broker/store-transport.mjs';
+import { createProvisioningStore } from './activation-queue.mjs';
 import { uuid } from './fleet-plan.mjs';
 
 export function bindingFromProfile(profile) {
@@ -41,7 +41,7 @@ async function serve() {
   if (![organizationId, accountId].every(uuid)) throw Error('invalid_scope');
   const config = await loadHostConfiguration(file);
   const pool = createStorePool(config.store);
-  const transport = createStoreTransport({ pool, expectedRole: config.store.role });
+  const transport = createProvisioningStore(pool, config.store.role);
   const server = http.createServer({ requestTimeout: 5000, headersTimeout: 5000, maxHeaderSize: 2048 }, async (req, res) => {
     try {
       if (req.method !== 'POST' || !['/authorize', '/verify'].includes(req.url)) { res.writeHead(400).end(); return; }

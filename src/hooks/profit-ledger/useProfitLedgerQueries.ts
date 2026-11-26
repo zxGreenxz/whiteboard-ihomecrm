@@ -49,11 +49,11 @@ export function useShareholderProfitLedger(organizationId: string | null | undef
 }
 
 /* E2 — sổ chi tiết một cổ đông (kể cả cổ đông đã xoá), có số dư chạy. */
-export function useShareholderProfitLedgerEntries(
+export function shareholderEntryOptions(
   organizationId: string | null | undefined,
   shareholderId: string | null | undefined,
 ) {
-  return useQuery({
+  return {
     queryKey: ['profit-ledger-entries', organizationId ?? null, shareholderId ?? null],
     enabled: !!organizationId && !!shareholderId,
     retry: retryBusyOnce,
@@ -68,7 +68,11 @@ export function useShareholderProfitLedgerEntries(
       if (error) throw error;
       return readShareholderLedgerEntries(data, org, sh);
     },
-  });
+  };
+}
+
+export function useShareholderProfitLedgerEntries(organizationId: string | null | undefined, shareholderId: string | null | undefined) {
+  return useQuery(shareholderEntryOptions(organizationId,shareholderId));
 }
 
 /**

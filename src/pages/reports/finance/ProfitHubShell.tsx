@@ -22,11 +22,11 @@ import "./profitHub.css";
  * khi ẩn nên slot tự tắt khi tab đó không mở (ActiveTabContext/PanelContext).
  */
 
-export type ProfitHubSlotName = "actions" | "kpis" | "chips";
+export type ProfitHubSlotName = "actions" | "overview" | "kpis" | "chips";
 
 type SlotMap = Record<ProfitHubSlotName, HTMLElement | null>;
 
-const SlotContext = createContext<SlotMap>({ actions: null, kpis: null, chips: null });
+const SlotContext = createContext<SlotMap | null>(null);
 /** Tab đang mở của shell (undefined = shell không dùng tab). */
 const ActiveTabContext = createContext<string | undefined>(undefined);
 /** Tab chứa phần tử hiện tại (null = ngoài mọi tab). */
@@ -39,11 +39,13 @@ export function ProfitHubSlot({
   name: ProfitHubSlotName;
   children: ReactNode;
 }) {
-  const el = useContext(SlotContext)[name];
+  const slots = useContext(SlotContext);
+  const el = slots?.[name];
   const activeTab = useContext(ActiveTabContext);
   const panel = useContext(PanelContext);
   // Tab giữ sống đang ẩn không được đổ KPI/nút của nó lên hero của tab khác.
   if (panel !== null && activeTab !== undefined && panel !== activeTab) return null;
+  if (!slots && name === "overview") return <>{children}</>;
   return el ? createPortal(children, el) : null;
 }
 
@@ -82,6 +84,7 @@ export function ProfitHubShell({
   children,
 }: ProfitHubShellProps) {
   const [actions, setActions] = useState<HTMLElement | null>(null);
+  const [overview, setOverview] = useState<HTMLElement | null>(null);
   const [kpis, setKpis] = useState<HTMLElement | null>(null);
   const [chips, setChips] = useState<HTMLElement | null>(null);
 
@@ -107,6 +110,7 @@ export function ProfitHubShell({
           </TabsPrimitive.List>
         )}
 
+        <div className="mt-4 rounded-xl bg-background p-4 text-foreground empty:hidden" ref={setOverview} />
         <div className="ph-kpis" ref={setKpis} />
         <div className="ph-chips" ref={setChips} />
       </div>
@@ -114,7 +118,7 @@ export function ProfitHubShell({
   );
 
   return (
-    <SlotContext.Provider value={{ actions, kpis, chips }}>
+    <SlotContext.Provider value={{ actions, overview, kpis, chips }}>
       {tabs.length > 0 ? (
         <ActiveTabContext.Provider value={value}>
           <TabsPrimitive.Root value={value} onValueChange={onValueChange} className="ph">

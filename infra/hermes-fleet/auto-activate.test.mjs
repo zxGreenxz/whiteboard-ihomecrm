@@ -7,13 +7,31 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { authorizedPeer, bindingFromProfile } from './binding-guard.mjs';
 import { activate, employeeProfile } from './auto-activate.mjs';
-import { queuedEmployees, acknowledge } from './activation-queue.mjs';
+import { queuedEmployees, acknowledge, createProvisioningStore } from './activation-queue.mjs';
 
 const id = n => '00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const scope = { organizationId:id(1), accountId:id(2) };
 const row = { ...scope, assistantId:id(3), userId:id(4), connectionId:id(5), bindingId:id(6), senderUid:'12345', revision:2, state:'pending' };
 const work = { status:'queued', provisioningState:'pending', revision:2, binding:{ ...row,status:'active' } };
 const assistant = { connectionId:row.connectionId, identity:{ accountId:row.accountId, pairedUid:row.senderUid }, channelAction:'create' };
+test('the real store transport accepts queue reads, acknowledgements and worker binding checks', async () => {
+  const role = 'hermes_store_test';
+  const actor = { role, session_role:role, scoped:true, privileged_member:false, rolsuper:false,
+    rolbypassrls:false, rolcreaterole:false, rolcreatedb:false, rolreplication:false };
+  const calls = [];
+  const client = {
+    async query(request) {
+      if (request.text.startsWith('SELECT current_user')) return { rows:[actor] };
+      calls.push(request.text);
+      return { rows:[{ result:{ status:'ok' } }] };
+    },
+    release() {},
+  };
+  const store = createProvisioningStore({ connect:async () => client }, role);
+  for (const operation of ['readZaloProvisioningWork', 'acknowledgeZaloProvisioning', 'readZaloBinding'])
+    assert.deepEqual(await store.call(operation, { bindingId:row.bindingId }), { status:'ok' });
+  assert.equal(calls.length, 3);
+});
 test('systemd entry points run through a release directory symlink', t => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'activation-release-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));

@@ -23,6 +23,8 @@ systemctl daemon-reload
 systemctl enable --now ihome-hermes-binding-guard.socket
 ```
 
+Trước khi bật socket, kiểm tra `getent passwd 10002` trên host. Systemd cần tra được UID của worker để đặt chủ sở hữu socket. Nếu UID mới chỉ có trong container, đăng ký một tài khoản hệ thống khóa mật khẩu, không có home và dùng shell `/usr/sbin/nologin`, với đúng UID/GID đang sở hữu thư mục native-config.
+
 Triển khai image worker từ Dockerfile cùng bản phát hành theo runbook worker, nối lại và xác minh các sidecar đang chạy bằng `tao-lai-sidecar`. Image cần có nhãn `io.ihomecrm.hermes.binding-guard=1`. Sau đó kiểm cấu hình và bật dịch vụ tự kích hoạt.
 
 ```sh

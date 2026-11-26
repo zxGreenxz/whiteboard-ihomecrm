@@ -7,6 +7,8 @@
 
 import { useMemo, useState } from 'react';
 import ShareholderPeriodStatement from './ShareholderPeriodStatement';
+import { flowTotal, overviewVouchers } from '@/lib/profitLedger/overviewFlows';
+import { HistoricalAdvanceList } from './HistoricalAdvanceList';
 import { periodStatement, postedCash } from '@/lib/profitLedger/periodStatement';
 import { HandCoins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -83,6 +85,10 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
   const periodStatus = useMemo(() => position ? periodStatement(ledger, position).periods : null, [ledger, position]);
   const selection = activeFilter ? { name: activeFilter.name, amounts: new Map(shown.rows.map(r => [r.period, r.total])) } : undefined;
   const payouts = useMemo(() => newestFirst(ledger.payouts), [ledger.payouts]);
+  const voucherTotals = useMemo(() => {
+    const flows = overviewVouchers(ledger.payouts, ledger.historical_advances ?? [], positionView.position?.settlements ?? []);
+    return { advance: flowTotal(flows.advances), cash: flowTotal(flows.profit) };
+  }, [ledger.payouts, ledger.historical_advances, positionView.position]);
   // Thẻ nhạy cảm: cần CẢ quyền của người xem LẪN khoá máy chủ gửi (thiếu một trong hai ⇒ không thẻ).
   const percentRows = access.canViewPercent ? ledger.percent_rows : undefined;
   const marker = ledger.marker ? periodLabel(ledger.marker.settled_through_month) : null;
@@ -102,7 +108,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
         <div className="ph-kpi ph-kpi--flex" data-testid="self-kpi-allocated">
           <div className="ph-kpi__label">Được chia từ tòa</div>
           <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(ledger.allocated)}</div>
-          <div className="ph-kpi__sub">{marker ? `sau mốc đã trả đủ hết ${marker}` : 'luỹ kế các tháng đã chốt'}</div>
+          <div className="ph-kpi__sub">{marker ? `sau mốc đối chiếu hết ${marker}` : 'luỹ kế các tháng đã chốt'}</div>
           <div className="ph-kpi__sub ph-kpi__sub--mint">Năm {year}: {formatCurrency(yearTotal)}</div>
         </div>
         <div className="ph-kpi__div" />
@@ -110,7 +116,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
           <div className="ph-kpi__label">Đã chi qua phiếu</div>
           <div className="ph-kpi__value ph-kpi__value--gold">{formatCurrency(postedCash(ledger.payouts))}</div>
           <div className="ph-kpi__sub">
-            Gồm tiền ứng và chi lợi nhuận đã ghi sổ
+            {marker ? 'Phiếu tiền ghi sổ sau mốc đối chiếu' : 'Gồm tiền ứng và chi lợi nhuận đã ghi sổ'}
           </div>
         </div>
         {viaSalary !== null && (
@@ -227,7 +233,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
                       <td className="name">
                         T{row.month}
                         {!row.excluded && periodStatus?.get(row.period) && <span className="ml-2 text-xs font-normal text-muted-foreground">{periodStatus.get(row.period)?.status}</span>}
-                        {row.excluded && <span className="ph-inline ph-inline--soft" title="Nằm trong mốc đã trả đủ — không tính vào lợi nhuận chưa chi">đã trả đủ</span>}
+                        {row.excluded && <span className="ph-inline ph-inline--soft">đã đối chiếu</span>}
                       </td>
                       {row.cells.map((v, i) => (
                         <td key={shown.columns[i]?.key ?? i} className="num">{v === null ? <span style={MUTED}>—</span> : formatCurrency(v)}</td>
@@ -239,7 +245,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
               </table>
             </div>
           )}
-          {marker && <div className="ph-card__note" style={{ padding: '0 18px 12px' }}>Các tháng đến hết {marker} đã trả đủ theo mốc — không tính vào lợi nhuận chưa chi.</div>}
+          {marker && <div className="ph-card__note" style={{ padding: '0 18px 12px' }}>Số dư chuyển sang sau khi đối chiếu đến hết {marker}.</div>}
         </div>
 
         <MySettlementsCard view={positionView} />
@@ -252,7 +258,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
             <table className="ph-tbl">
               <thead>
                 <tr>
-                  <th style={{ width: 110 }}>Ngày</th>
+                  <th style={{ width: 110 }}>Ngày / tháng chi</th>
                   <th>Phiếu</th>
                   <th>Trạng thái</th>
                   <th className="num" style={{ width: 140 }}>Số tiền</th>
@@ -260,7 +266,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
                 </tr>
               </thead>
               <tbody>
-                {payouts.length === 0 && (
+                {payouts.length === 0 && !ledger.historical_advances?.length && (
                   <tr><td colSpan={5} style={{ textAlign: 'center', ...MUTED }}>Chưa có phiếu chi lợi nhuận hay tạm ứng nào</td></tr>
                 )}
                 {payouts.map((p) => {
@@ -284,12 +290,13 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
                     </tr>
                   );
                 })}
+                <HistoricalAdvanceList receipts={ledger.historical_advances} table />
               </tbody>
             </table>
           </div>
-          {payouts.length > 0 && (
+          {(payouts.length > 0 || !!ledger.historical_advances?.length) && (
             <div className="ph-card__foot">
-              <b>Đã ghi chi {formatCurrency(postedCash(ledger.payouts))}</b>
+              <b>Tổng tạm ứng {formatCurrency(voucherTotals.advance)} · Chi lợi nhuận {formatCurrency(voucherTotals.cash)}</b>
             </div>
           )}
         </div>

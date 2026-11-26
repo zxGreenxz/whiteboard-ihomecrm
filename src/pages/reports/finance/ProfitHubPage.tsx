@@ -16,6 +16,7 @@ import ProfitLockTab from "@/components/shareholders/ProfitLockTab";
 import ShareConfigTab from "@/components/shareholders/ShareConfigTab";
 import ShareholderSelfView from "@/components/shareholders/ShareholderSelfView";
 import ShareholderAdvanceTab from "@/components/shareholders/ShareholderAdvanceTab";
+import { CompanyFinanceOverview } from "@/components/shareholders/CompanyFinanceOverview";
 import ProfitManagerSelfView from "@/components/shareholders/ProfitManagerSelfView";
 import { useProfitCloseOrganizations } from "@/hooks/useShareholderProfit";
 
@@ -83,7 +84,7 @@ export default function ProfitHubPage() {
   // Đợt 2: tab doanh thu / chi phí toà cần thêm quyền xem số toà (cổ đông chỉ thấy tiền của mình).
   if (canReport && canViewBuildingTotals) tabs.push({ value: "report", label: "BC Doanh Thu Chi Phí", node: <ProfitDistributionContent /> });
   if (isManager) {
-    if (canViewManagedProfit) tabs.push({ value: "overview", label: "Tổng quan", node: <ProfitOverviewTab /> });
+    if (canViewManagedProfit) tabs.push({ value: "overview", label: "Tổng quan", node: <CompanyFinanceOverview><ProfitOverviewTab /></CompanyFinanceOverview> });
     if (canLock || canUnlock) tabs.push({
       value: "lock",
       label: "Chốt LN tháng",

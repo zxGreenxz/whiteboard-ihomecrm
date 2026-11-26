@@ -10,6 +10,12 @@ const identity = ['organizationId', 'userId', 'assistantId', 'connectionId'];
 const same = (a, b, fields) => fields.every(field => a[field] === b[field]);
 const revision = n => Number.isSafeInteger(n) && n > 0;
 
+// Both the timer and the socket service use the connector's bounded store protocol.
+export function createProvisioningStore(pool, expectedRole) {
+  const transport = createStoreTransport({ pool, expectedRole });
+  return { call: (operation, input) => transport.call(operation, input, { signal: AbortSignal.timeout(5000) }) };
+}
+
 export async function queuedEmployees({ organizationId, accountId, enrollments, read }) {
   if (![organizationId, accountId].every(uuid)) throw Error('invalid_scope');
   const local = enrollments.filter(member => member.organizationId === organizationId);
@@ -46,7 +52,7 @@ async function run([command, configFile, org, bot]) {
   const cfg = await loadHostConfiguration(configFile);
   const pool = createStorePool(cfg.store);
   try {
-    const transport = createStoreTransport({ pool, expectedRole: cfg.store.role });
+    const transport = createProvisioningStore(pool, cfg.store.role);
     if (command === 'ack') {
       const { row, state } = JSON.parse(fs.readFileSync(0, 'utf8'));
       if (row.organizationId !== org || row.accountId !== bot) throw Error('invalid_scope');
