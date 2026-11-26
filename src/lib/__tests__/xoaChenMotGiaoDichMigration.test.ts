@@ -744,30 +744,30 @@ describe('quyền y như ghi thẳng bảng hôm nay', () => {
     ['đủ quyền', full, orgA], ['không có quyền xoá', noDelete, orgA], ['không có quyền sửa', noEdit, orgA],
     ['chỉ xem', viewer, orgA], ['công ty khác', outsider, orgB], ['superadmin', superUser, orgA], ['chưa đăng nhập', null, orgA],
   ];
-  const targets: Array<{ name: string; rpc: (actor: string | null) => Promise<Call>; direct: (actor: string | null, org: string) => Promise<Direct>; reached: (s: Snapshot) => boolean; part: (s: Snapshot) => unknown; reachedBy: string[] }> = [
-    { name: 'dịch vụ toà', rpc: (a) => replaceBuilding(a, b1, servicesA), direct: (a, o) => directBuilding(a, b1, servicesA, o),
+  const targets: Array<{ name: string; fn: (actor: string | null) => Promise<Call>; direct: (actor: string | null, org: string) => Promise<Direct>; reached: (s: Snapshot) => boolean; part: (s: Snapshot) => unknown; reachedBy: string[] }> = [
+    { name: 'dịch vụ toà', fn: (a) => replaceBuilding(a, b1, servicesA), direct: (a, o) => directBuilding(a, b1, servicesA, o),
       reached: (s) => JSON.stringify(s.building.filter((r) => r.building_id === b1).map((r) => [r.service_id, r.is_active, r.p])) === JSON.stringify([[s2, true, '1500'], [s3, false, null]]),
       part: (s) => s.building, reachedBy: ['đủ quyền', 'superadmin'] },
-    { name: 'bậc định mức', rpc: (a) => replaceQuota(a, q1, 'Tên mới', null, tiersA), direct: (a) => directQuota(a, q1, 'Tên mới', null, tiersA),
+    { name: 'bậc định mức', fn: (a) => replaceQuota(a, q1, 'Tên mới', null, tiersA), direct: (a) => directQuota(a, q1, 'Tên mới', null, tiersA),
       reached: (s) => s.quota[0]?.name === 'Tên mới' && JSON.stringify(s.tiers.map((t) => [t.tier_number, t.p])) === JSON.stringify([[1, '6000'], [2, '7000'], [3, '9000']]),
       part: (s) => [s.quota, s.tiers], reachedBy: ['đủ quyền', 'superadmin'] },
-    { name: 'phiếu nhập', rpc: (a) => replacePurchase(a, p1, '2026-11-24', null, 'mới', purchaseItemsA), direct: (a) => directPurchase(a, p1, '2026-11-24', null, 'mới', purchaseItemsA),
+    { name: 'phiếu nhập', fn: (a) => replacePurchase(a, p1, '2026-11-24', null, 'mới', purchaseItemsA), direct: (a) => directPurchase(a, p1, '2026-11-24', null, 'mới', purchaseItemsA),
       reached: (s) => s.purchase[0]?.notes === 'mới' && s.purchaseItems.length === 3,
       part: (s) => [s.purchase, s.purchaseItems, s.stock], reachedBy: ['đủ quyền', 'không có quyền xoá', 'superadmin'] },
-    { name: 'vật tư công việc', rpc: (a) => saveUsage(a, job1, '2026-11-24', 'mới', usageItemsA), direct: (a) => directUsage(a, job1, '2026-11-24', 'mới', usageItemsA),
+    { name: 'vật tư công việc', fn: (a) => saveUsage(a, job1, '2026-11-24', 'mới', usageItemsA), direct: (a) => directUsage(a, job1, '2026-11-24', 'mới', usageItemsA),
       reached: (s) => s.usages.find((u) => u.job_id === job1)?.notes === 'mới' && s.usageItems.filter((u) => u.job_id === job1).length === 2,
       part: (s) => [s.usages, s.usageItems, s.stock], reachedBy: ['đủ quyền', 'không có quyền xoá', 'superadmin'] },
-    { name: 'tạo phiếu xuất cho công việc', rpc: (a) => saveUsage(a, job2, '2026-11-24', 'mới', usageItemsA), direct: (a) => directUsage(a, job2, '2026-11-24', 'mới', usageItemsA),
+    { name: 'tạo phiếu xuất cho công việc', fn: (a) => saveUsage(a, job2, '2026-11-24', 'mới', usageItemsA), direct: (a) => directUsage(a, job2, '2026-11-24', 'mới', usageItemsA),
       reached: (s) => s.usageItems.filter((u) => u.job_id === job2).length === 2,
       part: (s) => [s.usages, s.usageItems, s.stock], reachedBy: ['đủ quyền', 'không có quyền xoá', 'không có quyền sửa', 'superadmin'] },
-    { name: 'dịch vụ hợp đồng', rpc: (a) => replaceContract(a, c1, contractA), direct: (a, o) => directContract(a, c1, contractA, o),
+    { name: 'dịch vụ hợp đồng', fn: (a) => replaceContract(a, c1, contractA), direct: (a, o) => directContract(a, c1, contractA, o),
       reached: (s) => JSON.stringify(s.contract.filter((r) => r.contract_id === c1).map((r) => [r.service_id, r.p])) === JSON.stringify([[s1, '3800'], [s3, '50000']]),
       part: (s) => s.contract, reachedBy: ['đủ quyền', 'superadmin'] },
   ];
   for (const target of targets) {
     for (const [label, actor, org] of people) {
       it(`${target.name} — ${label}`, async () => {
-        const { left: viaRpc, right: viaDirect } = await compare(() => target.rpc(actor), () => target.direct(actor, org));
+        const { left: viaRpc, right: viaDirect } = await compare(() => target.fn(actor), () => target.direct(actor, org));
         const directReached = !viaDirect.out.failed && target.reached(viaDirect.after);
         // Ma trận quyền mong đợi: chặn trường hợp phép so «xanh rỗng» (ví dụ mọi người đều bị từ chối vì nền dựng sai).
         expect(directReached, 'ghi thẳng hôm nay').toBe(target.reachedBy.includes(label));

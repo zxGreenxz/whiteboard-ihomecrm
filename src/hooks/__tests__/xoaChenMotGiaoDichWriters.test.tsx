@@ -248,6 +248,13 @@ describe('dịch vụ mặc định của toà (replace_building_services_v1)', 
     expect(rpcCount('replace_building_services_v1')).toBe(1);
   });
 
+  it('web lên trước migration (PGRST202: máy chủ chưa có hàm): từ chối rõ, không ghi thẳng bảng, dịch vụ cũ còn nguyên', async () => {
+    refuseNext.set('replace_building_services_v1', { code: 'PGRST202', message: 'Could not find the function public.replace_building_services_v1 in the schema cache' });
+    expectRefused(await rejection(save()(input)));
+    expect(links()).toEqual(['s0:true:null']);
+    expect(io.tables).toEqual([]);
+  });
+
   it('không có quyền gỡ dịch vụ cũ (42501 của hàm): câu của máy chủ, chưa lưu gì', async () => {
     io.server.writable.building_services = row => row.id !== 'bs-old';
     const error = await rejection(save()(input));
@@ -442,6 +449,14 @@ describe('sửa phiếu nhập vật tư (replace_material_purchase_v1)', () => 
     expect(io.server.rpcCalls).toHaveLength(1);
     expect(purchaseLines('p-1')).toEqual([]);
     expect(rowsOf('material_purchases')[0].total).toBe(0);
+  });
+
+  it('web lên trước migration (PGRST202: máy chủ chưa có hàm): từ chối rõ, không ghi thẳng bảng, phiếu và tồn còn nguyên', async () => {
+    refuseNext.set('replace_material_purchase_v1', { code: 'PGRST202', message: 'Could not find the function public.replace_material_purchase_v1 in the schema cache' });
+    expectRefused(await rejection(update()(edit)));
+    expectOld();
+    expect(io.tables).toEqual([]);
+    expect(rpcCount('replace_material_purchase_v1')).toBe(1);
   });
 
   it('phiếu không còn / không có quyền sửa (P0002): câu của máy chủ, không đụng dòng nào', async () => {

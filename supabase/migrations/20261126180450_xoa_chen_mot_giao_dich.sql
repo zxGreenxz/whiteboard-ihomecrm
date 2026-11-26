@@ -94,22 +94,30 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- Trigger phải đang gắn và đang bật trên đúng bảng.
+  -- Trigger tính tồn kho / tổng phiếu phải đang gắn và đang bật trên đúng bảng (theo tên và hàm).
   FOR r IN SELECT * FROM (VALUES
-      ('public.material_purchase_items', 'trg_mpi_recompute',       'public.material_items_after_change()'),
-      ('public.material_purchase_items', 'trg_mpi_total',           'public.material_purchase_recompute_total()'),
-      ('public.material_usage_items',    'trg_mui_recompute',       'public.material_items_after_change()'),
-      ('public.building_services',       'trg_autofill_org',        'app_private.autofill_org_strict()'),
-      ('public.service_quota_tiers',     'trg_autofill_org_strict', 'app_private.autofill_org_strict()'),
-      ('public.material_purchase_items', 'trg_autofill_org_strict', 'app_private.autofill_org_strict()'),
-      ('public.material_usages',         'trg_autofill_org_strict', 'app_private.autofill_org_strict()'),
-      ('public.material_usage_items',    'trg_autofill_org_strict', 'app_private.autofill_org_strict()'),
-      ('public.contract_services',       'trg_autofill_org',        'app_private.autofill_org_strict()')
+      ('public.material_purchase_items', 'trg_mpi_recompute', 'public.material_items_after_change()'),
+      ('public.material_purchase_items', 'trg_mpi_total',     'public.material_purchase_recompute_total()'),
+      ('public.material_usage_items',    'trg_mui_recompute', 'public.material_items_after_change()')
     ) AS v(tbl, tg, fn) LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
                     WHERE t.tgrelid = r.tbl::regclass AND t.tgname = r.tg
                       AND t.tgfoid = to_regprocedure(r.fn) AND t.tgenabled <> 'D') THEN
       RAISE EXCEPTION 'xoa_chen_mot_giao_dich: trigger % trên % không còn như đã rà — DỪNG', r.tg, r.tbl USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
+
+  -- Bảng dòng con phải có trigger BEFORE INSERT FOR EACH ROW đang bật gọi autofill_org_strict (hàm không truyền công ty,
+  -- trigger suy từ dòng cha). Kiểm theo HÀM của trigger, không theo tên trigger.
+  FOR r IN SELECT * FROM (VALUES
+      ('public.building_services'), ('public.service_quota_tiers'), ('public.material_purchase_items'),
+      ('public.material_usages'), ('public.material_usage_items'), ('public.contract_services')
+    ) AS v(tbl) LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
+                    WHERE t.tgrelid = r.tbl::regclass AND NOT t.tgisinternal
+                      AND t.tgfoid = 'app_private.autofill_org_strict()'::regprocedure
+                      AND (t.tgtype & 7) = 7 AND t.tgenabled <> 'D') THEN
+      RAISE EXCEPTION 'xoa_chen_mot_giao_dich: % không còn trigger BEFORE INSERT gọi autofill_org_strict — DỪNG', r.tbl USING ERRCODE = '55000';
     END IF;
   END LOOP;
 END

@@ -707,7 +707,8 @@ export const useSyncContractCustomers = () => {
 // Luồng update không tự đụng contract_services nên `runContractEdit` gọi bước này sau khi lưu thông tin hợp đồng — giống
 // useSyncContractCustomers. Đợt 10b: MỘT lời gọi `replace_contract_services_v1` (SECURITY INVOKER: RLS và trigger như ghi
 // thẳng; khoá tư vấn theo hợp đồng) xoá mọi dòng cũ rồi chèn đúng danh sách trong form (loại điện, đơn giá, chỉ số đầu…)
-// trong một giao dịch: hoặc chưa ghi gì, hoặc đã ghi đủ. Pha `reconciling` như phần khách: `runContractEdit` không chờ 2 phút,
+// trong một giao dịch: hoặc chưa ghi gì, hoặc đã ghi đủ. Dùng pha `reconciling` của thao tác nguyên tử (máy chủ không so bộ
+// trước như CAS của phần khách; `runContractEdit` tự đọc lại và so với lúc mở form): không chờ 2 phút,
 // đọc lại thấy còn nguyên như lúc mở form thì gửi lại ngay, khớp đích thì xong, bị từ chối rõ thì `rejected`. `skipDelete` không
 // còn nghĩa (hàm luôn thay nguyên tử). Không gửi organization_id: trigger suy công ty từ hợp đồng.
 // =============================================
