@@ -298,6 +298,12 @@ describe('đề nghị đối soát (đợt 10a, cách B: gửi lại cùng mã,
     await call(useProposeReconciliation,reconArgs);await call(useProposeReconciliation,reconArgs);
     const keys=reconKeys();expect(keys[0]).not.toBe(keys[1]);expect(io.tables.cashbook_reconciliations).toHaveLength(2);
   });
+  it('dấu bản trước (mã chưa từng lên máy chủ), có đề nghị của mình sau giờ kẹt ⇒ chỉ báo «có thể đã tạo» kèm mã, KHÔNG gửi lại',async()=>{
+    io.tables.cashbook_reconciliations=[{id:'rc-cu',account_id:'a1',as_of_date:'2026-11-24',proposed_by:'u1',created_at:new Date(T0-30_000).toISOString()}];
+    seedOldMark('reconciliation-propose',reconScope.businessKey);
+    await expect(call(useProposeReconciliation,reconArgs)).rejects.toThrow(/Có thể.*rc-cu/);
+    expect(io.rpc).not.toHaveBeenCalled();expect(financialPending.read(reconScope)).toBeNull();
+  });
   it('dấu cũ gieo sẵn, không có đề nghị nào sau giờ kẹt ⇒ gửi lại',async()=>{
     seedOldMark('reconciliation-propose',reconScope.businessKey);advance(PENDING_SETTLE_MS);
     await expect(call(useProposeReconciliation,reconArgs)).resolves.toMatchObject({id:'rc-1'});

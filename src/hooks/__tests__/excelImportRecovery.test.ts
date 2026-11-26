@@ -397,6 +397,15 @@ it('đợt 10a: dòng không tới máy chủ, có phiếu giống hệt của n
   expect(pendingKeys()).toEqual([]);
 });
 
+it('đợt 10a: dưới 2 phút, dòng chưa thấy mà có phiếu giống hệt của người nhập ⇒ vẫn chưa kết luận, KHÔNG «có thể đã ghi» (ảnh chụp có mã không tra gần đúng)', async () => {
+  plan.push('before');
+  await submit([line(1)]);
+  io.server.rows.income_expenses = [serverVoucher('v-khac', 'PC-8', 100, T0 + 1_000)];
+  await expect(submit([line(1)])).rejects.toThrow(/đối chiếu/);
+  expect(compatCalls()).toHaveLength(1);
+  expect(pendingKeys()).toHaveLength(1);
+});
+
 it('đợt 10a: tra theo mã yêu cầu hỏng ⇒ chưa kết luận, không gửi, giữ dấu', async () => {
   plan.push('after');
   await submit([line(1)]);
