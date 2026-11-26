@@ -10,14 +10,13 @@ import { seedLegacyPending, pendingKeys } from '@/hooks/__tests__/fakeRecordServ
 import { luckyWorld, TEN_MINUTES_AGO, type LuckyWorld } from '@/lib/__tests__/helpers/luckyFakeServer';
 
 const h = vi.hoisted(() => ({ world: null as unknown as LuckyWorld }));
-vi.mock('@/integrations/supabase/client', () => ({
-  supabase: { rpc: (name: string, args?: Record<string, unknown>) => h.world.server.rpc(name, args ?? {}) },
-}));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { get rpc() { return h.world.server.rpc; } } }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor-1' }) }));
 vi.mock('@/components/layout/MainLayout', () => ({ default: ({ children }: { children: ReactNode }) => <>{children}</> }));
 
 let world: LuckyWorld;
-beforeAll(() => { Element.prototype.scrollIntoView = vi.fn(); window.confirm = () => true; });
+// Nạp trang một lần trước (biên dịch cả cây module) để từng ca sau `vi.resetModules()` không chạm trần giờ khi máy đang tải nặng.
+beforeAll(async () => { Element.prototype.scrollIntoView = vi.fn(); window.confirm = () => true; await import('./LuckyDrawAdminPage'); }, 60_000);
 beforeEach(() => { localStorage.clear(); world = luckyWorld(); h.world = world; });
 afterEach(() => { cleanup(); });
 

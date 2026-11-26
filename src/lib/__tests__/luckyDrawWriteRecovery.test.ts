@@ -7,9 +7,7 @@ import { seedLegacyPending, pendingKeys } from '@/hooks/__tests__/fakeRecordServ
 import { luckyWorld, TEN_MINUTES_AGO, type LuckyWorld } from './helpers/luckyFakeServer';
 
 const h = vi.hoisted(() => ({ world: null as unknown as LuckyWorld }));
-vi.mock('@/integrations/supabase/client', () => ({
-  supabase: { rpc: (name: string, args?: Record<string, unknown>) => h.world.server.rpc(name, args ?? {}) },
-}));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { get rpc() { return h.world.server.rpc; } } }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor-1' }) }));
 
 type Api = typeof import('@/lib/luckyDrawApi');
@@ -316,8 +314,11 @@ describe('thao tác quản trị lặp lại được: không giữ dấu, bấm
     expect(world.events).toHaveLength(1);
     expect(await api.luckyAdminApi.upsertEvent({ title: 'IHOME · Trao thưởng' })).toMatchObject({ ok: true, eventId: world.events[0]!.id, replayed: true });
     expect(world.events).toHaveLength(1);
-    expect(await api.luckyAdminApi.upsertEvent({ title: 'IHOME · Trao thưởng' })).toMatchObject({ ok: true, replayed: undefined });
+    // Lần tạo kế tiếp (sau khi lần trước đã được nhận) là một sự kiện mới thật, với đường dẫn mới.
+    const next = await api.luckyAdminApi.upsertEvent({ title: 'IHOME · Trao thưởng' });
+    expect(next.replayed).toBeUndefined();
     expect(world.events).toHaveLength(2);
+    expect(world.events[1]!.slug).not.toBe(world.events[0]!.slug);
   });
 
   it('cấp lại mã điểm danh mất phản hồi: đọc lại mã hiện tại, không cấp thêm mã thứ hai', async () => {

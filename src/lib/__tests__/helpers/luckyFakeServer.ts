@@ -85,8 +85,9 @@ export function luckyWorld(): LuckyWorld {
         if (failure === 'drop-after') throw new TypeError('Failed to fetch');
         return { ok: true, status: 200, json: async () => ({ Key: path }) };
       }
-      const name = text.split('/rest/v1/rpc/')[1] ?? '';
-      const reply = await server.rpc(name, JSON.parse(String(init.body ?? '{}')) as Row);
+      // Cùng cổng `rpc` của máy chủ giả (ghi nhật ký lời gọi, rớt mạng theo `failNext`); tên hàm lấy từ đường dẫn REST.
+      const { rpc: send } = server;
+      const reply = await send(text.split('/rest/v1/rpc/')[1] ?? '', JSON.parse(String(init.body ?? '{}')) as Row);
       if (reply.error === NETWORK_ERROR) throw new TypeError('Failed to fetch');
       if (reply.error) return { ok: false, status: 400, json: async () => reply.error };
       return { ok: true, status: 200, json: async () => reply.data };

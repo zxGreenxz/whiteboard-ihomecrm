@@ -14,7 +14,8 @@ vi.mock('./MultiRoundStage', () => ({ default: () => null }));
 let world: LuckyWorld;
 let event: FakeEvent;
 let team: FakeTeam;
-beforeAll(() => { URL.createObjectURL = vi.fn(() => 'blob:test'); URL.revokeObjectURL = vi.fn(); });
+// Nạp trang một lần trước (biên dịch cả cây module) để từng ca sau `vi.resetModules()` không chạm trần giờ khi máy đang tải nặng.
+beforeAll(async () => { URL.createObjectURL = vi.fn(() => 'blob:test'); URL.revokeObjectURL = vi.fn(); await import('./QuaySoPage'); }, 60_000);
 beforeEach(() => {
   localStorage.clear();
   world = luckyWorld();
