@@ -9,6 +9,7 @@ const mock = vi.hoisted(() => ({ write: vi.fn(), state: null as SharedFundState 
 vi.mock('@/hooks/profit-ledger/useSharedFund', () => ({
   useSharedFund: () => ({ data: mock.state, refetch: vi.fn() }),
   useSharedFundWrite: () => ({ mutateAsync: mock.write, isPending: false }),
+  useRecordOpeningReceipts: () => ({ mutate: mock.write, isPending: false }),
 }));
 const fixture: SharedFundState = {
   organization_id: 'org',
@@ -43,6 +44,24 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Phân bổ quỹ và ghi mốc', () => {
+  it('nhập phiếu tháng từ mốc đã có, chỉ gửi sau khi xem lại', () => {
+    mock.state = { ...fixture, openings: [{ opening_id: 'opening', shareholder_id: 'alpha',
+      through_month: '2025-10-01', as_of_date: '2025-11-01', advance_amount: 70,
+      evidence: 'Bảng đối chiếu', created_by: 'owner', request_key: 'fixture',
+      reconciled_approved: 30, reconciled_count: 3, historical_count: 0 }] };
+    render(<SharedFundPanel org="org" onSettle={vi.fn()} />);
+    fireEvent.click(screen.getByText('Mốc ứng lịch sử (1)'));
+    fireEvent.click(screen.getByText('Bổ sung phiếu tạm ứng theo kỳ'));
+    fireEvent.change(screen.getByLabelText('Kỳ lợi nhuận'), { target: { value: '2025-01' } });
+    fireEvent.change(screen.getByLabelText('Tạm ứng (đ)'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Lợi nhuận ngoài sổ (đ)'), { target: { value: '60' } });
+    fireEvent.change(screen.getByLabelText('Căn cứ đối chiếu'), { target: { value: 'Biên bản tháng một' } });
+    fireEvent.change(screen.getByLabelText('Mã phiếu tiền gốc (nếu có)'), { target: { value: 'PC-A, PC-B' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Kiểm tra trước khi ghi' }));
+    expect(mock.write).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Ghi phiếu lịch sử' }));
+    expect(mock.write).toHaveBeenCalledWith([{ period_month:'2025-01-01', amount:100, external_profit:60, source_codes:['PC-A','PC-B'], evidence:'Biên bản tháng một' }]);
+  });
   it('chia đều, giữ đồng lẻ, ghi 2 dòng bù và phải trả sau xác nhận', async () => {
     const settle = vi.fn();
     render(<SharedFundPanel org="org" onSettle={settle} />);

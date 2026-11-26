@@ -1317,8 +1317,9 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
     await db.exec("ALTER TABLE public.organization_memberships ADD COLUMN member_type text NOT NULL DEFAULT 'STAFF'");
     await db.query("UPDATE public.organization_memberships SET member_type='OWNER' WHERE user_id IN ($1,$2,$3)", [CHU, CHU2, NGOAI]);
     const migrations = readdirSync(DIR).filter(file =>
-      file.endsWith("_phan_phoi_quy_chung.sql") || file.endsWith("_so_du_dau_ky_va_phan_phoi_quy_co_dong.sql")).sort();
-    expect(migrations).toHaveLength(2);
+      file.endsWith("_phan_phoi_quy_chung.sql") || file.endsWith("_so_du_dau_ky_va_phan_phoi_quy_co_dong.sql") ||
+      file.endsWith("_phieu_tam_ung_lich_su_theo_ky.sql")).sort();
+    expect(migrations).toHaveLength(3);
     for (let pass = 0; pass < 2; pass++) {
       for (const file of migrations) await db.exec(readFileSync(`${DIR}/${file}`, "utf8"));
     }
@@ -1350,6 +1351,9 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
       await local.exec(dinhNghiaTrong("public._profit_write_close_v2","20260721110000_profit_unallocated_integrity_v3.sql").stmt);
       await local.exec(migration);
       await local.exec(migration);
+      const overview = readFileSync(`${DIR}/20261126041014_lich_chi_quy_cua_co_dong.sql`, 'utf8');
+      await local.exec(overview);
+      await local.exec(overview);
       const periodId = id(8001);
       await local.exec(`INSERT INTO app_private.house_pool_rules(organization_id,building_id,first_shareholder,second_shareholder,
         share_percent,retained_percent,from_month,automatic_from,activated_by) VALUES ('${ORG_A}','${TOA_1}','${CD_CHU}','${CD1}',44,1,'2026-06-01','2026-11-01','${CHU}');
@@ -1372,6 +1376,23 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
         .toEqual([{receipt:{voucher:voucher_id,imported:null}}]);
       expect((await local.query<{v:{voucher_id:string}}>(create,args)).rows[0].v).toMatchObject({voucher_id});
       expect((await quote()).lines.map(l=>l.reserved)).toEqual([110,110]);
+      await local.exec(`RESET ROLE;
+        CREATE VIEW app_private.house_pool_expense_status AS
+        SELECT '${id(8321)}'::uuid voucher_id,'PC-TEST'::text code,'2026-11-05'::date voucher_date,
+          '${ORG_A}'::uuid organization_id,'${CD_CHU}'::uuid first_holder,'${CD1}'::uuid second_holder,
+          25::bigint first_amount,51::bigint amount,true live;
+        SET ROLE authenticated;`);
+      const personalCharges = "SELECT public.shareholder_profit_my_position_v1($1)->'fund_charges' AS charges";
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[U_CD1]);
+      expect((await local.query(personalCharges,[ORG_A])).rows).toEqual([{charges:[expect.objectContaining({amount:26,live:true})]}]);
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[U_XEM]);
+      expect((await local.query(personalCharges,[ORG_A])).rows).toEqual([{charges:[]}]);
+      const personalHistory = "SELECT public.shareholder_profit_my_position_v1($1)->'fund_payments' AS payments";
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[U_CD1]);
+      expect((await local.query(personalHistory,[ORG_A])).rows).toEqual([{payments:[expect.objectContaining({amount:110,state:'RESERVED'})]}]);
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[U_XEM]);
+      expect((await local.query(personalHistory,[ORG_A])).rows).toEqual([{payments:[]}]);
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[CHU]);
       await local.exec('RESET ROLE');
       await expect(local.query(sqlDuyetChi(voucher_id,SO_QUY,{anh:false}))).rejects.toMatchObject({code:'55000'});
       expect((await quote()).lines.map(l=>l.paid)).toEqual([0,0]);
@@ -1383,6 +1404,14 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
       await local.query("INSERT INTO public.role_permissions(organization_id,role_id,permission_key) VALUES($1,$2,'shareholder_profit.distribute')",[ORG_A,VAI_CHU_A]);
       await local.query(sqlDuyetChi(voucher_id,SO_QUY));
       expect((await quote()).lines.map(l=>[l.paid,l.reserved,l.available])).toEqual([[110,0,330],[110,0,330]]);
+      await local.query(source('OPENING',500,0,'FUND-TEST'));
+      await local.query(source('DEBIT',220,500,voucher_id));
+      const overviewFund = (await local.query<{v:{expense_vouchers:{id:string;amount:number;posting:string}[]}}>(state)).rows[0].v;
+      expect(overviewFund.expense_vouchers).toMatchObject([{id:voucher_id,amount:220,posting:'POSTED'}]);
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[U_CD1]);
+      expect((await local.query(personalHistory,[ORG_A])).rows).toEqual([{payments:[expect.objectContaining({amount:110,state:'PAID'})]}]);
+      await expect(local.query(state)).rejects.toMatchObject({code:'42501'});
+      await local.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[CHU]);
       expect((await local.query('SELECT net_cash_effect::int AS amount FROM public.income_expense_postings WHERE voucher_id=$1 AND event_kind=\'POSTING\'',[voucher_id])).rows).toEqual([{amount:-220}]);
       await local.exec(dinhNghiaTrong("public.reverse_posted_income_expense_v2","20260723050000_finance_v2_writers.sql").stmt);
       const reversal = [voucher_id,SO_QUY,NGAY,'Đảo toàn bộ đợt thử',randomUUID()];
@@ -1473,6 +1502,48 @@ describe("Phân phối quỹ chung trên sổ cổ đông", () => {
     expect(await dem("public.income_expenses")).toBe(1);
     expect(await huyPhieu(advance.voucher_id, CHU2, "POSTED")).toMatchObject({ code: "55000" });
     expect(await phieu(advance.voucher_id)).toMatchObject({ approval_status: "APPROVED", posting_status: "POSTED" });
+  }));
+
+  it("bảy phiếu lịch sử và ba phiếu đã chi tái hiện mười kỳ, không thay đổi sổ tiền", () => giaoDich(async () => {
+    const month = (n: number) => `2026-${String(n).padStart(2, '0')}-01`;
+    for (let n=5; n<=10; n++) await chotThang(month(n), TOA_1, { [CD1]:50 });
+    for (let n=9; n<=11; n++) {
+      const p = await ungDaDuyet(100, { ngay:month(n), so:SO_QUY, nguoiLap:CHU });
+      expect(await ghiSo(p.voucher_id, CHU, SO_QUY)).toBeNull();
+    }
+    const opening = await goi<{opening_id:string}>(CHU,
+      `SELECT public.shareholder_profit_opening_advance_v1('${ORG_A}','${CD1}','2026-10-01','2026-11-12',521,300,'Biên bản tổng hợp mười kỳ','history-monthly-fixture',300) AS v`);
+    await db.query("INSERT INTO public.income_expenses(id,user_id,organization_id,type,name,building_id,voucher_date,code,total_amount,account_id,approval_status,posting_status,active_posting_id_v2) VALUES ($1,$2,$3,'EXPENSE','Bàn giao tiền',$4,$5,'PC-SOURCE-TEST',23,$6,'APPROVED','POSTED',$7)",
+      [id(8900),CHU,ORG_A,TOA_1,month(2),SO_QUY,id(8901)]);
+    const receipts = Array.from({length:7},(_,i)=>({period_month:month(i+1), amount:100+i,
+      source_codes:i===0?['PC-SOURCE-TEST']:[], external_profit:i<4?50:null, evidence:'Bảng đối chiếu kỳ '+(i+1)}));
+    const save = (rows:typeof receipts, org=ORG_A, shareholder=CD1) =>
+      `SELECT public.shareholder_record_opening_receipts_v1('${org}','${shareholder}','${opening.opening_id}','${JSON.stringify(rows)}') AS v`;
+    const position = await viThe(CD1);
+    const postings = await dem('public.income_expense_postings');
+    expect(await loiGoi(U_CD1,save(receipts))).toMatchObject({code:'42501'});
+    expect(await loiGoi(NGOAI,save(receipts,ORG_B))).not.toBeNull();
+    expect(await loiGoi(CHU,save(receipts,ORG_A,CD2))).not.toBeNull();
+    expect(await loiGoi(CHU,save([...receipts,receipts[0]]))).toMatchObject({code:'22023'});
+    expect(await loiGoi(CHU,save([...receipts.slice(0,6),{...receipts[6],period_month:month(10)}]))).toMatchObject({code:'22023'});
+    expect(await loiGoi(CHU,save(receipts.slice(1)))).toMatchObject({code:'22023'});
+    expect(await dem('app_private.shareholder_opening_advance_receipts')).toBe(0);
+    expect(await loiGoi(CHU,save(receipts.map((r,i)=>({...r,source_codes:i===1?['PC-SOURCE-TEST']:[]}))))).toMatchObject({code:'22023'});
+    expect(await dem('app_private.shareholder_opening_advance_receipts')).toBe(0);
+    expect(await goi(CHU,save(receipts))).toMatchObject({count:7,amount:721});
+    expect(await goi(CHU,save([...receipts].reverse()))).toMatchObject({count:7,amount:721});
+    expect(await loiGoi(CHU,save(receipts.slice(1)))).toMatchObject({code:'PT409'});
+    const ledger = await goi<{historical_advances:unknown[];payouts:unknown[]}>(U_CD1,
+      `SELECT public.shareholder_profit_my_ledger_v1('${ORG_A}') AS v`);
+    expect(ledger.historical_advances).toHaveLength(7);
+    expect(ledger.historical_advances[0]).toMatchObject({sources:[{code:'PC-SOURCE-TEST',date:month(2),amount:23,live:true}]});
+    expect(ledger.payouts).toHaveLength(3);
+    const other = await goi<{historical_advances:unknown[]}>(U_XEM,
+      `SELECT public.shareholder_profit_my_ledger_v1('${ORG_A}') AS v`);
+    expect(other.historical_advances).toEqual([]);
+    expect(await viThe(CD1)).toEqual(position);
+    expect(await dem('public.income_expenses')).toBe(4);
+    expect(await dem('public.income_expense_postings')).toBe(postings);
   }));
 
   it("khôi phục khoản phải trả đúng tháng quỹ khi phiếu ứng đã cấn bị hủy", () => giaoDich(async () => {

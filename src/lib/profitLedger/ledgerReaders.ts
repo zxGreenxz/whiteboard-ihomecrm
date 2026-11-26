@@ -145,6 +145,8 @@ export interface ShareholderLedgerEntries {
   marker: ProfitLedgerMarker | null;
   totals: ShareholderLedgerTotals;
   entries: ShareholderLedgerEntry[];
+  settlement_periods?: { voucher_id: string; month: string }[];
+  historical_advances?: HistoricalAdvance[];
 }
 
 function readEntry(row: PayloadRow, path: string): ShareholderLedgerEntry {
@@ -210,7 +212,11 @@ export function readShareholderLedgerEntries(value: unknown, organizationId: str
   // Bất biến của máy chủ (đã kiểm ở doc_shareholder_v1): số dư chạy của dòng cuối = số dư sổ.
   const last = entries.length ? entries[entries.length - 1]!.running_balance : 0;
   if (!sameMoney(last, balance)) fail('E2.entries.running_balance');
-  return { organization_id: organizationId, shareholder, marker: readMarker(root.marker, 'E2.marker'), totals, entries };
+  return { organization_id: organizationId, shareholder, marker: readMarker(root.marker, 'E2.marker'), totals, entries,
+    settlement_periods: root.settlement_periods === undefined ? [] : list(root.settlement_periods, 'E2.settlement_periods', (r,p) => ({
+      voucher_id: str(r.voucher_id, p+'.voucher_id'), month: month(r.month,p+'.month'),
+    })),
+    historical_advances: readHistoricalAdvances(root.historical_advances, 'E2.historical_advances') };
 }
 
 /* ───────────────────────────── E3 shareholder_profit_my_ledger_v1 ───────────────────────────── */
@@ -251,6 +257,28 @@ export interface MyLedgerSalary {
   excluded_by_marker: boolean;
 }
 
+export interface HistoricalAdvance {
+  id: string;
+  code: string;
+  period_month: string;
+  amount: number;
+  external_profit: number | null;
+  sources?: { code: string; date: string; amount: number; live: boolean }[];
+  evidence: string;
+}
+
+function readHistoricalAdvances(value: unknown, path: string): HistoricalAdvance[] {
+  if (value === undefined) return [];
+  return uniqueBy(list(value, path, (row, p) => ({
+    id: str(row.id,p+'.id'), code: str(row.code,p+'.code'), period_month: month(row.period_month,p+'.period_month'),
+    amount: money(row.amount,p+'.amount'), external_profit: optMoney(row.external_profit,p+'.external_profit'),
+    sources: row.sources === undefined ? [] : list(row.sources, p+'.sources', (s,k) => ({
+      code: str(s.code,k+'.code'), date: day(s.date,k+'.date'), amount: money(s.amount,k+'.amount'), live: bool(s.live,k+'.live'),
+    })),
+    evidence: str(row.evidence,p+'.evidence'),
+  })), r=>r.period_month,path);
+}
+
 export interface MyPercentRow {
   building_id: string;
   building_name: string | null;
@@ -287,6 +315,7 @@ export interface MyProfitLedger {
   marker: { settled_through_month: string } | null;
   months: MyLedgerMonth[];
   payouts: MyLedgerPayout[];
+  historical_advances?: HistoricalAdvance[];
   salary: MyLedgerSalary[];
   /** CHỈ có khi người xem có shareholder_profit.view_percent (khoá vắng ⇒ undefined). */
   percent_rows?: MyPercentRow[];
@@ -345,6 +374,7 @@ export function readMyProfitLedger(value: unknown, organizationId: string): MyPr
     marker: markerRow ? { settled_through_month: month(markerRow.settled_through_month, 'E3.marker.settled_through_month') } : null,
     months: list(root.months, 'E3.months', readMyMonth),
     payouts: list(root.payouts, 'E3.payouts', readMyPayout),
+    historical_advances: readHistoricalAdvances(root.historical_advances, 'E3.historical_advances'),
     salary: list(root.salary, 'E3.salary', (row, path) => ({
       period_month: month(row.period_month, `${path}.period_month`),
       investment: money(row.investment, `${path}.investment`),

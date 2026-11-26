@@ -23,6 +23,9 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
     return { ...h.ledger, refetch: h.refetch };
   },
 }));
+vi.mock('@/components/shareholders/ShareholderFinanceOverview', () => ({
+  ShareholderFinanceOverview: ({children}: {children: import('react').ReactNode}) => children,
+}));
 vi.mock('@/components/shareholders/ShareholderLedgerSelfView', () => ({
   default: (props: { ledger: MyProfitLedger; access: unknown }) => {
     h.newView(props);

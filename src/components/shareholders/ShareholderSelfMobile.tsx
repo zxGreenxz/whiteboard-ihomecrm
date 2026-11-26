@@ -1,4 +1,5 @@
 import type { Shareholder } from "@/hooks/useShareholders";
+import { ShareholderFinanceOverview } from "./ShareholderFinanceOverview";
 import { useMyProfitLedger } from "@/hooks/profit-ledger/useProfitLedgerQueries";
 import { shareholderOrganizationId } from "@/lib/profitLedger/selfView";
 import { MyProfitLedgerGate, ProfitLedgerOffNotice } from "./MyProfitLedgerGate";
@@ -30,12 +31,14 @@ export default function ShareholderSelfMobile({
     >
       {(ledger) =>
         ledger.ready ? (
+          <ShareholderFinanceOverview key={ledger.organization_id+ledger.shareholder.id} ledger={ledger} year={year} onYearChange={onYearChange}>
           <ShareholderLedgerSelfMobile
             ledger={ledger}
             access={{ canViewPercent, canViewBuildingTotals, canAdvanceOwn }}
             year={year}
             onYearChange={onYearChange}
           />
+          </ShareholderFinanceOverview>
         ) : (
           <ProfitLedgerOffNotice />
         )

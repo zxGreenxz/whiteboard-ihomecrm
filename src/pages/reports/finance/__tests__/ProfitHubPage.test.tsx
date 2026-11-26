@@ -108,6 +108,9 @@ vi.mock("@/pages/reports/finance/ProfitDistributionReport", () => ({
   },
 }));
 
+vi.mock("@/components/shareholders/CompanyFinanceOverview", () => ({
+  CompanyFinanceOverview: ({children}: {children: ReactNode}) => children,
+}));
 vi.mock("@/components/shareholders/ProfitOverviewTab", () => ({
   default: () => {
     harness.overviewRender();

@@ -10,6 +10,7 @@ import {
 } from '@/hooks/profit-ledger/useSharedFund';
 import SharedFundForm, { sourceLabels, type FundAction } from './SharedFundForm';
 import HousePoolPanel from './HousePoolPanel';
+import OpeningReceiptForm from './OpeningReceiptForm';
 
 const date = (v: string) => v.slice(0, 10).split('-').reverse().join('/');
 const names = (state: SharedFundState, id: string) =>
@@ -113,6 +114,8 @@ function FundHistory({ state, onSettle }: { state: SharedFundState; onSettle: (i
               Đối chiếu {date(o.as_of_date)} · {o.evidence}. Đã tính {o.reconciled_count} phiếu CRM, tổng{' '}
               {formatVND(o.reconciled_approved)}.
             </p>
+            {state.route === 'CANONICAL' && o.historical_count !== undefined &&
+              <OpeningReceiptForm org={state.organization_id} opening={o} />}
           </article>
         ))}
       </details>

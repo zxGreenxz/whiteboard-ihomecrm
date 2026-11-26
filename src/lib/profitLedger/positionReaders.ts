@@ -18,7 +18,7 @@
 
 import { readProfitLedgerRoute, type ProfitLedgerRoute } from './route';
 import {
-  bool, fail, instant, list, money, month, obj, oneOf, optMoney, optMonth, optObj, optStr, sameMoney, str, uniqueBy,
+  bool, day, fail, instant, list, money, month, obj, oneOf, optMoney, optMonth, optObj, optStr, sameMoney, str, uniqueBy,
   type PayloadRow,
 } from './readPrimitives';
 import {
@@ -215,6 +215,8 @@ export function readShareholderPositions(value: unknown, organizationId: string)
 
 export interface MyShareholderPosition extends ShareholderPosition {
   house_pool?: { contributed: number; reserved: number; paid: number; available: number };
+  fund_charges?: { id: string; date: string; code: string | null; amount: number; live: boolean }[];
+  fund_payments?: { id: string; date: string; code: string | null; state: 'PAID' | 'RESERVED' | 'RELEASED'; amount: number }[];
   organization_id: string;
   route: ProfitLedgerRoute;
   shareholder: { id: string; name: string };
@@ -232,6 +234,14 @@ export function readMyShareholderPosition(value: unknown, organizationId: string
     route: readProfitLedgerRoute(str(root.route, 'R2.route')),
     shareholder: { id: str(shareholder.id, 'R2.shareholder.id'), name: str(shareholder.name, 'R2.shareholder.name') },
     ...readPosition(root, 'R2'),
+    ...(root.fund_charges !== undefined && { fund_charges: uniqueBy(list(root.fund_charges, 'R2.fund_charges', (r,p) => ({
+      id: str(r.id,p+'.id'), date: day(r.date,p+'.date'), code: optStr(r.code,p+'.code'),
+      live: bool(r.live,p+'.live'), amount: nonNegative(money(r.amount,p+'.amount'),p+'.amount'),
+    })), r=>r.id,'R2.fund_charges') }),
+    ...(root.fund_payments !== undefined && { fund_payments: uniqueBy(list(root.fund_payments, 'R2.fund_payments', (r,p) => ({
+      id: str(r.id,p+'.id'), date: day(r.date,p+'.date'), code: optStr(r.code,p+'.code'),
+      state: oneOf(r.state,['PAID','RESERVED','RELEASED'] as const,p+'.state'), amount: nonNegative(money(r.amount,p+'.amount'),p+'.amount'),
+    })), r=>r.id,'R2.fund_payments') }),
     ...(pool && { house_pool: {
       contributed: money(pool.contributed, 'R2.house_pool.contributed'),
       reserved: nonNegative(money(pool.reserved, 'R2.house_pool.reserved'), 'R2.house_pool.reserved'),

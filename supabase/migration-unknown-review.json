@@ -961,6 +961,28 @@
         }
       ]
     },
+    "supabase/migrations/20261126034144_phieu_tam_ung_lich_su_theo_ky.sql": {
+      "sha256": "6177d56efb617c16222ea7b4b469e0f72db7181a38298ca0634b1e506f82097e",
+      "missingObjects": [
+        "table:app_private.shareholder_opening_advance_receipts",
+        "table:app_private.shareholder_advance_receipt_sources",
+        "function:app_private.shareholder_receipt_sources_v1",
+        "function:public.shareholder_record_opening_receipts_v1",
+        "trigger:app_private.shareholder_opening_advance_receipts.opening_advance_receipts_immutable"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration thêm phiếu ứng theo kỳ và liên kết phiếu tiền gốc. PGlite đã kiểm hai lần apply, đúng kỳ nhận, cách ly cổ đông, tổng tạm ứng, số dư và sổ tiền. Các đối tượng còn thiếu trên production trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261126034144_phieu_tam_ung_lich_su_theo_ky.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.shareholder_opening_advance_receipts ("
+        },
+        {
+          "duong_dan": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
+          "trich_doan": "bảy phiếu lịch sử và ba phiếu đã chi tái hiện mười kỳ, không thay đổi sổ tiền"
+        }
+      ]
+    },
     "supabase/migrations/20261112093443_manager_collaboration_scopes_v1.sql": {
       "sha256": "c4ba047a2ed12c2fcacc80f59c6ce9bd93552fa8c4b63cb41f8d046b0be4f905",
       "missingObjects": [

@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-26T04:20:36.264Z",
+  "generatedAt": "2026-11-26T04:46:53.219Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 995,
-    "unknown": 80,
+    "unknown": 82,
     "catalog-proven": 207,
     "superseded": 15
   },
@@ -14827,6 +14827,22 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261126034144_phieu_tam_ung_lich_su_theo_ky.sql",
+      "version": "20261126034144",
+      "name": "phieu_tam_ung_lich_su_theo_ky",
+      "scheme": "timestamp14",
+      "sha256": "6177d56efb617c16222ea7b4b469e0f72db7181a38298ca0634b1e506f82097e",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.shareholder_opening_advance_receipts",
+        "table:app_private.shareholder_advance_receipt_sources",
+        "function:app_private.shareholder_receipt_sources_v1",
+        "function:public.shareholder_record_opening_receipts_v1",
+        "trigger:app_private.shareholder_opening_advance_receipts.opening_advance_receipts_immutable"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261126035812_quy_gop_gan_phieu_chi_goc.sql",
       "version": "20261126035812",
       "name": "quy_gop_gan_phieu_chi_goc",
@@ -14835,6 +14851,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-26T04:20:21.228Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126041014_lich_chi_quy_cua_co_dong.sql",
+      "version": "20261126041014",
+      "name": "lich_chi_quy_cua_co_dong",
+      "scheme": "timestamp14",
+      "sha256": "8fe619a0cec99477b7bee83f56a235d5593d7c2c67e5f74123ee5273bf6bafa3",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
       ]
     },
     {
