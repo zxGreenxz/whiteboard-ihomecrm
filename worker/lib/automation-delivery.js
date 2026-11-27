@@ -2,7 +2,7 @@ import { sb } from './ctx.js';
 import { chuanHoaBroadcast } from './automation-config.js';
 import { gioVietNam, trongKhungGio } from './automation-scenario.js';
 import { validateSaleContent } from './automation-content-guard.js';
-import { lockNoticeKey } from './room-lock-notice.js';
+import { jobsForLockGroup, lockNoticeKey } from './room-lock-notice.js';
 
 // Lượt gửi MỘT LẦN còn hiệu lực cho tin đã xếp: đang chạy hoặc đã chốt (kể cả chốt lỗi một
 // phần). 'queued' chưa từng có tin; 'cancelled' là người dùng/dừng khẩn cấp đã huỷ.
@@ -23,7 +23,7 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
   if (error) return reject('AUTOMATION_UNVERIFIED: không đọc được cấu hình hiện tại');
   if (!oneshotId && !auto?.enabled) return reject('CANCELLED_AUTOMATION: tự động hóa đã tắt');
   const { data: conv, error: convError } = await db.from('zalo_conversations')
-    .select('account_id, organization_id, is_sale_partner, thread_type').eq('id', job.conversation_id).maybeSingle();
+    .select('account_id, organization_id, is_sale_partner, thread_type, thread_id').eq('id', job.conversation_id).maybeSingle();
   if (convError) return reject('AUTOMATION_UNVERIFIED: không đọc được người nhận hiện tại');
   if (!conv || conv.account_id !== job.account_id || conv.organization_id !== job.organization_id) {
     return reject('REJECTED_SCOPE: người nhận tự động không còn đúng phạm vi');
@@ -37,6 +37,10 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
     if (!auto.stats?.roomLockWatch?.some(entry => entry.id === lock.roomId && entry.since === lock.since)) {
       return reject('STALE_SALE_CONTENT: đợt Lock phòng đã thay đổi');
     }
+    const prior = await jobsForLockGroup(db, job.organization_id, lock.roomId, lock.since, conv.thread_id)
+      .neq('id', job.id).or('provider_started_at.not.is.null,status.eq.sent').limit(1);
+    if (prior.error) return reject('AUTOMATION_UNVERIFIED: chưa đọc được lần báo Lock của nhóm');
+    if (prior.data.length) return reject('CANCELLED_AUTOMATION: nhóm đã có lần gửi Lock cho đợt này');
   }
   if (oneshotId) {
     const { data: shot, error: shotError } = await db.from('zalo_automation_oneshots')

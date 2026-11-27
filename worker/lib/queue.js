@@ -17,14 +17,14 @@
 //   • Tôn trọng not_before (job hẹn giờ — bỏ qua tới lúc đến hạn).
 // =============================================================
 import { ThreadType } from 'zca-js';
-import { sb, log, sessions, orgOf } from './ctx.js';
+import { sb, log, sessions, orgOf, sleep } from './ctx.js';
 import { syncAccountGroups, upsertMessagesForThread, emojiToZca } from './inbound.js';
 import { sendMediaJob } from './media.js';
 import { sendForwardMediaJob } from './forward-media.js';
 import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clampHistoryCount } from './scope-guard.js';
 import { INSTANCE_ID } from './lease.js';
 import { validateAutomationDelivery } from './automation-delivery.js';
-import { lockNoticeKey } from './room-lock-notice.js';
+import { LOCK_NOTICE_GAP_MS, lockNoticeKey } from './room-lock-notice.js';
 import { finalizeSend, sendReceipt } from './send-finalization.js';
 import { deliverSaleAdvice } from './sale-advice-channel.js';
 
@@ -62,10 +62,15 @@ async function deferJob(job, reason, claimed = false) {
   if (error) log('deferJob', job.id, error.message);
 }
 
+const nextLockSendAt = new Map();
+let nextLockAfterRecovery = 0;
+
 export async function recoverInterruptedJobs() {
   const { data, error } = await sb.rpc('zalo_worker_recover_jobs_v1', { p_instance_id: INSTANCE_ID });
   if (error) throw new Error(`Không đối soát được hàng đợi sau khởi động: ${error.message}`);
   if (data?.reason === 'lease_lost') throw new Error('Không còn lease để đối soát hàng đợi');
+  // The previous lease holder may have just sent an overdue Lock before handing off.
+  nextLockAfterRecovery = performance.now() + LOCK_NOTICE_GAP_MS;
   log('queue recovery', data);
   return data;
 }
@@ -78,6 +83,11 @@ function fencedSession(session, job, delivery) {
       const method = target[key];
       if (typeof method !== 'function') return method;
       return async (...args) => {
+        const isLock = key === 'sendMessage' && args[2] === ThreadType.Group && lockNoticeKey(job.payload);
+        if (isLock) {
+          const remaining = Math.max(nextLockSendAt.get(job.organization_id) ?? 0, nextLockAfterRecovery) - performance.now();
+          if (remaining > 0) await sleep(Math.ceil(remaining));
+        }
         if (sessions.get(job.account_id) !== session) throw new Error('SESSION_CHANGED: phiên đã dừng hoặc thay thế');
         const automation = await validateAutomationDelivery(job);
         if (!automation.ok) throw new Error(automation.reason);
@@ -113,6 +123,7 @@ function fencedSession(session, job, delivery) {
         let deadline;
         let result;
         try {
+          if (isLock) nextLockSendAt.set(job.organization_id, performance.now() + LOCK_NOTICE_GAP_MS);
           result = await Promise.race([
             method.apply(target, args),
             new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('PROVIDER_TIMEOUT: chưa xác nhận kết quả sau ' + timeoutMs / 1000 + ' giây')), timeoutMs); }),

@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   forwardSource: null, beforeAdmissionReturns: null, threadType: 'user',
 }));
 vi.mock('../lib/ctx.js', () => ({
+  sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
   sessions: state.sessions, log: () => {}, orgOf: () => 'org', SUPABASE_URL: 'https://storage.example.test',
   sb: {
     rpc: async (name, args) => {
@@ -160,6 +161,27 @@ describe('queue admission and delivery outcomes', () => {
     const body = '@all Lock 201 – Tòa Sen';
     await processJob(makeJob({ tu_dong: true, automation_request_key: 'room-lock:room:123:conv', body }));
     expect(api.sendMessage).toHaveBeenCalledWith({ msg: body, mentions: [{ pos: 0, uid: '-1', len: 4 }] }, 'thread', 1);
+  });
+  it('rải hai tin Lock đã đến hạn cách nhau 3 giây ở lần gọi Zalo', async () => {
+    vi.useFakeTimers();
+    try {
+      state.threadType = 'group';
+      const api = connect();
+      const notice = id => ({ ...makeJob({ tu_dong: true, automation_request_key: 'room-lock:r:100:' + id }),
+        organization_id: 'pace-org', conversation_id: id });
+      await recoverInterruptedJobs();
+      const first = processJob(notice('first'));
+      await vi.advanceTimersByTimeAsync(2999);
+      expect(api.sendMessage).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await first;
+      const second = processJob(notice('second'));
+      await vi.advanceTimersByTimeAsync(2999);
+      expect(api.sendMessage).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await second;
+      expect(api.sendMessage).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
   });
   it.each([false, true])('thử lại tin Lock sau lỗi đọc trước khi gọi Zalo (đã claim=%s)', async claimed => {
     const api = connect();

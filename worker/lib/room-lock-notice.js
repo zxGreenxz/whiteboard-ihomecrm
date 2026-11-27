@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { gioVietNam, trongKhungGio } from './automation-scenario.js';
 
+export const LOCK_NOTICE_GAP_MS = 3_000;
+
 // Trang sale hiện hành gồm mọi tòa thật của công ty khi còn link hoạt động.
 // Phòng rời trang chỉ được báo Lock nếu phòng và tòa vẫn còn trong phạm vi đó.
 export async function readLockNotice(db, orgId, roomId) {
@@ -24,6 +26,35 @@ export function lockNoticeKey(payload) {
   return match ? { roomId: match[1], since: Number(match[2]), groupId: match[3] } : null;
 }
 
+// Hai tài khoản có thể trỏ tới cùng một nhóm qua hai hội thoại khác nhau.
+// Tra theo thread để nhận ra cả các tin xếp trước khi worker được nâng cấp.
+export function jobsForLockGroup(db, orgId, roomId, since, threadId) {
+  return db.from('zalo_send_queue').select('id,conversation_id,status,provider_started_at,conv:zalo_conversations!inner(thread_id)')
+    .eq('organization_id', orgId).eq('conv.thread_id', threadId)
+    .eq('payload->>tu_dong', 'true').like('payload->>automation_request_key', `room-lock:${roomId}:${since}:%`);
+}
+
+async function pendingLockRecipients(db, orgId, entry, groupThreads, online) {
+  const pending = entry.pending && new Set(entry.pending);
+  const recipients = [];
+  for (const aliases of groupThreads.values()) {
+    if (pending && !aliases.some(group => pending.has(group.id))) continue;
+    let candidates = aliases;
+    if (aliases.length > 1) {
+      const { data, error } = await jobsForLockGroup(db, orgId, entry.id, entry.since, aliases[0].thread_id);
+      if (error) throw new Error(`Chưa kiểm được biên nhận Lock: ${error.message}`);
+      if (data.some(job => job.status !== 'failed' || job.provider_started_at)) continue;
+      // RPC dùng lại khóa cũ cả khi job thất bại trước khi gửi. Chỉ một hội
+      // thoại khác còn nguyên khóa mới có thể báo được cho nhóm này.
+      const failed = new Set(data.map(job => job.conversation_id));
+      candidates = aliases.filter(group => !failed.has(group.id));
+    }
+    const recipient = candidates.find(group => online.has(group.account_id)) ?? candidates[0];
+    if (recipient) recipients.push(recipient.id);
+  }
+  return recipients;
+}
+
 // Giữ mốc mỗi lần phòng xuất hiện và từng nhóm còn chờ trong sổ của automation.
 // Worker khởi động lại hoặc mất phản hồi enqueue vẫn dùng đúng khóa của lần lock.
 export async function processRoomLocks({ db, orgId, phong, watch, groups, online, now, antiSpam, remaining, earliestStart, enqueue, log }) {
@@ -40,7 +71,13 @@ export async function processRoomLocks({ db, orgId, phong, watch, groups, online
   let nextStart = earliestStart;
   const today = gioVietNam(now).ngay;
   const windowOpen = trongKhungGio(now, antiSpam).trong;
-  const gap = groups.size > 1 ? Math.max(antiSpam.gapBetweenRoomMsgsSec, antiSpam.gapBetweenRecipientsSec) : antiSpam.gapBetweenRoomMsgsSec;
+  const groupThreads = new Map();
+  for (const group of groups.values()) {
+    const thread = group.thread_id || group.id;
+    if (!groupThreads.has(thread)) groupThreads.set(thread, []);
+    groupThreads.get(thread).push(group);
+  }
+  for (const aliases of groupThreads.values()) aliases.sort((a, b) => a.id.localeCompare(b.id));
   for (const entry of previous.values()) {
     if (!phong.trangSale || listedIds.has(entry.id)) continue;
     // Tin đã xếp có thể còn chờ trong ngày. Giữ mốc cho tới khi phòng mở lại
@@ -49,7 +86,13 @@ export async function processRoomLocks({ db, orgId, phong, watch, groups, online
       if (entry.completedOn === today) next.push(entry);
       continue;
     }
-    const pending = (entry.pending ?? [...groups.keys()]).filter(id => groups.has(id));
+    let pending;
+    try { pending = await pendingLockRecipients(db, orgId, entry, groupThreads, online); }
+    catch (error) {
+      log('automation: báo Lock', error.message);
+      next.push(entry);
+      continue;
+    }
     const waiting = [];
     let notice;
     for (const id of pending) {
@@ -72,7 +115,7 @@ export async function processRoomLocks({ db, orgId, phong, watch, groups, online
       if (await enqueue({ conv: groups.get(id), khiNao: due, requestKey, ...notice })) {
         queued++;
         recipients.add(id);
-        nextStart = due.getTime() + gap * 1000;
+        nextStart = due.getTime() + LOCK_NOTICE_GAP_MS;
       } else waiting.push(id);
     }
     next.push(waiting.length ? { ...entry, pending: waiting } : { ...entry, pending: [], completedOn: today });
