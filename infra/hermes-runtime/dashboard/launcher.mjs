@@ -26,7 +26,8 @@ export function validateTarget(owner, worker, image, namespaces) {
   requireThat(owner?.State?.Running && worker?.State?.Running, 'prerequisite_not_running', 75);
   requireThat(ID.test(owner.Id) && ID.test(worker.Id), 'invalid_container_identity');
   requireThat(owner.Name === `/${OWNER}` && worker.Name === `/${WORKER}`, 'wrong_container_name');
-  requireThat(owner.Config?.Image === IMAGE && [image?.Id, IMAGE.split('@')[1]].includes(owner.Image) &&
+  const requestedImage = owner.Config?.Image;
+  requireThat((requestedImage === IMAGE || requestedImage === owner.Image) && [image?.Id, IMAGE.split('@')[1]].includes(owner.Image) &&
     [IMAGE_CONFIG, IMAGE.split('@')[1]].includes(image?.Id) &&
     image?.RepoDigests?.includes(IMAGE) && image.Os === 'linux' && image.Architecture === 'amd64', 'image_pin_mismatch');
   requireThat(owner.Config?.User === '10003:10003', 'owner_user_mismatch');
