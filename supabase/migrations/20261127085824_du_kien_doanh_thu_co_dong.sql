@@ -87,7 +87,7 @@ WITH bounds AS (
           THEN greatest(0,(c.discounts->>'amount_per_month')::numeric) ELSE 0 END ELSE 0 END) AS amount
   FROM rent_by_lease r JOIN public.contracts c ON c.id=r.id AND c.organization_id=p_org CROSS JOIN bounds w
   LEFT JOIN LATERAL (SELECT p.id,p.state FROM app_private.contract_rent_support_plans p
-    WHERE p.organization_id=p_org AND p.contract_id=c.id ORDER BY p.revision DESC LIMIT 1) plan ON true
+    WHERE p.organization_id=p_org AND p.contract_id=c.id ORDER BY (p.state='ACTIVE') DESC,p.revision DESC LIMIT 1) plan ON true
   LEFT JOIN LATERAL (SELECT sum(m.agreed_amount) AS amount FROM app_private.contract_rent_support_months m
     WHERE m.organization_id=p_org AND m.contract_id=r.id AND m.billing_month=w.ym AND m.plan_id=plan.id AND plan.state='ACTIVE'
       AND NOT EXISTS (SELECT FROM app_private.rent_support_invoice_claims claim WHERE claim.organization_id=p_org

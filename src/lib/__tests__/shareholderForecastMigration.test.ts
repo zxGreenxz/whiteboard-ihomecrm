@@ -66,7 +66,7 @@ afterAll(()=>db.close());
 
 async function inputs(setup: string) {
   return db.transaction(async tx=>{
-    await tx.exec("TRUNCATE contracts,invoices,invoice_items,income_expenses,income_expense_types,fixture_lines,building_fee_accounts");
+    await tx.exec("TRUNCATE contracts,invoices,invoice_items,income_expenses,income_expense_types,fixture_lines,building_fee_accounts,app_private.contract_rent_support_plans,app_private.contract_rent_support_months");
     if (setup) await tx.exec(setup);
     const result = await tx.query<Record<string,string> & {detail_lines: {bucket:string; label:string; amount:number; room?:string}[]}>(
       "SELECT * FROM app_private.forecast_house_report_v1($1,$2,'2025-11-01',true)",[org,house]);
@@ -97,6 +97,15 @@ describe("Dự kiến doanh thu của nhà",()=>{
     expect(Number((await inputs(discounted)).unbilled)).toBe(1200000);
     const used=discounted+`INSERT INTO invoices VALUES ('${invoice}','${contract}','${org}','${house}','2025-10','PAID',NULL,'FIRST',0,0,0,0,0);`;
     expect(Number((await inputs(used)).unbilled)).toBe(1500000);
+  });
+  it("lấy lịch hỗ trợ đang có hiệu lực khi bản sửa mới hơn còn chờ duyệt",async()=>{
+    const r=await inputs(lease+`
+      INSERT INTO app_private.contract_rent_support_plans VALUES
+        ('${invoice}','${org}','ACTIVE','${contract}',1),('${voucher}','${org}','NEEDS_REVIEW','${contract}',2);
+      INSERT INTO app_private.contract_rent_support_months VALUES
+        (200000,'${invoice}','${org}','${contract}','2025-11'),(500000,'${voucher}','${org}','${contract}','2025-11');
+    `);
+    expect(Number(r.unbilled)).toBe(1300000);
   });
   it("hóa đơn trả một phần thay cho tiền dự kiến, loại cọc và nợ mang sang",async()=>{
     const r=await inputs(lease+`
