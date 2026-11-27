@@ -961,26 +961,6 @@
         }
       ]
     },
-    "supabase/migrations/20261127170740_ai_application_routes.sql": {
-      "sha256": "e81961fa494debeec1dbf05c609120ad069d2aceed46f26feb5f9a917f36a494",
-      "missingObjects": [
-        "table:public.ai_route_catalogs",
-        "table:public.ai_application_routes",
-        "function:public.record_ai_route_probe"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Cấu hình nguồn AI là migration mới của nhánh này. Đã kiểm quyền dịch vụ và kết quả thử model trên database dùng một lần. Production chờ review, backup và forward lane.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261127170740_ai_application_routes.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS public.ai_application_routes ("
-        },
-        {
-          "duong_dan": "scripts/__tests__/ai-route-schema.test.mjs",
-          "trich_doan": "await db.exec('SET ROLE service_role');"
-        }
-      ]
-    },
     "supabase/migrations/20261112093443_manager_collaboration_scopes_v1.sql": {
       "sha256": "c4ba047a2ed12c2fcacc80f59c6ce9bd93552fa8c4b63cb41f8d046b0be4f905",
       "missingObjects": [

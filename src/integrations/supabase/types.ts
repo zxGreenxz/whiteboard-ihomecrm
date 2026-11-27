@@ -259,6 +259,24 @@ export type Database = {
           },
         ]
       }
+      ai_application_routes: {
+        Row: {
+          app: string
+          revision: number
+          routes: Json
+        }
+        Insert: {
+          app: string
+          revision?: number
+          routes?: Json
+        }
+        Update: {
+          app?: string
+          revision?: number
+          routes?: Json
+        }
+        Relationships: []
+      }
       ai_chat_messages: {
         Row: {
           content: string | null
@@ -476,6 +494,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ai_route_catalogs: {
+        Row: {
+          models: Json
+          provider: string
+          synced_at: string
+        }
+        Insert: {
+          models: Json
+          provider: string
+          synced_at?: string
+        }
+        Update: {
+          models?: Json
+          provider?: string
+          synced_at?: string
+        }
+        Relationships: []
       }
       ai_usage_logs: {
         Row: {
@@ -29497,6 +29533,15 @@ export type Database = {
           p_voucher_id: string
         }
         Returns: string
+      }
+      record_ai_route_probe: {
+        Args: {
+          p_model: string
+          p_passed: boolean
+          p_provider: string
+          p_synced_at: string
+        }
+        Returns: boolean
       }
       record_contract_commission_event_v1: {
         Args: {
