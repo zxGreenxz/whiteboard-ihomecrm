@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mapPayloadSangToa } from './vacant-rooms.js';
-import { lockRoomId, readLockNotice } from './room-lock-notice.js';
+import { lockNoticeKey, readLockNotice } from './room-lock-notice.js';
 
 const canonical = value => Array.isArray(value) ? value.map(canonical) :
   value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
@@ -34,7 +34,7 @@ export async function validateSaleContent(job, db, template) {
   if (error || !data || !Array.isArray(data.rooms) || !Array.isArray(data.buildings)) {
     return reject('AUTOMATION_UNVERIFIED: chưa kiểm được nội dung phòng hiện tại');
   }
-  const roomId = lockRoomId(job.payload);
+  const roomId = lockNoticeKey(job.payload)?.roomId;
   if (roomId) {
     if (!Number.isInteger(data.pages) || data.pages <= 0 || data.rooms.some(room => room.id === roomId)) {
       return reject('STALE_SALE_CONTENT: trang sale đã đóng hoặc phòng đã mở lại');

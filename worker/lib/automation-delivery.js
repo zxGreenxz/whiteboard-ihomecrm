@@ -2,7 +2,7 @@ import { sb } from './ctx.js';
 import { chuanHoaBroadcast } from './automation-config.js';
 import { gioVietNam, trongKhungGio } from './automation-scenario.js';
 import { validateSaleContent } from './automation-content-guard.js';
-import { lockRoomId } from './room-lock-notice.js';
+import { lockNoticeKey } from './room-lock-notice.js';
 
 // Lượt gửi MỘT LẦN còn hiệu lực cho tin đã xếp: đang chạy hoặc đã chốt (kể cả chốt lỗi một
 // phần). 'queued' chưa từng có tin; 'cancelled' là người dùng/dừng khẩn cấp đã huỷ.
@@ -17,8 +17,9 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
   // not apply, but hours/day/due checks below do (same as zalo_worker_begin_provider_v1).
   const oneshotId = kind === 'broadcast_vacant' && job.payload.oneshot_id ? String(job.payload.oneshot_id) : null;
   const reject = reason => ({ ok: false, reason });
+  const lock = lockNoticeKey(job.payload);
   const { data: auto, error } = await db.from('zalo_automations')
-    .select('enabled, config').eq('organization_id', job.organization_id).eq('kind', kind).maybeSingle();
+    .select(lock ? 'enabled, config, stats' : 'enabled, config').eq('organization_id', job.organization_id).eq('kind', kind).maybeSingle();
   if (error) return reject('AUTOMATION_UNVERIFIED: không đọc được cấu hình hiện tại');
   if (!oneshotId && !auto?.enabled) return reject('CANCELLED_AUTOMATION: tự động hóa đã tắt');
   const { data: conv, error: convError } = await db.from('zalo_conversations')
@@ -31,7 +32,12 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
     return conv.is_sale_partner ? { ok: true } : reject('CANCELLED_AUTOMATION: hội thoại không còn là sale');
   }
   const config = chuanHoaBroadcast(auto?.config);
-  if (lockRoomId(job.payload) && conv.thread_type !== 'group') return reject('CANCELLED_AUTOMATION: tin Lock chỉ gửi trong nhóm');
+  if (lock) {
+    if (conv.thread_type !== 'group' || lock.groupId !== job.conversation_id) return reject('CANCELLED_AUTOMATION: nhóm nhận tin Lock đã đổi');
+    if (!auto.stats?.roomLockWatch?.some(entry => entry.id === lock.roomId && entry.since === lock.since)) {
+      return reject('STALE_SALE_CONTENT: đợt Lock phòng đã thay đổi');
+    }
+  }
   if (oneshotId) {
     const { data: shot, error: shotError } = await db.from('zalo_automation_oneshots')
       .select('organization_id, status, recipients').eq('id', oneshotId).maybeSingle();

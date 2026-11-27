@@ -263,8 +263,11 @@ describe('engine broadcast — xếp hàng', () => {
     await tick(3);
     expect(rpcCalls.map(c => c.args.p_conversation_id)).toEqual(['c1', 'c2']);
     expect(duLieuAutomations[0].stats.sentToday).toBe(2);
+    const firstCycle = duLieuAutomations[0].stats.roomLockWatch[0];
+    expect(firstCycle).toMatchObject({ id: 'r1', since: THU_HAI_0830.getTime(), pending: [], completedOn: '2026-08-31' });
     phongGia.push(phong('r1'));
     await tick(8);
+    expect(duLieuAutomations[0].stats.roomLockWatch[0].since).toBeGreaterThan(firstCycle.since);
     phongGia.length = 0;
     await tick(9);
     expect(rpcCalls.map(c => c.args.p_conversation_id)).toEqual(['c1', 'c2', 'c1', 'c2']);

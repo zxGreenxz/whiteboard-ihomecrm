@@ -18,9 +18,10 @@ export async function readLockNotice(db, orgId, roomId) {
   return { body, contentGuard: { version: 1, fingerprint } };
 }
 
-export function lockRoomId(payload) {
+export function lockNoticeKey(payload) {
   if (payload?.tu_dong !== true) return null;
-  return /^room-lock:([^:]+):\d+:[^:]+$/.exec(payload.automation_request_key)?.[1] ?? null;
+  const match = /^room-lock:([^:]+):(\d+):([^:]+)$/.exec(payload.automation_request_key);
+  return match ? { roomId: match[1], since: Number(match[2]), groupId: match[3] } : null;
 }
 
 // Giữ mốc mỗi lần phòng xuất hiện và từng nhóm còn chờ trong sổ của automation.
@@ -42,6 +43,12 @@ export async function processRoomLocks({ db, orgId, phong, watch, groups, online
   const gap = groups.size > 1 ? Math.max(antiSpam.gapBetweenRoomMsgsSec, antiSpam.gapBetweenRecipientsSec) : antiSpam.gapBetweenRoomMsgsSec;
   for (const entry of previous.values()) {
     if (!phong.trangSale || listedIds.has(entry.id)) continue;
+    // Tin đã xếp có thể còn chờ trong ngày. Giữ mốc cho tới khi phòng mở lại
+    // để một tin của đợt cũ không thể tag lần hai sau khi phòng vừa khóa lại.
+    if (entry.completedOn) {
+      if (entry.completedOn === today) next.push(entry);
+      continue;
+    }
     const pending = (entry.pending ?? [...groups.keys()]).filter(id => groups.has(id));
     const waiting = [];
     let notice;
@@ -68,12 +75,12 @@ export async function processRoomLocks({ db, orgId, phong, watch, groups, online
         nextStart = due.getTime() + gap * 1000;
       } else waiting.push(id);
     }
-    if (waiting.length) next.push({ ...entry, pending: waiting });
+    next.push(waiting.length ? { ...entry, pending: waiting } : { ...entry, pending: [], completedOn: today });
   }
   // Thứ tự phòng và thứ tự khóa jsonb có thể đổi mà trạng thái vẫn như cũ.
   const changed = next.length !== previous.size || next.some(entry => {
     const old = previous.get(entry.id);
-    return old?.since !== entry.since || JSON.stringify(old?.pending) !== JSON.stringify(entry.pending);
+    return old?.since !== entry.since || old?.completedOn !== entry.completedOn || JSON.stringify(old?.pending) !== JSON.stringify(entry.pending);
   });
   return { watch: next, changed, queued, recipients: recipients.size, nextStart };
 }
