@@ -47,6 +47,18 @@ test('target mutations reject wrong profile, image, user, namespace and absent p
   const contentStore = fixture(); contentStore.owner.Image = IMAGE.split('@')[1];
   assert.equal(validate(contentStore).ownerId, ownerId);
 });
+test('a restored owner can reference the exact pinned image by its Docker ID', () => {
+  const restored = fixture();
+  const manifest = IMAGE.split('@')[1];
+  restored.image.Id = manifest;
+  restored.owner.Config.Image = restored.owner.Image = manifest;
+  assert.equal(validate(restored).ownerId, ownerId);
+
+  restored.owner.Config.Image = 'sha256:' + '0'.repeat(64);
+  assert.throws(() => validate(restored), /image_pin_mismatch/);
+  restored.owner.Config.Image = restored.owner.Image = restored.image.Id = 'sha256:' + '0'.repeat(64);
+  assert.throws(() => validate(restored), /image_pin_mismatch/);
+});
 test('stop authorization is tied to recorded CID, exact labels, image and namespaces', () => {
   const good = ownedFixture(); assert.equal(validateOwned(good.container, good.record), good.container);
   for (const mutate of [f => { f.container.Id = 'd'.repeat(64); }, f => { f.container.Config.Labels = {}; },
