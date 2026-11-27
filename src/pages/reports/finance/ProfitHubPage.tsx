@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import ShareholderForecast from "@/components/shareholders/ShareholderForecast";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -83,6 +84,8 @@ export default function ProfitHubPage() {
   if (canSeeOwnAdvance && me) tabs.push({ value: "my-advance", label: "Tạm ứng LN", node: <ShareholderAdvanceTab me={me} /> });
   // Đợt 2: tab doanh thu / chi phí toà cần thêm quyền xem số toà (cổ đông chỉ thấy tiền của mình).
   if (canReport && canViewBuildingTotals) tabs.push({ value: "report", label: "BC Doanh Thu Chi Phí", node: <ProfitDistributionContent /> });
+  const canSeeForecast = canReport && canViewBuildingTotals && Boolean(me || canManageShareholders || perms?.__superadmin);
+  if (canSeeForecast) tabs.push({ value: "forecast", label: "Dự kiến", node: <ShareholderForecast /> });
   if (isManager) {
     if (canViewManagedProfit) tabs.push({ value: "overview", label: "Tổng quan", node: <CompanyFinanceOverview><ProfitOverviewTab /></CompanyFinanceOverview> });
     if (canLock || canUnlock) tabs.push({
@@ -127,6 +130,7 @@ export default function ProfitHubPage() {
         canViewBuildingTotals={canViewBuildingTotals}
         canViewPercent={canViewPercent}
         canAdvanceOwn={canAdvanceOwn}
+        canSeeForecast={canSeeForecast}
         requestedTab={requestedTab}
       />
       </QueryRegion>

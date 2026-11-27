@@ -126,6 +126,8 @@ vi.mock("@/components/shareholders/ShareConfigTab", () => ({
   default: () => createElement("div"),
 }));
 
+vi.mock("@/components/shareholders/ShareholderForecast", () => ({ default: () => createElement("div", { "data-probe": "forecast" }) }));
+
 vi.mock("@/components/shareholders/ShareholderSelfView", () => ({
   default: ({ me, ...access }: { me: Shareholder }) => {
     harness.shareholderRender(me, access);
@@ -214,6 +216,7 @@ describe("ProfitHubPage legacy permission behavior", () => {
     const html = renderPage();
 
     expect(html).not.toContain('data-tab="report"');
+    expect(html).not.toContain('data-tab="forecast"');
     expect(html).not.toContain('data-probe="report"');
     expect(html).toContain('data-tab="my-overview"');
     expect(html).toContain('data-probe="shareholder-self"');
@@ -287,7 +290,7 @@ describe("ProfitHubPage legacy permission behavior", () => {
 
     const html = renderPage();
 
-    for (const tab of ["report", "overview", "lock", "config"]) expect(html).toContain(`data-tab="${tab}"`);
+    for (const tab of ["report", "forecast", "overview", "lock", "config"]) expect(html).toContain(`data-tab="${tab}"`);
     expect(html).not.toContain('data-tab="my-overview"');
     expect(html).not.toContain('data-tab="my-advance"');
   });
@@ -366,6 +369,7 @@ describe("ProfitHubPage legacy permission behavior", () => {
       canViewBuildingTotals: false,
       canViewPercent: true,
       canAdvanceOwn: false,
+      canSeeForecast: false,
       requestedTab: "my-advance",
     });
   });

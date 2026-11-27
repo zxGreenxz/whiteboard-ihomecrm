@@ -597,3 +597,7 @@ button.ph-chip:hover { filter: brightness(1.12); }
   min-width: var(--radix-popover-trigger-width);
   max-width: min(420px, 90vw);
 }
+.forecast-row { padding-inline: .9rem; column-gap: .35rem; }
+@media (min-width: 768px) {
+  .forecast-row { grid-template-columns: minmax(7rem, 1.5fr) repeat(4,minmax(0,1fr)) 1rem; }
+}
