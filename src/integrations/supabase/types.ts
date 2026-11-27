@@ -26450,6 +26450,22 @@ export type Database = {
       }
       hermes_zalo_binding_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_broadcast_v1: { Args: { p: Json }; Returns: Json }
+      hermes_zalo_deposit_consent_v1: {
+        Args: {
+          p_account: string
+          p_confirmation: string
+          p_generation: string
+          p_instance: string
+          p_message: string
+          p_sender: string
+          p_sent_ms: number
+        }
+        Returns: boolean
+      }
+      hermes_zalo_deposit_v1: {
+        Args: { p_binding: Json; p_input: Json }
+        Returns: Json
+      }
       hermes_zalo_ingress_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_private_command_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_private_reply_v1: { Args: { p: Json }; Returns: Json }
