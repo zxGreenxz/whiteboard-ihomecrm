@@ -2,7 +2,8 @@
 // Đợt 7: dấu `lead-conversion` của luồng chuyển khách hẹn BẢN TRƯỚC (khách thuê → phiếu cọc → khách hẹn). Luồng hiện hành
 // không ghi dấu này nữa; dấu cũ được kết luận một lần, không chạy lại bước ghi nào, không chặn mãi.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { forgetDeadIntentKeys, forgetLeadConversionTrace, forgetOrphanLeadConversionTraces, readLeadConversionTrace, resolveLegacyLeadConversion, type LeadConversionTrace } from '../leadConversionProgress';
+import { forgetLeadConversionTrace, forgetOrphanLeadConversionTraces, readLeadConversionTrace, resolveLegacyLeadConversion, type LeadConversionTrace } from '../leadConversionProgress';
+import { forgetDeadIntentKeys } from '../pendingSweep';
 import type { FinancialPendingRecord } from '../financialPending';
 
 const LEAD = 'lead-1';

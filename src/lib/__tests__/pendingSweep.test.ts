@@ -111,20 +111,20 @@ describe('quét nền khi mở app — ba kịch bản của plan', () => {
   });
 
   it('nơi máy chủ khử trùng theo mã (`serverDedupesRequestKey`) ⇒ dấu còn nguyên, KHÔNG có lệnh ghi nào', async () => {
-    // «Đã kiểm» bản đặt giá trị (đợt 10c): hàm đối chiếu không đọc gì, kết luận «gửi lại cùng giá trị ngay».
-    const verify = seedMark('voucher-verify', 'v3', { meta: { target_verified: true } });
-    // Phiên bàn giao: máy chủ khoá phiên rồi mới xét; «như trước khi bấm» = gửi lại ngay.
+    // «Đã kiểm» bản đặt giá trị (đợt 10c): hàm đối chiếu không đọc gì, kết luận «gửi lại cùng giá trị ngay» — kể cả khi phiếu
+    // đang ở đúng giá trị đó (không suy «đã ghi» từ trạng thái hiện tại).
+    io.server.rows.income_expenses = [voucher('v3', { verified_at: '2026-11-20T03:00:00.000Z' }), voucher('v3b', {})];
+    const verifyOn = seedMark('voucher-verify', 'v3', { meta: { target_verified: true, before: 'chua-kiem' } });
+    const verifyOff = seedMark('voucher-verify', 'v3b', { meta: { target_verified: false } });
+    // Phiên bàn giao, hoá đơn: chưa đăng ký quét nền (xem chú thích cửa bundle ở `PENDING_SWEEP_SOURCES`) ⇒ không đụng.
     io.server.rows.cash_handovers = [{ id: 'h1', code: 'BG1', status: 'PENDING', cancel_requested_by: null, cancel_requested_at: null }];
     const handover = seedMark('handover-confirm', 'h1', { meta: { before: 'PENDING||' } });
-    // Hoá đơn: khoá rồi mới xét; còn Đã huỷ như lúc bấm khôi phục.
-    io.server.rows.invoices = [{ id: 'i1', invoice_number: 'HD1', status: 'CANCELLED', deleted_at: null, paid_amount: 0 }];
     const invoice = seedMark('invoice-restore', 'i1', { organizationId: ORG, meta: { before: 'CANCELLED||0' } });
     const report = await sweep();
-    expect([verify, handover, invoice].map(key => localStorage.getItem(key) !== null)).toEqual([true, true, true]);
+    expect([verifyOn, verifyOff, handover, invoice].map(key => localStorage.getItem(key) !== null)).toEqual([true, true, true, true]);
     expect(report.settled).toEqual([]);
-    expect(report.kept.map(item => [item.pending.namespace, item.reason]).sort()).toEqual([
-      ['handover-confirm', 'resend-needed'], ['invoice-restore', 'resend-needed'], ['voucher-verify', 'resend-needed'],
-    ]);
+    expect(report.kept.map(item => [item.pending.businessKey, item.reason]).sort()).toEqual([['v3', 'resend-needed'], ['v3b', 'resend-needed']]);
+    expect(io.reads).toEqual([]);
     expect(io.writes).toEqual([]);
     expect(io.rpc).not.toHaveBeenCalled();
     expect(pendingSweepNotice(report.settled)).toBeNull();
@@ -162,7 +162,7 @@ describe('quét nền — dấu không được đụng tới', () => {
     io.server.rows.invoices = [{ id: 'i2', invoice_number: 'HD2', status: 'APPROVED', deleted_at: null, paid_amount: 0 }];
     const keys = [
       seedMark('voucher-unapprove', 'v6', { userId: 'someone-else', meta: { before: 'APPROVED|POSTED|3|1' } }),
-      // Hoá đơn dùng phạm vi công ty đang chọn: dấu của công ty khác để nguyên.
+      // Namespace chưa đăng ký quét nền (hoá đơn).
       seedMark('invoice-restore', 'i2', { organizationId: 'org-b', meta: { before: 'CANCELLED||0' } }),
       // Phạm vi lệch với nơi ghi (phiếu dùng phạm vi người dùng): không phải dấu của nơi ghi này.
       seedMark('voucher-unapprove', 'v6', { organizationId: ORG, meta: { before: 'APPROVED|POSTED|3|1' } }),
@@ -175,6 +175,18 @@ describe('quét nền — dấu không được đụng tới', () => {
     expect(keys.map(key => localStorage.getItem(key) !== null)).toEqual(keys.map(() => true));
     expect(report.settled).toEqual([]);
     expect(io.reads).toEqual([]);
+  });
+
+  it('nơi ghi dùng phạm vi công ty đang chọn: chỉ quét dấu của đúng công ty đang chọn', async () => {
+    const reconcile = vi.fn(async () => ({ outcome: 'already-written' as const, message: 'Đã ghi.', recordIds: ['X'] }));
+    const sources = [{ namespaces: ['voucher-restore'], load: async () => ({ 'voucher-restore': { scope: 'selected' as const, invalidate: [], reconcile } }) }];
+    const other = seedMark('voucher-restore', 'o1', { organizationId: 'org-b' });
+    const actorScoped = seedMark('voucher-restore', 'o2', { organizationId: 'actor-scope' });
+    const mine = seedMark('voucher-restore', 'o3', { organizationId: ORG });
+    const report = await sweep({ sources });
+    expect([other, actorScoped, mine].map(key => localStorage.getItem(key) !== null)).toEqual([true, true, false]);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(report.settled.map(item => item.pending.businessKey)).toEqual(['o3']);
   });
 
   it('lần bấm đang chạy đúng dấu này trong tab ⇒ quét nền bỏ qua, không đọc', async () => {
@@ -204,12 +216,14 @@ describe('quét nền — dấu «Đã kiểm» bản trước và chạy trùng
     expect(io.writes).toEqual([]);
   });
 
-  it('hoá đơn đã ở đích (kết luận `{result}`) ⇒ câu báo nêu số hoá đơn', async () => {
-    io.server.rows.invoices = [{ id: 'i3', invoice_number: 'HD-0042', status: 'APPROVED', deleted_at: null, paid_amount: 0 }];
-    const key = seedMark('invoice-restore', 'i3', { organizationId: ORG, operation: 'khôi phục hoá đơn', meta: { before: 'CANCELLED||0' } });
-    const report = await sweep();
+  it('kết luận `{result}` ⇒ câu báo nêu mã bản ghi người dùng nhận ra (`resultRecordIds`)', async () => {
+    const key = seedMark('voucher-restore', 'r1', { operation: 'khôi phục phiếu' });
+    const sources = [{ namespaces: ['voucher-restore'], load: async () => ({
+      'voucher-restore': { scope: 'actor' as const, invalidate: ['income-expenses'], reconcile: async () => ({ result: { code: 'PC-0042' } }), resultRecordIds: (result: unknown) => [(result as { code: string }).code] },
+    }) }];
+    const report = await sweep({ sources });
     expect(localStorage.getItem(key)).toBeNull();
-    expect(pendingSweepNotice(report.settled)?.description).toMatch(/«khôi phục hoá đơn» gửi lúc .*: đã được ghi \(mã HD-0042\)\./);
+    expect(pendingSweepNotice(report.settled)?.description).toMatch(/«khôi phục phiếu» gửi lúc .*: đã được ghi \(mã PC-0042\)\./);
   });
 
   it('màn đã thôi gắn giữa lượt (đăng xuất, đổi tài khoản) ⇒ dấu đã gỡ vẫn gỡ, không báo, không làm mới', async () => {
@@ -342,9 +356,7 @@ describe('nơi đăng ký quét nền', () => {
   it('phạm vi khai cho quét nền trùng phạm vi guard của nơi ghi', async () => {
     const files: Record<string, string> = {
       'voucher-unapprove': 'src/hooks/income-expenses/statusMutations.ts', 'voucher-restore': 'src/hooks/income-expenses/statusMutations.ts',
-      'voucher-verify': 'src/hooks/income-expenses/statusMutations.ts', 'handover-confirm': 'src/hooks/useCashHandovers.ts',
-      'handover-cancel-request': 'src/hooks/useCashHandovers.ts', 'handover-cancel-confirm': 'src/hooks/useCashHandovers.ts',
-      'handover-cancel-reject': 'src/hooks/useCashHandovers.ts', 'invoice-restore': 'src/hooks/useInvoices.ts', 'invoice-force-cancel': 'src/hooks/useInvoices.ts',
+      'voucher-verify': 'src/hooks/income-expenses/statusMutations.ts',
     };
     const guardScope = (file: string, namespace: string) => {
       const source = ts.createSourceFile(file, readFileSync(join(process.cwd(), file), 'utf8'), ts.ScriptTarget.Latest, true);
@@ -376,12 +388,6 @@ describe('nơi đăng ký quét nền', () => {
       'voucher-unapprove': { table: 'income_expenses', organizationId: 'actor-scope', before: 'APPROVED|POSTED|3|1', row: s => voucher('x', s === 'reached' ? { approval_status: 'UNAPPROVED' } : s === 'other' ? { approval_status: 'CANCELLED' } : {}) },
       'voucher-restore': { table: 'income_expenses', organizationId: 'actor-scope', before: 'CANCELLED|REVERSED|3|1', row: s => voucher('x', s === 'reached' ? { approval_status: 'APPROVED' } : s === 'other' ? { posting_status: 'UNPOSTED' } : { approval_status: 'CANCELLED', posting_status: 'REVERSED' }) },
       'voucher-verify': { table: 'income_expenses', organizationId: 'actor-scope', before: 'chua-kiem', row: s => voucher('x', s === 'same' ? {} : { verified_at: '2026-11-20T03:00:00.000Z' }) },
-      'handover-confirm': { table: 'cash_handovers', organizationId: 'actor-scope', before: 'PENDING||', row: s => ({ id: 'x', code: 'BG', status: s === 'reached' ? 'CONFIRMED' : s === 'other' ? 'CANCELLED' : 'PENDING', cancel_requested_by: null, cancel_requested_at: null }) },
-      'handover-cancel-request': { table: 'cash_handovers', organizationId: 'actor-scope', before: 'PENDING||', row: s => ({ id: 'x', code: 'BG', status: s === 'other' ? 'CONFIRMED' : 'PENDING', cancel_requested_by: s === 'reached' ? 'u' : null, cancel_requested_at: s === 'reached' ? '2026-11-20' : null }) },
-      'handover-cancel-confirm': { table: 'cash_handovers', organizationId: 'actor-scope', before: 'PENDING|u|2026-11-20', row: s => ({ id: 'x', code: 'BG', status: s === 'reached' ? 'CANCELLED' : s === 'other' ? 'CONFIRMED' : 'PENDING', cancel_requested_by: 'u', cancel_requested_at: '2026-11-20' }) },
-      'handover-cancel-reject': { table: 'cash_handovers', organizationId: 'actor-scope', before: 'PENDING|u|2026-11-20', row: s => ({ id: 'x', code: 'BG', status: s === 'other' ? 'CANCELLED' : 'PENDING', cancel_requested_by: s === 'reached' ? null : 'u', cancel_requested_at: s === 'reached' ? null : '2026-11-20' }) },
-      'invoice-restore': { table: 'invoices', organizationId: ORG, before: 'CANCELLED||0', row: s => ({ id: 'x', invoice_number: 'HD', status: s === 'reached' ? 'APPROVED' : s === 'other' ? 'DRAFT' : 'CANCELLED', deleted_at: null, paid_amount: 0 }) },
-      'invoice-force-cancel': { table: 'invoices', organizationId: ORG, before: 'APPROVED||0', row: s => ({ id: 'x', invoice_number: 'HD', status: s === 'reached' ? 'CANCELLED' : s === 'other' ? 'PAID' : 'APPROVED', deleted_at: null, paid_amount: s === 'other' ? 5 : 0 }) },
     };
     expect(Object.keys(tables).sort()).toEqual(PENDING_SWEEP_SOURCES.flatMap(source => [...source.namespaces]).sort());
     for (const [namespace, spec] of Object.entries(tables)) {

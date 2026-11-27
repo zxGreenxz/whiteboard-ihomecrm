@@ -15,7 +15,8 @@
 //
 // Đợt 11: vết được gỡ ngay khi việc của dấu đã xong (đã kết luận, đã hoàn tất khách hẹn) kể cả khi chính dấu đã được gỡ ở
 // nơi khác; vết không còn dấu nào trỏ tới (người dùng tự gỡ dấu qua hộp cảnh báo) được gỡ bằng
-// `forgetOrphanLeadConversionTraces`. Tệp cũng giữ `forgetDeadIntentKeys`: dọn hai họ khoá «ý định» không còn ai đọc.
+// `forgetOrphanLeadConversionTraces` (lúc mở hộp chuyển khách hẹn). Hai họ khoá «ý định» không còn ai đọc được dọn lúc mở app
+// bằng `forgetDeadIntentKeys` ở `pendingSweep.ts` (đặt ở đó để tệp này không bị tách thành gói dùng chung làm phình gói entry).
 import { pendingHasSettled, type FinancialPendingRecord } from './financialPending';
 
 export interface LeadConversionTrace {
@@ -70,27 +71,6 @@ function removeKeys(store: KeyedStore, keys: readonly string[]): number {
     try { store.removeItem(key); removed += 1; } catch { /* khoá thừa không chặn gì; lần dọn sau gỡ lại */ }
   }
   return removed;
-}
-
-/**
- * Hai họ khoá «ý định» của bản trước không còn mã nào ghi hay đọc (đo đợt 11, 27/11/2026):
- * - quay số `ihome:lucky-draw-intent:v1:<mã yêu cầu>`: bản hiện hành lưu lượt quay vào `meta` của dấu `lucky-admin`; khoá cũ
- *   chỉ còn được gỡ khi dấu bản trước của đúng sự kiện được gỡ (`luckyDrawApi.ts`);
- * - mẫu in mặc định `ihome:template-default-intent:v1:<mã yêu cầu>`: đợt 8 bỏ dấu và bỏ chỗ ghi (`useToggleDefaultTemplate`),
- *   đợt 11 xoá luôn module đọc/ghi của nó.
- * Khoá dài hơn cũng phải khớp NGUYÊN tiền tố (kể cả dấu hai chấm cuối): `…:v1` không kèm mã, `…:v2:`, `…:v10:` là khoá khác.
- */
-const DEAD_INTENT_PREFIXES = ['ihome:lucky-draw-intent:v1:', 'ihome:template-default-intent:v1:'] as const;
-
-/**
- * Dọn khoá của hai họ trên còn nằm trong trình duyệt nhân viên (chạy nền lúc mở app). Hàm thuần: nhận kho qua tham số (mặc
- * định kho thật), không ném lỗi (kho chặn ⇒ 0), trả số khoá đã gỡ.
- */
-export function forgetDeadIntentKeys(storage?: KeyedStore): number {
-  const store = storage ?? browserStore();
-  if (!store) return 0;
-  const keys = keysWhere(store, key => DEAD_INTENT_PREFIXES.some(prefix => key.startsWith(prefix)));
-  return keys ? removeKeys(store, keys) : 0;
 }
 
 /** Dấu `lead-conversion` của mọi tài khoản trên máy này (khoá của kho dấu chung: namespace đứng đầu phạm vi). */

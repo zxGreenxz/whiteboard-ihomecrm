@@ -21,7 +21,6 @@ import type { QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { financialPending, formatPendingTime, isAttemptRunning, pendingHasSettled, PENDING_SETTLE_MS, type FinancialPendingRecord, type FinancialPendingScope, type FinancialPendingStore } from './financialPending';
 import { reconcilePendingOnly, type PendingReadOnlyOutcome, type PendingSweepHandler } from './financialWorkflow';
-import { forgetOrphanLeadConversionTraces, forgetDeadIntentKeys } from './leadConversionProgress';
 import { pendingOperationName } from './pendingValve';
 
 /** Một nhóm namespace đăng ký quét nền, cùng tệp hook khai bộ đối chiếu chỉ đọc của chúng. Tệp chỉ nạp khi có dấu. */
@@ -34,12 +33,53 @@ export interface PendingSweepSource {
  * Nơi đăng ký. Chỉ namespace mà hàm đối chiếu của lần bấm (1) không có bước ghi nào và (2) dựng được chỉ từ dấu (khoá nghiệp
  * vụ, mã yêu cầu, `meta`) — không cần dữ liệu của lần bấm. Thêm namespace: khai `PendingSweepHandler` ở tệp hook (dựng từ
  * CHÍNH hàm lần bấm dùng) rồi thêm vào đây; `src/lib/__tests__/pendingSweep.test.ts` đòi mọi dòng khớp sổ chiến lược.
+ *
+ * CỬA BUNDLE (đo 27/11/2026): nạp động một tệp hook vốn đang nằm GỘP trong chunk của trang làm Rollup tách tệp đó (và tệp nó
+ * dùng chung) thành chunk riêng, tên chunk mới chen vào bảng nạp trước của gói entry. Đăng ký thêm phiên bàn giao
+ * (`useCashHandovers`) và hoá đơn (`useInvoices`) làm gói entry tăng 243 byte (sát ngưỡng `bundle-inventory`), nên chưa đăng
+ * ký. `statusMutations` vốn đã là chunk riêng: nạp nó không đổi gói entry. Thêm nguồn mới thì đo lại gói entry
+ * (`npm run build` rồi `node scripts/generate-bundle-inventory.mjs`).
  */
 export const PENDING_SWEEP_SOURCES: readonly PendingSweepSource[] = [
   { namespaces: ['voucher-unapprove', 'voucher-restore', 'voucher-verify'], load: async () => (await import('@/hooks/income-expenses/statusMutations')).VOUCHER_PENDING_SWEEP },
-  { namespaces: ['handover-confirm', 'handover-cancel-request', 'handover-cancel-confirm', 'handover-cancel-reject'], load: async () => (await import('@/hooks/useCashHandovers')).HANDOVER_PENDING_SWEEP },
-  { namespaces: ['invoice-restore', 'invoice-force-cancel'], load: async () => (await import('@/hooks/useInvoices')).INVOICE_PENDING_SWEEP },
 ];
+
+/**
+ * Hai họ khoá «ý định» của bản trước không còn mã nào ghi hay đọc (đo đợt 11, 27/11/2026):
+ * - quay số `ihome:lucky-draw-intent:v1:<mã yêu cầu>`: bản hiện hành lưu lượt quay vào `meta` của dấu `lucky-admin`; khoá cũ
+ *   chỉ còn được gỡ khi dấu bản trước của đúng sự kiện được gỡ (`luckyDrawApi.ts`);
+ * - mẫu in mặc định `ihome:template-default-intent:v1:<mã yêu cầu>`: đợt 8 bỏ dấu và bỏ chỗ ghi (`useToggleDefaultTemplate`),
+ *   đợt 11 xoá luôn module đọc/ghi của nó.
+ * Khoá dài hơn cũng phải khớp NGUYÊN tiền tố (kể cả dấu hai chấm cuối): `…:v1` không kèm mã, `…:v2:`, `…:v10:` là khoá khác.
+ */
+const DEAD_INTENT_PREFIXES = ['ihome:lucky-draw-intent:v1:', 'ihome:template-default-intent:v1:'] as const;
+
+/**
+ * Dọn khoá của hai họ trên còn nằm trong trình duyệt nhân viên (chạy nền lúc mở app). Hàm thuần: nhận kho qua tham số (mặc
+ * định kho thật), không ném lỗi (kho chặn ⇒ 0), trả số khoá đã gỡ. Đọc hết danh sách khoá TRƯỚC khi gỡ (gỡ trong vòng đọc
+ * làm lệch chỉ số); kho chặn giữa lúc đọc ⇒ không gỡ khoá nào.
+ */
+export function forgetDeadIntentKeys(storage?: Pick<Storage, 'length' | 'key' | 'removeItem'>): number {
+  let store: Pick<Storage, 'length' | 'key' | 'removeItem'> | null = storage ?? null;
+  if (!store) {
+    try { store = globalThis.localStorage ?? null; } catch { store = null; /* trình duyệt chặn bộ nhớ: không có kho để dọn */ }
+  }
+  if (!store) return 0;
+  const keys: string[] = [];
+  let readable = true;
+  try {
+    for (let index = 0; index < store.length; index += 1) {
+      const key = store.key(index);
+      if (key !== null && DEAD_INTENT_PREFIXES.some(prefix => key.startsWith(prefix))) keys.push(key);
+    }
+  } catch { readable = false; /* kho chặn giữa chừng: danh sách không trọn, không gỡ khoá nào */ }
+  if (!readable) return 0;
+  let removed = 0;
+  for (const key of keys) {
+    try { store.removeItem(key); removed += 1; } catch { /* khoá thừa không chặn gì; lần dọn sau gỡ lại */ }
+  }
+  return removed;
+}
 
 /** Tiền tố khoá của kho dấu chung (`financialPending.ts`): `<tiền tố><namespace>:<người>:<công ty>:<khoá>`, mỗi phần encodeURIComponent. */
 const MARK_PREFIX = 'ihome:financial-pending:v1:';
@@ -195,7 +235,8 @@ export interface PendingSweepOnOpenInput {
  * dấu đã gỡ, báo MỘT lần. Không bao giờ ném. Trả `null` khi tab khác đang quét.
  */
 export async function runPendingSweepOnOpen(input: PendingSweepOnOpenInput): Promise<PendingSweepReport | null> {
-  try { forgetDeadIntentKeys(); forgetOrphanLeadConversionTraces(); } catch { /* dọn khoá chết là việc phụ; hai hàm vốn không ném */ }
+  // Vết chuyển khách hẹn mồ côi được gỡ lúc mở hộp chuyển khách hẹn (`forgetOrphanLeadConversionTraces`), không ở đây.
+  try { forgetDeadIntentKeys(); } catch { /* dọn khoá chết là việc phụ; hàm vốn không ném */ }
   const sweep = input.sweep ?? sweepPendingMarks;
   // Mỗi yêu cầu một dòng (`whitespace-pre-line`): khổ điện thoại đọc được, không dồn thành một khối chữ.
   const notify = input.notify ?? (notice => { toast.info(notice.title, { description: notice.description, descriptionClassName: 'whitespace-pre-line', duration: 15_000 }); });

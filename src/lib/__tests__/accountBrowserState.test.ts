@@ -145,11 +145,11 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   // Đọc công ty đang chọn để tìm dấu khoá chung bản trước để lại (đợt 4), gỡ nó qua kho dấu chung.
   "src/lib/legacyPendingExit.ts": "nhat-ky-chong-ghi-trung",
   "src/hooks/income-expenses/batch.ts": "nhat-ky-chong-ghi-trung",
-  // Vết chuyển khách hẹn bản trước + `forgetDeadIntentKeys` (đợt 11: dọn hai họ khoá «ý định» không còn ai đọc, gồm
-  // `ihome:template-default-intent:v1:*` của `templateDefaultIntent.ts` đã xoá).
+  // Vết chuyển khách hẹn bản trước (đợt 11: gỡ khi xong việc; vết mồ côi gỡ bằng `forgetOrphanLeadConversionTraces`).
   "src/lib/leadConversionProgress.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/luckyDrawApi.ts": "nhat-ky-chong-ghi-trung",
-  // Quét nền khi mở app (đợt 11): liệt kê khoá của kho dấu chung, đối chiếu chỉ đọc, gỡ dấu qua kho dấu chung.
+  // Quét nền khi mở app (đợt 11): liệt kê khoá của kho dấu chung, đối chiếu chỉ đọc, gỡ dấu qua kho dấu chung; `forgetDeadIntentKeys`
+  // dọn hai họ khoá «ý định» không còn ai đọc (gồm `ihome:template-default-intent:v1:*` của `templateDefaultIntent.ts` đã xoá).
   "src/lib/pendingSweep.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/luckyProofPending.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/network-center/intentRegistry.ts": "nhat-ky-chong-ghi-trung",

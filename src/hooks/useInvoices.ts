@@ -1,7 +1,7 @@
 import {useRef} from 'react';
 import { createInvoiceWithMeterSources, meterInvoiceRequestId } from '@/lib/meter-capture/service';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {FinancialWorkflowError,workflowErrorMessage,type PendingSweepHandler} from '@/lib/financialWorkflow';
+import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import {runFinancialPending} from '@/lib/financialPendingAction';
 import {beforeStateMeta,financialPending,transitionVerdict,type FinancialPendingRecord,type FinancialPendingScope,type PendingReconciliation} from '@/lib/financialPending';
@@ -1465,25 +1465,6 @@ function invoiceTransition(invoiceId:string,operation:string,rule:{reached:(row:
   };
 }
 const invoiceMeta=(row:InvoiceState|null)=>row?{meta:beforeStateMeta(invoiceSignature(row))}:{};
-// Tên thao tác và luật đích của hai thao tác mà quét nền khi mở app (đợt 11) cũng đối chiếu: lần bấm và quét nền dùng CÙNG
-// hằng này. Huỷ hoá đơn (`invoice-cancel`) không đăng ký: namespace dùng chung với huỷ hàng loạt (khác phạm vi công ty).
-const INVOICE_RESTORE={operation:'khôi phục hoá đơn',rule:{reached:(row:InvoiceState)=>['APPROVED','PARTIAL_PAID','PAID','OVERDUE'].includes(row.status??''),ready:(row:InvoiceState)=>row.status==='CANCELLED'}};
-const INVOICE_FORCE_CANCEL={operation:'huỷ hoá đơn',rule:{reached:(row:InvoiceState)=>row.status==='CANCELLED',ready:(row:InvoiceState)=>row.status!=='CANCELLED'}};
-const INVOICE_SWEEP_KEYS=['invoices','invoices-legacy','invoice','invoice-statistics','payments','invoice-payments-summary','excess-amount'] as const;
-/** Kết luận `{result:{invoice,noop}}` của `invoiceTransition` (hoá đơn đã ở đích): số hoá đơn cho câu báo của quét nền. */
-const invoiceResultIds=(result:unknown):string[]=>{
-  const row=(result as {invoice?:{id?:unknown;invoice_number?:unknown}|null}|null)?.invoice;
-  const name=typeof row?.invoice_number==='string'&&row.invoice_number?row.invoice_number:typeof row?.id==='string'?row.id:null;
-  return name?[name]:[];
-};
-/**
- * Quét nền khi mở app (đợt 11, `src/lib/pendingSweep.ts`): khôi phục và buộc huỷ một hoá đơn (khoá nghiệp vụ = mã hoá đơn,
- * phạm vi công ty đang chọn). Máy chủ khoá rồi mới xét, nên «như trước khi bấm» giữ dấu cho lần bấm gửi lại.
- */
-export const INVOICE_PENDING_SWEEP:Readonly<Record<string,PendingSweepHandler>>={
-  'invoice-restore':{scope:'selected',invalidate:INVOICE_SWEEP_KEYS,resultRecordIds:invoiceResultIds,reconcile:pending=>invoiceTransition(pending.businessKey,INVOICE_RESTORE.operation,INVOICE_RESTORE.rule)(pending)},
-  'invoice-force-cancel':{scope:'selected',invalidate:INVOICE_SWEEP_KEYS,resultRecordIds:invoiceResultIds,reconcile:pending=>invoiceTransition(pending.businessKey,INVOICE_FORCE_CANCEL.operation,INVOICE_FORCE_CANCEL.rule)(pending)},
-};
 
 // =============================================
 // Legacy: useCancelInvoice (kept for backward compatibility)
@@ -1508,7 +1489,7 @@ export const useRestoreInvoice = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
       const before=await readInvoiceState(invoiceId);
-      return workflow.current.run(invoiceId,INVOICE_RESTORE.operation,async progress=>{
+      return workflow.current.run(invoiceId,'khôi phục hoá đơn',async progress=>{
       const result=await invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1523,7 +1504,7 @@ export const useRestoreInvoice = () => {
         ),
       );
       return confirmSingleInvoiceLifecycle(result,invoiceId,['APPROVED', 'PARTIAL_PAID', 'PAID', 'OVERDUE'],progress.completed);
-      },invoiceTransition(invoiceId,INVOICE_RESTORE.operation,INVOICE_RESTORE.rule),selectedOrganizationId??undefined,invoiceMeta(before));
+      },invoiceTransition(invoiceId,'khôi phục hoá đơn',{reached:row=>['APPROVED','PARTIAL_PAID','PAID','OVERDUE'].includes(row.status??''),ready:row=>row.status==='CANCELLED'}),selectedOrganizationId??undefined,invoiceMeta(before));
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -1557,7 +1538,7 @@ export const useForceCancelInvoice = () => {
   return useMutation({
     mutationFn: async (invoiceId: string) => {
       const before=await readInvoiceState(invoiceId);
-      return workflow.current.run(invoiceId,INVOICE_FORCE_CANCEL.operation,async progress=>{
+      return workflow.current.run(invoiceId,'huỷ hoá đơn',async progress=>{
       const result=await invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1572,7 +1553,7 @@ export const useForceCancelInvoice = () => {
         ),
       );
       return confirmSingleInvoiceLifecycle(result,invoiceId,['CANCELLED'],progress.completed);
-      },invoiceTransition(invoiceId,INVOICE_FORCE_CANCEL.operation,INVOICE_FORCE_CANCEL.rule),selectedOrganizationId??undefined,invoiceMeta(before));
+      },invoiceTransition(invoiceId,'huỷ hoá đơn',{reached:row=>row.status==='CANCELLED',ready:row=>row.status!=='CANCELLED'}),selectedOrganizationId??undefined,invoiceMeta(before));
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
