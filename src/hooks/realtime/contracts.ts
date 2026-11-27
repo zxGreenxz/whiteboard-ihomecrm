@@ -6,6 +6,7 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
     // Prefix ["contracts"] phủ luôn "paged"/"stats"/"dashboard-counts".
     table: "contracts",
     keys: [
+      ["shareholder-forecast"],
       ["contracts"],
       ["customer-residence"],
       ["customers"],
@@ -55,6 +56,7 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["contract-termination-info"], // useContractDetailData
       ["pending-terminations"], // useContracts — hàng chờ duyệt
       ["contract-history"], // lịch sử HĐ gộp extensions + transfers + terminations
+      ["shareholder-forecast"],
       ["contracts"],
       ["customer-residence"],
       ["customers"],
@@ -78,6 +80,7 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
     keys: [
       ["contract-history"], // useContractHistory đọc thẳng contract_transfers
       ["reports"], // báo cáo gia hạn/chuyển nhượng: ["reports","renewals-transfers",…]
+      ["shareholder-forecast"],
       ["contracts"],
       ["customer-residence"],
       ["customers"],

@@ -41,6 +41,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "invoices",
     keys: queryPrefixes([
+      "shareholder-forecast",
       "invoices",
       "invoice", // chi tiết 1 hoá đơn (số ít ≠ "invoices")
       "invoices-legacy",
@@ -69,6 +70,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "income_expenses",
     keys: queryPrefixes([
+      "shareholder-forecast",
       "company-wallets",
       "contract-commission-followups",
       "existing-commission-vouchers",
@@ -202,6 +204,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "income_expense_items",
     keys: queryPrefixes([
+      "shareholder-forecast",
       "company-wallets",
       "income-expenses",
       "income-expense-batches",
@@ -242,6 +245,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "building_fee_accounts",
     keys: queryPrefixes([
+      "shareholder-forecast",
       "fee-accounts",
       "period-fee-status", // trạng thái ô suy từ cấu hình + phiếu
     ]),

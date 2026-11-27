@@ -67,6 +67,8 @@ vi.mock("@/components/shareholders/ProfitOverviewMobile", () => ({
   },
 }));
 
+vi.mock("@/components/shareholders/ShareholderForecast", () => ({ default: () => createElement("div", { "data-probe": "forecast" }) }));
+
 vi.mock("@/components/shareholders/ShareholderSelfMobile", () => ({
   default: ({ me, canViewPercent, canViewBuildingTotals, canAdvanceOwn }: {
     me: Shareholder; canViewPercent: boolean; canViewBuildingTotals: boolean; canAdvanceOwn: boolean;
@@ -101,6 +103,7 @@ function renderMobile(props: {
   canViewPercent?: boolean;
   canAdvanceOwn?: boolean;
   requestedTab?: string | null;
+  canSeeForecast?: boolean;
 }) {
   return renderToStaticMarkup(createElement(ProfitHubMobile, {
     canViewBuildingTotals: false,
@@ -142,6 +145,12 @@ describe("ProfitHubMobile legacy tab behavior", () => {
     expect(html).not.toContain("BC Thu Chi");
     expect(html).toContain('data-probe="shareholder-self"');
     expect(harness.reportRender).not.toHaveBeenCalled();
+  });
+
+  it("mở đúng dự báo trên điện thoại khi có quyền, ẩn khi thu hồi", () => {
+    const props = { canReport: true, isManager: false, me: shareholder, myManager: null, requestedTab: "forecast" };
+    expect(renderMobile({ ...props, canSeeForecast: true })).toContain('data-probe="forecast"');
+    expect(renderMobile({ ...props, canSeeForecast: false })).not.toContain('data-probe="forecast"');
   });
 
   it("keeps the shareholder own-share tab based on report permission and passes the view flags", () => {
