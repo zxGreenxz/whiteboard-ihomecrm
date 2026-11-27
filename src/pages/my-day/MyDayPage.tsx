@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RoutePlannerSheet from "@/components/my-day/RoutePlannerSheet";
+import HermesShiftCard from "@/components/my-day/HermesShiftCard";
+import { IS_TEST_ENV } from "@/lib/appEnvironment";
 import { PersonPicker } from "@/components/staff-day/PersonPicker";
 import { LeaveApprovalCard } from "@/components/staff-day/LeaveApprovalCard";
 import { useGpsMyStatus } from "@/hooks/gps-checkin/useGpsCheckin";
@@ -180,6 +182,7 @@ export default function MyDayPage() {
 
         <div className="mb-3 space-y-2">
           <PersonPicker active="me" />
+          {IS_TEST_ENV && authUser?.id && <HermesShiftCard staff={authUser.id} />}
           <LeaveApprovalCard />
           {gpsActive && (
             <Link to="/my-day/diem-danh" className="flex items-center gap-2.5 rounded-xl border bg-white px-3 py-2.5 text-sm font-medium shadow-sm">

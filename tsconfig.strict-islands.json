@@ -16,6 +16,8 @@
   },
   "include": [],
   "files": [
+    "src/components/my-day/HermesShiftCard.tsx",
+    "src/hooks/useHermesShiftPlan.ts",
     "src/lib/profitCommissionChecks.ts",
     "src/pages/deposits/DepositRefundMobilePanel.tsx",
     "src/hooks/useBuildingFilterState.ts",
