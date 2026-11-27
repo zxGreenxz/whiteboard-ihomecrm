@@ -88,8 +88,7 @@ export const BanGiaoReport = lazy(() => import("../pages/reports/finance/BanGiao
 export const BanGiaoCycleReport = lazy(() => import("../pages/reports/finance/BanGiaoCycleReport"));
 
 // Cài đặt
-export const GeneralSettingsPage = lazy(() => import("../pages/settings/GeneralSettingsPage"));
-export const AiRoutingPage = lazy(() => import("../pages/settings/ProtectedAiRoutingPage"));
+export const SystemSettingsPage = lazy(() => import("../pages/settings/SystemSettingsPage"));
 export const HermesConnectionsPage = lazy(() => import("../pages/settings/HermesConnectionsPage"));
 export const CategoriesPage = lazy(() => import("../pages/settings/CategoriesPage"));
 export const TemplatesPage = lazy(() => import("../pages/settings/TemplatesPage"));

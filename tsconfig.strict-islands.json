@@ -1735,7 +1735,7 @@
     "src/pages/services/ServicesPage.tsx",
     "src/pages/settings/CategoriesPage.tsx",
     "src/pages/settings/AiRoutingPage.tsx",
-    "src/pages/settings/ProtectedAiRoutingPage.tsx",
+    "src/pages/settings/SystemSettingsPage.tsx",
     "src/pages/settings/GeneralSettingsPage.tsx",
     "src/pages/settings/IncomeExpenseTemplatesPage.tsx",
     "src/pages/settings/IncomeExpenseTypesPage.tsx",
