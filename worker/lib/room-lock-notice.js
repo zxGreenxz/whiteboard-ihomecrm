@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { gioVietNam, trongKhungGio } from './automation-scenario.js';
 
+export const LOCK_NOTICE_GAP_MS = 3_000;
+
 // Trang sale hiện hành gồm mọi tòa thật của công ty khi còn link hoạt động.
 // Phòng rời trang chỉ được báo Lock nếu phòng và tòa vẫn còn trong phạm vi đó.
 export async function readLockNotice(db, orgId, roomId) {
@@ -40,7 +42,13 @@ export async function processRoomLocks({ db, orgId, phong, watch, groups, online
   let nextStart = earliestStart;
   const today = gioVietNam(now).ngay;
   const windowOpen = trongKhungGio(now, antiSpam).trong;
-  const gap = groups.size > 1 ? Math.max(antiSpam.gapBetweenRoomMsgsSec, antiSpam.gapBetweenRecipientsSec) : antiSpam.gapBetweenRoomMsgsSec;
+  // Một nhóm Zalo có thể nằm trong danh sách của hai tài khoản. Chọn hội
+  // thoại ổn định dù thứ tự truy vấn hoặc trạng thái kết nối thay đổi.
+  const groupRecipients = new Map();
+  for (const group of groups.values()) {
+    const thread = group.thread_id || group.id;
+    if (!groupRecipients.has(thread) || group.id < groupRecipients.get(thread)) groupRecipients.set(thread, group.id);
+  }
   for (const entry of previous.values()) {
     if (!phong.trangSale || listedIds.has(entry.id)) continue;
     // Tin đã xếp có thể còn chờ trong ngày. Giữ mốc cho tới khi phòng mở lại
@@ -49,7 +57,7 @@ export async function processRoomLocks({ db, orgId, phong, watch, groups, online
       if (entry.completedOn === today) next.push(entry);
       continue;
     }
-    const pending = (entry.pending ?? [...groups.keys()]).filter(id => groups.has(id));
+    const pending = (entry.pending ?? [...groupRecipients.values()]).filter(id => groups.has(id));
     const waiting = [];
     let notice;
     for (const id of pending) {
@@ -72,7 +80,7 @@ export async function processRoomLocks({ db, orgId, phong, watch, groups, online
       if (await enqueue({ conv: groups.get(id), khiNao: due, requestKey, ...notice })) {
         queued++;
         recipients.add(id);
-        nextStart = due.getTime() + gap * 1000;
+        nextStart = due.getTime() + LOCK_NOTICE_GAP_MS;
       } else waiting.push(id);
     }
     next.push(waiting.length ? { ...entry, pending: waiting } : { ...entry, pending: [], completedOn: today });

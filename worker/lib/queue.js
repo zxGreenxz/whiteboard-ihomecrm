@@ -17,14 +17,14 @@
 //   • Tôn trọng not_before (job hẹn giờ — bỏ qua tới lúc đến hạn).
 // =============================================================
 import { ThreadType } from 'zca-js';
-import { sb, log, sessions, orgOf } from './ctx.js';
+import { sb, log, sessions, orgOf, sleep } from './ctx.js';
 import { syncAccountGroups, upsertMessagesForThread, emojiToZca } from './inbound.js';
 import { sendMediaJob } from './media.js';
 import { sendForwardMediaJob } from './forward-media.js';
 import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clampHistoryCount } from './scope-guard.js';
 import { INSTANCE_ID } from './lease.js';
 import { validateAutomationDelivery } from './automation-delivery.js';
-import { lockNoticeKey } from './room-lock-notice.js';
+import { LOCK_NOTICE_GAP_MS, lockNoticeKey } from './room-lock-notice.js';
 import { finalizeSend, sendReceipt } from './send-finalization.js';
 import { deliverSaleAdvice } from './sale-advice-channel.js';
 
@@ -70,6 +70,9 @@ export async function recoverInterruptedJobs() {
   return data;
 }
 
+// Jobs run serially. Space even overdue Lock sends, then recheck the room and lease.
+const nextLockSendAt = new Map();
+
 // Fence every provider request against the database lease and latest user
 // intent. Once admitted, an error is an unknown effect; never resend blindly.
 function fencedSession(session, job, delivery) {
@@ -78,6 +81,11 @@ function fencedSession(session, job, delivery) {
       const method = target[key];
       if (typeof method !== 'function') return method;
       return async (...args) => {
+        const isLock = key === 'sendMessage' && args[2] === ThreadType.Group && lockNoticeKey(job.payload);
+        if (isLock) {
+          const remaining = (nextLockSendAt.get(job.organization_id) ?? 0) - performance.now();
+          if (remaining > 0) await sleep(Math.ceil(remaining));
+        }
         if (sessions.get(job.account_id) !== session) throw new Error('SESSION_CHANGED: phiên đã dừng hoặc thay thế');
         const automation = await validateAutomationDelivery(job);
         if (!automation.ok) throw new Error(automation.reason);
@@ -113,6 +121,7 @@ function fencedSession(session, job, delivery) {
         let deadline;
         let result;
         try {
+          if (isLock) nextLockSendAt.set(job.organization_id, performance.now() + LOCK_NOTICE_GAP_MS);
           result = await Promise.race([
             method.apply(target, args),
             new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('PROVIDER_TIMEOUT: chưa xác nhận kết quả sau ' + timeoutMs / 1000 + ' giây')), timeoutMs); }),

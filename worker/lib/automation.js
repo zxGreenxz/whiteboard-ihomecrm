@@ -296,7 +296,7 @@ async function xuLyMotCongTy(auto, now) {
   // của nó đang có phiên sống. Xếp hàng cho tài khoản đã rớt chỉ tạo ra một đống
   // job failed và một khung chat đầy tin đỏ.
   const { data: convsTho, error: convError } = await sb.from('zalo_conversations')
-    .select('id, user_id, organization_id, account_id, peer_name, thread_type, is_sale_partner')
+    .select('id, user_id, organization_id, account_id, peer_name, thread_type, thread_id, is_sale_partner')
     .in('id', config.recipients)
     .eq('organization_id', orgId);
   if (convError) throw new Error(`Không đọc được hội thoại nhận phòng trống: ${convError.message}`);
@@ -323,12 +323,13 @@ async function xuLyMotCongTy(auto, now) {
   if (phong.trangSale !== null && (groups.size || stats.roomLockWatch?.length)) {
     const locks = await processRoomLocks({ db: sb, orgId, phong, watch: stats.roomLockWatch, groups, online: sessions,
       now, antiSpam: config.antiSpam, remaining: conLaiTrongTran(now, config, stats).conLai,
-      earliestStart: Number(stats.nextScheduledStart) || 0, enqueue: xepMotTin, log });
+      earliestStart: Number(stats.nextLockNoticeStart) || 0, enqueue: xepMotTin, log });
     if (locks.changed) {
       stats.roomLockWatch = locks.watch;
       if (locks.queued) {
         congSoTin(stats, t.ngay, locks.queued);
-        stats.nextScheduledStart = locks.nextStart;
+        stats.nextLockNoticeStart = locks.nextStart;
+        stats.nextScheduledStart = Math.max(Number(stats.nextScheduledStart) || 0, locks.nextStart);
         await ghiNhatKy({ organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
           mode: 'event', reason: `Đã xếp ${locks.queued} thông báo Lock phòng.`,
           recipients_count: locks.recipients, messages_count: locks.queued });

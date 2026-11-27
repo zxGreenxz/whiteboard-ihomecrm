@@ -292,6 +292,32 @@ describe('engine broadcast — xếp hàng', () => {
     expect(rpcCalls).toHaveLength(0);
     expect(capNhatAutomations.at(-1).stats.roomLockWatch).toEqual([]);
   });
+  it('xếp mỗi nhóm một tin Lock cách 3 giây, kể cả khi lô bài đăng còn lịch dài', async () => {
+    const start = THU_HAI_0830.getTime();
+    const nextBroadcast = start + 3_600_000;
+    const recipients = ['c1', 'c2', 'c3', 'c4'];
+    duLieuConversations = [conv('c2'), { ...conv('c4', 'acc-2'), thread_id: 'same-group' },
+      { ...conv('c1'), thread_id: 'same-group' }, conv('c3')];
+    phienDangSong.set('acc-2', {});
+    datCauHinh({ recipients }, { lastScheduledDate: '2026-08-31', nextScheduledStart: nextBroadcast });
+    roomsForLock = ['r1', 'r2'].map(id => ({ id, code: id, building: { name: 'Tòa Sen' } }));
+    phongGia.splice(0, 1);
+    const tick = async () => {
+      await tickTuDongHoa();
+      duLieuAutomations[0].stats = structuredClone(capNhatAutomations.at(-1).stats);
+    };
+    await tick();
+    const first = rpcCalls.map(c => c.args);
+    expect(first.map(call => call.p_conversation_id).sort()).toEqual(['c1', 'c2', 'c3']);
+    expect(first.map(call => Date.parse(call.p_not_before) - start)).toEqual([0, 3000, 6000]);
+    expect(duLieuAutomations[0].stats.nextScheduledStart).toBe(nextBroadcast);
+    // Một phòng khác vừa khóa khi các nhóm của đợt trước vẫn đang chờ gửi.
+    phongGia.length = 0;
+    await tick();
+    await tick();
+    expect(rpcCalls.slice(3).map(c => Date.parse(c.args.p_not_before) - start)).toEqual([9000, 12000, 15000]);
+    expect(new Set(rpcCalls.map(c => c.args.p_request_key)).size).toBe(6);
+  });
   it('runs each slot once, queues close slots in order, and shares the daily quota', async () => {
     datCauHinh({ schedule: { time: '08:30', extraTimes: ['08:31', '09:10'], days: { mon: 'compact' }, skipIfUnchanged: false },
       antiSpam: { dailyCap: 8, gapBetweenRecipientsSec: 180, gapBetweenRoomMsgsSec: 5 } });
