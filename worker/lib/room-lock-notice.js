@@ -29,7 +29,7 @@ export function lockNoticeKey(payload) {
 // Hai tài khoản có thể trỏ tới cùng một nhóm qua hai hội thoại khác nhau.
 // Tra theo thread để nhận ra cả các tin xếp trước khi worker được nâng cấp.
 export function jobsForLockGroup(db, orgId, roomId, since, threadId) {
-  return db.from('zalo_send_queue').select('id,conv:zalo_conversations!inner(thread_id)')
+  return db.from('zalo_send_queue').select('id,conversation_id,status,provider_started_at,conv:zalo_conversations!inner(thread_id)')
     .eq('organization_id', orgId).eq('conv.thread_id', threadId)
     .eq('payload->>tu_dong', 'true').like('payload->>automation_request_key', `room-lock:${roomId}:${since}:%`);
 }
@@ -39,13 +39,18 @@ async function pendingLockRecipients(db, orgId, entry, groupThreads, online) {
   const recipients = [];
   for (const aliases of groupThreads.values()) {
     if (pending && !aliases.some(group => pending.has(group.id))) continue;
+    let candidates = aliases;
     if (aliases.length > 1) {
-      const { data, error } = await jobsForLockGroup(db, orgId, entry.id, entry.since, aliases[0].thread_id).limit(1);
+      const { data, error } = await jobsForLockGroup(db, orgId, entry.id, entry.since, aliases[0].thread_id);
       if (error) throw new Error(`Chưa kiểm được biên nhận Lock: ${error.message}`);
-      if (data.length) continue;
+      if (data.some(job => job.status !== 'failed' || job.provider_started_at)) continue;
+      // RPC dùng lại khóa cũ cả khi job thất bại trước khi gửi. Chỉ một hội
+      // thoại khác còn nguyên khóa mới có thể báo được cho nhóm này.
+      const failed = new Set(data.map(job => job.conversation_id));
+      candidates = aliases.filter(group => !failed.has(group.id));
     }
-    const recipient = aliases.find(group => online.has(group.account_id)) ?? aliases[0];
-    recipients.push(recipient.id);
+    const recipient = candidates.find(group => online.has(group.account_id)) ?? candidates[0];
+    if (recipient) recipients.push(recipient.id);
   }
   return recipients;
 }

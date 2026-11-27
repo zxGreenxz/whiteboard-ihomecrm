@@ -325,15 +325,21 @@ describe('engine broadcast — xếp hàng', () => {
     expect(rpcCalls.slice(3).map(c => Date.parse(c.args.p_not_before) - start)).toEqual([9000, 12000, 15000]);
     expect(new Set(rpcCalls.map(c => c.args.p_request_key)).size).toBe(6);
   });
-  it.each([false, true])('gộp các hội thoại chờ cũ, dùng phiên còn sống và nhận biết tin đã xếp: %s', async existed => {
+  it.each([
+    [null, null, ['c2']], ['queued', null, []], ['failed', '2026-08-31T01:29:00Z', []], ['failed', null, ['c2']],
+  ])('gộp nhóm chờ cũ và phân biệt lỗi trước hoặc sau khi gọi Zalo: %s %s', async (status, providerStart, expected) => {
     const since = THU_HAI_0830.getTime();
     duLieuConversations = [{ ...conv('c2'), thread_id: 'group' }, { ...conv('c1', 'offline'), thread_id: 'group' }];
-    datCauHinh({}, { lastScheduledDate: '2026-08-31', roomLockWatch: [{ id: 'r1', since, pending: existed ? ['c1'] : ['c1', 'c2'] }] });
+    datCauHinh({}, { lastScheduledDate: '2026-08-31', roomLockWatch: [{ id: 'r1', since, pending: status ? ['c2'] : ['c1', 'c2'] }] });
     phongGia.length = 0;
     roomsForLock = [{ id: 'r1', code: '201', building: { name: 'Tòa Sen' } }];
-    if (existed) priorGroupLocks.push({ organization: 'org-1', thread: 'group', cycle: `room-lock:r1:${since}` });
+    if (status) {
+      phienDangSong.set('offline', {});
+      priorGroupLocks.push({ organization: 'org-1', thread: 'group', cycle: `room-lock:r1:${since}`,
+        conversation_id: 'c1', status, provider_started_at: providerStart });
+    }
     await tickTuDongHoa();
-    expect(rpcCalls.map(c => c.args.p_conversation_id)).toEqual(existed ? [] : ['c2']);
+    expect(rpcCalls.map(c => c.args.p_conversation_id)).toEqual(expected);
     expect(capNhatAutomations.at(-1).stats.roomLockWatch[0].pending).toEqual([]);
   });
   it('runs each slot once, queues close slots in order, and shares the daily quota', async () => {
