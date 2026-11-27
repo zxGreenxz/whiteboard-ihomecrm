@@ -8311,7 +8311,7 @@
           "returns": "zalo_automations",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public",
+          "searchPath": "search_path=pg_catalog, public",
           "execRoles": [
             "authenticated",
             "service_role"
