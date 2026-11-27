@@ -65,7 +65,7 @@ function ForecastPeriod({ org }: { org: string | null }) {
     {label:"Doanh thu", value:total(rows,"revenue"), note:"Đã ghi nhận " + fmt(total(rows,"booked_income")), icon:ArrowDownLeft},
     {label:"Chi phí", value:total(rows,"expense"), note:"Đã ghi nhận " + fmt(total(rows,"booked_cost")), icon:ArrowUpRight},
     {label:"Lợi nhuận", value:total(rows,"profit"), note:"Sau chi phí vận hành", icon:ChartNoAxesColumnIncreasing},
-    {label:shareLabel, value:total(rows,"share"), note:allLocked?"Theo phân bổ đã chốt":"Ước tính sau lương điều hành", icon:Wallet},
+    {label:shareLabel, value:total(rows,"share"), note:allLocked?"Theo phân bổ đã chốt":"Ước tính lợi nhuận", icon:Wallet},
   ];
   return <section aria-label="Dự kiến doanh thu và lợi nhuận" className="space-y-4 text-foreground">
     <header className="flex flex-wrap items-end justify-between gap-3">
