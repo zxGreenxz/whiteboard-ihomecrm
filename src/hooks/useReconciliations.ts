@@ -4,11 +4,11 @@ import {useOrganization} from '@/contexts/OrganizationContext';
 import {getSessionUser} from '@/lib/authSession';
 // =============================================
 // useReconciliations — đối soát/chốt số sổ quỹ (dùng cho sổ chuyển khoản tkHiep).
-// 3 mutation gọi RPC SECURITY DEFINER (migration 20260701130000):
+// Mutation gọi RPC SECURITY DEFINER (migration 20260701130000):
 //   propose_reconciliation  — chụp số dư hệ thống + số đếm thực; không counterparty
 //                             → chốt luôn (CONFIRMED), có counterparty → chờ xác nhận.
-//   confirm_reconciliation  — người đối ứng/chủ sổ xác nhận (PENDING → CONFIRMED).
-//   cancel_reconciliation   — người tạo/chủ sổ hủy.
+// Đợt 11: đã xoá useConfirmReconciliation / useCancelReconciliation (confirm_reconciliation,
+// cancel_reconciliation): không màn hình nào import (xem CashbookClosingInbox.tsx).
 // =============================================
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -43,11 +43,6 @@ const CO_MA='request-key-v1';
 /** Cửa sổ tra đề nghị "tạo sau giờ kẹt" (giờ máy có thể lệch giờ máy chủ). Đề nghị đã gắn sổ và ngày nên cửa sổ rộng chỉ làm
  * báo "có thể đã tạo" nhiều hơn, không làm gửi trùng. */
 const CLOCK_SKEW_MS=24*60*60_000;
-function stateReceipt(data:unknown,id:string,status:string) {
- const row=data as {id?:unknown;status?:unknown}|null;
- if(!row||row.id!==id||row.status!==status) throw new TypeError('Chưa xác nhận được trạng thái đối soát sau thao tác.');
- return {id,status};
-}
 export const useProposeReconciliation = () => {
   const invalidate = useInvalidateRecon();
   const {selectedOrganizationId}=useOrganization();
@@ -102,18 +97,6 @@ export const useProposeReconciliation = () => {
   });
 };
 
-export const useConfirmReconciliation = () => {
-  const invalidate = useInvalidateRecon();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { data, error } = await supabase.rpc('confirm_reconciliation', { p_id: id });
-      if (error) throw error;
-      return stateReceipt(data,id,'CONFIRMED');
-    },
-    onSuccess: invalidate,
-  });
-};
-
 // ĐỢT 6 — ĐÃ XOÁ useCreateOpeningAdjustment.
 //
 // Nó gọi `create_opening_adjustment`, mà Đợt 3 đã REVOKE khỏi `authenticated`
@@ -125,15 +108,3 @@ export const useConfirmReconciliation = () => {
 // Khoá kỳ giờ đi qua nghi thức hai bên: propose_cashbook_closing_v1 →
 // confirm_cashbook_closing_v1 (xem src/hooks/useCashbookClosing.ts), ghi biên
 // bản vào app_private.cashbook_closures.
-
-export const useCancelReconciliation = () => {
-  const invalidate = useInvalidateRecon();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { data, error } = await supabase.rpc('cancel_reconciliation', { p_id: id });
-      if (error) throw error;
-      return stateReceipt(data,id,'CANCELLED');
-    },
-    onSuccess: invalidate,
-  });
-};

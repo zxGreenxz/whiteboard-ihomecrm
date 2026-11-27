@@ -28,7 +28,6 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.f
 
 import { FinancialAlreadyRecordedError, FinancialWorkflowError, RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 import { recordWriteBlocked } from '@/lib/recordWriteOutcome';
-import { materialVoucherRetryBlocked } from '@/lib/materialVoucherOutcome';
 import { forgetUnconfirmedCreates } from '@/lib/clientRecordCreate';
 import { useCreateMaterialPurchase } from '../useMaterialPurchases';
 import { useCreateMaterialAdjustment, useSetMaterialStock } from '../useMaterialAdjustments';
@@ -54,7 +53,6 @@ const legacy = (namespace: string, businessKey: string) => seedLegacyPending({ n
 function expectRetryable(error: unknown) {
   expect(error).toBeInstanceOf(RepeatableWriteUnknownError);
   expect(recordWriteBlocked(error)).toBe(false);
-  expect(materialVoucherRetryBlocked(error)).toBe(false);
   expect(pendingKeys()).toEqual([]);
 }
 /** Lệnh chèn kế tiếp vào `table` bị máy chủ từ chối rõ (mã lỗi đã biết), không ghi gì. */
@@ -215,7 +213,6 @@ describe('tạo phiếu nhập (material-purchase, khoá create)', () => {
     const error = await createPurchase()(edited).catch(failure => failure);
     expect(error).toBeInstanceOf(FinancialAlreadyRecordedError);
     expect((error as Error).message).toContain(id);
-    expect(materialVoucherRetryBlocked(error)).toBe(false);
     expect(insertsInto('material_purchase_items')).toHaveLength(1);
     expect(stock('m-1')).toBe(14);
     // Bấm lại nữa là lượt mới: người dùng đã thấy mã phiếu trước và vẫn muốn tạo thêm.
@@ -283,7 +280,6 @@ describe('tạo phiếu nhập (material-purchase, khoá create)', () => {
     expect(error).not.toBeInstanceOf(RepeatableWriteUnknownError);
     expect((error as Error).message).toContain('phiếu tạm đã gỡ');
     expect((error as Error).message).not.toContain('raw SQL');
-    expect(materialVoucherRetryBlocked(error)).toBe(false);
     expect(headers()).toEqual([]);
     await createPurchase()(purchase);
     expect(headers()).toHaveLength(1);

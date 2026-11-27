@@ -89,3 +89,42 @@ describe('dấu chuyển khách hẹn bản trước',()=>{
     expect(io.rpc).not.toHaveBeenCalled();
   });
 });
+
+// Đợt 11: vết tiến độ của dấu bản trước được gỡ ngay khi việc của dấu đó đã xong (đã có kết luận, đã hoàn tất, hoặc người dùng
+// đã tự gỡ dấu qua hộp cảnh báo), kể cả khi chính dấu đã được gỡ ở nơi khác (gỡ dấu trả false): không còn vết nằm mãi.
+describe('vết tiến độ của dấu chuyển khách hẹn bản trước',()=>{
+  const TRACE='ihome:lead-conversion-trace:v1:old';
+  it('kết luận lần trước chưa ghi tiền mà dấu đã được gỡ ở tab khác: vẫn gỡ vết',async()=>{
+    io.clear.mockReturnValue(false);io.pending.mockReturnValue(legacyPending(['tenant']));trace({tenantId:'tenant',stage:'deposit',canResume:true});mount();
+    expect(await screen.findByRole('button',{name:'Người gửi · room · lead-income-lead'})).toBeTruthy();
+    expect(localStorage.getItem(TRACE)).toBeNull();
+  });
+  it('phiếu cọc đã ghi, hoàn tất khách hẹn mà dấu đã được gỡ ở tab khác: vẫn gỡ vết',async()=>{
+    io.clear.mockReturnValue(false);io.pending.mockReturnValue(legacyPending(['tenant','deposit-1']));trace({tenantId:'tenant',depositId:'deposit-1',stage:'lead',canResume:true});
+    io.deposits=[{id:'deposit-1',tenant_id:'tenant'}];mount();
+    fireEvent.click(await screen.findByRole('button',{name:'Hoàn tất chuyển đổi'}));
+    await waitFor(()=>expect(io.clear).toHaveBeenCalled());
+    await waitFor(()=>expect(localStorage.getItem(TRACE)).toBeNull());
+  });
+  it('chưa kết luận được, người dùng tự gỡ dấu qua hộp cảnh báo rồi Tải lại: vết của dấu đó được gỡ',async()=>{
+    io.pending.mockReturnValueOnce(legacyPending(['tenant']));trace({tenantId:'tenant',stage:'lead',canResume:true});mount();
+    expect(await screen.findByText(/chuyển khách hẹn thành đặt cọc gửi lúc/)).toBeTruthy();
+    expect(localStorage.getItem(TRACE)).not.toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Tải lại'}));
+    expect(await screen.findByRole('button',{name:'Người gửi · room · lead-income-lead'})).toBeTruthy();
+    expect(localStorage.getItem(TRACE)).toBeNull();
+  });
+  it('phiếu chỉ tra gần đúng, tự gỡ dấu qua hộp cảnh báo rồi Tải lại: vết được gỡ',async()=>{
+    io.pending.mockReturnValueOnce(legacyPending(['tenant']));trace({tenantId:'tenant',stage:'deposit',canResume:false});
+    io.deposits=[{id:'deposit-legacy',tenant_id:'tenant'}];mount();
+    expect(await screen.findByText(/Có thể lần chuyển khách hẹn trước/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Tải lại'}));
+    expect(await screen.findByRole('button',{name:'Người gửi · room · lead-income-lead'})).toBeTruthy();
+    expect(localStorage.getItem(TRACE)).toBeNull();
+  });
+  it('vết còn dấu của tài khoản khác trỏ tới thì giữ nguyên',async()=>{
+    localStorage.setItem('ihome:financial-pending:v1:lead-conversion:other:demo-org:lead',JSON.stringify({...legacyPending(),userId:'other'}));trace({tenantId:'tenant',stage:'lead',canResume:true});mount();
+    expect(await screen.findByRole('button',{name:'Người gửi · room · lead-income-lead'})).toBeTruthy();
+    expect(localStorage.getItem(TRACE)).not.toBeNull();
+  });
+});

@@ -1,6 +1,5 @@
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
-import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage, repeatableWrite } from '@/lib/recordWriteOutcome';
+import { confirmedRecordId, recordWriteMessage, repeatableWrite } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
@@ -9,7 +8,7 @@ import { compareBuildingThenRoom } from "@/lib/roomSort";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { withOrg, withOrgAll } from "@/lib/orgPayload";
+import { withOrg } from "@/lib/orgPayload";
 import { nullIfNotFound } from "@/hooks/readErrors";
 import { friendlyError } from "@/lib/friendlyError";
 
@@ -181,28 +180,6 @@ export const useDeleteRoom = () => {
     },
     onSuccess: data => { refresh(); toast.success(`Đã xóa căn hộ ${data.name || data.id}`); },
     onError: error => { refresh(); toast.error('Chưa xóa được căn hộ',{description:recordWriteMessage(error,'xóa căn hộ')}); },
-  });
-};
-export const useBulkCreateRooms = () => {
-  const queryClient = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
-  const guard = persistentFinancialWorkflow('room-bulk-create');
-  const refresh = () => { queryClient.invalidateQueries({queryKey:['rooms']}); queryClient.invalidateQueries({queryKey:['buildings']}); };
-  return useMutation({
-    meta: {handlesFeedback:true},
-    mutationFn: async (rooms:RoomInsert[]) => {
-      if(!rooms.length) throw new Error('Chưa chọn căn hộ để tạo.');
-      const payload=withOrgAll(rooms,selectedOrganizationId);
-      if(new Set(payload.map(row=>row.organization_id)).size!==1) throw new Error('Các căn hộ phải thuộc cùng tổ chức.');
-      return guard.run('create','tạo căn hộ hàng loạt',async()=>{
-        const {data,error}=await supabase.from('rooms').insert(withOrgAll(rooms,selectedOrganizationId)).select();
-        if(error) throw error;
-        confirmedRecordBatch(data,rooms.length,'tạo căn hộ hàng loạt');
-        return data;
-      },undefined,payload[0]!.organization_id);
-    },
-    onSuccess: data => { refresh(); toast.success(`Đã tạo ${data.length} căn hộ. Mã: ${data.map(row=>row.name || row.id).join(', ')}.`); },
-    onError: error => { refresh(); toast.error('Chưa hoàn tất tạo căn hộ hàng loạt',{description:recordWriteMessage(error,'tạo căn hộ hàng loạt',{rules:duplicateRoomRules})}); },
   });
 };
 export const useUpdateRoomStatus = () => {

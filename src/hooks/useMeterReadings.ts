@@ -8,7 +8,6 @@ import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { withOrg } from "@/lib/orgPayload";
 import type { MeterReadingImportRowResult } from '@/lib/meterReadingImportResult';
 import { friendlyError } from '@/lib/friendlyError';
 import { MeterReadingsRejectedError, meterRejectedRowText, recordMeterReadings, type MeterReadingInvoker, type RecordMeterReadingsResult } from '@/lib/meterReadingRpc';
@@ -134,14 +133,6 @@ export type {
 // ============================================================================
 // Mutation input types
 // ============================================================================
-
-export interface CreateMeterReadingInput {
-  meter_id: string;
-  reading_date: string;
-  current_reading: number;
-  notes?: string;
-  meter_image_url?: string;
-}
 
 export interface BulkCreateMeterReadingInput {
   /** Toà của cả lô: hàm ghi nhận một toà, một ngày chốt mỗi lần. */
@@ -300,56 +291,6 @@ export const useMeterReadingStats = (
 // ============================================================================
 // Mutation Hooks
 // ============================================================================
-
-/**
- * Mutation INSERT vào meter_readings với user_id = auth.uid(), status='UNAPPROVED'.
- * Invalidate queries, toast thành công.
- * Requirements: 2.4
- */
-export const useCreateMeterReading = () => {
-  const queryClient = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
-
-  return useMutation({
-    mutationFn: async (input: CreateMeterReadingInput) => {
-      validateReadingWrite(input.current_reading,input.reading_date);
-      return persistentFinancialWorkflow('useCreateMeterReading').run('create','tạo chỉ số',async()=>{
-      const user = await getSessionUser();
-
-      if (!user) throw new Error("User not authenticated");
-
-      const { data, error } = await supabase
-        .from("meter_readings")
-        .insert(withOrg({
-          user_id: user.id,
-          meter_id: input.meter_id,
-          reading_date: input.reading_date,
-          current_reading: input.current_reading,
-          notes: input.notes ?? null,
-          meter_image_url: input.meter_image_url ?? null,
-          status: "APPROVED",
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-        } as any, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      confirmedRecordId(data,'tạo chỉ số');
-      return data;
-      },undefined,selectedOrganizationId);
-    },
-    onSuccess: () => {
-      invalidateMeterReadingQueries(queryClient);
-      toast.success("Đã ghi chỉ số công tơ");
-    },
-    onError: (error) => {
-      console.error("Error creating meter reading:", error);
-      invalidateMeterReadingQueries(queryClient);
-      meterReadingFailure(error, 'tạo');
-    },
-  });
-};
 
 // ── Đợt 9: ghi chỉ số hàng loạt và nhập chỉ số từ Excel qua `record_meter_readings_v2` (cách B) ────────────────────────
 // Thân hàm production đã đọc (26/11/2026, chỉ đọc): record_meter_readings_v2 md5 3904b0d1 — kiểm quyền, KHOÁ TOÀ bằng khoá tư
@@ -730,107 +671,6 @@ export const useBulkDeleteMeterReadings = () => {
       console.error("Error bulk deleting meter readings:", error);
       invalidateMeterReadingQueries(queryClient);
       meterReadingFailure(error, 'xóa hàng loạt');
-    },
-  });
-};
-
-/**
- * Mutation gọi RPC approve_meter_reading.
- * Invalidate queries, toast thành công.
- * Requirements: 4.2, 8.5
- */
-export const useApproveMeterReading = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (id: string) => {
-      return persistentFinancialWorkflow('useApproveMeterReading',{scope:'actor'}).run(id,'duyệt chỉ số',async()=>{
-      // Canonical approve_meter_reading_v1 (permission-checked qua building).
-      // KHÔNG còn fallback sang legacy approve_meter_reading: từ migration
-      // 20260902082002 _v1 nằm trong migration thật (hết drift PS04) và bản
-      // legacy không authz đã bị REVOKE anon — rơi về nó khi PGRST202 chính là
-      // "tự bỏ authz khi thiếu writer" (PMETER-C01, re-anchor 02/09/2026).
-      const res = await supabase.rpc("approve_meter_reading_v1" as any, { p_id: id });
-      if (res.error) throw res.error;
-      if (!res.data || typeof res.data !== 'object' || res.data.id !== id || res.data.status !== 'APPROVED') throw new FinancialWorkflowError('Chưa xác nhận được chỉ số đã duyệt. Tải lại danh sách trước khi thao tác tiếp.','unknown',[]);
-      return res.data;
-      });
-    },
-    onSuccess: () => {
-      invalidateMeterReadingQueries(queryClient);
-      toast.success("Chỉ số đã được duyệt thành công");
-    },
-    onError: (error) => {
-      console.error("Error approving meter reading:", error);
-      invalidateMeterReadingQueries(queryClient);
-      meterReadingFailure(error, 'duyệt');
-    },
-  });
-};
-
-/**
- * Mutation gọi RPC bulk_approve_meter_readings.
- * Invalidate queries, toast kết quả.
- * Requirements: 4.3, 8.6
- */
-export const useBulkApproveMeterReadings = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (ids: string[]) => {
-      if(!ids.length || new Set(ids).size!==ids.length)throw new FinancialWorkflowError('Chọn các chỉ số có mã khác nhau trước khi tiếp tục.','failure',[]);
-      return persistentFinancialWorkflow('useBulkApproveMeterReadings',{scope:'actor'}).run([...ids].sort().join(','),'duyệt chỉ số hàng loạt',async()=>{
-      // Canonical bulk_approve_meter_readings_v1 (per-item permission), trả
-      // integer số chỉ số đã duyệt. KHÔNG còn fallback legacy — xem ghi chú ở
-      // useApproveMeterReading (PMETER-C01, migration 20260902082002).
-      const res = await supabase.rpc("bulk_approve_meter_readings_v1" as any, { p_ids: ids });
-      if (res.error) throw res.error;
-      if (typeof res.data !== 'number' || !Number.isInteger(res.data) || res.data < 0 || res.data > ids.length) throw new FinancialWorkflowError('Chưa xác nhận được số chỉ số đã duyệt. Tải lại danh sách để đối chiếu.','unknown',[]);
-      return res.data;
-      });
-    },
-    onSuccess: (data, ids) => {
-      invalidateMeterReadingQueries(queryClient);
-      if (data === ids.length) toast.success(`Đã duyệt ${data} chỉ số thành công`);
-      else toast.warning(`Đã duyệt ${data}/${ids.length} chỉ số. Tải lại danh sách để kiểm tra các dòng chưa được duyệt.`);
-    },
-    onError: (error) => {
-      console.error("Error bulk approving meter readings:", error);
-      invalidateMeterReadingQueries(queryClient);
-      meterReadingFailure(error, 'duyệt hàng loạt');
-    },
-  });
-};
-
-/**
- * Mutation UPDATE status→UNAPPROVED, xoá approved_by/approved_at.
- * Invalidate queries, toast thành công.
- * Requirements: 4.4
- */
-export const useUnapproveMeterReading = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (id: string) => {
-      return persistentFinancialWorkflow('useUnapproveMeterReading',{scope:'actor'}).run(id,'bỏ duyệt chỉ số',async()=>{
-      // Canonical unapprove_meter_reading_v1 (permission-checked theo toà). KHÔNG
-      // còn fallback UPDATE thẳng meter_readings: từ migration 20260902084240 _v1
-      // nằm trong migration thật — thiếu writer là lỗi phải lộ ra, không phải
-      // cửa hậu bỏ kiểm quyền (PMETER-C01, re-anchor 02/09/2026).
-      const res = await supabase.rpc("unapprove_meter_reading_v1" as any, { p_id: id });
-      if (res.error) throw res.error;
-      if (!res.data || typeof res.data !== 'object' || res.data.id !== id || res.data.status !== 'UNAPPROVED') throw new FinancialWorkflowError('Chưa xác nhận được chỉ số đã bỏ duyệt. Tải lại danh sách trước khi thao tác tiếp.','unknown',[]);
-      return res.data;
-      });
-    },
-    onSuccess: () => {
-      invalidateMeterReadingQueries(queryClient);
-      toast.success("Đã bỏ duyệt chỉ số thành công");
-    },
-    onError: (error) => {
-      console.error("Error unapproving meter reading:", error);
-      invalidateMeterReadingQueries(queryClient);
-      meterReadingFailure(error, 'bỏ duyệt');
     },
   });
 };

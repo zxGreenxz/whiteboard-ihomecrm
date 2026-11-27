@@ -83,7 +83,6 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'voucher-v2-post': tien('B', 'ghi sổ phiếu'),
   'voucher-v2-approve-post': tien('B', 'duyệt và ghi sổ phiếu'),
   'voucher-v2-reverse': tien('B', 'hoàn tác ghi sổ phiếu'), // ngày ghi là hôm nay: qua ngày là nội dung khác ⇒ đọc trạng thái
-  'approval-request': tien('C', 'xử lý yêu cầu duyệt'), // đọc trạng thái + phiên bản + bước của yêu cầu; rút đề nghị là mã chết, xoá ở đợt 11
   'handover-lifecycle': tien('van', 'xác nhận hoặc huỷ phiên bàn giao tiền'), // dấu chung bản trước của 4 thao tác bàn giao; chỉ còn đọc
   'handover-confirm': tien('C', 'xác nhận nhận bàn giao'), // bốn hàm bàn giao khoá phiên FOR UPDATE rồi mới xét trạng thái
   'handover-cancel-request': tien('C', 'xin huỷ phiên bàn giao'),
@@ -191,17 +190,6 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   // bộ chống ghi trùng phải nạp riêng sổ này (đợt 8 đo: chunk sổ tách riêng, bảng nạp trước của chunk entry vượt ngưỡng).
   'lucky-public-draw': { money: false, reconcile: 'C', label: 'quay số', silent: true }, // lucky_draw_v1 khoá sự kiện FOR UPDATE rồi mới xét «đã quay»: đọc trạng thái, đã quay ⇒ nhận, chưa quay ⇒ gửi lại
   'lucky-admin': khac('C', 'thao tác quản trị Quay số'), // chỉ lệnh quay giữ dấu (khoá draw:<sự kiện>, ba hàm quay khoá sự kiện rồi mới xét); 7 thao tác khác không ghi dấu, gỡ dấu chung bản trước
-
-  // Đợt 11: mã chết, xoá cùng nơi gọi
-  'copilot-confirmation': tien('van', 'xác nhận thao tác của trợ lý Hermes'),
-  'invoice-approve': tien('van', 'duyệt hoá đơn'),
-  'invoice-unapprove': tien('van', 'bỏ duyệt hoá đơn'),
-  'useCreateMeterReading': khac('van', 'tạo chỉ số'),
-  'useApproveMeterReading': khac('van', 'duyệt chỉ số'),
-  'useBulkApproveMeterReadings': khac('van', 'duyệt chỉ số hàng loạt'),
-  'useUnapproveMeterReading': khac('van', 'bỏ duyệt chỉ số'),
-  'room-bulk-create': khac('van', 'tạo nhiều phòng'),
-  'shareholder-account-link': khac('van', 'tạo tài khoản cổ đông'),
 
   // Đã đúng theo plan: không đợt nào sửa nơi gọi; vẫn khai `van` cho tới khi được xác nhận lại
   'profit-ledger-advance': tien('van', 'ghi tạm ứng lợi nhuận'),

@@ -991,8 +991,8 @@ export const useBulkCancelInvoices = () => {
 };
 
 // =============================================
-// useApproveInvoice - DRAFT → APPROVED
-// Requirements: 4.1, 4.2
+// Biên nhận chuyển trạng thái một hoá đơn (huỷ, buộc huỷ, khôi phục; huỷ hàng loạt đọc từng dòng).
+// Đợt 11: đã xoá useApproveInvoice / useUnapproveInvoice (không còn nơi gọi; hoá đơn sinh ra đã duyệt sẵn).
 // =============================================
 
 async function readInvoiceLifecycleReceipt(value:unknown,invoiceId:string):Promise<unknown> {
@@ -1012,117 +1012,6 @@ async function confirmSingleInvoiceLifecycle(value:unknown,invoiceId:string,expe
   completed.push({id:receipt.id,label:`Đã nhận trạng thái của ${invoiceLabel(receipt)}`});
   return result;
 }
-
-export const useApproveInvoice = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const {selectedOrganizationId}=useOrganization();
-  const workflow=useRef(persistentFinancialWorkflow('invoice-approve'));
-
-  return useMutation({
-    mutationFn: async (invoiceId: string) => {
-      return workflow.current.run(invoiceId,'duyệt hoá đơn',async progress=>{
-      const user = await getSessionUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // Canonical approve_invoice_v1 (server-side state-guard + permission
-      // parity RLS); fallback legacy update khi writer chưa deploy/không quyền.
-      const canonical = await supabase.rpc('approve_invoice_v1', {
-        p_invoice_id: invoiceId,
-      });
-      if (!canonical.error) return confirmSingleInvoiceLifecycle(canonical.data,invoiceId,['APPROVED'],progress.completed);
-      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
-
-      const { data, error } = await supabase
-        .from('invoices')
-        .update({
-          status: 'APPROVED' as any,
-          approved_at: new Date().toISOString(),
-          approved_by: user.id,
-        } as any)
-        .eq('id', invoiceId)
-        .eq('status', 'DRAFT' as any)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return confirmSingleInvoiceLifecycle(data,invoiceId,['APPROVED'],progress.completed);
-    },undefined,selectedOrganizationId??undefined);
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
-
-      toast(invoiceLifecycleFeedback(result,"duyệt"));
-    },
-    onError: (error: Error, invoiceId: string) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi duyệt hoá đơn',
-        description: error instanceof FinancialWorkflowError ? workflowErrorMessage(error,"duyệt hoá đơn") : invoiceFailureMessage(error,"duyệt hoá đơn"),
-      });
-    },
-  });
-};
-
-// =============================================
-// useUnapproveInvoice - APPROVED → DRAFT
-// Requirements: 4.5
-// =============================================
-
-export const useUnapproveInvoice = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const {selectedOrganizationId}=useOrganization();
-  const workflow=useRef(persistentFinancialWorkflow('invoice-unapprove'));
-
-  return useMutation({
-    mutationFn: async (invoiceId: string) => {
-      return workflow.current.run(invoiceId,'bỏ duyệt hoá đơn',async progress=>{
-      const user = await getSessionUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const canonical = await supabase.rpc('unapprove_invoice_v1', {
-        p_invoice_id: invoiceId,
-      });
-      if (!canonical.error) return confirmSingleInvoiceLifecycle(canonical.data,invoiceId,['DRAFT'],progress.completed);
-      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
-
-      const { data, error } = await supabase
-        .from('invoices')
-        .update({
-          status: 'DRAFT' as any,
-          approved_at: null,
-          approved_by: null,
-        } as any)
-        .eq('id', invoiceId)
-        .eq('status', 'APPROVED' as any)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return confirmSingleInvoiceLifecycle(data,invoiceId,['DRAFT'],progress.completed);
-    },undefined,selectedOrganizationId??undefined);
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
-
-      toast(invoiceLifecycleFeedback(result,"bỏ duyệt"));
-    },
-    onError: (error: Error, invoiceId: string) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi bỏ duyệt hoá đơn',
-        description: error instanceof FinancialWorkflowError ? workflowErrorMessage(error,"bỏ duyệt hoá đơn") : invoiceFailureMessage(error,"bỏ duyệt hoá đơn"),
-      });
-    },
-  });
-};
 
 // =============================================
 // useBulkApproveInvoices - Bulk approve DRAFT → APPROVED
