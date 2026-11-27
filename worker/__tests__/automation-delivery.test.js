@@ -11,7 +11,7 @@ const job = { account_id: 'a', organization_id: 'o', conversation_id: 'c',
   payload: { tu_dong: true, sale_content_guard: contentGuard }, not_before: now.toISOString() };
 function database({ enabled = true, sale = true, recipients = ['c'], error = null,
   conversationOrg = 'o', conversationError = null, threadType = 'group', shot = null, shotError = null, automation = true,
-  stopAt = null, stopError = null, saves = [], roomLockWatch = [], roomRow = null } = {}) {
+  stopAt = null, stopError = null, saves = [], roomLockWatch = [], roomRow = null, priorLock = [] } = {}) {
   return { rpc: vi.fn(async () => ({ data: { buildings: [], rooms: [], contact: {} }, error: null })), from: vi.fn(table => {
     const data = table === 'zalo_automations'
       ? (automation ? { enabled, stats: { roomLockWatch }, config: { recipients, antiSpam: { allowedHours: { from: '08:00', to: '20:00' } } } } : null)
@@ -22,9 +22,11 @@ function database({ enabled = true, sale = true, recipients = ['c'], error = nul
     const failure = table === 'zalo_automations' ? error : table === 'zalo_automation_oneshots' ? shotError
       : table === 'zalo_automation_runs' ? stopError : conversationError;
     const q = { select: () => q, eq: () => q, is: () => q, order: () => q, limit: () => q,
+      like: () => q, neq: () => q, or: () => q,
       maybeSingle: async () => ({ data, error: failure }),
       // List read (only the one-shot stop check reads every automation row's updated_at).
-      then: (res, rej) => Promise.resolve({ data: table === 'zalo_automations' ? saves.map(updated_at => ({ updated_at })) : [], error: null }).then(res, rej) };
+      then: (res, rej) => Promise.resolve({ data: table === 'zalo_automations' ? saves.map(updated_at => ({ updated_at }))
+        : table === 'zalo_send_queue' ? priorLock : [], error: null }).then(res, rej) };
     return q;
   }) };
 }
@@ -43,6 +45,12 @@ describe('automation dispatch checks current conditions', () => {
     const db = database({ enabled: false });
     expect(await validateAutomationDelivery({ ...job, payload: {} }, db, now)).toEqual({ ok: true });
     expect(db.from).not.toHaveBeenCalled();
+  });
+  it('dừng tin Lock cũ nếu một hội thoại khác của cùng nhóm đã gọi Zalo', async () => {
+    const db = database({ roomLockWatch: [{ id: 'r', since: 200 }], priorLock: [{ id: 'other' }] });
+    const result = await validateAutomationDelivery({ ...job, id: 'current', payload: { tu_dong: true,
+      automation_request_key: 'room-lock:r:200:c' } }, db, now);
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining('nhóm đã có lần gửi Lock') });
   });
   it('permits an eligible recipient before closing time', async () => {
     expect(await validateAutomationDelivery(job, database(), now)).toEqual({ ok: true });

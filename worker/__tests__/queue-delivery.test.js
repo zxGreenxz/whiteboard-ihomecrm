@@ -169,7 +169,12 @@ describe('queue admission and delivery outcomes', () => {
       const api = connect();
       const notice = id => ({ ...makeJob({ tu_dong: true, automation_request_key: 'room-lock:r:100:' + id }),
         organization_id: 'pace-org', conversation_id: id });
-      await processJob(notice('first'));
+      await recoverInterruptedJobs();
+      const first = processJob(notice('first'));
+      await vi.advanceTimersByTimeAsync(2999);
+      expect(api.sendMessage).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await first;
       const second = processJob(notice('second'));
       await vi.advanceTimersByTimeAsync(2999);
       expect(api.sendMessage).toHaveBeenCalledTimes(1);

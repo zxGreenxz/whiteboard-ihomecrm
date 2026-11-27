@@ -34,6 +34,7 @@ let oneshotClaimError = null;
 let locCapNhat = [];
 let finishResult = null;
 let roomsForLock = [];
+let priorGroupLocks = [];
 
 /** Query builder giả — đủ chuỗi phương thức mà engine dùng, không hơn. */
 function taoQuery(bang) {
@@ -41,6 +42,7 @@ function taoQuery(bang) {
   const q = {
     select: () => q,
     eq: (c, v) => { ctx.loc[c] = v; return q; },
+    like: (c, v) => { ctx.loc[c] = v; return q; },
     in: () => q,
     is: (c, v) => { ctx.loc[c] = v; return q; },
     order: () => q,
@@ -59,6 +61,10 @@ function taoQuery(bang) {
   return q;
 }
 function ketQua(ctx) {
+  if (ctx.bang === 'zalo_send_queue') {
+    return { data: priorGroupLocks.filter(row => row.thread === ctx.loc['conv.thread_id']
+      && row.organization === ctx.loc.organization_id && row.cycle + ':%' === ctx.loc['payload->>automation_request_key']), error: null };
+  }
   if (ctx.bang === 'zalo_automations') return { data: duLieuAutomations, error: null };
   if (ctx.bang === 'zalo_conversations') return { data: duLieuConversations, error: null };
   return { data: [], error: null };
@@ -135,7 +141,7 @@ const sbGia = {
       };
     }
     if (bang === 'zalo_send_queue') {
-      return { insert: (row) => { daChen.queue.push(row); return Promise.resolve({ error: null }); } };
+      return { ...taoQuery(bang), insert: (row) => { daChen.queue.push(row); return Promise.resolve({ error: null }); } };
     }
     if (bang === 'zalo_automation_runs') {
       return { insert: (row) => { daChen.runs.push(row); return Promise.resolve({ error: null }); } };
@@ -225,6 +231,7 @@ beforeEach(() => {
   hermesSweep = SWEEP_OK; hermesProbe = () => ({ data: { status: 'healthy' }, error: null });
   workerLogs = [];
   roomsForLock = [];
+  priorGroupLocks = [];
   rpcFailureFor = () => null;
   uploadError = null;
   tableInputs = [];
@@ -317,6 +324,17 @@ describe('engine broadcast — xếp hàng', () => {
     await tick();
     expect(rpcCalls.slice(3).map(c => Date.parse(c.args.p_not_before) - start)).toEqual([9000, 12000, 15000]);
     expect(new Set(rpcCalls.map(c => c.args.p_request_key)).size).toBe(6);
+  });
+  it.each([false, true])('gộp các hội thoại chờ cũ, dùng phiên còn sống và nhận biết tin đã xếp: %s', async existed => {
+    const since = THU_HAI_0830.getTime();
+    duLieuConversations = [{ ...conv('c2'), thread_id: 'group' }, { ...conv('c1', 'offline'), thread_id: 'group' }];
+    datCauHinh({}, { lastScheduledDate: '2026-08-31', roomLockWatch: [{ id: 'r1', since, pending: existed ? ['c1'] : ['c1', 'c2'] }] });
+    phongGia.length = 0;
+    roomsForLock = [{ id: 'r1', code: '201', building: { name: 'Tòa Sen' } }];
+    if (existed) priorGroupLocks.push({ organization: 'org-1', thread: 'group', cycle: `room-lock:r1:${since}` });
+    await tickTuDongHoa();
+    expect(rpcCalls.map(c => c.args.p_conversation_id)).toEqual(existed ? [] : ['c2']);
+    expect(capNhatAutomations.at(-1).stats.roomLockWatch[0].pending).toEqual([]);
   });
   it('runs each slot once, queues close slots in order, and shares the daily quota', async () => {
     datCauHinh({ schedule: { time: '08:30', extraTimes: ['08:31', '09:10'], days: { mon: 'compact' }, skipIfUnchanged: false },

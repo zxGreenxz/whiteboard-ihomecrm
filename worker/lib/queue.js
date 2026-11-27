@@ -62,16 +62,18 @@ async function deferJob(job, reason, claimed = false) {
   if (error) log('deferJob', job.id, error.message);
 }
 
+const nextLockSendAt = new Map();
+let nextLockAfterRecovery = 0;
+
 export async function recoverInterruptedJobs() {
   const { data, error } = await sb.rpc('zalo_worker_recover_jobs_v1', { p_instance_id: INSTANCE_ID });
   if (error) throw new Error(`Không đối soát được hàng đợi sau khởi động: ${error.message}`);
   if (data?.reason === 'lease_lost') throw new Error('Không còn lease để đối soát hàng đợi');
+  // The previous lease holder may have just sent an overdue Lock before handing off.
+  nextLockAfterRecovery = performance.now() + LOCK_NOTICE_GAP_MS;
   log('queue recovery', data);
   return data;
 }
-
-// Jobs run serially. Space even overdue Lock sends, then recheck the room and lease.
-const nextLockSendAt = new Map();
 
 // Fence every provider request against the database lease and latest user
 // intent. Once admitted, an error is an unknown effect; never resend blindly.
@@ -83,7 +85,7 @@ function fencedSession(session, job, delivery) {
       return async (...args) => {
         const isLock = key === 'sendMessage' && args[2] === ThreadType.Group && lockNoticeKey(job.payload);
         if (isLock) {
-          const remaining = (nextLockSendAt.get(job.organization_id) ?? 0) - performance.now();
+          const remaining = Math.max(nextLockSendAt.get(job.organization_id) ?? 0, nextLockAfterRecovery) - performance.now();
           if (remaining > 0) await sleep(Math.ceil(remaining));
         }
         if (sessions.get(job.account_id) !== session) throw new Error('SESSION_CHANGED: phiên đã dừng hoặc thay thế');
