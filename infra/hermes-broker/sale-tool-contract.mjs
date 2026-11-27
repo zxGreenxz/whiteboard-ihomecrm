@@ -8,7 +8,7 @@ import { ACTION_REJECT_REASONS } from './action-reasons.mjs';
 
 export const SALE_TOOL = Object.freeze({
   name: 'crm_sale_action',
-  description: 'Sale phòng: sửa thông tin, ảnh, chính sách (room sale). Không cọc, không giữ phòng. operation=list lấy thao tác và khuôn input được cấp; sau đó dùng đúng operation/input. requestId lấy từ crm_new_request_id, giữ nguyên khi thử lại/tra trạng thái. confirmation_required: chỉ gửi lại input kèm confirmToken khi người dùng đồng ý preview. unknown: tra thao tác status tương ứng, không tạo mã mới.',
+  description: 'Sale phòng: thông tin, ảnh, chính sách và cọc Zalo. operation=list lấy khuôn thao tác được cấp. Với zalo_deposit, gửi nguyên câu xác nhận CRM cho người dùng và đợi họ nhắn lại. Giữ requestId từ crm_new_request_id và cùng input khi đối soát. Các thao tác có confirmToken chỉ dùng token sau khi người dùng đồng ý.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['operation'], properties: {
     operation: { type: 'string', maxLength: 40 }, input: { type: 'object' },
   } },

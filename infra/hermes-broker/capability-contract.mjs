@@ -1,3 +1,4 @@
+import { ZALO_DEPOSIT_KEY } from './zalo-deposit-contract.mjs';
 import { TASK_ACTION } from './task-contract.mjs';
 import { ROOM_PASS_ACTION } from './room-pass-contract.mjs';
 import { DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2 } from './domain-contract.mjs';
@@ -40,6 +41,7 @@ const BEFORE_W2 = Object.freeze({
   // Khoá riêng Hermes của báo cọc / thu thêm có tiền (sale-action-contract.mjs), seed TẮT; có ở đây TRƯỚC khi bật để web và
   // connector đọc được khoá (bài học 19/10). Không lớp quyền nào cấp ⇒ hai tool đó vẫn ẩn dù registry bật.
   [SALE_DEPOSIT_RECEIPT_KEY]: Object.freeze({ mode: 'action', resource: 'building' }),
+  [ZALO_DEPOSIT_KEY]: Object.freeze({ mode: 'action', resource: 'building' }),
   ...Object.fromEntries(SALE_POLICY_CAPABILITIES.map(key => [key, Object.freeze({ mode: 'action', resource: 'building' })])),
   // Khách/lead tạo chưa gắn toà; SQL đòi overlay scope Toàn tổ chức đã chọn.
   ...Object.fromEntries(CUSTOMER_ACTIONS.map(key => [key, Object.freeze({ mode: 'action', resource: 'organization_scope' })])),

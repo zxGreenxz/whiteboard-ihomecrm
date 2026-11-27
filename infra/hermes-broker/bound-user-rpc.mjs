@@ -21,7 +21,7 @@ async function json(response, signal) {
 }
 /** Fixed user-JWT endpoints only; transport stays tracked until raw I/O settles.
  * Mutation ACK loss is surfaced to the broker and never retried. */
-export function createBoundUserRpcTransport({ url, publishableKey, fetch: request = globalThis.fetch, dependencyScope, allowedNames } = {}) {
+export function createBoundUserRpcTransport({ url, publishableKey, fetch: request = globalThis.fetch, dependencyScope, allowedNames, clientInfo } = {}) {
   let endpoint; try { endpoint = new URL(url); } catch { throw new TypeError('invalid_memory_transport'); }
   if (endpoint.protocol !== 'https:' || endpoint.pathname !== '/' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash ||
     typeof publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(publishableKey) || typeof request !== 'function' ||
@@ -38,7 +38,7 @@ export function createBoundUserRpcTransport({ url, publishableKey, fetch: reques
     return dependencyScope.track(async () => {
       if (write) onDispatch();
       const response = await request(new URL(`/rest/v1/rpc/${name}`, endpoint).href, { method: 'POST', redirect: 'error', signal,
-        headers: { apikey: publishableKey, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json', 'content-profile': 'public', 'accept-profile': 'public' }, body: JSON.stringify(args) });
+        headers: { ...(clientInfo ? { 'x-client-info': clientInfo } : {}), apikey: publishableKey, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json', 'content-profile': 'public', 'accept-profile': 'public' }, body: JSON.stringify(args) });
       if (signal.aborted) { await response.body?.cancel().catch(() => {}); fail('timeout'); }
       const data = await json(response, signal);
       const error = exact(data, ['code', 'message', 'details', 'hint']) && typeof data.code === 'string' && typeof data.message === 'string' &&
@@ -52,7 +52,11 @@ export function createBoundUserRpcTransport({ url, publishableKey, fetch: reques
       if (transient) throw actionRejected('state_changed');
       if (response.status === 401) fail('unauthorized');
       if (response.status === 403 && error && data.code === '42501') fail('forbidden');
-      if (response.status === 409 && error && data.code === 'PT409') fail('context_changed');
+      if (response.status === 409 && error && data.code === 'PT409') {
+        if (name === 'hermes_zalo_deposit_v1' && ['zalo_deposit_ambiguous', 'zalo_deposit_held', 'zalo_deposit_locked', 'zalo_deposit_duplicate', 'zalo_deposit_expired'].includes(data.message))
+          throw actionRejected(data.message);
+        fail('context_changed');
+      }
       if (response.status === 400 && error && data.code === '22023') fail('invalid_request');
       // SQL đọc quá trần kích thước (PT413 ⇒ HTTP 413): kết quả quá lớn, không phải yêu cầu sai.
       if (response.status === 413 && error && data.code === 'PT413') fail('result_too_large');

@@ -11,7 +11,7 @@ const channel = { accountId: '11111111-1111-4111-8111-111111111111', ownUid: '10
   profile: 'personal-fixture', generation: '22222222-2222-4222-8222-222222222222', token: 'hzn_' + 'a'.repeat(64) };
 const event = (id = 'm1') => ({ type: 0, isSelf: false, threadId: '200', data: {
   uidFrom: '200', idTo: '100', msgType: 'webchat', msgId: id, content: 'Native personal request', ts: Date.now() } });
-async function fixture(t, { config: supplied, profile = channel.profile, authorizeBinding, provider, timeout, maxProviderPending, onFault = () => {} } = {}) {
+async function fixture(t, { config: supplied, profile = channel.profile, authorizeBinding, provider, timeout, maxProviderPending, confirmDeposit, onFault = () => {} } = {}) {
   const root = supplied?.stateRoot || fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-native-'));
   const config = supplied || { stateRoot: root, channels: [{ ...channel, profile }] };
   const sent = [];
@@ -20,7 +20,7 @@ async function fixture(t, { config: supplied, profile = channel.profile, authori
   const api = { sendMessage: async (...args) => {
     sent.push(args); return provider ? provider(...args) : { message: { msgId: 987654 }, attachment: [] };
   } };
-  const session = bridge.attach({ accountId: channel.accountId, ownUid: '100', api, isActive: () => active });
+  const session = bridge.attach({ accountId: channel.accountId, ownUid: '100', api, isActive: () => active, confirmDeposit });
   const url = await bridge.listen(0);
   t.after(async () => { await bridge.close(); if (!supplied) fs.rmSync(root, { recursive: true, force: true }); });
   async function request(route, body = {}, token = channel.token) {
@@ -62,11 +62,11 @@ test('managed channels consult CRM for each incoming and outgoing DM, including 
   assert.equal((await f.receive()).data.status, 'empty');
 });
 
-test('raw groups, history-shaped input, foreign sender, forwarded text and echoes never become instructions', async t => {
+test('raw groups, history-shaped input, foreign sender and echoes never become instructions', async t => {
   const f = await fixture(t);
   for (const alter of [m => { m.type = 1; }, m => { m.isSelf = true; },
     m => { m.data.uidFrom = '300'; }, m => { m.data.idTo = '999'; },
-    m => { m.data.ts = Date.now() - 400000; }, m => { m.data.forward = true; },
+    m => { m.data.ts = Date.now() - 400000; },
     m => { m.data.content = '/hermes-link hz_' + 'b'.repeat(64); },
     m => { Object.defineProperty(m.data, 'content', { get() { throw new Error('must not execute'); } }); },
     m => { m.threadId = '300'; }]) {
@@ -75,6 +75,49 @@ test('raw groups, history-shaped input, foreign sender, forwarded text and echoe
   }
   assert.equal(f.bridge.isPrivateThread(channel.accountId, '200'), true);
   assert.equal(f.bridge.isPrivateThread(channel.accountId, '300'), false);
+});
+
+test('forwarded text reaches the paired assistant as customer context; only a live direct reply confirms a deposit', async t => {
+  const confirmations = [];
+  const approval = 'Xác nhận cọc ABCDEF123456 · 33 đ · Tòa A / 101 · Người nộp Khách DEMO · Sổ DEMO · Ngày 2026-11-27';
+  const f = await fixture(t, { confirmDeposit: proof => confirmations.push(proof) });
+  for (const [id, flags] of Object.entries({ top: { forward: true }, ref: { reference: '{"type":3}' },
+    decor: { decorLog: '{"fw":{"pmsg":{"id":"foreign"}}}' }, reply: { quote: { content: 'foreign original' } } })) {
+    const message = event(id);
+    Object.assign(message.data, flags, { content: approval });
+    await f.session.capture(message);
+    const received = (await f.receive()).data.event;
+    assert.match(received.text, /^\[Nội dung Zalo chuyển tiếp/);
+    assert.ok(received.text.endsWith(approval));
+    assert.doesNotMatch(received.text, /foreign/);
+    await f.session.capture(message);
+    assert.equal((await f.receive()).data.status, 'empty');
+  }
+  assert.equal(confirmations.length, 0);
+  const direct = event('auth1');
+  direct.data.content = approval;
+  await f.session.capture(direct);
+  assert.equal(confirmations.length, 1);
+  assert.equal(confirmations[0].providerMessageId, 'auth1');
+  assert.equal(confirmations[0].text, approval);
+  assert.equal((await f.receive()).data.event.text, direct.data.content);
+});
+
+test('a forwarded customer request and the operator’s follow-up arrive in order for task creation', async t => {
+  const f = await fixture(t);
+  const forwarded = event('customer-task');
+  Object.assign(forwarded.data, { content: 'Máy lạnh phòng DEMO đang rò nước',
+    reference: JSON.stringify({ type: 3, data: '{"id":"original"}' }), decorLog: '{"fw":{"fwLvl":1}}' });
+  const instruction = event('operator-task');
+  instruction.data.content = 'Tạo việc từ tin vừa rồi, giao cho tôi';
+  await f.session.capture(forwarded);
+  await f.session.capture(instruction);
+  const context = (await f.receive()).data.event;
+  assert.match(context.text, /^\[Nội dung Zalo chuyển tiếp/u);
+  assert.ok(context.text.endsWith(forwarded.data.content));
+  assert.doesNotMatch(context.text, /original|fwLvl/);
+  await f.request('/v1/ack', { generation: channel.generation, eventId: context.id, status: 'accepted' });
+  assert.equal((await f.receive()).data.event.text, instruction.data.content);
 });
 
 test('channel capability, generation, verified own UID and current session are mandatory', async t => {

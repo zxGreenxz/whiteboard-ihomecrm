@@ -33,8 +33,9 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
   mới nói bot chưa làm được việc này.
 - Nếu connector ẩn `crm_action_list` hoặc trả `tool_not_available`, báo công cụ ghi chưa khả dụng cho kết nối hiện tại.
   Nếu lỗi mạng khi gọi, báo lỗi kết nối kèm mã lỗi nhận được. Cả hai trường hợp đều chưa ghi dữ liệu từ lượt tra danh mục này.
+- Khi người dùng nhắn Lock kèm ảnh cọc trên Zalo riêng, ưu tiên luồng `zalo_deposit` của `ihome-crm-phong-sale-nhom`. Chỉ ghi sau khi chính người dùng gửi câu xác nhận của bản xem trước.
 - Ngoại lệ CHẶN TRƯỚC — chỉ khi việc được nhờ chính là LẬP / GHI khoản tiền dưới đây: không gọi tool nào, kể cả
-  `crm_action_list`, trả lời một câu chỉ đúng trang web: chi hoa hồng sale / môi giới; thu / hoàn / trả / bổ sung cọc, bỏ cọc không
+  `crm_action_list`, trả lời một câu chỉ đúng trang web: chi hoa hồng sale / môi giới; thu cọc ngoài luồng Zalo riêng, hoàn / trả / bổ sung cọc, bỏ cọc không
   kèm trả phòng; lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách; lương, thưởng; lập / sửa / huỷ phiếu THU; phiếu hệ thống,
   phiếu con định kỳ (trang web từng loại: `ihome-crm-thu-chi`). KHÔNG chặn: khách trả phòng kèm bỏ cọc ⇒ `contract.return`
   `forfeit` = true (`ihome-crm-hop-dong`); ghi chú vào phiếu đã có, kể cả phiếu thu ⇒ `expense.note`; khách trả tiền HOÁ ĐƠN (kể

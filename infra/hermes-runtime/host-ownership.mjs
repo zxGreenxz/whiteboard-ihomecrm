@@ -50,6 +50,7 @@ const REASONS = new Set(['action_disabled', 'forbidden', 'not_allowed', 'private
   'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict', 'invoice_already_cancelled', 'invoice_not_cancelled',
   // Trang Sale (crm_sale_action: cọc, giữ / bỏ giữ phòng đã rời cầu Sale, 05/11).
   'sale_deposit_web_only', 'sale_lock_via_contract',
+  'zalo_deposit_ambiguous', 'zalo_deposit_held', 'zalo_deposit_locked', 'zalo_deposit_duplicate', 'zalo_deposit_expired',
   // Trang Bài học (khung giờ tin tối 20:55–21:10 của learning.digest, 11/11).
   'learning_digest_outside_window']);
 export const AUDIT_REASONS = Object.freeze([...REASONS]);

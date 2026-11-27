@@ -399,12 +399,12 @@ function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
       const customer = CUSTOMER_FUNCTIONS.find(spec => spec.signature === signature);
       const catalogSpec = task ?? customer;
       const allowed = catalogSpec ? (catalogSpec.authenticated ? 'authenticated' : null) : signature.startsWith('app_private.') ? 'hermes_store_executor'
-        : /hermes_zalo_(?:ingress|private_command|private_reply)_/.test(signature) ? 'service_role' : 'authenticated';
+        : /hermes_zalo_(?:ingress|private_command|private_reply|deposit_consent)_/.test(signature) ? 'service_role' : 'authenticated';
       return { rows: roles.map(role => ({ role, allowed: role === allowed
         || (foreignPolicyGrant && signature === 'public.hermes_org_policy_options_v1(uuid)' && role === 'hermes_store_executor') })) };
     }
-    if (sql.includes('has_table_privilege')) return { rows: Array.from({ length: 80 }, () => ({ allowed: false })) };
-    if (sql.includes('SELECT relrowsecurity')) return { rows: Array.from({ length: 5 }, () => ({ relrowsecurity: true })) };
+    if (sql.includes('has_table_privilege')) return { rows: Array.from({ length: parameters[0].length * parameters[1].length * parameters[2].length }, () => ({ allowed: false })) };
+    if (sql.includes('SELECT relrowsecurity')) return { rows: parameters[0].map(() => ({ relrowsecurity: true })) };
     if (sql.includes('FROM pg_trigger')) return { rows: parameters[0].map(tgname => ({ tgname, tgenabled: 'O' })) };
     throw new Error('unexpected schema query');
   } };

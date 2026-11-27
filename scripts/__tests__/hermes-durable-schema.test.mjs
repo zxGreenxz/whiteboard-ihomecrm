@@ -80,7 +80,7 @@ const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_conn
 // Học có kiểm duyệt (20261031041523): job nạp đề xuất trên host dùng vai NOLOGIN riêng hermes_learning_ingest (không phải kho
 // bền connector); vai này chỉ được USAGE app_private và EXECUTE đúng một hàm nạp.
 const LEARNING_INGEST = ['app_private.hermes_store_learning_ingest_v1(jsonb)'];
-const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[])',
+const PUBLIC = ['hermes_zalo_deposit_v1(jsonb,jsonb)', 'hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[])',
   'hermes_prepare_connection_v1(uuid,text[],text[],uuid[])', 'hermes_my_connections_v1(uuid)',
   'hermes_connection_context_v1(uuid)', 'hermes_room_scope_map_v1(uuid,uuid[],uuid,text,bigint,bigint,uuid,bigint,bigint)',
   'hermes_zalo_binding_v1(jsonb)', 'hermes_connection_options_v1(uuid)', 'hermes_org_policy_options_v1(uuid)',
@@ -139,7 +139,7 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_org_policy_options_v9(uuid)', 'hermes_connection_options_v9(uuid)', 'hermes_connection_context_v9(uuid)',
   // Học có kiểm duyệt (20261031041523): chủ/admin (users.edit) đọc và duyệt đề xuất bài học ghi CRM.
   'hermes_learning_review_v1(jsonb)', 'hermes_learning_decide_v1(jsonb)'];
-const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
+const WORKER = ['public.hermes_zalo_deposit_consent_v1(uuid,uuid,uuid,text,text,bigint,text)', 'public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_sale_advice_intake_v1(jsonb)', 'public.zalo_sale_advice_delivery_v1(uuid,uuid,uuid,text,jsonb)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',

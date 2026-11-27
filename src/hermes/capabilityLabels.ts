@@ -15,6 +15,7 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   // Đợt 3 Hoá đơn: khoá riêng Hermes của thu tiền (seed TẮT); quyền CRM giao vào là Thu tiền.
   'thu_tien.collect_transfer': 'Ghi khách đã chuyển khoản / thanh toán POS (Hermes, không tiền mặt, có xem trước)',
   // Khoá riêng Hermes của báo cọc / thu thêm có tiền (seed TẮT). Từ 05/11 (#390) crm_sale_action gỡ hai thao tác đó: không công cụ nào dùng khoá.
+  'deposits.zalo_confirmed_receipt': 'Lập phiếu cọc và giữ phòng sau khi người dùng xác nhận trên Zalo riêng',
   'deposits.create_receipt': 'Đã gỡ: báo cọc / thu thêm cọc có tiền (Hermes không còn làm, không công cụ nào dùng khoá này); làm trên web, trang Quản lý cọc (/deposits)',
   // Đợt 3 học có kiểm duyệt: khoá riêng Hermes (seed TẮT); quyền CRM giao vào là users.edit, như trang Bài học chờ duyệt.
   'assistant.learning_review': 'Tin tối "Bài học Hermes chờ duyệt" và duyệt / bỏ bài học qua Zalo (Hermes, luôn xem trước)',
@@ -31,7 +32,7 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'sale_phong.edit': 'Hermes: cập nhật thông tin Sale và chương trình có thời hạn trực tiếp; xem trước nội dung công khai',
   'sale_phong.manage_images': 'Hermes: thay danh sách ảnh phòng bằng URL HTTPS đã tải lên',
   'sale_phong.lock_room': 'Hermes: lock tạm 6/12/24 giờ qua trang Hợp đồng; gỡ lock do bạn tạo, người có quyền Tạo phiếu cọc ở tòa gỡ được cả lock của người khác',
-  'deposits.create': 'Hermes: chỉ tra danh sách phòng và yêu cầu cũ; báo cọc, thu thêm cọc làm trên web, trang Quản lý cọc (/deposits)',
+  'deposits.create': 'Hermes: tra phòng và lập phiếu giữ chỗ khi có quyền xác nhận cọc qua Zalo riêng; thu thêm cọc làm trên web, trang Quản lý cọc (/deposits)',
   'deposits.edit': 'Hermes: chỉ tra danh sách phòng và yêu cầu cũ; sửa cọc làm trên web, trang Quản lý cọc (/deposits)',
   'income_expenses.view': 'Hermes: tra phiếu thu/chi, không gồm hạng mục hạn chế, lương, cổ đông',
   'meter_readings.view': 'Hermes: tra chỉ số công tơ theo ngày đọc',

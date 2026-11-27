@@ -697,6 +697,8 @@ export async function verifyLiveSchema(pool) {
   const signatures = [
     ['public.hermes_zalo_binding_v1(jsonb)', 'authenticated'], ['public.hermes_connection_options_v1(uuid)', 'authenticated'],
     ['public.hermes_org_policy_options_v1(uuid)', 'authenticated'],
+    ['public.hermes_zalo_deposit_v1(jsonb,jsonb)', 'authenticated'],
+    ['public.hermes_zalo_deposit_consent_v1(uuid,uuid,uuid,text,text,bigint,text)', 'service_role'],
     ...['ingress', 'private_command', 'private_reply'].map(name => [`public.hermes_zalo_${name}_v1(jsonb)`, 'service_role']),
     ...Object.values(STORE).map(name => [`app_private.hermes_store_${name}_v1(jsonb)`, 'hermes_store_executor']),
   ];
@@ -705,13 +707,13 @@ export async function verifyLiveSchema(pool) {
       FROM unnest($2::text[]) AS role`, [signature, ['anon', 'authenticated', 'service_role', 'hermes_store_executor']])).rows;
     demand(acl.length === 4 && acl.every(row => row.allowed === (row.role === allowed)), 'live_rpc_acl_mismatch');
   }
-  const tables = ['bots', 'ingress_sessions', 'link_challenges', 'bindings', 'private_commands'].map(name => `app_private.hermes_zalo_${name}`);
+  const tables = ['bots', 'ingress_sessions', 'link_challenges', 'bindings', 'private_commands', 'deposit_intents', 'deposit_payments'].map(name => `app_private.hermes_zalo_${name}`);
   const acl = (await pool.query(`SELECT has_table_privilege(r.role,t.name,p.privilege) allowed
     FROM unnest($1::text[]) r(role) CROSS JOIN unnest($2::text[]) t(name) CROSS JOIN unnest($3::text[]) p(privilege)`,
   [['anon', 'authenticated', 'service_role', 'hermes_store_executor'], tables, ['SELECT', 'INSERT', 'UPDATE', 'DELETE']])).rows;
-  demand(acl.length === 80 && acl.every(row => row.allowed === false), 'live_private_table_acl_mismatch');
+  demand(acl.length === tables.length * 16 && acl.every(row => row.allowed === false), 'live_private_table_acl_mismatch');
   const rls = (await pool.query('SELECT relrowsecurity FROM pg_class WHERE oid=ANY($1::regclass[])', [tables])).rows;
-  demand(rls.length === 5 && rls.every(row => row.relrowsecurity), 'live_private_rls_missing');
+  demand(rls.length === tables.length && rls.every(row => row.relrowsecurity), 'live_private_rls_missing');
   const triggers = (await pool.query(`SELECT tgname,tgenabled FROM pg_trigger WHERE tgname=ANY($1::text[]) AND NOT tgisinternal`,
     [['hermes_zalo_private_conversation_guard', 'hermes_zalo_private_message_guard', 'hermes_private_command_authority']])).rows;
   demand(triggers.length === 3 && triggers.every(row => row.tgenabled === 'O'), 'live_guard_trigger_missing');

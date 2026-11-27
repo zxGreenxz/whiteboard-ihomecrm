@@ -59,6 +59,14 @@ const exact = (value, keys) => value && !Array.isArray(value) &&
   Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const validText = (value, bytes) => typeof value === 'string' && value.trim().length > 0 &&
   !value.includes('\0') && Buffer.byteLength(value, 'utf8') <= bytes;
+// The personal journal keeps 8192 UTF-8 bytes. Quote only the new message body; reference/decorLog contain other people's identifiers.
+function forwardedNote(content) {
+  const prefix = '[Nội dung Zalo chuyển tiếp để tham khảo. Nếu chỉ có tin chuyển tiếp, tóm tắt việc và hỏi người gửi muốn giao cho ai.]\n';
+  const available = 8192 - Buffer.byteLength(prefix);
+  if (Buffer.byteLength(content) <= available) return prefix + content;
+  const clipped = Buffer.from(content).subarray(0, available - 3).toString('utf8').replace(/\uFFFD$/u, '');
+  return prefix + clipped + '…';
+}
 const publicChannel = c => ({ accountId: c.accountId, ownUid: c.ownUid, pairedUid: c.pairedUid,
   mainUid: c.mainUid, profile: c.profile, generation: c.generation });
 
@@ -158,8 +166,9 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     const content = own(data, 'content');
     const params = parsed(own(content, 'params'));
     const urls = [own(params, 'hd'), own(params, 'rawUrl'), own(content, 'href')].filter(url => typeof url === 'string');
-    // Forwarded photo: keep the image, drop the original sender's caption (Q46).
-    const text = forwarded ? '' : caption(own(content, 'title'));
+    // Only the current attachment's caption is evidence. Embedded quote/reference bodies never enter the DM.
+    const title = caption(own(content, 'title'));
+    const text = forwarded && title ? forwardedNote(title) : title;
     const layout = own(own(parsed(own(data, 'extraData')), 'groupMediaMsg'), 'groupLayoutId');
     const key = (typeof layout === 'string' || Number.isSafeInteger(layout)) && nativeId(String(layout)) ? String(layout) : null;
     const at = now();
@@ -221,7 +230,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
         : { index, error: photo.error }) }) } };
   }
 
-  function attach({ accountId, ownUid, api, isActive }) {
+  function attach({ accountId, ownUid, api, isActive, confirmDeposit }) {
     if (closing) throw new Error('native_bridge_closed');
     const candidates = channels.filter(({ channel: c }) => c.accountId === accountId);
     if (!candidates.length) return null;
@@ -252,7 +261,9 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
           if (own(event, 'isSelf') !== false) return drop('echo');
           if (own(data, 'uidFrom') !== channel.pairedUid || own(data, 'idTo') !== ownUid ||
               threadId !== channel.pairedUid) return drop('peer');
-          if (flagged(event, QUOTES) || flagged(data, QUOTES)) return drop('quoted');
+          // A reply can carry a new photo of its own. Read only that attachment, never the quoted message or its caption.
+          const quoted = flagged(event, QUOTES) || flagged(data, QUOTES);
+          if (quoted && kind !== 'photo' && msgType !== 'webchat') return drop('quoted');
           const forwarded = flagged(event, FORWARDS) || flagged(data, FORWARDS);
           const messageId = own(data, 'msgId');
           const timestamp = own(data, 'ts');
@@ -262,11 +273,22 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
           if (managedChannel(channel) && (!(await authorizeBinding(channel)) || activeSource(channel) !== source)) return true;
           const id = nativeDigest([channel.accountId, channel.generation, channel.pairedUid, messageId]);
           if (msgType === 'webchat') {
-            const text = own(data, 'content');
-            if (forwarded || !validText(text, 8192)) return true;
+            const content = own(data, 'content');
+            if (!validText(content, 8192)) return true;
+            const referenced = forwarded || quoted;
+            const text = referenced ? forwardedNote(content) : content;
+            // Only a fresh, plain DM from this peer can approve a pending deposit. The model never attests consent.
+            const confirmation = text.trim().normalize('NFC');
+            const consent = /^Xác nhận cọc [0-9A-F]{12} · [^\r\n]+$/u.test(confirmation) && confirmation.length <= 1600;
+            if (!referenced && consent && confirmDeposit) {
+              try {
+                await confirmDeposit({ senderUid: channel.pairedUid, providerMessageId: messageId, sentAt, text: confirmation });
+              } catch { fault('native_deposit_confirmation_unavailable'); }
+              if (activeSource(channel) !== source) return true;
+            }
             journal.admit(id, { id, messageId, text, sentAt, senderUid: channel.pairedUid,
               digest: nativeDigest([messageId, sentAt, text]), status: 'queued' });
-          } else if (kind === 'photo') capturePhoto(entry, data, { id, messageId, sentAt }, forwarded);
+          } else if (kind === 'photo') capturePhoto(entry, data, { id, messageId, sentAt }, forwarded || quoted);
           else if (kind === 'notice') captureNotice(entry, NOTICES.get(msgType), { id, messageId, sentAt });
           // Stickers and unknown kinds are swallowed: still never CRM inbox.
           return true;

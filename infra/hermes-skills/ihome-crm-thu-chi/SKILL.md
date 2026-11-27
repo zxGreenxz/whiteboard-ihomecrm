@@ -24,7 +24,7 @@ hỏi khoản chi.
 Chỉ khi việc được nhờ chính là LẬP / GHI khoản tiền dưới đây:
 
 - Chi hoa hồng sale / môi giới ⇒ Hợp đồng › Duyệt hoa hồng.
-- Thu / hoàn / trả / bổ sung cọc, bỏ cọc không kèm trả phòng ⇒ Quản lý cọc / thanh lý HĐ.
+- Lock kèm ảnh cọc qua Zalo riêng dùng `zalo_deposit` trong `ihome-crm-phong-sale-nhom`. Thu cọc ngoài luồng này, hoàn / trả / bổ sung cọc, bỏ cọc không kèm trả phòng ⇒ Quản lý cọc / thanh lý HĐ.
 - Lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách ⇒ Hợp đồng.
 - Lương, thưởng ⇒ Lương.
 - Lập / sửa / huỷ phiếu THU (kể cả "lập phiếu thu …", câu mở đầu bằng "Thu <tiền> <khoản>" dù có phòng / toà), phiếu hệ thống,

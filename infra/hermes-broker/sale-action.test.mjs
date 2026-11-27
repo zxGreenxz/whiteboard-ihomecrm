@@ -7,7 +7,7 @@ const id = c => `${c.repeat(8)}-${c.repeat(4)}-4${c.repeat(3)}-8${c.repeat(3)}-$
 const roomId=id('a'),requestId=id('b'),buildingId=id('c'),organizationId=id('d'),userId=id('e');
 const patch={requestId,roomId,expectedRevision:'a'.repeat(32),sale_note:'Miễn phí wifi'};
 test('sale patch bounds and permission distinction never broadens image grant',()=>{
- assert.equal(SALE_ACTION_TOOLS.length,10);
+ assert.equal(SALE_ACTION_TOOLS.length,11);
  assert.deepEqual(saleActionInput('patch',patch),patch);
  for(const extra of [{status:'free'},{organizationId},{rent_price:-1},{area:1.234},{sale_note:'x'.repeat(2001)},{images:['http://example.invalid/a']}])
   assert.throws(()=>saleActionInput('patch',{...patch,...extra}));

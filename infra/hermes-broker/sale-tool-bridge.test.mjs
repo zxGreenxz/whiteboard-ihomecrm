@@ -64,7 +64,7 @@ function fixture(t,grants=keys){
 
 test('compact catalogue lists the 10 kept operations byte-for-byte as before and none of the 6 retired ones, even holding every key',async t=>{
  // Danh mục nội bộ (thao tác SQL hermes_sale_actions_v1 + chính sách + lô) không đổi; chỉ cầu công khai bỏ sáu thao tác.
- assert.deepEqual(all.map(saleToolOperation),BEFORE);
+ assert.deepEqual(all.map(saleToolOperation),['zalo_deposit',...BEFORE]);
  assert.deepEqual({...SALE_RETIRED_OPERATIONS},RETIRED);
  const f=fixture(t),listed=(await f.broker.listTools(f.token)).tools.map(x=>x.name);
  assert.deepEqual(listed.sort(),['crm_new_request_id','crm_sale_action']);
@@ -82,8 +82,8 @@ test('compact catalogue lists the 10 kept operations byte-for-byte as before and
  assert.equal(f.seen.length,0);assert(f.events.includes('audit:prepared'));
  const id=JSON.parse((await f.broker.callTool(f.token,'crm_new_request_id',{})).content[0].text).requestId;
  assert.match(id,/^[0-9a-f-]{36}$/);
- // Mô tả tool khớp skill: chỉ sửa thông tin / ảnh / chính sách; không còn "lock".
- assert.match(SALE_TOOL.description,/^Sale phòng: sửa thông tin, ảnh, chính sách \(room sale\)\. Không cọc, không giữ phòng\./);
+ // Chỉ thao tác mới trên Zalo nhận cọc sau xác nhận.
+ assert.match(SALE_TOOL.description,/zalo_deposit.*câu xác nhận CRM/u);
  assert.doesNotMatch(SALE_TOOL.description,/lock|reservation/i);
 });
 
