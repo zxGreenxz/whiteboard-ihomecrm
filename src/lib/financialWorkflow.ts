@@ -1,4 +1,4 @@
-import { financialPending, FinancialPendingError, isAttemptRunning, pendingHasSettled, trackRunningAttempt, type FinancialPendingMeta, type FinancialPendingRecord, type FinancialPendingScope, type FinancialPendingStore, type PendingReconciliation } from './financialPending';
+import { financialPending, FinancialPendingError, isAttemptRunning, pendingHasSettled, pendingVerdictConclusive, trackRunningAttempt, type FinancialPendingMeta, type FinancialPendingRecord, type FinancialPendingScope, type FinancialPendingStore, type PendingReconciliation } from './financialPending';
 import { friendlyError } from './friendlyError';
 import { hasUnconfirmedResponse as voucherOutcomeUnknown, isKnownRejectionCode } from './operationOutcome';
 import { pendingBlockMessage, pendingValve, type PendingValve } from './pendingValve';
@@ -134,11 +134,8 @@ export class FinancialWorkflowGuard {
           try{verdict=reconcile?await reconcile(prior,progress):null;}finally{stopReconcile();}
           // "Chưa thấy trên máy chủ" chỉ là "chưa ghi" khi lần gửi trước chắc chắn đã kết thúc, hoặc khi gửi lại cùng mã
           // không thể ghi hai lần. Kết luận lạ dạng (không phải một trong ba dạng đã biết) cũng là chưa kết luận được.
-          const conclusive=verdict!==null&&typeof verdict==='object'&&('result' in verdict
-            ||verdict.outcome==='already-written'
-            ||(verdict.outcome==='not-written'&&(verdict.serverDedupesRequestKey===true||pendingHasSettled(prior,now()))));
           // Only a conclusive verdict may release the prior marker, and only that exact marker.
-          if(verdict===null||!conclusive||!store.clearConfirmed(scope,prior.attemptId))throw pendingFailure(pending??prior,now());
+          if(!pendingVerdictConclusive(verdict,prior,now())||!store.clearConfirmed(scope,prior.attemptId))throw pendingFailure(pending??prior,now());
           this.blocked.delete(blockedKey);
           if('result' in verdict)return verdict.result;
           if(verdict.outcome==='already-written'){
@@ -206,4 +203,71 @@ export class FinancialWorkflowGuard {
       throw feedback;
     } finally { stopTracking?.(); this.active.delete(key); }
   }
+}
+
+/**
+ * Kết quả của một lần đối chiếu CHỈ ĐỌC (`reconcilePendingOnly`).
+ * - `written`: lần gửi trước đã ghi (`{result}` hoặc `already-written`); dấu đã gỡ. `message` là câu của hàm đối chiếu
+ *   (chỉ có với `already-written`), `recordIds` là mã bản ghi biết được.
+ * - `not-written`: tra chắc chắn lần gửi trước chưa ghi; dấu đã gỡ, KHÔNG gửi gì.
+ * - `kept`: dấu để nguyên; `reason` cho biết vì sao (đang chạy trong tab, chưa lắng, đọc hỏng, chưa kết luận, cần gửi lại
+ *   cùng mã, dấu đã đổi).
+ */
+export type PendingReadOnlyOutcome =
+  | {kind:'written';message:string|null;recordIds:readonly string[]}
+  | {kind:'not-written'}
+  | {kind:'kept';reason:'running'|'unsettled'|'failed'|'inconclusive'|'resend-needed'|'gone'};
+
+/**
+ * Một namespace đăng ký cho quét nền khi mở app (đợt 11, `src/lib/pendingSweep.ts`). Khai ở tệp hook của nơi ghi và dựng
+ * từ CHÍNH hàm đối chiếu mà lần bấm dùng, để hai bên không thể kết luận khác nhau.
+ */
+export interface PendingSweepHandler {
+  /** Phạm vi công ty của dấu, như guard của nơi ghi: `actor` ⇒ 'actor-scope'; `selected` ⇒ công ty đang chọn. */
+  scope:'actor'|'selected';
+  /** Hàm đối chiếu CHỈ ĐỌC (không bước ghi nào), dựng được chỉ từ dấu (không cần dữ liệu của lần bấm). */
+  reconcile:(pending:FinancialPendingRecord)=>Promise<PendingReconciliation<unknown>>;
+  /** Gốc khoá react-query cần làm mới khi dấu được gỡ. */
+  invalidate:readonly string[];
+}
+
+/**
+ * Chế độ CHỈ ĐỐI CHIẾU của lõi (đợt 11: quét nền khi mở app). Chạy hàm đối chiếu của đúng dấu `prior`, xét kết luận bằng
+ * CÙNG luật với lần bấm (`pendingVerdictConclusive`), rồi chỉ gỡ đúng dấu đó (theo `attemptId`). KHÔNG BAO GIỜ chạy việc
+ * ghi, không gửi lại: hàm này không nhận task nào.
+ *
+ * Khác lần bấm ở đúng hai chỗ, cả hai theo hướng giữ dấu:
+ * - dấu chưa lắng (dưới `PENDING_SETTLE_MS`, hoặc lượt của nó còn chạy trong tab) thì không gọi hàm đối chiếu;
+ * - `not-written` kèm `serverDedupesRequestKey` KHÔNG gỡ dấu. Lần bấm gỡ rồi gửi lại NGAY với CÙNG mã yêu cầu, nên kết
+ *   luận «chưa ghi» chỉ an toàn nhờ chính lần gửi lại đó; ở đây không gửi gì, gỡ dấu là mất mã cũ và lần bấm sau sinh mã
+ *   mới ⇒ có thể ghi trùng.
+ * Hàm đối chiếu ném lỗi (đọc hỏng, mất mạng) ⇒ giữ dấu, không ném ra ngoài.
+ */
+export async function reconcilePendingOnly<T>(
+  prior:FinancialPendingRecord,
+  reconcile:(pending:FinancialPendingRecord)=>Promise<PendingReconciliation<T>>,
+  options:{store?:Pick<FinancialPendingStore,'clearConfirmed'>;now?:()=>Date}={},
+):Promise<PendingReadOnlyOutcome>{
+  const store=options.store??financialPending;
+  const now=options.now??(()=>new Date());
+  // Lượt ghi của dấu, hoặc một lần đối chiếu khác của nó, đang chạy trong tab này: lần bấm đang lo, không tranh.
+  if(isAttemptRunning(prior.attemptId))return {kind:'kept',reason:'running'};
+  // Dấu chưa lắng: lệnh cũ có thể còn đang chạy trên máy chủ, «chưa thấy» chưa nói được gì.
+  if(!pendingHasSettled(prior,now()))return {kind:'kept',reason:'unsettled'};
+  // Trong lúc đối chiếu, dấu được coi là đang chạy: lần bấm cùng thao tác ở tab này chờ, không đối chiếu song song.
+  const stop=trackRunningAttempt(prior.attemptId);
+  let verdict:PendingReconciliation<T>;
+  try{verdict=await reconcile(prior);}
+  catch{/* Đọc hỏng / mất mạng: chưa kết luận được, dấu để nguyên, im lặng. */return {kind:'kept',reason:'failed'};}
+  finally{stop();}
+  if(!pendingVerdictConclusive(verdict,prior,now()))return {kind:'kept',reason:'inconclusive'};
+  if('outcome' in verdict&&verdict.outcome==='not-written'&&verdict.serverDedupesRequestKey===true)return {kind:'kept',reason:'resend-needed'};
+  const scope:FinancialPendingScope={namespace:prior.namespace,userId:prior.userId,organizationId:prior.organizationId,businessKey:prior.businessKey};
+  let cleared=false;
+  try{cleared=store.clearConfirmed(scope,prior.attemptId);}
+  catch{/* Kho không gỡ được: dấu còn nguyên, lần bấm sau đối chiếu lại. */}
+  if(!cleared)return {kind:'kept',reason:'gone'};
+  if('result' in verdict)return {kind:'written',message:null,recordIds:[...prior.completedIds]};
+  if(verdict.outcome==='already-written')return {kind:'written',message:verdict.message,recordIds:[...(verdict.recordIds??[])]};
+  return {kind:'not-written'};
 }

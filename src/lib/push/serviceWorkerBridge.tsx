@@ -19,7 +19,8 @@
 // Kèm theo, cấp app:
 //   - số chưa đọc CỦA CÔNG TY ĐANG CHỌN ⇒ số trên icon PWA; về 0 ⇒ đóng thông báo hộp thư
 //     của công ty đó (và thông báo không gắn công ty) trên màn khoá — NOTIF-CLIENT-4;
-//   - có phiên + đã chốt công ty ⇒ ensurePushSubscription() một lần mỗi tài khoản.
+//   - có phiên + đã chốt công ty ⇒ ensurePushSubscription() một lần mỗi tài khoản;
+//   - có phiên + đã chốt công ty ⇒ quét nền dấu «chờ đối chiếu» (đợt 11, `usePendingSweepOnOpen`).
 //
 // VÌ SAO MOUNT TRONG CÂY ROUTE (src/app/routes/index.tsx) CHỨ KHÔNG Ở AppProviders
 //   Cần cả `selectOrganization` (OrganizationProvider, nằm trong AppProviders) lẫn
@@ -35,6 +36,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useUnreadNotificationsCount } from "@/hooks/useNotifications";
 import { useMarkNotificationsRead } from "@/hooks/useMarkNotificationsRead";
+import { usePendingSweepOnOpen } from "@/hooks/usePendingSweepOnOpen";
 import { NOTIFICATION_FALLBACK_URL, resolveNotificationUrl } from "@/lib/notificationRoutes";
 import { capNhatSoTrenIcon, dongMoiThongBaoHopThu } from "@/lib/push/osNotifications";
 import { docThamSoMoApp, docTinServiceWorker } from "@/lib/push/swMessages";
@@ -78,6 +80,9 @@ export function ServiceWorkerBridge(): null {
   const danhDau = useMarkNotificationsRead();
   const danhDauRef = useRef(danhDau.mutate);
   danhDauRef.current = danhDau.mutate;
+  // Việc cấp app thứ ba gắn ở đây (đợt 11): quét nền dấu «chờ đối chiếu» của người đang đăng nhập. Cầu nối là gói nạp lười
+  // có sẵn cả người dùng lẫn công ty đang chọn, nên gói entry (đang sát ngưỡng bundle-inventory) không mang thêm byte nào.
+  usePendingSweepOnOpen(userId, selectedOrganizationId);
 
   const [viec, setViec] = useState<ViecBamPush | null>(null);
   const daDanhDau = useRef<ViecBamPush | null>(null);

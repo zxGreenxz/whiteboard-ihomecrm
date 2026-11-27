@@ -149,6 +149,8 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   // `ihome:template-default-intent:v1:*` của `templateDefaultIntent.ts` đã xoá).
   "src/lib/leadConversionProgress.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/luckyDrawApi.ts": "nhat-ky-chong-ghi-trung",
+  // Quét nền khi mở app (đợt 11): liệt kê khoá của kho dấu chung, đối chiếu chỉ đọc, gỡ dấu qua kho dấu chung.
+  "src/lib/pendingSweep.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/luckyProofPending.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/network-center/intentRegistry.ts": "nhat-ky-chong-ghi-trung",
   "src/integrations/supabase/client.ts": "phien-dang-nhap",

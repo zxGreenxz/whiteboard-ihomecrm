@@ -53,6 +53,17 @@ export function pendingHasSettled(pending:Pick<FinancialPendingRecord,'startedAt
   if(pending.attemptId&&isAttemptRunning(pending.attemptId))return false;
   return Math.abs(now.getTime()-Date.parse(pending.activeAt??pending.startedAt))>=PENDING_SETTLE_MS;
 }
+/**
+ * Kết luận của hàm đối chiếu có đủ để gỡ dấu `prior` không. MỘT luật dùng chung cho lần bấm (`FinancialWorkflowGuard.run`,
+ * `runFinancialPending`) và cho quét nền khi mở app (`reconcilePendingOnly`): `{result}` và `already-written` luôn đủ;
+ * `not-written` chỉ đủ khi lần gửi trước chắc chắn đã kết thúc, hoặc nơi gọi khai máy chủ chống trùng theo mã. Kết luận lạ
+ * dạng (không thuộc ba dạng đã biết) là chưa đủ.
+ */
+export function pendingVerdictConclusive<T>(verdict:PendingReconciliation<T>,prior:FinancialPendingRecord,now:Date):verdict is NonNullable<PendingReconciliation<T>>{
+  return verdict!==null&&typeof verdict==='object'&&('result' in verdict
+    ||verdict.outcome==='already-written'
+    ||(verdict.outcome==='not-written'&&(verdict.serverDedupesRequestKey===true||pendingHasSettled(prior,now))));
+}
 const pendingClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit',year:'numeric',hourCycle:'h23'});
 /** Giờ kẹt theo giờ Việt Nam: "09:12 ngày 24/11/2026". */
 export function formatPendingTime(startedAt:string):string{
