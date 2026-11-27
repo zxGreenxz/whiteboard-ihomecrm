@@ -55,8 +55,8 @@ phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CH
 
 | Chỉ số | Giá trị |
 |---|---|
-| Thư mục mã nguồn | 15 |
-| ĐANG CHẠY trên server | 14 |
+| Thư mục mã nguồn | 16 |
+| ĐANG CHẠY trên server | 15 |
 | Có mã mà **chưa deploy** | 1 — network-watchdog |
 | `verify_jwt = false` (ai cũng gọi được) | 6 — bank-event-ingest, demo-reset, gps-checkin-ingest, meter-capture-worker, network-center-worker, salary-v5-jobs |
 

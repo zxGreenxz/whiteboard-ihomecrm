@@ -127,7 +127,7 @@ def main():
     worker_id = os.environ.get("METER_CAPTURE_WORKER_ID", "meter-" + str(uuid.uuid4()))
     while True:
         try:
-            job = gateway.post("claim", {"workerId": worker_id})
+            job = gateway.post("claim", {"workerId": worker_id, "supportsAiRouting": True})
             if job is None:
                 time.sleep(5)
                 continue

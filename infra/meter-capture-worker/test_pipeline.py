@@ -10,7 +10,7 @@ import urllib.error
 from unittest.mock import patch
 
 from domain import InvalidInput, Reading
-from recognize import read_ai, recognize, request_json
+from recognize import read_ai, read_ai_routes, recognize, request_json
 from worker import Gateway
 
 
@@ -151,6 +151,18 @@ class PipelineTests(unittest.TestCase):
             self.assertIsNone(output["ai"]["value"])
             self.assertIn("ai_different_values_or_registers", output["issues"])
 
+    def test_video_cannot_combine_one_frame_from_each_provider(self):
+        job = {"meter": METER, "media": [{"mimeType": "video/mp4"}], "aiRoutes": [{"provider": "nous"}, {"provider":"9router"}]}
+        observations = [([Reading("0012.3", "1.8.0", 0)], True, "nous/model"),
+                        ([Reading("0012.3", "1.8.0", .2)], True, "9router/model")]
+        with TemporaryDirectory() as directory, patch("recognize.probe_media", return_value=1), \
+                patch("recognize.extract_frames", return_value=[]), patch("recognize.inspect_frames", return_value=(frames(), {QR})), \
+                patch("recognize.PaddleReader") as reader, patch("recognize.read_ai_routes", side_effect=observations):
+            reader.return_value.read.return_value = tokens("0012.3")
+            output = recognize(job, Path("fixture.mp4"), Path(directory))
+            self.assertEqual(output["ai"]["status"], "unreadable")
+            self.assertIsNone(output["ai"]["value"])
+
     def test_cpu_budget_preserves_completed_ai_and_does_not_start_a_dense_pass(self):
         clock = {"now": 0}
         future = Future()
@@ -224,6 +236,18 @@ class PipelineTests(unittest.TestCase):
 
 
 class HttpBoundaryTests(unittest.TestCase):
+    def test_subscription_check_sends_no_frames_and_uses_scoped_backup(self):
+        routes = [{"provider": "nous", "model": "openai/gpt-6-luna"},
+                  {"provider": "9router", "model": "cx/gpt-6-luna[1m]"}]
+        with patch.dict("os.environ", {"AI_NOUS_API_KEY": "fixture"}), patch("recognize.request_json") as http:
+            http.return_value = {"data": [{"id": routes[0]["model"], "billing_mode": "credits"}]}
+            with self.assertRaisesRegex(InvalidInput, "subscription_unavailable"):
+                read_ai([], METER, route=routes[0])
+            self.assertIsNone(http.call_args.args[2])
+        with patch("recognize.read_ai", side_effect=[InvalidInput("subscription_unavailable"), ([], True, "backup")]) as run:
+            self.assertEqual(read_ai_routes([], METER, routes=routes, timeout=60), ([], True, "backup"))
+            self.assertEqual([call.kwargs["route"] for call in run.call_args_list], routes)
+
     @staticmethod
     def gateway_response(request, timeout, body):
         # The configured production gateway returns 403/1010 for urllib's
@@ -257,6 +281,17 @@ class HttpBoundaryTests(unittest.TestCase):
             self.assertEqual(readings, [Reading("0012.3", "1.8.0", 0)])
             self.assertTrue(single)
             self.assertEqual(version, "cx/gpt-6.1-sol;reasoning=medium;detail=original")
+
+    def test_invalid_choice_triggers_next_provider(self):
+        pair = [{"provider":"9router", "model":"cx/first"}, {"provider":"9router","model":"cx/backup"}]
+        with TemporaryDirectory() as directory, patch.dict("os.environ", {"METER_CAPTURE_AI_BASE_URL":"https://gateway.invalid/v1", "METER_CAPTURE_AI_KEY":"fixture"}), \
+                patch("recognize.request_json", side_effect=[{"choices":[None]}, {"choices":[{"finish_reason":"stop","message":{"content":"{}"}}]}]) as http, \
+                patch("recognize.parse_ai", return_value=([], True)):
+            path = Path(directory) / "fixture.jpg"
+            path.write_bytes(b"synthetic")
+            result = read_ai_routes([{"timestamp":0,"path":path}], METER, timeout=60, routes=pair)
+            self.assertEqual(http.call_count, 2)
+            self.assertTrue(result[2].startswith("9router/cx/backup;"))
 
     def test_original_download_uses_the_same_identity_and_keeps_digest_validation(self):
         original = b"fixture-original"

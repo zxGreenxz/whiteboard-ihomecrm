@@ -6,6 +6,7 @@ import { notifyActionError } from '@/lib/actionFeedback';
 import { saveCompanyLogo } from '@/lib/companyLogo';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { focusFirstError } from '@/lib/formErrors';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -487,6 +488,7 @@ function AccountingStandardCard() {
 const SETTINGS_TABS = ['basic', 'contract', 'invoice', 'payment', 'notification'] as const;
 
 const GeneralSettingsPage = () => {
+  const aiAdmin = useIsSuperAdmin();
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -573,6 +575,7 @@ const GeneralSettingsPage = () => {
             <p className="text-sm text-muted-foreground">
               Quản lý cấu hình hệ thống cho hợp đồng, hóa đơn, thu chi và thông báo
             </p>
+            {aiAdmin.isSuccess && aiAdmin.data === true && <Link className="text-sm font-medium underline" to="/settings/ai-routing">Nguồn AI</Link>}
           </div>
         </div>
   );

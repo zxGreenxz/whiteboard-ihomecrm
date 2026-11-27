@@ -20,7 +20,7 @@ import {
   SpendEnginePage,
   FloorsPage,
   GeneralCategoriesPage,
-  GeneralSettingsPage,
+  SystemSettingsPage,
   HermesConnectionsPage,
   HotlinesPage,
   IncomeExpenseTemplatesPage,
@@ -39,7 +39,8 @@ import { RequirePermission } from "../../components/auth/RequirePermission";
 export const settingsRoutes = (
   <>
     {/* === CÀI ĐẶT HỆ THỐNG === */}
-    <Route path="/settings/general" element={<ProtectedRoute><RequirePermission module="settings"><GeneralSettingsPage /></RequirePermission></ProtectedRoute>} />
+    <Route path="/settings/ai-routing" element={<ProtectedRoute><SystemSettingsPage section="ai" /></ProtectedRoute>} />
+    <Route path="/settings/general" element={<ProtectedRoute><RequirePermission module="settings"><SystemSettingsPage section="general" /></RequirePermission></ProtectedRoute>} />
     {/* Self-service only: the Hermes backend verifies the current user, selected org and every connection's ownership. */}
     <Route path="/settings/hermes" element={<ProtectedRoute><HermesConnectionsPage /></ProtectedRoute>} />
     <Route path="/general-setting" element={<Navigate to="/settings/general" replace />} />

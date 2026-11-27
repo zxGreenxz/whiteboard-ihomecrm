@@ -487,6 +487,7 @@ export function useQuickEntryFeed(opts: {
     });
     try {
       const r = await readWithAi({
+        application: company ? undefined : "wallet_read",
         messages,
         categoryCount: categories.length,
         fetchImpl,

@@ -39,8 +39,8 @@ def request_headers(token: str) -> dict[str, str]:
             "User-Agent": "ihome-meter-capture/1"}
 
 
-def request_json(url: str, token: str, body: dict, timeout: int = 45, limit: int = 256_000) -> Any:
-    request = urllib.request.Request(url, json.dumps(body).encode(), request_headers(token))
+def request_json(url: str, token: str, body: dict | None, timeout: float = 45, limit: int = 256_000) -> Any:
+    request = urllib.request.Request(url, None if body is None else json.dumps(body).encode(), request_headers(token))
     with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
         raw = response.read(limit + 1)
         if len(raw) > limit:
@@ -162,12 +162,35 @@ class PaddleReader:
         return output
 
 
-def read_ai(frames: list[dict], meter: dict, *, timeout: float = 90) -> tuple[list, bool, str]:
+def read_ai(frames: list[dict], meter: dict, *, timeout: float = 90, route: dict | None = None) -> tuple[list, bool, str]:
     base = os.environ.get("METER_CAPTURE_AI_BASE_URL", "").strip()
     key = os.environ.get("METER_CAPTURE_AI_KEY", "").strip()
     model = os.environ.get("METER_CAPTURE_AI_MODEL", AI_MODEL).strip() or AI_MODEL
+    if route is not None:
+        if route.get("provider") not in ("nous", "9router") or not isinstance(route.get("model"), str) or not route["model"]:
+            raise InvalidInput("invalid_ai_route")
+        model = route["model"]
+        if route["provider"] == "nous":
+            base = os.environ.get("AI_NOUS_BASE_URL") or "https://inference-api.nousresearch.com/v1"
+            key = os.environ.get("AI_NOUS_API_KEY", "")
     if not base or not key:
         raise InvalidInput("ai_not_configured")
+    if route is not None:
+        if route["provider"] == "nous":
+            if not model.startswith("openai/"):
+                raise InvalidInput("invalid_ai_route")
+            start = time.monotonic()
+            catalog = request_json(https_base(base) + "/models", key, None, timeout=min(4, timeout), limit=8_000_000)
+            if not isinstance(catalog, dict) or not isinstance(catalog.get("data"), list) or not any(
+                isinstance(item, dict) and item.get("id") == model and item.get("billing_mode") == "subscription"
+                for item in catalog["data"]
+            ):
+                raise InvalidInput("subscription_unavailable")
+            timeout -= time.monotonic() - start
+            if timeout <= 0:
+                raise InvalidInput("ai_time_budget_exhausted")
+        elif not model.startswith(("cx/", "ag/")):
+            raise InvalidInput("invalid_ai_route")
     if not 0 < len(frames) <= MAX_AI_FRAMES:
         raise InvalidInput("invalid_ai_frame_count")
     content: list[dict] = [{"type": "text", "text": ai_prompt(meter["registerCode"], meter["decimalPlaces"])}]
@@ -180,12 +203,32 @@ def read_ai(frames: list[dict], meter: dict, *, timeout: float = 90) -> tuple[li
         "model": model, "reasoning_effort": AI_REASONING, "messages": [{"role": "user", "content": content}],
         "response_format": {"type": "json_object"}, "max_tokens": 4000, "stream": False,
     }, timeout=timeout)
+    if route and route["provider"] == "nous" and (not isinstance(response, dict) or response.get("model") != model):
+        raise InvalidInput("ai_model_mismatch")
     choices = response.get("choices", []) if isinstance(response, dict) else []
-    if not choices or choices[0].get("finish_reason") != "stop":
+    choice = choices[0] if isinstance(choices, list) and choices else None
+    if not isinstance(choice, dict) or choice.get("finish_reason") != "stop" or not isinstance(choice.get("message"), dict):
         raise InvalidInput("ai_incomplete")
-    readings, single = parse_ai(choices[0].get("message", {}).get("content"),
+    readings, single = parse_ai(choice["message"].get("content"),
                                 [frame["timestamp"] for frame in frames], meter["registerCode"], meter["decimalPlaces"])
-    return readings, single, f"{model};reasoning={AI_REASONING};detail={AI_DETAIL}"
+    source = route["provider"] + "/" if route else ""
+    return readings, single, f"{source}{model};reasoning={AI_REASONING};detail={AI_DETAIL}"
+
+
+def read_ai_routes(frames: list[dict], meter: dict, *, timeout: float, routes: list) -> tuple[list, bool, str]:
+    if len(routes) != 2 or not all(isinstance(route, dict) for route in routes):
+        raise InvalidInput("invalid_ai_route")
+    deadline = time.monotonic() + timeout
+    for index, route in enumerate(routes):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise InvalidInput("ai_time_budget_exhausted")
+        try:
+            return read_ai(frames, meter, route=route, timeout=remaining / (2 - index))
+        except (TimeoutError, urllib.error.URLError, InvalidInput, ValueError):
+            if index == 1:
+                raise
+    raise InvalidInput("ai_incomplete")
 
 
 def recognize(job: dict, path: Path, directory: Path) -> dict[str, Any]:
@@ -194,11 +237,15 @@ def recognize(job: dict, path: Path, directory: Path) -> dict[str, Any]:
     is_video = job["media"][0]["mimeType"].startswith("video/")
     duration = probe_media(path, is_video)
     issues: list[str] = []
-    server_readings, ai_readings = [], []
+    server_readings = []
+    ai_readings_by_version: dict[str, list] = {}
+    ai_values: set[tuple[str, str]] = set()
     server_status = ai_status = "unreadable"
     server_value = ai_value = None
     server_times, ai_times, server_issues, ai_issues = [], [], [], []
     ai_version = f"{os.environ.get('METER_CAPTURE_AI_MODEL', AI_MODEL).strip() or AI_MODEL};reasoning={AI_REASONING};detail={AI_DETAIL}"
+    if job.get("aiRoutes"):
+        ai_version = "unavailable"
     single_meter, multiple_qr = True, False
     qr_tokens: set[str] = set()
     by_time: dict[float, dict] = {}
@@ -228,7 +275,11 @@ def recognize(job: dict, path: Path, directory: Path) -> dict[str, Any]:
                 single_meter = False
             else:
                 executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="meter-ai")
-                pending_ai = executor.submit(read_ai, selected, meter, timeout=min(90, remaining - 5))
+                timeout = min(90, remaining - 5)
+                if job.get("aiRoutes"):
+                    pending_ai = executor.submit(read_ai_routes, selected, meter, routes=job["aiRoutes"], timeout=timeout)
+                else:
+                    pending_ai = executor.submit(read_ai, selected, meter, timeout=timeout)
         try:
             if server_status != "error" and server_value is None:
                 try:
@@ -254,9 +305,13 @@ def recognize(job: dict, path: Path, directory: Path) -> dict[str, Any]:
             if pending_ai is not None:
                 try:
                     observations, same_meter, ai_version = pending_ai.result(timeout=max(0, deadline - time.monotonic()))
-                    ai_readings.extend(observations)
+                    evidence = ai_readings_by_version.setdefault(ai_version, [])
+                    evidence.extend(observations)
+                    ai_values.update((r.value, r.register) for r in observations)
                     single_meter = single_meter and same_meter
-                    ai_value, ai_times, ai_issues = stable_reading(ai_readings, is_video)
+                    ai_value, ai_times, ai_issues = stable_reading(evidence, is_video)
+                    if len(ai_values) > 1:
+                        ai_value, ai_times, ai_issues = None, [], ["different_values_or_registers"]
                     ai_status = "ok" if ai_value is not None else "unreadable"
                 except FutureTimeoutError:
                     issues.append("ai_reader_error" if pending_ai.done() else "ai_time_budget_exhausted")

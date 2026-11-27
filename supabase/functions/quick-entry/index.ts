@@ -25,6 +25,8 @@
 //
 // Không lưu, không ghi log nội dung âm thanh hay chữ của người dùng.
 
+import { applicationRoutes, endpoint, isObject, loadCatalog } from "../_shared/ai-routing.ts";
+
 export const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -393,6 +395,7 @@ async function goiNhaCungCap(
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      redirect: "error",
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
@@ -524,14 +527,15 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
   // Công tắc và cấu hình nhà cung cấp CỦA ĐƯỜNG NÀY trước mọi truy vấn: tắt là tắt, không tốn một
   // lượt gọi database nào; thiếu khoá 9router không làm tắt chép giọng và ngược lại.
   const mode = (env("QUICK_ENTRY_MODE") ?? "off").trim();
-  const ncc = route === "stt"
+  const legacy = route === "stt"
     ? { ten: "openrouter", base: OPENROUTER, key: (env("QUICK_ENTRY_OPENROUTER_KEY") ?? "").trim() }
     : {
       ten: "9router",
       base: (env("QUICK_ENTRY_NINEROUTER_BASE_URL") || env("NINEROUTER_BASE_URL") || "").trim().replace(/\/+$/, ""),
       key: (env("QUICK_ENTRY_NINEROUTER_KEY") || env("NINEROUTER_API_KEY") || "").trim(),
     };
-  if ((mode !== "pilot" && mode !== "all") || !ncc.key || !/^https:\/\//.test(ncc.base)) {
+  const legacyReady = !!legacy.key && /^https:\/\//.test(legacy.base);
+  if ((mode !== "pilot" && mode !== "all") || (!legacyReady && env("AI_ROUTING_ENABLED") !== "true")) {
     return loi(403, "quick_entry_disabled", "AI của Báo chi nhanh đang tắt. Bạn vẫn nhập tay được.");
   }
 
@@ -608,7 +612,15 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
   // vẫn 200 — kiểu lỗi chuỗi dự phòng không tự bắt được) mà không phải deploy lại web.
   const choChon = (env("QUICK_ENTRY_CHOICES") ?? "").trim().toLowerCase() !== "off";
   const chon = choChon ? moHinhDuocChon(route, body.model) : null;
-  const models = chon ? [chon, ...macDinh.filter((m) => m !== chon)] : macDinh;
+  const app = route === "stt" ? "quick_stt" : body.application === "wallet_read" ? "wallet_read" : "quick_read";
+  const configured = await applicationRoutes(app, env, f);
+  const legacyModels = chon ? [chon, ...macDinh.filter((m) => m !== chon)] : macDinh;
+  const targets = configured.length ? configured.flatMap(({ provider, model }) => {
+    const upstream = endpoint(provider, env);
+    return upstream ? [{ ten: String(provider), ...upstream, model }] : [];
+  }) : legacyReady ? legacyModels.map(model => ({ ...legacy, model })) : [];
+  if (!targets.length) return loi(503, "quick_entry_unavailable", "Nguồn AI chưa sẵn sàng. Bạn vẫn nhập tay được.");
+  const models = targets.map(target => target.model);
   const skipRaw = Number(req.headers.get("x-quick-entry-skip") ?? 0);
   const skip = route === "read" && Number.isInteger(skipRaw) ? Math.min(Math.max(skipRaw, 0), models.length - 1) : 0;
   // Cụm từ ưu tiên: bắt đầu đọc NGAY (song song với bước giữ chỗ/đếm trần bên dưới), chỉ chờ kết quả ngay
@@ -635,7 +647,7 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
       body: JSON.stringify({
         user_id: userId,
         organization_id: org,
-        provider: ncc.ten,
+        provider: targets[skip].ten,
         model: models[skip],
         feature: "quick_entry",
         task_id: taskId,
@@ -690,18 +702,27 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
     attempts += 1;
     const t0 = now();
     const goiY = dungGoiY ? cumTu ?? [] : [];
-    const r = await goiNhaCungCap(
+    const ncc = targets[i];
+    // Verify this credential still has subscription coverage before forwarding any content.
+    const checkPlan = configured.length > 0 && ncc.ten === "nous";
+    const entitled = !checkPlan || (await loadCatalog("nous", ncc, f, 3500).catch(() => []))
+      .some(m => m.id === ncc.model && m.vision);
+    const r = entitled ? await goiNhaCungCap(
       f,
       ncc.base,
       ncc.key,
       route === "stt" ? "/audio/transcriptions" : "/chat/completions",
       dauVao.payload(models[i], goiY),
       han,
-    );
+    ) : { ok: false, status: 402, body: null, cost: 0, tokens: { prompt: 0, completion: 0, total: 0 } };
     const text = route === "stt"
       ? String(r.body?.text ?? "").trim()
       : String(((r.body?.choices as Array<{ message?: { content?: unknown } }> | undefined)?.[0]?.message?.content) ?? "").trim();
-    const thanhCong = r.ok && text.length > 0;
+    let thanhCong = r.ok && text.length > 0;
+    if (thanhCong && configured.length && route === "read") {
+      try { thanhCong = isObject(JSON.parse(text)) && (ncc.ten !== "nous" || r.body?.model === models[i]); }
+      catch { thanhCong = false; }
+    }
 
     // Sổ phí: một dòng mỗi lần gọi mô hình — lần đầu điền vào dòng giữ chỗ, lần sau thêm dòng mới cùng
     // task. Ghi hỏng không làm hỏng câu trả lời (dòng giữ chỗ vẫn tính lượt).
@@ -746,7 +767,7 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
       i -= 1;
       continue;
     }
-    if (r.ok || nenThuMoHinhKe(r.status)) continue;
+    if (configured.length || r.ok || nenThuMoHinhKe(r.status)) continue;
     break;
   }
   return loi(502, "quick_entry_all_failed", "Các mô hình AI đều đang lỗi. Thử lại sau, hoặc nhập tay.");
