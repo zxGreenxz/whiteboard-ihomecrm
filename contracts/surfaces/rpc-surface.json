@@ -2,29 +2,22 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 3328,
-    "catalogFunctions": 1712,
+    "catalogFunctions": 1714,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 443,
+    "calledRpcs": 445,
     "byRisk": {
-      "normal": 336,
+      "normal": 338,
       "financial": 106,
       "infrastructure": 1
     },
-    "securityDefiner": 412
+    "securityDefiner": 414
   },
-  "missingOnServer": [
-    {
-      "name": "shareholder_month_forecast_v1",
-      "callers": [
-        "src/hooks/useShareholderForecast.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -524,6 +517,25 @@
         "src/hooks/income-expenses/flexMutations.ts"
       ],
       "risk": "financial"
+    },
+    "can_manage_shareholder_forecast_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "boolean",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholderForecast.ts"
+      ],
+      "risk": "normal"
     },
     "can_reverse_collection_v1": {
       "definitions": [
@@ -7200,6 +7212,25 @@
       ],
       "callers": [
         "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_month_forecast_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_month date, p_shareholder_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholderForecast.ts"
       ],
       "risk": "normal"
     },
