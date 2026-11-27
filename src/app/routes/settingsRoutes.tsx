@@ -35,13 +35,12 @@ import {
   WarehousesPage,
 } from "../lazyPages";
 import ProtectedRoute from "../../components/auth/ProtectedRoute";
-import { RequireSuperAdmin } from "../../components/auth/RequireSuperAdmin";
 import { RequirePermission } from "../../components/auth/RequirePermission";
 
 export const settingsRoutes = (
   <>
     {/* === CÀI ĐẶT HỆ THỐNG === */}
-    <Route path="/settings/ai-routing" element={<ProtectedRoute><RequireSuperAdmin><AiRoutingPage /></RequireSuperAdmin></ProtectedRoute>} />
+    <Route path="/settings/ai-routing" element={<ProtectedRoute><AiRoutingPage /></ProtectedRoute>} />
     <Route path="/settings/general" element={<ProtectedRoute><RequirePermission module="settings"><GeneralSettingsPage /></RequirePermission></ProtectedRoute>} />
     {/* Self-service only: the Hermes backend verifies the current user, selected org and every connection's ownership. */}
     <Route path="/settings/hermes" element={<ProtectedRoute><HermesConnectionsPage /></ProtectedRoute>} />
