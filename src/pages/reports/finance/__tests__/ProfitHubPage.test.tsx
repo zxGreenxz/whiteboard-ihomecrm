@@ -127,6 +127,7 @@ vi.mock("@/components/shareholders/ShareConfigTab", () => ({
 }));
 
 vi.mock("@/components/shareholders/ShareholderForecast", () => ({ default: () => createElement("div", { "data-probe": "forecast" }) }));
+vi.mock("@/hooks/useShareholderForecast", () => ({ useForecastManagerScope: () => ({ data: false, isError: false }) }));
 
 vi.mock("@/components/shareholders/ShareholderSelfView", () => ({
   default: ({ me, ...access }: { me: Shareholder }) => {

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrganization } from "@/contexts/OrganizationContext";
 
 import { invoiceAmountPartsSchema } from "@/lib/invoiceAmountParts";
 
@@ -18,7 +19,7 @@ const house = z.object({
   revenue: amount.nullable(), expense: amount.nullable(), profit: amount, salary: amount,
   adjustment: amount, booked_income: amount.nullable(), booked_cost: amount.nullable(), detail_lines: z.array(entry).nullable(),
   pending_income: amount, pending_cost: amount, unpaid: amount, unbilled: amount,
-  fixed_cost: amount, utility_cost: amount, unknown_fees: z.array(z.string()), share: amount, pool: amount,
+  fixed_cost: amount, utility_cost: amount, unknown_fees: z.array(z.string()), rent_needs_review: z.boolean(), share: amount, pool: amount,
 });
 const report = z.object({
   organization_id: z.string().uuid(), shareholder_id: z.string().uuid(), name: z.string().min(1),
@@ -26,6 +27,21 @@ const report = z.object({
   choices: z.array(z.object({ id: z.string().uuid(), name: z.string() })), houses: z.array(house),
 });
 export type ForecastHouse = z.infer<typeof house>;
+
+export function useForecastManagerScope(enabled: boolean) {
+  const { selectedOrganizationId: org } = useOrganization();
+  const actor = useAuth().data?.id;
+  return useQuery({
+    queryKey: ["shareholder-forecast-manager", org, actor],
+    enabled: Boolean(enabled && org && actor),
+    queryFn: async ({ signal }) => {
+      if (!org) return false;
+      const { data, error } = await supabase.rpc("can_manage_shareholder_forecast_v1", { p_organization_id: org }).abortSignal(signal);
+      if (error) throw error;
+      return z.boolean().parse(data);
+    },
+  });
+}
 
 export function useShareholderForecast(org: string | null, period: string, subject: string | null) {
   const actor = useAuth().data?.id;

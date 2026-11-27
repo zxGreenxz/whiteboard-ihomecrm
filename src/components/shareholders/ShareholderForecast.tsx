@@ -21,6 +21,7 @@ function HouseDetail({ h }: { h: ForecastHouse }) {
       <ForecastBreakdown house={h} side="expense" />
     </div>
     {!h.locked && <p className="text-xs text-muted-foreground">Tiền thuê ước tính theo ngày hợp đồng có tính tiền. Ngày phòng trống tính 0 ₫. Điện, nước chưa có phiếu dùng mức đã cấu hình hoặc chi phí đã duyệt của tháng trước.</p>}
+    {h.rent_needs_review && <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">Tiền thuê có kỳ cần đối chiếu giá hoặc mức hỗ trợ. Doanh thu, lợi nhuận và phần chia của nhà còn tạm tính.</p>}
     {h.unknown_fees.length>0 && <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">Chưa tính được chi phí {h.unknown_fees.map(k=>labels.get(k) ?? k).join(", ").toLocaleLowerCase("vi")}. Nhà chưa có mức dự kiến hoặc phiếu chi cho các khoản này.</p>}
   </div>;
 }
@@ -57,6 +58,7 @@ function ForecastPeriod({ org }: { org: string | null }) {
   const rows = [...(data?.houses ?? [])].sort((a,b)=>b.share-a.share || a.name.localeCompare(b.name,"vi"));
   const locked = rows.filter(r=>r.locked).length;
   const missing = rows.filter(r=>r.unknown_fees.length>0).length;
+  const rentReview = rows.filter(r=>r.rent_needs_review).length;
   const allLocked = rows.length>0 && locked===rows.length;
   const shareLabel = data?.own ? "Phần tôi được chia" : "Phần của " + (data?.name ?? "cổ đông");
   const cards = [
@@ -89,13 +91,14 @@ function ForecastPeriod({ org }: { org: string | null }) {
           </div>)}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-muted-foreground"><span>{locked}/{rows.length} nhà đã chốt kỳ</span>
-          {missing>0 && <span className="font-medium text-amber-800 dark:text-amber-300">{missing} nhà còn chi phí chưa có mức ước tính</span>}</div>
+          {missing>0 && <span className="font-medium text-amber-800 dark:text-amber-300">{missing} nhà còn chi phí chưa có mức ước tính</span>}
+          {rentReview>0 && <span className="font-medium text-amber-800 dark:text-amber-300">{rentReview} nhà cần đối chiếu tiền thuê</span>}</div>
         <div className="overflow-hidden rounded-xl border bg-card">
           <div className="flex flex-wrap items-baseline justify-between gap-1 p-3 sm:p-4"><h3 className="text-lg font-semibold">Chi tiết theo nhà</h3><span className="text-xs text-muted-foreground">Đơn vị: triệu đồng</span></div>
           <div className="forecast-row hidden bg-muted/55 py-2 text-right text-xs font-medium text-muted-foreground md:grid" aria-hidden><span className="text-left">Nhà góp vốn</span><span>Doanh thu</span><span>Chi phí</span><span>Lợi nhuận</span><span>Được chia</span><span /></div>
           <div key={[org,data.shareholder_id,period].join("/")}>{rows.map(h=><HouseDisclosure key={h.id} h={h}>
             <summary className="forecast-row grid cursor-pointer list-none grid-cols-4 items-center gap-y-2 py-3 hover:bg-muted/35 [&::-webkit-details-marker]:hidden">
-              <div className="col-span-4 flex items-center gap-2 md:col-span-1"><div className="min-w-0"><b className="break-words">{h.name}</b><div className="text-xs text-muted-foreground">{h.locked?"Đã chốt":h.unknown_fees.length?"Ước tính · thiếu chi phí":"Ước tính"}</div></div>
+              <div className="col-span-4 flex items-center gap-2 md:col-span-1"><div className="min-w-0"><b className="break-words">{h.name}</b><div className="text-xs text-muted-foreground">{h.locked?"Đã chốt":h.rent_needs_review?"Cần đối chiếu tiền thuê":h.unknown_fees.length?"Ước tính · thiếu chi phí":"Ước tính"}</div></div>
                 {period===latest && <span className="text-[11px] text-muted-foreground" title="Phòng có khách hiện tại">{h.occupied_rooms}/{h.total_rooms} phòng có khách</span>}
                 <ChevronDown aria-hidden className="ml-auto h-4 w-4 shrink-0 group-open:rotate-180 md:hidden" /></div>
               {([["Doanh thu",h.revenue],["Chi phí",h.expense],["Lợi nhuận",h.profit],["Được chia",h.share]] as const).map(([label,value],i)=><span key={label} title={fmt(value)} className={"min-w-0 break-words text-sm tabular-nums md:text-right "+(i===3?"font-bold text-emerald-700 dark:text-emerald-300":"")}>

@@ -1,5 +1,6 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import ShareholderForecast from "@/components/shareholders/ShareholderForecast";
+import { useForecastManagerScope } from "@/hooks/useShareholderForecast";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -62,6 +63,8 @@ export default function ProfitHubPage() {
   //   doanh thu / lợi nhuận toà (tab BC + thẻ số toà ở màn tự xem), tỷ lệ % của mình, tạm ứng từ sổ mình giữ.
   // Chỉ là lớp hiển thị: máy chủ (E3) bỏ hẳn phần % / số toà khi thiếu quyền.
   const canViewBuildingTotals = canUse(perms, "shareholder_profit", "view_building_totals");
+  const needsManagerScope = Boolean(canReport && canViewBuildingTotals && canManageShareholders && !me && !perms?.__superadmin);
+  const forecastManagerScope = useForecastManagerScope(needsManagerScope);
   const canViewPercent = canUse(perms, "shareholder_profit", "view_percent");
   const canAdvanceOwn = canUse(perms, "shareholder_profit", "advance_own_cashbook");
 
@@ -84,7 +87,8 @@ export default function ProfitHubPage() {
   if (canSeeOwnAdvance && me) tabs.push({ value: "my-advance", label: "Tạm ứng LN", node: <ShareholderAdvanceTab me={me} /> });
   // Đợt 2: tab doanh thu / chi phí toà cần thêm quyền xem số toà (cổ đông chỉ thấy tiền của mình).
   if (canReport && canViewBuildingTotals) tabs.push({ value: "report", label: "BC Doanh Thu Chi Phí", node: <ProfitDistributionContent /> });
-  const canSeeForecast = canReport && canViewBuildingTotals && Boolean(me || canManageShareholders || perms?.__superadmin);
+  const canSeeForecast = canReport && canViewBuildingTotals && Boolean(me || (canManageShareholders &&
+    (perms?.__superadmin || (needsManagerScope && !forecastManagerScope.isError && forecastManagerScope.data))));
   if (canSeeForecast) tabs.push({ value: "forecast", label: "Dự kiến", node: <ShareholderForecast /> });
   if (isManager) {
     if (canViewManagedProfit) tabs.push({ value: "overview", label: "Tổng quan", node: <CompanyFinanceOverview><ProfitOverviewTab /></CompanyFinanceOverview> });

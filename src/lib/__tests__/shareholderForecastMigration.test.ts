@@ -14,6 +14,12 @@ const migration = readFileSync("supabase/migrations/20261127085824_du_kien_doanh
 beforeAll(async () => {
   await db.exec(`
     CREATE SCHEMA app_private;
+    CREATE SCHEMA auth;
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS 'SELECT NULL::uuid';
+    CREATE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql AS 'SELECT ARRAY[]::uuid[]';
+    CREATE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql AS 'SELECT false';
+    CREATE FUNCTION app_private.ie_actor_is_company_owner_v1(uuid,uuid) RETURNS boolean LANGUAGE sql AS 'SELECT false';
+    CREATE FUNCTION app_private.profit_viewer_can_v1(uuid,text) RETURNS boolean LANGUAGE sql AS 'SELECT false';
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
     CREATE TABLE buildings(id uuid,organization_id uuid,hidden_fixed_expenses text[],has_elevator boolean);
     CREATE TABLE rooms(id uuid,organization_id uuid,building_id uuid);
@@ -27,12 +33,19 @@ beforeAll(async () => {
     CREATE TABLE building_fee_accounts(building_id uuid,organization_id uuid,fee_category text,deleted_at date,default_amount numeric);
     CREATE TABLE app_private.landlord_operations(organization_id uuid,building_id uuid,is_active boolean,effective_from date);
     CREATE TABLE app_private.contract_rent_support_months(agreed_amount numeric,plan_id uuid,organization_id uuid,contract_id uuid,billing_month text);
-    CREATE TABLE app_private.contract_rent_support_plans(id uuid,organization_id uuid,state text);
+    CREATE TABLE app_private.contract_rent_support_plans(id uuid,organization_id uuid,state text,contract_id uuid,revision bigint);
     CREATE TABLE app_private.rent_support_invoice_claims(organization_id uuid,contract_id uuid,billing_month text,released_at date);
     CREATE TABLE fixture_lines(month date,voucher_id uuid,approval_status text,side text,amount numeric,type_id uuid);
     CREATE FUNCTION app_private.landlord_kqkd_lines_v2(uuid,date,date) RETURNS SETOF fixture_lines LANGUAGE sql AS 'SELECT * FROM public.fixture_lines WHERE month BETWEEN $2 AND $3';
     CREATE FUNCTION public.fee_type_matches(text,text,text) RETURNS boolean LANGUAGE sql AS 'SELECT $1=$3';
-    CREATE FUNCTION app_private.room_transfer_rent_for_period_v1(uuid,uuid,date,date) RETURNS numeric LANGUAGE sql AS 'SELECT NULL::numeric';
+    ALTER TABLE contracts ADD COLUMN discounts jsonb;
+    CREATE TABLE app_private.room_transfer_rent_events(organization_id uuid,contract_id uuid,move_date date,old_rent numeric);
+    CREATE TABLE contract_transfers(contract_id uuid,transfer_type text,status text,move_in_date date,transfer_date date);
+    CREATE FUNCTION app_private.room_transfer_rent_for_period_v1(uuid,uuid,date,date) RETURNS numeric LANGUAGE plpgsql AS $$
+      BEGIN
+        IF current_setting('test.split_override',true)='yes' THEN RAISE EXCEPTION 'Kỳ lệch giá thỏa thuận' USING ERRCODE='55000'; END IF;
+        RETURN NULL;
+      END $$;
     ALTER TABLE rooms ADD COLUMN name text DEFAULT 'P101';
     ALTER TABLE income_expenses ADD COLUMN code text DEFAULT 'PT-TEST', ADD COLUMN voucher_date date,
       ADD COLUMN has_restricted_item boolean DEFAULT false, ADD COLUMN room_id uuid, ADD COLUMN building_id uuid DEFAULT '${house}';
@@ -70,6 +83,21 @@ describe("Dự kiến doanh thu của nhà",()=>{
   it("chỉ dự kiến các ngày thực sự có hợp đồng, kể cả khách đã trả phòng",async()=>{
     expect(Number((await inputs(lease)).unbilled)).toBe(1500000);
   });
+  it("ưu tiên ngày trả thực tế, kể cả khi trả sau ngày dự kiến",async()=>{
+    const r=await inputs(lease+"UPDATE contracts SET expected_move_out_date='2025-11-05'");
+    expect(Number(r.unbilled)).toBe(1500000);
+  });
+  it("báo khoản thuê cần đối chiếu khi kỳ chuyển phòng không tách được",async()=>{
+    const r=await inputs(lease+"SET LOCAL test.split_override='yes'");
+    expect(Number(r.unbilled)).toBe(0);
+    expect(r.unknown_fees).toContain("rent_needs_review");
+  });
+  it("trừ khuyến mãi kiểu cũ còn lượt khi chưa có hóa đơn",async()=>{
+    const discounted=lease+`UPDATE contracts SET discounts='{"months":1,"amount_per_month":300000}';`;
+    expect(Number((await inputs(discounted)).unbilled)).toBe(1200000);
+    const used=discounted+`INSERT INTO invoices VALUES ('${invoice}','${contract}','${org}','${house}','2025-10','PAID',NULL,'FIRST',0,0,0,0,0);`;
+    expect(Number((await inputs(used)).unbilled)).toBe(1500000);
+  });
   it("hóa đơn trả một phần thay cho tiền dự kiến, loại cọc và nợ mang sang",async()=>{
     const r=await inputs(lease+`
       INSERT INTO invoices VALUES ('${invoice}','${contract}','${org}','${house}','2025-11','PARTIAL_PAID',NULL,'MONTHLY',1700000,2200000,500000,2000000,0);
@@ -92,7 +120,7 @@ describe("Dự kiến doanh thu của nhà",()=>{
     `);
     const unpaid=r.detail_lines.find(line=>line.bucket==="unpaid");
     const booked=r.detail_lines.find(line=>line.bucket==="booked_income");
-    expect(unpaid).toEqual({bucket:"unpaid",label:"Hóa đơn còn phải thu",room:"P101",amount:700000});
+    expect(unpaid).toEqual({bucket:"unpaid",label:"Hóa đơn còn phải thu",amount:700000});
     expect(booked).toMatchObject({amount:100000});
     expect(booked).not.toHaveProperty("parts");
   });
