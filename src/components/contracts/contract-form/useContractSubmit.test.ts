@@ -10,6 +10,7 @@ import {readContractEditSnapshot,runContractEdit} from '@/lib/contractEditWorkfl
 import { buildFirstInvoiceDiscount, buildFirstInvoiceItems } from '@/lib/firstInvoiceBuilder';
 import { buildContractSigningArgs, buildPreparedSigningCreation } from '@/lib/contractSigning';
 import type { ContractCreateRequest } from '@/lib/contractCreateRpc';
+import { EXIT_FIXTURE_IDS, exitTermsRow, linkedExitTermsRow } from '../__tests__/exitEarlyTermsFixture';
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
 beforeEach(()=>localStorage.clear());
 
@@ -19,8 +20,11 @@ vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
     success: vi.fn(),
+    info: vi.fn(),
   },
 }));
+const exitTerms = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({ fetchContractExitEarlyTerms: exitTerms.fetch }));
 
 describe("useContractSubmit", () => {
   it('chặn sửa căn cứ hoa hồng khi thiếu lý do trước khi ghi hợp đồng hoặc quan hệ', () => {
@@ -159,6 +163,29 @@ describe("useContractSubmit", () => {
       createContract: { mutate }, firstInvoiceDiscount: { amount: 0, state: 'NEEDS_REVIEW', notes: 'Hỗ trợ vượt doanh thu' } } as unknown as ContractFormState;
     useContractSubmit({ state, onOpenChange: vi.fn() })({ room_id: '11111111-1111-4111-8111-111111111111', signed_date: '2026-09-20', start_date: '2026-09-20', end_date: '2027-09-20', start_billing_date: '2026-09-20', end_billing_date: '2026-10-05', rent_price: 0, total_deposit: 0, payment_cycle: 'MONTHLY', rent_support: { version: 2, start_billing_month: '2026-09', payer: 'BUILDING', sale_party_id: null, deduction_policy: 'COMMISSION_ONLY', collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: 1, monthly_amount: '300000' }] } } as ContractFormData);
     expect(mutate).not.toHaveBeenCalled();
+  });
+  it('khách cũ hỗ trợ khách mới: số hỗ trợ tính như cọc đã nộp, gửi ở payload; vượt trần thì chặn trước khi gửi', () => {
+    const mutate = vi.fn(), setError = vi.fn();
+    const base = { isEditMode: false, form: { setError }, selectedCustomers: [{ id: '22222222-2222-4222-8222-222222222222' }], selectedServices: [],
+      useCustomServices: false, createContract: { mutate }, typedDepositTotal: 1_000_000, approvedOrphanTotal: 0, orphanDepositVouchers: [],
+      invoiceItems: [], firstInvoiceDiscount: { amount: 0, state: 'READY', notes: null }, depositRows: [] };
+    const values = { room_id: '11111111-1111-4111-8111-111111111111', signed_date: '2026-12-01', start_date: '2026-12-01', end_date: '2027-12-01',
+      start_billing_date: '2026-12-01', end_billing_date: '2026-12-31', rent_price: 3_000_000, total_deposit: 3_000_000, payment_cycle: 'MONTHLY',
+      deposit_debt_mode: 'DEBT', deposit_debt_reason: 'Nộp sau', deposit_topup_due_date: '2026-12-10' } as ContractFormData;
+    const blocked = { ...base, exitSupport: { applied: 2_500_000, issue: 'Vượt cọc cũ đã thu sau khi trừ phí môi giới (tối đa 2.000.000 đ).' } } as unknown as ContractFormState;
+    useContractSubmit({ state: blocked, onOpenChange: vi.fn() })(values);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(setError).toHaveBeenCalledWith('transfer_support_amount', expect.objectContaining({ message: expect.stringContaining('tối đa 2.000.000') }));
+    // Đủ cọc nhờ số hỗ trợ: không còn thiếu cọc nên không gửi chế độ nợ cọc.
+    const full = { ...base, exitSupport: { applied: 2_000_000, issue: null } } as unknown as ContractFormState;
+    useContractSubmit({ state: full, onOpenChange: vi.fn() })(values);
+    const request: ContractCreateRequest = mutate.mock.calls[0][0];
+    expect(request.payload.transfer_support_amount).toBe(2_000_000);
+    expect(request.payload.contract.deposit_debt_mode).toBeNull();
+    // Không có hồ sơ sang nhượng: không gửi khoá.
+    mutate.mockClear();
+    useContractSubmit({ state: base as unknown as ContractFormState, onOpenChange: vi.fn() })(values);
+    expect(mutate.mock.calls[0][0].payload).not.toHaveProperty('transfer_support_amount');
   });
   it.each([false, true])('carries full partial-month support through the official form request and signing payload (draft=%s)', (draft) => {
     const mutate = vi.fn(), prepared = vi.fn();
@@ -314,6 +341,58 @@ it('identifies the entered deposit amount when received deposits exceed the cont
  useContractSubmit({state,onOpenChange:vi.fn()})({room_id:'room',signed_date:'2026-09-01',start_date:'2026-09-01',end_date:'2027-08-31',start_billing_date:'2026-09-01',end_billing_date:'2026-09-30',rent_price:100,total_deposit:100,payment_cycle:'MONTHLY'} as ContractFormData);
  expect(setError).toHaveBeenCalledWith('deposit_rows.entered.amount',expect.objectContaining({message:expect.stringContaining('200')}));
  expect(createContract.mutate).not.toHaveBeenCalled();
+});
+
+describe('sau khi tạo hợp đồng: hộp hoa hồng chung và hồ sơ trả phòng trước hạn', () => {
+  const ids = EXIT_FIXTURE_IDS;
+  // Tên dạng hook: hàm này gọi useContractSubmit (cùng khuôn các test trên, gọi thẳng ngoài React).
+  function useCreatedContract() {
+    const setCommissionContractId = vi.fn(), onCreated = vi.fn(), close = vi.fn();
+    const createContract = { mutate: vi.fn((_request, callbacks) => { callbacks.onSuccess({ id: ids.newContract }); }) };
+    const state = { isEditMode: false, form: { setError: vi.fn() }, selectedCustomers: [{ id: '22222222-2222-4222-8222-222222222222', is_representative: true }],
+      selectedServices: [], useCustomServices: false, createContract, typedDepositTotal: 0, approvedOrphanTotal: 0, orphanDepositVouchers: [],
+      invoiceItems: [], firstInvoiceDiscount: { amount: 0, notes: null }, depositRows: [], setCommissionContractId } as unknown as ContractFormState;
+    useContractSubmit({ state, organizationId: ids.org, onOpenChange: close, onCreated })({ room_id: ids.room, signed_date: '2026-12-01',
+      start_date: '2026-12-01', end_date: '2027-11-30', start_billing_date: '2026-12-01', end_billing_date: '2026-12-31',
+      rent_price: 4_000_000, total_deposit: 0, payment_cycle: 'MONTHLY' } as ContractFormData);
+    return { setCommissionContractId, onCreated, close, createContract };
+  }
+  beforeEach(() => { exitTerms.fetch.mockReset(); vi.mocked(toast.info).mockClear(); });
+
+  it.each([
+    ['SALE_ASSISTED', 'Hợp đồng đã tự nối với hồ sơ trả phòng HD-0101 (nhờ sale). Phiếu hoa hồng môi giới lập sau khi quyết toán khách cũ.'],
+    ['SELF_FOUND', 'Hợp đồng đã tự nối với hồ sơ trả phòng HD-0101 (khách tự tìm): không có hoa hồng môi giới hay thưởng sale.'],
+  ] as const)('hợp đồng đã tự nối ca %s: không mở hộp hoa hồng chung, báo đường lập đúng', async (reason, message) => {
+    exitTerms.fetch.mockResolvedValue([linkedExitTermsRow({ early_reason: reason })]);
+    const run = useCreatedContract();
+    await vi.waitFor(() => expect(toast.info).toHaveBeenCalledWith(message));
+    expect(exitTerms.fetch).toHaveBeenCalledWith({ contractId: ids.newContract }, ids.org);
+    expect(run.setCommissionContractId).not.toHaveBeenCalled();
+    expect(run.onCreated).toHaveBeenCalledWith(ids.newContract); expect(run.close).toHaveBeenCalledWith(false);
+  });
+
+  it('hợp đồng không nối (chỉ là hợp đồng cũ của hồ sơ hoặc không có hồ sơ): mở hộp hoa hồng như cũ', async () => {
+    exitTerms.fetch.mockResolvedValue([exitTermsRow({ contract_id: ids.newContract })]);
+    const run = useCreatedContract();
+    await vi.waitFor(() => expect(run.setCommissionContractId).toHaveBeenCalledWith(ids.newContract));
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('ca chủ nhà hỗ trợ thanh lý sớm không phải khách nhận: mở hộp hoa hồng như cũ', async () => {
+    exitTerms.fetch.mockResolvedValue([linkedExitTermsRow({ early_reason: 'LANDLORD_AGREEMENT' })]);
+    const run = useCreatedContract();
+    await vi.waitFor(() => expect(run.setCommissionContractId).toHaveBeenCalledWith(ids.newContract));
+  });
+
+  it('đọc hồ sơ lỗi: vẫn mở hộp hoa hồng (máy chủ vẫn chặn đúng luật) và ghi cảnh báo', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    exitTerms.fetch.mockRejectedValue({ code: '42501', message: 'Không có quyền đọc hồ sơ trả phòng' });
+    const run = useCreatedContract();
+    await vi.waitFor(() => expect(run.setCommissionContractId).toHaveBeenCalledWith(ids.newContract));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('hồ sơ trả phòng trước hạn'), expect.objectContaining({ code: '42501' }));
+    expect(toast.info).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
 
 it('stale deposit form error có một owner toast, callback giữ draft/field và không lặp hook toast',async()=>{

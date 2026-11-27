@@ -20,36 +20,55 @@ it('new customer without a contract is a walk-in, not an asserted current renter
  expect(core.insert).toHaveBeenCalledWith(expect.objectContaining({status_v2:'WALK_IN',organization_id:'org-a'}));
  expect(io.from).toHaveBeenCalledTimes(1);
 });
-it.each([['customer',useCreateCustomer,{full_name:'An',phone:'0900000000'}],['building',useCreateBuilding,{name:'Tòa A'}]])('%s create needs an ID and blocks uncertain repeat across remount',async(_label,hook,input)=>{
+// Đợt 9 (luật 5): tạo tòa không còn giữ dấu chặn lần sau. Thiếu biên nhận vẫn là chưa rõ (hàng rào giữ nguyên); lần sau gửi lại
+// ĐÚNG mã tòa cũ (khoá chính chặn tòa thứ hai). Trước đợt 9: «building create needs an ID and blocks uncertain repeat across remount».
+it.each([['building',useCreateBuilding,{name:'Tòa A'}]])('%s create needs an ID and repeats the uncertain create with the same client ID across remount',async(_label,hook,input)=>{
  const writer=chain({data:null,error:null});io.from.mockReturnValue(writer);
  await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
  await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
- expect(writer.insert).toHaveBeenCalledTimes(1);
+ expect(writer.insert).toHaveBeenCalledTimes(2);
+ expect(writer.insert.mock.calls[1][0].id).toBe(writer.insert.mock.calls[0][0].id);
+ expect(Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'))).toEqual([]);
+});
+// Đợt 4: tạo khách không còn khoá chung. Thiếu biên nhận vẫn là chưa rõ; lần sau gửi lại ĐÚNG mã khách cũ (khoá chính
+// chặn khách thứ hai) thay vì bị chặn mãi.
+it('customer create needs an ID and repeats the uncertain create with the same client ID across remount',async()=>{
+ const writer=chain({data:null,error:null});io.from.mockReturnValue(writer);
+ const input={full_name:'An',phone:'0900000000'};
+ await expect((useCreateCustomer() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
+ await expect((useCreateCustomer() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
+ expect(writer.insert).toHaveBeenCalledTimes(2);
+ expect(writer.insert.mock.calls[1][0].id).toBe(writer.insert.mock.calls[0][0].id);
 });
 it.each([['customer',useUpdateCustomer,{id:'c1',data:{full_name:'An'}}],['building',useUpdateBuilding,{id:'b1',updates:{name:'Tòa A'}}],['building status',useUpdateBuildingStatus,{id:'b1',status:'ACTIVE'}]])('%s update needs exact target ID',async(_label,hook,input)=>{
  io.from.mockReturnValue(chain({data:{id:'other',status:'ACTIVE'},error:null}));
  await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
 });
-it('customer vehicle partial preserves core receipt and prevents a second core after remount',async()=>{
+// Đợt 4 (plan: «Bước lưu xe hỏng: khách đã tạo, báo chưa lưu được xe, không giữ dấu»): kết quả vẫn mang mã khách đã
+// tạo, nhưng không còn dấu chặn lần tạo khách sau.
+it('customer vehicle partial preserves core receipt without keeping a pending marker',async()=>{
  const core=chain({data:{id:'c1',full_name:'An'},error:null});const vehicles=chain({data:null,error:{code:'42501',message:'raw SQL'}});
  io.from.mockImplementation(table=>table==='customers'?core:vehicles);
  const input={full_name:'An',phone:'0900000000',vehicles:[{vehicle_type:'MOTORBIKE',license_plate:'59A1'}]};
  const result=await (useCreateCustomer() as unknown as Mutation).mutationFn(input);
  expect(result).toMatchObject({customer:{id:'c1'},vehicleError:{outcome:'partial',completed:[{id:'c1'}]}});
- await expect((useCreateCustomer() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial',completed:[{id:'c1'}]});expect(core.insert).toHaveBeenCalledTimes(1);
+ expect(Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'))).toEqual([]);
+ await (useCreateCustomer() as unknown as Mutation).mutationFn({full_name:'Bình',phone:'0900000009'});expect(core.insert).toHaveBeenCalledTimes(2);
 });
 it('customer vehicle read null never removes old rows',async()=>{
  const core=chain({data:{id:'c1',full_name:'An'},error:null});const vehicles=chain({data:null,error:null});io.from.mockImplementation(table=>table==='customers'?core:vehicles);
  const result=await (useUpdateCustomer() as unknown as Mutation).mutationFn({id:'c1',data:{full_name:'An',vehicles:[]}});
  expect(result).toMatchObject({customer:{id:'c1'},vehicleError:{outcome:'partial'}});expect(vehicles.update).not.toHaveBeenCalled();
 });
-it('customer main removal remains completed when adding vehicles fails',async()=>{
+// Đợt 8 (luật 5): sửa khách không giữ dấu nữa; bước đã xong (gỡ xe cũ) vẫn nằm trong kết quả «xe chưa xong» để báo mã.
+it('customer main removal remains completed when adding vehicles fails, without a pending marker',async()=>{
  const core=chain({data:{id:'c1',full_name:'An'},error:null});
  const vehicles=chain({data:[{id:'old'}],error:null});vehicles.insert.mockReturnValue({select:vi.fn().mockResolvedValue({data:null,error:{code:'42501',message:'raw SQL'}})});
  io.from.mockImplementation(table=>table==='customers'?core:vehicles);
- const result=await (useUpdateCustomer() as unknown as Mutation).mutationFn({id:'c1',data:{full_name:'An',vehicles:[{vehicle_type:'MOTORBIKE',license_plate:'59A1'}]}});
+ const result=await (useUpdateCustomer() as unknown as Mutation).mutationFn({id:'c1',data:{full_name:'An',vehicles:[{vehicle_type:'MOTORBIKE',license_plate:'59A1'}]}}) as {vehicleError:{completed:{id:string}[]}};
  expect(result).toMatchObject({customer:{id:'c1'},vehicleError:{outcome:'partial'}});expect(vehicles.update).toHaveBeenCalledOnce();expect(vehicles.update.mock.invocationCallOrder[0]).toBeLessThan(vehicles.insert.mock.invocationCallOrder[0]);
- const markers=Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:')).map(key=>JSON.parse(localStorage.getItem(key)!));expect(markers[0].completedIds).toContain('old');
+ expect(result.vehicleError.completed.map(step=>step.id)).toEqual(expect.arrayContaining(['c1','old']));
+ expect(Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'))).toEqual([]);
 });
 
 it('invalid vehicle type is rejected before saving any customer core',async()=>{
@@ -57,19 +76,22 @@ it('invalid vehicle type is rejected before saving any customer core',async()=>{
  await expect((useCreateCustomer() as unknown as Mutation).mutationFn({full_name:'An',phone:'0900000000',vehicles:[{vehicle_type:'UNKNOWN',license_plate:'59A1'}]})).rejects.toThrow('Loại phương tiện');
  expect(io.from).not.toHaveBeenCalled();
 });
-it('customer delete null links stop before RPC',async()=>{io.from.mockReturnValue(chain({data:null,error:null}));await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).rejects.toThrow();expect(io.rpc).not.toHaveBeenCalled();});
-it('customer delete needs a positively deleted row after the void RPC',async()=>{io.rpc.mockResolvedValue({data:null,error:null});const read=chain({data:[],error:null});const confirmation=chain({data:null,error:null});Object.assign(confirmation,{maybeSingle:vi.fn().mockResolvedValue({data:null,error:null})});io.from.mockReturnValueOnce(read).mockReturnValue(confirmation);await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).rejects.toMatchObject({outcome:'unknown'});});
+it('customer delete null links stop before RPC',async()=>{const read=chain({data:null,error:null});Object.assign(read,{maybeSingle:vi.fn().mockResolvedValue({data:{id:'c1',deleted_at:null},error:null})});io.from.mockReturnValue(read);await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).rejects.toThrow('Chưa tải đủ liên kết hợp đồng');expect(io.rpc).not.toHaveBeenCalled();});
+it('customer delete needs a positively deleted row after the void RPC',async()=>{io.rpc.mockResolvedValue({data:null,error:null});const state=chain({data:null,error:null});Object.assign(state,{maybeSingle:vi.fn().mockResolvedValue({data:{id:'c1',deleted_at:null},error:null})});const read=chain({data:[],error:null});const confirmation=chain({data:null,error:null});Object.assign(confirmation,{maybeSingle:vi.fn().mockResolvedValue({data:null,error:null})});io.from.mockReturnValueOnce(state).mockReturnValueOnce(read).mockReturnValue(confirmation);await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).rejects.toMatchObject({outcome:'unknown'});});
 
-it('uncertain customer delete cannot replay RPC after hook remount',async()=>{
+// Đợt 8 (luật 5, cách C): xoá mềm theo mã lặp lại được (hàm xoá chỉ xoá khách còn sống). Kết quả chưa rõ không giữ dấu;
+// bấm lại đọc trạng thái trước, chưa xoá thì gửi lại.
+it('uncertain customer delete is repeatable after hook remount: no marker, the soft delete is sent again',async()=>{
  const read=chain({data:[],error:null});Object.assign(read,{maybeSingle:vi.fn().mockResolvedValue({data:null,error:null})});io.from.mockReturnValue(read);io.rpc.mockResolvedValue({data:null,error:null});
  await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).rejects.toMatchObject({outcome:'unknown'});
- await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).rejects.toMatchObject({outcome:'partial',completed:[{id:'c1'}]});expect(io.rpc).toHaveBeenCalledTimes(1);
+ expect(Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:'))).toEqual([]);
+ await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).rejects.toMatchObject({outcome:'unknown'});expect(io.rpc).toHaveBeenCalledTimes(2);
 });
 
-it('customer delete pending releases only after a positive deleted-state read, without replay',async()=>{
- const read=chain({data:[],error:null});const receipt=vi.fn().mockResolvedValueOnce({data:null,error:null}).mockResolvedValue({data:{id:'c1',deleted_at:'2026-09-30T04:00:00Z'},error:null});Object.assign(read,{maybeSingle:receipt});io.from.mockReturnValue(read);io.rpc.mockResolvedValue({data:null,error:null});
+it('customer delete retry reads the deleted state first and does not call the RPC again',async()=>{
+ const read=chain({data:[],error:null});const receipt=vi.fn().mockResolvedValueOnce({data:{id:'c1',deleted_at:null},error:null}).mockResolvedValueOnce({data:null,error:null}).mockResolvedValue({data:{id:'c1',deleted_at:'2026-09-30T04:00:00Z'},error:null});Object.assign(read,{maybeSingle:receipt});io.from.mockReturnValue(read);io.rpc.mockResolvedValue({data:null,error:null});
  await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).rejects.toMatchObject({outcome:'unknown'});
- await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).resolves.toMatchObject({id:'c1'});expect(io.rpc).toHaveBeenCalledTimes(1);
+ await expect((useDeleteCustomer() as unknown as Mutation).mutationFn('c1')).resolves.toMatchObject({id:'c1',alreadyDeleted:true});expect(io.rpc).toHaveBeenCalledTimes(1);
 });
 
 it('customer vehicle writer follows main remove-update-insert and original filters',async()=>{

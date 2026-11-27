@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from 'react';
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager, onlineManager } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SaleRoomPatch, SaleRoomRpcInvoker } from '@/lib/saleRoomOperations';
@@ -99,7 +99,7 @@ beforeEach(() => {
     return { data: receipt, error: null };
   });
 });
-afterEach(() => { cleanup(); clients.splice(0).forEach(cache => cache.clear()); focusManager.setFocused(undefined); vi.useRealTimers(); });
+afterEach(() => { cleanup(); clients.splice(0).forEach(cache => cache.clear()); focusManager.setFocused(undefined); onlineManager.setOnline(true); vi.useRealTimers(); });
 
 describe('Old sheet / Quick / embedded Excel with real query and mutation hooks', () => {
   it.each(['Chủ trọ', 'Chủ công ty', 'Quản lý', 'Sale Admin', 'Sale'].flatMap(role => [false, true].map(mobile => ({ role, mobile }))))(
@@ -109,7 +109,7 @@ describe('Old sheet / Quick / embedded Excel with real query and mutation hooks'
       fireEvent.change(await priceField(mobile), { target: { value: '3500000' } });
       await saveOld(); expect(stored.rent_price).toBe(3_500_000);
       fireEvent.click(screen.getByRole('button', { name: 'Đổi lối vào' }));
-      fireEvent.click(await screen.findByRole('button', { name: 'Mở Nhà đồng bộ · 101' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Chi tiết Nhà đồng bộ · 101' }));
       expect(screen.getByLabelText('Giá niêm yết (đ/tháng)')).toHaveProperty('value', '3500000');
       fireEvent.change(screen.getByLabelText('Giá niêm yết (đ/tháng)'), { target: { value: '3700000' } });
       fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
@@ -138,14 +138,45 @@ describe('Old sheet / Quick / embedded Excel with real query and mutation hooks'
     expect(receipts.size).toBe(1);
   });
 
-  it('cache khác tự đọc thay đổi sau chu kỳ 5 giây khi tab đang hiển thị', async () => {
+  // Đợt 4 «Tải nhẹ» (25/11/2026): bảng nội bộ đọc lại 30 giây một lần thay vì 5 giây.
+  const inventoryReads = () => m.rpc.mock.calls.filter(([name]) => name === 'get_sale_room_inventory_v1').length;
+  it('cache khác tự đọc thay đổi sau chu kỳ 30 giây khi tab đang hiển thị, không đọc lại ở mốc 5 giây cũ', async () => {
     vi.useFakeTimers();
     const view = renderHook(useSaleRoomInventory, { wrapper: wrapper(client()) });
     await act(async () => { await vi.advanceTimersByTimeAsync(20); });
     expect(view.result.current.data?.rooms[0]?.rentPrice).toBe(3_000_000);
+    expect(inventoryReads()).toBe(1);
     editDirectly({ rent_price: 4_300_000 });
     await act(async () => { await vi.advanceTimersByTimeAsync(5_020); });
+    expect(inventoryReads()).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(24_000); });
+    expect(view.result.current.data?.rooms[0]?.rentPrice).toBe(3_000_000);
+    expect(inventoryReads()).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     expect(view.result.current.data?.rooms[0]?.rentPrice).toBe(4_300_000);
+    expect(inventoryReads()).toBe(2);
+  });
+
+  it('thao tác của chính mình, quay lại tab và có mạng lại đều đọc ngay, không chờ chu kỳ 30 giây', async () => {
+    vi.useFakeTimers();
+    const cache = client();
+    const view = renderHook(() => ({ read: useSaleRoomInventory(), write: usePatchSaleRoom() }), { wrapper: wrapper(cache) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    expect(inventoryReads()).toBe(1);
+    await act(async () => {
+      await view.result.current.write.mutateAsync({ roomId: ROOM, expectedRevision: revision(), requestId: crypto.randomUUID(), patch: { rent_price: 4_500_000 } });
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(view.result.current.read.data?.rooms[0]?.rentPrice).toBe(4_500_000);
+    expect(inventoryReads()).toBe(2);
+    editDirectly({ rent_price: 4_600_000 });
+    await act(async () => { focusManager.setFocused(false); focusManager.setFocused(true); await vi.advanceTimersByTimeAsync(20); });
+    expect(view.result.current.read.data?.rooms[0]?.rentPrice).toBe(4_600_000);
+    expect(inventoryReads()).toBe(3);
+    editDirectly({ rent_price: 4_700_000 });
+    await act(async () => { onlineManager.setOnline(false); onlineManager.setOnline(true); await vi.advanceTimersByTimeAsync(20); });
+    expect(view.result.current.read.data?.rooms[0]?.rentPrice).toBe(4_700_000);
+    expect(inventoryReads()).toBe(4);
   });
 
   it('đổi người dùng hoặc tổ chức không sử dụng cache trước đó trong lúc đang đọc', async () => {
@@ -167,7 +198,7 @@ describe('Old sheet / Quick / embedded Excel with real query and mutation hooks'
     await screen.findByText(/Bấm Lưu để đối chiếu/);
     expect(stored.rent_price).toBe(4_400_000); expect(receipts.size).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: 'Đổi lối vào' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Mở Nhà đồng bộ · 101' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Chi tiết Nhà đồng bộ · 101' }));
     expect(screen.getByLabelText('Giá niêm yết (đ/tháng)')).toHaveProperty('value', '4400000');
     fireEvent.click(screen.getByRole('button', { name: 'Đóng' }));
     fireEvent.click(screen.getByRole('button', { name: 'Đổi lối vào' }));
@@ -179,7 +210,7 @@ describe('Old sheet / Quick / embedded Excel with real query and mutation hooks'
   it('bảng Nhanh đã commit nhưng mất phản hồi: thu hồi quyền trước replay vẫn giữ yêu cầu chưa xác nhận', async () => {
     lostAck = true;
     render(<SaleRoomWorkspace />, { wrapper: wrapper(client()) });
-    fireEvent.click(await screen.findByRole('button', { name: 'Mở Nhà đồng bộ · 101' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Chi tiết Nhà đồng bộ · 101' }));
     fireEvent.change(screen.getByLabelText('Giá niêm yết (đ/tháng)'), { target: { value: '4600000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
     await screen.findByRole('button', { name: 'Đối chiếu lần lưu' });

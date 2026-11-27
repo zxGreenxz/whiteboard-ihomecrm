@@ -8,7 +8,8 @@ import { actionErrorMessage } from '@/lib/actionFeedback';
 // ở đâu". Hồ sơ tổ chức, số lượng phạm vi, lời mời đang chờ, và nhật ký phân
 // quyền (có chuỗi hash chống sửa) đều nằm ở đây.
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 import {
   Building2,
   CalendarClock,
@@ -40,7 +41,13 @@ import {
   type AuthorizationAuditEvent,
 } from '@/hooks/useOrganizationAuthorization';
 import { LOAI_TV } from '@/components/authorization/MemberAuthorizationDialog';
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
+import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
 import { docSuKienDatLaiMatKhau, laSuKienDatLaiMatKhau } from '@/lib/resetUserPassword';
+
+// Nhật ký tự gỡ khoá «chờ đối chiếu» (đợt 1b): chỉ chủ công ty và superadmin thấy; nạp lười và chỉ nạp khi cờ hiển
+// thị cho phép, vì đa số người mở trang này không có quyền xem mục đó. Hàng rào thật là hàm đọc ở máy chủ.
+const PendingValveReleaseLogCard = lazyWithRetry(() => import('@/components/settings/PendingValveReleaseLogCard'));
 
 const NHAN_SU_KIEN: Record<string, string> = {
   MEMBER_AUTHORIZATION_UPDATED: 'Sửa phân quyền thành viên',
@@ -59,6 +66,9 @@ export default function OrganizationPage() {
   const { data, isLoading, error } = organizationQuery;
   const luuTen = useUpdateOrganizationProfile();
   const thuHoi = useRevokeInvitation();
+  const superAdmin = useIsSuperAdmin();
+  const companyOwner = useIsCompanyOwner();
+  const xemNhatKyGoKhoa = superAdmin.data === true || companyOwner.data === true;
   const [ten, setTen] = useState('');
   const [nameError, setNameError] = useState('');
   const [serverError, setServerError] = useState('');
@@ -246,6 +256,12 @@ export default function OrganizationPage() {
             )}
           </CardContent>
         </Card>
+
+        {xemNhatKyGoKhoa && (
+          <Suspense fallback={null}>
+            <PendingValveReleaseLogCard />
+          </Suspense>
+        )}
 
         {IS_TEST_ENV && <TheMoiTruongTest />}
       </div>

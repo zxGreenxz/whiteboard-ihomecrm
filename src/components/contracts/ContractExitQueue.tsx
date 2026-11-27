@@ -40,6 +40,14 @@ export function ContractExitQueue({ buildingIds = [], showEmpty = false, layout 
   const query = useContractExitCases({ buildingIds, state: 'PENDING', limit: 10, offset: page * 10 });
   const opened = useContractExitCase(selectedId);
   const contract = useContract(opened.data?.contract_id);
+  // Hộp quyết toán mở từ hồ sơ Chờ quyết toán giữ nguyên tới khi người dùng đóng, kể cả khi hồ sơ vừa chuyển sang
+  // Đã quyết toán (bước phiếu hoa hồng của ca nhờ sale chạy tiếp trong cùng hộp).
+  const [dialogCase, setDialogCase] = useState<string | null>(null);
+  useEffect(() => {
+    if (selectedId && opened.data?.id === selectedId && opened.data.state === 'PENDING') setDialogCase(selectedId);
+    if (!selectedId) setDialogCase(null);
+  }, [selectedId, opened.data?.id, opened.data?.state]);
+  const dialogActive = !!selectedId && dialogCase === selectedId;
   const canSettle = canUse(permissions, 'contracts', 'terminate');
   const drafts = useContractExitSettlementDrafts(canSettle ? query.data?.items.map(item => item.id) ?? [] : []);
   const draftByCase = new Map((drafts.data ?? []).map(draft => [draft.caseId, draft]));
@@ -93,8 +101,8 @@ export function ContractExitQueue({ buildingIds = [], showEmpty = false, layout 
     {selectedId && (opened.isError || contract.isError) && <p role="alert" className="pt-2 text-sm text-destructive">
       Không mở được hồ sơ. <Button variant="link" onClick={() => setSelected(null)}>Đóng và thử lại</Button>
     </p>}
-    {selectedId && opened.data?.state === 'FINALIZED' && <p className="text-sm">Hồ sơ này đã được quyết toán. <Button variant="link" onClick={() => setSelected(null)}>Đóng</Button></p>}
-    {selectedId && opened.data?.state === 'PENDING' && contract.data?.id === opened.data.contract_id && <TerminateDialog
+    {selectedId && !dialogActive && opened.data?.state === 'FINALIZED' && <p className="text-sm">Hồ sơ này đã được quyết toán. <Button variant="link" onClick={() => setSelected(null)}>Đóng</Button></p>}
+    {dialogActive && opened.data && contract.data?.id === opened.data.contract_id && <TerminateDialog
       open onOpenChange={open => { if (!open) setSelected(null); }} contract={contract.data} exitCase={opened.data} resumeDraft={!!selected?.resume} />}
   </section>;
 }

@@ -386,6 +386,7 @@ export interface LockedSplitRow {
   adjusted_profit: number;
   management_salary: number;
   shareholder_allocated_amount?: number;
+  house_pool_amount?: number;
   unallocated_profit?: number;
   unallocated_disposition?: string | null;
 }
@@ -397,6 +398,7 @@ export interface LockedProfitSplit {
   managementSalary: number;
   /** Phần cổ đông theo snapshot lúc chốt (gồm cả cổ đông đã xoá sau đó). */
   shareholderAllocated: number;
+  housePool: number;
   /** unallocated, disposition RETAINED_EARNINGS. */
   retained: number;
   /** unallocated, disposition LEGACY_RETAINED_UNALLOCATED (chốt trước V3). */
@@ -415,6 +417,7 @@ export const splitLockedProfit = (rows: readonly LockedSplitRow[]): LockedProfit
     adjusted: 0,
     managementSalary: 0,
     shareholderAllocated: 0,
+    housePool: 0,
     retained: 0,
     legacyRetained: 0,
     carryForward: 0,
@@ -427,6 +430,7 @@ export const splitLockedProfit = (rows: readonly LockedSplitRow[]): LockedProfit
     out.adjusted += r.adjusted_profit;
     out.managementSalary += r.management_salary;
     out.shareholderAllocated += r.shareholder_allocated_amount ?? 0;
+    out.housePool += r.house_pool_amount ?? 0;
     const u = r.unallocated_profit ?? 0;
     if (u === 0) continue;
     if (r.unallocated_disposition === 'RETAINED_EARNINGS') out.retained += u;
@@ -436,7 +440,7 @@ export const splitLockedProfit = (rows: readonly LockedSplitRow[]): LockedProfit
   }
   out.unexplained =
     out.adjusted -
-    (out.managementSalary + out.shareholderAllocated + out.retained + out.legacyRetained + out.carryForward + out.undecided);
+    (out.managementSalary + out.shareholderAllocated + out.housePool + out.retained + out.legacyRetained + out.carryForward + out.undecided);
   return out;
 };
 
@@ -444,6 +448,7 @@ export const splitLockedProfit = (rows: readonly LockedSplitRow[]): LockedProfit
 export const lockedSplitTitle = (s: LockedProfitSplit, fmt: (v: number) => string): string =>
   `LN đã chốt ${fmt(s.adjusted)} = lương điều hành ${fmt(s.managementSalary)}` +
   ` + phần cổ đông lúc chốt ${fmt(s.shareholderAllocated)}` +
+  (s.housePool ? ` + góp vào quỹ công ty ${fmt(s.housePool)}` : '') +
   ` + giữ lại công ty ${fmt(s.retained + s.legacyRetained)}` +
   ` + chuyển kỳ sau ${fmt(s.carryForward)}` +
   (s.undecided !== 0 ? ` + chưa chọn cách xử lý ${fmt(s.undecided)}` : '') +

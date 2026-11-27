@@ -185,7 +185,7 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
           <StChip tone="info">Đang chờ chi</StChip>
           <span style={{ flex: 1, minWidth: 200 }}><b style={{ fontSize: 13 }}>Phiếu chi lương · {salFmt(q.amount)}</b><br />
             <span style={{ fontSize: 11.5, color: MUTED }}>Lập {q.voucherDate ? q.voucherDate.split("-").reverse().join("/") : "—"} · chờ người duyệt ký. Không lập phiếu mới cho người này tới khi duyệt hoặc huỷ.</span></span>
-          <Link to="/approvals" className="sal-btn sal-btn--outline sal-btn--sm" style={{ textDecoration: "none" }}>Mở duyệt chi</Link>
+          <Link to="/income-expense?approval_status=UNAPPROVED&layer=PENDING" className="sal-btn sal-btn--outline sal-btn--sm" style={{ textDecoration: "none" }}>Mở duyệt chi</Link>
         </div>
       ))}
       {(["vh", "sale", "dh"] as GroupKey[]).map((g) => {
@@ -265,7 +265,7 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
         {(m.profit?.needsReviewCount ?? 0) > 0 && <div role="note" style={{ fontSize: 12, borderRadius: 8, padding: "10px 12px", background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" }}>Còn {m.profit?.needsReviewCount} phiếu lương cần chủ xem lại phần lợi nhuận — chi lợi nhuận cho {m.short} tạm khoá tới khi chủ xác nhận. Lương vẫn trả được.</div>}
         <button className="sal-btn sal-btn--primary" style={{ justifyContent: "center" }}
           disabled={blocked || feedback.saving || feedback.blocked}
-          onClick={() => void feedback.run(() => onPayout(m.id, m.name, cash, acc, date, note, m.profit && !lockedPay ? { investmentSelected } : undefined), () => {}, {amount: cash <= 0 ? "Không còn tiền phải chuyển." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})}>
+          onClick={() => void feedback.run(() => onPayout(m.id, m.name, cash, acc, date, note, m.profit && !lockedPay ? { investmentSelected } : undefined), () => {}, {amount: cash <= 0 ? "Không còn tiền phải chuyển." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined}, {retryable: true})}>
           {!canPay ? "Không có quyền trả lương" : payBusy ? "Đang lập phiếu…" : profitBlock ? "Chưa trả được — cần chốt lại" : hasPending ? "Đang có phiếu chờ duyệt" : cash <= 0 ? "Không còn tiền phải chuyển" : "Lập yêu cầu thanh toán"}
         </button>{feedback.notice}{feedback.issue("amount")}
         {lockedPay && <span style={{ fontSize: 11.5, color: "hsl(var(--status-warning-fg))" }}>Kỳ đã chốt — trả theo số đã chốt, không chọn từng khoản.</span>}

@@ -13,7 +13,42 @@ export function voucherOutcomeUnknown(error: unknown): boolean {
   return hasUnconfirmedResponse(error);
 }
 
+const depositMessages=new Set([
+  'Phòng còn lượt giữ chỗ cũ đang hiệu lực. Kiểm tra lượt giữ chỗ của phòng.',
+  'Phòng đang được nhân viên khác khóa tạm. Kiểm tra khóa phòng trước khi tiếp tục.',
+  'Lượt giữ chỗ không thuộc phòng được chọn.',
+  'Lượt giữ chỗ đã đóng. Tải lại trước khi đối chiếu.',
+  'Phiếu hoặc lượt giữ chỗ đã đổi. Tải lại trước khi đối chiếu.',
+  'Hợp đồng của lượt đã đóng. Kiểm tra hồ sơ quyết toán.',
+  'Mở lượt giữ chỗ rồi đối chiếu phiếu đã thu.',
+  'Hợp đồng đang có hồ sơ quyết toán. Kiểm tra hồ sơ trước khi nối phiếu.',
+  'Số tiền phiếu vượt phần cọc còn thiếu chưa lên hóa đơn của hợp đồng.',
+  'Không có quyền đối chiếu cọc tại tòa này.',
+  'Phòng có lượt giữ chỗ đang mở. Ký từ form Hợp đồng để nhận đúng nguồn cọc.',
+  'Đợt giữ chỗ của phòng đã đổi. Tải lại và chọn đúng lượt thu.',
+  'Hồ sơ giữ chỗ đã thay đổi. Tải lại trước khi bổ sung.',
+  'Phòng đang thuê. Chọn hợp đồng hiện tại hoặc ngày vào của lượt thuê kế tiếp sau ngày báo trả.',
+  'Phòng chưa sẵn sàng để giữ chỗ',
+  'Đã có phiếu cho khách hẹn này. Mở lại để đối chiếu.',
+  'Đã ghi giữ chỗ bằng mã yêu cầu này. Mở lại phiếu đã lưu để đối chiếu.',
+  'Mã yêu cầu đã dùng cho nội dung khác',
+  'Hợp đồng không khớp với phòng',
+  'Sổ quỹ không thuộc tổ chức',
+  'Phòng không thuộc tòa hoặc tổ chức đã chọn',
+  'Chọn hạng mục và nhập tiền cọc dương',
+  'Kiểm tra hạng mục, số lượng và đơn giá của từng dòng phiếu.',
+]);
+export function depositBusinessMessage(error:unknown):string|null {
+  const message=record(error).message;
+  if(typeof message!=='string')return null;
+  if (message === 'cashbook possession is not permitted') return 'Chọn sổ quỹ bạn được giao để lập phiếu này.';
+  if(depositMessages.has(message)||/^Phiếu [A-Za-z0-9_-]{1,48} đã nối vào đợt giữ chỗ\. Hủy phiếu ghi sai rồi lập phiếu thay thế cho đúng đợt\.$/.test(message))return message;
+  return null;
+}
+
 export function voucherFailureMessage(error: unknown, action: string): string {
+  const deposit=depositBusinessMessage(error);
+  if(deposit)return deposit;
   if(error instanceof FinancialWorkflowError)return workflowFeedbackDescription(error);
   if(error instanceof FinancialPendingError||error instanceof FinancialPendingStorageError)return error.message+(error instanceof FinancialPendingError&&error.pending?.completedIds.length?` Mã đã nhận: ${error.pending.completedIds.join(', ')}.`:'');
   if (error instanceof VoucherPartialError) return error.message;

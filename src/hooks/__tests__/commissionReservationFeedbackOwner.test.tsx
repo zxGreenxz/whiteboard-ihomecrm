@@ -7,6 +7,7 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:vi.fn()}}));
 vi.mock('@/components/errors/boundaryReporter',()=>({reportBoundaryError:vi.fn()}));
 vi.mock('sonner',()=>({toast:{error:mocks.toast,success:vi.fn()}}));
 vi.mock('@/lib/contractCommissionFollowup',()=>({recordContractCommissionEvent:vi.fn(),readContractCommissionFollowups:vi.fn(),prepareCommissionCreations:vi.fn(),executeCommissionCreation:mocks.record}));
+vi.mock('@/lib/depositIncomeRpc',()=>({recordDepositIncome:vi.fn()}));
 vi.mock('@/lib/reservationIdentityRpc',()=>({createRoomReservation:mocks.create,updateRoomReservation:vi.fn(),listRoomReservations:vi.fn(),reservationErrorMessage:()=> 'Thông báo an toàn'}));
 import {QueryProvider,queryClient} from '@/app/providers/QueryProvider';
 import {useRetryCommissionVoucher} from '../useCommissionVoucher';

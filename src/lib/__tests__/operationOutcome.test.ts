@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {hasUnconfirmedResponse} from '../operationOutcome';
+import {hasUnconfirmedResponse,isKnownRejectionCode} from '../operationOutcome';
 import {FinancialWorkflowError} from '../financialWorkflowError';
 import {isConfirmedFinancialRejection} from '../financialWorkflow';
 it.each(['unknown','partial'] as const)('keeps durable %s blocked even after reload without its original network cause',outcome=>{
@@ -20,4 +20,36 @@ it.each([
 it('lỗi không mang mã PT409 vẫn dò câu lỗi như cũ',()=>{
  expect(hasUnconfirmedResponse({message:'upstream request timeout'})).toBe(true);
  expect(hasUnconfirmedResponse({code:'XX000',message:'proxy 503'})).toBe(true);
+});
+// 24/11/2026: lời từ chối đã mang mã rõ mà câu báo nhúng số tiền "1.502.000" từng bị coi là rớt mạng,
+// làm dấu chờ đối chiếu ở lại dù máy chủ đã lùi giao dịch.
+it.each([
+ ['P0001','Số tiền 1.502.000 đ vượt số dư của sổ.'],
+ ['23505','duplicate key value violates unique constraint "ie_code_5035_key"'],
+ ['42501','permission denied for voucher 504'],
+ ['PGRST116','JSON object requested, multiple (or no) rows returned (id 1503)'],
+])('mã từ chối %s có 502/503/504 trong câu báo vẫn là từ chối đã xác nhận',(code,message)=>{
+ expect(hasUnconfirmedResponse({code,message})).toBe(false);
+ expect(isConfirmedFinancialRejection({code,message})).toBe(true);
+});
+it('lỗi 5xx thật vẫn là chưa rõ kết quả dù kèm mã từ chối',()=>{
+ expect(hasUnconfirmedResponse({code:'P0001',status:503,message:'Service Unavailable'})).toBe(true);
+ expect(hasUnconfirmedResponse({code:'P0001',statusCode:502,message:'Bad Gateway'})).toBe(true);
+ expect(isConfirmedFinancialRejection({code:'P0001',status:504,message:'x'})).toBe(false);
+});
+it('không có mã từ chối đã biết thì 502/503/504 trong câu báo vẫn là chưa rõ kết quả',()=>{
+ expect(hasUnconfirmedResponse({message:'Request failed with 502'})).toBe(true);
+ expect(hasUnconfirmedResponse({code:'',message:'error 504'})).toBe(true);
+ expect(hasUnconfirmedResponse(new Error('Bad gateway 503'))).toBe(true);
+});
+it('chỉ ba số đó được miễn: chữ báo rớt mạng vẫn được dò với mã từ chối khác PT409',()=>{
+ expect(hasUnconfirmedResponse({code:'55P03',message:'canceling statement due to lock timeout'})).toBe(true);
+ expect(hasUnconfirmedResponse({code:'P0001',message:'TypeError: Failed to fetch'})).toBe(true);
+});
+it('PGRST116 nằm trong các mã từ chối đã biết; mã lạ và mã quá hạn thì không',()=>{
+ expect(isKnownRejectionCode('PGRST116')).toBe(true);
+ expect(isConfirmedFinancialRejection({code:'PGRST116',message:'JSON object requested, multiple (or no) rows returned'})).toBe(true);
+ expect(isKnownRejectionCode('57014')).toBe(false);
+ expect(isKnownRejectionCode('XX000')).toBe(false);
+ expect(isKnownRejectionCode(undefined)).toBe(false);
 });

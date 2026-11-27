@@ -1,4 +1,4 @@
-import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { useState, useCallback, useRef } from 'react';
 import {
   Dialog,
@@ -68,7 +68,8 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [unknownOutcome, setUnknownOutcome] = useState<string|null>(null);
+  // Đợt 9: hàm ghi v2 có mã chống trùng (gửi lại cùng mã thì máy chủ trả phần đã ghi) nên kết quả chưa rõ không khoá hộp:
+  // chỉ báo câu lỗi, giữ bản xem trước qua đóng/mở để bấm lại đúng tệp đó.
   const [submitFailure,setSubmitFailure]=useState('');
   const busy=useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -87,10 +88,10 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
       if(busy.current || isProcessing || importMutation.isPending)return;
-      if (!newOpen && !unknownOutcome && !submitFailure) resetState();
+      if (!newOpen && !submitFailure) resetState();
       onOpenChange(newOpen);
     },
-    [onOpenChange, resetState, unknownOutcome,submitFailure,isProcessing,importMutation.isPending],
+    [onOpenChange, resetState, submitFailure,isProcessing,importMutation.isPending],
   );
 
   const processFile = useCallback(async (file: File) => {
@@ -159,7 +160,7 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
   );
 
   const handleImport = useCallback(async () => {
-    if(unknownOutcome || busy.current || isProcessing || importMutation.isPending)return;
+    if(busy.current || isProcessing || importMutation.isPending)return;
     const validRows = parsedRows.filter((r) => r.valid);
     const invalidRows = parsedRows.filter((r) => !r.valid);
 
@@ -222,12 +223,11 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
       });
       setStep('result');
     } catch (error) {
-      const message=recordWriteMessage(error,'nhập chỉ số');setSubmitFailure(message);
-      if(recordWriteBlocked(error))setUnknownOutcome(message);
+      setSubmitFailure(recordWriteMessage(error,'nhập chỉ số'));
     } finally {
       busy.current=false;setIsProcessing(false);
     }
-  }, [parsedRows, importMutation,unknownOutcome,isProcessing]);
+  }, [parsedRows, importMutation,isProcessing]);
 
   const validCount = parsedRows.filter((r) => r.valid).length;
   const invalidCount = parsedRows.filter((r) => !r.valid).length;
@@ -383,11 +383,11 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
             )}
 
             <div className="flex justify-end gap-2">
-              {(unknownOutcome || submitFailure) && <p role="alert" className="w-full text-sm text-destructive">{unknownOutcome || submitFailure}</p>}
-              <Button variant="outline" onClick={resetState} disabled={!!unknownOutcome}>
+              {submitFailure && <p role="alert" className="w-full text-sm text-destructive">{submitFailure}</p>}
+              <Button variant="outline" onClick={resetState}>
                 Chọn file khác
               </Button>
-              <Button onClick={handleImport} disabled={validCount === 0 || isProcessing || !!unknownOutcome}>
+              <Button onClick={handleImport} disabled={validCount === 0 || isProcessing}>
                 {isProcessing ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

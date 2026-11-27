@@ -30,6 +30,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useAdminUsers } from "@/hooks/useAdminUsers";
 import { useBuildings } from "@/hooks/useBuildings";
 import {
+  PROFIT_MANAGER_SAVED_STEP,
   useProfitManagers,
   useManagerSalaries,
   useSaveManagerWithSalaries,
@@ -76,8 +77,8 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
   const dialogRef = useRef<HTMLDivElement>(null);
   const initialized = useRef<string | null>(null);
   const entityKey = manager?.id ?? 'new';
-  const [blockedKey, setBlockedKey] = useState<string | null>(null);
-  const saveBlocked = blockedKey === entityKey;
+  // Đợt 8: hồ sơ quản lý vừa tạo ở lượt trước của chính hộp này (quy tắc lương chưa xong) — lần bấm sau SỬA hồ sơ đó.
+  const [createdId, setCreatedId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string,string>>({});
   const [serverError, setServerError] = useState('');
   const [savedSteps, setSavedSteps] = useState<readonly {id:string;label:string}[]>([]);
@@ -88,10 +89,10 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
   const [rules, setRules] = useState<RuleRow[]>([]);
 
   useEffect(() => {
-    if (!open) { if (!saveBlocked) initialized.current = null; return; }
-    if (saveBlocked || allRulesQuery.isLoading || allRulesQuery.isError || initialized.current === entityKey) return;
+    if (!open) { initialized.current = null; return; }
+    if (allRulesQuery.isLoading || allRulesQuery.isError || initialized.current === entityKey) return;
     initialized.current = entityKey;
-    setErrors({}); setServerError(''); setSavedSteps([]);
+    setErrors({}); setServerError(''); setSavedSteps([]); setCreatedId(null);
     setAuthUserId(manager?.auth_user_id ?? "");
     setName(manager?.name ?? "");
     setNote(manager?.note ?? "");
@@ -111,7 +112,7 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
     } else {
       setRules([emptyRule()]);
     }
-  }, [open, manager, allRules, entityKey, saveBlocked, allRulesQuery.isLoading, allRulesQuery.isError]);
+  }, [open, manager, allRules, entityKey, allRulesQuery.isLoading, allRulesQuery.isError]);
 
   // Loại user đã gán cho quản lý KHÁC (auth_user_id là UNIQUE).
   const linkedElsewhere = useMemo(() => {
@@ -152,18 +153,24 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
   const setRule = (i: number, patch: Partial<RuleRow>) =>
     setRules((p) => p.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
+  // Đợt 8 (luật 5): hồ sơ sửa theo mã, quy tắc lương xoá rồi tạo lại cả bộ, thêm mới tra theo tài khoản (duy nhất): bấm
+  // lại ghi lại đúng nội dung đó, nên lần chưa rõ hay dở dang KHÔNG khoá nút Lưu.
   const handleSave = async () => {
-    if (saveMut.isPending || saveBlocked) return;
+    if (saveMut.isPending) return;
     const nextErrors = {...validateProfitPerson(name,authUserId),...validateSalaryRules(rules)};
-    setErrors(nextErrors); setServerError('');
+    setErrors(nextErrors); setServerError(''); setSavedSteps([]);
     if (Object.keys(nextErrors).length) { await focusFirstError(nextErrors,{root:dialogRef.current}); return; }
     if (!validateInputDrafts(dialogRef.current)) return;
     try {
-      await saveMut.mutateAsync({id:manager?.id,values:{name:name.trim(),note:note.trim()||null,is_active:isActive,auth_user_id:authUserId},rules:rules.map(r=>({...r,label:r.label.trim()||null}))});
+      await saveMut.mutateAsync({id:manager?.id ?? createdId ?? undefined,values:{name:name.trim(),note:note.trim()||null,is_active:isActive,auth_user_id:authUserId},rules:rules.map(r=>({...r,label:r.label.trim()||null}))});
       onOpenChange(false);
     } catch(error) {
       setServerError(workflowErrorMessage(error,'lưu quản lý và lương điều hành'));
-      if(error instanceof FinancialWorkflowError) {setBlockedKey(entityKey);setSavedSteps(error.completed);}
+      if(error instanceof FinancialWorkflowError) {
+        setSavedSteps(error.completed);
+        const created = manager ? undefined : error.completed.find(step => step.label === PROFIT_MANAGER_SAVED_STEP);
+        if (created) setCreatedId(created.id);
+      }
     }
   };
 
@@ -306,7 +313,7 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
         {serverError && <div role="alert" className="rounded border border-destructive p-3 text-sm text-destructive">{serverError}{savedSteps.map((step,i)=><p key={`${step.id}-${i}`}>{step.label}: <code>{step.id}</code></p>)}</div>}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Huỷ</Button>
-          <Button onClick={handleSave} disabled={saveMut.isPending || saveBlocked}>
+          <Button onClick={handleSave} disabled={saveMut.isPending}>
             {saveMut.isPending ? "Đang lưu..." : "Lưu"}
           </Button>
         </DialogFooter>

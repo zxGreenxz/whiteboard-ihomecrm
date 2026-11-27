@@ -11,6 +11,7 @@ import ProfitDistributionMobile from "@/pages/reports/finance/ProfitDistribution
 import ProfitOverviewMobile from "@/components/shareholders/ProfitOverviewMobile";
 import ShareholderSelfMobile from "@/components/shareholders/ShareholderSelfMobile";
 import ShareholderAdvanceTab from "@/components/shareholders/ShareholderAdvanceTab";
+import { CompanyFinanceOverview } from "@/components/shareholders/CompanyFinanceOverview";
 import ProfitManagerSelfView from "@/components/shareholders/ProfitManagerSelfView";
 
 // Shell MOBILE của trang Báo cáo Lợi Nhuận (/reports/finance/profit-distribution):
@@ -143,7 +144,7 @@ export default function ProfitHubMobile({
               ) : tab === "salary" && myManager ? (
                 <ProfitManagerSelfView me={myManager} />
               ) : tab === "overview" ? (
-                <ProfitOverviewMobile year={oYear} onYearChange={setOYear} />
+                <CompanyFinanceOverview year={oYear} onYearChange={setOYear}><ProfitOverviewMobile year={oYear} onYearChange={setOYear} /></CompanyFinanceOverview>
               ) : tab === "advance" ? (
                 // Nhánh riêng: tab Tạm ứng KHÔNG rơi vào màn "Của tôi" (người này không có quyền xem đó).
                 me && <ShareholderAdvanceTab me={me} phone />

@@ -234,7 +234,7 @@ export function buildTerminationCard(f: TerminationRefundFacts): TerminationCard
 
   const rows: CardRow[] = [
     { label: "Tổng công nợ", amount: t.outstanding_debt, tone: "red" },
-    { label: "Tiền cọc hoàn trả", amount: s.deposit, tone: "green" },
+    { label: "Cọc đem ra quyết toán", amount: s.deposit, tone: "green" },
     { label: "Tiền phòng thừa", amount: f.excess_rent, tone: "green" },
     { label: "Hoàn lại khách", amount: s.owed, tone: "green", sub: refundSubs },
   ];

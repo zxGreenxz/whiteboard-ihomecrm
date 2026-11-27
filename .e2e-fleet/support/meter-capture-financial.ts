@@ -44,9 +44,12 @@ export function zeroMoveOutRequest(fixture: Fixture, source: MeterSourceReferenc
   assert.equal(source.purpose, 'MOVE_OUT');assert.equal(source.contractId, fixture.contractId);assert.equal(source.meterId, fixture.meterId);
   assert.equal(Number(source.previousReading), Number(fixture.currentValue));assert.equal(Number(source.currentReading), Number(fixture.currentValue));
   assert(Number.isFinite(outstandingDebt) && outstandingDebt >= 0);
+  // Từ migration 20261124154554 đường ảnh đồng hồ nhận writer v2: trả phòng trước hạn + quyết toán ngay đi qua
+  // confirm_contract_return_v2 với trường hợp chủ nhà hỗ trợ (hai trường hợp sang nhượng chỉ được quyết toán sau).
+  // buildConfirmContractReturnArgs luôn gửi p_early_terms nên writer phải là v2 (v1 không có tham số đó).
   const args = buildConfirmContractReturnArgs({ contractId: fixture.contractId, expectedContractUpdatedAt: contractUpdatedAt,
     idempotencyKey: `meter-exit-${fixture.fixtureId}`, actualMoveOutOn: fixture.readingDate,
-    initialKind: 'EARLY_RETURN', settlementMode: 'IMMEDIATE', returnNote: fixture.marker,
+    initialKind: 'EARLY_RETURN', settlementMode: 'IMMEDIATE', returnNote: fixture.marker, earlyTerms: { earlyReason: 'LANDLORD_AGREEMENT' },
     meterBoundary: { state: 'VERIFIED', readings: [{ meterId: fixture.meterId, reading: Number(fixture.currentValue),
       measuredAt: `${fixture.readingDate}T00:00:00Z`, evidence: fixture.marker }] },
     settlement: { depositRefund: 0, penaltyFee: 0, excessRent: 0, outstandingDebt,
@@ -55,7 +58,7 @@ export function zeroMoveOutRequest(fixture: Fixture, source: MeterSourceReferenc
         previous_reading: Number(fixture.currentValue), current_reading: Number(fixture.currentValue), meter_source: source,
       }] },
   }, fixture.organizationId);
-  return { action: 'exit', organizationId: fixture.organizationId, rpcName: 'confirm_contract_return_v1', arguments: args, sources: [source] };
+  return { action: 'exit', organizationId: fixture.organizationId, rpcName: 'confirm_contract_return_v2', arguments: args, sources: [source] };
 }
 
 export function assertMonthlyInvoice(fixture: Fixture, raw: unknown) {

@@ -1,7 +1,5 @@
-import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,isConfirmedFinancialRejection} from '@/lib/financialWorkflow';
-import {getSessionUser} from '@/lib/authSession';
-import {requireReadRows,readRecord,readString} from '@/lib/accountProfitReadModels';
+import {readString} from '@/lib/accountProfitReadModels';
 // WRITE TOOL draft-first — xác nhận bằng NONCE do server phát.
 //
 // LUỒNG, và vì sao nó chia làm hai nửa không nối với nhau qua mô hình:
@@ -624,52 +622,4 @@ export async function thucThiXacNhanHanhDong(
   }
   if (data?.status !== 'da_thuc_hien') throw new Error(`Chưa xác nhận được kết quả “${entry.labelVi}”. Kiểm tra trạng thái hiện tại trước khi thao tác tiếp.`);
   return `✅ Đã ${entry.labelVi.toLowerCase()}. Mã bản ghi: ${data.entity_id}.`;
-}
-
-/**
- * Điểm vào DUY NHẤT của thẻ xác nhận.
- *
- * Đường tạo phiếu giữ hàm riêng vì câu báo của nó đọc lại MÃ PHIẾU vừa tạo —
- * thứ người dùng cần để đi tra, và thứ không hành động nào khác có. Mọi hành
- * động còn lại đi đường chung.
- */
-export async function thucThiXacNhanTheoTool(
-  tool: string,
-  nonce: string,
-  canonical: unknown,
-  expectedContext: ConfirmationExecutionContext,
-): Promise<string> {
-  if (!(tool in ACTION_CATALOG)) throw new Error(`hanh_dong_khong_co_trong_so: ${tool}`);
-  const entry=ACTION_CATALOG[tool as ActionId] as ActionCatalogEntry;
-  const current=layNguCanhXacNhan();
-  if(!current||current.organizationId!==expectedContext.organizationId||current.threadId!==expectedContext.threadId
-    ||expectedContext.generation!==undefined&&current.generation!==expectedContext.generation)throw new Error('confirmation_scope_mismatch: organization or conversation changed');
-  const organizationId=expectedContext.organizationId;
-  if(!organizationId)throw new FinancialWorkflowError('Chưa chọn tổ chức để thực hiện đề xuất.','failure',[]);
-  // Stable payload identity survives a new preview/nonce/thread. The nonce remains memory-only.
-  const key=tool+':'+canonicalJson(canonical);
-  return persistentFinancialWorkflow('copilot-confirmation').run(key,entry.labelVi.toLowerCase(),async progress=>{
-    const record=(raw:unknown)=>{if(readRecord(raw)&&readString(raw.entity_id))progress.completed.push({id:raw.entity_id,label:'Mã bản ghi nhận từ máy chủ'});};
-    return tool==='income_expense.create_draft'
-      ? thucThiXacNhan(nonce,canonical,expectedContext,record)
-      : thucThiXacNhanHanhDong(tool as ActionId,nonce,canonical,expectedContext,record);
-  },async(pending,progress)=>{
-    const tables:Record<string,string>={'income_expense.create_draft':'income_expenses','income_expense.annotate':'income_expenses','room_pass.set_active':'room_pass_listings','zalo.set_conversation_flags':'zalo_conversations','meter_reading.create':'meter_readings','reservation_deposit.create':'room_reservation_holds'};
-    const table=tables[tool];if(!table||!readRecord(canonical))return null;
-    const actor=await getSessionUser();if(!actor)throw {code:'PGRST301'};
-    const auditTool=tool==='income_expense.create_draft'?'tao_phieu_thu_chi_nhap':tool;
-    // Audit is immutable and SELECT is allowed to its actor. Never infer rollback from [] or a failed read.
-    const {data,error}=await supabase.from('ai_write_audit').select('id,user_id,organization_id,tool,payload,entity_table,entity_id')
-      .eq('user_id',actor.id).eq('organization_id',organizationId).eq('tool',auditTool).contains('payload',canonical).limit(2);
-    if(error)throw error;
-    const rows=requireReadRows<Record<string,unknown>>(data,row=>readString(row.id)&&readString(row.entity_id)&&readRecord(row.payload));
-    const exact=rows.filter(row=>row.user_id===actor.id&&row.organization_id===organizationId&&row.tool===auditTool&&row.entity_table===table&&canonicalJson(row.payload)===canonicalJson(canonical));
-    if(exact.length!==1)return null;
-    const receipt=exact[0];const id=receipt.entity_id as string;
-    if(pending.completedIds.length&&!pending.completedIds.includes(id))return null;
-    progress.completed.push({id,label:'Đã đối chiếu bằng sổ thực thi của chính tài khoản'});
-    return {result:tool==='income_expense.create_draft'
-      ?`Đã đối chiếu phiếu ${id} được tạo từ đề xuất này. Không tạo thêm phiếu; xem trạng thái hiện tại tại [Thu chi](/income-expense).`
-      :`Đã đối chiếu “${entry.labelVi}” trong sổ thực thi. Mã bản ghi: ${id}. Không thực hiện lại; kiểm tra trạng thái hiện tại tại màn hình tương ứng.`};
-  },organizationId);
 }

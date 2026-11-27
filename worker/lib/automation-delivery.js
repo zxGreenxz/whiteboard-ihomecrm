@@ -2,6 +2,7 @@ import { sb } from './ctx.js';
 import { chuanHoaBroadcast } from './automation-config.js';
 import { gioVietNam, trongKhungGio } from './automation-scenario.js';
 import { validateSaleContent } from './automation-content-guard.js';
+import { jobsForLockGroup, lockNoticeKey } from './room-lock-notice.js';
 
 // Lượt gửi MỘT LẦN còn hiệu lực cho tin đã xếp: đang chạy hoặc đã chốt (kể cả chốt lỗi một
 // phần). 'queued' chưa từng có tin; 'cancelled' là người dùng/dừng khẩn cấp đã huỷ.
@@ -16,12 +17,13 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
   // not apply, but hours/day/due checks below do (same as zalo_worker_begin_provider_v1).
   const oneshotId = kind === 'broadcast_vacant' && job.payload.oneshot_id ? String(job.payload.oneshot_id) : null;
   const reject = reason => ({ ok: false, reason });
+  const lock = lockNoticeKey(job.payload);
   const { data: auto, error } = await db.from('zalo_automations')
-    .select('enabled, config').eq('organization_id', job.organization_id).eq('kind', kind).maybeSingle();
+    .select(lock ? 'enabled, config, stats' : 'enabled, config').eq('organization_id', job.organization_id).eq('kind', kind).maybeSingle();
   if (error) return reject('AUTOMATION_UNVERIFIED: không đọc được cấu hình hiện tại');
   if (!oneshotId && !auto?.enabled) return reject('CANCELLED_AUTOMATION: tự động hóa đã tắt');
   const { data: conv, error: convError } = await db.from('zalo_conversations')
-    .select('account_id, organization_id, is_sale_partner, thread_type').eq('id', job.conversation_id).maybeSingle();
+    .select('account_id, organization_id, is_sale_partner, thread_type, thread_id').eq('id', job.conversation_id).maybeSingle();
   if (convError) return reject('AUTOMATION_UNVERIFIED: không đọc được người nhận hiện tại');
   if (!conv || conv.account_id !== job.account_id || conv.organization_id !== job.organization_id) {
     return reject('REJECTED_SCOPE: người nhận tự động không còn đúng phạm vi');
@@ -30,6 +32,16 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
     return conv.is_sale_partner ? { ok: true } : reject('CANCELLED_AUTOMATION: hội thoại không còn là sale');
   }
   const config = chuanHoaBroadcast(auto?.config);
+  if (lock) {
+    if (conv.thread_type !== 'group' || lock.groupId !== job.conversation_id) return reject('CANCELLED_AUTOMATION: nhóm nhận tin Lock đã đổi');
+    if (!auto.stats?.roomLockWatch?.some(entry => entry.id === lock.roomId && entry.since === lock.since)) {
+      return reject('STALE_SALE_CONTENT: đợt Lock phòng đã thay đổi');
+    }
+    const prior = await jobsForLockGroup(db, job.organization_id, lock.roomId, lock.since, conv.thread_id)
+      .neq('id', job.id).or('provider_started_at.not.is.null,status.eq.sent').limit(1);
+    if (prior.error) return reject('AUTOMATION_UNVERIFIED: chưa đọc được lần báo Lock của nhóm');
+    if (prior.data.length) return reject('CANCELLED_AUTOMATION: nhóm đã có lần gửi Lock cho đợt này');
+  }
   if (oneshotId) {
     const { data: shot, error: shotError } = await db.from('zalo_automation_oneshots')
       .select('organization_id, status, recipients').eq('id', oneshotId).maybeSingle();
@@ -74,5 +86,5 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
   const window = trongKhungGio(now, config.antiSpam);
   if (!window.trong) return reject(`EXPIRED_AUTOMATION: ${window.lyDo}`);
   if (scheduledAt > now) return reject('AUTOMATION_NOT_DUE: chưa tới giờ gửi');
-  return validateSaleContent(job, db, config.template);
+  return validateSaleContent(job, db, config.template, conv.thread_type === 'group' ? config.groupBuildings[conv.thread_id] : null);
 }

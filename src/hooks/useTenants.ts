@@ -1,19 +1,13 @@
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
-import { confirmedRecordId, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import type { PaginatedData } from "@/hooks/usePagination";
 import { ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
 import { nullIfNotFound } from "@/hooks/readErrors";
-import { useOrganization } from "@/contexts/OrganizationContext";
-import { withOrg } from "@/lib/orgPayload";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
-type TenantInsert = Database["public"]["Tables"]["tenants"]["Insert"];
 type TenantUpdate = Database["public"]["Tables"]["tenants"]["Update"];
 
 export interface TenantFilters {
@@ -134,48 +128,9 @@ export const useTenant = (id: string) => {
   });
 };
 
-// Create new tenant
-export const useCreateTenant = (options: { silent?: boolean } = {}) => {
-  const queryClient = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
-  const guard = persistentFinancialWorkflow('tenant-legacy-create');
-
-  return useMutation({
-    mutationFn: async (tenant: Omit<TenantInsert, "user_id">) => {
-      const user = await getSessionUser();
-
-      if (!user) {
-        throw new Error("User not authenticated");
-      }
-
-      return guard.run('create', 'tạo khách thuê', async () => {
-      const { data, error } = await supabase
-        .from("tenants")
-        .insert(withOrg({
-          ...tenant,
-          user_id: user.id,
-        }, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      confirmedRecordId(data, 'tạo khách thuê');
-      return data;
-      }, undefined, selectedOrganizationId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenants"] });
-      queryClient.invalidateQueries({ queryKey: ['tenants-legacy'] });
-      if (!options.silent) toast.success('Đã tạo khách thuê');
-    },
-    onError: (error) => {
-      queryClient.invalidateQueries({ queryKey: ['tenants'] });
-      queryClient.invalidateQueries({ queryKey: ['tenants-legacy'] });
-      if (!options.silent) toast.error('Chưa tạo được khách thuê', {description:recordWriteMessage(error, 'tạo khách thuê')});
-      console.error("Error creating tenant:", error);
-    },
-  });
-};
+// Đợt 7 (26/11/2026): bỏ `useCreateTenant`. Nơi gọi duy nhất là luồng chuyển khách hẹn bản trước, đã thay bằng nhận cọc qua
+// Thu chi (#499); hook giữ một dấu «chờ đối chiếu» KHOÁ CHUNG (`tenant-legacy-create`, khoá `create`) chặn mọi lần tạo khách
+// thuê sau một lần rớt mạng. Dấu cũ còn trong trình duyệt không chặn gì nữa vì không còn nơi nào đọc nó.
 
 // Update existing tenant
 export const useUpdateTenant = () => {

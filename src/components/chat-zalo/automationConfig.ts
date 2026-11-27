@@ -77,6 +77,7 @@ export interface ChongSpam {
 export interface CauHinhBroadcast {
   /** Thread id Zalo nhận tin. Đã khử trùng lặp. */
   recipients: string[];
+  groupBuildings: Record<string, string>;
   schedule: LichGui;
   eventDriven: GuiTheoSuKien;
   template: MauTin;
@@ -105,6 +106,7 @@ const KHOI_HOP_LE: ReadonlySet<string> = new Set<string>(KHOI_MAC_DINH);
 
 export const MAC_DINH_BROADCAST: CauHinhBroadcast = {
   recipients: [],
+  groupBuildings: {},
   schedule: {
     time: '08:30',
     extraTimes: [],
@@ -224,6 +226,8 @@ export function chuanHoaBroadcast(raw: unknown): CauHinhBroadcast {
 
   return {
     recipients: [...new Set(mangChuoi(c.recipients, []))],
+    groupBuildings: Object.fromEntries(Object.entries(laObject(c.groupBuildings) ? c.groupBuildings : {})
+      .map(([thread, building]) => [thread, typeof building === 'string' && building.trim() ? building : 'invalid-building'])),
     schedule: {
       time,
       extraTimes,

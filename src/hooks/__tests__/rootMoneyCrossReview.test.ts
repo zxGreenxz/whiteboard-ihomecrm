@@ -11,15 +11,17 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:h.rpc,from:(table:s
 }}}));
 import {useSetPersonalCashBook} from '../useReceivingCashbooks';
 import {useSalaryPayout} from '../useManagerSalary';
-import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {FinancialWorkflowError,RepeatableWriteUnknownError} from '@/lib/financialWorkflow';
 import {financialPending} from '@/lib/financialPending';
 const mutation=(options:unknown)=>(options as {mutationFn:(input:unknown)=>Promise<unknown>}).mutationFn;
 const payout={ownerId:'owner',staffId:'staff',staffName:'An',periodMonth:'2026-09-01',amount:100,account_id:'account',voucher_date:'2026-09-30'};
 beforeEach(()=>{localStorage.clear();h.rpc.mockReset();h.responses=[];h.writes=[];});
+// Đợt 8 (luật 5): đặt sổ tiền mặt riêng là đặt giá trị dưới khoá công ty (set_personal_cash_book_v1), chạy lại cho cùng
+// kết quả: biên nhận hỏng dạng vẫn KHÔNG phải thành công (chưa rõ), nhưng không còn giữ dấu chặn lần lưu sau.
 it.each([{}, {id:undefined}, {id:null}, false, 0, ''])('cross-review: a malformed personal book %j is not proof that the book was removed',async personalCashBook=>{
  h.rpc.mockResolvedValue({data:{membershipId:'member',personalCashBook},error:null});
- await expect(mutation(useSetPersonalCashBook())({membershipId:'member',accountId:null})).rejects.toBeInstanceOf(FinancialWorkflowError);
- expect(financialPending.read({namespace:'receiving-personal',userId:'actor',organizationId:'actor-scope',businessKey:'member'})).not.toBeNull();
+ await expect(mutation(useSetPersonalCashBook())({membershipId:'member',accountId:null})).rejects.toBeInstanceOf(RepeatableWriteUnknownError);
+ expect(financialPending.read({namespace:'receiving-personal',userId:'actor',organizationId:'actor-scope',businessKey:'member'})).toBeNull();
 });
 it.each([null,undefined,'','not-a-number'])('cross-review: unreadable remaining amount %j cannot silently remove the rent offset',async remaining_amount=>{
  h.rpc.mockResolvedValue({data:null,error:{code:'55000',message:'Writer chưa bật'}});
@@ -44,10 +46,11 @@ it('cross-review: a real null personal-book receipt confirms removal',async()=>{
  await expect(mutation(useSetPersonalCashBook())({membershipId:'member',accountId:null})).resolves.toMatchObject({personalCashBook:null});
  expect(financialPending.read({namespace:'receiving-personal',userId:'actor',organizationId:'actor-scope',businessKey:'member'})).toBeNull();
 });
-it('cross-review: P0001 with an unconfirmed transport response cannot release the pending marker',async()=>{
+it('cross-review: P0001 with an unconfirmed transport response is still an unknown result, not a confirmed rejection',async()=>{
  h.rpc.mockResolvedValue({data:null,error:{code:'P0001',status:503,message:'upstream unavailable'}});
- await expect(mutation(useSetPersonalCashBook())({membershipId:'member',accountId:'a'})).rejects.toBeInstanceOf(FinancialWorkflowError);
- await expect(mutation(useSetPersonalCashBook())({membershipId:'member',accountId:'b'})).rejects.toBeInstanceOf(FinancialWorkflowError);expect(h.rpc).toHaveBeenCalledTimes(1);
+ await expect(mutation(useSetPersonalCashBook())({membershipId:'member',accountId:'a'})).rejects.toBeInstanceOf(RepeatableWriteUnknownError);
+ await expect(mutation(useSetPersonalCashBook())({membershipId:'member',accountId:'b'})).rejects.toBeInstanceOf(RepeatableWriteUnknownError);expect(h.rpc).toHaveBeenCalledTimes(2);
+ expect(financialPending.read({namespace:'receiving-personal',userId:'actor',organizationId:'actor-scope',businessKey:'member'})).toBeNull();
 });
 it('cross-review: a confirmed P0001 rejection with zero successful writes permits correction',async()=>{
  const error={code:'P0001',message:'known invalid book'};h.rpc.mockResolvedValueOnce({data:null,error}).mockResolvedValueOnce({data:{membershipId:'member',personalCashBook:{id:'b',name:'Sổ B'}},error:null});

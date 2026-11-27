@@ -1,4 +1,3 @@
-import {useState,useRef} from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -19,7 +18,7 @@ import { getSessionUser } from "@/lib/authSession";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { focusFirstError } from "@/lib/formErrors";
-import {recordWriteBlocked,recordWriteMessage} from "@/lib/recordWriteOutcome";
+import {recordWriteMessage} from "@/lib/recordWriteOutcome";
 
 const assetSchema = z.object({
   code: z.string().optional(),
@@ -43,9 +42,7 @@ interface CreateAssetDialogProps {
 }
 
 export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps) {
-  const [failure,setFailure]=useState<unknown>();
-  const [blocked,setBlocked]=useState(false);
-  const draftKey=useRef<string|null>(null);
+  // Đợt 9 (luật 5): tạo tài sản dùng mã do trình duyệt sinh, bấm lại gửi đúng mã cũ nên kết quả chưa rõ không khoá hộp.
   const createAsset = useCreateAsset();
   const buildingsQuery=useBuildings({ enabled: open });
   const {data:buildings=[]}=buildingsQuery;
@@ -96,7 +93,7 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
   });
 
   const onSubmit = async (data: AssetFormValues) => {
-    if(blocked||sourceBlocked)return;
+    if(sourceBlocked)return;
     form.clearErrors('root.server');
     form.clearErrors('root.server');
     try {
@@ -120,7 +117,6 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);setBlocked(recordWriteBlocked(error));
       console.error("Failed to create asset:", error);
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo tài sản') });
     }
@@ -138,7 +134,7 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
             <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
               {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ dữ liệu tài sản. Tải lại trước khi lưu.<Button type="button" variant="outline" onClick={()=>{for(const query of sources)void query.refetch();}}>Tải lại dữ liệu</Button></div>}
-            <fieldset disabled={blocked || sourceBlocked || form.formState.isSubmitting} className="space-y-4">
+            <fieldset disabled={sourceBlocked || form.formState.isSubmitting} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="code" render={({ field }) => (
                   <FormItem><FormLabel>Mã tài sản</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
@@ -183,7 +179,7 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
               </fieldset>
             <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Hủy</Button>
-                <Button type="submit" disabled={blocked || sourceBlocked || form.formState.isSubmitting || createAsset.isPending}>{createAsset.isPending ? "Đang tạo..." : "Tạo tài sản"}</Button>
+                <Button type="submit" disabled={sourceBlocked || form.formState.isSubmitting || createAsset.isPending}>{createAsset.isPending ? "Đang tạo..." : "Tạo tài sản"}</Button>
               </div>
             </form>
           </Form>

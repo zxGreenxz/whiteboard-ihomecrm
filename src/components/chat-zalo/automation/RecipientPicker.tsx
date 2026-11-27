@@ -31,6 +31,11 @@ interface Props {
   /** Nhãn "Phân loại" của tổ chức, đã gắn `accountName` (tên nick). */
   labels?: ZaloLabel[];
   saleAction?: GroupSaleAction;
+  buildings?: { id: string; name: string; code: string | null; address: string | null }[];
+  groupBuildings?: Record<string, string>;
+  onBuildingChange?: (thread: string, building: string) => void;
+  buildingError?: boolean;
+  buildingDisabled?: boolean;
   value: string[];
   onChange: (ids: string[]) => void;
 }
@@ -64,7 +69,8 @@ const boDau = (s: string) =>
     })
     .join('');
 
-export default function RecipientPicker({ conversations, labels = KHONG_NHAN, saleAction, value, onChange }: Props) {
+export default function RecipientPicker({ conversations, labels = KHONG_NHAN, saleAction, value, onChange,
+  buildings = [], groupBuildings = {}, onBuildingChange, buildingError, buildingDisabled }: Props) {
   const [tim, setTim] = useState('');
   const [nhan, setNhan] = useState<string | null>(null);
 
@@ -191,7 +197,7 @@ export default function RecipientPicker({ conversations, labels = KHONG_NHAN, sa
             <div
               key={c.id}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 11px', cursor: 'pointer',
+                display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: '8px 11px', cursor: 'pointer',
                 borderTop: i === 0 ? 'none' : `1px solid ${VIEN_NHAT}`,
                 background: on ? 'hsl(152 40% 97%)' : 'transparent',
               }}
@@ -221,11 +227,26 @@ export default function RecipientPicker({ conversations, labels = KHONG_NHAN, sa
                 </span>
               </label>
               <GroupSaleButton conv={c} action={saleAction} />
+              {on && c.isGroup && c.threadId && onBuildingChange && (
+                <label className="flex w-full items-center gap-2 pl-7 text-xs">
+                  Phòng gửi vào nhóm
+                  <select aria-label={`Phạm vi phòng của ${c.name}`} disabled={buildingDisabled}
+                    className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2"
+                    value={groupBuildings[c.threadId] ?? ''}
+                    onChange={e => onBuildingChange(c.threadId!, e.target.value)}>
+                    <option value="">Tất cả các tòa</option>
+                    {groupBuildings[c.threadId] && !buildings.some(b => b.id === groupBuildings[c.threadId!]) &&
+                      <option value={groupBuildings[c.threadId]}>Tòa đã lưu</option>}
+                    {buildings.map(b => <option key={b.id} value={b.id}>{[b.code, b.name || b.address].filter(Boolean).join(' · ')}</option>)}
+                  </select>
+                </label>
+              )}
             </div>
           );
         })}
       </div>
 
+      {buildingError && <p role="alert" className="mt-2 text-xs">Chưa tải được danh sách tòa.</p>}
       {laLac.length > 0 && (
         <div style={{ marginTop: 9 }}>
           <BangCanhBao>

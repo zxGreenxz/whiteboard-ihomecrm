@@ -14,6 +14,8 @@ RUN node tai-font.mjs && sha256sum -c fonts.sha256
 
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 
+LABEL io.ihomecrm.hermes.binding-guard="1"
+
 ARG ZALO_WORKER_RELEASE_SHA=0000000000000000000000000000000000000000
 
 # Heap 256 MB trong giới hạn 384 MB của container: phần còn lại cho bộ vẽ ảnh (@napi-rs/canvas)

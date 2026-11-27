@@ -1,4 +1,4 @@
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useMemo, useRef, useState } from "react";
 import {
   Dialog,
@@ -19,7 +19,6 @@ import {
   useDeleteArea,
   AreaDeletePartialError,
   useAssignBuildingsToArea,
-  AreaMembershipPartialError,
 } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
@@ -55,11 +54,13 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
   const newNameInput=useRef<HTMLInputElement>(null);
   const editingInput=useRef<HTMLInputElement>(null);
   const [invalidName,setInvalidName]=useState(false);
-  const onFailure=(error:unknown,operation:string,areaId?:string)=>{setFailure(recordWriteMessage(error,operation));if(recordWriteBlocked(error))setPartialAreaId(areaId ?? 'new');busy.current=false;};
+  // Đợt 8 (luật 5): sửa tên, gán tòa, xoá khu ghi lặp lại được — kết quả chưa rõ chỉ báo (kèm mã) và cho bấm lại, không khoá.
+  const onFailure=(error:unknown,operation:string)=>{setFailure(recordWriteMessage(error,operation));busy.current=false;};
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
-  const [partialAreaId, setPartialAreaId] = useState<string | null>(null);
-  const [partialAction, setPartialAction] = useState<'assignment' | 'delete'>('assignment');
+  // Xoá chưa xong (khu có thể đã xoá mềm nên không còn trong danh sách): giữ tên và câu báo riêng, để nút «Xoá lại» còn
+  // đó cả khi người dùng làm việc khác, và bấm lại không cần hỏi lại.
+  const [retryDelete, setRetryDelete] = useState<{ id: string; name: string; message: string } | null>(null);
 
   // building_ids hiện tại của từng khu (N-N: từ buildings.area_ids).
   const membersByArea = useMemo(() => {
@@ -74,9 +75,11 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
     return map;
   }, [buildings]);
 
+  // Đợt 9 (luật 5): TẠO khu vực cũng không khoá ô thêm — kết quả chưa rõ chỉ báo và giữ tên đang nhập; bấm «Thêm» lại thì
+  // hook gửi lại đúng mã khu cũ nên không ra khu thứ hai.
   const handleCreate = () => {
     const name = newName.trim();
-    if (busy.current || partialAreaId || areasQuery.isError || buildingsQuery.isError)return;
+    if (busy.current || areasQuery.isError || buildingsQuery.isError)return;
     if (!name) {setInvalidName(true);setFailure('Nhập tên khu vực.');newNameInput.current?.focus();return;}
     busy.current=true;setFailure('');setInvalidName(false);
     createArea.mutate(
@@ -87,25 +90,35 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
 
   const handleRename = (id: string) => {
     const name = editingName.trim();
-    if (busy.current || partialAreaId || areasQuery.isError || buildingsQuery.isError)return;
+    if (busy.current || areasQuery.isError || buildingsQuery.isError)return;
     if (!name) {setInvalidName(true);setFailure('Nhập tên khu vực.');editingInput.current?.focus();return;}
     busy.current=true;setFailure('');setInvalidName(false);
     updateArea.mutate(
       { id, updates: { name } },
-      { onSuccess: () => {setEditingId(null);busy.current=false;},onError:error=>onFailure(error,'cập nhật khu vực',id),onSettled:()=>{busy.current=false;} },
+      { onSuccess: () => {setEditingId(null);busy.current=false;},onError:error=>onFailure(error,'cập nhật khu vực'),onSettled:()=>{busy.current=false;} },
     );
   };
 
+  const runDelete = (area: { id: string; name: string }) => {
+    busy.current=true;setFailure('');
+    deleteArea.mutate(area.id, {
+      onSuccess: () => {setRetryDelete(null);busy.current=false;},
+      onError: error => {
+        if (error instanceof AreaDeletePartialError) {setRetryDelete({ id: area.id, name: area.name, message: recordWriteMessage(error,'xoá khu vực') });busy.current=false;}
+        else {setRetryDelete(null);onFailure(error,'xoá khu vực');}
+      },
+      onSettled:()=>{busy.current=false;},
+    });
+  };
+
   const handleDelete = (area: { id: string; name: string }) => {
-    if (partialAreaId || busy.current || areasQuery.isError || buildingsQuery.isError) return;
+    if (busy.current || areasQuery.isError || buildingsQuery.isError) return;
     const count = membersByArea.get(area.id)?.length ?? 0;
     const msg =
       count > 0
         ? `Xoá khu vực "${area.name}"? Khu sẽ bị gỡ khỏi ${count} toà (toà vẫn giữ các khu khác, không ảnh hưởng dữ liệu toà).`
         : `Xoá khu vực "${area.name}"?`;
-    if (confirm(msg)) {busy.current=true;deleteArea.mutate(area.id, {
-      onError: error => {onFailure(error,'xoá khu vực',area.id);if (recordWriteBlocked(error)) setPartialAction('delete');},onSettled:()=>{busy.current=false;},
-    });}
+    if (confirm(msg)) runDelete({ id: area.id, name: area.name });
   };
 
   const handleMembersChange = (areaId: string, nextIds: string[]) => {
@@ -115,9 +128,9 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
     const toAddIds = nextIds.filter((id) => !cur.has(id));
     const toRemoveIds = current.filter((id) => !next.has(id));
     if (toAddIds.length === 0 && toRemoveIds.length === 0) return;
-    if (partialAreaId || busy.current || areasQuery.isError || buildingsQuery.isError) return;
+    if (busy.current || areasQuery.isError || buildingsQuery.isError) return;
     busy.current=true;setFailure('');assignBuildings.mutate({ areaId, toAddIds, toRemoveIds }, {
-      onError: error => {onFailure(error,'gán tòa vào khu vực',areaId);setPartialAction('assignment');},onSettled:()=>{busy.current=false;},
+      onError: error => onFailure(error,'gán tòa vào khu vực'),onSettled:()=>{busy.current=false;},
     });
   };
 
@@ -132,14 +145,12 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
           </DialogDescription>
         </DialogHeader>
 
-        {failure && !partialAreaId && <p role="alert" className="text-sm text-destructive">{failure}</p>}
-        {partialAreaId && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
-          {failure || `Chưa xác nhận xong thay đổi khu vực ${partialAreaId}. Giữ mã và đối chiếu trạng thái trước khi thực hiện tiếp.`}
-          <Button type="button" variant="outline" size="sm" className="mt-2 block" onClick={async () => {
-            const results = await Promise.all([areasQuery.refetch(), buildingsQuery.refetch()]);
-            // Refresh shows current state; it cannot prove completion or clear the pending request.
-            if(results.some(result=>result.isError))setFailure('Chưa tải đủ trạng thái khu vực để đối chiếu.');
-          }}>Tải lại để đối chiếu</Button>
+        {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
+        {retryDelete && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
+          {retryDelete.message}
+          <Button type="button" variant="outline" size="sm" className="mt-2 block" disabled={deleteArea.isPending} onClick={() => {if(!busy.current)runDelete(retryDelete);}}>
+            Xoá lại «{retryDelete.name}»
+          </Button>
         </div>}
 
         {/* Ô thêm khu vực cố ý nằm trong vùng chờ: tạo/gán khu cần danh sách khu + toà đã về. */}
@@ -148,7 +159,7 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
         {/* Thêm khu vực mới */}
         <div className="flex items-center gap-2">
           <Input
-            ref={newNameInput} aria-label="Tên khu vực mới" aria-invalid={invalidName} disabled={!!partialAreaId}
+            ref={newNameInput} aria-label="Tên khu vực mới" aria-invalid={invalidName}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Tên khu vực mới (vd: Quận 7, Khu A...)"
@@ -158,7 +169,7 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
           />
           <Button
             onClick={handleCreate}
-            disabled={!newName.trim() || createArea.isPending || !!partialAreaId}
+            disabled={!newName.trim() || createArea.isPending}
           >
             <Plus className="h-4 w-4 mr-1" />
             Thêm
@@ -182,7 +193,7 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
                     {isEditing ? (
                       <>
                         <Input
-                          ref={editingInput} aria-label="Tên khu vực" aria-invalid={invalidName} disabled={!!partialAreaId}
+                          ref={editingInput} aria-label="Tên khu vực" aria-invalid={invalidName} disabled={updateArea.isPending}
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
                           className="h-8"
@@ -230,14 +241,14 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
                           variant="ghost"
                           className="h-8 w-8 text-destructive"
                           onClick={() => handleDelete(area)}
-                          disabled={!!partialAreaId}
+                          disabled={deleteArea.isPending}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </>
                     )}
                   </div>
-                  <fieldset disabled={!!partialAreaId || assignBuildings.isPending}>
+                  <fieldset disabled={assignBuildings.isPending}>
                   <BuildingMultiSelect
                     value={memberIds}
                     onChange={(ids) => handleMembersChange(area.id, ids)}

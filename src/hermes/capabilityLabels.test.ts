@@ -94,7 +94,7 @@ describe('Hermes capability labels', () => {
     // Nhãn nói đúng điều đó và chỉ đường tới trang Quản lý cọc như câu lỗi sale_deposit_web_only của broker.
     expect(hermesCapabilityLabel(SALE_DEPOSIT_RECEIPT_KEY)).toMatch(/^Đã gỡ: /);
     expect(hermesCapabilityHint('deposits.create')).toMatch(/^Hermes: chỉ tra danh sách phòng và yêu cầu cũ; báo cọc, thu thêm cọc làm trên web/);
-    expect(hermesCapabilityHint('deposits.edit')).toMatch(/^Hermes: chỉ tra danh sách phòng và yêu cầu cũ; sửa cọc, gắn khách vào cọc làm trên web/);
+    expect(hermesCapabilityHint('deposits.edit')).toMatch(/^Hermes: chỉ tra danh sách phòng và yêu cầu cũ; sửa cọc làm trên web/);
     for (const text of [hermesCapabilityLabel(SALE_DEPOSIT_RECEIPT_KEY), hermesCapabilityHint('deposits.create'), hermesCapabilityHint('deposits.edit')]) {
       expect(text).toContain('trang Quản lý cọc (/deposits)');
     }

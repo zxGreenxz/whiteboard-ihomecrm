@@ -6,6 +6,7 @@ import AutomationSettingsDialog from '../automation/AutomationSettingsDialog';
 
 const { mutate } = vi.hoisted(() => ({ mutate: vi.fn() }));
 vi.mock('@/hooks/useZaloChat', () => ({
+  useZaloBroadcastBuildings: () => ({ isSuccess: true, data: [{ id: 'bld', name: 'Tòa ví dụ', code: 'ABC', address: '' }] }),
   useZaloAutomationConfigs: () => ({ data: { broadcast_vacant: { enabled: true, config: {
     recipients: ['a-1', 'b-1'], schedule: { time: '08:48' },
   } } }, status: 'success' }),
@@ -20,7 +21,7 @@ const accounts: ZaloAccount[] = [
   { id: 'b', name: 'Nick B', kind: 'personal', status: 'connected' },
 ];
 const conversations = ['a-1', 'a-2', 'b-1'].map(id => ({
-  id, name: id, accountId: id.split('-')[0], isGroup: true, initials: 'N', tone: 'emerald', profile: {},
+  id, name: id, threadId: 'thread-' + id, accountId: id.split('-')[0], isGroup: true, initials: 'N', tone: 'emerald', profile: {},
 })) as ZaloConversation[];
 
 it('adds and removes daily slots without changing the selected groups or pacing', () => {
@@ -60,4 +61,13 @@ it('shows this account’s groups and contributes only its changed recipient IDs
   fireEvent.click(screen.getByRole('button', { name: 'Lưu lịch gửi' }));
   expect(mutate.mock.calls[1][0]).toEqual({ kind: 'broadcast_vacant', accountId: 'b',
     add: [], remove: ['b-1'], changes: {}, expected: {} });
+});
+
+it('lưu tòa đã chọn cùng người nhận bằng một lần lưu', () => {
+  render(<AutomationSettingsDialog account={accounts[0]} open onOpenChange={() => {}} conversations={conversations} />);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Chọn a-2 nhận tin định kỳ' }));
+  fireEvent.change(screen.getByLabelText('Phạm vi phòng của a-2'), { target: { value: 'bld' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu lịch gửi' }));
+  expect(mutate.mock.calls[0][0]).toMatchObject({ add: ['a-2'],
+    changes: { groupBuildings: { 'thread-a-2': 'bld' } }, expected: { groupBuildings: { 'thread-a-2': null } } });
 });

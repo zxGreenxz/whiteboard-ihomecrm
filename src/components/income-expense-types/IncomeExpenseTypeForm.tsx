@@ -1,6 +1,6 @@
-import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {recordWriteMessage} from '@/lib/recordWriteOutcome';
 import {focusFirstError} from '@/lib/formErrors';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -49,7 +49,6 @@ const IncomeExpenseTypeForm = ({
   onCancel,
 }: IncomeExpenseTypeFormProps) => {
   const createType = useCreateIncomeExpenseType();
-  const [blocked,setBlocked]=useState(false);
   const busy=useRef(false);
   const { data: perms } = useMyPermissions();
   // Chỉ người có quyền xem/sửa hạng mục hạn chế mới được đánh dấu "hạn chế".
@@ -75,7 +74,7 @@ const IncomeExpenseTypeForm = ({
   const categoriesQuery=useIncomeExpenseTypeCategories(form.watch('type'));
   const sourceBlocked=categoriesQuery.isLoading || categoriesQuery.isError;
   useEffect(() => {
-    if(form.formState.isDirty || form.formState.errors.root?.server || blocked) return;
+    if(form.formState.isDirty || form.formState.errors.root?.server) return;
     form.reset({
       name: '',
       type: defaultType ?? undefined,
@@ -89,7 +88,7 @@ const IncomeExpenseTypeForm = ({
   }, [defaultType, form]);
 
   const onSubmit = async (data: IncomeExpenseTypeFormValues) => {
-    if(blocked || busy.current || createType.isPending || sourceBlocked) return;
+    if(busy.current || createType.isPending || sourceBlocked) return;
     busy.current=true;
     form.clearErrors('root.server');
     try {
@@ -107,7 +106,7 @@ const IncomeExpenseTypeForm = ({
       form.reset();
       onCreated?.(result as unknown as IncomeExpenseType);
     } catch(error) {
-      setBlocked(recordWriteBlocked(error));
+      // Không khoá form (đợt 4): tên loại là duy nhất trong công ty, bấm lại tự đối chiếu theo tên.
       form.setError('root.server',{type:'server',message:recordWriteMessage(error,'tạo loại thu chi')});
     } finally {busy.current=false;}
   };
@@ -117,7 +116,7 @@ const IncomeExpenseTypeForm = ({
       <form onSubmit={form.handleSubmit(onSubmit,errors=>{void focusFirstError(errors);})} className="space-y-3">
         {form.formState.errors.root?.server?.message && <p role="alert" className="text-destructive">{form.formState.errors.root.server.message}</p>}
         {sourceBlocked && <div role="alert">Chưa tải đủ nhóm loại thu chi. <Button type="button" variant="outline" onClick={()=>{void categoriesQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
-        <fieldset disabled={createType.isPending || blocked || sourceBlocked} className="space-y-3">
+        <fieldset disabled={createType.isPending || sourceBlocked} className="space-y-3">
         <FormField
           control={form.control}
           name="name"
@@ -252,7 +251,7 @@ const IncomeExpenseTypeForm = ({
               Huỷ
             </Button>
           )}
-          <Button type="submit" size="sm" disabled={createType.isPending || blocked || sourceBlocked}>
+          <Button type="submit" size="sm" disabled={createType.isPending || sourceBlocked}>
             {createType.isPending ? 'Đang lưu...' : 'Lưu'}
           </Button>
         </div>

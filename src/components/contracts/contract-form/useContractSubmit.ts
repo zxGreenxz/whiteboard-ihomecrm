@@ -24,12 +24,15 @@ import {workflowErrorMessage} from '@/lib/financialWorkflow';
 import { supportPlanInputSchema } from '@/lib/rentSupport';
 import type { ContractFormState } from "./useContractFormState";
 import { hasCommissionBasisChange, isCommissionReasonValid, COMMISSION_REASON_MESSAGE } from '@/lib/commissionAudit';
+import { openCommissionUnlessExitLinked } from './exitLinkedCommission';
 
 interface UseContractSubmitParams {
   state: ContractFormState;
   formRoot?:()=>HTMLElement|null;
   contract?: ContractWithRelations;
   commissionChangeReason?: string;
+  /** Tổ chức đang chọn: đọc hợp đồng vừa tạo đã tự nối với hồ sơ trả phòng trước hạn chưa. */
+  organizationId?: string | null;
   onOpenChange: (open: boolean) => void;
   /** Gọi sau khi TẠO HĐ thành công (không gọi ở edit mode). */
   onCreated?: (contractId: string) => void;
@@ -40,7 +43,7 @@ interface UseContractSubmitParams {
 export function isStaleOrphanDepositError(error: unknown) {
   const message = error instanceof Error ? error.message : String((error as { message?: unknown } | null)?.message ?? "");
   const normalized = message.toLocaleLowerCase("vi");
-  return normalized.includes("phiếu cọc") && (
+  return normalized.includes("tải lại cọc của phòng") || normalized.includes("chưa đủ điều kiện ghi nhận tiền") || normalized.includes("phiếu cọc") && (
     normalized.includes("đã xử lý bỏ cọc") || normalized.includes("đã được dùng") ||
     normalized.includes("đã gắn hợp đồng") || normalized.includes("không còn")
   );
@@ -60,6 +63,7 @@ export function useContractSubmit({
   formRoot,
   contract,
   commissionChangeReason,
+  organizationId,
   onOpenChange,
   onCreated,
   onCreateRequest,
@@ -100,6 +104,14 @@ export function useContractSubmit({
       const labels = state.sourceIssues.map(issue => issue.label).join(', ');
       form.setError('root.server', { type: 'server', message: `Chưa tải được ${labels}. Tải lại nguồn trước khi lưu hợp đồng.` });
       toast.error('Chưa thể lưu hợp đồng', { description: `Cần tải lại ${labels} để đối chiếu dữ liệu.` });
+      return;
+    }
+    const blockedVoucher = !isEditMode && orphanDepositVouchers?.find(voucher => !voucher.received || voucher.outsideWindow);
+    if (blockedVoucher) {
+      const reason = blockedVoucher.outsideWindow ? 'nằm ngoài kỳ nhận cọc của hợp đồng' : 'chưa đủ điều kiện ghi nhận tiền';
+      const message = `Phiếu cọc ${blockedVoucher.code ?? blockedVoucher.id} ${reason}.`;
+      form.setError('root.server', {type:'validation', message});
+      toast.error('Chưa thể ký hợp đồng', {description:message});
       return;
     }
     const recoveringEdit=isEditMode&&!!partialSyncRef?.current;
@@ -239,7 +251,15 @@ export function useContractSubmit({
         return;
       }
 
-      const depositPaidValue = typedDepositTotal + approvedOrphanTotal;
+      // Khách cũ hỗ trợ khách mới (sang nhượng phòng): tính như cọc đã nộp; máy chủ ghi cặp phiếu chuyển cọc và kiểm lại trần.
+      const exitSupportAmount = state.exitSupport?.applied ?? 0;
+      if (exitSupportAmount > 0 && state.exitSupport?.issue) {
+        form.setError('transfer_support_amount' as never, { type: 'manual', message: state.exitSupport.issue });
+        focusField('transfer_support_amount');
+        toast.error('Không thể lưu hợp đồng', { description: state.exitSupport.issue });
+        return;
+      }
+      const depositPaidValue = typedDepositTotal + approvedOrphanTotal + exitSupportAmount;
       const depositBalance = calculateContractDepositBalance(
         data.total_deposit || 0,
         depositPaidValue,
@@ -396,9 +416,12 @@ export function useContractSubmit({
             received_date: row.received_date || data.signed_date,
             attachments: [...row.images],
           })),
+        expected_room_deposit_amount: approvedOrphanTotal,
+        ...(state.roomHold ? {reservation_id: state.roomHold.id, reservation_revision: state.roomHold.revision} : {}),
         existing_deposit_voucher_ids: orphanDepositVouchers
-          .filter((voucher) => voucher.approval_status === "APPROVED")
+          .filter((voucher) => voucher.received && !voucher.outsideWindow)
           .map((voucher) => voucher.id),
+        ...(exitSupportAmount > 0 ? { transfer_support_amount: exitSupportAmount } : {}),
         first_invoice:
           firstInvoiceItems.length > 0
             ? {
@@ -432,7 +455,8 @@ export function useContractSubmit({
             onOpenChange(false);
             if (contract?.id) {
               onCreated?.(contract.id);
-              setCommissionContractId(contract.id);
+              // Khách nhận của ca nhờ sale / tự tìm: không mở hộp hoa hồng chung (xem exitLinkedCommission).
+              void openCommissionUnlessExitLinked({ contractId: contract.id, organizationId, openCommission: setCommissionContractId });
             }
           },
           onError: async (error) => {

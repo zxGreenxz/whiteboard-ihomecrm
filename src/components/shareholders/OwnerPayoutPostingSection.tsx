@@ -49,7 +49,7 @@ export function OwnerPayoutPostingSection({
       {step === null ? (
         <p role="status" className={NOTE} data-testid="owner-payout-create-only">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>Bạn chưa có quyền duyệt thu chi: hộp chỉ lập phiếu CHỜ DUYỆT — chủ khác duyệt ở Chờ duyệt.</span>
+          <span>Bạn chưa có quyền duyệt thu chi: hộp chỉ lập phiếu CHỜ DUYỆT — người có quyền duyệt sẽ duyệt ở Thu chi.</span>
         </p>
       ) : posting.cashbooksError && !created ? (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
@@ -115,8 +115,8 @@ export function OwnerPayoutPostingSection({
               {stepFailure.kind === 'RECONCILE'
                 ? 'Chưa rõ kết quả bước này — đóng hộp, mở phiếu ở Thu chi kiểm tra trạng thái trước khi làm tiếp.'
                 : stepFailure.kind === 'BLOCKED'
-                  ? 'Làm tiếp ở hộp này vẫn sẽ bị từ chối. Phiếu vẫn nằm ở Chờ duyệt — người có quyền duyệt (và giữ sổ của phiếu) xử lý ở Chờ duyệt / Thu chi.'
-                  : `Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để thử lại cho đúng phiếu này (không lập phiếu mới). Phiếu cũng xử lý được ở Chờ duyệt / Thu chi.`}
+                  ? 'Làm tiếp ở hộp này vẫn sẽ bị từ chối. Phiếu vẫn nằm ở Chờ duyệt — người có quyền duyệt (và giữ sổ của phiếu) xử lý ở Thu chi.'
+                  : `Bấm “${OWNER_PAYOUT_RESUME_LABEL}” để thử lại cho đúng phiếu này (không lập phiếu mới). Phiếu cũng xử lý được ở Thu chi.`}
             </p>
           </div>
         </div>

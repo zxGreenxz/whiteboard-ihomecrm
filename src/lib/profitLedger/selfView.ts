@@ -6,6 +6,12 @@ import type { MyLedgerMonth, MyLedgerPayout, MyProfitLedger } from './ledgerRead
 import { sameMoney } from './readPrimitives';
 import { profitLedgerRouteState } from './route';
 
+/** The payment run in January belongs to the previous December. */
+export function adjacentPeriod(date: string, delta: number): string {
+  const index = Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7)) - 1 + delta;
+  return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}-01`;
+}
+
 /** Năm của kỳ 'YYYY-MM-01'. */
 export const periodYear = (period: string): number => Number(period.slice(0, 4));
 /** Tháng (1..12) của kỳ 'YYYY-MM-01'. */
@@ -28,6 +34,7 @@ export function shareholderOrganizationId(row: unknown): string | null {
 export function ledgerYears(ledger: MyProfitLedger, currentYear: number): number[] {
   const years = new Set<number>([currentYear]);
   for (const m of ledger.months) years.add(periodYear(m.period_month));
+  for (const receipt of ledger.historical_advances ?? []) years.add(periodYear(receipt.period_month));
   for (const s of ledger.salary) years.add(periodYear(s.period_month));
   for (const p of ledger.payouts) if (p.voucher_date) {
     years.add(periodYear(p.voucher_date));

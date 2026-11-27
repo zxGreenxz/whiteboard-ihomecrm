@@ -2,7 +2,6 @@ import { QueryRegion, type RegionQuery } from "@/components/errors/QueryRegion";
 import { LoadingState, RefreshBar } from "@/components/loading/LoadingState";
 import { focusFirstError } from "@/lib/formErrors";
 import { profitActionErrorMessage } from "@/lib/profitFeedback";
-import { FinancialWorkflowError } from "@/lib/financialWorkflow";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -349,6 +348,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     () => (state?.rows ?? []).map((row): ProfitLockDisplayRow => ({
       building_id: row.building_id,
       building_name: row.building_name,
+      house_pool_amount: row.house_pool_amount,
       revenue: row.source_revenue,
       expense: row.source_expense,
       computed_profit: row.computed_profit,
@@ -574,10 +574,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   };
   const regionSources: RegionQuery[] = [...querySources, closingStatusFirstLoad];
   const sourceUnavailable = querySources.some(query=>query.isError);
-  // Chỉ khoá nút khi lượt trước có kết quả CHƯA RÕ (unknown/partial — cần đối chiếu). 'failure'
-  // là bị từ chối chắc chắn, chưa ghi gì: chính FinancialWorkflowGuard cho thử lại, nên màn
-  // không được khoá cứng tới khi tải lại trang.
-  const actionBlocked = [closeMutation,resetMutation,unlockMutation].some(mutation=>mutation.error instanceof FinancialWorkflowError && mutation.error.outcome !== 'failure' && mutation.variables?.organizationId === organizationId && mutation.variables?.periodMonth === period);
+  // Đợt 6: chốt, chốt lại, mở khoá và đặt lại tự đối chiếu ở lần bấm sau (gửi lại đúng mã của lần chưa rõ kết quả, máy chủ
+  // trả kết quả cũ), nên kết quả CHƯA RÕ không còn khoá nút tới khi tải lại trang; câu báo của lượt trước vẫn hiện.
   // Preview đang là số của lượt điều chỉnh trước (đang tính lại, hoặc mất mạng ⇒ fetch 'paused'
   // nên isFetching=false): không cho mở/ xác nhận chốt trên số cũ.
   const previewStale = canLock && Boolean(previewQuery.isPlaceholderData);
@@ -797,7 +795,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     focusCloseRows(errors);
   };
   const openCloseConfirmation = () => {
-    if(sourceUnavailable || actionBlocked) return;
+    if(sourceUnavailable) return;
     setCloseAttemptScope(scopeKey);
     setActionError('');
     if (closeAction === "EMPTY") {
@@ -843,7 +841,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   };
 
   const confirmClose = async () => {
-    if (!preview || sourceUnavailable || actionBlocked) return;
+    if (!preview || sourceUnavailable) return;
     // Lưới mềm F20: đang dò thì chờ; còn cảnh báo thì phải tick "đã xem" (không chặn cứng).
     if (precheck.blocksConfirm || !precheckAcked) return;
     // D2.11: chốt lại tháng đã trả qua lương — chờ kiểm xong + tick "tôi hiểu".
@@ -885,7 +883,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   };
 
   const confirmReset = async () => {
-    if (!resetGuard || sourceUnavailable || actionBlocked || impactBlocks) return;
+    if (!resetGuard || sourceUnavailable || impactBlocks) return;
     if(!resetReasonValid){setReasonErrors({resetReason:resetReasonProblem==='SYSTEM_MESSAGE'?RESET_REASON_SYSTEM_MESSAGE:'Nhập lý do đặt lại từ 8 đến 1000 ký tự.'});await focusFirstError({resetReason:'invalid'});return;}
     setReasonErrors({}); setActionError('');
     try {
@@ -929,7 +927,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   };
 
   const confirmUnlock = async () => {
-    if (!unlockGuard || sourceUnavailable || actionBlocked || impactBlocks) return;
+    if (!unlockGuard || sourceUnavailable || impactBlocks) return;
     if(!unlockReasonValid){setReasonErrors({unlockReason:unlockReasonProblem==='SYSTEM_MESSAGE'?UNLOCK_REASON_SYSTEM_MESSAGE:'Nhập lý do mở khóa từ 8 đến 1000 ký tự.'});await focusFirstError({unlockReason:'invalid'});return;}
     setReasonErrors({}); setActionError('');
     try {
@@ -1155,7 +1153,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               className="ph-btn-primary"
               onClick={openCloseConfirmation}
               disabled={
-                sourceUnavailable || actionBlocked || dataLoading ||
+                sourceUnavailable || dataLoading ||
                 previewQuery.isFetching ||
                 previewStale ||
                 stateQuery.isFetching ||
@@ -1195,7 +1193,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               disabled={
                 unlockMutation.isPending ||
                 resetMutation.isPending ||
-                closeMutation.isPending || actionBlocked || sourceUnavailable ||
+                closeMutation.isPending || sourceUnavailable ||
                 previewStale ||
                 selectedLockedIds.length === 0
               }
@@ -1672,6 +1670,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                       </TableCell>
                       <TableCell className="align-top text-right font-medium tabular-nums">
                         {formatCurrency(row.shareholder_allocated_amount)}
+                        {row.house_pool_amount !== undefined && (
+                          <p className="text-xs text-muted-foreground">Góp quỹ chung {formatCurrency(row.house_pool_amount)}</p>
+                        )}
                       </TableCell>
                       <TableCell className="align-top">
                         <div className="space-y-2">
@@ -1988,7 +1989,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             <AlertDialogAction
               onClick={(event)=>{event.preventDefault();void confirmClose();}}
               disabled={
-                closeMutation.isPending || actionBlocked || sourceUnavailable ||
+                closeMutation.isPending || sourceUnavailable ||
                 previewInputPending ||
                 previewQuery.isFetching ||
                 previewStale ||
@@ -2054,7 +2055,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             <AlertDialogCancel disabled={resetMutation.isPending}>Huỷ</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event)=>{event.preventDefault();void confirmReset();}}
-              disabled={resetMutation.isPending || actionBlocked || sourceUnavailable || impactBlocks}
+              disabled={resetMutation.isPending || sourceUnavailable || impactBlocks}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {resetMutation.isPending
@@ -2133,7 +2134,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 event.preventDefault();
                 void confirmUnlock();
               }}
-              disabled={unlockMutation.isPending || actionBlocked || sourceUnavailable || impactBlocks}
+              disabled={unlockMutation.isPending || sourceUnavailable || impactBlocks}
             >
               {unlockMutation.isPending
                 ? "Đang mở khoá…"

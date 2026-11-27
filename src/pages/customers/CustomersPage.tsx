@@ -1,4 +1,4 @@
-import {importCustomerBatch} from '@/lib/customerImportOutcome';
+import {importCustomerBatch,type CustomerImportReport} from '@/lib/customerImportOutcome';
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users } from 'lucide-react';
@@ -58,12 +58,7 @@ function CustomersDesktopPage() {
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importResultOpen, setImportResultOpen] = useState(false);
-  const [importResult, setImportResult] = useState<{
-    successRows: { name: string; id: string }[];
-    partialRows: { name: string; id: string; reason: string }[];
-    unknownRows: { name: string; reason: string }[];
-    failRows: { name: string; reason: string }[];
-  } | null>(null);
+  const [importResult, setImportResult] = useState<CustomerImportReport | null>(null);
 
   // Pagination
   const { page, pageSize, setPage, setPageSize } = usePagination(20);
@@ -171,10 +166,12 @@ function CustomersDesktopPage() {
     setImportDialogOpen(true);
   }, []);
 
-  const handleImportConfirm = useCallback(async (rows: CustomerImportRow[]) => {
-    await importCustomerBatch(rows,{
+  // Trả các dòng cần nhập lại (chưa rõ kết quả, chưa gửi) để hộp nhập giữ đúng các dòng đó cùng mã khách của từng dòng.
+  const handleImportConfirm = useCallback(async (rows: CustomerImportRow[]): Promise<CustomerImportRow[]> => {
+    const report = await importCustomerBatch(rows,{
       create:async(row)=>{
         const created = await createCustomer.mutateAsync({
+          clientId: row.client_id,
           customer_type: 'INDIVIDUAL',
           full_name: row.full_name,
           phone: row.phone,
@@ -190,10 +187,11 @@ function CustomersDesktopPage() {
           contact_person_phone: row.contact_person_phone,
           is_foreign: !!(row.nationality && row.nationality.toLowerCase() !== 'việt nam' && row.nationality.toLowerCase() !== 'viet nam'),
         });
-        return created?.customer?.id ?? '';
+        return { id: created?.customer?.id ?? '', replayed: created?.replayed };
       },
       uploadImages:uploadIdImagesFromUrls,
     },result=>{setImportResult(result);setImportResultOpen(true);});
+    return report.retryRows;
   }, [createCustomer]);
 
   const handlePrint = useCallback(() => {
@@ -357,11 +355,24 @@ function CustomersDesktopPage() {
                       <span className="text-sm font-medium">{importResult.unknownRows.length} chưa xác nhận</span>
                     </div>
                   )}
+                  {importResult.skippedRows.length > 0 && (
+                    <div className="flex items-center gap-2 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex-1">
+                      <AlertTriangle className="h-5 w-5 shrink-0" />
+                      <span className="text-sm font-medium">{importResult.skippedRows.length} bỏ qua vì đã có hoặc có thể đã có</span>
+                    </div>
+                  )}
                 </div>
 
                 {importResult.unknownRows.length > 0 && <div role="alert" className="rounded-md border border-amber-200 p-3 text-sm">
-                  <p className="font-medium">Chưa xác nhận được các dòng sau; tải lại danh sách khách để đối chiếu trước khi nhập lại.</p>
+                  <p className="font-medium">Chưa xác nhận được các dòng sau. Bấm «Nhập lại» trong hộp nhập để gửi lại đúng các dòng chưa xong: mỗi dòng giữ mã khách riêng nên dòng nào lần trước đã tạo sẽ không bị tạo trùng.</p>
                   {importResult.unknownRows.map((row, index) => <p key={`${row.name}-${index}`}>{row.name}: {row.reason}</p>)}
+                </div>}
+
+                {importResult.skippedRows.length > 0 && <div role="alert" className="rounded-md border border-amber-200 divide-y divide-amber-100">
+                  {importResult.skippedRows.map((row, index) => <div key={`${row.id}-${index}`} className="px-3 py-2 text-sm">
+                    <p className="font-medium">{row.name}{row.id ? ` · ID ${row.id}` : ''}</p>
+                    <p className="text-amber-800">{row.reason}</p>
+                  </div>)}
                 </div>}
 
                 {importResult.partialRows.length > 0 && <div role="alert" className="rounded-md border border-amber-200 divide-y divide-amber-100">

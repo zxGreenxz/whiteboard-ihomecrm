@@ -39,7 +39,8 @@ export type DepositTaskKind =
   /** Đã duyệt nhưng chưa xác nhận tiền thực nhận, hoặc chưa đủ cọc. */
   | "PENDING_RECEIPT"
   /** Phiếu giữ chỗ chờ duyệt. */
-  | "PENDING_APPROVAL";
+  | "PENDING_APPROVAL"
+  | "RECONCILE";
 
 export type DepositTaskTone = "danger" | "warn" | "ok" | "pending";
 
@@ -89,6 +90,7 @@ const GROUP_META: Record<DepositTaskKind, { label: string; tone: DepositTaskTone
   TOPUP_DUE_SOON: { label: "SẮP ĐẾN HẠN", tone: "warn" },
   HOLD_READY: { label: "GIỮ CHỖ SẴN SÀNG KÝ HĐ", tone: "ok" },
   PENDING_RECEIPT: { label: "CHƯA XÁC NHẬN ĐỦ TIỀN CỌC", tone: "pending" },
+  RECONCILE: {label:"PHIẾU CỌC CẦN ĐỐI CHIẾU ĐỢT GIỮ CHỖ",tone:"warn"},
   PENDING_APPROVAL: { label: "CHỜ DUYỆT", tone: "pending" },
 };
 
@@ -107,7 +109,7 @@ const GROUP_ORDER: DepositTaskKind[] = [
   "TOPUP_DUE_SOON",
   "HOLD_READY",
   "PENDING_RECEIPT",
-  "PENDING_APPROVAL",
+  "PENDING_APPROVAL", "RECONCILE",
 ];
 
 export interface BuildWorkQueueInput {
@@ -126,6 +128,7 @@ export interface BuildWorkQueueInput {
    */
   holdTerms?: Readonly<Record<string, ReservationHoldTerms>>;
   dueSoonDays?: number;
+  flagUnlinked?: boolean;
 }
 
 /** Kỳ hạn của một phiếu giữ chỗ (khớp `useReservationHoldDeadlines`). */
@@ -235,6 +238,8 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
       kind = "PENDING_APPROVAL";
       dueDate = null;
       daysToDue = null;
+    } else if (input.flagUnlinked && !v.reservation_id && paid>0 && !unknownReservations.has(identity(v))) {
+      kind="RECONCILE"; dueDate=holdUntil; daysToDue=holdDays;
     } else if (conThieu && topupDays !== null && topupDays < 0) {
       kind = "RESV_TOPUP_OVERDUE";
       dueDate = topupDue;
@@ -315,4 +320,24 @@ export function formatMoneyShort(amount: number | null | undefined): string {
   if (abs >= 1_000_000) return cut(abs / 1_000_000, "tr");
   if (abs >= 1_000) return cut(abs / 1_000, "k");
   return `${sign}${Math.round(abs)}`;
+}
+
+
+/** One open hold can contain several income vouchers, including pending ones. */
+export function summarizeOpenHolds(rows: readonly ReservationDepositRow[]) {
+  const holds = new Map<string, { paid: number; ready: boolean }>();
+  let paid = 0;
+  for (const row of new Map(rows.map(row => [row.id, row])).values()) {
+    if (row.approval_status === 'CANCELLED' || row.settlement_status === 'SETTLED') continue;
+    const verified = row.approval_status === 'APPROVED' && row.received_fact_status === 'VERIFIED'
+      && Number.isSafeInteger(row.received_amount) && Number(row.received_amount) > 0;
+    const amount = verified ? Number(row.received_amount) : 0;
+    paid += amount;
+    if (!row.reservation_id) continue;
+    const hold = holds.get(row.reservation_id) ?? { paid: 0, ready: true };
+    hold.paid += amount;
+    hold.ready &&= verified;
+    holds.set(row.reservation_id, hold);
+  }
+  return { paid, count: holds.size, ready: [...holds.values()].filter(h => h.ready && h.paid > 0).length };
 }

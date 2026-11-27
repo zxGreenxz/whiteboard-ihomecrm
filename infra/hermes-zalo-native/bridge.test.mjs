@@ -11,12 +11,12 @@ const channel = { accountId: '11111111-1111-4111-8111-111111111111', ownUid: '10
   profile: 'personal-fixture', generation: '22222222-2222-4222-8222-222222222222', token: 'hzn_' + 'a'.repeat(64) };
 const event = (id = 'm1') => ({ type: 0, isSelf: false, threadId: '200', data: {
   uidFrom: '200', idTo: '100', msgType: 'webchat', msgId: id, content: 'Native personal request', ts: Date.now() } });
-async function fixture(t, { config: supplied, provider, timeout, maxProviderPending, onFault = () => {} } = {}) {
+async function fixture(t, { config: supplied, profile = channel.profile, authorizeBinding, provider, timeout, maxProviderPending, onFault = () => {} } = {}) {
   const root = supplied?.stateRoot || fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-native-'));
-  const config = supplied || { stateRoot: root, channels: [channel] };
+  const config = supplied || { stateRoot: root, channels: [{ ...channel, profile }] };
   const sent = [];
   let active = true;
-  const bridge = createNativeBridge({ config, providerTimeoutMs: timeout || 100, maxProviderPending, onFault });
+  const bridge = createNativeBridge({ config, authorizeBinding, providerTimeoutMs: timeout || 100, maxProviderPending, onFault });
   const api = { sendMessage: async (...args) => {
     sent.push(args); return provider ? provider(...args) : { message: { msgId: 987654 }, attachment: [] };
   } };
@@ -44,6 +44,21 @@ test('native private DM and fixed paired reply work without CRM clients or a mod
   assert.equal((await f.request('/v1/ack', { generation: channel.generation, eventId: inbound.data.event.id, status: 'accepted' })).data.status, 'accepted');
   assert.equal((await f.send()).data.status, 'sent');
   assert.deepEqual(f.sent, [[{ msg: 'Native response' }, '200', 0]]);
+  assert.equal((await f.receive()).data.status, 'empty');
+});
+
+test('managed channels consult CRM for each incoming and outgoing DM, including pending delivery', async t => {
+  let permitted = true;
+  const f = await fixture(t, { profile: 'nv-123', authorizeBinding: async () => permitted });
+  await f.session.capture(event('before'));
+  assert.equal((await f.send('before')).data.status, 'sent');
+  permitted = false;
+  assert.equal(await f.session.capture(event('revoked')), true);
+  assert.equal((await f.receive()).data.status, 'unavailable');
+  assert.equal((await f.send('after')).data.status, 'unavailable');
+  assert.equal(f.sent.length, 1);
+  permitted = true;
+  assert.equal((await f.receive()).data.event.messageId, 'before');
   assert.equal((await f.receive()).data.status, 'empty');
 });
 

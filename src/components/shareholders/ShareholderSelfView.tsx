@@ -1,4 +1,5 @@
 import type { Shareholder } from "@/hooks/useShareholders";
+import { ShareholderFinanceOverview } from "./ShareholderFinanceOverview";
 import { useMyProfitLedger } from "@/hooks/profit-ledger/useProfitLedgerQueries";
 import { shareholderOrganizationId } from "@/lib/profitLedger/selfView";
 import { MyProfitLedgerGate, ProfitLedgerOffNotice } from "./MyProfitLedgerGate";
@@ -26,7 +27,9 @@ export default function ShareholderSelfView({
     >
       {(ledger) =>
         ledger.ready ? (
-          <ShareholderLedgerSelfView ledger={ledger} access={{ canViewPercent, canViewBuildingTotals, canAdvanceOwn }} />
+          <ShareholderFinanceOverview key={ledger.organization_id+ledger.shareholder.id} ledger={ledger}>
+            <ShareholderLedgerSelfView ledger={ledger} access={{ canViewPercent, canViewBuildingTotals, canAdvanceOwn }} />
+          </ShareholderFinanceOverview>
         ) : (
           <ProfitLedgerOffNotice />
         )

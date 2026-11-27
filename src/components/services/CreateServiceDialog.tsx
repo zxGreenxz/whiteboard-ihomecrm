@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -39,7 +39,7 @@ import {
 } from "@/hooks/useServices";
 import { useBuildings } from "@/hooks/useBuildings";
 import { focusFirstError } from "@/lib/formErrors";
-import { recordWriteBlocked, recordWriteMessage } from "@/lib/recordWriteOutcome";
+import { recordWriteMessage } from "@/lib/recordWriteOutcome";
 
 const serviceSchema = z.object({
   name: z.string().min(1, "Tên dịch vụ là bắt buộc"),
@@ -60,11 +60,11 @@ interface CreateServiceDialogProps {
 }
 
 export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogProps) {
-  const [failure,setFailure]=useState<unknown>();
-  const [blocked,setBlocked]=useState(false);
-  const draftKey=useRef<string|null>(null);
   const createService = useCreateService();
-  const [partialServiceId, setPartialServiceId] = useState<string | null>(null);
+  // Đợt 9 (luật 5): tạo dịch vụ không còn khoá form. Kết quả chưa rõ chỉ báo. Dịch vụ đã tạo mà chưa gán đủ tòa: hộp giữ mã
+  // dịch vụ đó, khoá các ô thông tin dịch vụ (chỉ còn chọn tòa) và gửi kèm mã ở lần Lưu sau để hook gán tiếp trên đúng dịch vụ
+  // đó (đọc lại trước: đã xoá thì tạo mới). Đóng hộp là bỏ qua: quên mã, xoá nội dung (dịch vụ đã tạo vẫn nằm trong danh sách).
+  const [partial, setPartial] = useState<{ id: string; message: string } | null>(null);
   const buildingsQuery=useBuildings();
   const quotasQuery=useServiceQuotas();
   const {data:buildings}=buildingsQuery;
@@ -84,9 +84,10 @@ export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogP
       description: "",
     },
   });
+  useEffect(() => { if (!open && partial) { setPartial(null); form.reset(); } }, [open, partial, form]);
 
   const onSubmit = async (data: ServiceFormValues) => {
-    if (blocked || sourceBlocked || partialServiceId) return;
+    if (sourceBlocked || createService.isPending) return;
     form.clearErrors('root.server');
     try {
       await createService.mutateAsync({
@@ -99,13 +100,14 @@ export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogP
         type: "FIXED", // backward compat default
         description: data.description || null,
         building_ids: data.building_ids,
+        ...(partial ? { continueId: partial.id } : {}),
       });
+      setPartial(null);
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);setBlocked(recordWriteBlocked(error) || error instanceof ServiceLinksPartialError);
       if (error instanceof ServiceLinksPartialError) {
-        setPartialServiceId(error.serviceId);
+        setPartial({ id: error.serviceId, message: error.message });
       } else {
         form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo dịch vụ') });
       }
@@ -124,13 +126,12 @@ export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogP
         <ScrollArea className="max-h-[calc(90vh-100px)] pr-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
-              {partialServiceId && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
-                Dịch vụ đã tạo với ID {partialServiceId}, nhưng chưa gán đủ tòa. Đóng biểu mẫu, mở dịch vụ này trong danh sách để kiểm tra; không tạo lại.
-              </div>}
+              {partial && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">{partial.message} Thông tin dịch vụ đã khoá cho tới khi gán xong tòa; đóng hộp để bỏ qua (dịch vụ đã tạo vẫn nằm trong danh sách).</div>}
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
               {/* Tên dịch vụ */}
               {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ tòa hoặc định mức. Tải lại trước khi lưu dịch vụ.<Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void quotasQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
-              <fieldset disabled={blocked || sourceBlocked || form.formState.isSubmitting} className="space-y-4">
+              <fieldset disabled={sourceBlocked || form.formState.isSubmitting} className="space-y-4">
+              <fieldset disabled={!!partial} className="space-y-4">
               <FormField
                 control={form.control}
                 name="name"
@@ -261,6 +262,7 @@ export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogP
                   </FormItem>
                 )}
               />
+              </fieldset>
 
               {/* Tòa nhà sử dụng */}
               <FormField
@@ -297,6 +299,7 @@ export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogP
               />
 
               {/* Mô tả */}
+              <fieldset disabled={!!partial}>
               <FormField
                 control={form.control}
                 name="description"
@@ -310,13 +313,14 @@ export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogP
                   </FormItem>
                 )}
               />
+              </fieldset>
 
               </fieldset>
               <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   Hủy
                 </Button>
-                <Button type="submit" disabled={blocked || sourceBlocked || form.formState.isSubmitting || createService.isPending || !!partialServiceId}>
+                <Button type="submit" disabled={sourceBlocked || form.formState.isSubmitting || createService.isPending}>
                   {createService.isPending ? "Đang lưu..." : "Lưu"}
                 </Button>
               </div>

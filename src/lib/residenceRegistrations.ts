@@ -82,15 +82,16 @@ export async function ghiHoSoTamTru(input: GhiHoSoInput): Promise<ResidenceRegis
       ? 'Mã này đã ghi là hồ sơ huỷ tạm trú, không ghi thành hồ sơ đăng ký được.'
       : 'Mã này đã ghi là hồ sơ đăng ký tạm trú, không ghi thành hồ sơ huỷ được.');
   }
-  // Load the feedback receipt coordinator only when saving; the guard still precedes every writer.
-  const { persistentFinancialWorkflow } = await import('./persistentFinancialWorkflow');
-  return persistentFinancialWorkflow('residence-registration-save', {scope:'target'}).run(input.submCode.trim(), 'lưu mã hồ sơ tạm trú', async (progress) => {
+  // Đợt 7 (luật 5, cách A): ghi theo mã hồ sơ, không phải tiền. Upsert theo khoá duy nhất (công ty, mã hồ sơ) nên lưu lại
+  // bao nhiêu lần cũng chỉ một dòng, không giữ dấu «chờ đối chiếu» nào. Dấu bản trước của đúng mã này (namespace
+  // `residence-registration-save`, phạm vi công ty đích) được đọc một lần rồi gỡ sau khi lưu xong.
+  const code = input.submCode.trim();
   const { data, error } = await supabase.from('residence_registrations').upsert({
     organization_id: input.organizationId,
     building_id: input.buildingId,
     customer_id: input.customerId,
     contract_id: input.contractId ?? null,
-    subm_code: input.submCode.trim(),
+    subm_code: code,
     procedure_code: procedure,
     receive_org: (input.receiveOrg ?? '').slice(0, 200),
     temp_resident_from: ngayIso(input.tempResidentFrom),
@@ -102,19 +103,15 @@ export async function ghiHoSoTamTru(input: GhiHoSoInput): Promise<ResidenceRegis
     if (error.code === '42501') throw new FinancialWorkflowError('Bạn không có quyền ghi hồ sơ tạm trú của khách này.', 'failure', [], error);
     throw error;
   }
-  const ids = data?.id ? [{id:data.id,label:'Mã hồ sơ tạm trú cần đối chiếu'}] : [];
   if (!matches(data)) {
-    throw new FinancialWorkflowError('Chưa xác nhận được mã hồ sơ tạm trú đã lưu. Giữ mã đang nhập và đối chiếu lịch sử trước khi gửi lại.', 'unknown', ids);
+    // Không giữ dấu nào: lần lưu sau ghi đè đúng dòng của mã này.
+    throw new FinancialWorkflowError('Chưa xác nhận được mã hồ sơ tạm trú đã lưu. Bấm lưu lại: hồ sơ ghi theo mã nên lưu lại không tạo dòng mới.', 'unknown', data?.id ? [{ id: data.id, label: 'Mã hồ sơ tạm trú vừa ghi' }] : []);
   }
-  progress.completed.push(...ids);
+  try {
+    const { settleLegacyPending } = await import('./legacyPendingExit');
+    await settleLegacyPending({ namespace: 'residence-registration-save', businessKey: code }, async () => true, { organizationId: input.organizationId });
+  } catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
   return data as ResidenceRegistration;
-  }, async (pending) => {
-    const {data,error} = await supabase.from('residence_registrations').select(COLUMNS)
-      .eq('organization_id',input.organizationId).eq('subm_code',input.submCode.trim()).is('deleted_at',null).maybeSingle();
-    if (error) throw error;
-    if (!matches(data) || (pending.completedIds.length > 0 && !pending.completedIds.includes(data.id))) return null;
-    return {result:data as ResidenceRegistration};
-  }, input.organizationId);
 }
 
 /** yyyy-mm-dd hoặc ISO → dd/mm/yyyy để hiện lên giao diện. */

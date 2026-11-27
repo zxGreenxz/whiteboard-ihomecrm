@@ -33,8 +33,14 @@ async function installLiveSaleReader() {
   for (const name of ['app_private.room_sale_policy_json_v1', 'app_private.room_sale_policy_current_v1',
     'app_private.room_sale_policy_active_text_v1', 'app_private.room_sale_policy_overlay_v1',
     'public.get_my_available_rooms']) {
+    // Bản sống nhận p_organization_id (đợt 2 Sale phòng); file cũ tạo lại bản () ⇒ bỏ để lời gọi không mơ hồ.
+    if (name === 'public.get_my_available_rooms') await db.exec('DROP FUNCTION IF EXISTS public.get_my_available_rooms()');
     await db.exec(liveDefinitionOf(name).sql);
   }
+  // Đo định nghĩa SỐNG: «Phòng trống» theo công ty (đợt 2 Sale phòng). Bản () trong các file lịch sử chỉ để chúng chạy lại.
+  expect('supabase/migrations/' + liveDefinitionOf('public.get_my_available_rooms').file)
+    // Đợt 3 Sale phòng: bản sống thêm khoá deposit_hold (khối «đang giữ bằng cọc», đo ở cocThuChiMigration.test.ts).
+    .toBe('supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql');
 }
 
 const db = new PGlite();
@@ -80,7 +86,7 @@ beforeAll(async () => {
       expected_move_out_date date,end_date date,actual_end_date date,deleted_at timestamptz,customer_name text);
     CREATE TABLE public.room_turnovers(id uuid,organization_id uuid,room_id uuid,status text,expected_ready_on date,epoch integer,source_contract_id uuid);
     CREATE TABLE public.room_pass_listings(id uuid,room_id uuid,user_id uuid,active boolean,contact_manager boolean,
-      contact_name text,contact_phone text,sale_policy text,pass_price numeric,avail_date date);
+      contact_name text,contact_phone text,sale_policy text,pass_price numeric,avail_date date,organization_id uuid DEFAULT '${org}');
     CREATE TABLE public.holds(room_id uuid);
     CREATE TABLE public.room_next_claims(organization_id uuid,room_id uuid,status text);
     CREATE TABLE public.money(id integer PRIMARY KEY,amount numeric);
@@ -91,15 +97,24 @@ beforeAll(async () => {
     CREATE TABLE public.services(id uuid,unit text,unit_price numeric,type text,deleted_at timestamptz);
     CREATE TABLE public.hotlines(id uuid,user_id uuid,name text,phone_number text,is_active boolean,created_at timestamptz);
     -- Match existing authenticated reader ACL; replacement must retain it.
+    -- Đợt 2 Sale phòng: «Phòng trống» theo công ty (my_org_ids), lọc toà theo quyền xem, hotline theo người đứng tên chung.
+    CREATE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$ SELECT CASE WHEN auth.uid() IS NULL THEN ARRAY[]::uuid[]
+      ELSE ARRAY(SELECT DISTINCT organization_id FROM public.buildings WHERE organization_id IS NOT NULL ORDER BY 1) END $$;
+    CREATE FUNCTION app_private.sale_room_can_v1(uuid,uuid,text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT auth.uid() IS NOT NULL AND $1=ANY(public.my_org_ids()) $$;
+    CREATE FUNCTION app_private.room_exit_hold_json_v1(uuid,uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
+    CREATE FUNCTION app_private.room_deposit_hold_json_v1(uuid,uuid,boolean) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
+    ${liveDefinitionOf('app_private.org_building_owner_v1').sql}
+    -- Bản () cũ cho các file lịch sử chạy lại (chúng CREATE OR REPLACE bản này và kiểm ACL); installLiveSaleReader bỏ nó.
+    CREATE FUNCTION public.get_my_available_rooms() RETURNS jsonb LANGUAGE sql AS $$ SELECT NULL::jsonb $$;
+    REVOKE ALL ON FUNCTION public.get_my_available_rooms() FROM PUBLIC,anon;GRANT EXECUTE ON FUNCTION public.get_my_available_rooms() TO authenticated;
     ${liveDefinitionOf('public.get_my_available_rooms').sql}
-    REVOKE ALL ON FUNCTION public.get_my_available_rooms() FROM PUBLIC,anon;
-    GRANT EXECUTE ON FUNCTION public.get_my_available_rooms() TO authenticated;
+    REVOKE ALL ON FUNCTION public.get_my_available_rooms(uuid) FROM PUBLIC,anon;
+    GRANT EXECUTE ON FUNCTION public.get_my_available_rooms(uuid) TO authenticated;
     GRANT USAGE ON SCHEMA public,app_private,auth TO anon,authenticated;
     INSERT INTO public.public_room_settings VALUES('${owner}',30,NULL);
     INSERT INTO public.public_room_share_tokens VALUES('${owner}','valid-link',false);
     INSERT INTO public.money VALUES(1,4000000);
     ALTER TABLE public.public_room_settings ADD COLUMN organization_id uuid;
-    ALTER TABLE public.room_pass_listings ADD COLUMN organization_id uuid;
     ALTER TABLE public.areas ADD COLUMN organization_id uuid;
     ALTER TABLE public.area_buildings ADD COLUMN organization_id uuid;
     ALTER TABLE public.hotlines ADD COLUMN organization_id uuid;
@@ -142,6 +157,14 @@ beforeAll(async () => {
   const extraRoomSQL = readFileSync('supabase/migrations/20261120115628_public_room_link_ready_room_v1.sql','utf8');
   await db.exec(extraRoomSQL);
   await db.exec(extraRoomSQL);
+  // Đợt 2 Sale phòng (20261125034429): link, bot, Hermes theo công ty — đo định nghĩa sống của ba hàm đọc.
+  for (const name of ['public.get_public_available_rooms', 'app_private.public_sale_rooms_payload_v1', 'public.hermes_available_rooms_page_v1']) {
+    expect(liveDefinitionOf(name).file).toBe('20261125034429_sale_phong_theo_cong_ty.sql');
+    await db.exec(liveDefinitionOf(name).sql);
+  }
+  await db.exec(`REVOKE ALL ON FUNCTION public.get_public_available_rooms(text) FROM PUBLIC;
+    GRANT EXECUTE ON FUNCTION public.get_public_available_rooms(text) TO anon, authenticated, service_role;
+    REVOKE ALL ON FUNCTION app_private.public_sale_rooms_payload_v1(uuid) FROM PUBLIC,anon,authenticated,service_role;`);
   await db.exec('RESET check_function_bodies');
 }, 20000);
 beforeEach(async () => {
@@ -209,15 +232,22 @@ describe('actual sale reader SQL', () => {
     expect(invalid.rows[0].v).toBeNull();
     await db.exec(`UPDATE public.rooms SET organization_id='${other}';`);
     expect((await read())?.rooms).toEqual([]);
+    // Đợt 2 Sale phòng: link theo CÔNG TY — toà đứng tên người khác trong cùng công ty vẫn lên link.
     await db.exec(`UPDATE public.rooms SET organization_id='${org}';UPDATE public.buildings SET user_id='${other}';`);
-    expect((await read())?.rooms).toEqual([]);
+    expect((await read())?.rooms.map((r) => r.id)).toEqual([room]);
+    await db.exec(`UPDATE public.buildings SET user_id='${owner}';`);
   });
   it('uses room organization day and leaves money plus occupancy unchanged', async () => {
+    // Link chỉ thấy phòng của công ty ghi trên link (đợt 2): chuyển cả link sang công ty kia để đo ngày theo công ty phòng.
     await db.exec(`UPDATE public.buildings SET organization_id='${other}';UPDATE public.rooms SET organization_id='${other}';`);
-    const before = await snapshot();
-    expect(await roomFact()).toMatchObject({ sale_today: '2026-09-29' });
-    await read('app');
-    expect(await snapshot()).toEqual(before);
+    expect(await roomFact()).toBeUndefined();
+    await db.exec(`UPDATE public.public_room_share_tokens SET organization_id='${other}' WHERE token='valid-link';`);
+    try {
+      const before = await snapshot();
+      expect(await roomFact()).toMatchObject({ sale_today: '2026-09-29' });
+      await read('app');
+      expect(await snapshot()).toEqual(before);
+    } finally { await db.exec(`UPDATE public.public_room_share_tokens SET organization_id='${org}' WHERE token='valid-link';`); }
   });
   it('allows token readers for anon but denies the private helper and authenticated RPC', async () => {
     await db.exec(`SELECT set_config('test.actor','',false);SET ROLE anon;`);
@@ -291,7 +321,10 @@ describe('actual sale reader SQL', () => {
   });
   it('hides a pure next-customer hold on every sale channel until explicitly released', async () => {
     await db.exec(`INSERT INTO public.room_next_claims VALUES('${org}','${room}','LIVE');`);
-    for (const kind of ['public', 'app', 'copilot', 'zalo']) expect((await read(kind))?.rooms).toEqual([]);
+    for (const kind of ['public', 'copilot', 'zalo']) expect((await read(kind))?.rooms).toEqual([]);
+    // «Phòng trống» trong app (#499, bản sống ở file đợt 3): phòng đang giữ chỗ vẫn hiện để nhận cọc bổ sung, nhưng là
+    // 'rented' kèm cờ has_deposit_hold — không chào khách.
+    expect((await read('app'))?.rooms).toEqual([expect.objectContaining({ id: room, status_public: 'rented', has_deposit_hold: true })]);
     await db.exec(`UPDATE public.room_next_claims SET status='CANCELLED';`);
     for (const kind of ['public', 'app', 'copilot', 'zalo']) expect(await roomFact(kind)).toMatchObject({ sale_state: 'READY' });
     await db.exec(`UPDATE public.room_next_claims SET status='LIVE',organization_id='${other}';`);
@@ -299,74 +332,52 @@ describe('actual sale reader SQL', () => {
   });
 });
 
-it('publishes just the selected ready room on the selected link and keeps the worker union unique', async () => {
+it('lists every real building of the company on every link, bot and Hermes alike (đợt 2 Sale phòng)', async () => {
   await db.exec('BEGIN');
   try {
     const second = '00000000-0000-4000-8000-000000000044';
-    await db.query('UPDATE public.buildings SET user_id=$1, floor_layouts=$2 WHERE id=$3',[other,JSON.stringify({secret:'private floor'}),building]);
-    await db.query("INSERT INTO public.rooms(id,organization_id,building_id,name,status) VALUES($1,$2,$3,'other room','AVAILABLE')",[second,org,building]);
-    await db.query('INSERT INTO public.public_room_share_tokens(owner_id,token,organization_id,revoked) VALUES($1,$2,$3,false)',[owner,'other-link',org]);
-    expect((await read())?.rooms).toHaveLength(0);
-    const publish = (enabled: boolean) => db.query('SELECT public.set_public_room_link_ready_room_v1($1,$2,$3)', ['valid-link',room,enabled]);
-    await publish(true); await publish(true);
-    expect((await read())?.rooms.map(r=>r.id)).toEqual([room]);
-    expect((await read())?.buildings[0]).toMatchObject({ floor_layouts:null });
+    const ids = (p: Payload | null | undefined) => (p?.rooms ?? []).map(r => String(r.id)).sort();
+    // Toà đứng tên người khác trong CÙNG công ty: trước đây link của chủ không thấy, giờ mọi link của công ty đều thấy.
+    await db.query('UPDATE public.buildings SET user_id=$1, floor_layouts=$2 WHERE id=$3',[other,JSON.stringify({1:{canvasW:1}}),building]);
+    await db.query("INSERT INTO public.rooms(id,organization_id,building_id,floor,name,status) VALUES($1,$2,$3,1,'other room','AVAILABLE')",[second,org,building]);
+    await db.query('INSERT INTO public.public_room_share_tokens(owner_id,token,organization_id,revoked) VALUES($1,$2,$3,false)',[other,'other-link',org]);
+    expect(ids(await read())).toEqual([room,second].sort());
+    expect((await read())?.buildings[0]).toMatchObject({ floor_layouts:{1:{canvasW:1}} });
     const otherPage=await db.query<{j:Payload}>("SELECT public.get_public_available_rooms('other-link') j");
-    expect(otherPage.rows[0].j.rooms).toHaveLength(0);
-    expect((await read('zalo'))?.rooms.map(r=>r.id)).toEqual([room]);
+    expect(ids(otherPage.rows[0].j)).toEqual([room,second].sort());
+    expect(ids(await read('zalo'))).toEqual([room,second].sort());
     const projected = async () => Promise.all([
       db.query<{j:Payload}>('SELECT app_private.hermes_sale_listing_payload_v1($1) j',[org]),
       db.query<{j:Payload}>("SELECT public.hermes_available_rooms_page_v1($1,$2)->'result' j",[JSON.stringify({organizationId:org,buildingIds:[building]}),org])
-    ]).then(results => results.map(result => result.rows[0].j.rooms.map(r=>r.id)));
-    expect(await projected()).toEqual([[room],[room]]);
-    await db.query('INSERT INTO public.public_room_share_tokens(owner_id,token,organization_id,revoked) VALUES($1,$2,$3,false)',[other,'building-owner',org]);
-    for(const ids of await projected()) expect(ids.sort()).toEqual([room,second].sort());
-    expect((await read('zalo'))?.rooms).toHaveLength(2);
-    await db.query("DELETE FROM public.public_room_share_tokens WHERE token='building-owner'");
-    await db.query('INSERT INTO public.holds(room_id) VALUES($1)',[room]);
-    expect((await read())?.rooms).toHaveLength(0);
-    // Another org owner shares the second room. A dropped grant must not supply its hotline.
-    await db.query("SELECT public.set_public_room_link_ready_room_v1('other-link',$1,true)",[second]);
-    const publisher='00000000-0000-4000-8000-000000000045';
-    await db.exec(`CREATE OR REPLACE FUNCTION app_private.is_org_owner_v1(uuid,uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT $1='${org}' AND $2 IN ('${owner}','${publisher}') $$;`);
-    await db.query("INSERT INTO public.public_room_share_tokens(owner_id,token,organization_id,revoked) VALUES($1,'aaa-first',$2,false)",[publisher,org]);
-    await db.query("INSERT INTO public.hotlines(id,user_id,name,phone_number,is_active) VALUES($1,$1,'Grant owner','owner-1',true),($2,$2,'New publisher','owner-2',true)",[owner,publisher]);
-    await db.query("SELECT set_config('test.actor',$1,false)",[publisher]);
-    await db.query("DELETE FROM public.holds WHERE room_id=$1",[room]);
-    await db.query("SELECT public.set_public_room_link_ready_room_v1('aaa-first',$1,true)",[room]);
-    await db.query("INSERT INTO public.holds(room_id) VALUES($1)",[room]);
-    const binding={organizationId:org,buildingIds:[building]};
+    ]).then(results => results.map(result => ids(result.rows[0].j)));
+    expect(await projected()).toEqual([[room,second].sort(),[room,second].sort()]);
+    // Hotline / chính sách: của người đứng tên chung các toà, cùng công ty — không theo người tạo link.
+    await db.query("INSERT INTO public.hotlines(id,user_id,name,phone_number,is_active,organization_id) VALUES($1,$1,'Link owner','owner-1',true,$3),($2,$2,'Building owner','owner-2',true,$3)",[owner,other,org]);
     for (const call of ["app_private.hermes_sale_listing_payload_v1($1)", "public.hermes_available_rooms_page_v1($2,$1)->'result'"]) {
-      const args=call.includes('$2') ? [org,JSON.stringify(binding)] : [org];
+      const args=call.includes('$2') ? [org,JSON.stringify({organizationId:org,buildingIds:[building]})] : [org];
       const {rows}=await db.query<{phone:string}>(`SELECT (${call})#>>'{buildings,0,page_contact_phone}' phone`,args);
-      expect(rows[0].phone).toBe('owner-1');
+      expect(rows[0].phone).toBe('owner-2');
     }
-    await db.exec("DELETE FROM public.public_room_share_tokens WHERE token IN ('aaa-first','other-link')");
-    await db.query("SELECT set_config('test.actor',$1,false)",[owner]);
+    expect((await read())?.contact).toEqual({ name:'Building owner', phone:'owner-2' });
+    // Cọc / giữ chỗ vẫn che phòng trên mọi kênh.
+    await db.query('INSERT INTO public.holds(room_id) VALUES($1)',[room]);
+    // Trang công khai vẫn vẽ phòng bị giữ trên sơ đồ nhưng như phòng đã thuê: không giá, không ảnh.
+    expect((await read())?.rooms.find(r => r.id === room)).toMatchObject({ status_public:'rented', rent_price:null, images:[] });
+    expect(ids(await read('zalo'))).toEqual([second]);
     await db.query('DELETE FROM public.holds WHERE room_id=$1',[room]);
+    // Toà sang công ty khác: không còn trên link / bot / Hermes của công ty này.
     await db.query('UPDATE public.buildings SET organization_id=$1 WHERE id=$2',[other,building]);
-    expect((await read())?.rooms).toHaveLength(0);
     await db.query('UPDATE public.rooms SET organization_id=$1 WHERE building_id=$2',[other,building]);
-    await db.query('UPDATE public.buildings SET user_id=$1 WHERE id=$2',[owner,building]);
+    expect(await read()).toMatchObject({ rooms:[] });
     expect((await read('zalo'))?.rooms).toHaveLength(0);
     expect(await projected()).toEqual([[],[]]);
     await db.query('UPDATE public.rooms SET organization_id=$1 WHERE building_id=$2',[org,building]);
-    await db.query('UPDATE public.buildings SET user_id=$1 WHERE id=$2',[other,building]);
     await db.query('UPDATE public.buildings SET organization_id=$1 WHERE id=$2',[org,building]);
-    await publish(false);
-    expect((await read())?.rooms).toHaveLength(0);
+    // Hết link hoạt động của công ty ⇒ bot và Hermes không có trang Sale (pages / publishedPages = 0, không chào phòng).
+    await db.exec("UPDATE public.public_room_share_tokens SET revoked=true");
+    expect(await read('zalo')).toMatchObject({ pages:0, rooms:[] });
+    const page=(await db.query<{j:{publishedPages:number;totalCount:number}}>("SELECT public.hermes_available_rooms_page_v1($1,$2)->'result' j",[JSON.stringify({organizationId:org,buildingIds:[building]}),org])).rows[0].j;
+    expect(page).toMatchObject({ publishedPages:0, totalCount:0 });
     expect((await db.query<{v:boolean}>("SELECT has_function_privilege('anon','public.set_public_room_link_ready_room_v1(text,uuid,boolean)','EXECUTE') v")).rows[0].v).toBe(false);
-    // Independently exercise both ownership checks. Expected errors use savepoints.
-    const denied = async () => {
-      await db.exec('SAVEPOINT denied_write');
-      await expect(publish(true)).rejects.toMatchObject({code:'42501'});
-      await db.exec('ROLLBACK TO SAVEPOINT denied_write');
-    };
-    await db.exec("UPDATE public.public_room_share_tokens SET revoked=true WHERE token='valid-link'");
-    await denied();
-    await db.query("UPDATE public.public_room_share_tokens SET revoked=false,owner_id=$1 WHERE token='valid-link'",[other]);
-    await denied();
-    await db.query("SELECT set_config('test.actor',$1,false)",[other]);
-    await expect(publish(true)).rejects.toMatchObject({code:'42501'});
   } finally { await db.exec('ROLLBACK'); }
 });

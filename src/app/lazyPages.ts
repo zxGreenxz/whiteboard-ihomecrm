@@ -40,7 +40,7 @@ export const SalePhongPage = lazy(() => import("../pages/sale-phong/SalePhongPag
 
 // Khách hàng
 export const LeadsPage = lazy(() => import("../pages/leads/LeadsPage"));
-export const DepositsPage = lazy(() => import("../pages/deposits/DepositsPage"));
+export const DepositsPage = lazy(() => import("../pages/deposits/DepositsLayout"));
 export const ContractsPage = lazy(() => import("../pages/contracts/ContractsPage"));
 export const ContractDetailPage = lazy(() => import("../pages/contracts/ContractDetailPage"));
 export const VehiclesPage = lazy(() => import("../pages/vehicles/VehiclesPage"));
@@ -58,7 +58,6 @@ export const IncomeExpensePage = lazy(() => import("../pages/payments/IncomeExpe
 export const IncomeExpensePrintPage = lazy(() => import("../pages/payments/IncomeExpensePrintPage"));
 export const VoucherDetailPage = lazy(() => import("../pages/payments/VoucherDetailPage"));
 export const RefundLogPage = lazy(() => import("../pages/payments/RefundLogPage"));
-export const ApprovalsPage = lazy(() => import("../pages/approvals/ApprovalsPage"));
 
 // Tài sản & vật tư
 export const AssetsPage = lazy(() => import("../pages/assets/AssetsPage"));

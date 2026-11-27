@@ -131,10 +131,13 @@ export interface FlexCancelInput {
 }
 
 export const useCancelVoucherFlex = () => {
-  const workflow=persistentFinancialWorkflow('voucher-lifecycle',{scope:'actor'});
+  const workflow=persistentFinancialWorkflow('voucher-flex-cancel',{scope:'actor',legacy:'voucher-lifecycle'});
   const queryClient = useQueryClient();
 
   return useMutation({
+    // Cách A (đợt 5): cancel_income_expense_flex_v1 → commission_reason_cancel_flex_before_v1 (production 25/11/2026)
+    // khoá phiếu FOR UPDATE rồi trả {changed:false} khi phiếu đã huỷ; đảo bút toán và huỷ trong cùng một giao dịch. Dấu
+    // của lần gửi trước luôn được gửi lại ngay, máy chủ tự trả «đã huỷ trước đó».
     mutationFn: async (input: FlexCancelInput) => workflow.run(input.voucherId,'huỷ phiếu',async progress=>{
       const { data, error } = await supabase.rpc(
         "cancel_income_expense_flex_v1",
@@ -167,7 +170,7 @@ export const useCancelVoucherFlex = () => {
       if(receipt?.id!==input.voucherId || typeof receipt.changed!=='boolean' || (receipt.mode!==undefined && !['MANUAL','COLLECTION','FORFEIT_PAIR'].includes(String(receipt.mode))))throw new TypeError('Chưa xác nhận được kết quả huỷ của đúng phiếu.');
       progress.completed.push({id:input.voucherId,label:`Đã huỷ phiếu ${input.voucherId}`});
       return data as { id: string; changed: boolean; cancellation_kind: string };
-    }),
+    },async()=>({outcome:'not-written',serverDedupesRequestKey:true})),
     onSuccess: (data) => {
       for (const key of [
         ["commission-interventions"],

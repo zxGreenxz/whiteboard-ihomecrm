@@ -4,14 +4,14 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
 const digest = sql => createHash('sha256').update(sql.replace(/\s+/g, ' ').trim()).digest('hex');
-export const RESERVATION_RECEIPT_CALLER = 'app_private.create_reservation_source_receipt_v1';
+export const RESERVATION_RECEIPT_CALLER = 'app_private.write_deposit_income_v1';
 export const COMPAT_RECEIPT_WRITER = 'public.ie_compat_insert_v2';
 
 // Inputs have already passed the SQL comment stripper. These whole-definition
 // pins cover the receipt allowlist, fixed jsonb builder, branch condition and all
 // writes. Any merge/variable payload, new call, renamed guard or changed branch
 // needs review; the proof must not generalize to another caller or future body.
-const CALLER_SHA256 = 'cd1b06e48ddecc45c2af8521ad907dee2f06b2febe7b630e78cd947037ad11ab';
+const CALLER_SHA256 = 'ccef6cd04247e097038f4ba5fa953f4bd3b55e1cbe8a90e737dd8438483b4972';
 // 15/11/2026 (20261115084108 so_tong_loi_nhuan_tao): thân mới chỉ thêm 'shareholder_id', 'profit_manager_id'
 // vào hai danh sách cột bị lột (nhánh thường và nhánh copilot-draft); lối biên nhận cọc dựng p_row cố định
 // không có hai khoá đó nên không đổi gì. Bản trước: 72476364bb42483a7c31945ee2ae226b4f5cd85753b2d6dfd1ca6fb5f4d4788a.

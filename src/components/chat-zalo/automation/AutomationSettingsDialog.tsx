@@ -33,7 +33,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useZaloAutomationConfigs, useSaveAutomation, useZaloAutomationRuns } from '@/hooks/useZaloChat';
+import { useZaloAutomationConfigs, useZaloBroadcastBuildings, useSaveAutomation, useZaloAutomationRuns } from '@/hooks/useZaloChat';
 import { chuanHoaBroadcast, chuanHoaAutoReply } from '../automationConfig';
 import type { CauHinhBroadcast, CauHinhAutoReply } from '../automationConfig';
 import type { ZaloConversation, ZaloLabel, ZaloAccount } from '@/components/chat-zalo/types';
@@ -67,6 +67,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, account, 
   const { data, isLoading } = configQuery;
   // Nhật ký chỉ nạp khi dialog mở — cùng lý do với cấu hình: đây là màn người
   // dùng chủ động mở, không phải thứ trang chat phải trả tiền băng thông cho.
+  const buildings = useZaloBroadcastBuildings(open && !!account);
   const runsQuery = useZaloAutomationRuns(open);
   const { data: runs = [], isLoading: dangTaiRuns } = runsQuery;
   const luu = useSaveAutomation();
@@ -137,13 +138,22 @@ export default function AutomationSettingsDialog({ open, onOpenChange, account, 
       for (const key of ['schedule', 'template', 'antiSpam', 'eventDriven'] as const) {
         if (JSON.stringify(original[key]) !== JSON.stringify(next[key])) changes[key] = next[key];
       }
+      const scopeChanges: Record<string, string | null> = {};
+      const expectedScopes: Record<string, string | null> = {};
+      for (const { threadId } of accountConversations) {
+        if (threadId && original.groupBuildings[threadId] !== next.groupBuildings[threadId]) {
+          scopeChanges[threadId] = next.groupBuildings[threadId] ?? null;
+          expectedScopes[threadId] = original.groupBuildings[threadId] ?? null;
+        }
+      }
+      if (Object.keys(scopeChanges).length) changes.groupBuildings = scopeChanges;
       if (previous.enabled !== bcBat) changes.enabled = bcBat;
       luu.mutate({
         kind: 'broadcast_vacant', accountId: account.id,
         add: next.recipients.filter(id => !original.recipients.includes(id)),
         remove: original.recipients.filter(id => !next.recipients.includes(id)),
         changes, expected: Object.fromEntries(Object.keys(changes).map(key => [
-          key, key === 'enabled' ? previous.enabled : previous.config[key],
+          key, key === 'groupBuildings' ? expectedScopes : key === 'enabled' ? previous.enabled : previous.config[key],
         ])),
       }, {
         onError: error => setServerError(actionErrorMessage(error, 'Chưa lưu được lịch gửi')),
@@ -249,6 +259,16 @@ export default function AutomationSettingsDialog({ open, onOpenChange, account, 
                     labels={accountLabels}
                     saleAction={saleAction}
                     value={visibleRecipients}
+                    buildings={buildings.data ?? []}
+                    buildingError={buildings.isError}
+                    buildingDisabled={!buildings.isSuccess}
+                    groupBuildings={bc.groupBuildings}
+                    onBuildingChange={(thread, building) => setBc(current => {
+                      const groupBuildings = { ...current.groupBuildings };
+                      if (building) groupBuildings[thread] = building;
+                      else delete groupBuildings[thread];
+                      return { ...current, groupBuildings };
+                    })}
                     onChange={ids => setBc(current => ({
                       ...current, recipients: [...current.recipients.filter(id => !accountIds.has(id)), ...ids],
                     }))}

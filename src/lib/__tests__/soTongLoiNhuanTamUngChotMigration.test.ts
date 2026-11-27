@@ -821,6 +821,7 @@ describe("khung thử: nền Đợt 1 thật và hai lượt migration", () => {
     // Ghim toàn bộ chuỗi của từng hàm. Dọn dẹp bọc R4; sổ quỹ tích hợp quyền lợi vào vị thế và tháng chốt.
     const keTiep: Record<string, string> = {
       [R4]: TEN_DON_DEP,
+      "public.shareholder_profit_my_position_v1": "20261126015743_gom_loi_nhuan_va_hoan_quy_dong_loat.sql",
       "app_private.profit_ledger_position_v1": TEN_SO_QUY,
       "app_private.profit_ledger_chot_months_v1": TEN_SO_QUY,
       "app_private.profit_ledger_unpaid_through_v1": TEN_SO_QUY,

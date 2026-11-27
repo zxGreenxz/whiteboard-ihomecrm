@@ -74,6 +74,9 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
 
     React.useEffect(() => {
       if (value===lastEmitted.current) return;
+      // Cha đổi ngày từ ngoài: mốc là giá trị cha đang giữ, không còn là lần phát cũ — kẻo cha đổi lại đúng ngày từng gõ
+      // (hoặc xoá về rỗng) thì ô không cập nhật.
+      lastEmitted.current=value;
       setText(isoToDisplay(value));setError(undefined);
     }, [value]);
 
@@ -85,16 +88,16 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     };
 
     const commit = () => {
-      if (!text) {
-        setError(undefined);lastEmitted.current="";onChange?.("");
+      const iso = text ? displayToIso(text) : "";
+      if (iso === null) {
+        setError("Nhập ngày hợp lệ theo dạng dd/mm/yyyy, ví dụ 29/10/2026.");
         return;
       }
-      const iso = displayToIso(text);
-      if (iso) {
-        setError(undefined);lastEmitted.current=iso;onChange?.(iso);
-      } else {
-        setError("Nhập ngày hợp lệ theo dạng dd/mm/yyyy, ví dụ 29/10/2026.");
-      }
+      setError(undefined);
+      // Rời ô mà ngày không đổi thì không phát lại: cha đã giữ đúng giá trị này, hoặc vừa nhận nó lúc gõ/chọn lịch.
+      // Phát lại từng làm màn cha tưởng người dùng đổi ngày rồi tính đè lên số tiền gõ tay (hộp Thanh lý, 23/11/2026).
+      if (iso === lastEmitted.current || iso === (value ?? "")) return;
+      lastEmitted.current = iso;onChange?.(iso);
     };
 
     const handleSelect = (d?: Date) => {

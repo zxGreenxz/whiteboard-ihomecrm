@@ -39,8 +39,11 @@ export default function CustomerFormPage() {
   const createMutation = useCreateCustomer();
   const updateMutation = useUpdateCustomer();
 
+  // Tạo khách hỏng xe: khách đã có, lưu lại sẽ tạo khách thứ hai ⇒ khoá form, mở khách để thêm xe. Sửa khách hỏng xe
+  // (đợt 8): khách đã cập nhật, lưu lại cùng form đồng bộ tiếp (xe đã lưu được nhận lại theo biển số) ⇒ không khoá.
+  const partialLocked = partialCustomer?.action === 'create';
   const handleSubmit = async (data: CustomerFormData) => {
-    if (partialCustomer) return;
+    if (partialLocked) return;
     const result = isEdit && id
       ? await updateMutation.mutateAsync({id,data})
       : await createMutation.mutateAsync(data);
@@ -48,6 +51,7 @@ export default function CustomerFormPage() {
       setPartialCustomer({id:result.customer.id,name:result.customer.full_name,action:isEdit?'update':'create'});
       return;
     }
+    setPartialCustomer(null);
     navigate('/customers');
   };
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
@@ -132,13 +136,15 @@ export default function CustomerFormPage() {
       {partialCustomer && (
         <div role="alert" className="mb-4 rounded border border-amber-500 bg-amber-50 p-4 text-sm text-amber-900">
           Đã {partialCustomer.action === 'create' ? 'tạo' : 'cập nhật'} khách hàng {partialCustomer.name} (ID {partialCustomer.id}), nhưng đồng bộ phương tiện chưa hoàn tất.
-          Đối chiếu danh sách xe trước khi lưu lại. <Link className="underline" to={`/customers/${partialCustomer.id}/edit`}>Mở khách hàng để kiểm tra xe</Link>.
+          {partialCustomer.action === 'create'
+            ? <> Đối chiếu danh sách xe trước khi lưu lại. <Link className="underline" to={`/customers/${partialCustomer.id}/edit`}>Mở khách hàng để kiểm tra xe</Link>.</>
+            : ' Bấm Lưu lần nữa để đồng bộ tiếp phương tiện: xe đã lưu ở lần trước được nhận lại theo biển số, không tạo trùng.'}
         </div>
       )}
       <CustomerForm
         defaultValues={defaultValues}
         onSubmit={handleSubmit}
-        isSubmitting={isSubmitting || Boolean(partialCustomer)}
+        isSubmitting={isSubmitting || partialLocked}
       />
     </MainLayout>
   );

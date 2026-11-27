@@ -3,6 +3,7 @@ import { COMMISSION_REASON_MESSAGE, isCommissionReasonValid } from '@/lib/commis
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
+import {payloadFingerprint,transitionVerdict,type FinancialPendingRecord,type PendingReconciliation} from '@/lib/financialPending';
 import {financialReadRows} from '@/lib/financialReadValidation';
 // Finance V2 — mutation hooks gọi RPC canonical (Stage-5 writers, plan §7.2).
 //
@@ -54,6 +55,36 @@ function requireSubjectId(value:unknown):asserts value is string {
 
 export type FinancePostingInput=PostFinanceExecutionInput & {organizationId?:string|null};
 
+// ── Đối chiếu bốn thao tác V2 (cách B, đợt 5) ────────────────────────────────────────────────────────────────────
+// Thân hàm production (25/11/2026): approve_income_expense_v2, post_approved_income_expense_v2,
+// approve_and_post_income_expense_v2, reverse_posted_income_expense_v2 đều khoá phiếu FOR UPDATE TRƯỚC, rồi
+// finance_v2_begin_canonical_op giữ dòng (công ty, thao tác, phiếu, người, mã yêu cầu): mã đã xong ⇒ trả lại kết quả
+// cũ; cùng mã khác nội dung (băm) ⇒ 23505. Nên: nội dung như lần trước ⇒ gửi lại ngay đúng mã cũ. Nội dung đã đổi (ví
+// dụ hoàn tác qua ngày: ngày ghi là hôm nay) ⇒ đọc trạng thái phiếu: đã ở đích thì báo, không gửi; còn như trước thì
+// gửi lại (máy chủ vẫn chặn trùng vì khoá phiếu rồi mới xét mã).
+interface V2VoucherState {id:string;code:string|null;approval_status:string|null;posting_status:string|null;approval_version:number|null;posting_version:number|null}
+async function readV2VoucherState(voucherId:string):Promise<V2VoucherState|null>{
+  const {data,error}=await supabase.from('income_expenses').select('id,code,approval_status,posting_status,approval_version,posting_version').eq('id',voucherId).maybeSingle();
+  if(error)throw error;
+  const row=data as Partial<V2VoucherState>|null;
+  return row&&row.id===voucherId?{id:voucherId,code:typeof row.code==='string'?row.code:null,approval_status:row.approval_status??null,posting_status:row.posting_status??null,approval_version:row.approval_version??null,posting_version:row.posting_version??null}:null;
+}
+const V2_STATE_LABEL:Record<string,string>={APPROVED:'Đã duyệt',UNAPPROVED:'Chờ duyệt',CANCELLED:'Đã huỷ',POSTED:'đã thu/chi vào sổ',REVERSED:'đã hoàn tác thu/chi',UNPOSTED:'chưa thu/chi'};
+const v2StateLabel=(row:V2VoucherState)=>[row.approval_status,row.posting_status].map(value=>V2_STATE_LABEL[value??'']).filter(Boolean).join(', ')||'không rõ';
+const V2_PAYLOAD='payload';
+function v2Reconcile<T>(voucherId:string,payload:string,operation:string,rule:{reached:(row:V2VoucherState)=>boolean;ready:(row:V2VoucherState)=>boolean}){
+  return async (pending:FinancialPendingRecord):Promise<PendingReconciliation<T>>=>{
+    if(pending.meta?.[V2_PAYLOAD]===payload)return {outcome:'not-written',serverDedupesRequestKey:true};
+    const row=await readV2VoucherState(voucherId);
+    const name=row?.code??voucherId;
+    return transitionVerdict<T>({pending,current:row&&[row.approval_status,row.posting_status,row.approval_version,row.posting_version].join('|'),
+      reached:!!row&&rule.reached(row),ready:!!row&&rule.ready(row),serverLocksFirst:true,
+      onReached:()=>({outcome:'already-written',message:`Phiếu ${name} đã ở trạng thái ${row?v2StateLabel(row):''}. Không gửi lại yêu cầu ${operation}.`,recordIds:[name]}),
+      otherMessage:`Phiếu ${name} đang ở trạng thái ${row?v2StateLabel(row):''}, đã đổi kể từ lần gửi trước. Không gửi lại yêu cầu ${operation}; tải lại phiếu để kiểm tra.`,recordIds:[name]});
+  };
+}
+const v2Meta=(payload:string)=>({meta:{[V2_PAYLOAD]:payload}});
+
 const INVALIDATE_KEYS = [
   ["commission-interventions"],
   ["income-expenses"],
@@ -90,10 +121,12 @@ export function useApproveIncomeExpenseV2(options:{scope?:'target'; deferFeedbac
     mutationFn: async (args: { voucherId: string; expectedApprovalVersion?: number; organizationId?:string|null }) => {
       requireSubjectId(args.voucherId);
       if(options.scope==='target'&&!args.organizationId)throw new FinancialWorkflowError('Chưa xác định được tổ chức của phiếu. Tải lại yêu cầu trước khi tiếp tục.','failure',[]);
+      const expectedApprovalVersion=args.expectedApprovalVersion ?? 1;
+      const payload=payloadFingerprint({voucherId:args.voucherId,expectedApprovalVersion});
       return workflow.current.run(args.voucherId,'duyệt phiếu',async progress=>{
       const { data, error } = await rpc("approve_income_expense_v2", {
         p_voucher: args.voucherId,
-        p_expected_approval_version: args.expectedApprovalVersion ?? 1,
+        p_expected_approval_version: expectedApprovalVersion,
         p_idempotency_key: progress.requestKey,
       });
       if (error && isOwnedBySystemFlow(error.message)) {
@@ -114,7 +147,7 @@ export function useApproveIncomeExpenseV2(options:{scope?:'target'; deferFeedbac
       const receipt=confirmV2Receipt(data,args.voucherId,'approve');
       progress.completed.push({id:args.voucherId,label:'Đã xác nhận duyệt phiếu'});
       return receipt;
-      },undefined,args.organizationId??selectedOrganizationId??undefined);
+      },v2Reconcile(args.voucherId,payload,'duyệt phiếu',{reached:row=>row.approval_status==='APPROVED',ready:row=>row.approval_status==='UNAPPROVED'}),args.organizationId??selectedOrganizationId??undefined,v2Meta(payload));
     },
     onSuccess: (data) => {
       if (options.deferFeedback) return;
@@ -141,13 +174,15 @@ export function usePostApprovedIncomeExpenseV2() {
     mutationFn: async (input: FinancePostingInput) => {
       requireSubjectId(input.subjectId);
       const {organizationId,...postingInput}=input;
+      // Mã yêu cầu của hộp thoại bị thay bằng mã của dấu nên không thuộc nội dung so sánh.
+      const payload=payloadFingerprint({...postingInput,idempotencyKey:undefined});
       return workflow.current.run(input.subjectId,'ghi nhận thu/chi',async progress=>{
       const { data, error } = await rpc("post_approved_income_expense_v2", { input:{...postingInput,idempotencyKey:progress.requestKey} });
       if (error) throw error;
       const receipt=confirmV2Receipt(data,input.subjectId,'post');
       progress.completed.push({id:input.subjectId,label:'Đã xác nhận ghi nhận thu/chi'});
       return receipt;
-      },undefined,selectedOrganizationId??undefined);
+      },v2Reconcile(input.subjectId,payload,'ghi nhận thu/chi',{reached:row=>row.posting_status==='POSTED',ready:row=>row.approval_status==='APPROVED'&&(row.posting_status==='UNPOSTED'||row.posting_status==='REVERSED')}),selectedOrganizationId??undefined,v2Meta(payload));
     },
     onSuccess: (data) => {
       invalidate();
@@ -168,13 +203,15 @@ export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'; defer
       requireSubjectId(input.subjectId);
       const {organizationId,...postingInput}=input;
       if(options.scope==='target'&&!organizationId)throw new FinancialWorkflowError('Chưa xác định được tổ chức của phiếu. Tải lại yêu cầu trước khi tiếp tục.','failure',[]);
+      // Mã yêu cầu của hộp thoại bị thay bằng mã của dấu nên không thuộc nội dung so sánh.
+      const payload=payloadFingerprint({...postingInput,idempotencyKey:undefined});
       return workflow.current.run(input.subjectId,'duyệt và ghi nhận thu/chi',async progress=>{
       const { data, error } = await rpc("approve_and_post_income_expense_v2", { input:{...postingInput,idempotencyKey:progress.requestKey} });
       if (error) throw error;
       const receipt=confirmV2Receipt(data,input.subjectId,'approvePost');
       progress.completed.push({id:input.subjectId,label:'Đã xác nhận duyệt và ghi nhận thu/chi'});
       return receipt;
-      },undefined,organizationId??selectedOrganizationId??undefined);
+      },v2Reconcile(input.subjectId,payload,'duyệt và ghi nhận thu/chi',{reached:row=>row.approval_status==='APPROVED'&&row.posting_status==='POSTED',ready:row=>row.approval_status==='UNAPPROVED'&&row.posting_status==='UNPOSTED'}),organizationId??selectedOrganizationId??undefined,v2Meta(payload));
     },
     onSuccess: (data) => {
       if (!options.deferFeedback) {
@@ -202,19 +239,22 @@ export function useReversePostingV2() {
     }) => {
       requireSubjectId(args.voucherId);
       if (args.isCommission && !isCommissionReasonValid(args.reason)) throw new Error(COMMISSION_REASON_MESSAGE);
+      // Ngày ghi hoàn tác là hôm nay và nằm trong phần máy chủ băm: lần bấm sau qua ngày là nội dung khác.
+      const sent={voucherId:args.voucherId,cashbookId:args.cashbookId,postedOn:todayISO(),reason:args.reason?.trim() || "Hoàn tác thủ công"};
+      const payload=payloadFingerprint(sent);
       return workflow.current.run(args.voucherId,'hoàn tác thu/chi',async progress=>{
       const { data, error } = await rpc("reverse_posted_income_expense_v2", {
-        p_voucher: args.voucherId,
-        p_cashbook: args.cashbookId,
-        p_posted_on: todayISO(),
-        p_reason: args.reason?.trim() || "Hoàn tác thủ công",
+        p_voucher: sent.voucherId,
+        p_cashbook: sent.cashbookId,
+        p_posted_on: sent.postedOn,
+        p_reason: sent.reason,
         p_idempotency_key: progress.requestKey,
       });
       if (error) throw error;
       const receipt=confirmV2Receipt(data,args.voucherId,'reverse');
       progress.completed.push({id:args.voucherId,label:'Đã xác nhận hoàn tác thu/chi'});
       return receipt;
-      },undefined,selectedOrganizationId??undefined);
+      },v2Reconcile(args.voucherId,payload,'hoàn tác thu/chi',{reached:row=>row.posting_status==='REVERSED',ready:row=>row.approval_status==='APPROVED'&&row.posting_status==='POSTED'}),selectedOrganizationId??undefined,v2Meta(payload));
     },
     onSuccess: (data) => {
       invalidate();

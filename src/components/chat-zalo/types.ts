@@ -108,6 +108,7 @@ export interface ZaloLabel {
 }
 
 export interface ZaloConversation {
+  threadId?: string;
   id: string;
   peerUid?: string | null;
   accountId?: string | null;

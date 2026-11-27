@@ -2,10 +2,8 @@ function feedbackRecordName(value:unknown,fallback?:string):string {
  const row=value&&typeof value==='object'?value as {name?:unknown;id?:unknown}:null;
  return typeof row?.name==='string'&&row.name.trim()?row.name: fallback?.trim()||(typeof row?.id==='string'?row.id:'bản ghi');
 }
-import {rememberTemplateDefaultIntent,matchesTemplateDefaultIntent} from '@/lib/templateDefaultIntent';
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
-import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { confirmedRecordId, confirmedRecordBatch, recordWriteBlocked, recordWriteMessage, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -13,13 +11,6 @@ import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg } from "@/lib/orgPayload";
-
-export class TemplateDefaultPartialError extends Error {
-  constructor(public readonly templateId: string, public readonly previousDefaultIds: readonly string[], public readonly cause: unknown) {
-    super(`Các mẫu mặc định trước đã được bỏ chọn, nhưng chưa xác nhận được mẫu ${templateId} làm mặc định. Tải lại danh sách mẫu để đối chiếu trước khi chọn tiếp.`);
-    this.name = "TemplateDefaultPartialError";
-  }
-}
 
 // --- Types ---
 
@@ -68,6 +59,10 @@ export const useIncomeExpenseTemplates = (filterIsIncome?: boolean) => {
 
 // --- Mutation Hooks ---
 
+/** Đợt 9: so trường đã gửi với dòng đọc lại (khoá jsonb xếp lại). Bỏ `user_id` (máy chủ có thể đặt). */
+const canonical = (value: unknown): string => JSON.stringify(value ?? null, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+const sentFieldsMatch = (saved: Record<string, unknown>, sent: Record<string, unknown>) => Object.keys(sent).every(key => key === 'user_id' || canonical(saved[key]) === canonical(sent[key]));
+
 export const useCreateIncomeExpenseTemplate = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
@@ -85,28 +80,32 @@ export const useCreateIncomeExpenseTemplate = () => {
 
       if (!user) throw new Error("User not authenticated");
 
-      return persistentFinancialWorkflow('income-expense-template-create').run('create', 'tạo mẫu in thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_templates")
-        .insert(withOrg({
-          user_id: user.id,
-          name: input.name,
-          description: input.description ?? null,
-          template_file_url: input.template_file_url ?? null,
-          is_default: input.is_default ?? false,
-          is_income_template: input.is_income_template ?? false,
-          field_mappings: input.field_mappings ?? null,
-        }, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      confirmedRecordId(data, 'tạo mẫu in thu chi');
-      return data;
+      // Đợt 9 (luật 5): tạo mẫu in không giữ dấu «chờ đối chiếu» nào. Mã mẫu do trình duyệt sinh (`createRecordOnce`; bảng
+      // nhận `id`; trigger `generate_template_code` md5 fca056c5 chỉ sinh mã MTyymmNNN khi trống, không đụng `id` — production
+      // 26/11/2026): kết quả chưa rõ báo «bấm lại», lần bấm lại cùng tên + loại gửi ĐÚNG mã cũ nên khoá chính chặn mẫu thứ
+      // hai. Dấu bản trước (khoá chung `create`, công ty đang chọn) gỡ sau lần tạo xong.
+      const payload = withOrg({
+        user_id: user.id,
+        name: input.name,
+        description: input.description ?? null,
+        template_file_url: input.template_file_url ?? null,
+        is_default: input.is_default ?? false,
+        is_income_template: input.is_income_template ?? false,
+        field_mappings: input.field_mappings ?? null,
+      }, selectedOrganizationId);
+      const created = await repeatableWrite('tạo mẫu in thu chi', async () => {
+        const { createRecordOnce, normalizeVietnameseName } = await import('@/lib/clientRecordCreate');
+        const { row } = await createRecordOnce<IncomeExpenseTemplate>({
+          table: 'income_expense_templates', userId: user.id, organizationId: payload.organization_id,
+          matchKeys: [`n:${normalizeVietnameseName(input.name)}|t:${payload.is_income_template}`],
+          payload, operation: 'tạo mẫu in thu chi',
+          sameAs: saved => sentFieldsMatch(saved, payload), describe: saved => `Mẫu in ${feedbackRecordName(saved)}`,
+        });
+        return row;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'income-expense-template-create', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
+      return created;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["income-expense-templates"] });
@@ -140,21 +139,23 @@ export const useUpdateIncomeExpenseTemplate = () => {
         field_mappings?: Record<string, string> | null;
       };
     }) => {
-      return persistentFinancialWorkflow('income-expense-template-update').run(id, 'cập nhật mẫu in thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_templates")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
+      // Đợt 8 (luật 5): sửa theo mã, đặt giá trị tuyệt đối ⇒ lưu lại cho cùng kết quả, không giữ dấu nào. Khớp 0 dòng
+      // (PGRST116: RLS, mẫu đã xoá) là chưa ghi gì: lời từ chối rõ, đi nguyên.
+      const data = await repeatableWrite('cập nhật mẫu in thu chi', async () => {
+        const { data, error } = await supabase
+          .from("income_expense_templates")
+          .update(updates)
+          .eq("id", id)
+          .select()
+          .single();
 
-      if (error) {
-        throw error;
-      }
-
-      confirmedRecordId(data, 'cập nhật mẫu in thu chi', id);
-      return data;
+        if (error) throw error;
+        confirmedRecordId(data, 'cập nhật mẫu in thu chi', id);
+        return data;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'income-expense-template-update', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
+      return data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["income-expense-templates"] });
@@ -175,19 +176,33 @@ export const useDeleteIncomeExpenseTemplate = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      return persistentFinancialWorkflow('income-expense-template-delete').run(id, 'xoá mẫu in thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_templates")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id).select('id,name').single();
+      // Đợt 8 (luật 5): xoá mềm theo mã, không giữ dấu nào. Chỉ đóng dấu giờ xoá cho mẫu còn sống, nên lần xoá lại không
+      // ghi đè giờ xoá của lần trước. Khớp 0 dòng (PGRST116) thì đọc lại đúng mẫu đó: đã có giờ xoá (hoặc không còn thấy)
+      // ⇒ đã xoá trước đó (báo thành công); còn sống ⇒ RLS không cho xoá (từ chối rõ).
+      const deleted = await repeatableWrite('xoá mẫu in thu chi', async (): Promise<unknown> => {
+        const { data, error } = await supabase
+          .from("income_expense_templates")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", id).is('deleted_at', null).select('id,name').single();
 
-      if (error) throw error;
-      confirmedRecordId(data, 'xoá mẫu in thu chi', id);
-      return data;
+        if (error) {
+          if ((error as { code?: unknown }).code !== 'PGRST116') throw error;
+          await settleZeroRowDelete('xoá mẫu in thu chi', () => supabase.from('income_expense_templates').select('id,name,deleted_at').eq('id', id));
+          return { id, alreadyDeleted: true };
+        }
+        confirmedRecordId(data, 'xoá mẫu in thu chi', id);
+        return data;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'income-expense-template-delete', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
+      return deleted;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["income-expense-templates"] });
+      if ((data as { alreadyDeleted?: unknown } | null)?.alreadyDeleted === true) {
+        toast.success('Mẫu in thu chi này đã được xoá ở lần gửi trước (hoặc bởi người khác). Không còn gì để xoá thêm.');
+        return;
+      }
       toast.success(`Đã xóa mẫu in thu chi ${feedbackRecordName(data)}`);
     },
     onError: (error) => {
@@ -217,46 +232,48 @@ export const useToggleDefaultTemplate = () => {
 
       if (!user) throw new Error("User not authenticated");
 
-      const guard = persistentFinancialWorkflow('income-expense-template-default',{scope:'actor'});
-      const readGroup = async () => {
-        const {data, error} = await supabase.from('income_expense_templates').select('*')
+      // Đợt 8 (luật 5): chọn / bỏ chọn mẫu mặc định là thiết lập, không phải tiền, và có ĐÍCH tuyệt đối (đúng mẫu này là
+      // mặc định duy nhất của nhóm, hoặc mẫu này không mặc định). Mỗi lần bấm đọc lại nhóm mẫu rồi chỉ làm phần còn thiếu:
+      // lần trước đã tới đích ⇒ không ghi gì; dở dang (đã bỏ mẫu cũ, chưa đặt mẫu mới) ⇒ chỉ đặt mẫu mới. Không giữ dấu
+      // «chờ đối chiếu» nào; dấu bản trước (phạm vi người dùng, khoá `default:<nhóm>`) được gỡ sau khi xong. Khoá «ý định»
+      // `ihome:template-default-intent:v1:*` của bản trước không còn ai ghi hay đọc; `forgetDeadIntentKeys` dọn nó.
+      const saved = await repeatableWrite('đổi mẫu in mặc định', async () => {
+        const {data: group, error: readError} = await supabase.from('income_expense_templates').select('*')
           .eq('user_id', user.id).eq('is_income_template', is_income_template).is('deleted_at', null);
-        if(error) throw error;
-        if(!Array.isArray(data) || data.some(row => !row || typeof row.id !== 'string' || !row.id || typeof row.is_default !== 'boolean' || row.user_id !== user.id || row.is_income_template !== is_income_template) || new Set(data.map(row=>row.id)).size !== data.length) throw new Error('Chưa xác nhận đủ mẫu in cùng loại. Tải lại trước khi chọn mặc định.');
-        return data as unknown as IncomeExpenseTemplate[];
-      };
-      return guard.run(`default:${is_income_template}`, 'đổi mẫu in mặc định', async progress => {
-        rememberTemplateDefaultIntent(progress.requestKey,{id,is_default,is_income_template});
-        const { data: currentDefaults, error: readError } = await supabase.from('income_expense_templates')
-          .select('id').eq('user_id', user.id).eq('is_income_template', is_income_template).eq('is_default', true).is('deleted_at', null);
         if(readError) throw readError;
-        if(!Array.isArray(currentDefaults) || currentDefaults.some(row=>!row || typeof row.id !== 'string' || !row.id) || new Set(currentDefaults.map(row=>row.id)).size !== currentDefaults.length) throw new FinancialWorkflowError('Chưa tải đủ mẫu mặc định hiện tại. Tải lại trước khi chọn.', 'failure', []);
-        const previousDefaultIds = currentDefaults.map(row=>row.id as string);
-        if(is_default && previousDefaultIds.length===1 && previousDefaultIds[0]===id) return {id,is_default:true,unchanged:true};
-        if(is_default && previousDefaultIds.length) {
-          progress.stage='bỏ mẫu mặc định trước';
+        if(!Array.isArray(group) || group.some(row => !row || typeof row.id !== 'string' || !row.id || typeof row.is_default !== 'boolean' || row.user_id !== user.id || row.is_income_template !== is_income_template) || new Set(group.map(row=>row.id)).size !== group.length) throw new FinancialWorkflowError('Chưa tải đủ mẫu in cùng loại. Tải lại trước khi chọn mặc định.', 'failure', []);
+        const rows = group as unknown as IncomeExpenseTemplate[];
+        const target = rows.find(row => row.id === id);
+        // Bước chuẩn bị chưa ghi gì: mẫu đích không còn trong nhóm thì dừng TRƯỚC khi bỏ chọn mẫu khác.
+        if(!target) throw new FinancialWorkflowError(`Mẫu ${id} không còn trong danh sách mẫu ${is_income_template ? 'thu' : 'chi'} của bạn (đã xoá hoặc không thuộc bạn). Tải lại danh sách mẫu rồi chọn lại; chưa đổi mẫu mặc định nào.`, 'failure', []);
+        const others = is_default ? rows.filter(row => row.id !== id && row.is_default).map(row => row.id) : [];
+        if(target.is_default === is_default && !others.length) return {...target, unchanged: true};
+        if(others.length) {
           const {data:unset,error:unsetError}=await supabase.from('income_expense_templates').update({is_default:false})
-            .eq('user_id',user.id).eq('is_income_template',is_income_template).in('id',previousDefaultIds).is('deleted_at',null).select('id, is_default');
+            .eq('user_id',user.id).eq('is_income_template',is_income_template).in('id',others).is('deleted_at',null).select('id, is_default');
           if(unsetError) throw unsetError;
-          const ids=confirmedRecordBatch(unset,previousDefaultIds.length,'bỏ mẫu mặc định trước');
-          progress.completed.push(...ids.map(savedId=>({id:savedId,label:'Mẫu đã bỏ mặc định'})));
-          if(ids.some(savedId=>!previousDefaultIds.includes(savedId)) || (unset as Array<{is_default:unknown}>).some(row=>row.is_default!==false)) throw new FinancialWorkflowError('Chưa xác nhận đủ các mẫu đã bỏ mặc định. Đối chiếu danh sách trước khi chọn tiếp.','partial',progress.completed);
+          const ids=confirmedRecordBatch(unset,others.length,'bỏ mẫu mặc định trước');
+          if(ids.some(savedId=>!others.includes(savedId)) || (unset as Array<{is_default:unknown}>).some(row=>row.is_default!==false)) throw new FinancialWorkflowError('Chưa xác nhận đủ các mẫu đã bỏ mặc định.','unknown',ids.map(savedId=>({id:savedId,label:'Mẫu đã bỏ mặc định'})));
         }
-        progress.stage='chọn mẫu mặc định';
+        const unsetSteps = others.map(otherId => ({id: otherId, label: 'Mẫu đã bỏ mặc định'}));
+        if(target.is_default === is_default) return {...target, unchanged: false};
         const {data,error}=await supabase.from('income_expense_templates').update({is_default})
           .eq('id',id).eq('user_id',user.id).eq('is_income_template',is_income_template).is('deleted_at',null).select().single();
-        if (!error || progress.completed.length) progress.completed.push({id,label:`Mẫu yêu cầu mặc định:${is_default}`});
-        if(error) throw error;
+        if(error) {
+          // Đã bỏ chọn mẫu cũ nhưng máy chủ từ chối rõ việc đặt mẫu mới (mẫu vừa bị xoá, không có quyền…): nói rõ mẫu nào
+          // vừa bị bỏ chọn để người dùng chọn lại; bấm lại sẽ đọc nhóm mẫu và chỉ làm phần còn thiếu. (`recordWriteBlocked`
+          // của một lỗi máy chủ thô = kết quả chưa rõ; không phải thì đó là lời từ chối rõ.)
+          if(others.length && !recordWriteBlocked(error)) throw new FinancialWorkflowError(`Đã bỏ chọn mặc định ở mẫu ${others.join(', ')} nhưng chưa đặt được mẫu ${id} làm mặc định: ${recordWriteMessage(error, 'đặt mẫu mặc định')} Tải lại danh sách mẫu rồi chọn lại mẫu mặc định.`, 'failure', [], error);
+          throw others.length ? new FinancialWorkflowError('Đã bỏ chọn mẫu mặc định cũ, chưa xác nhận được mẫu mới.', 'unknown', unsetSteps, error) : error;
+        }
         confirmedRecordId(data,'đổi mẫu mặc định',id);
-        const saved=data as unknown as IncomeExpenseTemplate;
-        if(saved.is_default!==is_default || saved.is_income_template!==is_income_template || saved.user_id!==user.id) throw new FinancialWorkflowError('Chưa xác nhận mẫu có đúng trạng thái mặc định đã chọn. Đối chiếu danh sách trước khi chọn tiếp.','unknown',[{id,label:'Mẫu cần đối chiếu'}]);
-        return {...saved,unchanged:false};
-      }, async pending => {
-        if(!matchesTemplateDefaultIntent(pending.requestKey,{id,is_default,is_income_template})) return null;
-        const rows=await readGroup();const target=rows.find(row=>row.id===id);
-        if(!target || target.is_default!==is_default || (is_default && rows.some(row=>row.id!==id && row.is_default))) return null;
-        return {result:{...target,unchanged:false}};
+        const row=data as unknown as IncomeExpenseTemplate;
+        if(row.is_default!==is_default || row.is_income_template!==is_income_template || row.user_id!==user.id) throw new FinancialWorkflowError('Chưa xác nhận mẫu có đúng trạng thái mặc định đã chọn.','unknown',[...unsetSteps,{id,label:'Mẫu cần đối chiếu'}]);
+        return {...row,unchanged:false};
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'income-expense-template-default', businessKey: `default:${is_income_template}` }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần đổi sau gỡ lại. */ }
+      return saved;
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["income-expense-templates"] });
@@ -267,9 +284,6 @@ export const useToggleDefaultTemplate = () => {
       if (error instanceof FinancialWorkflowError) {
         queryClient.invalidateQueries({queryKey:['income-expense-templates']});
         toast.error('Chưa hoàn tất đổi mẫu mặc định', {description:recordWriteMessage(error,'đổi mẫu mặc định')});
-      } else if (error instanceof TemplateDefaultPartialError) {
-        queryClient.invalidateQueries({ queryKey: ["income-expense-templates"] });
-        toast.error("Mẫu mặc định mới cập nhật một phần", { description: error.message });
       } else {
         const feedback = friendlyError(error, "Chưa đổi được mẫu in mặc định", { operation: "đổi mẫu in mặc định" });
         toast.error(feedback.title, { description: feedback.description });

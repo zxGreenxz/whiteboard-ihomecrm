@@ -9,7 +9,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useDeleteCustomer } from '@/hooks/useCustomers';
-import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
 
 interface DeleteCustomerDialogProps {
   open: boolean;
@@ -35,11 +35,11 @@ export default function DeleteCustomerDialog({
 }: DeleteCustomerDialogProps) {
   const deleteMutation = useDeleteCustomer();
   const [failure, setFailure] = useState('');
-  const [blocked, setBlocked] = useState(false);
   const busy = useRef(false);
-  useEffect(() => { setFailure(''); setBlocked(false); }, [customerId]);
+  useEffect(() => { setFailure(''); }, [customerId]);
+  // Đợt 8 (luật 5): xoá mềm theo mã lặp lại được (đã xoá thì máy chủ báo thành công), nên lỗi nào cũng chỉ báo, không khoá nút.
   const handleDelete = async () => {
-    if (busy.current || blocked || deleteMutation.isPending) return;
+    if (busy.current || deleteMutation.isPending) return;
     busy.current = true;
     try {
       await deleteMutation.mutateAsync(customerId);
@@ -47,7 +47,6 @@ export default function DeleteCustomerDialog({
       onSuccess?.();
     } catch (error) {
       setFailure(recordWriteMessage(error, 'xoá khách hàng'));
-      setBlocked(recordWriteBlocked(error));
     } finally { busy.current = false; }
   };
 
@@ -75,7 +74,7 @@ export default function DeleteCustomerDialog({
           <Button
             variant="destructive"
             onClick={handleDelete}
-            disabled={deleteMutation.isPending || blocked}
+            disabled={deleteMutation.isPending}
           >
             {deleteMutation.isPending ? 'Đang xoá...' : 'Xoá'}
           </Button>

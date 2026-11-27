@@ -3,10 +3,7 @@ import type { HermesZaloBinding } from './zaloBindingClient';
 
 /** Bước 6 "Trợ lý được kích hoạt" dựa trên BẰNG CHỨNG, không dựa vào hàng chờ đồng bộ.
  *
- * Hàng chờ (`provisioningState`) chỉ đổi khi máy chủ có bật bộ đồng bộ hồ sơ trợ lý, và ngay cả khi bật nó cũng dừng ở
- * `restart_pending`: không có mã nào ghi `synchronized` (xem infra/hermes-runtime/HOST_SERVICE.md). Nơi quản trị cài kết
- * nối bằng tay (production) thì hàng chờ đứng mãi ở `pending`. Vì vậy "đã kích hoạt" ở đây nghĩa là: dịch vụ kết nối CRM
- * đã thấy trợ lý gọi được CRM bằng đúng kết nối đang ghép với nick Zalo, kể từ lần chạy gần nhất của dịch vụ.
+ * Máy chủ ghi synchronized sau khi kiểm gateway, Zalo và CRM của kết nối đang ghép.
  * Số liệu đó nằm trong bộ nhớ dịch vụ: vắng mặt chỉ là "chưa thấy", không phải bằng chứng trợ lý hỏng.
  * Hàm thuần: chỉ đọc dữ liệu trang đã có, không gọi máy chủ, không quyết định quyền. */
 export interface HermesActivation {
@@ -66,7 +63,10 @@ export function hermesActivation({ linkedConnectionId, provisioningState, connec
   }
   const linked = activity(linkedConnectionId), at = usedAt(linked);
   const rejectedAt = linked && linked.lastErrorCode === 'unauthorized' ? linked.lastErrorAt : null;
-  if (at !== null) return { done: true, waiting: false, note: 'Trợ lý đang dùng kết nối này.',
+  // A CRM registration may precede the Zalo gateway becoming ready. During activation,
+  // only the fleet receipt or a real tool call confirms that the assistant is usable.
+  const activating = provisioningState === 'restart_pending' || provisioningState === 'unavailable';
+  if (at !== null && (!activating || linked?.lastToolCallAt != null && linked.lastToolCallAt >= (rejectedAt ?? 0))) return { done: true, waiting: false, note: 'Trợ lý đang dùng kết nối này.',
     summary: `Trợ lý đang dùng kết nối này. Lần gần nhất gọi CRM: ${time(at)}.` };
   // Máy chủ báo đã đồng bộ thì tin, trừ khi dịch vụ kết nối đã từ chối chính kết nối này.
   if (provisioningState === 'synchronized' && rejectedAt === null) return { done: true, waiting: false, note: 'Đã đồng bộ với trợ lý.', summary: 'Trợ lý đã sẵn sàng.' };
@@ -79,10 +79,10 @@ export function hermesActivation({ linkedConnectionId, provisioningState, connec
     summary: `Trợ lý bị từ chối khi dùng kết nối này lúc ${time(rejectedAt)}: kết nối hết hạn hoặc đã bị thu hồi. Nếu vài phút nữa vẫn vậy, tạo kết nối mới ở bước 2 rồi chọn nó cho trợ lý ở bước 3.` };
   if (provisioningState === 'pending_credential') return { done: false, waiting: true, note: 'Đang chờ kết nối CRM của trợ lý.',
     summary: 'Trợ lý chưa nhận được kết nối CRM. Kiểm tra bước 2, rồi bấm “Dùng kết nối này cho trợ lý” ở bước 3 nếu có.' };
-  if (provisioningState === 'restart_pending') return { done: false, waiting: true, note: 'Đang chờ quản trị viên kích hoạt trợ lý.',
-    summary: 'Đang chờ quản trị viên kích hoạt trợ lý.' };
+  if (provisioningState === 'restart_pending') return { done: false, waiting: true, note: 'Hệ thống đang kích hoạt trợ lý.',
+    summary: 'Hệ thống đang kích hoạt trợ lý.' };
   if (provisioningState === 'unavailable') return { done: false, waiting: true, note: 'Chưa đồng bộ được với trợ lý. Hệ thống sẽ thử lại.',
     summary: 'Chưa đồng bộ được với trợ lý. Hệ thống sẽ tự thử lại.' };
   return { done: false, waiting: true, note: 'Chưa thấy trợ lý dùng kết nối này. Xem bước 6.',
-    summary: `Chưa thấy trợ lý dùng kết nối này kể từ khi dịch vụ kết nối CRM chạy lại lúc ${time(status.connector.startedAt)}. Nếu bạn vừa liên kết, nhờ quản trị viên kích hoạt trợ lý; nếu trợ lý đã chạy, nhắn thử bot trên Zalo.` };
+    summary: `Chưa thấy trợ lý dùng kết nối này kể từ khi dịch vụ kết nối CRM chạy lại lúc ${time(status.connector.startedAt)}. Hệ thống tự kích hoạt sau khi ghép nick. Khi trợ lý sẵn sàng, hãy nhắn thử bot trên Zalo.` };
 }

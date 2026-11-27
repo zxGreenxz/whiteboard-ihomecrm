@@ -205,7 +205,7 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     await ready(); await screen.findByText('Nick của bạn: 98765');
     // Hàng chờ còn restart_pending (bộ đồng bộ không tự xoá được) nhưng trang đã có bằng chứng: câu của trang thắng.
     expect(screen.getAllByText('Trợ lý đang dùng kết nối này.')).toHaveLength(1);
-    expect(screen.queryByText('Đang chờ quản trị viên kích hoạt trợ lý.')).toBe(null);
+    expect(screen.queryByText('Hệ thống đang kích hoạt trợ lý.')).toBe(null);
     expect(screen.getByText('Nick của bạn: 55555').parentElement!.textContent).toBe('Nick của bạn: 55555Bot công ty · Đã ngắt liên kết');
   });
 

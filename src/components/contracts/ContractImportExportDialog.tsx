@@ -89,7 +89,6 @@ export function ContractImportExportDialog({
   const [parseResult, setParseResult] = useState<ImportResult<ContractImportRow> | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ContractImportReport | null>(null);
-  const [blocked,setBlocked]=useState(false);
   const [pendingChecked,setPendingChecked]=useState(false);
   const importing=useRef(false);
 
@@ -100,16 +99,18 @@ export function ContractImportExportDialog({
     [buildingsData]
   );
 
-  useEffect(()=>{let active=true;if(!open||mode!=='import')return;setPendingChecked(false);setBlocked(false);setImportResult(null);setParseError(null);
+  // Đợt 7: lượt nhập trước chưa rõ kết quả không khoá hộp. Chọn lại file rồi bấm nhập: hệ thống tra hợp đồng của từng dòng
+  // chưa rõ trước (dòng đã có thì không nhập lại); không tra được thì hộp cảnh báo chung cho tự gỡ sau 2 phút.
+  useEffect(()=>{let active=true;if(!open||mode!=='import')return;setPendingChecked(false);setImportResult(null);setParseError(null);
     void getSessionUser().then(user=>{if(!active)return;if(!user||!selectedOrganizationId)throw new Error('Chưa đăng nhập hoặc chưa chọn tổ chức');
-      const pending=readContractImportPending({userId:user.id,organizationId:selectedOrganizationId});if(pending){setImportResult(pending);setSelectedBuildingId(pending.buildingId);setBlocked(!pending.canCorrect);}
-    }).catch(error=>{if(active){setBlocked(true);setParseError(friendlyError(error,'Chưa đối chiếu lượt nhập trước').description);}}).finally(()=>{if(active)setPendingChecked(true);});return()=>{active=false;};
+      const pending=readContractImportPending({userId:user.id,organizationId:selectedOrganizationId});if(pending){setImportResult(pending);setSelectedBuildingId(pending.buildingId);}
+    }).catch(error=>{if(active)setParseError(friendlyError(error,'Chưa đối chiếu lượt nhập trước').description);}).finally(()=>{if(active)setPendingChecked(true);});return()=>{active=false;};
   },[open,mode,selectedOrganizationId]);
 
   // ---- handlers ----
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    if(blocked||importing.current)return;
+    if(importing.current)return;
     const file = e.target.files?.[0] ?? null;
     setSelectedFile(file);
     setParseResult(null);
@@ -118,11 +119,11 @@ export function ContractImportExportDialog({
   }
 
   function handleSelectFile() {
-    if(!blocked&&!importing.current)fileInputRef.current?.click();
+    if(!importing.current)fileInputRef.current?.click();
   }
 
   async function handleParse() {
-    if (!selectedFile || !selectedBuildingId || blocked || importing.current || !pendingChecked) return;
+    if (!selectedFile || !selectedBuildingId || importing.current || !pendingChecked) return;
     setIsParsing(true);
     setParseResult(null);
     setParseError(null);
@@ -138,7 +139,7 @@ export function ContractImportExportDialog({
   }
 
   async function handleConfirmImport() {
-    if (!parseResult || !selectedBuildingId || !selectedOrganizationId || importing.current || blocked || !pendingChecked) return;
+    if (!parseResult || !selectedBuildingId || !selectedOrganizationId || importing.current || !pendingChecked) return;
     const validRows = parseResult.success;if (!validRows.length) return;
     importing.current=true;setIsImporting(true);setParseError(null);
     try {
@@ -183,7 +184,15 @@ export function ContractImportExportDialog({
         },
         link:async(contractId,customerId)=>{const {error}=await supabase.from('contract_customers').insert(withOrg({contract_id:contractId,customer_id:customerId,is_representative:true},selectedOrganizationId));if(error)throw error;},
         occupy:async(roomId)=>{const {error}=await supabase.from('rooms').update({status:'OCCUPIED'}).eq('id',roomId);if(error)throw error;},verify,verifyCustomer,
-      },report=>{setImportResult(report);setBlocked(report.pending&&!report.canCorrect);});
+        // Đợt 7: dòng chưa rõ kết quả tra hợp đồng hiệu lực của phòng (mỗi phòng một hợp đồng hiệu lực, chỉ mục duy nhất trên production).
+        findActiveContract:async row=>{
+          const room=findRoom(row);if(!room)throw {code:'22023',message:'Không tìm thấy phòng trong tòa đang nhập'};
+          const {data,error}=await supabase.from('contracts').select('id, organization_id, room_id, tenant_id, signed_date, start_date, end_date, rent_price, total_deposit, status').eq('room_id',room.id).eq('status','ACTIVE').is('deleted_at',null).maybeSingle();
+          if(error)throw error;if(!data)return null;
+          if(data.room_id!==room.id||data.organization_id!==selectedOrganizationId)throw new TypeError('Chưa đọc đúng hợp đồng của phòng.');
+          return {id:data.id,roomId:data.room_id,tenantId:data.tenant_id,matches:data.signed_date===row.signed_date&&data.start_date===row.start_date&&data.end_date===row.end_date&&matchesContractMoneyReceipt(data.rent_price,row.rent_price)&&matchesContractMoneyReceipt(data.total_deposit,row.deposit||0)};
+        },
+      },report=>{setImportResult(report);});
       if(result.failed>0){toast.error(`Đã nhập ${result.success} hợp đồng; ${result.failed} dòng cần kiểm tra. Giữ các ID đã tạo và đối chiếu trước khi nhập lại.`);}
       else if(result.success>0)toast.success(`Đã hoàn tất nhập ${result.success} hợp đồng.`);
     }catch(error){setParseError(friendlyError(error,'Chưa nhập được hợp đồng',{operation:'nhập hợp đồng từ Excel',financial:true}).description);}
@@ -199,7 +208,7 @@ export function ContractImportExportDialog({
   function handleClose() {
     if(importing.current)return;
     onOpenChange(false);
-    if(importResult?.pending||blocked)return;
+    if(importResult?.pending)return;
     setTimeout(() => {
       setSelectedFile(null);
       setSelectedBuildingId('');
@@ -215,8 +224,8 @@ export function ContractImportExportDialog({
   const hasParseResult = parseResult !== null;
   const validCount = parseResult?.success.length ?? 0;
   const errorCount = parseResult?.errors.length ?? 0;
-  const canParse = !!selectedFile && !!selectedBuildingId && !isParsing && !blocked && pendingChecked;
-  const canConfirm = hasParseResult && validCount > 0 && !isImporting && !importResult && !blocked && pendingChecked;
+  const canParse = !!selectedFile && !!selectedBuildingId && !isParsing && pendingChecked;
+  const canConfirm = hasParseResult && validCount > 0 && !isImporting && !importResult && pendingChecked;
 
   // ---- render ----
 
@@ -240,7 +249,7 @@ export function ContractImportExportDialog({
           {/* Step 1: Select building */}
           <div className="space-y-2">
             <p className="text-sm font-medium">Bước 1: Chọn toà nhà</p>
-            <Select value={selectedBuildingId} onValueChange={setSelectedBuildingId} disabled={isImporting || blocked}>
+            <Select value={selectedBuildingId} onValueChange={setSelectedBuildingId} disabled={isImporting}>
               <SelectTrigger>
                 <SelectValue placeholder="Chọn toà nhà..." />
               </SelectTrigger>
@@ -288,7 +297,7 @@ export function ContractImportExportDialog({
               onClick={handleSelectFile}
               onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
               onDrop={(e) => {
-                if(blocked||importing.current)return;
+                if(importing.current)return;
                 e.preventDefault();
                 e.stopPropagation();
                 const file = e.dataTransfer.files?.[0];

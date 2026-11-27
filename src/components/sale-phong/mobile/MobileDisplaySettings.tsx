@@ -43,7 +43,7 @@ const hasLines = (cur: string, src: string) => {
 export default function MobileDisplaySettings({ onHeaderAction, onBusyChange }: { onHeaderAction?: (a: HeaderAction | null) => void; onBusyChange?: (busy: boolean) => void }) {
   const sheet = useRoomListSheetDraft();
   // Không gắn `root`: ô lỗi có thể nằm trong sheet (portal ra .cm-app, ngoài khung này) nên tìm ô cần focus trên cả trang.
-  const { settings, hotlines: hotlineQuery, form, days, errors, writeError, canSave, set, changeDays, rooms, edits, cellErrors } = sheet;
+  const { settings, form, days, errors, writeError, canSave, set, changeDays, rooms, edits, cellErrors } = sheet;
 
   const [open, setOpen] = useState<SheetKey>(null);
   const [openBld, setOpenBld] = useState<string | null | undefined>(undefined);
@@ -182,7 +182,7 @@ export default function MobileDisplaySettings({ onHeaderAction, onBusyChange }: 
   const err = (name: string) => (cellErrors[name] ? <p id={`${name}-error`} role="alert" className="sp-err">{cellErrors[name]}</p> : null);
 
   return (
-    <div style={{ padding: "14px 16px 28px" }}><QueryRegion label="cài đặt hiển thị" queries={sheet.canManageSettings ? [settings, hotlineQuery] : []} skeleton="detail" rows={4}>
+    <div style={{ padding: "14px 16px 28px" }}><QueryRegion label="cài đặt hiển thị" queries={sheet.canManageSettings ? [settings] : []} skeleton="detail" rows={4}>
       {!onHeaderAction && sheet.canManageSettings && <button type="button" className="mb-3 inline-flex items-center gap-2 rounded border px-3 py-2 text-sm" onClick={() => setOpen('settings')} disabled={sheet.busy}><Settings size={16} />Cài đặt chung</button>}
       <div className="sp-sec">Từng nhà &amp; phòng<span className="cnt">{table.groups.length} nhà · {roomCount} phòng</span></div>
       <p className="sp-hint" style={{ margin: "0 0 12px", padding: "0 2px" }}>

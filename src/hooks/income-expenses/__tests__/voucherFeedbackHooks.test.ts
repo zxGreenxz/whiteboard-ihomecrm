@@ -11,7 +11,6 @@ vi.mock('../accountingClass', () => ({ loadIncomeExpenseAccountingClassResolver:
 vi.mock('sonner', () => ({ toast: { error:h.error, success:h.success, info:h.info, warning:h.warning } }));
 import { useCreateIncomeExpense } from '../mutations';
 import { useCreateIncomeExpenseBatch, useImportIncomeExpenses } from '../batch';
-import { useDecideApproval } from '@/hooks/useApprovals';
 import { useMyCashbookAccessV2, useApproveIncomeExpenseV2, usePostApprovedIncomeExpenseV2 } from '../financeV2Mutations';
 import { useCancelIncomeExpense, useVerifyIncomeExpense } from '../statusMutations';
 import { useCancelVoucherFlex } from '../flexMutations';
@@ -60,13 +59,6 @@ describe('C01/C02/C09 — một thông báo đúng kết quả', () => {
     await expect(mutation.mutationFn(input)).rejects.toBe(timeout);
     expect(h.error).not.toHaveBeenCalled(); mutation.onError(timeout);
     expect(h.error).toHaveBeenCalledOnce(); expect(h.error.mock.calls[0][0]).toMatch(/Chưa xác nhận.*kiểm tra trạng thái phiếu/);
-  });
-  it('duyệt quorum còn chờ hiển thị info, không success', async () => {
-    const mutation = useDecideApproval() as unknown as Mutation;
-    h.rpc.mockResolvedValueOnce({data:{request_id:'r1',state:'PENDING_APPROVAL'},error:null});
-    const args = {requestId:'r1',decision:'APPROVE',organizationId:'o1'};
-    mutation.onSuccess(await mutation.mutationFn(args),args);
-    expect(h.success).not.toHaveBeenCalled(); expect(h.info).toHaveBeenCalledWith(expect.stringContaining('vẫn đang chờ'));
   });
   it('lỗi đọc quyền sổ không bị chuyển thành danh sách rỗng/null', async () => {
     const error = {code:'42501',message:'permission denied'}; h.rpc.mockResolvedValueOnce({data:null,error});
@@ -138,17 +130,34 @@ describe('C16–C21 — một phần, không thay đổi và kết quả kiểm'
     (useGenerateRecurringVouchers() as unknown as Mutation).onSuccess([]);
     expect(h.info).toHaveBeenCalledTimes(3); expect(h.success).not.toHaveBeenCalled();
   });
-  it('đánh dấu/bỏ kiểm dựa trạng thái đọc lại; đọc lỗi không cho bấm toggle lần nữa', async () => {
-    const reader:VoucherQuery={select:()=>reader,eq:()=>reader,maybeSingle:vi.fn().mockResolvedValueOnce({data:{id:'v1',code:'PT01',verified_at:null},error:null}).mockResolvedValueOnce({data:null,error:{code:'42501'}})};
-    h.from.mockReturnValue(reader); h.rpc.mockResolvedValue({data:null,error:null});
+  it('đánh dấu/bỏ kiểm dựa trạng thái đọc lại; đọc xác nhận lỗi thì bấm lại gửi lại ngay đúng giá trị (đợt 10c)', async () => {
+    // Thứ tự đọc: lần 1 đọc trước khi ghi dấu + đọc xác nhận; lần 2 đọc trước khi ghi dấu + đọc xác nhận HỎNG; lần 3 đọc
+    // trước khi ghi dấu + (dấu của bản đặt giá trị ⇒ gửi lại ngay, không đọc đối chiếu) + đọc xác nhận.
+    const ok={data:{id:'v1',code:'PT01',verified_at:null},error:null};
+    const reader:VoucherQuery={select:()=>reader,eq:()=>reader,maybeSingle:vi.fn().mockResolvedValueOnce(ok).mockResolvedValueOnce(ok).mockResolvedValueOnce(ok).mockResolvedValueOnce({data:null,error:{code:'42501'}}).mockResolvedValue(ok)};
+    h.from.mockReturnValue(reader); h.rpc.mockResolvedValueOnce({data:{id:'v1',changed:true,verified:false},error:null}).mockResolvedValue({data:{id:'v1',changed:false,verified:false},error:null});
     const mutation=renderHook(()=>useVerifyIncomeExpense()).result.current as unknown as Mutation;
-    mutation.onSuccess(await mutation.mutationFn({id:'v1',note:null}));
+    mutation.onSuccess(await mutation.mutationFn({id:'v1',note:null,verified:false}));
     expect(h.success).toHaveBeenCalledWith('Đã bỏ đánh dấu đã kiểm của phiếu PT01.');
-    let caught:unknown;try{await mutation.mutationFn({id:'v1',note:null});}catch(error){caught=error;}
+    let caught:unknown;try{await mutation.mutationFn({id:'v1',note:null,verified:false});}catch(error){caught=error;}
     expect(caught).toBeDefined();mutation.onError(caught);
-    expect(h.warning.mock.calls[0][0].toLowerCase()).toContain('không bấm đổi trạng thái thêm lần nữa');
-    await expect((renderHook(()=>useVerifyIncomeExpense()).result.current as unknown as Mutation).mutationFn({id:'v1',note:null})).rejects.toThrow(/đối chiếu/);
-    expect(h.rpc).toHaveBeenCalledTimes(2);
+    expect(h.warning.mock.calls[0][0]).toContain('gửi lại không đảo ngược');
+    const again=renderHook(()=>useVerifyIncomeExpense()).result.current as unknown as Mutation;
+    again.onSuccess(await again.mutationFn({id:'v1',note:null,verified:false}));
+    expect(h.info).toHaveBeenCalledWith('Phiếu PT01 đã ở đúng trạng thái Chưa kiểm (do lần bấm trước, hoặc đã đúng từ trước). Không có thay đổi mới.');
+    expect(h.rpc).toHaveBeenCalledTimes(3);
+    expect(h.rpc.mock.calls.map(call=>call[1].p_verified)).toEqual([false,false,false]);
+  });
+  it('«Đã kiểm» không đổi (người khác đã kiểm) mà có ghi chú vừa nhập: câu báo nói ghi chú không được lưu', () => {
+    const mutation=renderHook(()=>useVerifyIncomeExpense()).result.current as unknown as Mutation;
+    mutation.onSuccess({id:'v1',code:'PT01',verified_at:'2026-11-24T01:00:00.000Z',changed:false},{id:'v1',note:'đã đối chiếu',verified:true});
+    expect(h.info).toHaveBeenCalledWith('Phiếu PT01 đã ở đúng trạng thái Đã kiểm từ trước. Không có thay đổi mới. Ghi chú vừa nhập không được lưu.');
+    expect(h.success).not.toHaveBeenCalled();
+  });
+  it('«Đã kiểm» không đổi ở lần GỬI LẠI có ghi chú: không khẳng định ghi chú mất (lần bấm trước có thể đã lưu)', () => {
+    const mutation=renderHook(()=>useVerifyIncomeExpense()).result.current as unknown as Mutation;
+    mutation.onSuccess({id:'v1',code:'PT01',verified_at:'2026-11-24T01:00:00.000Z',changed:false,resent:true},{id:'v1',note:'đã đối chiếu',verified:true});
+    expect(h.info).toHaveBeenCalledWith('Phiếu PT01 đã ở đúng trạng thái Đã kiểm (do lần bấm trước, hoặc đã đúng từ trước). Không có thay đổi mới. Ghi chú có thể đã được lưu ở lần bấm trước; mở phiếu để xem.');
   });
 });
 
@@ -165,12 +174,16 @@ it('C22 hai dòng giống nhau vẫn là hai dòng hợp lệ, success giải ph
  await expect((useImportIncomeExpenses() as unknown as ImportMutation).mutationFn([row])).resolves.toMatchObject({successCount:1});expect(h.rpc).toHaveBeenCalledTimes(3);
 });
 
+// Đợt 9: lần bấm sau không bị khoá mãi nữa: hàm đối chiếu dựng kết quả lượt trước từ ảnh chụp (dòng 2 đã có phiếu, dòng 7
+// bị từ chối) và trả về màn từng dòng, KHÔNG nhập lại cả tệp; lần bấm sau nữa mới nhập.
 it('C22 partial known rejection giữ ID đã tạo và dòng lỗi sau mở lại, không nhập lại cả file',async()=>{
  const rows=[{...input,item_name:'A',amount:100,source_row:2},{...input,item_name:'B',amount:200,source_row:7}];
  h.rpc.mockResolvedValueOnce({data:{id:'v1',code:'PC01'},error:null}).mockResolvedValueOnce({data:null,error:{code:'23514',message:'invalid row'}});
  const result=await (useImportIncomeExpenses() as unknown as ImportMutation).mutationFn(rows);expect(result).toMatchObject({successCount:1,failedCount:1});
- await expect((useImportIncomeExpenses() as unknown as ImportMutation).mutationFn(rows)).rejects.toThrow(/Dòng Excel chưa hoàn tất: 7/);expect(h.rpc).toHaveBeenCalledTimes(2);
  const snapshot=JSON.parse(localStorage.getItem('ihome:excel-import-pending:v1:u1:o1')!) as {rows:{sourceRow:number}[];createdVouchers:{id:string}[];unconfirmedRows:number[];failedRows:number[]};expect(snapshot.createdVouchers[0].id).toBe('v1');expect(snapshot.failedRows).toEqual([7]);
+ await expect((useImportIncomeExpenses() as unknown as ImportMutation).mutationFn(rows)).resolves.toMatchObject({reconciledFrom:expect.any(String),createdVouchers:[{row:2,id:'v1',code:'PC01'}],errors:[{row:7}]});expect(h.rpc).toHaveBeenCalledTimes(2);
+ h.rpc.mockResolvedValueOnce({data:{id:'v2',code:'PC02'},error:null});
+ await expect((useImportIncomeExpenses() as unknown as ImportMutation).mutationFn([rows[1]])).resolves.toMatchObject({successCount:1});expect(h.rpc).toHaveBeenCalledTimes(3);
 });
 it('C22 mọi dòng bị từ chối chắc chắn và chưa có phiếu mới cho sửa file rồi gửi lại',async()=>{
  const row={...input,item_name:'A',amount:100,source_row:2};h.rpc.mockResolvedValueOnce({data:null,error:{code:'23514',message:'invalid row'}}).mockResolvedValueOnce({data:{id:'v2',code:'PC02'},error:null});

@@ -25,7 +25,7 @@ Bộ máy đang ở trạng thái **Đang áp dụng** từ 27/09/2026, nhưng c
 :::
 
 ::: warning Máy duyệt chưa phải là tiền đã chi
-Bộ máy chỉ quyết **trạng thái duyệt** của phiếu (duyệt ngay hay chờ duyệt). Tiền chỉ thật sự ra khỏi sổ quỹ khi phiếu ở trạng thái **Đã Chi** — tức đã ghi sổ (`posting_status = POSTED`). Tuỳ cửa chi, bước ghi sổ có thể chạy ngay sau khi duyệt (vd đóng phí ở **Thanh toán**) hoặc vẫn chờ người giữ sổ bấm chi ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) / [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/).
+Bộ máy chỉ quyết **trạng thái duyệt** của phiếu (duyệt ngay hay chờ duyệt). Tiền chỉ thật sự ra khỏi sổ quỹ khi phiếu ở trạng thái **Đã Chi** — tức đã ghi sổ (`posting_status = POSTED`). Tuỳ cửa chi, bước ghi sổ có thể chạy ngay sau khi duyệt (vd đóng phí ở **Thanh toán**) hoặc vẫn chờ người giữ sổ bấm chi ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) (tab **Chờ xử lý**).
 :::
 
 ## Hướng dẫn từng bước
@@ -114,7 +114,6 @@ Tháng đã có khoản chi thì cam kết của tháng đó **không sửa đư
 ## Quy trình liên quan
 
 - [Phí cố định](/05-cai-dat/phi-co-dinh/) — công bố giá phí cố định theo toà.
-- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — lập và theo dõi phiếu chi.
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) — duyệt các phiếu vượt cam kết.
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — lập, duyệt (kể cả phiếu vượt cam kết) và theo dõi phiếu chi.
 - [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) — báo chi theo hạng mục chuẩn.
 - [Cài đặt chung](/05-cai-dat/cai-dat-chung/) — ngưỡng tự duyệt phiếu chi theo luật cũ.

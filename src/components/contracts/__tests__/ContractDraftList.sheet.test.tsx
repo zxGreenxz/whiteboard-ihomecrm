@@ -15,7 +15,7 @@ vi.mock('@/hooks/useContractDrafts', () => ({
 vi.mock('@/hooks/useRooms', () => ({ useRooms: () => ({ data: [{ id: 'r-1', name: '301', building: { name: '44TL' } }] }) }));
 import { ContractDraftList } from '../ContractDraftList';
 
-const handlers = { onEdit: vi.fn(), onPrint: vi.fn(), onSign: vi.fn(), onTransfer: vi.fn() };
+const handlers = { onEdit: vi.fn(), onPrint: vi.fn(), onSign: vi.fn() };
 const show = (over: Partial<Parameters<typeof ContractDraftList>[0]> = {}) => render(<ContractDraftList layout="sheet" canEdit canExport canSign canDelete={() => true} {...handlers} {...over} />);
 const rowOf = (name: string) => screen.getByText(name).closest('.cm-qdraft') as HTMLElement;
 
@@ -33,7 +33,9 @@ describe('Danh sách nháp trong bảng trượt mobile', () => {
     const more = within(row).getByRole('button', { name: 'Thao tác khác' });
     fireEvent.click(more);
     expect(more.getAttribute('aria-expanded')).toBe('true');
-    for (const name of [/Xác nhận đã ký/, /^In$/, 'Liên kết nhượng', /Xóa nháp/]) expect(within(row).getByRole('button', { name })).toBeTruthy();
+    for (const name of [/Xác nhận đã ký/, /^In$/, /Xóa nháp/]) expect(within(row).getByRole('button', { name })).toBeTruthy();
+    // Luồng "Liên kết nhượng" đã gỡ: sang nhượng ghi ở hộp Thanh lý.
+    expect(within(row).queryByRole('button', { name: 'Liên kết nhượng' })).toBeNull();
     fireEvent.click(more);
     expect(within(row).queryByRole('button', { name: /Xác nhận đã ký/ })).toBeNull();
   });
@@ -49,12 +51,10 @@ describe('Danh sách nháp trong bảng trượt mobile', () => {
     expect(handlers.onSign).toHaveBeenCalledWith(draft);
     fireEvent.click(within(row).getByRole('button', { name: /^In$/ }));
     expect(handlers.onPrint).toHaveBeenCalledWith(draft);
-    fireEvent.click(within(row).getByRole('button', { name: 'Liên kết nhượng' }));
-    expect(handlers.onTransfer).toHaveBeenCalledWith(draft);
     fireEvent.click(within(row).getByRole('button', { name: /Xóa nháp/ }));
     expect(screen.getByRole('alertdialog', { name: 'Xóa bản nháp này?' })).toBeTruthy();
   });
-  it('bản đã ký không sửa, không ký lại, không xóa; chỉ còn In và Liên kết nhượng', () => {
+  it('bản đã ký không sửa, không ký lại, không xóa; chỉ còn In', () => {
     state.drafts = [draftOf('A', { status: 'SIGNED' })];
     show();
     const row = rowOf('Khách A');
@@ -64,7 +64,13 @@ describe('Danh sách nháp trong bảng trượt mobile', () => {
     expect(within(row).queryByRole('button', { name: /Xác nhận đã ký/ })).toBeNull();
     expect(within(row).queryByRole('button', { name: /Xóa nháp/ })).toBeNull();
     expect(within(row).getByRole('button', { name: /^In$/ })).toBeTruthy();
-    expect(within(row).getByRole('button', { name: 'Liên kết nhượng' })).toBeTruthy();
+    expect(within(row).queryByRole('button', { name: 'Liên kết nhượng' })).toBeNull();
+  });
+  it('chỉ có quyền sửa thì không hiện nút ⋯ rỗng', () => {
+    show({ canExport: false, canSign: false, canDelete: () => false });
+    const row = rowOf('Khách A');
+    expect(within(row).getByRole('button', { name: 'Sửa nháp' })).toBeTruthy();
+    expect(within(row).queryByRole('button', { name: 'Thao tác khác' })).toBeNull();
   });
   it('không có quyền nào thì không có nút thừa; phòng chưa chọn/không tra được ghi rõ', () => {
     state.drafts = [draftOf('A', { room_id: null }), draftOf('B', { room_id: 'r-khong-thay' })];

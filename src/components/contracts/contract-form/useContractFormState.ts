@@ -30,7 +30,11 @@ import {
   normalizeFirstBillingPeriod,
   type FirstInvoiceItem,
 } from "@/lib/firstInvoiceBuilder";
-import { useOrphanDepositVouchers } from "@/hooks/useDeposits";
+import { useContractRoomDeposits } from "@/hooks/useDeposits";
+import { useContractExitEarlyTerms } from '@/hooks/contracts/useContractExitEarlyTerms';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
+import { exitHoldLinksStart, exitSupportCaps, exitSupportError, pendingExitHold } from '@/lib/contractExitSupport';
 import { useAccounts, type Account } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from '@/lib/collect';
@@ -275,11 +279,11 @@ export function useContractFormState({
   //  - chỉ tính phiếu ĐÃ DUYỆT vào "đã đặt cọc" (recompute chỉ cộng APPROVED);
   //  - KHÔNG tạo lại phiếu cho các dòng này (tránh double-count deposit_paid).
   const startDateWatch = form.watch("start_date");
-  const orphanDepositsQuery = useOrphanDepositVouchers(
+  const orphanDepositsQuery = useContractRoomDeposits(
     !isEditMode && open ? selectedRoomId || undefined : undefined,
     startDateWatch || undefined,
   );
-  const orphanDepositVouchers = orphanDepositsQuery.data ?? [];
+  const orphanDepositVouchers = orphanDepositsQuery.data?.vouchers ?? [];
   const refetchOrphanDepositVouchers = orphanDepositsQuery.refetch;
   if (open && !isEditMode && selectedRoomId && (orphanDepositsQuery.isError || orphanDepositsQuery.data === undefined)) {
     sourceIssues.push({ key: 'orphanDeposits', label: 'phiếu cọc đã thu trước của phòng', retry: () => void orphanDepositsQuery.refetch() });
@@ -287,13 +291,43 @@ export function useContractFormState({
   const approvedOrphanTotal = useMemo(
     () =>
       orphanDepositVouchers
-        .filter((v) => v.approval_status === "APPROVED")
+        .filter((v) => v.received && !v.outsideWindow)
         .reduce((sum, v) => sum + (Number(v.total_amount) || 0), 0),
     [orphanDepositVouchers],
   );
 
-  // Cọc đã đặt = dòng user nhập + phiếu cọc cũ ĐÃ DUYỆT (khớp recompute DB).
-  const depositPaidTotal = typedDepositTotal + approvedOrphanTotal;
+  // ---- Khách cũ hỗ trợ khách mới (sang nhượng phòng, đợt 3) ----
+  // Phòng đang chờ khách nhận của hồ sơ nhờ sale / tự tìm: hợp đồng này tự nối với hồ sơ cũ và nhận được một số tiền
+  // khách cũ hỗ trợ, ghi thành cặp phiếu chuyển cọc (create_contract_v2.transfer_support_amount). Số đó tính như cọc
+  // đã nộp: dòng cọc hoá đơn đầu nhỏ đi đúng số đó; quyết toán khách cũ trả ít đi đúng số đó.
+  const exitTermsQuery = useContractExitEarlyTerms(selectedRoomId ? { roomId: selectedRoomId } : null,
+    open && !isEditMode && !!selectedRoomId);
+  const exitHold = !isEditMode ? pendingExitHold(exitTermsQuery.data) : undefined;
+  const { data: myPermissions } = useMyPermissions();
+  const exitSupportPermitted = !!exitHold && canUse(myPermissions, 'contracts', 'terminate', exitHold.building_id);
+  const exitSupportLinks = !!exitHold && exitHoldLinksStart(exitHold, startDateWatch);
+  const [transferSupportAmount, setTransferSupportAmount] = useState(0);
+  useEffect(() => { setTransferSupportAmount(0); }, [selectedRoomId, open]);
+  const exitSupportApplied = exitSupportLinks && exitSupportPermitted ? transferSupportAmount : 0;
+  const paidBeforeExitSupport = typedDepositTotal + approvedOrphanTotal;
+  const exitSupportCapsValue = exitHold ? exitSupportCaps(exitHold, totalDeposit, paidBeforeExitSupport) : null;
+  const exitSupportIssue = exitSupportApplied > 0 && exitSupportCapsValue
+    ? exitSupportError(exitSupportApplied, exitSupportCapsValue) : null;
+  const exitSupport = {
+    hold: exitHold ?? null,
+    readError: exitTermsQuery.isError && (exitTermsQuery.error as { code?: string } | null)?.code !== '42501',
+    retry: () => void exitTermsQuery.refetch(),
+    permitted: exitSupportPermitted,
+    links: exitSupportLinks,
+    amount: transferSupportAmount,
+    setAmount: setTransferSupportAmount,
+    applied: exitSupportApplied,
+    caps: exitSupportCapsValue,
+    issue: exitSupportIssue,
+  };
+
+  // Cọc đã đặt = dòng user nhập + phiếu cọc cũ ĐÃ DUYỆT (khớp recompute DB) + số khách cũ hỗ trợ.
+  const depositPaidTotal = paidBeforeExitSupport + exitSupportApplied;
   const depositBalance = calculateContractDepositBalance(
     totalDeposit,
     depositPaidTotal,
@@ -626,7 +660,7 @@ export function useContractFormState({
   // The saved manual invoice is the baseline. Only edits to invoice-driving
   // fields in this open editor rebuild it; background receipt reads do not.
   const draftInvoiceSignature = JSON.stringify([
-    rentPriceWatch, totalDepositWatch, typedDepositTotal, depositDebtMode,
+    rentPriceWatch, totalDepositWatch, typedDepositTotal, exitSupportApplied, depositDebtMode,
     startBilling, endBilling, discountMonthsWatch, discountAmtWatch, customerSupport, servicesKey,
     draftInvoiceEditRevision.current,
   ]);
@@ -643,7 +677,8 @@ export function useContractFormState({
       ).some((field) => form.getFieldState(field).isDirty);
       // Preserve saved rows until the first user edit. Once generated, returning
       // to defaults is still a change even though RHF clears the dirty flags.
-      if (baseline.signature === null && !userChangedInvoiceField && draftInvoiceEditRevision.current === 0) return;
+      // Số khách cũ hỗ trợ không phải trường của form: nhập số đó cũng phải dựng lại dòng cọc của hoá đơn đầu.
+      if (baseline.signature === null && !userChangedInvoiceField && draftInvoiceEditRevision.current === 0 && !exitSupportApplied) return;
       if (baseline.signature === draftInvoiceSignature) return;
       baseline.signature = draftInvoiceSignature;
     }
@@ -939,10 +974,12 @@ export function useContractFormState({
     authUser,
     buildingActiveServices,
     buildingServicesAsSelected,
+    roomHold: orphanDepositsQuery.data?.hold ?? null,
     orphanDepositVouchers,
     refetchOrphanDepositVouchers,
     approvedOrphanTotal,
     typedDepositTotal,
+    exitSupport,
     // state
     selectedBuildingId,
     selectedRoomId,

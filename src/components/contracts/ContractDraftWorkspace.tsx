@@ -11,7 +11,6 @@ import type { ContractDraft } from '@/lib/contractDrafts';
 const DraftList = lazy(() => import('./ContractDraftList').then(module => ({ default: module.ContractDraftList })));
 const DraftForm = lazy(() => import('./ContractDraftFormDialog').then(module => ({ default: module.ContractDraftFormDialog })));
 const PrintDraftDialog = lazy(() => import('./PrintContractDraftDialog').then(module => ({ default: module.PrintContractDraftDialog })));
-const TransferPanel = lazy(() => import('./ContractTransferLinkPanel').then(module => ({ default: module.ContractTransferLinkPanel })));
 
 /** Same entry for desktop and mobile; heavy editor/export code loads on demand. */
 export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded = false, sheetHeader }: {
@@ -27,7 +26,6 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
   const [editorMounted, setEditorMounted] = useState(false);
   const [draft, setDraft] = useState<ContractDraft>();
   const [printDraft, setPrintDraft] = useState<ContractDraft>();
-  const [transferDraft, setTransferDraft] = useState<ContractDraft>();
   const canCreate = hasAnyScope && canUse(permissions, 'contracts', 'create');
   const canEdit = canUse(permissions, 'contracts', 'edit');
   const canExport = canUse(permissions, 'contracts', 'print');
@@ -38,7 +36,6 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
     setEditorMounted(false);
     setDraft(undefined);
     setPrintDraft(undefined);
-    setTransferDraft(undefined);
   }, [selectedOrganizationId, buildingId]);
 
   const editDraft = (value: ContractDraft) => {
@@ -51,11 +48,8 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
   const list = <Suspense fallback={<LoadingState label="bản nháp" variant="table" rows={3} className="px-3" />}>
     <DraftList key={`${selectedOrganizationId}:${buildingId ?? ''}`} buildingId={buildingId} buildingIds={buildingIds} canEdit={canEdit} canExport={canExport} canSign={canCreate}
       canDelete={value => canUse(permissions, 'contracts', 'delete', value.building_id)} layout={sheetHeader ? 'sheet' : 'page'}
-      onEdit={editDraft} onPrint={setPrintDraft} onSign={editDraft} onTransfer={setTransferDraft} />
+      onEdit={editDraft} onPrint={setPrintDraft} onSign={editDraft} />
   </Suspense>;
-  const transfer = transferDraft && <div className="p-3"><Button variant="ghost" size="sm" onClick={() => setTransferDraft(undefined)}>Đóng liên kết nhượng</Button>
-    <Suspense fallback={<LoadingState label="liên kết nhượng" rows={3} />}><TransferPanel key={transferDraft.id} draft={transferDraft} canEdit={canEdit} /></Suspense>
-  </div>;
   const dialogs = <>
     {printDraft && <Suspense fallback={<p role="status" className="p-4 text-sm">Đang mở hộp thoại In…</p>}>
       <PrintDraftDialog key={`${selectedOrganizationId}:${printDraft.id}`} open draft={printDraft}
@@ -70,10 +64,9 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
     </Suspense>}
   </>;
 
-  // Trong bảng trượt, liên kết nhượng thế chỗ danh sách: nằm dưới danh sách dài thì khuất khỏi màn hình.
   if (sheetHeader) return <section className="cm-qsection" aria-label="Hợp đồng nháp">
     {sheetHeader(canCreate ? <Button className="cm-qbtn cm-qbtn-primary" onClick={startDraft}><Plus className="mr-1 h-4 w-4" />Soạn nháp</Button> : null)}
-    <div className="cm-qbody">{transfer || list}</div>
+    <div className="cm-qbody">{list}</div>
     {dialogs}
   </section>;
 
@@ -95,7 +88,6 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
       </Button>}
     </div>
     {(alwaysExpanded || expanded) && list}
-    {transfer}
     {dialogs}
   </section>;
 }

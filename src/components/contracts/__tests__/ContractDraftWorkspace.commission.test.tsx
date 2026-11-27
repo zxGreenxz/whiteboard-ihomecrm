@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { toast } from 'sonner';
+import { linkedExitTermsRow } from './exitEarlyTermsFixture';
 import { useState, type ReactNode } from 'react';
 import type { ContractDraft } from '@/lib/contractDrafts';
 const fixtures = vi.hoisted(() => {
@@ -11,6 +13,9 @@ const fixtures = vi.hoisted(() => {
     request:{idempotencyKey:id,payload:{contract:{},customers:[],services:[]}} };
 });
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:fixtures.id})}));
+const exitTerms=vi.hoisted(()=>({fetch:vi.fn(async():Promise<unknown[]>=>[])}));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms',()=>({fetchContractExitEarlyTerms:exitTerms.fetch,useContractExitEarlyTerms:()=>({data:[],isError:false,error:null,refetch:()=>undefined})}));
+vi.mock('sonner',()=>({toast:{info:vi.fn(),error:vi.fn(),success:vi.fn()}}));
 vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{__superadmin:true}})}));
 vi.mock('@/hooks/useMyBuildingScope',()=>({useMyBuildingScope:()=>({hasAnyScope:true})}));
 vi.mock('@/components/contracts/contract-form/useContractDraftEditor',()=>({useContractDraftEditor:()=>({current:fixtures.draft,errors:[],pending:false,matchesSavedDocument:()=>true,persist:vi.fn()})}));
@@ -54,4 +59,11 @@ it('saved-draft workspace must retain the commission dialog after signing',async
   fireEvent.click(await screen.findByRole('button',{name:'Mở nháp kiểm tra'}));
   await sign();
   expect(await screen.findByRole('dialog',{name:'Tạo phiếu chi hoa hồng'})).toBeTruthy();
+});
+it('ký nháp ra hợp đồng khách nhận ca tự tìm: không mở hộp hoa hồng chung',async()=>{
+  exitTerms.fetch.mockResolvedValueOnce([linkedExitTermsRow({early_reason:'SELF_FOUND',new_contract_id:fixtures.id})]);
+  render(<PersistentForm/>);await sign();
+  await waitFor(()=>expect(toast.info).toHaveBeenCalledWith('Hợp đồng đã tự nối với hồ sơ trả phòng HD-0101 (khách tự tìm): không có hoa hồng môi giới hay thưởng sale.'));
+  expect(exitTerms.fetch).toHaveBeenCalledWith({contractId:fixtures.id},fixtures.id);
+  expect(screen.queryByRole('dialog',{name:'Tạo phiếu chi hoa hồng'})).toBeNull();
 });

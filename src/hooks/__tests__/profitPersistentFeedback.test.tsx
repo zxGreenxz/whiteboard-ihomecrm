@@ -13,26 +13,33 @@ import { financialPending } from '@/lib/financialPending';
 const org = 'dddd0000-0000-4000-8000-000000000001';
 type ProfitInput = CloseProfitPeriodInput & ResetProfitPeriodInput & UnlockProfitMonthInput;
 const base: ProfitInput = { organizationId: org, periodMonth: '2026-07-01', buildingIds: ['b1'], reason: 'Đối chiếu lại phiếu thu chi', expectedSourceHash: 'source-hash', adjustments: [], expectedStateHash: 'state-hash', expectedSnapshotIds: ['s1'], targetBuildingIds: ['b1'], reclose: false };
-const cases = [ ['profit-close', useCloseProfitPeriod], ['profit-unlock', useUnlockProfitMonth], ['profit-reset', useResetProfitPeriod] ] as const;
+// Đợt 6: chốt lần đầu tách khoá thành profit-first-close (dấu chung profit-close bản trước chỉ còn đọc).
+const cases = [ ['profit-first-close', useCloseProfitPeriod], ['profit-unlock', useUnlockProfitMonth], ['profit-reset', useResetProfitPeriod] ] as const;
 function mount(hook: typeof useCloseProfitPeriod | typeof useResetProfitPeriod | typeof useUnlockProfitMonth) {
  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>{children}</QueryClientProvider>;
  return renderHook(() => hook() as unknown as { mutateAsync: (input: ProfitInput) => Promise<unknown> }, { wrapper });
 }
 beforeEach(() => { localStorage.clear(); localStorage.setItem('ihomecrm.selectedOrganizationId', org); m.userId = 'actor-a'; m.rpc.mockReset(); });
 afterEach(cleanup);
-it.each(cases)('%s unknown survives remount and keeps scope by actor/org/month', async (namespace, hook) => {
+// Đợt 6 (cách B): mã gửi máy chủ suy từ mã của dấu; lần bấm sau gửi lại ĐÚNG mã đó (máy chủ giữ khoá tư vấn theo mã rồi tra
+// profit_close_runs), không sinh mã mới, và dấu vẫn theo phạm vi người / công ty / tháng.
+it.each(cases)('%s unknown survives remount and keeps scope by actor/org/month; the next press resends the same server key', async (namespace, hook) => {
  m.rpc.mockResolvedValue({ data: null, error: null }); const first = mount(hook);
  await act(async () => { await expect(first.result.current.mutateAsync(base)).rejects.toMatchObject({ outcome: 'unknown' }); }); first.unmount();
  const pending = financialPending.read({ namespace, userId: 'actor-a', organizationId: org, businessKey: `${org}:2026-07-01` }); expect(pending).not.toBeNull();
- const second = mount(hook); await act(async () => { await expect(second.result.current.mutateAsync(base)).rejects.toMatchObject({ outcome: 'unknown' }); }); expect(m.rpc).toHaveBeenCalledTimes(1);
+ expect(m.rpc.mock.calls[0][1].p_idempotency_key).toContain(pending?.requestKey);
+ const second = mount(hook); await act(async () => { await expect(second.result.current.mutateAsync(base)).rejects.toMatchObject({ outcome: 'unknown' }); }); expect(m.rpc).toHaveBeenCalledTimes(2);
+ expect(m.rpc.mock.calls[1][1].p_idempotency_key).toBe(m.rpc.mock.calls[0][1].p_idempotency_key);
 });
-it.each(['actor', 'organization', 'month'] as const)('pending unlock does not block another %s and still blocks original scope on return', async dimension => {
+it.each(['actor', 'organization', 'month'] as const)('pending unlock does not block another %s; back in the original scope the next press resends the original server key', async dimension => {
  m.rpc.mockResolvedValue({ data: null, error: null }); const first = mount(useUnlockProfitMonth); await act(async () => { await expect(first.result.current.mutateAsync(base)).rejects.toMatchObject({ outcome: 'unknown' }); }); first.unmount();
  const next = { ...base }; if (dimension === 'actor') m.userId = 'actor-b'; if (dimension === 'organization') { next.organizationId = 'org-b'; localStorage.setItem('ihomecrm.selectedOrganizationId', 'org-b'); } if (dimension === 'month') next.periodMonth = '2026-08-01';
  m.rpc.mockResolvedValue({ data: { run_id: 'run-confirmed', affected_buildings: 1, idempotent_replay: false }, error: null }); const second = mount(useUnlockProfitMonth);
  await act(async () => { await expect(second.result.current.mutateAsync(next)).resolves.toMatchObject({ run_id: 'run-confirmed' }); }); second.unmount(); expect(m.rpc).toHaveBeenCalledTimes(2);
  m.userId = 'actor-a'; localStorage.setItem('ihomecrm.selectedOrganizationId', org); const third = mount(useUnlockProfitMonth);
- await act(async () => { await expect(third.result.current.mutateAsync(base)).rejects.toMatchObject({ outcome: 'unknown' }); }); expect(m.rpc).toHaveBeenCalledTimes(2);
+ await act(async () => { await expect(third.result.current.mutateAsync(base)).resolves.toMatchObject({ run_id: 'run-confirmed' }); }); expect(m.rpc).toHaveBeenCalledTimes(3);
+ expect(m.rpc.mock.calls[2][1].p_idempotency_key).toBe(m.rpc.mock.calls[0][1].p_idempotency_key);
+ expect(m.rpc.mock.calls[1][1].p_idempotency_key).not.toBe(m.rpc.mock.calls[0][1].p_idempotency_key);
 });
 it('lý do xử lý chưa phân bổ sai là preflight failure; sửa xong được gửi đúng một lần', async () => {
  m.rpc.mockResolvedValue({ data: { run_id: 'run-confirmed', affected_buildings: 1 }, error: null }); const mounted = mount(useCloseProfitPeriod);

@@ -1,14 +1,12 @@
-import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
 import { useMemo } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { approvalDecisionFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
 import { loadIncomeExpenseDetails } from "@/lib/incomeExpenseDetailRpc";
 import { withDetailReadDeadline } from "@/hooks/income-expenses/detailRead";
-import { ledgerAwareWorkflowError } from "@/lib/profitLedger/voucherFailure";
+
+// Đợt 11: đã xoá useDecideApproval / useWithdrawApproval (không còn nơi gọi). Tệp còn các hook ĐỌC hộp duyệt (Hermes
+// chép vùng pending-approvals, xem infra/hermes-broker/web-parity.json).
 
 // Một yêu cầu duyệt đang chờ CHÍNH TÔI xử lý — khớp cột của
 // public.list_my_pending_approvals_v1() (server đã lọc theo auth.uid(), client
@@ -37,14 +35,6 @@ export interface PendingApproval {
   // để UI tự sáng lên ngay khi RPC được nới thêm cột, không cần đổi FE nữa.
   system_source: string | null;
 }
-
-// Cache cần invalidate sau khi quyết định: hộp thư duyệt + danh sách phiếu +
-// số dư tài khoản (duyệt xong phiếu POSTED → tiền đã chạy vào sổ).
-const invalidateAfterDecision = (queryClient: ReturnType<typeof useQueryClient>) => {
-  queryClient.invalidateQueries({ queryKey: ["pending-approvals"] });
-  queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
-  queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
-};
 
 /**
  * Nhịp làm tươi hộp duyệt khi KHÔNG có realtime phủ (21/10/2026, RT-HUB-4).
@@ -194,78 +184,5 @@ export const usePendingApprovalSources = (rows: readonly PendingApproval[]) => {
     placeholderData: keepPreviousData,
     meta: { errorDisplay: "inline", label: "loại phiếu chờ duyệt" },
     queryFn: (): Promise<Record<string, PendingVoucherSource>> => readPendingVoucherSources(groups),
-  });
-};
-
-// Duyệt / từ chối một yêu cầu. Engine tự kiểm quyền duyệt, chặn maker tự duyệt,
-// và chuyển phiếu sang POSTED khi qua hết bước — lỗi trả về là câu tiếng Việt
-// từ server nên hiển thị nguyên văn.
-export const useDecideApproval = () => {
-  const queryClient = useQueryClient();
-  const workflow=persistentFinancialWorkflow('approval-request',{scope:'actor'});
-
-  return useMutation({
-    mutationFn: async (input: {
-      requestId: string;
-      organizationId?: string | null;
-      decision: "APPROVE" | "REJECT";
-      reason?: string | null;
-    }) => {
-      return workflow.run(input.requestId,'xử lý yêu cầu duyệt',async progress=>{
-      const { data, error } = await supabase.rpc("decide_financial_request_v2", {
-        p_request_id: input.requestId,
-        p_decision: input.decision,
-        p_reason: input.reason ?? undefined,
-      });
-      if (error) {
-        throw error;
-      }
-      if ((data as {request_id?:unknown}|null)?.request_id!==input.requestId || approvalDecisionFeedback(data, input.decision).kind === "warning") throw new TypeError("Missing approval decision confirmation");
-      progress.completed.push({id:input.requestId,label:'Đã nhận kết quả xử lý yêu cầu duyệt'});
-      return data as { request_id: string; state: string };
-      },undefined,input.organizationId);
-    },
-    onSuccess: (_data, input) => {
-      invalidateAfterDecision(queryClient);
-      const feedback = approvalDecisionFeedback(_data, input.decision);
-      toast[feedback.kind](feedback.message);
-    },
-    onError: (error) => {
-      console.error("Error deciding financial request:", error);
-      // Phiếu chi theo sổ tổng: chốt F1/F5 trả mã PROFIT_LEDGER_… ⇒ câu riêng; phiếu khác như cũ.
-      toast.error(ledgerAwareWorkflowError(error,'xử lý yêu cầu duyệt'));
-    },
-  });
-};
-
-// Người lập (hoặc super admin) tự thu hồi yêu cầu đã gửi — phiếu về lại nháp.
-export const useWithdrawApproval = () => {
-  const queryClient = useQueryClient();
-  const workflow=persistentFinancialWorkflow('approval-request',{scope:'actor'});
-
-  return useMutation({
-    mutationFn: async (input: { requestId: string; organizationId?:string|null; reason?: string | null }) => {
-      return workflow.run(input.requestId,'thu hồi yêu cầu duyệt',async progress=>{
-      const { data, error } = await supabase.rpc("withdraw_financial_request_v1", {
-        p_request_id: input.requestId,
-        p_reason: input.reason ?? undefined,
-      });
-      if (error) {
-        throw error;
-      }
-      if ((data as {request_id?:unknown}|null)?.request_id!==input.requestId || approvalDecisionFeedback(data, "WITHDRAW").kind === "warning") throw new TypeError("Missing withdrawal confirmation");
-      progress.completed.push({id:input.requestId,label:'Đã nhận kết quả thu hồi yêu cầu duyệt'});
-      return data as { request_id: string; state: string };
-      },undefined,input.organizationId);
-    },
-    onSuccess: (data) => {
-      invalidateAfterDecision(queryClient);
-      const feedback = approvalDecisionFeedback(data, "WITHDRAW");
-      toast[feedback.kind](feedback.message);
-    },
-    onError: (error) => {
-      console.error("Error withdrawing financial request:", error);
-      toast.error(workflowErrorMessage(error,'thu hồi yêu cầu duyệt'));
-    },
   });
 };

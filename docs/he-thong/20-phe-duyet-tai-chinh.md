@@ -1,7 +1,7 @@
 # Phê duyệt tài chính
 
 > **Reviewed:** 2026-09-27  
-> Route người dùng: `/approvals`.
+> Màn người dùng: **Thu chi** (`/income-expense`, tab **Chờ xử lý**). Màn **Chờ duyệt** (`/approvals`) đã bỏ ngày 25/11/2026; đường dẫn cũ tự chuyển về Thu chi — xem mục "Màn hình duyệt (từ 25/11/2026)".
 
 > **Phạm vi file này:** LUẬT phê duyệt tài chính — khi nào cần duyệt, ngưỡng, `force_approval`,
 > đặc quyền. **KHÔNG nói về:** cơ chế posting phiếu và số dư — `08-thu-chi-so-quy.md`; SOP tay —
@@ -61,16 +61,25 @@ ngưỡng + trần (`utility_ceiling_check_v1`). Writer chuyên biệt khác gi�
 flowchart LR
   M["Maker tạo giao dịch"] --> E["Engine chụp rule + candidates"]
   E --> P["PENDING_APPROVAL"]
-  P --> I["/approvals của approver"]
+  P --> I["Thu chi của approver (web) / hộp chờ (Hermes)"]
   I -->|Duyệt| X["POSTED/APPROVED + tác động sổ atomic"]
-  I -->|Từ chối| R["REJECTED"]
+  I -->|"Từ chối — chỉ qua RPC, web không còn nút"| R["REJECTED"]
   M -->|Rút khi còn chờ| W["CANCELLED"]
 ```
 
-- Inbox gọi `list_my_pending_approvals_v1`; server lọc theo `auth.uid()`.
+- Hộp chờ (`list_my_pending_approvals_v1`, server lọc theo `auth.uid()`) không còn màn web riêng từ 25/11/2026; Hermes vẫn đọc hộp này, web duyệt qua Thu chi.
 - Quyết định dùng `decide_financial_request_v2` với compare-and-swap; rút dùng `withdraw_financial_request_v1`.
 - Maker không thể dùng các RPC approve legacy để vòng qua request engine.
 - Duyệt và post sổ diễn ra trong transaction; retry dùng idempotency/CAS, không tạo bút toán đôi.
+
+## Màn hình duyệt (từ 25/11/2026)
+
+Chủ công ty chốt **duyệt phiếu MỘT đường duy nhất ở Thu chi**:
+
+- Màn **Chờ duyệt** (`/approvals`, menu Tài chính → Chờ duyệt) **đã bỏ**; mục menu không còn, đường dẫn cũ tự chuyển về `/income-expense?approval_status=UNAPPROVED&layer=PENDING`. Nút **Từ chối** chỉ màn đó có nên bỏ theo; bỏ phiếu chờ duyệt dùng **Huỷ** (bắt buộc lý do).
+- Web duyệt bằng nút **Duyệt** trên dòng phiếu / hộp chi tiết → hộp **Xác nhận duyệt phiếu** → `approve_income_expense_v2` (Chỉ duyệt) hoặc `approve_and_post_income_expense_v2` (Duyệt và Chi… / Duyệt và Thu…, khi người duyệt giữ sổ quỹ của phiếu).
+- Phiếu chi theo **sổ tổng lợi nhuận** (chi lợi nhuận cổ đông, tạm ứng lợi nhuận, lương điều hành) trước đây bắt sang màn Chờ duyệt; nay cũng duyệt ở Thu chi, hộp có thêm thẻ số dư sổ tổng và chỉ chi từ đúng sổ quỹ đã chọn lúc lập. Luật ai được duyệt không đổi (xem `12-co-dong-loi-nhuan.md`).
+- **Phía máy chủ không đổi:** bảng `approval_requests`, quy tắc duyệt, `list_my_pending_approvals_v1`, `decide_financial_request_v2`… vẫn chạy ngầm — chốt sổ tổng vẫn đòi phiếu có yêu cầu duyệt đang chờ, Hermes vẫn đọc hộp chờ. Chỉ bỏ màn hình web. Các hook `src/hooks/useApprovals.ts` còn trong mã (dọn ở đợt sau) nhưng không màn nào dùng.
 
 ## Cấu hình ngưỡng
 
@@ -82,7 +91,7 @@ Owner mở `/settings/general` → tab **Thu chi**:
 
 ## Xử lý sự cố
 
-- Inbox rỗng: request có thể không chỉ định người dùng hiện tại, đã được quyết định hoặc tài khoản/binding đã bị off-board.
+- Hộp chờ (Hermes) rỗng: request có thể không chỉ định người dùng hiện tại, đã được quyết định hoặc tài khoản/binding đã bị off-board.
 - Người lập **có quyền duyệt** thì phiếu tự duyệt — chủ chốt 25/07 và giữ nguyên 26/09 (câu 05), chỉ ghi
   dấu vết để lọc/đếm: màn Cam kết chi → thẻ **Tự duyệt** (`list_self_approved_vouchers_v1`). Người không có
   quyền duyệt thì không tự duyệt được; chuyển người duyệt đúng rule.
@@ -101,4 +110,4 @@ Owner mở `/settings/general` → tab **Thu chi**:
   bucket đó ở thẻ **Bật áp dụng** là về luật cũ ngay; tắt hẳn: cờ `spend.engine.v1` ≠ `ON`.
 - Không sửa trực tiếp `approval_status`/sổ quỹ. Dùng quyết định, withdraw hoặc reversal canonical để giữ audit.
 
-Xem [hướng dẫn Chờ duyệt](../huong-dan-su-dung/03-quan-ly-van-hanh/cho-duyet/) và [authorization status](../authorization/README.md).
+Xem [hướng dẫn Thu chi](../huong-dan-su-dung/03-quan-ly-van-hanh/thu-chi/) và [authorization status](../authorization/README.md).

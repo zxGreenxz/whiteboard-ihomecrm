@@ -3,6 +3,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContractWithRelations } from '@/types/contract';
 import { ContractExitCasePanel } from '../ContractExitCasePanel';
+import { linkedExitTermsRow } from './exitEarlyTermsFixture';
 
 const state = vi.hoisted(() => ({ note: null as string | null, status: 'PENDING', loading: false, error: false }));
 vi.mock('@/hooks/useContractExitCases', () => ({ useContractExitCases: () => ({
@@ -14,10 +15,14 @@ vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: {}
 vi.mock('../ContractReturnStep', () => ({ EXIT_KIND_LABELS: { EARLY_RETURN: 'Trả sớm' } }));
 vi.mock('../TerminateDialog', () => ({ TerminateDialog: () => null }));
 vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({ useContractExitSettlementDrafts: () => ({ data: [] }) }));
-vi.mock('../ContractTransferLinkPanel', () => ({ ContractTransferLinkPanel: () => null }));
+const early = vi.hoisted(() => ({ data: [] as unknown[] }));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({
+  useContractExitEarlyTerms: () => ({ data: early.data, isLoading: false, isError: false, refetch: vi.fn() }),
+}));
+vi.mock('../ExitCommissionForm', () => ({ ExitCommissionDialog: () => null }));
 vi.mock('../ContractMeterBoundaryPanel', () => ({ ContractMeterBoundaryPanel: () => null }));
 
-beforeEach(() => { state.note = null; state.status = 'PENDING'; state.loading = false; state.error = false; });
+beforeEach(() => { early.data = []; state.note = null; state.status = 'PENDING'; state.loading = false; state.error = false; });
 afterEach(cleanup);
 const show = () => render(<ContractExitCasePanel contract={{ id: 'contract' } as ContractWithRelations} />);
 
@@ -42,5 +47,28 @@ describe('nội dung thanh lý trong chi tiết hợp đồng', () => {
     state[key] = true;
     show();
     expect(screen.queryByText('Chưa có nội dung thanh lý')).toBeNull();
+  });
+});
+
+describe('trường hợp trả phòng trước hạn trong chi tiết hợp đồng', () => {
+  it('hồ sơ trước hạn chưa có trường hợp: nhắc chọn khi quyết toán', () => {
+    show();
+    expect(screen.getByText(/Chưa chọn trường hợp trả phòng trước hạn/)).toBeTruthy();
+  });
+  it('nhờ sale đã quyết toán mà chưa có phiếu: cảnh báo kèm tên sale và số phí', () => {
+    state.status = 'FINALIZED';
+    early.data = [linkedExitTermsRow({ exit_state: 'FINALIZED', fee_applied_at: '2026-12-02T00:00:00Z' })];
+    show();
+    const alert = screen.getByRole('alert').textContent ?? '';
+    expect(alert).toContain('chưa có phiếu hoa hồng môi giới cho sale Minh');
+    expect(alert).toContain('2.000.000 đ');
+    expect(screen.queryByRole('button', { name: 'Lập phiếu hoa hồng' })).toBeNull();
+  });
+  it('đã có phiếu hoa hồng thì không cảnh báo, hiện mã phiếu', () => {
+    state.status = 'FINALIZED';
+    early.data = [linkedExitTermsRow({ exit_state: 'FINALIZED', commission_voucher_id: '10000000-0000-4000-8000-000000000099', commission_code: 'PC-0099' })];
+    show();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('PC-0099')).toBeTruthy();
   });
 });

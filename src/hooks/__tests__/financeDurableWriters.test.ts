@@ -7,10 +7,9 @@ vi.mock('@tanstack/react-query',()=>({useMutation:(o:unknown)=>o,useQueryClient:
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:h.organization})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
 vi.mock('sonner',()=>({toast:{error:vi.fn(),warning:vi.fn(),success:vi.fn(),info:vi.fn()}}));
-import {useApproveInvoice,useUnapproveInvoice,useCancelInvoice,useForceCancelInvoice,useRestoreInvoice} from '../useInvoices';
+import {useCancelInvoice,useForceCancelInvoice,useRestoreInvoice} from '../useInvoices';
 import {useRecordRefundRPC} from '../useInvoicePayments';
 import {useApproveIncomeExpenseV2,usePostApprovedIncomeExpenseV2,useApproveAndPostIncomeExpenseV2,useReversePostingV2} from '../income-expenses/financeV2Mutations';
-import {useDecideApproval,useWithdrawApproval} from '../useApprovals';
 import {useDeletePayment} from '../useDeletePayment';
 import {useCancelIncomeExpenseBatch,useUpdateBatchAccount} from '../income-expenses/batch';
 vi.mock('@/lib/receiptUpload',()=>({validateReceiptFile:()=>null,uploadReceiptToStorage:h.upload}));
@@ -29,27 +28,31 @@ const scope=(namespace:string,businessKey='i1')=>({namespace,businessKey,userId:
 afterEach(cleanup);
 beforeEach(()=>{vi.clearAllMocks();h.rpc.mockReset();h.read.mockReset();h.upload.mockReset();localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org1');h.organization='org1';h.tables={};h.read.mockResolvedValue({data:{id:'i1',status:'DRAFT',paid_amount:0,deleted_at:null},error:null});});
 const invoiceCases=[
- ['invoice-approve',useApproveInvoice,'APPROVED'],['invoice-unapprove',useUnapproveInvoice,'DRAFT'],['invoice-cancel',useCancelInvoice,'CANCELLED'],['invoice-force-cancel',useForceCancelInvoice,'CANCELLED'],['invoice-restore',useRestoreInvoice,'APPROVED'],
+ ['invoice-cancel',useCancelInvoice,'CANCELLED'],['invoice-force-cancel',useForceCancelInvoice,'CANCELLED'],['invoice-restore',useRestoreInvoice,'APPROVED'],
 ] as const;
-it.each(invoiceCases)('%s: timeout khóa qua remount và giữ cùng mã yêu cầu',async(namespace,hook)=>{
- h.rpc.mockRejectedValueOnce(new TypeError('Failed to fetch'));const first=mount(hook);await expect(first.mutation.mutationFn('i1')).rejects.toThrow();
- const pending=financialPending.read(scope(namespace));expect(pending).not.toBeNull();expect(pending?.requestKey).toEqual(expect.any(String));first.unmount();
- await expect(mount(hook).mutation.mutationFn('i1')).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(1);expect(financialPending.read(scope(namespace))?.requestKey).toBe(pending?.requestKey);
+// Đợt 5: huỷ / buộc huỷ / khôi phục đọc trạng thái hoá đơn; còn như lúc bấm thì gửi lại NGAY đúng mã cũ (máy chủ khoá hoá
+// đơn rồi trả noop), không chặn mãi. (Đợt 11: đã xoá duyệt / bỏ duyệt hoá đơn cùng hai ca của chúng.)
+it.each(invoiceCases)('%s: timeout qua remount gửi lại đúng mã yêu cầu cũ khi hoá đơn còn như lúc bấm',async(namespace,hook,state)=>{
+ h.rpc.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({data:{invoice:{id:'i1',status:state}},error:null});
+ const first=mount(hook);await expect(first.mutation.mutationFn('i1')).rejects.toThrow();
+ const pending=financialPending.read(scope(namespace));expect(pending?.requestKey).toEqual(expect.any(String));first.unmount();
+ await expect(mount(hook).mutation.mutationFn('i1')).resolves.toMatchObject({invoice:{status:state}});
+ expect(h.rpc).toHaveBeenCalledTimes(2);expect(h.rpc.mock.calls.map(call=>call[1].p_idempotency_key)).toEqual([pending?.requestKey,pending?.requestKey]);
+ expect(financialPending.read(scope(namespace))).toBeNull();
 });
 it.each(invoiceCases)('%s: chỉ trạng thái đúng hóa đơn mới giải phóng pending',async(namespace,hook,state)=>{
  h.rpc.mockResolvedValueOnce({data:{invoice:{id:'i1',status:state}},error:null});await expect(mount(hook).mutation.mutationFn('i1')).resolves.toBeDefined();expect(financialPending.read(scope(namespace))).toBeNull();
 });
-it('duyệt trả DRAFT không nói thành công hoặc bỏ dấu đối chiếu',async()=>{
- h.rpc.mockResolvedValue({data:{invoice:{id:'i1',status:'DRAFT'}},error:null});await expect(mount(useApproveInvoice).mutation.mutationFn('i1')).rejects.toThrow();expect(financialPending.read(scope('invoice-approve'))).not.toBeNull();
-});
+// Đợt 11: hàng rào này trước đây chạy trên useApproveInvoice (đã xoá); nay chạy trên khôi phục hoá đơn, cùng cơ chế.
 it('biểu mẫu hóa đơn org cũ phải chặn trước writer',async()=>{
- const entry=mount(useApproveInvoice);localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(entry.mutation.mutationFn('i1')).rejects.toThrow(/tổ chức/);expect(h.rpc).not.toHaveBeenCalled();
+ const entry=mount(useRestoreInvoice);localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(entry.mutation.mutationFn('i1')).rejects.toThrow(/tổ chức/);expect(h.rpc).not.toHaveBeenCalled();
 });
 const refund={invoice_id:'i1',amount:100,payment_date:'2026-09-30',account_id:'a1'};
-it('hoàn trả đã nhận ID nhưng đọc trạng thái lỗi giữ ID qua remount, không lập lại',async()=>{
+// Đợt 2 (24/11/2026): phép đọc trạng thái nằm SAU khi gỡ dấu; trước đây nó hỏng thì giữ dấu và chặn mãi.
+it('hoàn trả đã nhận ID nhưng đọc trạng thái lỗi: không giữ dấu, trả mã phiếu để báo cần kiểm tra, không lập lại',async()=>{
  h.rpc.mockResolvedValue({data:{refundVoucherId:'rv1'},error:null});h.read.mockResolvedValue({data:null,error:{code:'42501'}});
- const first=mount(useRecordRefundRPC);await expect(first.mutation.mutationFn(refund)).rejects.toMatchObject({outcome:'partial',completed:[{id:'rv1',label:expect.any(String)}]});
- expect(financialPending.read(scope('invoice-refund'))?.completedIds).toEqual(['rv1']);first.unmount();await expect(mount(useRecordRefundRPC).mutation.mutationFn(refund)).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(1);
+ await expect(mount(useRecordRefundRPC).mutation.mutationFn(refund)).resolves.toMatchObject({id:'rv1',approval_status:null});
+ expect(financialPending.read(scope('invoice-refund'))).toBeNull();expect(h.rpc).toHaveBeenCalledTimes(1);
 });
 it('hoàn trả gửi đúng key đã lưu trước RPC và thành công chờ duyệt xóa pending',async()=>{
  h.rpc.mockImplementation((_name:string,args:{p_idempotency_key:string;input:{idempotencyKey:string}})=>{expect(args.p_idempotency_key).toBe(financialPending.read(scope('invoice-refund'))?.requestKey);return Promise.resolve({data:{refundVoucherId:'rv1'},error:null});});
@@ -65,8 +68,13 @@ it('hoàn tác hoa hồng không được tự sinh lý do thay cho người dù
  await mount(useReversePostingV2).mutation.mutationFn({voucherId:'v1',cashbookId:'a1',isCommission:true,reason:'  Hoàn tác do chuyển sai sổ quỹ  '});
  expect(h.rpc).toHaveBeenCalledWith('reverse_posted_income_expense_v2',expect.objectContaining({p_reason:'Hoàn tác do chuyển sai sổ quỹ'}));
 });
-it.each(v2Cases)('%s: timeout giữ key và chặn gửi lại qua remount',async(namespace,hook,input)=>{
- h.rpc.mockRejectedValueOnce(new TypeError('Failed to fetch'));const first=mount(hook);await expect(first.mutation.mutationFn(input)).rejects.toThrow();const prior=financialPending.read(scope(namespace,'v1'));expect(prior?.requestKey).toEqual(expect.any(String));first.unmount();await expect(mount(hook).mutation.mutationFn(input)).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(1);expect(financialPending.read(scope(namespace,'v1'))?.requestKey).toBe(prior?.requestKey);
+// Đợt 5 (cách B): cùng nội dung ⇒ gửi lại NGAY đúng mã cũ qua remount (máy chủ khoá phiếu rồi tra mã, trả kết quả cũ).
+it.each(v2Cases)('%s: timeout giữ key; lần sau cùng nội dung gửi lại đúng key cũ qua remount',async(namespace,hook,input)=>{
+ const receipt={data:{voucherId:'v1',approvalStatus:'APPROVED',postingStatus:namespace.endsWith('reverse')?'REVERSED':'POSTED'},error:null};
+ h.rpc.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce(receipt);const first=mount(hook);await expect(first.mutation.mutationFn(input)).rejects.toThrow();const prior=financialPending.read(scope(namespace,'v1'));expect(prior?.requestKey).toEqual(expect.any(String));first.unmount();
+ await expect(mount(hook).mutation.mutationFn(input)).resolves.toBeDefined();expect(h.rpc).toHaveBeenCalledTimes(2);
+ const keys=h.rpc.mock.calls.map(call=>(call[1] as {p_idempotency_key?:string;input?:{idempotencyKey:string}}).p_idempotency_key??(call[1] as {input:{idempotencyKey:string}}).input.idempotencyKey);
+ expect(keys).toEqual([prior?.requestKey,prior?.requestKey]);expect(financialPending.read(scope(namespace,'v1'))).toBeNull();
 });
 it.each(v2Cases)('%s: trạng thái đúng nhưng receipt của phiếu khác vẫn khóa',async(namespace,hook,input)=>{
  h.rpc.mockResolvedValue({data:{voucherId:'other',approvalStatus:'APPROVED',postingStatus:namespace.endsWith('reverse')?'REVERSED':'POSTED'},error:null});await expect(mount(hook).mutation.mutationFn(input)).rejects.toThrow();expect(financialPending.read(scope(namespace,'v1'))).not.toBeNull();
@@ -76,25 +84,14 @@ it.each(v2Cases)('%s: đúng receipt dùng key bền vững và gỡ pending',as
 });
 it('V2 biểu mẫu thuộc org cũ không gọi writer trong org mới',async()=>{const entry=mount(usePostApprovedIncomeExpenseV2);localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(entry.mutation.mutationFn(posting)).rejects.toThrow(/tổ chức/);expect(h.rpc).not.toHaveBeenCalled();});
 
-const approvalCases=[['quyết định',useDecideApproval,{requestId:'req1',decision:'APPROVE',organizationId:'org1'}],['thu hồi',useWithdrawApproval,{requestId:'req1',organizationId:'org1'}]] as const;
-it.each(approvalCases)('yêu cầu duyệt %s timeout phải chặn cả approve/reject/withdraw sau remount',async(_label,hook,input)=>{
- h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));const first=mount(hook);await expect(first.mutation.mutationFn(input)).rejects.toThrow();expect(financialPending.read({...scope('approval-request','req1'),organizationId:'actor-scope'})).not.toBeNull();first.unmount();
- await expect(mount(useWithdrawApproval).mutation.mutationFn({requestId:'req1',organizationId:'org1'})).rejects.toThrow(/đối chiếu/);await expect(mount(useDecideApproval).mutation.mutationFn({requestId:'req1',decision:'REJECT',organizationId:'org1'})).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(1);
-});
-it.each(approvalCases)('yêu cầu duyệt %s state đúng nhưng requestID sai giữ khóa',async(_label,hook,input)=>{
- h.rpc.mockResolvedValue({data:{request_id:'other',state:Object.prototype.hasOwnProperty.call(input,'decision')?'PENDING_APPROVAL':'CANCELLED'},error:null});await expect(mount(hook).mutation.mutationFn(input)).rejects.toThrow();expect(financialPending.read({...scope('approval-request','req1'),organizationId:'actor-scope'})).not.toBeNull();
-});
-it('quorum PENDING_APPROVAL đúng request là bước đã nhận và gỡ khóa, không đoán toàn yêu cầu đã xong',async()=>{
- h.rpc.mockResolvedValue({data:{request_id:'req1',state:'PENDING_APPROVAL'},error:null});await expect(mount(useDecideApproval).mutation.mutationFn({requestId:'req1',decision:'APPROVE',organizationId:'org1'})).resolves.toMatchObject({state:'PENDING_APPROVAL'});expect(financialPending.read({...scope('approval-request','req1'),organizationId:'actor-scope'})).toBeNull();
-});
-it('inbox đa tổ chức và org metadata null dùng marker actor stable, metadata cập nhật không vượt khóa',async()=>{
- h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(useDecideApproval).mutation.mutationFn({requestId:'req1',decision:'APPROVE',organizationId:null})).rejects.toThrow();
- expect(financialPending.read({...scope('approval-request','req1'),organizationId:'actor-scope'})).not.toBeNull();
- await expect(mount(useWithdrawApproval).mutation.mutationFn({requestId:'req1',organizationId:'org2'})).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledOnce();
-});
-it('hoàn tác collection timeout giữ khóa qua remount kể cả gọi bằng payment liên kết',async()=>{
- h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(useDeletePayment).mutation.mutationFn({collection_id:'c1',reason:'Thu tiền bị trùng'})).rejects.toThrow();expect(financialPending.read(scope('collection-reversal','c1'))).not.toBeNull();
- h.read.mockResolvedValue({data:{id:'p1',collection_id:'c1'},error:null});await expect(mount(useDeletePayment).mutation.mutationFn({payment_id:'p1',reason:'Thu tiền bị trùng'})).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(1);
+// Đợt 2 (24/11/2026): máy chủ chống trùng theo khoá nên lần sau gửi lại CÙNG mã thay vì chặn mãi.
+it('hoàn tác collection timeout giữ dấu qua remount; gọi lại bằng payment liên kết gửi lại đúng mã cũ của collection',async()=>{
+ h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(useDeletePayment).mutation.mutationFn({collection_id:'c1',reason:'Thu tiền bị trùng'})).rejects.toThrow();
+ const prior=financialPending.read(scope('collection-reversal','c1'));expect(prior).not.toBeNull();
+ h.read.mockResolvedValue({data:{id:'p1',collection_id:'c1'},error:null});h.rpc.mockResolvedValue({data:{collection_id:'c1',status:'REVERSED',reversal_mode:'IN_PLACE_CANCEL'},error:null});
+ await expect(mount(useDeletePayment).mutation.mutationFn({payment_id:'p1',reason:'Thu tiền bị trùng'})).resolves.toMatchObject({mode:'COLLECTION_REVERSED'});
+ expect(h.rpc.mock.calls.map(call=>call[1].p_idempotency_key)).toEqual([prior?.requestKey,prior?.requestKey]);
+ expect(financialPending.read(scope('collection-reversal','c1'))).toBeNull();
 });
 it.each([null,{collection_id:'other',status:'REVERSED',reversal_mode:'IN_PLACE_CANCEL'},{collection_id:'c1',status:'REVERSED',reversal_mode:'NEW_MODE'}])('hoàn tác thiếu/sai receipt không báo đã hoàn tác: %s',async data=>{
  h.rpc.mockResolvedValue({data,error:null});await expect(mount(useDeletePayment).mutation.mutationFn({collection_id:'c1',reason:'Thu tiền bị trùng'})).rejects.toThrow();expect(financialPending.read(scope('collection-reversal','c1'))).not.toBeNull();
@@ -109,68 +106,103 @@ it('hủy đợt dòng một thành công dòng hai timeout giữ ID và khóa c
  const result=await mount(useCancelIncomeExpenseBatch).mutation.mutationFn({batchId:'b1',reason:'Huỷ đợt phiếu lập nhầm'});expect(result).toMatchObject({count:1,completedIds:['v1'],failures:[{id:'v2'}]});expect(financialPending.read(scope('voucher-batch-cancel','b1'))?.completedIds).toEqual(['v1']);
  await expect(mount(useCancelIncomeExpenseBatch).mutation.mutationFn({batchId:'b1',reason:'Huỷ đợt phiếu lập nhầm'})).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(2);
 });
-it('đổi sổ đợt giữ ID đổi xong và cùng requestKey qua timeout/remount',async()=>{
+it('đổi sổ đợt giữ ID đổi xong và cùng requestKey qua timeout/remount, rồi chạy lại cùng requestKey',async()=>{
  h.tables={income_expense_batch_items:[{income_expense_id:'v1'},{income_expense_id:'v2'}],income_expenses:[{id:'v1',code:'PC01',approval_status:'UNAPPROVED',approval_version:1,account_id:'old'},{id:'v2',code:'PC02',approval_status:'UNAPPROVED',approval_version:1,account_id:'old'}]};
  h.rpc.mockImplementationOnce((_name:string,args:{p_idempotency_key:string;input:{idempotencyKey:string}})=>{expect(args.p_idempotency_key).toContain(financialPending.read(scope('voucher-batch-account','b1'))?.requestKey);return Promise.resolve({data:{id:'v1',changed:true,approval_version:2,changed_fields:['account_id']},error:null});}).mockRejectedValueOnce(new TypeError('Failed to fetch'));
- await expect(mount(useUpdateBatchAccount).mutation.mutationFn({batchId:'b1',accountId:'new',reason:'Đổi sổ ghi phiếu'})).rejects.toThrow();expect(financialPending.read(scope('voucher-batch-account','b1'))?.completedIds).toEqual(['v1']);await expect(mount(useUpdateBatchAccount).mutation.mutationFn({batchId:'b1',accountId:'different',reason:'Đổi sổ ghi phiếu'})).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(2);
+ await expect(mount(useUpdateBatchAccount).mutation.mutationFn({batchId:'b1',accountId:'new',reason:'Đổi sổ ghi phiếu'})).rejects.toThrow();expect(financialPending.read(scope('voucher-batch-account','b1'))?.completedIds).toEqual(['v1']);
+ // Đợt 6 (cách A): lần bấm sau chạy lại ngay với CÙNG mã yêu cầu của dấu (mã từng phiếu gồm cả sổ đích), không bị khoá.
+ const requestKey=financialPending.read(scope('voucher-batch-account','b1'))?.requestKey;
+ h.rpc.mockImplementation((_name:string,args:{p_voucher:string})=>Promise.resolve({data:{id:args.p_voucher,changed:true,approval_version:2,changed_fields:['account_id']},error:null}));
+ await expect(mount(useUpdateBatchAccount).mutation.mutationFn({batchId:'b1',accountId:'different',reason:'Đổi sổ ghi phiếu'})).resolves.toMatchObject({count:2});
+ expect(h.rpc.mock.calls.slice(2).map(call=>call[1].p_idempotency_key)).toEqual([`${requestKey}:v1:different`,`${requestKey}:v2:different`]);
+ expect(financialPending.read(scope('voucher-batch-account','b1'))).toBeNull();
 });
 
-const voucherLifecycleCases=[['duyệt',useApproveVoucher,{id:'v1',expectedApprovalVersion:1}],['bỏ duyệt',useUnapproveVoucher,'v1'],['huỷ',useCancelIncomeExpense,'v1'],['khôi phục',useRestoreIncomeExpense,'v1'],['đổi kiểm',useVerifyIncomeExpense,{id:'v1',note:null}]] as const;
-const voucherLifecycleScope={...scope('voucher-lifecycle','v1'),organizationId:'actor-scope'};
-it.each(voucherLifecycleCases)('lifecycle phiếu %s timeout giữ marker chung qua remount và đổi action/org',async(_label,hook,input)=>{
- h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(hook).mutation.mutationFn(input)).rejects.toThrow();expect(financialPending.read(voucherLifecycleScope)).not.toBeNull();
- localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(mount(useVerifyIncomeExpense).mutation.mutationFn({id:'v1',note:null})).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledOnce();
+// Đợt 5: mỗi thao tác phiếu một namespace riêng (trước: chung `voucher-lifecycle`). Dấu vẫn theo phạm vi người dùng
+// (đổi công ty đang chọn không vượt được); thao tác khác trên cùng phiếu không còn bị chặn.
+const voucherLifecycleCases=[['duyệt','voucher-approve',useApproveVoucher,{id:'v1',expectedApprovalVersion:1}],['bỏ duyệt','voucher-unapprove',useUnapproveVoucher,'v1'],['huỷ','voucher-cancel',useCancelIncomeExpense,'v1'],['khôi phục','voucher-restore',useRestoreIncomeExpense,'v1'],['đổi kiểm','voucher-verify',useVerifyIncomeExpense,{id:'v1',note:null,verified:true}]] as const;
+const voucherScope=(namespace:string)=>({...scope(namespace,'v1'),organizationId:'actor-scope'});
+const voucherLifecycleScope=voucherScope('voucher-lifecycle');
+it.each(voucherLifecycleCases)('lifecycle phiếu %s timeout giữ dấu ở namespace riêng (phạm vi người dùng), không ghi dấu chung',async(_label,namespace,hook,input)=>{
+ h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(hook).mutation.mutationFn(input)).rejects.toThrow();
+ localStorage.setItem('ihomecrm.selectedOrganizationId','org2');
+ expect(financialPending.read(voucherScope(namespace))).not.toBeNull();expect(financialPending.read(voucherLifecycleScope)).toBeNull();
+});
+it('dấu chung `voucher-lifecycle` bản trước chặn mọi thao tác trên đúng phiếu đó, kể cả sau khi đổi công ty',async()=>{
+ localStorage.setItem('ihome:financial-pending:v1:voucher-lifecycle:u1:actor-scope:v1',JSON.stringify({...voucherLifecycleScope,attemptId:'old',requestKey:'old',completedIds:[],startedAt:'2026-11-20T01:00:00.000Z'}));
+ localStorage.setItem('ihomecrm.selectedOrganizationId','org2');
+ for(const [,,hook,input] of voucherLifecycleCases)await expect(mount(hook).mutation.mutationFn(input)).rejects.toThrow(/đối chiếu/);
+ expect(h.rpc).not.toHaveBeenCalled();
 });
 it('duyệt checked trả ID khác không đủ bằng chứng duyệt target',async()=>{
- h.rpc.mockResolvedValue({data:{id:'other',approved:true,already:false,mode:'VOUCHER'},error:null});await expect(mount(useApproveVoucher).mutation.mutationFn({id:'v1',expectedApprovalVersion:1})).rejects.toThrow();expect(financialPending.read(voucherLifecycleScope)).not.toBeNull();
+ h.rpc.mockResolvedValue({data:{id:'other',approved:true,already:false,mode:'VOUCHER'},error:null});await expect(mount(useApproveVoucher).mutation.mutationFn({id:'v1',expectedApprovalVersion:1})).rejects.toThrow();expect(financialPending.read(voucherScope('voucher-approve'))).not.toBeNull();
 });
 it.each([null,{id:'other',approval_status:'UNAPPROVED',posting_status:'UNPOSTED'},{id:'v1',approval_status:'NEW_STATE',posting_status:'UNPOSTED'}])('bỏ duyệt RPC void cần readback đúng target/status: %s',async data=>{
- h.rpc.mockResolvedValueOnce({data:null,error:{code:'55000',message:'not a termination forfeit pair'}}).mockResolvedValueOnce({data:null,error:null});h.read.mockResolvedValue({data,error:null});await expect(mount(useUnapproveVoucher).mutation.mutationFn('v1')).rejects.toThrow();expect(financialPending.read(voucherLifecycleScope)).not.toBeNull();
+ h.rpc.mockResolvedValueOnce({data:null,error:{code:'55000',message:'not a termination forfeit pair'}}).mockResolvedValueOnce({data:null,error:null});h.read.mockResolvedValue({data,error:null});await expect(mount(useUnapproveVoucher).mutation.mutationFn('v1')).rejects.toThrow();expect(financialPending.read(voucherScope('voucher-unapprove'))).not.toBeNull();
 });
-it.each([useRestoreIncomeExpense,useVerifyIncomeExpense])('restore/verify không được giải phóng khóa khi readback thiếu',async hook=>{
- h.rpc.mockResolvedValue({data:null,error:null});h.read.mockResolvedValue({data:null,error:{code:'42501'}});await expect(mount(hook).mutation.mutationFn(hook===useRestoreIncomeExpense?'v1':{id:'v1',note:null})).rejects.toThrow();expect(financialPending.read(voucherLifecycleScope)).not.toBeNull();
+it.each([['voucher-restore',useRestoreIncomeExpense],['voucher-verify',useVerifyIncomeExpense]] as const)('%s không được giải phóng khóa khi readback thiếu',async(namespace,hook)=>{
+ // Phép đọc trước khi ghi dấu thấy phiếu; phép đọc xác nhận sau lệnh ghi hỏng. «Đã kiểm» (đợt 10c) nhận biên nhận đúng
+ // của máy chủ, nên chỉ phép đọc xác nhận hỏng là lý do giữ dấu.
+ h.rpc.mockResolvedValue(hook===useRestoreIncomeExpense?{data:null,error:null}:{data:{id:'v1',changed:true,verified:false},error:null});h.read.mockResolvedValueOnce({data:{id:'v1',code:'PT01',approval_status:'CANCELLED',verified_at:null},error:null}).mockResolvedValue({data:null,error:{code:'42501'}});await expect(mount(hook).mutation.mutationFn(hook===useRestoreIncomeExpense?'v1':{id:'v1',note:null,verified:false})).rejects.toThrow();expect(financialPending.read(voucherScope(namespace))).not.toBeNull();
+});
+it.each([useRestoreIncomeExpense,useVerifyIncomeExpense])('đọc phiếu hỏng TRƯỚC khi ghi dấu: không ghi dấu, không gửi',async hook=>{
+ h.read.mockResolvedValue({data:null,error:{code:'',message:'Failed to fetch'}});await expect(mount(hook).mutation.mutationFn(hook===useRestoreIncomeExpense?'v1':{id:'v1',note:null,verified:true})).rejects.toBeTruthy();
+ expect(h.rpc).not.toHaveBeenCalled();expect(financialPending.read(voucherScope('voucher-restore'))).toBeNull();expect(financialPending.read(voucherScope('voucher-verify'))).toBeNull();
 });
 it('huỷ flex receipt thiếu ID/changed không phải thành công',async()=>{
- h.rpc.mockResolvedValueOnce({data:null,error:{code:'55000',message:'not a termination forfeit pair'}}).mockResolvedValueOnce({data:{},error:null});await expect(mount(useCancelIncomeExpense).mutation.mutationFn({id:'v1',reason:'Ghi phiếu bị trùng'})).rejects.toThrow();expect(financialPending.read(voucherLifecycleScope)).not.toBeNull();
+ h.rpc.mockResolvedValueOnce({data:null,error:{code:'55000',message:'not a termination forfeit pair'}}).mockResolvedValueOnce({data:{},error:null});await expect(mount(useCancelIncomeExpense).mutation.mutationFn({id:'v1',reason:'Ghi phiếu bị trùng'})).rejects.toThrow();expect(financialPending.read(voucherScope('voucher-cancel'))).not.toBeNull();
 });
 it('huỷ sau hoàn tác phải dùng requestKey persisted và giữ đúng completed ID nếu huỷ bị từ chối',async()=>{
- h.read.mockResolvedValue({data:{id:'v1',type:'EXPENSE',approval_status:'APPROVED',posting_status:'POSTED',account_id:'a1'},error:null});h.rpc.mockResolvedValueOnce({data:null,error:{code:'55000',message:'not a termination forfeit pair'}}).mockImplementationOnce((_name:string,args:{p_idempotency_key:string;input:{idempotencyKey:string}})=>{expect(args.p_idempotency_key).toBe(financialPending.read(voucherLifecycleScope)?.requestKey);return Promise.resolve({data:{voucherId:'v1',postingStatus:'REVERSED'},error:null});}).mockResolvedValueOnce({data:null,error:{code:'0A000',message:'legacy'}}).mockResolvedValueOnce({data:null,error:{code:'42501',message:'permission denied'}});
- await expect(mount(useCancelIncomeExpense).mutation.mutationFn('v1')).rejects.toMatchObject({completedIds:['v1']});expect(financialPending.read(voucherLifecycleScope)?.completedIds).toEqual(['v1']);
+ h.read.mockResolvedValue({data:{id:'v1',type:'EXPENSE',approval_status:'APPROVED',posting_status:'POSTED',account_id:'a1'},error:null});h.rpc.mockResolvedValueOnce({data:null,error:{code:'55000',message:'not a termination forfeit pair'}}).mockImplementationOnce((_name:string,args:{p_idempotency_key:string;input:{idempotencyKey:string}})=>{expect(args.p_idempotency_key).toBe(financialPending.read(voucherScope('voucher-cancel'))?.requestKey);return Promise.resolve({data:{voucherId:'v1',postingStatus:'REVERSED'},error:null});}).mockResolvedValueOnce({data:null,error:{code:'0A000',message:'legacy'}}).mockResolvedValueOnce({data:null,error:{code:'42501',message:'permission denied'}});
+ await expect(mount(useCancelIncomeExpense).mutation.mutationFn('v1')).rejects.toMatchObject({completedIds:['v1']});expect(financialPending.read(voucherScope('voucher-cancel'))?.completedIds).toEqual(['v1']);
 });
 it('duyệt và bỏ kiểm có receipt thật giải phóng marker và giữ trạng thái trả về',async()=>{
- h.rpc.mockResolvedValueOnce({data:{id:'v1',approved:true,already:false,mode:'VOUCHER'},error:null});await expect(mount(useApproveVoucher).mutation.mutationFn({id:'v1',expectedApprovalVersion:1})).resolves.toMatchObject({approved:true});expect(financialPending.read(voucherLifecycleScope)).toBeNull();
- h.rpc.mockResolvedValueOnce({data:null,error:null});h.read.mockResolvedValue({data:{id:'v1',code:'PT01',verified_at:null},error:null});await expect(mount(useVerifyIncomeExpense).mutation.mutationFn({id:'v1',note:null})).resolves.toMatchObject({verified_at:null});expect(financialPending.read(voucherLifecycleScope)).toBeNull();
+ h.rpc.mockResolvedValueOnce({data:{id:'v1',approved:true,already:false,mode:'VOUCHER'},error:null});await expect(mount(useApproveVoucher).mutation.mutationFn({id:'v1',expectedApprovalVersion:1})).resolves.toMatchObject({approved:true});expect(financialPending.read(voucherScope('voucher-approve'))).toBeNull();
+ h.rpc.mockResolvedValueOnce({data:{id:'v1',changed:true,verified:false,verified_at:null,verified_by_name:null},error:null});h.read.mockResolvedValue({data:{id:'v1',code:'PT01',verified_at:null},error:null});await expect(mount(useVerifyIncomeExpense).mutation.mutationFn({id:'v1',note:null,verified:false})).resolves.toMatchObject({verified_at:null,changed:true});expect(financialPending.read(voucherScope('voucher-verify'))).toBeNull();
+ // Đợt 10c: «bỏ kiểm» trả void (bản bật/tắt) không còn là biên nhận: giữ dấu, không báo thành công.
+ h.rpc.mockResolvedValueOnce({data:null,error:null});await expect(mount(useVerifyIncomeExpense).mutation.mutationFn({id:'v1',note:null,verified:false})).rejects.toThrow();expect(financialPending.read(voucherScope('voucher-verify'))).not.toBeNull();
 });
 
 it('huỷ canonical RETURNS void cần readback CANCELLED đúng phiếu trước khi gỡ khóa',async()=>{
- h.read.mockResolvedValueOnce({data:{id:'v1',type:'EXPENSE',approval_status:'UNAPPROVED',posting_status:'UNPOSTED'},error:null}).mockResolvedValueOnce({data:{id:'v1',code:'PC01',approval_status:'CANCELLED',posting_status:'UNPOSTED',verified_at:null},error:null});
- h.rpc.mockResolvedValueOnce({data:null,error:{code:'55000',message:'not a termination forfeit pair'}}).mockResolvedValueOnce({data:null,error:null});await expect(mount(useCancelIncomeExpense).mutation.mutationFn('v1')).resolves.toBe(false);expect(financialPending.read(voucherLifecycleScope)).toBeNull();
+ // Lần đọc đầu là phép đọc trạng thái trước khi ghi dấu (đợt 5).
+ h.read.mockResolvedValueOnce({data:{id:'v1',type:'EXPENSE',approval_status:'UNAPPROVED',posting_status:'UNPOSTED'},error:null}).mockResolvedValueOnce({data:{id:'v1',type:'EXPENSE',approval_status:'UNAPPROVED',posting_status:'UNPOSTED'},error:null}).mockResolvedValueOnce({data:{id:'v1',code:'PC01',approval_status:'CANCELLED',posting_status:'UNPOSTED',verified_at:null},error:null});
+ h.rpc.mockResolvedValueOnce({data:null,error:{code:'55000',message:'not a termination forfeit pair'}}).mockResolvedValueOnce({data:null,error:null});await expect(mount(useCancelIncomeExpense).mutation.mutationFn('v1')).resolves.toBe(false);expect(financialPending.read(voucherScope('voucher-cancel'))).toBeNull();
 });
 
-it.each([useCancelVoucherFlex,useCancelIncomeVoucher])('cửa huỷ chuyên trách giữ cùng marker lifecycle, không đổi action để vượt timeout',async hook=>{
- h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(hook).mutation.mutationFn({voucherId:'v1',reason:'Ghi phiếu bị trùng'})).rejects.toThrow();expect(financialPending.read(voucherLifecycleScope)).not.toBeNull();await expect(mount(useRestoreIncomeExpense).mutation.mutationFn('v1')).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledOnce();
+it.each([['voucher-flex-cancel',useCancelVoucherFlex],['voucher-income-cancel',useCancelIncomeVoucher]] as const)('%s: timeout ghi dấu riêng; thao tác khác trên cùng phiếu không bị chặn',async(namespace,hook)=>{
+ h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(hook).mutation.mutationFn({voucherId:'v1',reason:'Ghi phiếu bị trùng'})).rejects.toThrow();expect(financialPending.read(voucherScope(namespace))).not.toBeNull();expect(financialPending.read(voucherLifecycleScope)).toBeNull();
+ h.read.mockResolvedValue({data:{id:'v1',code:'PT01',approval_status:'CANCELLED'},error:null});
+ // Lệnh khôi phục tới được máy chủ (lần gọi thứ hai), không bị dấu huỷ chặn.
+ await expect(mount(useRestoreIncomeExpense).mutation.mutationFn('v1')).rejects.toBeTruthy();expect(h.rpc).toHaveBeenCalledTimes(2);expect(h.rpc.mock.calls[1][0]).toBe('restore_income_expense');
 });
-it.each([useCancelVoucherFlex,useCancelIncomeVoucher])('cửa huỷ chuyên trách receipt ID khác phải giữ khóa',async hook=>{
- h.rpc.mockResolvedValue({data:{id:'other',changed:true,mode:'MANUAL',cancellation_kind:'CANCELLED_UNPOSTED'},error:null});await expect(mount(hook).mutation.mutationFn({voucherId:'v1',reason:'Ghi phiếu bị trùng'})).rejects.toThrow();expect(financialPending.read(voucherLifecycleScope)).not.toBeNull();
+it.each([['voucher-flex-cancel',useCancelVoucherFlex],['voucher-income-cancel',useCancelIncomeVoucher]] as const)('%s: receipt ID khác phải giữ khóa',async(namespace,hook)=>{
+ h.rpc.mockResolvedValue({data:{id:'other',changed:true,mode:'MANUAL',cancellation_kind:'CANCELLED_UNPOSTED'},error:null});await expect(mount(hook).mutation.mutationFn({voucherId:'v1',reason:'Ghi phiếu bị trùng'})).rejects.toThrow();expect(financialPending.read(voucherScope(namespace))).not.toBeNull();
 });
-it.each([useCancelVoucherFlex,useCancelIncomeVoucher])('cửa huỷ chuyên trách receipt đúng/noop giải phóng marker',async hook=>{
- h.rpc.mockResolvedValue({data:{id:'v1',changed:false},error:null});await expect(mount(hook).mutation.mutationFn({voucherId:'v1',reason:'Ghi phiếu bị trùng'})).resolves.toMatchObject({changed:false});expect(financialPending.read(voucherLifecycleScope)).toBeNull();
+it.each([['voucher-flex-cancel',useCancelVoucherFlex],['voucher-income-cancel',useCancelIncomeVoucher]] as const)('%s: receipt đúng/noop giải phóng marker',async(namespace,hook)=>{
+ h.rpc.mockResolvedValue({data:{id:'v1',changed:false},error:null});await expect(mount(hook).mutation.mutationFn({voucherId:'v1',reason:'Ghi phiếu bị trùng'})).resolves.toMatchObject({changed:false});expect(financialPending.read(voucherScope(namespace))).toBeNull();
 });
 
-it('ảnh payment đã gắn nhưng nguồn voucher lỗi giữ completed paymentID và khóa qua remount',async()=>{
- h.upload.mockResolvedValue('https://storage.test/receipt.png');h.read.mockResolvedValueOnce({data:{id:'p1',collection_id:null},error:null}).mockResolvedValueOnce({data:{id:'p1'},error:null}).mockResolvedValueOnce({data:null,error:{code:'42501',message:'permission denied'}});
+// Đợt 2 (24/11/2026): ô ảnh của phiếu thanh toán đã có = lần trước đã gắn; báo đã ghi và gỡ dấu thay vì chặn mãi.
+it('ảnh payment đã gắn nhưng nguồn voucher lỗi giữ completed paymentID; lần sau thấy ô ảnh đã có thì báo đã gắn, không tải lại',async()=>{
+ h.upload.mockResolvedValue('https://storage.test/receipt.png');h.read.mockResolvedValueOnce({data:{id:'p1',collection_id:null,receipt_image_url:null},error:null}).mockResolvedValueOnce({data:{id:'p1'},error:null}).mockResolvedValueOnce({data:null,error:{code:'42501',message:'permission denied'}});
  await expect(mount(useUploadPaymentReceipt).mutation.mutationFn({payment_id:'p1',file:new File(['x'],'receipt.png',{type:'image/png'})})).rejects.toMatchObject({completed:[{id:'p1',label:expect.any(String)}]});expect(financialPending.read({...scope('payment-receipt-upload','p1'),organizationId:'actor-scope'})?.completedIds).toEqual(['p1']);
- await expect(mount(useUploadPaymentReceipt).mutation.mutationFn({payment_id:'p1',file:new File(['x'],'other.png',{type:'image/png'})})).rejects.toThrow(/đối chiếu/);expect(h.upload).toHaveBeenCalledOnce();
+ h.read.mockResolvedValueOnce({data:{id:'p1',collection_id:null,receipt_image_url:'https://storage.test/receipt.png'},error:null});
+ await expect(mount(useUploadPaymentReceipt).mutation.mutationFn({payment_id:'p1',file:new File(['x'],'other.png',{type:'image/png'})})).rejects.toThrow(/lần gửi trước/);expect(h.upload).toHaveBeenCalledOnce();
+ expect(financialPending.read({...scope('payment-receipt-upload','p1'),organizationId:'actor-scope'})).toBeNull();
 });
 it('upload raw SQL error không xuất hiện trong description người dùng',()=>{
  const mutation=mount(useUploadPaymentReceipt).result.current as unknown as {onError:(error:unknown,variables:Parameters<ReturnType<typeof useUploadPaymentReceipt>['mutateAsync']>[0])=>void};mutation.onError({code:'42501',message:'private_policy_name SQL leaked'},{payment_id:'p1',file:new File(['x'],'receipt.png')});expect(h.toast.mock.calls[0][0].description).not.toContain('private_policy_name');
 });
 
-it('sinh định kỳ timeout giữ marker actor toàn lượt, reload/orgchange không sinh lại',async()=>{
- h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(useGenerateRecurringVouchers).mutation.mutationFn(undefined)).rejects.toThrow();expect(financialPending.read({...scope('voucher-recurring-generate','generate'),organizationId:'actor-scope'})).not.toBeNull();localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(mount(useGenerateRecurringVouchers).mutation.mutationFn(undefined)).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledOnce();
+// Đợt 8 (cách A): generate_recurring_vouchers chỉ sinh kỳ chưa có phiếu con (chỉ mục duy nhất phiếu cha × ngày kỳ). Dấu actor
+// vẫn giữ qua reload/đổi công ty, nhưng lần bấm sau gửi lại NGAY thay vì bị chặn mãi; máy chủ chỉ sinh phần còn thiếu.
+it('sinh định kỳ timeout giữ marker actor; reload/orgchange gửi lại ngay, máy chủ chỉ sinh phần còn thiếu',async()=>{
+ h.rpc.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({data:[],error:null});await expect(mount(useGenerateRecurringVouchers).mutation.mutationFn(undefined)).rejects.toThrow();expect(financialPending.read({...scope('voucher-recurring-generate','generate'),organizationId:'actor-scope'})).not.toBeNull();localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(mount(useGenerateRecurringVouchers).mutation.mutationFn(undefined)).resolves.toHaveLength(0);expect(h.rpc).toHaveBeenCalledTimes(2);expect(financialPending.read({...scope('voucher-recurring-generate','generate'),organizationId:'actor-scope'})).toBeNull();
 });
-it('dừng lặp receipt cần exact ID/changed từ RPC',async()=>{
- h.rpc.mockResolvedValue({data:null,error:null});h.read.mockResolvedValue({data:{id:'other',is_recurring:false},error:null});await expect(mount(useStopRecurring).mutation.mutationFn('v1')).rejects.toThrow();expect(financialPending.read({...scope('voucher-recurring-stop','v1'),organizationId:'actor-scope'})).not.toBeNull();
+// Đợt 8 (luật 5): dừng lặp đặt repeat_cycle tuyệt đối (ie_stop_recurring_v1 khoá phiếu, đã dừng ⇒ changed:false) nên không giữ
+// dấu; biên nhận sai vẫn không được coi là đã dừng.
+it('dừng lặp receipt cần exact ID/changed từ RPC; không giữ dấu',async()=>{
+ h.rpc.mockResolvedValue({data:null,error:null});h.read.mockResolvedValue({data:{id:'other',is_recurring:false},error:null});await expect(mount(useStopRecurring).mutation.mutationFn('v1')).rejects.toMatchObject({outcome:'unknown'});expect(financialPending.read({...scope('voucher-recurring-stop','v1'),organizationId:'actor-scope'})).toBeNull();
 });
 it('KQKD changed thật nhưng thiếu/sai flag không khẳng định trạng thái và giữ marker',async()=>{
  h.rpc.mockResolvedValue({data:{id:'v1',changed:true,business_result_accounting:null},error:null});await expect(mount(useSetForfeitVoucherKqkd).mutation.mutationFn({voucherId:'v1',kqkd:true,reason:'Bổ sung báo cáo'})).rejects.toThrow();expect(financialPending.read({...scope('voucher-kqkd','v1'),organizationId:'actor-scope'})).not.toBeNull();

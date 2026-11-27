@@ -7,7 +7,34 @@ Công cụ cho quản trị thêm một người dùng CRM thành **một trợ 
 - mã CRM của chính người đó: trợ lý chỉ có quyền CRM của người dùng ấy (giao với quyền Hermes của công ty);
 - SOUL, plugin, kỹ năng chuẩn và cấu hình model dùng chung một khuôn; bộ nhớ, phiên và bài học riêng.
 
-Công cụ **không** tự chạy từ web, không tạo kết nối hay liên kết Zalo hộ người dùng, không thu hồi kết nối CRM, không chuyển máy chủ. Trên production chưa thêm ai bằng công cụ này; xem [Đã kiểm và chưa kiểm](#đã-kiểm-và-chưa-kiểm).
+## Kích hoạt sau khi ghép Zalo
+
+Nhân viên tạo kết nối CRM bằng tài khoản của mình, gửi mã cho bot, rồi xác nhận đúng nick. Trên máy đã bật `ihome-hermes-activation.timer`, dịch vụ kiểm hàng đợi mỗi phút ngay cả khi nhân viên đóng trang. Bước 6 trong CRM tự cập nhật khi trang đang mở. Tên hồ sơ mới dùng tiền tố dành riêng `nv-` và ID liên kết. Khi cùng nhân viên ghép lại đúng nick cũ, dịch vụ có thể dùng lại hồ sơ cá nhân sau khi xác minh liên kết mới.
+
+Cài một lần trên VPS được chỉ định chạy worker và connector production. Dùng bản phát hành đầy đủ đã kiểm tra theo [runbook connector](../hermes-runtime/HOST_SERVICE.md#release-package). Trong `/etc/ihome-hermes-fleet/activation.env` (root, 0600), đặt `HERMES_ORGANIZATION_ID` và `HERMES_ZALO_ACCOUNT_ID` theo công ty và nick bot đã được quản trị chọn. Cài các unit từ cùng bản phát hành. Socket nằm trong thư mục native-config đã mount vào worker, thuộc UID chạy worker (mặc định 10002).
+
+```sh
+release=/opt/ihome-hermes/current
+node=/opt/ihome-hermes/node/bin/node
+. /etc/ihome-hermes-fleet/activation.env
+install -m 0644 "$release"/infra/hermes-fleet/ihome-hermes-activation.{service,timer} /etc/systemd/system/
+install -m 0644 "$release"/infra/hermes-fleet/ihome-hermes-binding-guard.{service,socket} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now ihome-hermes-binding-guard.socket
+```
+
+Trước khi bật socket, kiểm tra `getent passwd 10002` trên host. Systemd cần tra được UID của worker để đặt chủ sở hữu socket. Nếu UID mới chỉ có trong container, đăng ký một tài khoản hệ thống khóa mật khẩu, không có home và dùng shell `/usr/sbin/nologin`, với đúng UID/GID đang sở hữu thư mục native-config.
+
+Triển khai image worker từ Dockerfile cùng bản phát hành theo runbook worker, nối lại và xác minh các sidecar đang chạy bằng `tao-lai-sidecar`. Image cần có nhãn `io.ihomecrm.hermes.binding-guard=1`. Sau đó kiểm cấu hình và bật dịch vụ tự kích hoạt.
+
+```sh
+"$node" "$release/infra/hermes-fleet/auto-activate.mjs" --check /etc/ihome-hermes-fleet/fleet.json prod "$HERMES_ORGANIZATION_ID" "$HERMES_ZALO_ACCOUNT_ID"
+systemctl enable --now ihome-hermes-activation.timer
+```
+
+Dịch vụ chỉ cấp hồ sơ khi liên kết đang hoạt động và kho connector giữ đúng mã mà chính người dùng đã chọn. Nó dùng cùng khóa ghi, mức RAM dự phòng và kiểm tra danh tính như `them-nguoi`. Nếu phải thay worker để nạp kênh mới, các trợ lý đang dùng có thể gián đoạn ngắn. Khi gateway chạy, đúng kênh Zalo đã kết nối và có bằng chứng trợ lý gọi CRM, dịch vụ xác nhận đúng phiên bản hàng đợi là `synchronized`. Kế hoạch bị chặn hoặc kết quả chưa xác minh được thử lại trong lượt sau. Kênh đã gán thủ công và hồ sơ do quản trị tạm dừng được giữ theo lựa chọn hiện tại.
+
+Xem kết quả bằng `journalctl -u ihome-hermes-activation.service` và `liet-ke`. Khi cần dừng tự kích hoạt, chạy `systemctl disable --now ihome-hermes-activation.timer` rồi chờ lượt dịch vụ đang chạy hoàn tất trước khi đổi bản phát hành. Những trợ lý đã kích hoạt tiếp tục chạy. Giữ socket kiểm liên kết hoạt động. Worker kiểm lại quyền từ CRM trước khi nhận, chuyển hoặc gửi tin trên từng kênh tự cấp. Khi hủy ghép hoặc khi dịch vụ kiểm quyền gặp lỗi, worker dừng chuyển tin cho kênh đó.
 
 ## Cách chạy
 
@@ -123,10 +150,12 @@ Dùng để đo RAM khi hai container cùng chạy, kiểm cách ly (`docker exe
 
 ## Giới hạn đã biết
 
+Đổi sang nick Zalo khác hoặc nhân viên rời công ty có thể để lại hồ sơ cá nhân cũ chiếm RAM và một vị trí kênh. Quản trị dùng `liet-ke` để đối chiếu trước khi dùng `go-nguoi` cất riêng home theo quy trình trên. Việc hủy ghép có hiệu lực khi worker kiểm quyền, độc lập với việc cất home.
+
 - Thêm một kênh buộc khởi động lại worker (worker đọc cấu hình kênh một lần): mọi trợ lý ngắt tạm và phải tạo lại mọi sidecar. Nạp nóng cấu hình kênh nằm ngoài đợt này.
 - Mọi trợ lý dùng chung một khoá và hạn mức nhà cung cấp model; chung giới hạn của cầu Zalo (8 lệnh gửi, 64 MiB ảnh).
 - Một nick Zalo chỉ ghép được một tài khoản CRM trên một nick bot.
-- Không có lệnh SQL liệt kê "ai đang chờ kích hoạt": quản trị tự tra ID.
+- Dịch vụ tự kích hoạt tìm việc theo từng trợ lý mà connector đang giữ kết nối của công ty đã cấu hình.
 - Kỹ năng chuẩn cài theo từng home; quên chạy `deploy.sh` cho một home thì home đó giữ bộ kỹ năng cũ.
 - Máy 2 GB chỉ đủ thêm một trợ lý; cửa RAM từ chối người kế tiếp.
 - Mọi sidecar chung network namespace với worker và với nhau; token kênh đi HTTP loopback tới cầu. Một trợ lý chạy được mã tuỳ ý có thể nghe cổng loopback trong namespace đó. Khuôn tắt các toolset terminal, file và chạy mã; đừng bật lại cho trợ lý của người không phải chủ khi chưa tách namespace.

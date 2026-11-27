@@ -1,4 +1,5 @@
-import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
+import { FinancialAlreadyRecordedError } from "@/lib/financialWorkflow";
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -50,15 +51,16 @@ export function IncomeExpenseVerifyDialog({
   const handleConfirm = async () => {
     if (reconcileRequired) return;
     try {
-      const receipt = await verifyMutation.mutateAsync({id:voucher.id,note:note.trim() || null});
-      if (!receipt) {
-        setSubmitError("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra; không bấm đổi trạng thái thêm lần nữa.");
-        setReconcileRequired(true); return;
-      }
+      // Đợt 10c: gửi GIÁ TRỊ MUỐN ĐẶT theo đúng trạng thái hộp đang hiện, không bật/tắt. Lệnh luôn trả trạng thái đã đọc
+      // lại của đúng phiếu hoặc ném lỗi (không còn trả rỗng), nên tới đây là đã xong.
+      await verifyMutation.mutateAsync({id:voucher.id,note:note.trim() || null,verified:!isVerified});
       onOpenChange(false);
     } catch(error) {
+      // Kết quả chưa rõ không khoá hộp: lần bấm sau gửi lại đúng giá trị đã chọn (đợt 10c), máy chủ khoá phiếu rồi so
+      // nên không đổi hai lần. Dấu bản trước (bật/tắt) vẫn có thể kết luận «đã ở trạng thái …»: khi đó hộp đang giữ ảnh
+      // phiếu cũ, khoá nút tới khi mở lại để người dùng chọn lại theo trạng thái mới.
       setSubmitError(voucherFailureMessage(error,"cập nhật trạng thái đã kiểm"));
-      if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
+      if (error instanceof FinancialAlreadyRecordedError) setReconcileRequired(true);
     }
   };
 

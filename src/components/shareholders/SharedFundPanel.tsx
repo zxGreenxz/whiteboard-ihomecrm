@@ -9,6 +9,8 @@ import {
   type SharedFundState,
 } from '@/hooks/profit-ledger/useSharedFund';
 import SharedFundForm, { sourceLabels, type FundAction } from './SharedFundForm';
+import HousePoolPanel from './HousePoolPanel';
+import OpeningReceiptForm from './OpeningReceiptForm';
 
 const date = (v: string) => v.slice(0, 10).split('-').reverse().join('/');
 const names = (state: SharedFundState, id: string) =>
@@ -112,6 +114,8 @@ function FundHistory({ state, onSettle }: { state: SharedFundState; onSettle: (i
               Đối chiếu {date(o.as_of_date)} · {o.evidence}. Đã tính {o.reconciled_count} phiếu CRM, tổng{' '}
               {formatVND(o.reconciled_approved)}.
             </p>
+            {state.route === 'CANONICAL' && o.historical_count !== undefined &&
+              <OpeningReceiptForm org={state.organization_id} opening={o} />}
           </article>
         ))}
       </details>
@@ -123,6 +127,7 @@ export default function SharedFundPanel({ org, onSettle }: { org: string; onSett
   const query = useSharedFund(org),
     write = useSharedFundWrite(org);
   const [action, setAction] = useState<FundAction | null>(null),
+    [showHousePool, setShowHousePool] = useState(false),
     [review, setReview] = useState<FundWrite | null>(null);
   const [notice, setNotice] = useState(''),
     [issue, setIssue] = useState(''),
@@ -189,8 +194,12 @@ export default function SharedFundPanel({ org, onSettle }: { org: string; onSett
   };
   return (
     <div className="grid gap-4">
+      <Button type="button" variant="outline" aria-expanded={showHousePool} onClick={() => setShowHousePool(!showHousePool)}>
+        Góp theo nhà và hoàn cho toàn bộ người góp
+      </Button>
+      {showHousePool && <HousePoolPanel org={org} shareholders={state.shareholders} enabled={enabled}/>}
       <div className="rounded-lg border bg-muted/40 p-4">
-        <p className="text-sm text-muted-foreground">Quỹ khả dụng theo phân bổ</p>
+        <p className="text-sm text-muted-foreground">Nguồn quỹ nhập theo chứng từ còn khả dụng</p>
         <p className="text-2xl font-semibold tabular-nums">{formatVND(state.available_amount)}</p>
         {state.last_effective_date && (
           <p className="text-xs text-muted-foreground">Ghi gần nhất ngày {date(state.last_effective_date)}</p>

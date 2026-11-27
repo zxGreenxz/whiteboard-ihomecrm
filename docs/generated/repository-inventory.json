@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1942,
-  "soFileDocBangFs": 502,
-  "tongLoiGoi": 1369,
-  "khongPhanLoaiDuoc": 607,
+  "tongSoFileTest": 2042,
+  "soFileDocBangFs": 516,
+  "tongLoiGoi": 1415,
+  "khongPhanLoaiDuoc": 623,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 67,
+      "soFile": 68,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 215,
+      "soFile": 223,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -88,6 +88,7 @@
     "src/lib/__tests__/ieGuardHandoverScopeMigration.test.ts",
     "src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts",
     "src/lib/__tests__/networkCenterSettingsBoundsMatchDatabase.test.ts",
+    "src/lib/__tests__/pendingStrategies.test.ts",
     "src/lib/__tests__/permissionPages.test.ts",
     "src/lib/__tests__/profitClose.test.ts",
     "src/lib/__tests__/salaryCompletionDate.test.ts",
@@ -135,6 +136,14 @@
         "tai-lieu": 5
       },
       "khongPhanLoaiDuoc": 10
+    },
+    {
+      "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
+      "soGoi": 17,
+      "loai": {
+        "sql": 14
+      },
+      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "scripts/__tests__/network-center-worker-release-readback.test.mjs",
@@ -204,14 +213,6 @@
         "sql": 11
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/soTongLoiNhuanChuChiLuonMigration.test.ts",
-      "soGoi": 12,
-      "loai": {
-        "sql": 9
-      },
-      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "infra/hermes-broker/domain-summary-sql.test.mjs",
@@ -295,6 +296,14 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "infra/hermes-zalo-native/operator.test.mjs",
+      "soGoi": 9,
+      "loai": {
+        "manifest": 4
+      },
+      "khongPhanLoaiDuoc": 5
+    },
+    {
       "file": "scripts/__tests__/check-vault-access.test.mjs",
       "soGoi": 9,
       "loai": {},
@@ -367,14 +376,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-zalo-native/operator.test.mjs",
-      "soGoi": 7,
-      "loai": {
-        "manifest": 2
-      },
-      "khongPhanLoaiDuoc": 5
-    },
-    {
       "file": "infra/hermes-zalo-native/quarantine-release.test.mjs",
       "soGoi": 7,
       "loai": {},
@@ -397,6 +398,14 @@
         "tai-lieu": 4
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "scripts/__tests__/hermes-durable-schema.test.mjs",
+      "soGoi": 7,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 5
     },
     {
       "file": "src/lib/__tests__/commissionReasonAuditMigration.test.ts",
@@ -459,14 +468,6 @@
       "khongPhanLoaiDuoc": 6
     },
     {
-      "file": "scripts/__tests__/hermes-durable-schema.test.mjs",
-      "soGoi": 6,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 4
-    },
-    {
       "file": "scripts/__tests__/hermes-task-function-catalog.test.mjs",
       "soGoi": 6,
       "loai": {
@@ -500,6 +501,14 @@
         "sql": 6
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/contractExitSupportMigration.test.ts",
+      "soGoi": 6,
+      "loai": {
+        "sql": 4
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/roomSaleMigration.test.ts",
@@ -612,12 +621,29 @@
       "khongPhanLoaiDuoc": 5
     },
     {
+      "file": "src/lib/__tests__/customerListMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "src/lib/__tests__/customerResidenceMigration.test.ts",
       "soGoi": 5,
       "loai": {
         "sql": 5
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/dauVanTayChotLnMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 2,
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/gd3RaoBangAnToanMigration.test.ts",
@@ -876,15 +902,15 @@
       "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "src/lib/__tests__/contractLifecyclePermissionGuardMigration.test.ts",
+      "file": "src/lib/__tests__/contractExitEarlyTermsMigration.test.ts",
       "soGoi": 4,
       "loai": {
-        "sql": 3
+        "sql": 2
       },
-      "khongPhanLoaiDuoc": 1
+      "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "src/lib/__tests__/customerListMigration.test.ts",
+      "file": "src/lib/__tests__/contractLifecyclePermissionGuardMigration.test.ts",
       "soGoi": 4,
       "loai": {
         "sql": 3
@@ -900,20 +926,19 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/lib/__tests__/dauVanTayChotLnMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 1,
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 2
-    },
-    {
       "file": "src/lib/__tests__/profitClose.test.ts",
       "soGoi": 4,
       "loai": {
         "ma-nguon": 2,
         "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/publicRoomTokenOrgMigration.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "sql": 4
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -1164,6 +1189,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/cocThuChiMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/commissionFailureRetryMigration.test.ts",
       "soGoi": 3,
       "loai": {
@@ -1262,6 +1295,14 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "src/lib/__tests__/pendingStrategies.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/permissionFunctionPlanCacheMigration.test.ts",
       "soGoi": 3,
       "loai": {
@@ -1308,6 +1349,14 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "worker/__tests__/sale-advice-db.test.js",
+      "soGoi": 3,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": ".e2e-fleet/controlled/workflow-safety.test.mjs",
@@ -1898,6 +1947,28 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/daKiemDatGiaTriMigration.test.ts",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/lib/__tests__/depositRetainedMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/depositRoomRule.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/forfeitVoucherKqkdMigration.test.ts",
       "soGoi": 2,
       "loai": {},
@@ -1943,6 +2014,12 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/maChongTrungPhieuTaoMoiMigration.test.ts",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/networkCenterSettingsBoundsMatchDatabase.test.ts",
@@ -2007,6 +2084,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/salePhongTheoCongTyMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/soTongLoiNhuanNenMigration.test.ts",
       "soGoi": 2,
       "loai": {
@@ -2027,6 +2112,12 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/xoaChenMotGiaoDichMigration.test.ts",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/contract-lifecycle/__tests__/transferMigration.test.ts",
@@ -2057,14 +2148,6 @@
       "soGoi": 2,
       "loai": {
         "tai-lieu": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "worker/__tests__/sale-advice-db.test.js",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -2779,6 +2862,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/zalo-group-building-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/app/capabilities/__tests__/riskMapCoverage.test.ts",
       "soGoi": 1,
       "loai": {
@@ -3279,14 +3370,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/lib/__tests__/depositRoomRule.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/lib/__tests__/docsDemoSeedP3.test.ts",
       "soGoi": 1,
       "loai": {
@@ -3549,6 +3632,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/nhatKyTuGoKhoaMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/notificationRoutes.test.ts",
       "soGoi": 1,
       "loai": {},
@@ -3568,6 +3659,18 @@
     },
     {
       "file": "src/lib/__tests__/paidInvoiceAdjustmentGuard.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/pendingSweep.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/pendingValveLogQueue.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

@@ -4,7 +4,7 @@
 //            + order created_at desc + range/count + chuỗi nhúng contract_customers→contracts→rooms→buildings
 //            + get_customer_stats / 4 count khi có từ khoá.
 // Một instance PGlite cho cả file, mỗi ca BEGIN…ROLLBACK.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { customerSearchFilter } from '@/lib/customerSearch';
@@ -516,6 +516,57 @@ describe('quyền và phạm vi', () => {
 });
 
 describe('sắp xếp, phân trang, toà hiện tại', () => {
+  it('RPC hiện hành ưu tiên đúng tên trước khi phân trang, trong phạm vi toà đang thuê', async () => {
+    // Các ca đối chiếu web cũ ở trên dùng RPC tháng 10. Ca này chạy wrapper và lõi hiện hành.
+    const directory = 'supabase/migrations';
+    const files = readdirSync(directory).filter(file => file.endsWith('.sql')).sort().reverse();
+    for (const fn of ['customer_list_core_v1', 'customer_list_v1']) {
+      const definition = new RegExp(`^CREATE (?:OR REPLACE )?FUNCTION public\\.${fn}\\([\\s\\S]*?\\bAS\\s+(\\$\\w*\\$)[\\s\\S]*?\\1\\s*;`, 'im');
+      let sql: string | undefined;
+      for (const file of files) {
+        sql = readFileSync(`${directory}/${file}`, 'utf8').match(definition)?.[0];
+        if (sql) break;
+      }
+      if (!sql) throw new Error(`Thiếu định nghĩa public.${fn}`);
+      await db.exec(sql);
+    }
+
+    const samples = [
+      [30, 'Tạ Ý An', null, '2026-01-01'],
+      [31, 'Lê AN', null, '2026-01-01'],
+      [32, 'Lê Minh Ân'.normalize('NFD'), null, '2026-05-01'],
+      [33, 'Phạm An Kỳ', null, '2026-05-01'],
+      [34, 'Lê Thanh', null, '2026-05-01'],
+      [35, 'Mai Vy', 'an@example.test', '2026-05-01'],
+      [36, 'An', null, '2025-01-01'],
+      [37, 'Lê Minh Anh', null, '2026-06-01'],
+    ] as const;
+    for (const [number, name, email, createdAt] of samples) {
+      await db.query(`INSERT INTO public.customers(id, organization_id, user_id, full_name, email, status_v2, created_at)
+        VALUES ($1, $2, $3, $4, $5, 'RENTING', $6)`, [C(number), ORG_A, OWNER, name, email, createdAt]);
+      await db.query('INSERT INTO public.contract_customers(contract_id, customer_id, organization_id) VALUES ($1, $2, $3)',
+        [id(43), C(number), ORG_A]);
+    }
+    await as(OWNER);
+    const filters = { status: 'RENTING', buildings: [B3], search: '  An  ' };
+    const expected = [36, 31, 30, 32, 33, 37, 35, 34].map(C);
+    const full = await list(ORG_A, filters);
+    expect(full.rows.map(row => row.id)).toEqual(expected);
+    expect(full.total).toBe(expected.length);
+    expect(full.stats.total).toBe(expected.length);
+    for (const offset of [0, 2, 4, 6]) {
+      const page = await list(ORG_A, { ...filters, limit: 2, offset });
+      expect(page.rows.map(row => row.id)).toEqual(expected.slice(offset, offset + 2));
+      expect(page.stats).toEqual(full.stats);
+    }
+    expect((await list(ORG_A, { ...filters, search: 'Ân'.normalize('NFD'), limit: 1 })).rows[0].id).toBe(C(32));
+    expect((await list(ORG_A, { ...filters, search: 'y an' })).rows.map(row => row.id)).toEqual([C(30)]);
+    expect((await list(ORG_A, { ...filters, search: '  ', limit: 1 })).rows[0].id).toBe(C(18));
+    const cursor = await db.query<{ result: ListResult }>(`SELECT public.customer_list_core_v1(
+      $1, 'RENTING', NULL, 'An', $2::uuid[], NULL, 2, 0, false, 'id_asc', $3) AS result`, [ORG_A, [B3], C(30)]);
+    expect(cursor.rows[0].result.rows.map(row => row.id)).toEqual([C(31), C(32)]);
+  });
+
   it('ghép các trang bằng đúng danh sách đầy đủ; trang ngoài cùng rỗng nhưng vẫn có tổng', async () => {
     await as(OWNER);
     const full = await list(ORG_A);

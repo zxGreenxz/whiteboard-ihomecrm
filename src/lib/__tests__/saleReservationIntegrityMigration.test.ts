@@ -38,8 +38,14 @@ async function installLiveSaleReader() {
   for (const name of ['app_private.room_sale_policy_json_v1', 'app_private.room_sale_policy_current_v1',
     'app_private.room_sale_policy_active_text_v1', 'app_private.room_sale_policy_overlay_v1',
     'public.get_my_available_rooms']) {
+    // Bản sống nhận p_organization_id (đợt 2 Sale phòng); file cũ tạo lại bản () ⇒ bỏ để lời gọi không mơ hồ.
+    if (name === 'public.get_my_available_rooms') await db.exec('DROP FUNCTION IF EXISTS public.get_my_available_rooms()');
     await db.exec(liveDefinitionOf(name).sql);
   }
+  // Đo định nghĩa SỐNG: «Phòng trống» theo công ty (đợt 2 Sale phòng). Bản () trong các file lịch sử chỉ để chúng chạy lại.
+  expect('supabase/migrations/' + liveDefinitionOf('public.get_my_available_rooms').file)
+    // Đợt 3 Sale phòng: bản sống thêm khoá deposit_hold (khối «đang giữ bằng cọc», đo ở cocThuChiMigration.test.ts).
+    .toBe('supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql');
 }
 
 const org = '00000000-0000-4000-8000-000000000001';
@@ -82,7 +88,7 @@ beforeAll(async () => {
     CREATE TABLE room_reservation_holds(id uuid PRIMARY KEY,room_id uuid,status text,expires_at timestamptz,held_by uuid,contract_id uuid);
     CREATE TABLE room_turnovers(id uuid,organization_id uuid,room_id uuid,status text,expected_ready_on date,epoch integer,source_contract_id uuid);
     CREATE TABLE room_pass_listings(id uuid,room_id uuid,user_id uuid,active boolean,contact_manager boolean,contact_name text,contact_phone text,sale_policy text,
-      pass_price numeric,avail_date date,organization_id uuid);
+      pass_price numeric,avail_date date,organization_id uuid DEFAULT '${org}');
     CREATE TABLE areas(id uuid,user_id uuid,name text,deleted_at timestamptz,organization_id uuid);
     CREATE TABLE area_buildings(building_id uuid,area_id uuid,organization_id uuid);
     CREATE TABLE building_services(building_id uuid,service_id uuid,is_active boolean,unit_price_override numeric);
@@ -131,8 +137,18 @@ beforeAll(async () => {
       INSERT INTO contract_deposit_links SELECT v_org,v_contract_id,(value#>>'{}')::uuid FROM jsonb_array_elements(coalesce(p_payload->'existing_deposit_voucher_ids','[]'));
       UPDATE income_expenses SET contract_id=v_contract_id WHERE id IN(SELECT (value#>>'{}')::uuid FROM jsonb_array_elements(coalesce(p_payload->'existing_deposit_voucher_ids','[]')));
       v_response := jsonb_build_object('contract',jsonb_build_object('id',v_contract_id));RETURN v_response;END $$;
-    ${liveDefinitionOf('public.get_my_available_rooms').sql}
+    -- Đợt 2 Sale phòng: «Phòng trống» lọc toà theo quyền xem (sale_room_can_v1) và lấy hotline theo người đứng tên chung.
+    CREATE FUNCTION app_private.sale_room_can_v1(uuid,uuid,text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT auth.uid() IS NOT NULL AND $1=ANY(my_org_ids()) AND can_access_building($2) $$;
+    CREATE FUNCTION app_private.room_exit_hold_json_v1(uuid,uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
+    CREATE FUNCTION app_private.room_deposit_hold_json_v1(uuid,uuid,boolean) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT NULL::jsonb $$;
+    -- Sale đợt 3: reader tính phạm vi deposits.view một lần (chi tiết khối cọc); ở đây không ai có quyền đó.
+    CREATE FUNCTION app_private.authorized_scope_v3(text,uuid) RETURNS TABLE(org_wide boolean, building_ids uuid[], cashbook_ids uuid[]) LANGUAGE sql STABLE AS $$ SELECT false, '{}'::uuid[], '{}'::uuid[] $$;
+    ${liveDefinitionOf('app_private.org_building_owner_v1').sql}
+    -- Bản () cũ cho các file lịch sử chạy lại (chúng CREATE OR REPLACE bản này và kiểm ACL); installLiveSaleReader bỏ nó.
+    CREATE FUNCTION public.get_my_available_rooms() RETURNS jsonb LANGUAGE sql AS $$ SELECT NULL::jsonb $$;
     REVOKE ALL ON FUNCTION public.get_my_available_rooms() FROM PUBLIC,anon;GRANT EXECUTE ON FUNCTION public.get_my_available_rooms() TO authenticated;
+    ${liveDefinitionOf('public.get_my_available_rooms').sql}
+    REVOKE ALL ON FUNCTION public.get_my_available_rooms(uuid) FROM PUBLIC,anon;GRANT EXECUTE ON FUNCTION public.get_my_available_rooms(uuid) TO authenticated;
     GRANT USAGE ON SCHEMA public,app_private,auth TO anon,authenticated;
     -- Khoá quyền có sẵn ở production trước migration này.
     INSERT INTO permission_definitions VALUES('deposits.create','deposits','create','ELEVATED','TENANT',ARRAY['BUILDING'],true),

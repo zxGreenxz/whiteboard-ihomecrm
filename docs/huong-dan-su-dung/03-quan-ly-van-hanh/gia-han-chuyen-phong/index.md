@@ -1,8 +1,8 @@
 ---
-title: "Gia hạn, chuyển phòng & nhượng hợp đồng"
-description: "Gia hạn hợp đồng đang hiệu lực, chuyển hợp đồng sang phòng khác và nhượng phòng cho khách mới bằng liên kết hai hợp đồng, với các bước kiểm tra giá, cọc và báo trả phòng."
+title: "Gia hạn, chuyển phòng & sang nhượng phòng"
+description: "Gia hạn hợp đồng đang hiệu lực, chuyển hợp đồng sang phòng khác và sang nhượng phòng cho khách nhận bằng luồng trả phòng trước hạn: ba trường hợp, giữ phòng 3 ngày, phí môi giới và phiếu hoa hồng."
 routes: ["/contracts/:id"]
-permissions: [{module: contracts, action: renew}, {module: contracts, action: transfer}]
+permissions: [{module: contracts, action: renew}, {module: contracts, action: transfer}, {module: contracts, action: terminate}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
@@ -12,15 +12,19 @@ captured:
 status: published
 ---
 
-# Gia hạn, chuyển phòng & nhượng hợp đồng
+# Gia hạn, chuyển phòng & sang nhượng phòng
 
-Trang này hướng dẫn ba thao tác biến động hợp đồng thường gặp: **gia hạn** khi khách muốn ở tiếp, **chuyển phòng** khi khách đổi sang phòng khác, và **nhượng hợp đồng** khi khách cũ sang lại phòng cho khách mới. Gia hạn và chuyển phòng thay đổi trực tiếp hợp đồng hiện tại; nhượng thì **giữ nguyên hợp đồng cũ** (thanh lý như bình thường) và **ký hợp đồng mới** cho khách mới, hai bên được nối bằng một **liên kết nhượng** để đối soát.
+Trang này hướng dẫn ba thao tác biến động hợp đồng thường gặp: **gia hạn** khi khách muốn ở tiếp, **chuyển phòng** khi khách đổi sang phòng khác, và **sang nhượng phòng** khi khách cũ trả phòng trước hạn để người khác nhận lại phòng. Gia hạn và chuyển phòng thay đổi trực tiếp hợp đồng hiện tại; sang nhượng thì **giữ nguyên hợp đồng cũ** (thanh lý bằng loại **Trả phòng trước hạn**) và **ký hợp đồng mới** cho khách nhận. Hệ thống tự nối hai hợp đồng để đối soát, không còn thao tác nối tay.
+
+::: info Nút Nhượng HĐ và Liên kết nhượng đã bỏ
+Giao diện không còn nút **Nhượng HĐ** hay **Liên kết nhượng**. Sang nhượng phòng giờ ghi ngay trong hộp **Thanh lý** khi khách trả phòng trước hạn, qua ba trường hợp mô tả ở mục **Sang nhượng phòng (trả phòng trước hạn)** bên dưới.
+:::
 
 ::: info Điều kiện tiên quyết
-- **Gia hạn** cần `contracts.renew`; **Chuyển phòng** và **Nhượng HĐ** cần `contracts.transfer`, cùng phạm vi toà của hợp đồng.
-- Hợp đồng phải **đang hiệu lực** — ba nút chỉ hiện ở thanh đầu [trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) (và ở lưới **Thao tác** của danh sách) khi hợp đồng còn hiệu lực.
+- **Gia hạn** cần `contracts.renew`; **Chuyển phòng** cần `contracts.transfer`; **Sang nhượng phòng** làm trong hộp **Thanh lý** nên cần `contracts.terminate`. Mọi thao tác đều cần phạm vi toà của hợp đồng.
+- Hợp đồng phải **đang hiệu lực** — các nút chỉ hiện ở thanh đầu [trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) (và ở lưới **Thao tác** của danh sách) khi hợp đồng còn hiệu lực.
 - Muốn chuyển phòng: phải có sẵn **phòng trống** ở toà đích (phòng đang có khách hoặc đang giữ cọc không hiện trong danh sách chọn).
-- Muốn nhượng: cần quyền tạo/sửa hợp đồng nháp và quyền **Thanh lý** để ghi nhận khách cũ trả phòng.
+- Muốn sang nhượng: phải biết khách cũ trả phòng ngày nào và nhờ ai tìm khách (nếu có). Phiếu hoa hồng môi giới cần thêm quyền tạo phiếu thu chi.
 :::
 
 ::: warning Gia hạn KHÔNG đổi trạng thái hợp đồng
@@ -29,7 +33,7 @@ Khi gia hạn, hợp đồng **giữ nguyên trạng thái đang hiệu lực** 
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Mở **trang chi tiết** hợp đồng cần xử lý (xem [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/)). Trên thanh đầu trang có các nút **Gia hạn**, **Chuyển phòng**, **Nhượng HĐ**, **Đăng ký chuyển đi**, **Thanh lý**.
+**Bước 1**: Mở **trang chi tiết** hợp đồng cần xử lý (xem [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/)). Trên thanh đầu trang có các nút **Gia hạn**, **Chuyển phòng**, **Đăng ký chuyển đi**, **Thanh lý**.
 
 ### Gia hạn hợp đồng
 
@@ -61,29 +65,37 @@ Bạn chỉ cần chọn **ngày kết thúc mới**; hệ thống tự suy ra s
 Nếu chuyển nhầm, phải mở lại **Chuyển phòng** và chuyển ngược về phòng cũ (khi phòng cũ vẫn còn trống). Kiểm tra kỹ toà và phòng đích trước khi xác nhận. Trường hợp cần chuyển sang **toà khác**, hãy xác nhận với quản trị trước — hệ thống có thể từ chối tuỳ phạm vi quyền.
 :::
 
-### Nhượng hợp đồng (sang phòng cho khách mới)
+### Sang nhượng phòng (trả phòng trước hạn)
 
-**Bước 9**: Ấn **Nhượng HĐ**. Hộp thoại **Nhượng hợp đồng** ("Hợp đồng cũ và hợp đồng khách mới có liên kết để đối soát") tóm tắt quy trình 3 bước:
+Sang nhượng phòng là khi khách cũ trả phòng trước hạn vì **đã có người nhận phòng**. Khách cũ thanh lý như bình thường, khách nhận ký hợp đồng mới, hai bên được nối tự động. Có **ba trường hợp**, chọn ngay khi ghi trả phòng.
 
-1. Khi khách cũ đã bàn giao: ghi ngày trả, chọn loại thanh lý và chọn **Trả phòng, quyết toán sau**.
-2. Soạn nháp cho khách mới cùng phòng. Trong hồ sơ cũ hoặc nháp mới, chọn **Liên kết nhượng**, ghi tự tìm khách hay qua môi giới và hạn hợp đồng.
-3. Quyết toán hợp đồng cũ và ký hợp đồng mới theo cách hiện tại. Với môi giới, phí nhượng là **50% cọc cũ**; khách mới đóng đủ cọc mới.
+**Bước 9**: Ấn **Thanh lý** trên trang chi tiết hợp đồng cũ. Nhập **Ngày khách thực tế trả phòng**, chọn **Loại thanh lý** là **Trả phòng trước hạn**. Ngay dưới hiện ô **Trường hợp trả phòng trước hạn** — bắt buộc chọn một trong ba:
 
-Khách chưa dọn đi thì chỉ **báo ngày dự kiến trả** và chuẩn bị nháp trước; chỉ xác nhận trả khi đã bàn giao thực tế. Nút **Ghi nhận khách đã trả phòng** mở hộp **Thanh lý hợp đồng** (xem [Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/)); với hợp đồng đã thanh lý, nút thành **Mở hồ sơ cũ**.
+| Trường hợp | Khi nào chọn | Phòng | Quyết toán | Phí môi giới |
+| --- | --- | --- | --- | --- |
+| **Nhờ sale tìm khách sang phòng** | Đã có khách nhận phòng qua sale. Bắt buộc ghi **Tên sale / môi giới** (người nhận phiếu hoa hồng). | Giữ **3 ngày** cho khách nhận, **không rao bán**. | Chỉ ghi **Trả phòng, quyết toán sau**; quyết toán khi đã có hợp đồng khách nhận. | Mặc định **50% cọc cũ**, trừ vào cọc; phiếu hoa hồng cho sale lập sau quyết toán. |
+| **Tự tìm khách sang phòng** | Khách cũ tự tìm được người nhận phòng. | Giữ **3 ngày**, không rao bán. | Giống trường hợp trên. | Không có. Hợp đồng khách nhận **không có hoa hồng môi giới hay thưởng sale**. |
+| **Chủ nhà hỗ trợ thanh lý sớm** | Chủ nhà đồng ý cho thanh lý sớm, không có khách nhận phòng. Cũng là lựa chọn khi khách nhận đã huỷ (Bước 14). | **Rao bán lại ngay**. | Như bình thường; có thể **Tiếp tục quyết toán ngay**. | Không có. |
 
-![Hộp thoại Nhượng hợp đồng với 3 bước và nút Ghi nhận khách đã trả phòng](./images/buoc-04-nhuong-hop-dong.webp)
+Hộp thoại hiện một dòng ghi chú ngắn cho trường hợp đang chọn để bạn đối chiếu.
 
-**Bước 10**: Lập liên kết — từ khối liên kết nhượng của hồ sơ cũ, hoặc nút **Liên kết nhượng** trên bản nháp ở tab **Hợp đồng nháp**, ấn **Lập liên kết**. Hộp **Liên kết hai hợp đồng nhượng** yêu cầu:
+**Bước 10**: Với hai trường hợp đầu, hộp chỉ còn nút **Trả phòng, quyết toán sau** (không còn **Tiếp tục quyết toán ngay**). Ấn nút này: hợp đồng cũ chuyển **Đã thanh lý**, hồ sơ vào tab **Chờ quyết toán** của màn [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/), phòng hiện nhãn **Chờ khách Sang/Nhượng phòng** ở [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/) và được giữ 3 ngày. Trường hợp thứ ba đi theo luồng thanh lý thường (xem [Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/)).
 
-- **Hồ sơ trả phòng cũ** (chọn hồ sơ chờ quyết toán) và **Nháp hợp đồng khách mới** (chọn nháp cùng phòng).
-- **Nguồn khách mới**: **Khách tự tìm người nhận** hoặc **Qua môi giới** (nhập **Tên môi giới / người nhận hoa hồng**; phí nhượng = 50% cọc cũ, dùng chung liên kết này).
-- **Cọc khách mới**: **Nộp cọc mới độc lập**. Lựa chọn **Dự kiến cấn cọc cũ** chỉ được lưu để đối soát — hệ thống **chưa hỗ trợ chuyển cọc giữa hai hợp đồng** và nháp theo nhánh này chưa ký được.
-- **Hạn hợp đồng mới**: **Giữ hạn cũ** (nháp phải có đúng ngày kết thúc cũ) hoặc **Kỳ hạn mới theo ngày trong nháp**.
+**Bước 11**: Tạo hợp đồng cho khách nhận ở **chính phòng đó** (nhận cọc giữ phòng rồi ký, hoặc tạo hợp đồng mới). Ở hộp tạo cọc và form **Tạo hợp đồng mới**, một băng báo màu vàng ghi phòng đang chờ khách sang nhượng. **Hợp đồng mới đầu tiên của phòng** (bắt đầu từ ngày khách cũ trả phòng trở đi) được hệ thống **tự nối** với hồ sơ trả phòng cũ — bạn không phải chọn hay nối tay.
 
-Ấn **Lưu liên kết nhượng**. Khối liên kết sau đó hiện trạng thái (ví dụ **Chờ quyết toán phí nhượng tại hồ sơ cũ**, **Phí đã quyết toán · Chờ ký / nối phiếu môi giới**, **Đã nối phiếu môi giới hiện hành**) và các nút **Đưa phí nhượng vào quyết toán**, **Ký hợp đồng mới**, **Nối phiếu môi giới**, **Hủy liên kết** (phải ghi lý do).
+Nếu khách cũ hỗ trợ khách mới một khoản (ví dụ nhường một phần cọc), nhập ở ô **Khách cũ hỗ trợ khách mới** trong form tạo hợp đồng (chỉ hiện khi hợp đồng này sẽ tự nối). Số đó chuyển từ cọc khách cũ sang cọc hợp đồng mới: khách mới nộp ít đi, quyết toán khách cũ trả ít đi đúng số đó; không qua quỹ, không vào doanh thu. Ô ghi rõ mức tối đa (cọc cũ đã thu trừ phí môi giới, và không vượt phần cọc còn thiếu của hợp đồng mới). Cần quyền thanh lý ở toà. Không hỗ trợ thì để trống. Mở lại bản nháp hợp đồng để ký thì nhập lại số này trước khi ký: bản nháp chưa lưu ô này.
 
-::: warning Nhượng không tự chuyển tiền giữa hai hợp đồng
-Hợp đồng cũ quyết toán cọc, nợ, hoàn tiền theo đúng luồng thanh lý; hợp đồng mới thu cọc mới độc lập. Phí nhượng qua môi giới được cộng **một lần** vào khoản thu khi quyết toán hồ sơ cũ. Không tự cấn cọc cũ sang hợp đồng mới bằng phiếu tay.
+**Bước 12**: Quyết toán hồ sơ cũ. Mở từ tab **Chờ quyết toán** (nút **Quyết toán**) hoặc khối **Hồ sơ trả phòng** (**Quyết toán hồ sơ này**). Chưa có hợp đồng khách nhận thì hộp báo "Chưa có hợp đồng của khách nhận phòng" và chặn quyết toán. Khi đã có, ở bước quyết toán:
+
+- **Tiền cọc hoàn trả** bị khoá bằng **cọc đã thu** của hợp đồng cũ, không có dòng **Cọc giữ lại theo thoả thuận** (máy chủ từ chối). Đã có số khách cũ hỗ trợ thì cọc đã thu là phần còn lại sau khi cấn, kèm dòng **Đã cấn sang …** và ghi chú quyết toán tương ứng.
+- Trường hợp nhờ sale: dòng **Phí môi giới** tự thêm vào khu **THU THÊM** và bị khoá, cấn từ cọc như các khoản thu khác. Muốn đổi số, ấn **Sửa phí**, nhập phí mới (kể cả 0 đồng, không vượt cọc đã thu) và **Lý do sửa phí** (bắt buộc).
+
+**Bước 13**: Phiếu hoa hồng (trường hợp nhờ sale có phí). Ngay sau khi quyết toán, hộp mở tiếp **Phiếu hoa hồng môi giới** điền sẵn người nhận (tên sale) và số tiền (đúng phí môi giới đã quyết toán). Chỉ lập được khi **khách nhận đã nộp đủ cọc**; chưa đủ thì ấn **Để sau (hồ sơ sẽ nhắc)** rồi lập sau bằng nút **Lập phiếu hoa hồng** ở khối **Hồ sơ trả phòng**. Phí bằng 0 đồng thì không có phiếu.
+
+**Bước 14**: Khi khách nhận huỷ, không ký nữa. Ở Sale Phòng ấn **Mở bán lại** để rao phòng ngay; hợp đồng mới tạo sau đó **không tự nối** với hồ sơ cũ. Nếu đã ghi số khách cũ hỗ trợ, trước hết ấn **Đảo số hỗ trợ** ở khối **Hồ sơ trả phòng** (bắt buộc lý do; cọc hai bên về như trước) — khi còn số hỗ trợ thì không đổi trường hợp, không xoá hay huỷ hợp đồng khách nhận được. Sau đó mở hồ sơ trả phòng cũ, ấn **Đổi trường hợp** (hoặc **Đổi sang trường hợp 3**), chọn **Chủ nhà hỗ trợ thanh lý sớm** kèm **lý do**, thì mới quyết toán được.
+
+::: warning Tiền giữa hai hợp đồng chỉ đi qua ô "Khách cũ hỗ trợ khách mới"
+Hợp đồng cũ quyết toán cọc, nợ, hoàn tiền theo đúng luồng thanh lý; phí môi giới (nếu có) trừ vào cọc cũ khi quyết toán. Hợp đồng khách nhận thu cọc riêng, trừ đúng số khách cũ hỗ trợ (hệ thống ghi một cặp phiếu chuyển cọc trên sổ nội bộ, hai bên khớp). Không tự cấn cọc cũ sang hợp đồng mới bằng phiếu tay, và không giảm tay tiền hoàn cọc khách cũ để "nhường" cho khách mới.
 :::
 
 ## Các tính năng khác trên màn hình
@@ -95,44 +107,56 @@ Hợp đồng cũ quyết toán cọc, nợ, hoàn tiền theo đúng luồng th
 | Ô **Giá thuê mới** / **Tiền cọc mới** | Điền sẵn khi gia hạn; giá trị lưu thay trực tiếp giá/cọc hiện hành. |
 | Ô **Khi gia hạn, bạn muốn giữ hay hủy báo dọn?** | Chỉ hiện khi đã có báo trả phòng; bắt buộc chọn trước khi gia hạn. |
 | **Chuyển phòng** | Mở hộp **Chuyển phòng**: Toà nhà mới, Phòng mới (chỉ phòng Trống), Giá thuê mới, Ngày chuyển, Ghi chú. |
-| **Nhượng HĐ** | Mở hướng dẫn 3 bước nhượng và lối vào ghi nhận khách cũ trả phòng. |
-| **Lập liên kết** / **Lưu liên kết nhượng** | Nối hồ sơ trả phòng cũ với nháp khách mới cùng phòng. |
-| **Đưa phí nhượng vào quyết toán** / **Nối phiếu môi giới** / **Ký hợp đồng mới** / **Hủy liên kết** | Các bước tiếp theo của liên kết nhượng. |
-| **Lịch sử hợp đồng** (trang chi tiết) | Dòng **GIA HẠN** / **CHUYỂN PHÒNG** / **NHƯỢNG HĐ** theo thời gian. |
+| **Thanh lý** → **Trả phòng trước hạn** | Hiện ô chọn một trong ba trường hợp sang nhượng phòng; hai trường hợp đầu bắt buộc **Trả phòng, quyết toán sau**. |
+| **Đổi trường hợp** / **Đổi sang trường hợp 3** | Đổi trường hợp của hồ sơ chờ quyết toán, bắt buộc ghi lý do. |
+| **Sửa phí** | Sửa phí môi giới của ca nhờ sale trước khi quyết toán, bắt buộc ghi lý do. |
+| **Lập phiếu hoa hồng** | Lập phiếu hoa hồng môi giới cho sale sau quyết toán, khi khách nhận đã nộp đủ cọc. |
+| Ô **Khách cũ hỗ trợ khách mới** (form tạo hợp đồng) | Số khách cũ hỗ trợ khách nhận, chuyển từ cọc cũ sang cọc mới; chỉ hiện khi hợp đồng sẽ tự nối. |
+| **Đảo số hỗ trợ** (khối Hồ sơ trả phòng) | Huỷ cặp phiếu chuyển cọc khi khách nhận huỷ hoặc ghi nhầm, bắt buộc lý do; chỉ khi hồ sơ cũ còn chờ quyết toán. |
+| **Mở bán lại** / **Giữ tiếp** (Sale Phòng) | Rao phòng ngay khi khách nhận huỷ / giữ phòng thêm khi khách nhận chưa kịp ký. |
+| **Lịch sử hợp đồng** (trang chi tiết) | Dòng **GIA HẠN** / **CHUYỂN PHÒNG** theo thời gian; hợp đồng có nhượng ghi theo cách cũ vẫn hiện dòng **NHƯỢNG HĐ**. |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Không thấy nút **Gia hạn** / **Chuyển phòng** / **Nhượng HĐ** | Nút chỉ hiện khi hợp đồng còn hiệu lực và bạn có quyền `renew` / `transfer`. Hợp đồng đã **Thanh lý** không còn các nút này. |
+| Không thấy nút **Gia hạn** / **Chuyển phòng** | Nút chỉ hiện khi hợp đồng còn hiệu lực và bạn có quyền `renew` / `transfer`. Hợp đồng đã **Thanh lý** không còn các nút này. |
+| Tìm nút **Nhượng HĐ** hoặc **Liên kết nhượng** không thấy | Hai nút đã bỏ. Dùng **Thanh lý** → **Trả phòng trước hạn** → chọn **Nhờ sale tìm khách sang phòng** hoặc **Tự tìm khách sang phòng**. |
 | Nút **Gia hạn** trong hộp bị mờ | Hợp đồng đang có báo trả phòng; chọn **Giữ ngày báo dọn hiện tại** hoặc **Hủy báo dọn · Khách tiếp tục ở** trước. |
 | Gia hạn báo lỗi ngày kết thúc | **Ngày kết thúc mới** phải muộn hơn ngày kết thúc hiện tại. |
 | Ô **Phòng mới** ghi "Không có phòng trống" | Toà đã chọn chưa có phòng **Trống**. Chọn toà khác hoặc giải phóng một phòng trước (phòng đang có khách/đang giữ cọc không hiện). |
 | Chuyển nhầm phòng | Mở lại **Chuyển phòng** và chuyển ngược về phòng cũ (nếu còn trống). |
 | Sau chuyển phòng, phòng cũ vẫn báo **Đang thuê** | Kiểm tra phòng cũ còn hợp đồng hiệu lực nào khác không. Với thao tác chuyển chuẩn, phòng cũ tự về **Trống**. |
-| Liên kết nhượng báo **Cần xử lý tiền nhượng** | Bạn đã chọn **Dự kiến cấn cọc cũ** — nhánh này chưa hỗ trợ. **Hủy liên kết** (ghi lý do) rồi lập lại với **Nộp cọc mới độc lập**. |
-| Quyết toán hồ sơ cũ báo "Chưa xác định được phí nhượng hợp lệ" | Kiểm tra liên kết nhượng (nguồn **Qua môi giới** phải có cọc cũ hợp lệ) trước khi quyết toán. |
+| Chọn **Nhờ sale** mà không bấm được nút | Chưa nhập **Tên sale / môi giới**, chưa nhập **Nội dung thanh lý**, hoặc chưa chọn đủ trường hợp. |
+| Không thấy nút **Tiếp tục quyết toán ngay** | Đúng thiết kế với hai trường hợp có khách nhận phòng: chọn **Trả phòng, quyết toán sau**, quyết toán khi đã có hợp đồng khách nhận. |
+| Quyết toán báo "Chưa có hợp đồng của khách nhận phòng" | Tạo hợp đồng cho khách nhận ở đúng phòng, bắt đầu từ ngày khách cũ trả phòng trở đi để hệ thống tự nối. Khách nhận đã huỷ thì làm theo Bước 14. |
+| Đã có hợp đồng khách nhận mà hồ sơ cũ vẫn báo chưa có | Hợp đồng chỉ tự nối khi là hợp đồng mới **đầu tiên** của phòng và bắt đầu từ ngày khách cũ trả phòng trở đi. Phòng đã **Mở bán lại** thì hợp đồng mới không tự nối. |
+| Hết 3 ngày giữ phòng mà chưa có hợp đồng | Phòng tự rao lại như phòng trống, hồ sơ vẫn chờ hợp đồng khách nhận. Cần giữ thêm thì ấn **Giữ tiếp** ở Sale Phòng. |
+| Không lập được phiếu hoa hồng | Khách nhận chưa nộp đủ cọc: thu đủ rồi lập lại từ khối **Hồ sơ trả phòng**. Hoặc phí môi giới đã sửa về 0 đồng nên không có phiếu. |
+| Ô **Khách cũ hỗ trợ khách mới** bị khoá hoặc báo vượt mức | Ngày bắt đầu hợp đồng phải từ ngày khách cũ trả phòng; cần quyền thanh lý ở toà; số không vượt mức tối đa ghi dưới ô. |
+| Không **Đổi trường hợp** / không xoá được hợp đồng khách nhận | Hồ sơ đang có số khách cũ hỗ trợ. Ấn **Đảo số hỗ trợ** (kèm lý do) trước. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/contracts" app-label="Mở danh sách Hợp đồng" fixtures="Snapshot 07/10/2026: 20 hợp đồng, 3 quá hạn, không có liên kết nhượng nào." view-only>
+<SandboxTry account="demo.chunha" app-path="/contracts" app-label="Mở danh sách Hợp đồng" fixtures="Snapshot 07/10/2026: 20 hợp đồng, 3 quá hạn, không có hồ sơ sang nhượng nào." view-only>
 
 Quan sát luồng mà không lưu thay đổi:
 
 1. Ấn thẻ **Quá hạn**, mở một hợp đồng bằng **Xem chi tiết**. Ghi nhớ mã hợp đồng, phòng và ngày kết thúc.
 2. Ấn **Gia hạn** để xem các ô; không nhập, bấm **Hủy**.
 3. Ấn **Chuyển phòng**, chọn thử một toà để xem danh sách phòng trống; bấm **Hủy**.
-4. Ấn **Nhượng HĐ** để đọc 3 bước; bấm **Đóng** — không bấm **Ghi nhận khách đã trả phòng**.
+4. Ấn **Thanh lý**, chọn **Trả phòng trước hạn** để xem ba trường hợp và ghi chú của từng trường hợp; bấm **Hủy** — không bấm **Trả phòng, quyết toán sau**.
 
-Kết quả mong đợi: bạn phân biệt được gia hạn (đổi ngày trên hợp đồng hiện tại), chuyển phòng (đổi phòng, giữ hợp đồng) và nhượng (thanh lý hợp đồng cũ + ký hợp đồng mới có liên kết).
+Kết quả mong đợi: bạn phân biệt được gia hạn (đổi ngày trên hợp đồng hiện tại), chuyển phòng (đổi phòng, giữ hợp đồng) và sang nhượng phòng (thanh lý hợp đồng cũ bằng trả phòng trước hạn + ký hợp đồng mới tự nối).
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — danh sách hợp đồng, tab **Hợp đồng nháp** nơi soạn nháp khách mới.
+- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — danh sách hợp đồng, tab **Chờ quyết toán** và tab **Hợp đồng nháp** nơi soạn nháp khách nhận.
 - [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) — gốc mở các thao tác và xem **Lịch sử hợp đồng**.
-- [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/) — ghi nhận khách cũ trả phòng và quyết toán.
+- [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/) — ghi nhận khách cũ trả phòng, ba trường hợp trả phòng trước hạn và quyết toán.
+- [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/) — nhãn **Chờ khách Sang/Nhượng phòng**, **Mở bán lại**, **Giữ tiếp**.
 - [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) — xử lý tiền cọc khi kết thúc hợp đồng.
 - [Căn hộ / Phòng](/03-quan-ly-van-hanh/can-ho-phong/) — trạng thái phòng tự đổi theo hợp đồng.
 - [Quy trình khách thuê](/01-bat-dau/quy-trinh-khach-thue/) — vòng đời khách thuê từ đặt cọc, ký hợp đồng đến gia hạn và thanh lý.

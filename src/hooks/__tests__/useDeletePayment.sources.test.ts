@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   useMutation: vi.fn((options: unknown) => options),
 }));
 
+// Hook được gọi thẳng như hàm (không render): guard nằm trong useRef từ đợt 2.
+vi.mock("react", async (original) => ({ ...(await original<typeof import("react")>()), useRef: (current: unknown) => ({ current }) }));
+
 vi.mock("@tanstack/react-query", () => ({
   useMutation: mocks.useMutation,
   useQueryClient: vi.fn(() => ({ invalidateQueries: mocks.invalidateQueries })),

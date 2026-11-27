@@ -49,7 +49,7 @@ Trang chi tiết gom trạng thái, ba ô tiền (tổng – đã thu – còn p
 - Nút bút chì mở **Chỉnh sửa** (hoá đơn nháp) hoặc **Điều chỉnh hóa đơn** (hoá đơn đã phát hành/đã thu). Nút **Hủy hóa đơn** chỉ hiện khi hoá đơn chưa thu tiền; hoá đơn đã huỷ có nút **Phục hồi hoá đơn**.
 
 ::: danger Hoàn tiền chưa phải chi tiền ngay
-Với hoá đơn âm hoặc khách đã trả dư, nút chính đổi thành **Hoàn trả khách**. Hộp này có ô **Ngày hoàn trả** và **Sổ quỹ chi**, nhưng luồng ghi hiện hành chưa dùng hai giá trị đó: bấm **Lập phiếu chi** chỉ tạo **phiếu chi hoàn trả ở trạng thái Chờ duyệt** gắn với hoá đơn, chưa có tiền ra khỏi quỹ. Sau đó phải duyệt theo [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/); tiền chỉ thực sự ra khi phiếu chi ở trạng thái **Đã Chi**.
+Với hoá đơn âm hoặc khách đã trả dư, nút chính đổi thành **Hoàn trả khách**. Hộp này có ô **Ngày hoàn trả** và **Sổ quỹ chi**, nhưng luồng ghi hiện hành chưa dùng hai giá trị đó: bấm **Lập phiếu chi** chỉ tạo **phiếu chi hoàn trả ở trạng thái Chờ duyệt** gắn với hoá đơn, chưa có tiền ra khỏi quỹ. Sau đó phải duyệt ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) (tab **Chờ xử lý**); tiền chỉ thực sự ra khi phiếu chi ở trạng thái **Đã Chi**.
 :::
 
 ## Khi số liệu chưa khớp
@@ -80,5 +80,5 @@ Với hoá đơn âm hoặc khách đã trả dư, nút chính đổi thành **H
 
 - [Hoá đơn — danh sách & tạo lẻ](/03-quan-ly-van-hanh/hoa-don/)
 - [Thu tiền tại hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/)
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/)
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/)
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/)

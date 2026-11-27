@@ -21,11 +21,13 @@ describe('closing feedback',()=>{
   it('retains server codes, rejects unconfirmed results and blocks another confirmation',async()=>{
     const mutation=useConfirmCashbookClosing() as unknown as {mutationFn:(value:unknown)=>Promise<unknown>};
     const input={requestId:'r',countedBalance:0};const error={code:'42501',message:'no permission'};
-    h.rpc.mockResolvedValueOnce({data:null,error});await expect(mutation.mutationFn(input)).rejects.toBe(error);
-    h.rpc.mockResolvedValue({data:{},error:null});
+    // Đợt 5: xác nhận đọc danh sách chốt sổ trước khi ghi dấu; phép đọc giả trả danh sách rỗng.
+    const confirm=vi.fn().mockResolvedValueOnce({data:null,error}).mockResolvedValue({data:{},error:null});
+    h.rpc.mockImplementation((name:string)=>name==='list_cashbook_closings_v1'?Promise.resolve({data:{pending:[],closures:[]},error:null}):confirm());
+    await expect(mutation.mutationFn(input)).rejects.toBe(error);
     await expect(mutation.mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
     await expect(mutation.mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});
-    expect(h.rpc).toHaveBeenCalledTimes(2);
+    expect(confirm).toHaveBeenCalledTimes(2);
   });
   it('does not claim a cancellation when the request had already changed',()=>{
     const mutation=useCancelCashbookClosing() as unknown as {onSuccess:(result:unknown,input:unknown)=>void};

@@ -162,6 +162,9 @@ export async function docPhongTrong(organizationId) {
     p_organization_id: organizationId,
   });
   if (error) throw new Error(`Không đọc được phòng trống: ${error.message}`);
+  if (!Array.isArray(data?.rooms) || !Array.isArray(data?.buildings)) {
+    throw new Error('Danh sách phòng trống chưa đầy đủ');
+  }
 
   const buildings = mapPayloadSangToa(data);
   const rooms = buildings.flatMap((b) => b.rooms);

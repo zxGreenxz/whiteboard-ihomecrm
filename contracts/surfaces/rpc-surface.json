@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3161,
-    "catalogFunctions": 1668,
+    "sourceCallSites": 3324,
+    "catalogFunctions": 1712,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 435,
+    "calledRpcs": 443,
     "byRisk": {
-      "normal": 325,
-      "financial": 109,
+      "normal": 336,
+      "financial": 106,
       "infrastructure": 1
     },
-    "securityDefiner": 409
+    "securityDefiner": 412
   },
   "missingOnServer": [],
   "rpcs": {
@@ -155,46 +155,6 @@
       ],
       "risk": "normal"
     },
-    "approve_invoice_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_invoice_id uuid",
-          "returns": "invoices",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ],
-      "risk": "financial"
-    },
-    "approve_meter_reading_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_id uuid",
-          "returns": "meter_readings",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMeterReadings.ts"
-      ],
-      "risk": "normal"
-    },
     "approve_pending_income_expense_checked_v1": {
       "definitions": [
         {
@@ -230,25 +190,6 @@
       ],
       "callers": [
         "src/hooks/useAccounts.ts"
-      ],
-      "risk": "normal"
-    },
-    "assign_room_reservation_customer_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_reservation_id uuid, p_expected_revision bigint, p_customer_id uuid, p_idempotency_key text",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useRoomReservations.ts"
       ],
       "risk": "normal"
     },
@@ -291,47 +232,6 @@
         "src/hooks/useInvoices.ts"
       ],
       "risk": "financial"
-    },
-    "bulk_approve_meter_readings_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_ids uuid[]",
-          "returns": "integer",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMeterReadings.ts"
-      ],
-      "risk": "normal"
-    },
-    "bulk_create_meter_readings": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_readings jsonb",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public",
-          "execRoles": [
-            "anon",
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMeterReadings.ts"
-      ],
-      "risk": "normal"
     },
     "business_performance_break_even_v1": {
       "definitions": [
@@ -677,25 +577,6 @@
       ],
       "risk": "financial"
     },
-    "cancel_contract_transfer_link_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_link_id uuid, p_expected_version bigint, p_reason text, p_request_id uuid",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
-      ],
-      "risk": "normal"
-    },
     "cancel_income_expense_flex_v1": {
       "definitions": [
         {
@@ -771,26 +652,6 @@
       ],
       "callers": [
         "src/hooks/usePeriodFees.ts"
-      ],
-      "risk": "normal"
-    },
-    "cancel_reconciliation": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_id uuid",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useReconciliations.ts"
       ],
       "risk": "normal"
     },
@@ -1183,23 +1044,22 @@
       ],
       "risk": "normal"
     },
-    "confirm_reconciliation": {
+    "confirm_contract_return_v2": {
       "definitions": [
         {
           "schema": "public",
-          "args": "p_id uuid",
+          "args": "p_organization_id uuid, p_contract_id uuid, p_expected_contract_updated_at timestamp with time zone, p_idempotency_key text, p_actual_move_out_on date, p_initial_kind text, p_settlement_mode text, p_settlement jsonb DEFAULT NULL::jsonb, p_meter_boundary jsonb DEFAULT NULL::jsonb, p_return_note text DEFAULT NULL::text, p_early_terms jsonb DEFAULT NULL::jsonb",
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public",
+          "searchPath": "search_path=pg_catalog, public, app_private",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
       "callers": [
-        "src/hooks/useReconciliations.ts"
+        "src/hooks/useContractExitCases.ts"
       ],
       "risk": "normal"
     },
@@ -1775,6 +1635,25 @@
       ],
       "risk": "normal"
     },
+    "create_contract_exit_commission_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_account_id uuid DEFAULT NULL::uuid, p_recipient_bank text DEFAULT NULL::text, p_recipient_account text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
+      ],
+      "risk": "normal"
+    },
     "create_contract_payouts_with_support_v1": {
       "definitions": [
         {
@@ -1794,41 +1673,22 @@
       ],
       "risk": "normal"
     },
-    "create_contract_transfer_commission_v1": {
+    "create_deposit_income_v1": {
       "definitions": [
         {
           "schema": "public",
-          "args": "p_organization_id uuid, p_link_id uuid, p_expected_version bigint, p_request_id uuid, p_account_id uuid DEFAULT NULL::uuid, p_recipient_bank text DEFAULT NULL::text, p_recipient_account text DEFAULT NULL::text",
+          "args": "p_organization_id uuid, p_request_key text, p_row jsonb, p_items jsonb, p_terms jsonb",
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
+          "searchPath": "search_path=\"\"",
           "execRoles": [
             "authenticated"
           ]
         }
       ],
       "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
-      ],
-      "risk": "normal"
-    },
-    "create_contract_transfer_link_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_old_exit_case_id uuid, p_new_draft_id uuid, p_expected_exit_version bigint, p_expected_draft_revision integer, p_mode text, p_deposit_mode text, p_term_mode text, p_broker_name text, p_reason text, p_request_id uuid",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
+        "src/lib/depositIncomeRpc.ts"
       ],
       "risk": "normal"
     },
@@ -1874,11 +1734,11 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "p_label text DEFAULT NULL::text",
+          "args": "p_label text DEFAULT NULL::text, p_organization_id uuid DEFAULT NULL::uuid",
           "returns": "public_room_share_tokens",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public",
+          "searchPath": "search_path=pg_catalog, public",
           "execRoles": [
             "authenticated",
             "service_role"
@@ -1945,26 +1805,6 @@
       ],
       "callers": [
         "src/hooks/useCustomers.ts"
-      ],
-      "risk": "normal"
-    },
-    "decide_financial_request_v2": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_request_id uuid, p_decision text, p_reason text DEFAULT NULL::text",
-          "returns": "json",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useApprovals.ts"
       ],
       "risk": "normal"
     },
@@ -2313,6 +2153,25 @@
       ],
       "risk": "normal"
     },
+    "extend_contract_exit_hold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_days integer DEFAULT 3, p_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
+      ],
+      "risk": "normal"
+    },
     "fa_invoice_collection": {
       "definitions": [
         {
@@ -2514,25 +2373,6 @@
       ],
       "risk": "normal"
     },
-    "finalize_contract_transfer_exit_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_case_id uuid, p_expected_version bigint, p_idempotency_key text, p_current_kind text, p_reason text, p_settlement jsonb, p_link_id uuid, p_expected_link_version bigint",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
-      ],
-      "risk": "normal"
-    },
     "generate_recurring_vouchers_v2": {
       "definitions": [
         {
@@ -2690,6 +2530,25 @@
       ],
       "risk": "normal"
     },
+    "get_contract_room_deposits_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_room_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/reservationDepositReceived.ts"
+      ],
+      "risk": "normal"
+    },
     "get_customer_credit_balance_v1": {
       "definitions": [
         {
@@ -2803,6 +2662,25 @@
       ],
       "callers": [
         "src/hooks/useStatBreakdowns.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_deposit_income_hold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_room_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useDepositIncomeHold.ts"
       ],
       "risk": "normal"
     },
@@ -2949,6 +2827,25 @@
       ],
       "risk": "normal"
     },
+    "get_lead_deposit_income_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_lead_id uuid",
+          "returns": "uuid",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/depositIncomeRpc.ts"
+      ],
+      "risk": "normal"
+    },
     "get_member_authorization_v1": {
       "definitions": [
         {
@@ -3015,7 +2912,7 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "",
+          "args": "p_organization_id uuid DEFAULT NULL::uuid",
           "returns": "jsonb",
           "volatility": "STABLE",
           "securityDefiner": true,
@@ -3250,6 +3147,44 @@
       ],
       "risk": "financial"
     },
+    "get_own_deposit_income_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_request_key text",
+          "returns": "uuid",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/depositIncomeRpc.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_own_income_expense_requests_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_request_keys text[]",
+          "returns": "TABLE(voucher_id uuid, write_path text, request_key text)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/depositIncomeRpc.ts"
+      ],
+      "risk": "normal"
+    },
     "get_period_commissions": {
       "definitions": [
         {
@@ -3328,6 +3263,26 @@
       ],
       "callers": [
         "src/pages/phong-trong/usePhongTrong.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_public_room_settings_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomSettings.ts"
       ],
       "risk": "normal"
     },
@@ -4151,6 +4106,25 @@
       ],
       "risk": "normal"
     },
+    "list_deposit_income_holds_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_room_id uuid, p_customer_id uuid, p_status text, p_limit integer, p_before_created timestamp with time zone, p_after_id uuid, p_buildings uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useRoomReservations.ts"
+      ],
+      "risk": "normal"
+    },
     "list_due_contract_move_out_notices_v1": {
       "definitions": [
         {
@@ -4267,6 +4241,26 @@
       ],
       "callers": [
         "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_public_room_tokens_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomTokens.ts"
       ],
       "risk": "normal"
     },
@@ -4661,6 +4655,26 @@
       ],
       "callers": [
         "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "manage_public_room_token_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_token text, p_action text, p_label text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomTokens.ts"
       ],
       "risk": "normal"
     },
@@ -5441,7 +5455,7 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "p_account_id uuid, p_as_of date, p_counted_balance numeric, p_counterparty_id uuid DEFAULT NULL::uuid, p_note text DEFAULT NULL::text",
+          "args": "p_account_id uuid, p_as_of date, p_counted_balance numeric, p_counterparty_id uuid DEFAULT NULL::uuid, p_note text DEFAULT NULL::text, p_request_key text DEFAULT NULL::text",
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
@@ -5512,6 +5526,25 @@
       ],
       "callers": [
         "src/lib/contractSigningApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "read_contract_exit_early_terms_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_contract_id uuid DEFAULT NULL::uuid, p_exit_case_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
       ],
       "risk": "normal"
     },
@@ -5626,25 +5659,6 @@
       ],
       "callers": [
         "src/lib/rentSupportApi.ts"
-      ],
-      "risk": "normal"
-    },
-    "read_contract_transfer_links_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid, p_contract_id uuid DEFAULT NULL::uuid, p_draft_id uuid DEFAULT NULL::uuid, p_exit_case_id uuid DEFAULT NULL::uuid",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/contracts/useContractTransferLinks.ts"
       ],
       "risk": "normal"
     },
@@ -5778,6 +5792,25 @@
       ],
       "callers": [
         "src/lib/customerResidenceHistory.ts"
+      ],
+      "risk": "normal"
+    },
+    "reconcile_deposit_income_hold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_voucher_id uuid, p_hold_id uuid, p_revision bigint, p_voucher_amount numeric, p_hold_paid numeric",
+          "returns": "uuid",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useRoomReservations.ts"
       ],
       "risk": "normal"
     },
@@ -6012,6 +6045,101 @@
       ],
       "risk": "financial"
     },
+    "reopen_contract_exit_hold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
+      ],
+      "risk": "normal"
+    },
+    "replace_building_services_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_services jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useBuildingServices.ts"
+      ],
+      "risk": "normal"
+    },
+    "replace_contract_services_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_contract_id uuid, p_services jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContracts.ts"
+      ],
+      "risk": "normal"
+    },
+    "replace_material_purchase_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_purchase_id uuid, p_purchase_date date, p_supplier_id uuid, p_notes text, p_items jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMaterialPurchases.ts"
+      ],
+      "risk": "normal"
+    },
+    "replace_service_quota_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_quota_id uuid, p_name text, p_description text, p_tiers jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useServices.ts"
+      ],
+      "risk": "normal"
+    },
     "request_cancel_handover": {
       "definitions": [
         {
@@ -6106,6 +6234,25 @@
       ],
       "callers": [
         "src/hooks/useDashboard.ts"
+      ],
+      "risk": "normal"
+    },
+    "reverse_contract_exit_support_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
       ],
       "risk": "normal"
     },
@@ -6599,6 +6746,45 @@
       ],
       "risk": "normal"
     },
+    "save_job_material_usage_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_job_id uuid, p_usage_date date, p_notes text, p_items jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMaterialUsages.ts"
+      ],
+      "risk": "normal"
+    },
+    "save_public_room_settings_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_expected_updated_at timestamp with time zone, p_soon_days integer, p_show_rented boolean, p_hotline_id uuid DEFAULT NULL::uuid, p_sale_policy text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomSettings.ts"
+      ],
+      "risk": "normal"
+    },
     "save_room_turnover_v1": {
       "definitions": [
         {
@@ -6656,6 +6842,25 @@
         "src/hooks/useReceivingCashbooks.ts"
       ],
       "risk": "financial"
+    },
+    "set_contract_exit_early_terms_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_early_reason text, p_sale_name text, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
+      ],
+      "risk": "normal"
     },
     "set_contract_move_out_notice_v1": {
       "definitions": [
@@ -7113,7 +7318,7 @@
           "returns": "jsonb",
           "volatility": "STABLE",
           "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
+          "searchPath": "search_path=pg_catalog",
           "execRoles": [
             "authenticated"
           ]
@@ -7431,46 +7636,6 @@
       ],
       "risk": "normal"
     },
-    "unapprove_invoice_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_invoice_id uuid",
-          "returns": "invoices",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ],
-      "risk": "financial"
-    },
-    "unapprove_meter_reading_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_id uuid",
-          "returns": "meter_readings",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMeterReadings.ts"
-      ],
-      "risk": "normal"
-    },
     "unapprove_voucher": {
       "definitions": [
         {
@@ -7526,6 +7691,25 @@
       ],
       "callers": [
         "src/hooks/useAccounts.ts"
+      ],
+      "risk": "normal"
+    },
+    "update_contract_exit_broker_fee_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_exit_case_id uuid, p_expected_version bigint, p_request_id uuid, p_broker_fee numeric, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractExitEarlyTerms.ts"
       ],
       "risk": "normal"
     },
@@ -7903,32 +8087,12 @@
       ],
       "risk": "financial"
     },
-    "verify_income_expense": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_id uuid, p_note text DEFAULT NULL::text",
-          "returns": "void",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/income-expenses/statusMutations.ts"
-      ],
-      "risk": "financial"
-    },
     "verify_income_expense_v1": {
       "definitions": [
         {
           "schema": "public",
-          "args": "p_id uuid, p_note text DEFAULT NULL::text",
-          "returns": "void",
+          "args": "p_id uuid, p_note text DEFAULT NULL::text, p_verified boolean DEFAULT NULL::boolean",
+          "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=pg_catalog, public, app_private",
@@ -7959,26 +8123,6 @@
       ],
       "callers": [
         "src/lib/rentSupportApi.ts"
-      ],
-      "risk": "normal"
-    },
-    "withdraw_financial_request_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_request_id uuid, p_reason text DEFAULT NULL::text",
-          "returns": "json",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useApprovals.ts"
       ],
       "risk": "normal"
     },
@@ -8167,7 +8311,7 @@
           "returns": "zalo_automations",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public",
+          "searchPath": "search_path=pg_catalog, public",
           "execRoles": [
             "authenticated",
             "service_role"

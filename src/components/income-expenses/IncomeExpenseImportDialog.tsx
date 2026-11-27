@@ -20,6 +20,7 @@ import { parseExcelFile } from '@/lib/excelHelpers';
 import { type ExcelImportRow } from '@/lib/incomeExpenseValidation';
 import { validateImportRows } from '@/hooks/useIncomeExpensesHelpers';
 import { useImportIncomeExpenses, type ImportIncomeExpenseRow } from '@/hooks/useIncomeExpenses';
+import { supabase } from '@/integrations/supabase/client';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useIncomeExpenseTypes } from '@/hooks/useIncomeExpenseTypes';
 import { resolveImportIeType } from '@/lib/ieTypeLookup';
@@ -57,6 +58,9 @@ interface ImportResult {
   createdVouchers?: Array<{row:number;id:string;code:string|null}>;
   errorCount: number;
   errors: Array<{ row: number; message: string }>;
+  /** Đợt 9: kết quả đối chiếu lượt nhập TRƯỚC (giờ gửi của lượt đó); tệp vừa chọn chưa được nhập. */
+  reconciledFrom?: string;
+  possiblyWritten?: Array<{ row: number; codes: string[] }>;
 }
 
 type Step = 'upload' | 'preview' | 'result';
@@ -66,6 +70,7 @@ const HEADER_MAPPING: Record<string, keyof ExcelImportRow> = {
   'Loại phiếu (*)': 'type',
   'Căn hộ (*)': 'building_name',
   'Phòng': 'room_name',
+  'Người gửi': 'payer_name',
   'Tên phiếu (*)': 'name',
   'Ngày (*)': 'voucher_date',
   'Hạng mục (*)': 'item_name',
@@ -80,6 +85,7 @@ async function downloadIncomeExpenseImportTemplate(): Promise<void> {
       'Loại phiếu (*)': 'Thu',
       'Căn hộ (*)': 'Tòa nhà ABC',
       'Phòng': 'Phòng 101',
+      'Người gửi': '',
       'Tên phiếu (*)': 'Thu tiền điện tháng 1',
       'Ngày (*)': '2025-01-15',
       'Hạng mục (*)': 'Tiền điện',
@@ -281,6 +287,7 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
       const allTypes = [...(incomeTypes || []), ...(expenseTypes || [])];
       const resolvedRows: ImportIncomeExpenseRow[] = [];
       const sourceRows: number[] = [];
+      const roomLookups=new Map<string,{id:string;name:string;code:string|null}[]>();
       const resolveErrors: Array<{ row: number; message: string }> = [];
 
       for (const row of validRows) {
@@ -305,10 +312,23 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
         }
         const expenseType = resolved.type;
 
+        let roomId:string|undefined;
+        if(matchType==='income'&&expenseType.is_deposit){
+          const label=row.data.room_name?.trim().toLocaleLowerCase('vi');
+          if(!label){resolveErrors.push({row:row.rowIndex,message:'Phiếu thu cọc cần tên hoặc mã phòng.'});continue;}
+          if(!roomLookups.has(building.id)){
+            const {data,error}=await supabase.from('rooms').select('id,name,code').eq('building_id',building.id).is('deleted_at',null);
+            if(error)throw error;
+            roomLookups.set(building.id,data??[]);
+          }
+          const matches=roomLookups.get(building.id)!.filter(r=>[r.name,r.code].some(v=>v?.trim().toLocaleLowerCase('vi')===label));
+          if(matches.length!==1){resolveErrors.push({row:row.rowIndex,message:'Cần một phòng khớp đúng tên hoặc mã trong tòa đã chọn.'});continue;}
+          roomId=matches[0].id;
+        }
         sourceRows.push(row.rowIndex);
         resolvedRows.push({
           ...row.data,
-          building_id: building.id,
+          building_id: building.id, room_id:roomId,
           income_expense_type_id: expenseType.id,
           source_row: row.rowIndex,
         });
@@ -332,6 +352,21 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
       }
 
       const result = await importMutation.mutateAsync(resolvedRows);
+
+      // Đợt 9: lượt nhập trước còn chưa rõ ⇒ hook trả kết quả đối chiếu của lượt ĐÓ (số dòng Excel của lượt đó), không
+      // nhập tệp vừa chọn. Không trộn với lỗi của tệp vừa chọn.
+      if (result.reconciledFrom) {
+        setImportResult({
+          successCount: result.successCount,
+          createdVouchers: result.createdVouchers,
+          errorCount: result.failedCount,
+          errors: result.errors,
+          reconciledFrom: result.reconciledFrom,
+          possiblyWritten: result.possiblyWritten ?? [],
+        });
+        setStep('result');
+        return;
+      }
 
       setImportResult({
         successCount: result.successCount,
@@ -538,10 +573,33 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
 
         {step === 'result' && importResult && (
           <div className="space-y-4">
-            <div className="flex flex-col items-center gap-3 py-4">
-              <CheckCircle className="h-12 w-12 text-green-500" />
-              <p className="text-lg font-medium">Hoàn tất nhập dữ liệu</p>
-            </div>
+            {importResult.reconciledFrom ? (
+              <div role="status" className="border border-amber-300 rounded-md p-3 bg-amber-50 text-sm space-y-1">
+                <p className="font-medium text-amber-800 flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" />
+                  Kết quả đối chiếu lượt nhập lúc {importResult.reconciledFrom}
+                </p>
+                <p className="text-amber-800">
+                  Lượt đó chưa nhận đủ phản hồi nên hệ thống đã đối chiếu từng dòng với máy chủ. Tệp vừa chọn CHƯA được nhập: bỏ các dòng đã có phiếu, kiểm tra các dòng «có thể đã ghi», rồi chỉ nhập lại các dòng chưa ghi.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-4">
+                <CheckCircle className="h-12 w-12 text-green-500" />
+                <p className="text-lg font-medium">Hoàn tất nhập dữ liệu</p>
+              </div>
+            )}
+
+            {!!importResult.possiblyWritten?.length && (
+              <div className="border border-amber-300 rounded-md p-3 bg-amber-50 text-sm space-y-1">
+                <p className="font-medium text-amber-800">Có thể đã ghi — kiểm tra trong danh sách thu chi trước khi nhập lại:</p>
+                {importResult.possiblyWritten.map((row) => (
+                  <p key={row.row} className="text-amber-800 ml-5">
+                    Dòng {row.row}: {row.codes.length ? `có thể đã ghi (mã ${row.codes.join(', ')})` : 'chưa đối chiếu hết được, kiểm tra danh sách thu chi'}
+                  </p>
+                ))}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="border rounded-lg p-4 text-center">
@@ -572,7 +630,12 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
               </div>
             )}
 
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              {importResult.reconciledFrom && (
+                <Button variant="outline" onClick={() => resetState()}>
+                  Chọn file khác
+                </Button>
+              )}
               <Button onClick={() => handleOpenChange(false)}>Đóng</Button>
             </div>
           </div>

@@ -14,6 +14,9 @@ const fixture = vi.hoisted(() => ({
   settingsCalls: [] as unknown[][],
   savePersonal: vi.fn(),
   saveBuilding: vi.fn(),
+  // Lỗi của lần lưu gần nhất (đợt 8): kết quả chưa rõ của thao tác lặp lại được không được khoá ô chọn / nút Lưu.
+  personalError: null as unknown,
+  buildingError: null as unknown,
 }));
 
 // Radix Select thật; jsdom không có hình học cho Floating UI nên trải danh sách tại chỗ.
@@ -64,8 +67,8 @@ vi.mock('@/hooks/useReceivingCashbooks', () => ({
     fixture.settingsCalls.push(args);
     return fixture.settings;
   },
-  useSetPersonalCashBook: () => ({ mutate: fixture.savePersonal, isPending: false, variables: undefined }),
-  useSetBuildingReceivingCashbooks: () => ({ mutate: fixture.saveBuilding, isPending: false }),
+  useSetPersonalCashBook: () => ({ mutate: fixture.savePersonal, isPending: false, variables: undefined, error: fixture.personalError, isError: !!fixture.personalError }),
+  useSetBuildingReceivingCashbooks: () => ({ mutate: fixture.saveBuilding, isPending: false, error: fixture.buildingError, isError: !!fixture.buildingError }),
 }));
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: new Proxy({}, { get() { throw new Error('Test này không được gọi máy chủ'); } }),
@@ -73,6 +76,7 @@ vi.mock('@/integrations/supabase/client', () => ({
 
 import ReceivingCashbookSettings from '../ReceivingCashbookSettings';
 import type { ReceivingSettings } from '@/hooks/useReceivingCashbooks';
+import { RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 
 const duLieu = (): ReceivingSettings => ({
   members: [
@@ -109,6 +113,8 @@ beforeEach(() => {
   fixture.settingsCalls = [];
   fixture.savePersonal.mockReset();
   fixture.saveBuilding.mockReset();
+  fixture.personalError = null;
+  fixture.buildingError = null;
   vi.stubGlobal('PointerEvent', MouseEvent);
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -232,5 +238,34 @@ describe('Chuyển khoản / Thanh toán theo toà', () => {
       defaultAccountId: null,
       extraAccountIds: [],
     });
+  });
+});
+
+// Đợt 8 (luật 5): hai hàm đặt sổ nhận tiền đặt giá trị tuyệt đối dưới khoá công ty, chạy lại cho cùng kết quả. Lần lưu
+// chưa rõ kết quả báo rõ, nhưng KHÔNG khoá ô chọn hay nút Lưu: chọn / bấm lại là gửi lại đúng cấu hình đó.
+describe('Lần lưu chưa rõ kết quả không khoá màn cài', () => {
+  it('sổ tiền mặt riêng: câu báo hiện, ô chọn vẫn dùng được, chọn lại là gửi lại', () => {
+    fixture.personalError = new RepeatableWriteUnknownError('lưu sổ tiền mặt riêng');
+    render(<ReceivingCashbookSettings />);
+    expect(screen.getAllByRole('alert')[0]!.textContent).toContain('Bấm lại');
+    const o = screen.getByRole('combobox', { name: 'Sổ tiền mặt riêng của NATHAN' }) as HTMLButtonElement;
+    expect(o.disabled).toBe(false);
+    moSelect('Sổ tiền mặt riêng của NATHAN');
+    chon('TKHIEP');
+    expect(fixture.savePersonal).toHaveBeenCalledWith({ membershipId: 'm-nathan', accountId: 'acc-tkhiep' });
+  });
+
+  it('sổ nhận tiền của toà: ô sổ mặc định và nút Lưu vẫn dùng được, bấm lại gửi đúng bộ sổ', () => {
+    fixture.buildingError = new RepeatableWriteUnknownError('lưu sổ nhận tiền của tòa');
+    render(<ReceivingCashbookSettings />);
+    const toa = screen.getByRole('region', { name: 'Toà 102LVT' });
+    const macDinh = within(toa).getByRole('combobox', { name: 'Sổ mặc định Chuyển khoản — toà 102LVT' }) as HTMLButtonElement;
+    expect(macDinh.disabled).toBe(false);
+    moSelect('Sổ mặc định Chuyển khoản — toà 102LVT', toa);
+    chon('CGIANG8818');
+    const luu = within(toa).getByRole('button', { name: 'Lưu Chuyển khoản — toà 102LVT' }) as HTMLButtonElement;
+    expect(luu.disabled).toBe(false);
+    fireEvent.click(luu);
+    expect(fixture.saveBuilding.mock.calls[0]![0]).toEqual({ buildingId: 'b-102', method: 'TK', defaultAccountId: 'acc-cgiang', extraAccountIds: ['acc-tkhiep'] });
   });
 });

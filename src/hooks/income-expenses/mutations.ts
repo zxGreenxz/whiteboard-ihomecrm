@@ -1,3 +1,4 @@
+import {recordDepositIncome} from '@/lib/depositIncomeRpc';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -7,8 +8,10 @@ import { createdVoucherFeedback, voucherFailureMessage } from "@/lib/voucherFeed
 import { SYSTEM_ONLY_MANUAL_BLOCKED_FEEDBACK, isSystemOnlyManualBlocked } from "@/lib/friendlyError";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
 import { isIeCreateFallbackSignal } from "@/lib/canonicalFallback";
+import { FinancialAlreadyRecordedError } from "@/lib/financialWorkflowError";
 import type {
   CreateIncomeExpenseInput,
+  PreparedIncomeExpenseCreate,
 } from "./types";
 import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 
@@ -18,7 +21,7 @@ import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 // cho tới lần regen sau forward-apply — gọi qua cast (mẫu financeV2Mutations.ts).
 type CompatRpcResult = {
   data: unknown;
-  error: { code?: string; message?: string } | null;
+  error: { code?: string; message?: string; details?: string | null; hint?: string | null } | null;
 };
 const compatRpc = (
   fn: string,
@@ -54,16 +57,51 @@ export const isCanonicalCreateEligible = (input: CreateIncomeExpenseInput): bool
   return true;
 };
 
+/**
+ * Đọc phiên và (khi chắc đi đường compat) hạng mục TRƯỚC khi ghi dấu chờ đối chiếu: hai bước này hỏng thì chưa có
+ * gì được ghi, nên phải báo lỗi ngay chứ không để lại dấu. Hết phiên ⇒ PGRST301 (mã từ chối đã biết).
+ */
+export async function prepareIncomeExpenseCreate(input: CreateIncomeExpenseInput): Promise<PreparedIncomeExpenseCreate> {
+  const user = await getSessionUser();
+  if (!user) throw { code: "PGRST301", message: "Phiên đăng nhập đã hết. Đăng nhập lại rồi lưu phiếu." };
+  if (isCanonicalCreateEligible(input)) return { user };
+  const accountingClassFor = await loadIncomeExpenseAccountingClassResolver(input.items.map((item) => item.income_expense_type_id));
+  return { user, accountingClassFor };
+}
+
+const errorCode = (error: unknown) => String((error as { code?: unknown } | null)?.code ?? "");
+
 // Tạo phiếu thu/chi mới (phiếu + items)
-export const useCreateIncomeExpense = () => {
+export const useCreateIncomeExpense = (selectedOrganizationId?:string|null) => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (input: CreateIncomeExpenseInput) => {
-      const user = await getSessionUser();
+      const user = input.prepared?.user ?? await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
+      let deposit=input.deposit_terms!==undefined;
+      if(!deposit && selectedOrganizationId && input.type==='INCOME' && input.room_id){
+        const classify=input.prepared?.accountingClassFor??await loadIncomeExpenseAccountingClassResolver(input.items.map(item=>item.income_expense_type_id));
+        deposit=input.items.some(item=>classify(item.income_expense_type_id)==='DEPOSIT');
+      }
+      if(input.type==='INCOME' && deposit){
+        if(!selectedOrganizationId)throw new Error('Chọn tổ chức để nhận tiền cọc.');
+        const cycle=input.repeat_cycle??'NONE';
+        return recordDepositIncome(selectedOrganizationId,input.idempotency_key??crypto.randomUUID(),{
+          ...(input.voucher_id?{id:input.voucher_id}:{}),type:input.type,name:input.name,
+          room_id:input.room_id??null,building_id:input.building_id,contract_id:input.contract_id??null,
+          payer_name:input.payer_name??null,tenant_id:input.tenant_id??null,account_id:input.account_id??null,
+          receive_bank_account:input.receive_bank_account??null,receive_bank_name:input.receive_bank_name??null,
+          business_result_accounting:input.business_result_accounting??null,attachments:input.attachments??[],
+          voucher_date:input.voucher_date,repeat_cycle:cycle,repeat_count:input.repeat_count??0,
+          repeat_infinity:!!input.repeat_infinity,repeat_auto_approve:input.repeat_auto_approve!==false,
+          repeat_remaining:input.repeat_infinity?0:input.repeat_count??0,
+          repeat_next_date:cycle==='NONE'?null:addCycle(input.voucher_date,cycle,1),
+        },input.items.map(i=>({income_expense_type_id:i.income_expense_type_id,quantity:i.quantity,unit_price:i.unit_price,
+          description:i.description??null,start_date:i.start_date??null,end_date:i.end_date??null})),{channel:'finance',...input.deposit_terms});
+      }
       // Canonical trước (phiếu thường, non-recurring): writer server-side tự
       // authorize + claim + audit hash-chain. KHÔNG còn raw-INSERT fallback
       // (Stage-7 drain): tín hiệu hợp lệ (chưa deploy / chưa bật / lớp phiếu
@@ -112,6 +150,11 @@ export const useCreateIncomeExpense = () => {
         // im rồi rơi sang compat (ép UNAPPROVED, KHÔNG chạy thang ngưỡng) nên
         // phiếu chi 250k < ngưỡng 300k vẫn nằm "Chờ duyệt" mà không báo gì.
         // canonicalFallback.ts đã ghi rõ: 42501 là từ chối THẬT, phải nổi lên.
+        // Gửi lại cùng khoá mà máy chủ báo "khoá đã dùng với nội dung khác": lần trước ĐÃ lập phiếu (claim chỉ còn khi
+        // giao dịch của nó đã commit). Không lập thêm; người dùng mở danh sách để xem phiếu đó.
+        if (input.resend && errorCode(canonical.error) === "23505") {
+          throw new FinancialAlreadyRecordedError("Lần gửi trước đã lập phiếu này (nội dung lúc đó khác nội dung đang lưu). Mở danh sách phiếu để kiểm tra trước khi lập lại.");
+        }
         const msg = canonical.error.message ?? "";
         const v1CashbookPermission =
           canonical.error.code === "42501" && V1_CASHBOOK_FALLBACK_MESSAGE.test(msg);
@@ -132,13 +175,15 @@ export const useCreateIncomeExpense = () => {
       // "Tòa nhà chưa được gắn tổ chức" dù server cho phép tạo. ie_compat_insert_v2
       // là SECURITY DEFINER và tự suy organization_id (accounts → buildings →
       // membership), đồng thời STRIP organization_id do client gửi.
-      const accountingClassFor =
+      const accountingClassFor = input.prepared?.accountingClassFor ??
         await loadIncomeExpenseAccountingClassResolver(
           input.items.map((item) => item.income_expense_type_id),
         );
 
-      const compat = await compatRpc("ie_compat_insert_v2", {
+      const compatArgs = {
         p_row: {
+          // Mã phiếu do trình duyệt sinh (chỉ khi người gọi đưa): ie_compat_insert_v2 giữ `id` cho người gọi thường.
+          ...(input.voucher_id ? { id: input.voucher_id } : {}),
           user_id: user.id,
           creator_name: creatorName,
           type: input.type,
@@ -177,12 +222,32 @@ export const useCreateIncomeExpense = () => {
           start_date: item.start_date ?? null,
           end_date: item.end_date ?? null,
         })),
-      });
+      };
+      // Đợt 10a: người gọi có khoá chống trùng (form phiếu, Báo chi nhanh) ⇒ đường compat cũng nhận chính khoá đó qua
+      // ie_compat_insert_keyed_v1 (bọc ie_compat_insert_v2, thân giữ nguyên): gửi lại cùng khoá cùng nội dung trả lại phiếu
+      // đã lập; khác nội dung, hoặc đường chính đã lập phiếu với cùng khoá, thì 23505 kèm mã phiếu. Không có khoá ⇒ như cũ.
+      const dedupe = input.idempotency_key;
+      const compat = dedupe
+        ? await compatRpc("ie_compat_insert_keyed_v1", { ...compatArgs, p_request_key: dedupe })
+        : await compatRpc("ie_compat_insert_v2", compatArgs);
 
-      // Nhãn đường compat: compat KHÔNG nhận khoá chống trùng, nên lỗi chưa rõ kết quả ở đây mà người
-      // gọi gửi lại y nguyên (Báo chi nhanh) có thể ra phiếu đôi. Chỉ gắn nhãn, không đổi hành vi.
+      // Nhãn đường compat: lỗi chưa rõ kết quả ở đây mà người gọi gửi lại KHÔNG cùng khoá có thể ra phiếu đôi. Chỉ gắn
+      // nhãn, không đổi hành vi.
       const viaCompat = <E extends object>(e: E): E => Object.assign(e, { ieCreatePath: "compat" as const });
       if (compat.error) {
+        // Khoá đã được dùng: lần gửi trước đã lập phiếu (máy chủ chỉ giữ khoá khi phiếu đã ghi cùng giao dịch).
+        const hint = compat.error.hint ?? "";
+        if (dedupe && errorCode(compat.error) === "23505" && (hint === "ie_request_key_used_by_canonical" || hint === "ie_request_key_payload_mismatch")) {
+          // DETAIL của máy chủ = mã phiếu đã có (uuid); chỉ nhận một mã gọn, không nhận câu chữ.
+          const id = /^[0-9a-z-]{1,64}$/i.test(compat.error.details ?? "") ? [compat.error.details as string] : [];
+          throw new FinancialAlreadyRecordedError(hint === "ie_request_key_used_by_canonical"
+            ? "Phiếu đã được lập ở lần gửi trước. Mở danh sách phiếu để kiểm tra trước khi lập lại."
+            : "Lần gửi trước đã lập phiếu này (nội dung lúc đó khác nội dung đang lưu). Mở danh sách phiếu để kiểm tra trước khi lập lại.", id);
+        }
+        // Gửi lại đúng mã phiếu mà máy chủ báo trùng khoá: phiếu mang mã đó đã có (lần trước đã lập).
+        if (input.resend && input.voucher_id && errorCode(compat.error) === "23505") {
+          throw new FinancialAlreadyRecordedError("Có thể phiếu đã được lập ở lần gửi trước. Kiểm tra danh sách phiếu trước khi lập lại.", [input.voucher_id]);
+        }
         throw viaCompat(compat.error);
       }
 
@@ -191,6 +256,9 @@ export const useCreateIncomeExpense = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      for (const key of ['deposit-income-hold','room-reservations','orphan-deposit-vouchers','reservation-deposits','reservation-hold-deadlines','rooms','sale-room-inventory','phong-trong']) {
+        void queryClient.invalidateQueries({queryKey:[key]});
+      }
       const feedback = createdVoucherFeedback(data);
       toast[feedback.kind](feedback.message);
     },
