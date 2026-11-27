@@ -7,10 +7,9 @@ vi.mock('@tanstack/react-query',()=>({useMutation:(o:unknown)=>o,useQueryClient:
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:h.organization})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
 vi.mock('sonner',()=>({toast:{error:vi.fn(),warning:vi.fn(),success:vi.fn(),info:vi.fn()}}));
-import {useApproveInvoice,useUnapproveInvoice,useCancelInvoice,useForceCancelInvoice,useRestoreInvoice} from '../useInvoices';
+import {useCancelInvoice,useForceCancelInvoice,useRestoreInvoice} from '../useInvoices';
 import {useRecordRefundRPC} from '../useInvoicePayments';
 import {useApproveIncomeExpenseV2,usePostApprovedIncomeExpenseV2,useApproveAndPostIncomeExpenseV2,useReversePostingV2} from '../income-expenses/financeV2Mutations';
-import {useDecideApproval,useWithdrawApproval} from '../useApprovals';
 import {useDeletePayment} from '../useDeletePayment';
 import {useCancelIncomeExpenseBatch,useUpdateBatchAccount} from '../income-expenses/batch';
 vi.mock('@/lib/receiptUpload',()=>({validateReceiptFile:()=>null,uploadReceiptToStorage:h.upload}));
@@ -29,17 +28,11 @@ const scope=(namespace:string,businessKey='i1')=>({namespace,businessKey,userId:
 afterEach(cleanup);
 beforeEach(()=>{vi.clearAllMocks();h.rpc.mockReset();h.read.mockReset();h.upload.mockReset();localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org1');h.organization='org1';h.tables={};h.read.mockResolvedValue({data:{id:'i1',status:'DRAFT',paid_amount:0,deleted_at:null},error:null});});
 const invoiceCases=[
- ['invoice-approve',useApproveInvoice,'APPROVED'],['invoice-unapprove',useUnapproveInvoice,'DRAFT'],['invoice-cancel',useCancelInvoice,'CANCELLED'],['invoice-force-cancel',useForceCancelInvoice,'CANCELLED'],['invoice-restore',useRestoreInvoice,'APPROVED'],
+ ['invoice-cancel',useCancelInvoice,'CANCELLED'],['invoice-force-cancel',useForceCancelInvoice,'CANCELLED'],['invoice-restore',useRestoreInvoice,'APPROVED'],
 ] as const;
-// Duyệt / bỏ duyệt hoá đơn là mã chết (đợt 11): vẫn khoá như cũ.
-it.each(invoiceCases.slice(0,2))('%s: timeout khóa qua remount và giữ cùng mã yêu cầu',async(namespace,hook)=>{
- h.rpc.mockRejectedValueOnce(new TypeError('Failed to fetch'));const first=mount(hook);await expect(first.mutation.mutationFn('i1')).rejects.toThrow();
- const pending=financialPending.read(scope(namespace));expect(pending).not.toBeNull();expect(pending?.requestKey).toEqual(expect.any(String));first.unmount();
- await expect(mount(hook).mutation.mutationFn('i1')).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(1);expect(financialPending.read(scope(namespace))?.requestKey).toBe(pending?.requestKey);
-});
 // Đợt 5: huỷ / buộc huỷ / khôi phục đọc trạng thái hoá đơn; còn như lúc bấm thì gửi lại NGAY đúng mã cũ (máy chủ khoá hoá
-// đơn rồi trả noop), không chặn mãi.
-it.each(invoiceCases.slice(2))('%s: timeout qua remount gửi lại đúng mã yêu cầu cũ khi hoá đơn còn như lúc bấm',async(namespace,hook,state)=>{
+// đơn rồi trả noop), không chặn mãi. (Đợt 11: đã xoá duyệt / bỏ duyệt hoá đơn cùng hai ca của chúng.)
+it.each(invoiceCases)('%s: timeout qua remount gửi lại đúng mã yêu cầu cũ khi hoá đơn còn như lúc bấm',async(namespace,hook,state)=>{
  h.rpc.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({data:{invoice:{id:'i1',status:state}},error:null});
  const first=mount(hook);await expect(first.mutation.mutationFn('i1')).rejects.toThrow();
  const pending=financialPending.read(scope(namespace));expect(pending?.requestKey).toEqual(expect.any(String));first.unmount();
@@ -50,11 +43,9 @@ it.each(invoiceCases.slice(2))('%s: timeout qua remount gửi lại đúng mã y
 it.each(invoiceCases)('%s: chỉ trạng thái đúng hóa đơn mới giải phóng pending',async(namespace,hook,state)=>{
  h.rpc.mockResolvedValueOnce({data:{invoice:{id:'i1',status:state}},error:null});await expect(mount(hook).mutation.mutationFn('i1')).resolves.toBeDefined();expect(financialPending.read(scope(namespace))).toBeNull();
 });
-it('duyệt trả DRAFT không nói thành công hoặc bỏ dấu đối chiếu',async()=>{
- h.rpc.mockResolvedValue({data:{invoice:{id:'i1',status:'DRAFT'}},error:null});await expect(mount(useApproveInvoice).mutation.mutationFn('i1')).rejects.toThrow();expect(financialPending.read(scope('invoice-approve'))).not.toBeNull();
-});
+// Đợt 11: hàng rào này trước đây chạy trên useApproveInvoice (đã xoá); nay chạy trên khôi phục hoá đơn, cùng cơ chế.
 it('biểu mẫu hóa đơn org cũ phải chặn trước writer',async()=>{
- const entry=mount(useApproveInvoice);localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(entry.mutation.mutationFn('i1')).rejects.toThrow(/tổ chức/);expect(h.rpc).not.toHaveBeenCalled();
+ const entry=mount(useRestoreInvoice);localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(entry.mutation.mutationFn('i1')).rejects.toThrow(/tổ chức/);expect(h.rpc).not.toHaveBeenCalled();
 });
 const refund={invoice_id:'i1',amount:100,payment_date:'2026-09-30',account_id:'a1'};
 // Đợt 2 (24/11/2026): phép đọc trạng thái nằm SAU khi gỡ dấu; trước đây nó hỏng thì giữ dấu và chặn mãi.
@@ -93,28 +84,6 @@ it.each(v2Cases)('%s: đúng receipt dùng key bền vững và gỡ pending',as
 });
 it('V2 biểu mẫu thuộc org cũ không gọi writer trong org mới',async()=>{const entry=mount(usePostApprovedIncomeExpenseV2);localStorage.setItem('ihomecrm.selectedOrganizationId','org2');await expect(entry.mutation.mutationFn(posting)).rejects.toThrow(/tổ chức/);expect(h.rpc).not.toHaveBeenCalled();});
 
-const approvalCases=[['quyết định',useDecideApproval,{requestId:'req1',decision:'APPROVE',organizationId:'org1'}],['thu hồi',useWithdrawApproval,{requestId:'req1',organizationId:'org1'}]] as const;
-// Đợt 5: quyết định đọc ảnh trạng thái yêu cầu (get_approval_request_detail_compat_v2) trước khi ghi dấu. Máy chủ giả trả
-// yêu cầu còn chờ; mọi lệnh ghi rớt mạng.
-const pendingRequestDetail=()=>h.rpc.mockImplementation(async(name:string)=>name==='get_approval_request_detail_compat_v2'
- ?{data:{id:'req1',state:'PENDING_APPROVAL',version:1,can_decide:true,steps:[{step_no:1,status:'PENDING',current_generation:1}]},error:null}
- :Promise.reject(new TypeError('Failed to fetch')));
-const writes=()=>h.rpc.mock.calls.filter(call=>call[0]!=='get_approval_request_detail_compat_v2').length;
-it.each(approvalCases)('yêu cầu duyệt %s timeout chặn cả approve/reject/withdraw sau remount khi yêu cầu còn như lúc bấm (dưới 2 phút)',async(_label,hook,input)=>{
- pendingRequestDetail();const first=mount(hook);await expect(first.mutation.mutationFn(input)).rejects.toThrow();expect(financialPending.read({...scope('approval-request','req1'),organizationId:'actor-scope'})).not.toBeNull();first.unmount();
- await expect(mount(useWithdrawApproval).mutation.mutationFn({requestId:'req1',organizationId:'org1'})).rejects.toThrow(/đối chiếu/);await expect(mount(useDecideApproval).mutation.mutationFn({requestId:'req1',decision:'REJECT',organizationId:'org1'})).rejects.toThrow(/đối chiếu/);expect(writes()).toBe(1);
-});
-it.each(approvalCases)('yêu cầu duyệt %s state đúng nhưng requestID sai giữ khóa',async(_label,hook,input)=>{
- h.rpc.mockResolvedValue({data:{request_id:'other',state:Object.prototype.hasOwnProperty.call(input,'decision')?'PENDING_APPROVAL':'CANCELLED'},error:null});await expect(mount(hook).mutation.mutationFn(input)).rejects.toThrow();expect(financialPending.read({...scope('approval-request','req1'),organizationId:'actor-scope'})).not.toBeNull();
-});
-it('quorum PENDING_APPROVAL đúng request là bước đã nhận và gỡ khóa, không đoán toàn yêu cầu đã xong',async()=>{
- h.rpc.mockResolvedValue({data:{request_id:'req1',state:'PENDING_APPROVAL'},error:null});await expect(mount(useDecideApproval).mutation.mutationFn({requestId:'req1',decision:'APPROVE',organizationId:'org1'})).resolves.toMatchObject({state:'PENDING_APPROVAL'});expect(financialPending.read({...scope('approval-request','req1'),organizationId:'actor-scope'})).toBeNull();
-});
-it('inbox đa tổ chức và org metadata null dùng marker actor stable, metadata cập nhật không vượt khóa',async()=>{
- pendingRequestDetail();await expect(mount(useDecideApproval).mutation.mutationFn({requestId:'req1',decision:'APPROVE',organizationId:null})).rejects.toThrow();
- expect(financialPending.read({...scope('approval-request','req1'),organizationId:'actor-scope'})).not.toBeNull();
- await expect(mount(useWithdrawApproval).mutation.mutationFn({requestId:'req1',organizationId:'org2'})).rejects.toThrow(/đối chiếu/);expect(writes()).toBe(1);
-});
 // Đợt 2 (24/11/2026): máy chủ chống trùng theo khoá nên lần sau gửi lại CÙNG mã thay vì chặn mãi.
 it('hoàn tác collection timeout giữ dấu qua remount; gọi lại bằng payment liên kết gửi lại đúng mã cũ của collection',async()=>{
  h.rpc.mockRejectedValue(new TypeError('Failed to fetch'));await expect(mount(useDeletePayment).mutation.mutationFn({collection_id:'c1',reason:'Thu tiền bị trùng'})).rejects.toThrow();

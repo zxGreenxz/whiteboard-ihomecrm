@@ -51,12 +51,9 @@ export function IncomeExpenseVerifyDialog({
   const handleConfirm = async () => {
     if (reconcileRequired) return;
     try {
-      // Đợt 10c: gửi GIÁ TRỊ MUỐN ĐẶT theo đúng trạng thái hộp đang hiện, không bật/tắt.
-      const receipt = await verifyMutation.mutateAsync({id:voucher.id,note:note.trim() || null,verified:!isVerified});
-      if (!receipt) {
-        setSubmitError("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra trước khi thao tác tiếp.");
-        setReconcileRequired(true); return;
-      }
+      // Đợt 10c: gửi GIÁ TRỊ MUỐN ĐẶT theo đúng trạng thái hộp đang hiện, không bật/tắt. Lệnh luôn trả trạng thái đã đọc
+      // lại của đúng phiếu hoặc ném lỗi (không còn trả rỗng), nên tới đây là đã xong.
+      await verifyMutation.mutateAsync({id:voucher.id,note:note.trim() || null,verified:!isVerified});
       onOpenChange(false);
     } catch(error) {
       // Kết quả chưa rõ không khoá hộp: lần bấm sau gửi lại đúng giá trị đã chọn (đợt 10c), máy chủ khoá phiếu rồi so

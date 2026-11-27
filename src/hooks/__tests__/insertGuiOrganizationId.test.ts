@@ -110,7 +110,7 @@ import {
 } from "../useInvoices";
 import { useCreateJob } from "../useJobs";
 import { useCreateLead } from "../useLeads";
-import { useBulkCreateMeterReadings, useCreateMeterReading } from "../useMeterReadings";
+import { useBulkCreateMeterReadings } from "../useMeterReadings";
 import { useCreateMeter } from "../useMeters";
 import { useCreateMaterial } from "../useMaterials";
 import { useCreateMaterialPurchase, useUpdateMaterialPurchase } from "../useMaterialPurchases";
@@ -119,7 +119,7 @@ import { useUpsertBuildingServices } from "../useBuildingServices";
 import { useCreateHotline } from "../useHotlines";
 import { useCreateJobGroup } from "../useJobGroups";
 import { useCreatePayment } from "../usePayments";
-import { useBulkCreateRooms, useCreateRoom } from "../useRooms";
+import { useCreateRoom } from "../useRooms";
 import { useCreateService, useUpdateService, useUpdateServiceQuota } from "../useServices";
 import { useCreateVehicle } from "../useVehicles";
 import { useCreateIncomeExpenseBatch } from "../income-expenses/batch";
@@ -283,11 +283,6 @@ describe("hook tạo một dòng", () => {
     expect(insertsOf("meters")[0]?.payload).toEqual(expect.objectContaining({ service_id: "svc-dien" }));
   });
 
-  it("useCreateMeterReading → meter_readings", async () => {
-    await run(useCreateMeterReading, { meter_id: "m1", reading_date: "2026-09-01", current_reading: 120 });
-    expectOrg("meter_readings");
-  });
-
   it("useBulkCreateMeterReadings (useMeterReadings) → record_meter_readings_v2, không INSERT thẳng (tổ chức suy từ toà ở database)", async () => {
     const [b1, m1, m2, r1, r2] = ["b", "1", "2", "3", "4"].map(c => `${c.repeat(8)}-${c.repeat(4)}-4${c.repeat(3)}-8${c.repeat(3)}-${c.repeat(12)}`);
     io.goiRpc.mockResolvedValueOnce({ data: { buildingId: b1, readingDate: "2026-09-01", settlementMonth: "2026-09", count: 2, replaced: [],
@@ -308,12 +303,6 @@ describe("hook tạo một dòng", () => {
 
   it("useCreateRoom → rooms", async () => {
     await run(useCreateRoom, { building_id: "b1", name: "P101", code: "P101" });
-    expectOrg("rooms");
-  });
-
-  it("useBulkCreateRooms → rooms từng dòng", async () => {
-    io.rows.rooms = [{id:"room-1"},{id:"room-2"}];
-    await run(useBulkCreateRooms, [{ building_id: "b1", name: "P101", code: "P101" }, { building_id: "b1", name: "P102", code: "P102" }]);
     expectOrg("rooms");
   });
 

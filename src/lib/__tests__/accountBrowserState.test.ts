@@ -145,8 +145,9 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   // Đọc công ty đang chọn để tìm dấu khoá chung bản trước để lại (đợt 4), gỡ nó qua kho dấu chung.
   "src/lib/legacyPendingExit.ts": "nhat-ky-chong-ghi-trung",
   "src/hooks/income-expenses/batch.ts": "nhat-ky-chong-ghi-trung",
+  // Vết chuyển khách hẹn bản trước + `forgetDeadIntentKeys` (đợt 11: dọn hai họ khoá «ý định» không còn ai đọc, gồm
+  // `ihome:template-default-intent:v1:*` của `templateDefaultIntent.ts` đã xoá).
   "src/lib/leadConversionProgress.ts": "nhat-ky-chong-ghi-trung",
-  "src/lib/templateDefaultIntent.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/luckyDrawApi.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/luckyProofPending.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/network-center/intentRegistry.ts": "nhat-ky-chong-ghi-trung",

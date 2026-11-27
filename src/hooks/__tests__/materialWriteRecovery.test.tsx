@@ -21,7 +21,6 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.f
 
 import { RepeatableWriteUnknownError } from '@/lib/financialWorkflow';
 import { recordWriteBlocked } from '@/lib/recordWriteOutcome';
-import { materialVoucherRetryBlocked } from '@/lib/materialVoucherOutcome';
 import { useCreateMaterialPurchase } from '../useMaterialPurchases';
 
 const rows = (table: string): Row[] => io.server.rows[table] ?? [];
@@ -39,7 +38,6 @@ const purchaseInput: PurchaseInput = { purchase_date: '2026-09-30', supplier_id:
 function expectRepeatable(error: unknown) {
   expect(error).toBeInstanceOf(RepeatableWriteUnknownError);
   expect(recordWriteBlocked(error)).toBe(false);
-  expect(materialVoucherRetryBlocked(error)).toBe(false);
   expect(pendingKeys()).toEqual([]);
 }
 

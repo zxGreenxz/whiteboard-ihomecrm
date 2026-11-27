@@ -11,7 +11,6 @@ vi.mock('../accountingClass', () => ({ loadIncomeExpenseAccountingClassResolver:
 vi.mock('sonner', () => ({ toast: { error:h.error, success:h.success, info:h.info, warning:h.warning } }));
 import { useCreateIncomeExpense } from '../mutations';
 import { useCreateIncomeExpenseBatch, useImportIncomeExpenses } from '../batch';
-import { useDecideApproval } from '@/hooks/useApprovals';
 import { useMyCashbookAccessV2, useApproveIncomeExpenseV2, usePostApprovedIncomeExpenseV2 } from '../financeV2Mutations';
 import { useCancelIncomeExpense, useVerifyIncomeExpense } from '../statusMutations';
 import { useCancelVoucherFlex } from '../flexMutations';
@@ -60,14 +59,6 @@ describe('C01/C02/C09 — một thông báo đúng kết quả', () => {
     await expect(mutation.mutationFn(input)).rejects.toBe(timeout);
     expect(h.error).not.toHaveBeenCalled(); mutation.onError(timeout);
     expect(h.error).toHaveBeenCalledOnce(); expect(h.error.mock.calls[0][0]).toMatch(/Chưa xác nhận.*kiểm tra trạng thái phiếu/);
-  });
-  it('duyệt quorum còn chờ hiển thị info, không success', async () => {
-    const mutation = useDecideApproval() as unknown as Mutation;
-    // Đợt 5: quyết định đọc ảnh trạng thái yêu cầu trước khi ghi dấu; phép đọc giả không thấy yêu cầu (không ảnh trước).
-    h.rpc.mockImplementation(async(name:string)=>name==='get_approval_request_detail_compat_v2'?{data:null,error:null}:{data:{request_id:'r1',state:'PENDING_APPROVAL'},error:null});
-    const args = {requestId:'r1',decision:'APPROVE',organizationId:'o1'};
-    mutation.onSuccess(await mutation.mutationFn(args),args);
-    expect(h.success).not.toHaveBeenCalled(); expect(h.info).toHaveBeenCalledWith(expect.stringContaining('vẫn đang chờ'));
   });
   it('lỗi đọc quyền sổ không bị chuyển thành danh sách rỗng/null', async () => {
     const error = {code:'42501',message:'permission denied'}; h.rpc.mockResolvedValueOnce({data:null,error});

@@ -161,25 +161,3 @@ export const useDeleteLeadActivity = () => {
     },
   });
 };
-
-// Log activity when lead status changes
-export const logLeadStatusChange = async (
-  leadId: string,
-  oldStatus: string,
-  newStatus: string,
-  organizationId: string | null | undefined
-) => {
-  const user = await getSessionUser();
-  if (!user) return;
-
-  await supabase.from("lead_activities").insert(withOrg({
-    lead_id: leadId,
-    user_id: user.id,
-    activity_type: "STATUS_CHANGE",
-    description: `Chuyển trạng thái từ ${oldStatus} sang ${newStatus}`,
-    old_value: { status: oldStatus },
-    new_value: { status: newStatus },
-    performed_by: user.id,
-    completed_at: new Date().toISOString(),
-  }, organizationId));
-};

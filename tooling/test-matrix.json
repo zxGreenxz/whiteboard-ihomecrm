@@ -522,7 +522,6 @@
         "src/copilot/__tests__/availabilityAdapters.test.ts",
         "src/copilot/__tests__/banDoHeThong.test.ts",
         "src/copilot/__tests__/chatErrors.test.ts",
-        "src/copilot/__tests__/confirmationPersistence.feedback.test.ts",
         "src/copilot/__tests__/confirmationRace.test.ts",
         "src/copilot/__tests__/confirmationStore.test.ts",
         "src/copilot/__tests__/copilot.test.ts",

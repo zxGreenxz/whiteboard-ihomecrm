@@ -46,18 +46,22 @@ export function forgetLeadConversionTrace(requestKey: string | undefined): void 
 type KeyedStore = Pick<Storage, 'length' | 'key' | 'removeItem'>;
 /** Kho thật của trình duyệt; trình duyệt chặn bộ nhớ (truy cập cũng ném) thì `null`. */
 function browserStore(): Storage | null {
-  try { return globalThis.localStorage ?? null; } catch { return null; }
+  let store: Storage | null = null;
+  try { store = globalThis.localStorage ?? null; }
+  catch { /* Trình duyệt chặn bộ nhớ (truy cập cũng ném): không có kho để dọn, hàm dọn chạy nền không được ném. */ }
+  return store;
 }
 /** Mọi khoá của kho thoả `match`, đọc hết TRƯỚC khi gỡ (gỡ trong vòng đọc làm lệch chỉ số). Kho ném lỗi ⇒ `null`. */
 function keysWhere(store: KeyedStore, match: (key: string) => boolean): string[] | null {
+  const keys: string[] = [];
+  let readable = true;
   try {
-    const keys: string[] = [];
     for (let index = 0; index < store.length; index += 1) {
       const key = store.key(index);
       if (key !== null && match(key)) keys.push(key);
     }
-    return keys;
-  } catch { return null; }
+  } catch { /* Kho chặn giữa chừng: danh sách không trọn, nơi gọi không gỡ khoá nào. */ readable = false; }
+  return readable ? keys : null;
 }
 /** Gỡ từng khoá; khoá nào gỡ hỏng thì bỏ qua. Trả số khoá đã gỡ. */
 function removeKeys(store: KeyedStore, keys: readonly string[]): number {
@@ -107,11 +111,12 @@ export function forgetOrphanLeadConversionTraces(storage?: KeyedStore & Pick<Sto
   const referenced = new Set<string>();
   for (const key of marks) {
     let mark: unknown;
-    try { mark = JSON.parse(store.getItem(key) ?? 'null'); } catch { return 0; }
+    try { mark = JSON.parse(store.getItem(key) ?? 'null'); }
+    catch { /* Dấu không đọc được: không chứng minh được vết nào mồ côi, không gỡ gì. */ return 0; }
     if (!mark || typeof mark !== 'object') return 0;
     const requestKey = (mark as { requestKey?: unknown }).requestKey;
-    if (requestKey !== undefined && typeof requestKey !== 'string') return 0;
-    if (requestKey) referenced.add(requestKey);
+    if (typeof requestKey === 'string') referenced.add(requestKey);
+    else if (requestKey !== undefined) return 0;
   }
   return removeKeys(store, traces.filter(key => !referenced.has(key.slice(TRACE_PREFIX.length))));
 }

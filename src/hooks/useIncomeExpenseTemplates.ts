@@ -12,13 +12,6 @@ import { friendlyError } from "@/lib/friendlyError";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg } from "@/lib/orgPayload";
 
-export class TemplateDefaultPartialError extends Error {
-  constructor(public readonly templateId: string, public readonly previousDefaultIds: readonly string[], public readonly cause: unknown) {
-    super(`Các mẫu mặc định trước đã được bỏ chọn, nhưng chưa xác nhận được mẫu ${templateId} làm mặc định. Tải lại danh sách mẫu để đối chiếu trước khi chọn tiếp.`);
-    this.name = "TemplateDefaultPartialError";
-  }
-}
-
 // --- Types ---
 
 export interface IncomeExpenseTemplate {
@@ -243,7 +236,7 @@ export const useToggleDefaultTemplate = () => {
       // mặc định duy nhất của nhóm, hoặc mẫu này không mặc định). Mỗi lần bấm đọc lại nhóm mẫu rồi chỉ làm phần còn thiếu:
       // lần trước đã tới đích ⇒ không ghi gì; dở dang (đã bỏ mẫu cũ, chưa đặt mẫu mới) ⇒ chỉ đặt mẫu mới. Không giữ dấu
       // «chờ đối chiếu» nào; dấu bản trước (phạm vi người dùng, khoá `default:<nhóm>`) được gỡ sau khi xong. Khoá «ý định»
-      // `ihome:template-default-intent:v1:*` của bản trước không còn ai đọc nên không chặn gì (dọn ở đợt 11).
+      // `ihome:template-default-intent:v1:*` của bản trước không còn ai ghi hay đọc; `forgetDeadIntentKeys` dọn nó.
       const saved = await repeatableWrite('đổi mẫu in mặc định', async () => {
         const {data: group, error: readError} = await supabase.from('income_expense_templates').select('*')
           .eq('user_id', user.id).eq('is_income_template', is_income_template).is('deleted_at', null);
@@ -291,9 +284,6 @@ export const useToggleDefaultTemplate = () => {
       if (error instanceof FinancialWorkflowError) {
         queryClient.invalidateQueries({queryKey:['income-expense-templates']});
         toast.error('Chưa hoàn tất đổi mẫu mặc định', {description:recordWriteMessage(error,'đổi mẫu mặc định')});
-      } else if (error instanceof TemplateDefaultPartialError) {
-        queryClient.invalidateQueries({ queryKey: ["income-expense-templates"] });
-        toast.error("Mẫu mặc định mới cập nhật một phần", { description: error.message });
       } else {
         const feedback = friendlyError(error, "Chưa đổi được mẫu in mặc định", { operation: "đổi mẫu in mặc định" });
         toast.error(feedback.title, { description: feedback.description });

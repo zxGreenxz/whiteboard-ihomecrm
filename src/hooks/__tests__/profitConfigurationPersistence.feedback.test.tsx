@@ -14,7 +14,7 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: str
  single: async () => { m.calls.push({ table, operation, patch }); return m.reply(table, operation, patch); }, then:(resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve().then(() => { m.calls.push({ table, operation, patch }); return m.reply(table, operation, patch); }).then(resolve, reject) }; return builder;
 } } }));
 import { useSaveManagerWithSalaries } from '../useProfitManagers';
-import { useSyncShareholderBuildings, useUpsertBuildingShare, useDeleteBuildingShare } from '../useShareholders';
+import { useSyncShareholderBuildings } from '../useShareholders';
 import { financialPending } from '@/lib/financialPending';
 const managerInput = { values: { name: 'An', auth_user_id: 'actor-a' }, rules: [{ label: 'Lương', form: 'FIXED', basis: 'PER_BUILDING', amount: 100, percent: 0, building_ids: ['b1', 'b2'] }] } as const;
 const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>{children}</QueryClientProvider>;
@@ -51,11 +51,6 @@ it('share sync delete đúng IDs rồi upsert receipt thiếu: chưa rõ, không
  const writes = m.calls.filter(c => c.operation !== 'read').length; const second = renderHook(useSyncShareholderBuildings, { wrapper }); await act(async () => { await expect(second.result.current.mutateAsync(input)).rejects.toMatchObject({outcome:'unknown'}); }); expect(m.calls.filter(c => c.operation === 'upsert')).toHaveLength(2); expect(m.calls.filter(c => c.operation !== 'read').length).toBeGreaterThan(writes);
  expect(financialPending.read({namespace:'shareholder-sync',userId:'actor-a',organizationId:'org-a',businessKey:'s1'})).toBeNull();
 });
-it.each(['upsert','delete'] as const)('ô tỷ lệ %s zero-row không là success', async kind => {
- m.reply.mockResolvedValue({ data: null, error: null }); const mounted = renderHook(() => (kind === 'upsert' ? useUpsertBuildingShare() : useDeleteBuildingShare()) as unknown as {mutateAsync:(input:unknown)=>Promise<unknown>}, { wrapper });
- await act(async () => { await expect(mounted.result.current.mutateAsync({building_id:'b1',shareholder_id:'s1',percent:30})).rejects.toBeInstanceOf(TypeError); });
-});
-
 it('share sync đầy đủ returned IDs/values clear pending; empty confirmed config không phải rollback inference',async()=>{
  m.reply.mockImplementation((_table,operation,patch)=>operation==='read'?{data:[],error:null}:{data:(patch as object[]).map((row,i)=>({id:`share-${i}`,...row})),error:null});
  const hook=renderHook(useSyncShareholderBuildings,{wrapper});await act(async()=>{await expect(hook.result.current.mutateAsync({shareholder_id:'s1',rows:[{building_id:'b1',percent:30}]})).resolves.toBeUndefined();});

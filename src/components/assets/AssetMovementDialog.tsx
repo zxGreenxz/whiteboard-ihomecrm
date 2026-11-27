@@ -1,4 +1,3 @@
-import {useState,useRef} from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -36,9 +35,7 @@ interface AssetMovementDialogProps {
 }
 
 export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogProps) {
-  const [failure,setFailure]=useState<unknown>();
   // Đợt 9 (luật 5): ghi di chuyển dùng mã do trình duyệt sinh, bấm lại gửi đúng mã cũ nên kết quả chưa rõ không khoá hộp.
-  const draftKey=useRef<string|null>(null);
   const createMovement = useCreateAssetMovement();
   // CHƯA GATE: useAssets chưa nhận `enabled` (hook thuộc plan con E).
   const assetsQuery=useAssets();
@@ -85,7 +82,6 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);
       console.error("Failed to create movement:", error);
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'ghi nhận di chuyển tài sản') });
     }
