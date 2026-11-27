@@ -7,7 +7,7 @@ export const LOCK_NOTICE_GAP_MS = 3_000;
 // Phòng rời trang chỉ được báo Lock nếu phòng và tòa vẫn còn trong phạm vi đó.
 export async function readLockNotice(db, orgId, roomId) {
   const { data, error } = await db.from('rooms')
-    .select('code,name,building:buildings!rooms_building_id_fkey!inner(name)')
+    .select('code,name,building_id,building:buildings!rooms_building_id_fkey!inner(name)')
     .eq('organization_id', orgId).eq('id', roomId).is('deleted_at', null)
     .eq('building.organization_id', orgId).eq('building.is_virtual', false).is('building.deleted_at', null)
     .maybeSingle();
@@ -17,7 +17,7 @@ export async function readLockNotice(db, orgId, roomId) {
   if (!code || !building) return null;
   const body = `@all Lock ${code} – ${building}`;
   const fingerprint = createHash('sha256').update(JSON.stringify(['room-lock', orgId, roomId, body])).digest('hex');
-  return { body, contentGuard: { version: 1, fingerprint } };
+  return { buildingId: data.building_id, body, contentGuard: { version: 1, fingerprint } };
 }
 
 export function lockNoticeKey(payload) {
@@ -57,7 +57,7 @@ async function pendingLockRecipients(db, orgId, entry, groupThreads, online) {
 
 // Giữ mốc mỗi lần phòng xuất hiện và từng nhóm còn chờ trong sổ của automation.
 // Worker khởi động lại hoặc mất phản hồi enqueue vẫn dùng đúng khóa của lần lock.
-export async function processRoomLocks({ db, orgId, phong, watch, groups, online, now, antiSpam, remaining, earliestStart, enqueue, log }) {
+export async function processRoomLocks({ db, orgId, phong, watch, groups, groupBuildings = {}, online, now, antiSpam, remaining, earliestStart, enqueue, log }) {
   const listedIds = new Set(groups.size && phong.trangSale > 0 ? phong.rooms.map(room => room.id) : []);
   const previous = new Map((watch ?? []).map(entry => [entry.id, entry]));
   const next = [];
@@ -111,6 +111,8 @@ export async function processRoomLocks({ db, orgId, phong, watch, groups, online
         }
       }
       if (!notice) { waiting.length = 0; break; }
+      const buildingId = groupBuildings[groups.get(id).thread_id];
+      if (buildingId && notice.buildingId !== buildingId) continue;
       const requestKey = `room-lock:${entry.id}:${entry.since}:${id}`;
       if (await enqueue({ conv: groups.get(id), khiNao: due, requestKey, ...notice })) {
         queued++;

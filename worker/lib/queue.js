@@ -158,6 +158,18 @@ function buildQuote(p) {
 // Album của lượt cũ có thể được xếp trước tin chữ, khi đó nó chưa phụ thuộc tin nào.
 async function roomPartReady(job) {
   if (job.payload?.tu_dong !== true) return true;
+  const key = job.payload.automation_request_key || '';
+  if (key.endsWith(':contact')) {
+    const { data, error } = await sb.from('zalo_send_queue').select('status')
+      .eq('organization_id', job.organization_id).eq('account_id', job.account_id).eq('conversation_id', job.conversation_id)
+      .like('payload->>automation_request_key', key.slice(0, -'contact'.length) + 'room:%');
+    if (error) throw new Error(`Chưa kiểm được tin phòng trước khi tag nhóm: ${error.message}`);
+    if (!data.length || data.some(row => row.status === 'failed')) {
+      await jobFail(job, 'Chưa gửi đủ phòng của tòa để báo nhóm.', { claimed: false });
+      return false;
+    }
+    return data.every(row => row.status === 'sent');
+  }
   const part = /^(.*:room:[^:]+):(album|divider)$/.exec(job.payload.automation_request_key || '');
   if (!part) return true;
   const [, roomKey, kind] = part;
@@ -184,9 +196,13 @@ async function sendText(s, job, p, threadId, type) {
   if (type === ThreadType.Group && lockNoticeKey(p) && content.msg.startsWith('@all ')) {
     content.mentions = [{ pos: 0, uid: '-1', len: 4 }];
   }
-  if (p.tu_dong === true && type === ThreadType.Group && p.automation_request_key?.endsWith(':link')
+  const footer = p.automation_request_key?.split(':').at(-1);
+  if (p.tu_dong === true && type === ThreadType.Group && footer === 'contact' && /(?:^|\n)@all$/.test(content.msg)) {
+    content.mentions = [{ pos: content.msg.length - 4, uid: '-1', len: 4 }];
+  }
+  if (p.tu_dong === true && type === ThreadType.Group && footer === 'link'
       && /(?:^|\n)@all$/.test(content.msg)) {
-    const prefix = p.automation_request_key.slice(0, -4);
+    const prefix = p.automation_request_key.slice(0, -footer.length);
     const { data: prior, error } = await sb.from('zalo_send_queue').select('status,payload->>automation_request_key')
       .eq('organization_id', job.organization_id).eq('account_id', job.account_id)
       .eq('conversation_id', job.conversation_id).like('payload->>automation_request_key', prefix + '%').neq('id', job.id);

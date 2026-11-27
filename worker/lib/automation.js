@@ -31,7 +31,7 @@ import { veAnhDanhSach } from './room-list-image.js';
 import { chuanBiAnhPhong } from './automation-room-image.js';
 import { tickHermesSchedules } from './hermes-schedule.js';
 import { INSTANCE_ID } from './lease.js';
-import { saleContentGuard } from './automation-content-guard.js';
+import { broadcastHotline, saleContentGuard } from './automation-content-guard.js';
 import { processRoomLocks } from './room-lock-notice.js';
 
 /** Nhịp chạy engine. Lịch tính theo phút nên 60s là đủ mịn. */
@@ -161,7 +161,7 @@ async function luuSo(autoId, stats) {
  * Xếp hàng một lô tin cho toàn bộ người nhận.
  * @returns {Promise<{soTin:number, soNguoiNhan:number}>}
  */
-async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId, contentGuard, chiTietBiCat = false, earliestStart = 0 }) {
+async function xepLo({ convs, plans, config, tranConLai, runKey, now, oneshotId, earliestStart = 0 }) {
   const gapNguoi = config.antiSpam.gapBetweenRecipientsSec;
   const gapTin = config.antiSpam.gapBetweenRoomMsgsSec;
   const bayGio = Math.max(Date.now(), earliestStart);
@@ -171,12 +171,16 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
   let soBoQuaKhungGio = 0;
   let soKhongXepDuoc = 0;
   const ngayLuot = gioVietNam(now).ngay;
-  const duKien = convs.length * ((khoi.includes('link') && vanBanMoDau ? 1 : 0)
-    + (khoi.includes('table_image') ? 1 : 0)
-    + (khoi.includes('room_details') ? tinPhong.reduce((sum, t) => sum + t.soTinDuKien, 0) : 0));
+  let duKien = 0;
+  let activeRecipients = 0;
 
-  for (let i = 0; i < convs.length; i++) {
-    const conv = convs[i];
+  for (const conv of convs) {
+    const { khoi, anhBang, vanBanMoDau, tinPhong, chiTietBiCat, contentGuard, buildingId } = plans.get(conv.id);
+    const expected = (khoi.includes('link') && vanBanMoDau ? 1 : 0) + (khoi.includes('table_image') ? 1 : 0)
+      + tinPhong.reduce((sum, room) => sum + room.soTinDuKien, 0);
+    if (!expected) continue;
+    duKien += expected;
+    const i = activeRecipients++;
     // Người nhận thứ i bắt đầu muộn hơn người trước `gapNguoi` giây — cả lô rải
     // đều thay vì bắn dồn, đó là khác biệt giữa "một người đang nhắn tin" và
     // "một con bot" dưới mắt hệ thống chống spam.
@@ -187,7 +191,8 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
       const khiNao = new Date(bayGio + offset * 1000);
       // Identity follows the content's purpose, never its current display
       // position. Room reorder/config reorder during retry cannot swap receipts.
-      const requestKey = `${runKey}:${conv.id}:${logicalKey}`;
+      const prefix = buildingId ? runKey + ':group' : runKey;
+      const requestKey = `${prefix}:${conv.id}:${logicalKey}`;
       offset += gapTin;
       // No stale room broadcast on the next day, even for an overnight window.
       if (gioVietNam(khiNao).ngay !== ngayLuot || !trongKhungGio(khiNao, config.antiSpam).trong) {
@@ -209,11 +214,11 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
 
       if (k === 'link' && vanBanMoDau) {
         // A final @all line opts this group into a native mention, only on a complete batch.
-        const expectedBeforeLink = duKien / convs.length - 1;
-        const dayDu = khoi.at(-1) === 'link' && khoi.includes('table_image')
+        const expectedBeforeLink = expected - 1;
+        const dayDu = khoi.at(-1) === 'link' && (buildingId ? tinPhong.length > 0 : khoi.includes('table_image'))
           && soTin - batDauNguoiNhan === expectedBeforeLink && !tinPhong.some(t => t.loiAnh);
         const body = dayDu && !chiTietBiCat && conv.thread_type === 'group' ? vanBanMoDau : vanBanMoDau.replace(/(?:^|\n)@all\s*$/, '').trim();
-        if (body) await xep('link', { body });
+        if (body && (!buildingId || dayDu)) await xep(buildingId ? 'contact' : 'link', { body });
       } else if (k === 'table_image') {
         if (anhBang) await xep('table_image', { anh: anhBang });
         else soKhongXepDuoc++;
@@ -321,7 +326,7 @@ async function xuLyMotCongTy(auto, now) {
   const t = gioVietNam(now);
 
   if (phong.trangSale !== null && (groups.size || stats.roomLockWatch?.length)) {
-    const locks = await processRoomLocks({ db: sb, orgId, phong, watch: stats.roomLockWatch, groups, online: sessions,
+    const locks = await processRoomLocks({ db: sb, orgId, phong, watch: stats.roomLockWatch, groups, groupBuildings: config.groupBuildings, online: sessions,
       now, antiSpam: config.antiSpam, remaining: conLaiTrongTran(now, config, stats).conLai,
       earliestStart: Number(stats.nextLockNoticeStart) || 0, enqueue: xepMotTin, log });
     if (locks.changed) {
@@ -500,9 +505,10 @@ function congSoTin(stats, ngay, them) {
  * @param {boolean} p.chiChiTiet lượt bổ sung: chỉ gửi chi tiết phòng mới
  * @param {string}  [p.oneshotId] lượt gửi MỘT LẦN: xếp qua cổng SQL của lượt đó
  */
-export async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey, oneshotId, earliestStart }) {
+async function prepareRoomPost({ config, phong, accountId, orgId, now, day, chiChiTiet, buildingId }) {
   const khoiCai = config.template.blocks;
-  const khoi = chiChiTiet
+  const rooms = buildingId ? phong.rooms.filter(room => room.buildingId === buildingId) : phong.rooms;
+  const khoi = buildingId ? (rooms.length ? ['room_details', 'link'] : []) : chiChiTiet
     ? khoiCai.filter((k) => k === 'room_details')
     : khoiCai.filter((k) => k !== 'room_details' || day);
 
@@ -512,12 +518,14 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
   }
 
   const t = gioVietNam(now);
+  const hotline = broadcastHotline(phong, buildingId);
+  const intro = buildingId ? groupContactText(config.template.introText, hotline) : config.template.introText;
   const vanBanMoDau = khoi.includes('link')
-    ? dienMau(config.template.introText, {
+    ? dienMau(intro, {
         ngay: `${t.ngay.slice(8, 10)}/${t.ngay.slice(5, 7)}`,
-        so_phong: phong.rooms.length,
+        so_phong: rooms.length,
         link: config.template.shareUrl || '',
-        hotline: phong.hotline || '',
+        hotline,
       }).replace(/\n{3,}/g, '\n\n').trim()
     : '';
 
@@ -526,11 +534,11 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
     // Prepare once per room, then reuse the account-scoped copy for recipients
     // in this organization. All room photos share one native Zalo album job;
     // the room information precedes it and the divider closes the room.
-    for (const r of phong.rooms.slice(0, config.antiSpam.maxRoomsPerRun)) {
+    for (const r of rooms.slice(0, config.antiSpam.maxRoomsPerRun)) {
       try {
         const anh = await chuanBiAnhPhong(r, { accountId, orgId });
         if (anh.length > 12) throw new Error('Album vượt giới hạn 12 ảnh của hàng đợi; chưa gửi phòng, không cắt bớt ảnh');
-        const info = soanTinPhong(r, config.template.roomTemplate, phong.hotline) || `Phòng ${r.code || r.id}`;
+        const info = soanTinPhong(r, config.template.roomTemplate, hotline) || `Phòng ${r.code || r.id}`;
         const body = anh.length ? info : [info, 'Chờ cập nhật ảnh', ROOM_DIVIDER].join('\n');
         tinPhong.push({ roomId: r.id, body, anh, soTinDuKien: anh.length ? 3 : 1 });
       } catch (e) {
@@ -541,18 +549,51 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
     }
   }
 
-  const ketQua = await xepLo({
-    convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId, earliestStart,
-    chiTietBiCat: khoi.includes('room_details') && tinPhong.length < phong.rooms.length,
-    contentGuard: saleContentGuard(phong, config.template),
-  });
+  const boSot = khoi.includes('room_details') ? Math.max(0, rooms.length - tinPhong.length) : 0;
+  return { khoi, anhBang, vanBanMoDau, tinPhong, buildingId, boSot, chiTietBiCat: boSot > 0,
+    contentGuard: saleContentGuard(phong, config.template, buildingId) };
+}
 
-  const boSot = khoi.includes('room_details') ? Math.max(0, phong.rooms.length - tinPhong.length) : 0;
-  if (boSot > 0) {
-    // Cắt bớt mà im lặng thì người dùng đọc nhật ký sẽ tưởng đã gửi đủ.
-    log(`automation: bỏ ${boSot} phòng khỏi phần chi tiết (trần ${config.antiSpam.maxRoomsPerRun}/lượt)`);
+function groupContactText(intro, hotline) {
+  const contact = intro.split(/\r?\n/).filter(line => /liên hệ|hotline|zalo|\{hotline\}|(?:\d[ .-]?){8,}/iu.test(line)
+    && !/\{link\}|https?:|www\.|\{so_phong\}|\{ngay\}/iu.test(line))
+    .map(line => line.replace(/@all/gi, '').trim()).filter(Boolean);
+  if (!contact.length && hotline) contact.push(`Liên hệ: ${hotline}`);
+  return [...contact, '@all'].join('\n');
+}
+
+export async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey, oneshotId, earliestStart }) {
+  const byScope = new Map();
+  const plans = new Map();
+  const recipients = [];
+  const handled = new Set();
+  for (let conv of convs) {
+    const buildingId = conv.thread_type === 'group' ? config.groupBuildings?.[conv.thread_id] : null;
+    if (buildingId) {
+      if (handled.has(conv.thread_id)) continue;
+      handled.add(conv.thread_id);
+      const aliases = convs.filter(c => c.thread_type === 'group' && c.thread_id === conv.thread_id)
+        .sort((a, b) => a.id.localeCompare(b.id));
+      // A retry keeps the sender that already owns this group's room receipts.
+      const { data, error } = await sb.from('zalo_send_queue').select('conversation_id,conv:zalo_conversations!inner(thread_id)')
+        .eq('organization_id', orgId).eq('conv.thread_id', conv.thread_id).eq('payload->>tu_dong', 'true')
+        .like('payload->>automation_request_key', runKey + ':group:%').order('created_at').limit(1);
+      if (error) throw new Error("Chưa xác minh được nhóm đã nhận bài: " + error.message);
+      conv = data.length ? aliases.find(c => c.id === data[0].conversation_id) : aliases[0];
+      if (!conv) continue;
+    }
+    recipients.push(conv);
+    const sender = conv.account_id || accountId;
+    const key = JSON.stringify([sender, buildingId ?? null]);
+    if (!byScope.has(key)) byScope.set(key, await prepareRoomPost({ config, phong, accountId: sender, orgId, now, day, chiChiTiet, buildingId }));
+    plans.set(conv.id, byScope.get(key));
   }
-  return { ...ketQua, anhBang, soPhongChiTiet: tinPhong.length, boSot };
+  const result = await xepLo({ convs: recipients, plans, config, tranConLai, runKey, now, oneshotId, earliestStart });
+  const batches = [...byScope.values()];
+  const boSot = Math.max(0, ...batches.map(batch => batch.boSot));
+  if (boSot) log(`automation: bỏ ${boSot} phòng khỏi phần chi tiết (trần ${config.antiSpam.maxRoomsPerRun}/lượt)`);
+  return { ...result, anhBang: batches.find(batch => batch.anhBang)?.anhBang ?? null, boSot,
+    soPhongChiTiet: new Set(batches.flatMap(batch => batch.tinPhong.map(room => room.roomId))).size };
 }
 
 /* ------------------------------------------------- lượt gửi MỘT LẦN (CRM/Hermes) */
@@ -614,7 +655,7 @@ async function chayMotHenGio(claim, now) {
 
   const nhan = Array.isArray(shot.recipients) ? shot.recipients.map(String) : [];
   const { data: convsTho, error } = await sb.from('zalo_conversations')
-    .select('id, user_id, organization_id, account_id, peer_name, thread_type, is_sale_partner')
+    .select('id, user_id, organization_id, account_id, peer_name, thread_type, thread_id, is_sale_partner')
     .in('id', nhan)
     .eq('organization_id', orgId);
   if (error) return thatBai('khong_doc_duoc_nhom', 'Không đọc được danh sách nhóm nhận.');
