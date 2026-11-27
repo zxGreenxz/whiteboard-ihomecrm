@@ -31,7 +31,8 @@ async function propose(problem:unknown):Promise<number[][]>{
 Deno.serve(async req=>{
   if(req.method!=='POST')return json({error:'method'},405);
   // Platform verifies JWT. Only a project service credential may spend inference or publish a plan.
-  if(!service||!url||req.headers.get('Authorization')!=='Bearer '+service)return json({error:'forbidden'},403);
+  const expected=Deno.env.get('HERMES_SHIFT_DISPATCH_JWT');
+  if(!service||!url||!expected||req.headers.get('Authorization')!=='Bearer '+expected)return json({error:'forbidden'},403);
   try{
     const {org,generation,token}=await req.json();
     if(typeof org!=='string'||typeof token!=='string'||!Number.isSafeInteger(generation))return json({error:'invalid'},400);
