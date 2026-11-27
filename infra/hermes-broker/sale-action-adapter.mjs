@@ -1,3 +1,4 @@
+import { ZALO_DEPOSIT_KEY } from './zalo-deposit-contract.mjs';
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { domainExact, domainId } from './domain-contract.mjs';
@@ -9,7 +10,7 @@ const positive = value => Number.isSafeInteger(value) && value > 0 && value < Nu
 const keys = ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedPolicyVersion', 'expectedMembershipId', 'expectedAuthorizationVersion', 'expectedSessionRevision'];
 const fail = code => { throw new BrokerError(code); };
 export function createSaleActionReads(options) {
-  const rpc = createBoundUserRpcTransport({ ...options, allowedNames: ['hermes_sale_actions_v1', 'hermes_sale_capabilities_v1'] });
+  const rpc = createBoundUserRpcTransport({ ...options, clientInfo: 'hermes-sale-zalo-deposit/1', allowedNames: ['hermes_sale_actions_v1', 'hermes_sale_capabilities_v1', 'hermes_zalo_deposit_v1'] });
   return Object.freeze({ async capabilities({ accessToken, organizationId }, callOptions) {
     if (!domainId(organizationId)) fail('invalid_request');
     return rpc('hermes_sale_capabilities_v1', accessToken, { p_organization_id: organizationId }, callOptions, { optional: true });
@@ -19,6 +20,8 @@ export function createSaleActionReads(options) {
       ['expectedEpoch', 'expectedAuthorizationVersion', 'expectedSessionRevision'].some(k => !positive(value.binding[k])) ||
       !(value.binding.expectedPolicyVersion === 0 || positive(value.binding.expectedPolicyVersion))) fail('invalid_request');
     let input; try { input = saleActionInput(operation, value.input); } catch { fail('invalid_request'); }
+    if (operation === 'zalo_deposit') return rpc('hermes_zalo_deposit_v1', value.accessToken,
+      { p_binding: value.binding, p_input: input }, callOptions, { write: true, action: true });
     return rpc('hermes_sale_actions_v1', value.accessToken, { p_binding: value.binding, p_operation: operation, p_input: input },
       callOptions, { write: saleActionIsMutation(operation) });
   } });
@@ -29,15 +32,16 @@ export function createSaleActionAuth({ baseAuth, reads } = {}) {
     const extended = await readWithBaseAuthorization(baseAuth, input,
       () => reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal }));
     const current = extended.current;
-    if (SALE_ACTIONS.some(key => current.permissions.action.includes(key) || current.companyCeilings.action.includes(key))) fail('context_changed');
+    if ([...SALE_ACTIONS, ZALO_DEPOSIT_KEY].some(key => current.permissions.action.includes(key) || current.companyCeilings.action.includes(key))) fail('context_changed');
     const cap = extended.capability();
     if (cap === null) return current;
+    const keys = cap?.permissions && Object.hasOwn(cap.permissions, ZALO_DEPOSIT_KEY) ? [...SALE_ACTIONS, ZALO_DEPOSIT_KEY] : SALE_ACTIONS;
     if (!domainExact(cap, ['organizationId', 'userId', 'membershipId', 'authorizationVersion', 'isSuperadmin', 'policyVersion', 'permissions']) ||
       cap.organizationId !== input.organizationId || cap.userId !== input.userId || cap.membershipId !== current.membership.membershipId ||
       cap.authorizationVersion !== current.membership.authorizationVersion || cap.isSuperadmin !== current.isSuperadmin ||
-      !(cap.policyVersion === 0 || positive(cap.policyVersion)) || !domainExact(cap.permissions, SALE_ACTIONS)) fail('context_changed');
+      !(cap.policyVersion === 0 || positive(cap.policyVersion)) || !domainExact(cap.permissions, keys)) fail('context_changed');
     const granted = [], ceilings = [], scopes = {};
-    for (const key of SALE_ACTIONS) {
+    for (const key of keys) {
       const permission = cap.permissions[key];
       if (!domainExact(permission, ['allowed', 'companyEnabled', 'buildingIds']) || typeof permission.allowed !== 'boolean' || typeof permission.companyEnabled !== 'boolean' ||
         permission.allowed && !permission.companyEnabled || !Array.isArray(permission.buildingIds) || permission.buildingIds.length > 256 ||

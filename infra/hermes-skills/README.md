@@ -7,6 +7,14 @@ Thư mục này là **lớp 2** của mô hình 3 lớp (chủ duyệt 31/10/202
 `task.create`). Curator của Hermes còn học thêm dòng sai đó vào skill. Gốc: kiến thức "dùng tool CRM thế nào" nằm trong sổ tay bot
 tự viết, không gắn phiên bản với connector.
 
+## Phát hành luồng cọc Zalo riêng
+
+Hồ sơ `owner` có hai quy tắc trong `SOUL.md` hướng mọi khoản thu cọc sang web. Khi triển khai worker, migration, connector và skill của luồng này, cập nhật cả hai quy tắc trong hồ sơ đang dùng. Giữ hướng dẫn thu thêm, hoàn cọc, bỏ cọc và thanh lý trên web. Với cọc giữ phòng lần đầu qua Zalo riêng, dùng quy tắc sau:
+
+> Khi người gửi nhắn Lock kèm ảnh cọc, đọc skill ihome-crm-phong-sale-nhom. Tra crm_sale_action operation=list. Nếu có zalo_deposit, đọc tất cả ảnh và gửi bản xem trước. Sau khi người gửi tự nhắn câu xác nhận trong bản xem trước, dùng lại đúng yêu cầu để lấy mã phiếu. Nếu thiếu quyền, hướng dẫn dùng trang Quản lý cọc.
+
+`deploy.sh` cập nhật skill. Phiên đang mở giữ bản SOUL đã nạp cho đến phiên mới hoặc lần nén tiếp theo. Khi kiểm tra phát hành, dùng một phiên mới và xác minh tin chuyển tiếp đến như nội dung khách, còn xác nhận cọc đến từ tin riêng của chính người gửi.
+
 ## Mô hình 3 lớp
 
 | Lớp | Ở đâu | Ai sửa | Vai trò |

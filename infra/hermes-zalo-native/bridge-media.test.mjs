@@ -338,11 +338,37 @@ test('album photos become one ordered event; separate groups keep their own text
   assert.equal(one.media.length + two.media.length, 2);
 });
 
-test('forwarded photo drops the original caption; quoted, group, echo, stale and foreign photos never arrive', async t => {
+test('three referenced photos deliver only their own bytes with the subsequent live Lock message', async t => {
+  const f = await fixture(t);
+  await f.receive();
+  for (const [index, field] of ['quote', 'decorLog', 'reference'].entries()) {
+    const image = photo(f, 'paper' + index, { caption: 'ghi chú ảnh ' + index, extra: { [field]: { content: 'foreign quote' } } });
+    await f.session.capture(image);
+    await f.flush();
+    f.advance(500);
+  }
+  await f.session.capture(text(f, 'instruction', 'Lock DEMO P103'));
+  f.advance(3000);
+  const event = (await f.receive()).data.event;
+  assert.ok(event.text.endsWith('\nLock DEMO P103'));
+  assert.equal((event.text.match(/\[Nội dung Zalo chuyển tiếp/gu) || []).length, 3);
+  assert.ok(['ghi chú ảnh 0','ghi chú ảnh 1','ghi chú ảnh 2'].every(title => event.text.includes(title)));
+  assert.doesNotMatch(event.text, /foreign quote/);
+  assert.equal(event.parts, 4);
+  assert.deepEqual(event.media.map(part => part.index), [0, 1, 2]);
+  for (const item of event.media) {
+    const response = await f.media(event.id, item.index);
+    assert.equal(createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex'), item.sha256);
+  }
+  await f.ack(event.id);
+  assert.equal((await f.receive()).data.status, 'empty');
+});
+
+test('forwarded photo preserves the new attachment caption as customer context; group, echo, stale and foreign photos never arrive', async t => {
   const f = await fixture(t);
   await f.receive();
   await f.session.capture(photo(f, 'fw', { caption: 'chú thích của người khác', extra: { fw: true } }));
-  for (const alter of [m => { m.data.quote = { msgId: 'x' }; }, m => { m.type = 1; }, m => { m.isSelf = true; },
+  for (const alter of [m => { m.type = 1; }, m => { m.isSelf = true; },
     m => { m.data.uidFrom = '300'; }, m => { m.threadId = '300'; }, m => { m.data.idTo = '999'; },
     m => { m.data.ts = String(f.clock.at - 400000); }]) {
     const message = photo(f, `x${f.calls.length}${Math.random().toString(36).slice(2, 8)}`); alter(message);
@@ -350,13 +376,15 @@ test('forwarded photo drops the original caption; quoted, group, echo, stale and
   }
   await f.flush(); f.advance(30000);
   const event = (await f.receive()).data.event;
-  assert.equal(event.messageId, 'fw'); assert.equal(event.text, undefined);
+  assert.equal(event.messageId, 'fw');
+  assert.match(event.text, /^\[Nội dung Zalo chuyển tiếp/u);
+  assert.ok(event.text.endsWith('chú thích của người khác'));
   await f.ack(event.id);
   assert.equal((await f.receive()).data.status, 'empty');
   assert.equal(f.calls.length, 1, 'rejected photos are never downloaded');
   // Group messages belong to the CRM path; every private drop leaves a code-only fault.
   assert.deepEqual(f.faults.filter(code => code.startsWith('native_photo_dropped')),
-    ['quoted', 'echo', 'peer', 'peer', 'peer', 'stale'].map(reason => `native_photo_dropped:${reason}`));
+    ['echo', 'peer', 'peer', 'peer', 'stale'].map(reason => `native_photo_dropped:${reason}`));
   await f.session.capture({ ...file(f, 'n-echo'), isSelf: true });
   assert.deepEqual(f.faults.slice(-1), ['native_notice_dropped:echo']);
   assert.doesNotMatch(f.faults.join(), /zdn|http|chú thích|x[0-9]/);

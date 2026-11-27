@@ -13,6 +13,7 @@ import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 import { SALE_POLICY_CAPABILITIES } from './sale-policy-contract.mjs';
 import { SALE_TOOL } from './sale-tool-contract.mjs';
+import { ZALO_DEPOSIT_KEY } from './zalo-deposit-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { saleSetup, ROOM, ORG, binding } from './sale-action-sql-fixture.mjs';
 import { extract } from './room-pass-sql-fixture.mjs';
@@ -188,6 +189,15 @@ test('connector broker: crm_sale_action không bao giờ mở báo cọc / thu t
   assert.deepEqual(seen, []);
   assert.equal((await call('room_patch', { requestId: randomUUID(), roomId: ROOM, expectedRevision: 'a'.repeat(32), rent_price: 3100000 })).outcome, 'applied');
   assert.deepEqual(seen, ['patch'], 'thao tác Sale còn lại vẫn tới dịch vụ');
+  assert.ok(!(await listed()).includes('zalo_deposit'));
+  state.grants = [...TC_ON, ZALO_DEPOSIT_KEY];
+  assert.ok((await listed()).includes('zalo_deposit'));
+  const zaloInput = { requestId: randomUUID(), roomId: ROOM, payerName: 'Khách DEMO',
+    payments: [{ amount: 123, reference: 'DEMO-123' }], voucherDate: '2026-11-27', accountId: randomUUID(),
+    intendedMoveInOn: null, depositTarget: null };
+  assert.equal((await call('zalo_deposit', zaloInput)).requestId, zaloInput.requestId);
+  assert.deepEqual(seen, ['patch', 'zalo_deposit']);
+  for (const operation of DEPOSIT_OPS) assert.ok(!(await listed()).includes(operation));
 });
 
 test('migration: đúng thân production 20261021064112 + một khối chèn trong nhánh báo cọc; md5 ghim khớp hai thân', () => {

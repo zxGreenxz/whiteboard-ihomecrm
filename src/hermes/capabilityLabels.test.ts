@@ -93,7 +93,7 @@ describe('Hermes capability labels', () => {
     expect(listed(['deposits.create', 'deposits.edit', SALE_DEPOSIT_RECEIPT_KEY, 'income_expenses.create', 'income_expenses.approve', 'sale_phong.lock_room'])).toEqual(lookups);
     // Nhãn nói đúng điều đó và chỉ đường tới trang Quản lý cọc như câu lỗi sale_deposit_web_only của broker.
     expect(hermesCapabilityLabel(SALE_DEPOSIT_RECEIPT_KEY)).toMatch(/^Đã gỡ: /);
-    expect(hermesCapabilityHint('deposits.create')).toMatch(/^Hermes: chỉ tra danh sách phòng và yêu cầu cũ; báo cọc, thu thêm cọc làm trên web/);
+    expect(hermesCapabilityHint('deposits.create')).toMatch(/lập phiếu giữ chỗ khi có quyền xác nhận cọc qua Zalo riêng/);
     expect(hermesCapabilityHint('deposits.edit')).toMatch(/^Hermes: chỉ tra danh sách phòng và yêu cầu cũ; sửa cọc làm trên web/);
     for (const text of [hermesCapabilityLabel(SALE_DEPOSIT_RECEIPT_KEY), hermesCapabilityHint('deposits.create'), hermesCapabilityHint('deposits.edit')]) {
       expect(text).toContain('trang Quản lý cọc (/deposits)');

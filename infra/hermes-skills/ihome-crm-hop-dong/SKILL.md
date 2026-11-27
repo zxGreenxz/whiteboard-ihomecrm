@@ -73,7 +73,8 @@ Nếu người dùng chỉ rõ cùng một ngày cho nhiều căn, dùng ngày �
 
 ## Không qua bot
 
-Thu / hoàn / bổ sung cọc, bỏ cọc không kèm trả phòng, quyết toán / thanh lý tiền, hoa hồng: làm trên web (trang Hợp đồng
+Lock kèm ảnh cọc trên Zalo riêng dùng `zalo_deposit` trong `ihome-crm-phong-sale-nhom`.
+Thu cọc ngoài luồng này, hoàn / bổ sung cọc, bỏ cọc không kèm trả phòng, quyết toán / thanh lý tiền, hoa hồng: làm trên web (trang Hợp đồng
 /contracts). Khách trả phòng kèm bỏ cọc ⇒ `contract.return` `forfeit` = true (mục trên). Khách trả tiền hoá đơn thanh lý:
 `ihome-crm-hoa-don`.
 

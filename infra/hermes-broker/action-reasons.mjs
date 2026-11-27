@@ -147,6 +147,11 @@ function invoiceReasons() {
 // ghi — không phải lỗi SQL — nên không có số liệu hay link riêng của đối tượng; câu nêu chỗ làm đúng.
 function saleReasons() {
   return {
+    zalo_deposit_ambiguous: reason('rejected', 'never', 'Kết nối CRM ghép với nhiều bot Zalo. Chọn lại kết nối chỉ ghép với cuộc trò chuyện dùng để xác nhận phiếu cọc.'),
+    zalo_deposit_held: reason('rejected', 'never', 'Phòng đã có lượt giữ chỗ. Đối chiếu phiếu ở mục Quản lý cọc trước khi thu thêm.'),
+    zalo_deposit_locked: reason('rejected', 'never', 'Phòng đang được người khác khóa. Kiểm tra người đang giữ phòng.'),
+    zalo_deposit_duplicate: reason('rejected', 'never', 'Giao dịch chuyển khoản này đã được dùng để lập phiếu cọc. Kiểm tra phiếu hiện có.'),
+    zalo_deposit_expired: reason('rejected', 'preview', 'Bản xem trước đã hết hạn hoặc đã được thay thế. Tạo bản xem trước mới để xác nhận.'),
     sale_deposit_web_only: reason('rejected', 'never', 'Báo cọc, thu thêm, sửa hay gán khách vào cọc làm trên web, trang Quản lý cọc (/deposits); crm_sale_action không ghi cọc.'),
     sale_lock_via_contract: reason('rejected', 'never', 'Giữ / bỏ giữ phòng dùng crm_action_run action contract.room_lock / contract.room_unlock (tên toà + phòng), không qua crm_sale_action.'),
   };

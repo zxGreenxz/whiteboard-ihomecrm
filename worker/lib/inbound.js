@@ -540,7 +540,19 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
   sessions.set(accountId, session);
   const active = () => sessions.get(accountId) === session && isLeaseActive();
   try {
-    session.hermesNative = getNativeBridge()?.attach({ accountId, ownUid: String(ownId), api, isActive: active });
+    session.hermesNative = getNativeBridge()?.attach({
+      accountId, ownUid: String(ownId), api, isActive: active,
+      async confirmDeposit(confirmation) {
+        const source = session.hermesIngress?.privateCommandSource();
+        if (!source || !active()) throw new Error('inactive');
+        const { error } = await sb.rpc('hermes_zalo_deposit_consent_v1', {
+          p_account: accountId, p_instance: source.instanceId, p_generation: source.generation,
+          p_sender: confirmation.senderUid, p_message: confirmation.providerMessageId,
+          p_sent_ms: confirmation.sentAt, p_confirmation: confirmation.text,
+        }).abortSignal(AbortSignal.timeout(5000));
+        if (error) throw new Error('confirmation_unavailable');
+      },
+    });
   } catch {
     sessions.delete(accountId);
     try { api.listener.stop(); } catch { /* no listener yet */ }

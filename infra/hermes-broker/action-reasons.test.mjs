@@ -50,7 +50,7 @@ test('danh sách đóng: 22 mã chung + khối riêng từng trang, mỗi mã m�
       'adjust_below_collected', 'adjustment_self_check_web_only', 'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict',
       'invoice_already_cancelled', 'invoice_not_cancelled']);
   // Sale (05/11, crm_sale_action): 2 mã của operation đã rời cầu Sale, đều là lỗi thật — connector từ chối trước mọi I/O ghi.
-  assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.sale], ['sale_deposit_web_only', 'sale_lock_via_contract']);
+  assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.sale], ['zalo_deposit_ambiguous', 'zalo_deposit_held', 'zalo_deposit_locked', 'zalo_deposit_duplicate', 'zalo_deposit_expired', 'sale_deposit_web_only', 'sale_lock_via_contract']);
   assert.ok(ACTION_PAGE_REASON_BLOCKS.sale.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang Sale là lỗi thật (dạng rejected)');
   // Bài học (đợt 3 học có kiểm duyệt, HOC-CO-KIEM-DUYET.md mục 4.3): một mã needs_input — mọi số người dùng nêu đều không còn chờ; một mã
   // rejected (khung giờ tin tối, 20261111015658) — learning.digest gọi ngoài 20:55–21:10 giờ Việt Nam: lỗi thật, không gọi lại, câu tĩnh
@@ -60,11 +60,11 @@ test('danh sách đóng: 22 mã chung + khối riêng từng trang, mỗi mã m�
   assert.deepEqual([ACTION_REASONS.learning_digest_outside_window.form, ACTION_REASONS.learning_digest_outside_window.retry], ['rejected', 'never']);
   assert.match(ACTION_REASONS.learning_digest_outside_window.text, /Không gọi lại, không tự soạn tin.*\[SILENT\].*21:00/);
   // Đúng sáu khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn, Sale, Bài học); tổng = 22 chung + 2 Thu chi + 15 Hợp đồng
-  // + 7 Công việc + 28 Hoá đơn + 2 Sale + 2 Bài học.
+  // + 7 Công việc + 28 Hoá đơn + 7 Sale + 2 Bài học.
   assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task', 'invoice', 'sale', 'learning']);
-  assert.equal(ACTION_REASON_CODES.length, 22 + 2 + 15 + 7 + 28 + 2 + 2);
+  assert.equal(ACTION_REASON_CODES.length, 22 + 2 + 15 + 7 + 28 + 7 + 2);
   assert.equal(ACTION_INPUT_REASONS.length, 8 + 7 + 2 + 9 + 1);
-  assert.equal(ACTION_REJECT_REASONS.length, 14 + 2 + 8 + 5 + 19 + 2 + 1);
+  assert.equal(ACTION_REJECT_REASONS.length, 14 + 2 + 8 + 5 + 19 + 7 + 1);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {

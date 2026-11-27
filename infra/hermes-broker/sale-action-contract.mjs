@@ -1,3 +1,4 @@
+import { ZALO_DEPOSIT_GRANTS, ZALO_DEPOSIT_TOOL, zaloDepositInput, zaloDepositResult } from './zalo-deposit-contract.mjs';
 import { domainExact, domainId } from './domain-contract.mjs';
 import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY, REQUEST_ID_STATUS_GUIDANCE } from './request-id-contract.mjs';
 
@@ -23,7 +24,7 @@ const OPS = Object.freeze({
   crm_sale_room_options: 'options', crm_sale_room_observe: 'observe', crm_sale_room_patch: 'patch',
   crm_sale_room_lock: 'lock', crm_sale_room_release: 'release', crm_sale_reservation_create: 'reservation_create',
   crm_sale_reservation_update: 'reservation_update', crm_sale_reservation_topup: 'reservation_topup',
-  crm_sale_reservation_assign: 'reservation_assign', crm_sale_action_status: 'status',
+  crm_sale_reservation_assign: 'reservation_assign', crm_sale_action_status: 'status', crm_sale_zalo_deposit: 'zalo_deposit',
 });
 const MAX_MONEY = 9_999_999_999_999;
 const fail = () => { throw new TypeError('invalid_sale_action'); };
@@ -55,6 +56,7 @@ export function saleActionPermissions(operation, input) {
   return OPTION_ACTIONS;
 }
 export function mayUseSaleAction(effective, operation, input) {
+  if (operation === 'zalo_deposit') return ZALO_DEPOSIT_GRANTS.every(key => effective?.action?.includes(key));
   if (!Object.values(OPS).includes(operation)) return false;
   // Without input (catalogue/service prepare), patch may be images-only.
   const keys = operation === 'patch' && !input ? [...EDIT_ACTIONS, 'sale_phong.manage_images'] : saleActionPermissions(operation, input);
@@ -68,6 +70,7 @@ function receiptInput(input) {
   return { ...input };
 }
 export function saleActionInput(operation, input) {
+  if (operation === 'zalo_deposit') return zaloDepositInput(input);
   if (operation === 'options') {
     if (!safeKeys(input, ['action'], ['buildingId', 'query', 'limit', 'cursor'])) fail();
     const v = { buildingId: null, query: '', limit: 20, cursor: null, ...input };
@@ -134,6 +137,7 @@ function scopeAllowed(identity, buildingId, operation, input) {
 // SQL emits only these action receipts. No customer phone, arbitrary history,
 // internal contacts or account details can cross this validator.
 export function saleActionResult(operation, value, identity, input) {
+  if (operation === 'zalo_deposit') return zaloDepositResult(value, identity, input);
   if (!value || value.organizationId !== identity.row.organizationId) fail();
   if (operation === 'options') {
     if (!domainExact(value, ['organizationId', 'items', 'nextCursor']) || !Array.isArray(value.items) || value.items.length > input.limit ||
@@ -190,6 +194,7 @@ const read = (name, description, properties, required = Object.keys(properties))
   inputSchema: { type: 'object', additionalProperties: false, required, properties },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } });
 export const SALE_ACTION_TOOLS = Object.freeze([
+  ZALO_DEPOSIT_TOOL,
   read('crm_sale_room_options', 'Tìm ID/nhãn phòng trong phạm vi quyền thao tác Sale được chọn. Không suy đoán ID khi trùng tên; cho người dùng chọn.',
     { action: { enum: OPTION_ACTIONS }, buildingId: nullableId, query: { type: 'string', maxLength: 100 }, limit: { type: 'integer', minimum: 1, maximum: 50 }, cursor: nullableId }, ['action']),
   read('crm_sale_room_observe', 'Lấy phiên bản và thông tin được phép sửa của một phòng ngay trước khi cập nhật. Cần quyền CRM rooms.view hoặc sale_phong.view và quyền thao tác sửa/ảnh trên phòng.',
