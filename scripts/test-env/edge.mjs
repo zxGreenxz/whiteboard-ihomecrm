@@ -36,12 +36,12 @@ import { PROD_REF, credential, docVault, ghiLog, mgmt, repoRoot } from "./lib.mj
 // mọi lời gọi (đóng an toàn), deploy lại mã không đụng secret đã đặt.
 export const DANH_SACH = [
   "admin-create-user", "admin-reset-user-password", "llm-proxy", "salary-v5-jobs", "demo-reset", "send-push",
-  "quick-entry", "door-access", "meter-capture-worker", "gps-checkin-ingest", "lifecycle-reminders",
+  "quick-entry", "ai-routing", "door-access", "meter-capture-worker", "gps-checkin-ingest", "lifecycle-reminders",
 ];
 
 // Hàm MỚI chưa từng lên production thì chưa có cờ verify_jwt để chép ⇒ khai sẵn ở đây. Lên production
 // rồi thì cờ production thắng (vòng dưới đọc production trước) — hai bên vẫn phải khớp.
-export const CHUA_CO_O_PRODUCTION = { "quick-entry": { verify_jwt: true }, "door-access": { verify_jwt: true }, "meter-capture-worker": { verify_jwt: false }, "admin-reset-user-password": { verify_jwt: true } };
+export const CHUA_CO_O_PRODUCTION = { "ai-routing": { verify_jwt: true }, "quick-entry": { verify_jwt: true }, "door-access": { verify_jwt: true }, "meter-capture-worker": { verify_jwt: false }, "admin-reset-user-password": { verify_jwt: true } };
 
 /**
  * Secret KHÔNG BAO GIỜ được có trên TEST: VAPID_* (push tới thiết bị thật), TUYA_* (door-access mở cửa thật).

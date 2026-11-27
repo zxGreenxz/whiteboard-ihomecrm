@@ -1,17 +1,15 @@
 {
   "$comment": "BỀ MẶT EDGE FUNCTION. Thư mục trong repo KHÔNG có nghĩa là hàm đang chạy — deploy là thao tác riêng, không gắn với git push. Sinh từ BA nguồn: thư mục supabase/functions/*, Management API (trạng thái đang chạy), và call site functions.invoke(). Sinh bởi scripts/generate-edge-surface.mjs; kiểm bởi scripts/check-edge-surface.mjs.",
   "counts": {
-    "source": 15,
+    "source": 16,
     "deployed": 15,
-    "invoked": 3,
+    "invoked": 4,
     "publiclyCallable": 6
   },
   "sourceWithoutDeployment": [
     "network-watchdog"
   ],
-  "deploymentWithoutSource": [
-    "ai-routing"
-  ],
+  "deploymentWithoutSource": [],
   "invokedButNotDeployed": [],
   "functions": {
     "admin-create-user": {
@@ -31,12 +29,14 @@
       "callers": []
     },
     "ai-routing": {
-      "hasSource": false,
+      "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
       "version": 1,
       "verifyJwt": true,
-      "callers": []
+      "callers": [
+        "src/hooks/useAiRouting.ts"
+      ]
     },
     "bank-event-admin": {
       "hasSource": true,
@@ -100,7 +100,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 1,
+      "version": 2,
       "verifyJwt": false,
       "callers": [
         "src/lib/meter-capture/service.ts"
@@ -126,7 +126,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 11,
+      "version": 12,
       "verifyJwt": true,
       "callers": []
     },

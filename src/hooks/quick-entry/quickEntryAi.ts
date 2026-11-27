@@ -44,6 +44,7 @@ async function errorOf(res: Response): Promise<AiErrorView> {
 }
 
 interface ChatOpts {
+  application?: "wallet_read";
   messages: ChatMessage[];
   fetchImpl: FetchLike;
   signal?: AbortSignal;
@@ -68,6 +69,7 @@ async function chatJson<T>(
         headers,
         signal: opts.signal,
         body: JSON.stringify({
+          ...(opts.application ? { application: opts.application } : {}),
           model: opts.model ?? "quick_entry:auto",
           messages: opts.messages,
           stream: false,

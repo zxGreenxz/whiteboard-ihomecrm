@@ -42,6 +42,8 @@ interface Kich {
   /** null = không có biến riêng của quick-entry cho 9router. */
   nineBase?: string | null;
   nineKey?: string | null;
+  managed?: boolean;
+  subscription?: boolean;
   /** Có NINEROUTER_* của Copilot. */
   copilotNine?: boolean;
   user?: string | null;
@@ -109,6 +111,8 @@ function setup(k: Kich = {}) {
     SUPABASE_URL: "https://proj.supabase.co",
     SUPABASE_SERVICE_ROLE_KEY: "service-role",
     SUPABASE_ANON_KEY: "anon-key",
+    AI_ROUTING_ENABLED: k.managed ? "true" : undefined,
+    AI_NOUS_API_KEY: k.managed ? "shared-key" : undefined,
     QUICK_ENTRY_DAILY_CALLS: k.dailyCalls,
     QUICK_ENTRY_CHOICES: k.choices,
     QUICK_ENTRY_STT_MODELS: k.sttModels,
@@ -120,6 +124,11 @@ function setup(k: Kich = {}) {
     calls.push({ url, init, body });
     const j = (status: number, b: unknown) => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
     if (url.endsWith("/auth/v1/user")) return k.user === null ? j(401, {}) : j(200, { id: k.user ?? USER });
+    if (url.includes("/ai_application_routes?")) return j(200, [{ routes: [
+      { provider: "nous", model: "openai/gpt-6-luna" }, { provider: "9router", model: "cx/gpt-6-luna[1m]" },
+    ] }]);
+    if (url.endsWith("/models")) return j(200, { data: [{ id: "openai/gpt-6-luna", billing_mode: k.subscription ? "subscription" : "credits",
+      architecture: { input_modalities: ["image"], output_modalities: ["text"] }, supported_parameters: ["response_format"] }] });
     if (url.includes("/rest/v1/rpc/get_my_permissions_v2")) {
       return j(200, k.perms ?? { income_expenses: { create: { org_wide: false, building_ids: ["b1"], cashbook_ids: [] } } });
     }
@@ -156,7 +165,7 @@ function setup(k: Kich = {}) {
       else logs[at] = { ...logs[at], ...(body as Record<string, unknown>) };
       return new Response(null, { status: 204 });
     }
-    if (url.startsWith("https://openrouter.ai/api/v1/") || url.includes("router.example/v1/")) {
+    if (url.startsWith("https://openrouter.ai/api/v1/") || url.includes("router.example/v1/") || url.startsWith("https://inference-api.nousresearch.com/v1/")) {
       upstreamUrls.push(url);
       upstreamBodies.push(body as Record<string, unknown>);
       clock += k.upstreamMs ?? 0;
@@ -189,6 +198,19 @@ const readReq = (body: unknown, headers: Record<string, string> = {}) =>
     body: JSON.stringify(body),
   });
 const codeOf = async (r: Response) => ((await r.json()) as { error?: { code?: string } }).error?.code;
+
+Deno.test("managed wallet falls back to 9router on quota or loss of subscription without sending content against credits", async () => {
+  for (const subscription of [true, false]) {
+    const ok = { status:200, body:{ choices:[{ message:{ content:"{}" }}] } };
+    const s = setup({ mode: "all", managed: true, subscription, upstream: subscription ? [{ status: 429, body: {} }, ok] : [ok] });
+    const res = await xuLy(readReq({ application:"wallet_read", messages:[{ role:"user", content:"fixture" }] }), s.deps);
+    assertEquals(res.status,200); assertEquals(res.headers.get("x-quick-entry-model"),"cx/gpt-6-luna[1m]");
+    assertEquals(s.calls.some(c => c.url.includes("app=eq.wallet_read")),true);
+    assertEquals(s.upstreamBodies.map(x => x.model), subscription ? ["openai/gpt-6-luna","cx/gpt-6-luna[1m]"] : ["cx/gpt-6-luna[1m]"]);
+    assertEquals(s.logs.map(x => x.status),["upstream_error", "ok"]);
+  }
+});
+
 const openrouterCalls = (calls: Array<{ url: string }>) =>
   calls.filter((c) => c.url.startsWith("https://openrouter.ai") || c.url.includes("router.example/v1/")).length;
 
