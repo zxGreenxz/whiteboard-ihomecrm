@@ -86,5 +86,5 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
   const window = trongKhungGio(now, config.antiSpam);
   if (!window.trong) return reject(`EXPIRED_AUTOMATION: ${window.lyDo}`);
   if (scheduledAt > now) return reject('AUTOMATION_NOT_DUE: chưa tới giờ gửi');
-  return validateSaleContent(job, db, config.template);
+  return validateSaleContent(job, db, config.template, conv.thread_type === 'group' ? config.groupBuildings[conv.thread_id] : null);
 }

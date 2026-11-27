@@ -11,14 +11,14 @@ const job = { account_id: 'a', organization_id: 'o', conversation_id: 'c',
   payload: { tu_dong: true, sale_content_guard: contentGuard }, not_before: now.toISOString() };
 function database({ enabled = true, sale = true, recipients = ['c'], error = null,
   conversationOrg = 'o', conversationError = null, threadType = 'group', shot = null, shotError = null, automation = true,
-  stopAt = null, stopError = null, saves = [], roomLockWatch = [], roomRow = null, priorLock = [] } = {}) {
+  stopAt = null, stopError = null, saves = [], roomLockWatch = [], roomRow = null, priorLock = [], groupBuildings = {} } = {}) {
   return { rpc: vi.fn(async () => ({ data: { buildings: [], rooms: [], contact: {} }, error: null })), from: vi.fn(table => {
     const data = table === 'zalo_automations'
-      ? (automation ? { enabled, stats: { roomLockWatch }, config: { recipients, antiSpam: { allowedHours: { from: '08:00', to: '20:00' } } } } : null)
+      ? (automation ? { enabled, stats: { roomLockWatch }, config: { recipients, groupBuildings, antiSpam: { allowedHours: { from: '08:00', to: '20:00' } } } } : null)
       : table === 'rooms' ? roomRow
       : table === 'zalo_automation_oneshots' ? shot
         : table === 'zalo_automation_runs' ? (stopAt ? { created_at: stopAt } : null)
-          : { account_id: 'a', organization_id: conversationOrg, is_sale_partner: sale, thread_type: threadType };
+          : { account_id: 'a', organization_id: conversationOrg, is_sale_partner: sale, thread_type: threadType, thread_id: 'group' };
     const failure = table === 'zalo_automations' ? error : table === 'zalo_automation_oneshots' ? shotError
       : table === 'zalo_automation_runs' ? stopError : conversationError;
     const q = { select: () => q, eq: () => q, is: () => q, order: () => q, limit: () => q,
@@ -40,6 +40,15 @@ describe('automation dispatch checks current conditions', () => {
       sale_content_guard: notice.contentGuard, automation_request_key: `room-lock:r:${since}:c` } }, db, now);
     expect(await check(200)).toEqual({ ok: true });
     expect(await check(100)).toMatchObject({ ok: false });
+  });
+  it('chặn tin tổng đã xếp và Lock sai tòa sau khi đổi phạm vi', async () => {
+    const db = database({ groupBuildings: { group: 'b2' }, roomLockWatch: [{ id: 'r', since: 200 }],
+      roomRow: { code: '201', building_id: 'b1', building: { name: 'Tòa Sen' } } });
+    expect((await validateAutomationDelivery(job, db, now)).ok).toBe(false);
+    db.rpc.mockResolvedValue({ data: { rooms: [], buildings: [], pages: 1 }, error: null });
+    const notice = await readLockNotice(db, 'o', 'r');
+    expect((await validateAutomationDelivery({ ...job, payload: { tu_dong: true, body: notice.body,
+      sale_content_guard: notice.contentGuard, automation_request_key: 'room-lock:r:200:c' } }, db, now)).ok).toBe(false);
   });
   it('leaves manually sent messages outside automation controls', async () => {
     const db = database({ enabled: false });

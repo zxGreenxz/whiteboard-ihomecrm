@@ -32,7 +32,7 @@ const db = supabase as any;
 
 // Member maps can be large. The list only reads the small profile fields it displays.
 const PROFILE_FIELDS = ['kind', 'room', 'roomSub', 'price', 'contractCode', 'contractTerm', 'contractStatus', 'debt', 'issue', 'stage', 'source', 'company', 'phone', 'rooms', 'stats', 'isGroup', 'members', 'desc', 'staff', 'tags'] as const satisfies readonly (keyof ZaloProfile)[];
-export const CONV_COLS = 'id, account_id, peer_zalo_uid, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id, is_sale_partner,' + PROFILE_FIELDS.map(key => `profile_${key}:profile->${key}`).join(',');
+export const CONV_COLS = 'id, account_id, peer_zalo_uid, thread_id, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id, is_sale_partner,' + PROFILE_FIELDS.map(key => `profile_${key}:profile->${key}`).join(',');
 const MSG_COLS = 'id, sender_uid:zalo_raw->>uidFrom, sender_name:zalo_raw->>senderName, msg_type, body, direction, media_label, media_url, media_tone, media_meta, created_at, status, reaction_emoji, reply_to, cli_msg_id';
 export const CONV_LIMIT = 5000;
 const MSG_LIMIT = 1000;
@@ -69,6 +69,7 @@ export function mapConv(r: any): ZaloConversation {
   return {
     id: r.id,
     peerUid: r.peer_zalo_uid,
+    threadId: r.thread_id,
     accountId: r.account_id,
     labelIds: Array.isArray(r.label_ids) ? r.label_ids.map(Number) : [],
     name: r.peer_name,
@@ -506,6 +507,19 @@ export function useZaloAutomationConfigs(enabled = true) {
         };
       }
       return ra;
+    },
+  });
+}
+
+export function useZaloBroadcastBuildings(open: boolean) {
+  const orgId = useZaloOrgId();
+  return useQuery({
+    queryKey: ['zalo-broadcast-buildings', orgId], enabled: !!orgId && open,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('buildings').select('id,code,name,address:street_address')
+        .eq('organization_id', orgId!).eq('is_virtual', false).is('deleted_at', null).order('name');
+      if (error) throw error;
+      return data;
     },
   });
 }

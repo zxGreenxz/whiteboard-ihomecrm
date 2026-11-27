@@ -6,18 +6,24 @@ const canonical = value => Array.isArray(value) ? value.map(canonical) :
   value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
 const byId = (a, b) => String(a.id).localeCompare(String(b.id), 'en');
 
+export function broadcastHotline(phong, buildingId) {
+  if (!buildingId) return phong?.hotline ?? '';
+  const building = phong?.buildings?.find(b => b.id === buildingId);
+  return building?.hotline || building?.phone || '';
+}
+
 // Hash only the existing public worker projection. Internal sale bonus/customer
 // data never enters the queued metadata. Stable ordering avoids false changes
 // from SQL row order; image/amenity order remains content and is preserved.
-export function saleContentGuard(phong, template) {
-  const buildings = [...(phong?.buildings ?? [])].sort(byId).map(building => ({
+export function saleContentGuard(phong, template, buildingId = null) {
+  const buildings = (phong?.buildings ?? []).filter(b => !buildingId || b.id === buildingId).sort(byId).map(building => ({
     ...building, rooms: [...(building.rooms ?? [])].sort(byId),
   }));
-  const content = { buildings, hotline: phong?.hotline ?? '', trangSale: phong?.trangSale ?? null, template };
+  const content = { ...(buildingId ? { buildingId } : {}), buildings, hotline: broadcastHotline(phong, buildingId), trangSale: phong?.trangSale ?? null, template };
   return { version: 1, fingerprint: createHash('sha256').update(JSON.stringify(canonical(content))).digest('hex') };
 }
 
-export async function validateSaleContent(job, db, template) {
+export async function validateSaleContent(job, db, template, buildingId = null) {
   const guard = job?.payload?.sale_content_guard;
   const reject = reason => ({ ok: false, reason });
   if (!guard || Object.keys(guard).sort().join(',') !== 'fingerprint,version' || guard.version !== 1 ||
@@ -41,7 +47,7 @@ export async function validateSaleContent(job, db, template) {
     }
     try {
       const notice = await readLockNotice(db, job.organization_id, roomId);
-      return notice?.body === job.payload.body && notice?.contentGuard.fingerprint === guard.fingerprint
+      return (!buildingId || notice?.buildingId === buildingId) && notice?.body === job.payload.body && notice?.contentGuard.fingerprint === guard.fingerprint
         ? { ok: true } : reject('STALE_SALE_CONTENT: phòng hoặc tòa của tin Lock đã thay đổi');
     } catch {
       return reject('AUTOMATION_UNVERIFIED: chưa kiểm được thông báo Lock phòng');
@@ -50,7 +56,7 @@ export async function validateSaleContent(job, db, template) {
   const buildings = mapPayloadSangToa(data);
   const current = saleContentGuard({ buildings,
     hotline: data.contact?.phone || buildings.find(b => b.phone)?.phone || '',
-    trangSale: Number.isInteger(data.pages) ? data.pages : null }, template);
+    trangSale: Number.isInteger(data.pages) ? data.pages : null }, template, buildingId);
   return current.fingerprint === guard.fingerprint ? { ok: true } :
     reject('STALE_SALE_CONTENT: phòng hoặc nội dung sale đã thay đổi; không gửi bản cũ');
 }

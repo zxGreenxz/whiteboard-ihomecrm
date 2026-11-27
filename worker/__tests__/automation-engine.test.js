@@ -62,6 +62,10 @@ function taoQuery(bang) {
 }
 function ketQua(ctx) {
   if (ctx.bang === 'zalo_send_queue') {
+    const pattern = ctx.loc['payload->>automation_request_key'];
+    const receipts = rpcCalls.filter(({ args }) => args.p_request_key.startsWith(pattern.slice(0, -1))
+      && duLieuConversations.some(c => c.id === args.p_conversation_id && c.thread_id === ctx.loc['conv.thread_id']));
+    if (!pattern.startsWith('room-lock:')) return { data: receipts.map(({ args }) => ({ conversation_id: args.p_conversation_id })), error: null };
     return { data: priorGroupLocks.filter(row => row.thread === ctx.loc['conv.thread_id']
       && row.organization === ctx.loc.organization_id && row.cycle + ':%' === ctx.loc['payload->>automation_request_key']), error: null };
   }
@@ -180,7 +184,7 @@ vi.mock('../lib/ctx.js', () => ({
 const phongGia = [];
 let trangSaleGia = 1;
 vi.mock('../lib/vacant-rooms.js', () => ({
-  docPhongTrong: () => Promise.resolve({ buildings: [{ id: 'b1', address: '12 Đường A, Phường B, Quận C', rooms: phongGia }], rooms: phongGia, hotline: '0900', trangSale: trangSaleGia }),
+  docPhongTrong: () => Promise.resolve({ buildings: [{ id: 'b1', hotline: '', phone: '0911', address: '12 Đường A, Phường B, Quận C', rooms: phongGia }], rooms: phongGia, hotline: '0900', trangSale: trangSaleGia }),
 }));
 vi.mock('../lib/room-list-image.js', () => ({
   veAnhDanhSach: () => Promise.resolve(Buffer.from('png-gia')),
@@ -341,6 +345,48 @@ describe('engine broadcast — xếp hàng', () => {
     await tickTuDongHoa();
     expect(rpcCalls.map(c => c.args.p_conversation_id)).toEqual(expected);
     expect(capNhatAutomations.at(-1).stats.roomLockWatch[0].pending).toEqual([]);
+  });
+  it('cùng một lượt rút gọn gửi danh sách chung và chỉ chi tiết của tòa cho nhóm riêng', async () => {
+    phongGia.splice(0, phongGia.length, phong('other', { buildingId: 'b2' }), phong('own', { buildingId: 'b1' }));
+    duLieuConversations = ['c1', 'c2', 'c3'].map(id => ({ ...conv(id), thread_id: id }));
+    duLieuConversations.unshift({ ...conv('c4'), thread_id: 'c2' });
+    datCauHinh({ recipients: ['c1', 'c2', 'c3', 'c4'], groupBuildings: { c2: 'b1', c3: 'empty' },
+      schedule: { time: '08:30', days: { mon: 'compact' }, upgradeOnNewRooms: false, skipIfUnchanged: false },
+      antiSpam: { maxRoomsPerRun: 1 }, template: { blocks: ['table_image', 'link'], shareUrl: 'https://example.test/all',
+        introText: 'Tổng {so_phong} phòng\nLiên hệ admin {hotline}\n{link}\n@all', roomTemplate: 'Phòng {ma_phong}' } });
+    await tickTuDongHoa();
+    const sent = id => rpcCalls.filter(call => call.args.p_conversation_id === id).map(call => call.args);
+    expect(sent('c1').map(x => x.p_request_key.split(':').at(-1))).toEqual(['table_image', 'link']);
+    expect(sent('c2').map(x => x.p_request_key.split(':').at(-1))).toEqual(['own', 'contact']);
+    expect(sent('c2')[0].p_body).toContain('Phòng own');
+    expect(sent('c2')[1].p_body).toBe('Liên hệ admin 0911\n@all');
+    expect(sent('c3')).toEqual([]);
+    expect(sent('c4')).toEqual([]);
+  });
+
+  it('báo Lock cho nhóm chung và đúng nhóm của tòa đang khóa', async () => {
+    duLieuConversations = ['c1', 'c2', 'c3'].map(id => ({ ...conv(id), thread_id: id }));
+    datCauHinh({ recipients: ['c1', 'c2', 'c3'], groupBuildings: { c2: 'b1', c3: 'b2' } },
+      { lastScheduledDate: '2026-08-31' });
+    phongGia.shift();
+    roomsForLock = [{ id: 'r1', code: '201', building_id: 'b1', building: { name: 'Tòa A' } }];
+    await tickTuDongHoa();
+    expect(rpcCalls.map(c => c.args.p_conversation_id)).toEqual(['c1', 'c2']);
+  });
+  it('lượt chính vẫn gửi khi nick đã gửi lượt phụ trước đó rớt phiên', async () => {
+    const aliases = ['c1', 'c2'].map(id => ({ ...conv(id, id), thread_id: 'shared' }));
+    duLieuConversations = aliases;
+    phienDangSong.set('c1', {}); phienDangSong.set('c2', {});
+    datCauHinh({ recipients: ['c1', 'c2'], groupBuildings: { shared: 'b1' },
+      schedule: { time: '08:31', extraTimes: ['08:30'], days: { mon: 'full' }, skipIfUnchanged: false } });
+    phongGia.forEach(r => { r.buildingId = 'b1'; });
+    await tickTuDongHoa();
+    expect(rpcCalls.filter(c => c.args.p_request_key.endsWith(':contact')).map(c => c.args.p_conversation_id)).toEqual(['c1']);
+    duLieuAutomations[0].stats = structuredClone(capNhatAutomations.at(-1).stats);
+    phienDangSong.delete('c1');
+    vi.setSystemTime(new Date(THU_HAI_0830.getTime() + 60000));
+    await tickTuDongHoa();
+    expect(rpcCalls.filter(c => c.args.p_request_key.endsWith(':contact')).map(c => c.args.p_conversation_id)).toEqual(['c1','c2']);
   });
   it('runs each slot once, queues close slots in order, and shares the daily quota', async () => {
     datCauHinh({ schedule: { time: '08:30', extraTimes: ['08:31', '09:10'], days: { mon: 'compact' }, skipIfUnchanged: false },

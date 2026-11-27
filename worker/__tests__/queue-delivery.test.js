@@ -155,6 +155,16 @@ describe('queue admission and delivery outcomes', () => {
     if (status==='sent') expect(content.mentions).toEqual([{pos:text.length-4,uid:'-1',len:4}]);
     else expect(content).toEqual({msg:'Link danh sách'});
   });
+  it.each(['queued', 'failed', 'sent'])('tin liên hệ của nhóm riêng đợi biên nhận từng phòng: %s', async status => {
+    state.threadType = 'group';
+    const api = connect();
+    state.priorJobs = [{ status, automation_request_key: 'scheduled:day:conv:room:r' }];
+    const body = 'Liên hệ admin\n@all';
+    await processJob(makeJob({ tu_dong: true, automation_request_key: 'scheduled:day:conv:contact', body }));
+    if (status === 'sent') expect(api.sendMessage).toHaveBeenCalledWith({ msg: body,
+      mentions: [{ pos: body.length - 4, uid: '-1', len: 4 }] }, 'thread', 1);
+    else expect(api.sendMessage).not.toHaveBeenCalled();
+  });
   it('tag all ngay tại đầu tin Lock độc lập trong nhóm', async () => {
     state.threadType = 'group';
     const api = connect();
