@@ -4,7 +4,7 @@ const json=(value:unknown,status=200)=>Response.json(value,{status});
 const url=Deno.env.get('SUPABASE_URL')??'';
 const service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')??'';
 async function rpc(fn:string,args:Record<string,unknown>){
-  const rs=await fetch(url+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'Content-Type':'application/json',apikey:service,Authorization:'Bearer '+service},body:JSON.stringify(args)});
+  const rs=await fetch(url+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'Content-Type':'application/json','Accept-Profile':'public','Content-Profile':'public',apikey:service,Authorization:'Bearer '+service},body:JSON.stringify(args)});
   if(!rs.ok)throw new Error('shift_database_'+rs.status);
   return rs.json();
 }
