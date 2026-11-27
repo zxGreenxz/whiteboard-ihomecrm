@@ -12,6 +12,11 @@
 //     báo «có thể đã ghi (mã …)», không tự tạo phiếu khác; không thấy thì gỡ dấu, làm như bình thường;
 //   - không đọc được vết ⇒ chưa kết luận được: chặn đúng khách hẹn đó qua hộp cảnh báo (sau 2 phút người dùng tự gỡ).
 // Không chạy lại bước ghi nào của bản trước.
+//
+// Đợt 11: vết được gỡ ngay khi việc của dấu đã xong (đã kết luận, đã hoàn tất khách hẹn) kể cả khi chính dấu đã được gỡ ở
+// nơi khác; vết không còn dấu nào trỏ tới (người dùng tự gỡ dấu qua hộp cảnh báo) được gỡ bằng
+// `forgetOrphanLeadConversionTraces` (lúc mở hộp chuyển khách hẹn). Hai họ khoá «ý định» không còn ai đọc được dọn lúc mở app
+// bằng `forgetDeadIntentKeys` ở `pendingSweep.ts` (đặt ở đó để tệp này không bị tách thành gói dùng chung làm phình gói entry).
 import { pendingHasSettled, type FinancialPendingRecord } from './financialPending';
 
 export interface LeadConversionTrace {
@@ -21,7 +26,8 @@ export interface LeadConversionTrace {
   stage: 'tenant' | 'deposit' | 'lead' | 'complete';
   canResume: boolean;
 }
-const traceKey = (requestKey: string) => `ihome:lead-conversion-trace:v1:${requestKey}`;
+const TRACE_PREFIX = 'ihome:lead-conversion-trace:v1:';
+const traceKey = (requestKey: string) => TRACE_PREFIX + requestKey;
 
 export function readLeadConversionTrace(requestKey: string | undefined): LeadConversionTrace | null {
   if (!requestKey) return null;
@@ -36,6 +42,63 @@ export function readLeadConversionTrace(requestKey: string | undefined): LeadCon
 export function forgetLeadConversionTrace(requestKey: string | undefined): void {
   if (!requestKey) return;
   try { localStorage.removeItem(traceKey(requestKey)); } catch { /* vết không chặn gì */ }
+}
+
+type KeyedStore = Pick<Storage, 'length' | 'key' | 'removeItem'>;
+/** Kho thật của trình duyệt; trình duyệt chặn bộ nhớ (truy cập cũng ném) thì `null`. */
+function browserStore(): Storage | null {
+  let store: Storage | null = null;
+  try { store = globalThis.localStorage ?? null; }
+  catch { /* Trình duyệt chặn bộ nhớ (truy cập cũng ném): không có kho để dọn, hàm dọn chạy nền không được ném. */ }
+  return store;
+}
+/** Mọi khoá của kho thoả `match`, đọc hết TRƯỚC khi gỡ (gỡ trong vòng đọc làm lệch chỉ số). Kho ném lỗi ⇒ `null`. */
+function keysWhere(store: KeyedStore, match: (key: string) => boolean): string[] | null {
+  const keys: string[] = [];
+  let readable = true;
+  try {
+    for (let index = 0; index < store.length; index += 1) {
+      const key = store.key(index);
+      if (key !== null && match(key)) keys.push(key);
+    }
+  } catch { /* Kho chặn giữa chừng: danh sách không trọn, nơi gọi không gỡ khoá nào. */ readable = false; }
+  return readable ? keys : null;
+}
+/** Gỡ từng khoá; khoá nào gỡ hỏng thì bỏ qua. Trả số khoá đã gỡ. */
+function removeKeys(store: KeyedStore, keys: readonly string[]): number {
+  let removed = 0;
+  for (const key of keys) {
+    try { store.removeItem(key); removed += 1; } catch { /* khoá thừa không chặn gì; lần dọn sau gỡ lại */ }
+  }
+  return removed;
+}
+
+/** Dấu `lead-conversion` của mọi tài khoản trên máy này (khoá của kho dấu chung: namespace đứng đầu phạm vi). */
+const LEAD_MARK_PREFIX = 'ihome:financial-pending:v1:lead-conversion:';
+
+/**
+ * Gỡ vết tiến độ không còn dấu `lead-conversion` nào trỏ tới (dấu đã gỡ qua hộp cảnh báo, ở tab khác, hay gỡ hỏng giữa
+ * chừng). Vết chỉ được đọc qua `requestKey` của một dấu như vậy và không còn mã nào ghi dấu đó, nên vết mồ côi không bao giờ
+ * được đọc lại. Vết còn dấu trỏ tới (kể cả dấu của tài khoản khác trên cùng máy) được giữ. Một dấu không đọc được ⇒ không
+ * chứng minh được gì, không gỡ vết nào. Không ném lỗi; trả số vết đã gỡ.
+ */
+export function forgetOrphanLeadConversionTraces(storage?: KeyedStore & Pick<Storage, 'getItem'>): number {
+  const store = storage ?? browserStore();
+  if (!store) return 0;
+  const marks = keysWhere(store, key => key.startsWith(LEAD_MARK_PREFIX));
+  const traces = keysWhere(store, key => key.startsWith(TRACE_PREFIX));
+  if (!marks || !traces || !traces.length) return 0;
+  const referenced = new Set<string>();
+  for (const key of marks) {
+    let mark: unknown;
+    try { mark = JSON.parse(store.getItem(key) ?? 'null'); }
+    catch { /* Dấu không đọc được: không chứng minh được vết nào mồ côi, không gỡ gì. */ return 0; }
+    if (!mark || typeof mark !== 'object') return 0;
+    const requestKey = (mark as { requestKey?: unknown }).requestKey;
+    if (typeof requestKey === 'string') referenced.add(requestKey);
+    else if (requestKey !== undefined) return 0;
+  }
+  return removeKeys(store, traces.filter(key => !referenced.has(key.slice(TRACE_PREFIX.length))));
 }
 
 export type LegacyLeadConversionVerdict =

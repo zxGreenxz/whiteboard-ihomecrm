@@ -1,4 +1,4 @@
-import {financialPending,FinancialPendingError,isAttemptRunning,pendingHasSettled,trackRunningAttempt,type FinancialPendingMeta,type FinancialPendingRecord,type FinancialPendingScope,type FinancialPendingStore,type PendingReconciliation} from './financialPending';
+import {financialPending,FinancialPendingError,isAttemptRunning,pendingHasSettled,pendingVerdictConclusive,trackRunningAttempt,type FinancialPendingMeta,type FinancialPendingRecord,type FinancialPendingScope,type FinancialPendingStore,type PendingReconciliation} from './financialPending';
 import {isConfirmedFinancialRejection} from './financialWorkflow';
 import {FinancialAlreadyRecordedError} from './financialWorkflowError';
 import {pendingBlockMessage,pendingValve,type PendingValve} from './pendingValve';
@@ -45,10 +45,7 @@ export async function runFinancialPending<T>(scope:FinancialPendingScope,work:(p
     }
     // "Chưa thấy trên máy chủ" chỉ là "chưa ghi" khi lần gửi trước chắc chắn đã kết thúc, hoặc khi gửi lại cùng mã không thể ghi
     // hai lần. Kết luận lạ dạng (không phải một trong ba dạng đã biết) cũng là chưa kết luận được.
-    const conclusive=verdict!==null&&typeof verdict==='object'&&('result' in verdict
-      ||verdict.outcome==='already-written'
-      ||(verdict.outcome==='not-written'&&(verdict.serverDedupesRequestKey===true||pendingHasSettled(prior,now()))));
-    if(verdict===null||!conclusive||!store.clearConfirmed(scope,prior.attemptId))throw blocked();
+    if(!pendingVerdictConclusive(verdict,prior,now())||!store.clearConfirmed(scope,prior.attemptId))throw blocked();
     if('result' in verdict)return verdict.result;
     if(verdict.outcome==='already-written')throw new FinancialAlreadyRecordedError(verdict.message,verdict.recordIds);
     // Lần trước chưa ghi: gửi lại với đúng mã yêu cầu cũ, để máy chủ nhận ra nếu lệnh cũ rốt cuộc đã tới.

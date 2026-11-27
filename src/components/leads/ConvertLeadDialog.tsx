@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useConvertLeadToDeposit, type LeadWithRelations } from '@/hooks/useLeads';
 import { financialPending, pendingHasSettled, type FinancialPendingScope } from '@/lib/financialPending';
-import { forgetLeadConversionTrace, resolveLegacyLeadConversion } from '@/lib/leadConversionProgress';
+import { forgetLeadConversionTrace, forgetOrphanLeadConversionTraces, resolveLegacyLeadConversion } from '@/lib/leadConversionProgress';
 import { legacyWindow } from '@/lib/legacyPendingExit';
 import { getSessionUser } from '@/lib/authSession';
 import { getLeadDepositIncomeId } from '@/lib/depositIncomeRpc';
@@ -68,12 +68,17 @@ export function ConvertLeadDialog({open,onOpenChange,lead}: {
           return {id:verdict.depositId,legacy,uncertain:true,note:`Có thể lần chuyển khách hẹn trước đã ghi phiếu cọc (mã ${verdict.depositId}). Kiểm tra phiếu ở Quản lý cọc: đúng là phiếu của khách này thì bấm Hoàn tất chuyển đổi, không tạo phiếu khác; không phải thì dùng hộp cảnh báo để gỡ dấu rồi bấm Tải lại.`};
         }
         if(verdict.kind==='clear'){
-          if(financialPending.clearConfirmed(scope,pending.attemptId))forgetLeadConversionTrace(pending.requestKey);
+          // Đã kết luận lần trước chưa ghi tiền: vết hết dùng, gỡ cả khi dấu đã được gỡ ở nơi khác (gỡ dấu trả false).
+          financialPending.clearConfirmed(scope,pending.attemptId);forgetLeadConversionTrace(pending.requestKey);
         }else{
           // Chưa kết luận được: chặn đúng khách hẹn này qua hộp cảnh báo; sau 2 phút người dùng tự gỡ rồi bấm Tải lại.
           const valve=await reportValve();
           throw new Error(valve.pendingBlockMessage(record,pendingHasSettled(record)));
         }
+      }else{
+        // Không còn dấu bản trước của khách hẹn này (đã gỡ qua hộp cảnh báo, hay ở tab khác): vết không còn dấu nào trỏ tới
+        // thì không bao giờ được đọc lại; gỡ luôn (giữ vết còn dấu của tài khoản khác trỏ tới).
+        forgetOrphanLeadConversionTraces();
       }
       return {id:await getLeadDepositIncomeId(org, lead.id)};
     },
@@ -81,7 +86,8 @@ export function ConvertLeadDialog({open,onOpenChange,lead}: {
   const settleLegacy=()=>{
     const legacy=existing.data?.legacy;
     if(!legacy)return;
-    try{if(financialPending.clearConfirmed(legacy.scope,legacy.attemptId))forgetLeadConversionTrace(legacy.requestKey);}catch{/* dấu cũ không chặn bước đã xong */}
+    // Khách hẹn đã chuyển xong: vết hết dùng, gỡ cả khi dấu đã được gỡ ở nơi khác (gỡ dấu trả false).
+    try{financialPending.clearConfirmed(legacy.scope,legacy.attemptId);forgetLeadConversionTrace(legacy.requestKey);}catch{/* dấu cũ không chặn bước đã xong */}
   };
   const finish=async(id:string)=>{
     setRecorded(id);

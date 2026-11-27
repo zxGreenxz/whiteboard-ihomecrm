@@ -1,4 +1,3 @@
-import {useState,useRef} from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -43,9 +42,7 @@ interface CreateAssetDialogProps {
 }
 
 export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps) {
-  const [failure,setFailure]=useState<unknown>();
   // Đợt 9 (luật 5): tạo tài sản dùng mã do trình duyệt sinh, bấm lại gửi đúng mã cũ nên kết quả chưa rõ không khoá hộp.
-  const draftKey=useRef<string|null>(null);
   const createAsset = useCreateAsset();
   const buildingsQuery=useBuildings({ enabled: open });
   const {data:buildings=[]}=buildingsQuery;
@@ -120,7 +117,6 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);
       console.error("Failed to create asset:", error);
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo tài sản') });
     }

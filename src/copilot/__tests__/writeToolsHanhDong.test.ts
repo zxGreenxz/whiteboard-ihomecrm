@@ -26,7 +26,8 @@ const {
   dungBanXemTruoc,
   nhanTruongXemTruoc,
   taoToolGhiTuCatalog,
-  thucThiXacNhanTheoTool,
+  thucThiXacNhan,
+  thucThiXacNhanHanhDong,
 } = await import('../tools/writeTools');
 const { buildRegistryDefinitions, toLlmTools, toPageAgentTools } = await import(
   '../tools/registry'
@@ -107,7 +108,7 @@ it("room-pass consent routes safe canonical and translates publication conflict"
         'duplicate key value violates unique constraint "room_pass_listings_room_active_uniq"',
     },
   });
-  const result = await thucThiXacNhanTheoTool(
+  const result = await thucThiXacNhanHanhDong(
     "room_pass.set_active",
     NONCE,
     canonical,
@@ -256,7 +257,7 @@ describe('thẻ xác nhận tổng quát hoá', () => {
       datNguCanhXacNhan({ organizationId: ORG, threadId: 'thread-1', generation: 3 });
       const entry = ACTION_CATALOG[khai.actionId] as ActionCatalogEntry;
 
-      const ra = await thucThiXacNhanTheoTool(entry.actionId, NONCE, { a: 1 }, {
+      const ra = await thucThiXacNhanHanhDong(khai.actionId, NONCE, { a: 1 }, {
         organizationId: ORG,
         threadId: 'thread-1',
         generation: 3,
@@ -270,13 +271,14 @@ describe('thẻ xác nhận tổng quát hoá', () => {
     }
   });
 
-  it('đường tạo phiếu vẫn đi hàm riêng — nó đọc lại MÃ PHIẾU vừa tạo', async () => {
+  // Đợt 11: điểm vào chung thucThiXacNhanTheoTool (không còn nơi gọi) đã xoá; các ca dưới gọi thẳng hai hàm thực thi.
+  it('đường tạo phiếu đi hàm riêng — nó đọc lại MÃ PHIẾU vừa tạo', async () => {
     rpc.mockResolvedValue({ data: { status: 'da_tao', entity_id: 'id-1' }, error: null });
     from.mockReturnValue({
       select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { code: 'PC-001' } }) }) }),
     });
     datNguCanhXacNhan({ organizationId: ORG, threadId: 'thread-1', generation: 3 });
-    const ra = await thucThiXacNhanTheoTool('income_expense.create_draft', NONCE, {}, {
+    const ra = await thucThiXacNhan(NONCE, {}, {
       organizationId: ORG,
       threadId: 'thread-1',
       generation: 3,
@@ -288,7 +290,7 @@ describe('thẻ xác nhận tổng quát hoá', () => {
   it('`tool` không có trong sổ ⇒ ném, không im lặng gọi bừa một RPC', async () => {
     datNguCanhXacNhan({ organizationId: ORG, threadId: 'thread-1', generation: 3 });
     await expect(
-      thucThiXacNhanTheoTool('khong.co_that', NONCE, {}, {
+      thucThiXacNhanHanhDong('khong.co_that' as ActionId, NONCE, {}, {
         organizationId: ORG,
         threadId: 'thread-1',
         generation: 3,
@@ -300,7 +302,7 @@ describe('thẻ xác nhận tổng quát hoá', () => {
   it('`da_thuc_hien_truoc_do` nói rõ là KHÔNG làm lại', async () => {
     rpc.mockResolvedValue({ data: { status: 'da_thuc_hien_truoc_do',entity_id:'entity-a' }, error: null });
     datNguCanhXacNhan({ organizationId: ORG, threadId: 'thread-1', generation: 3 });
-    const ra = await thucThiXacNhanTheoTool('income_expense.annotate', NONCE, {}, {
+    const ra = await thucThiXacNhanHanhDong('income_expense.annotate', NONCE, {}, {
       organizationId: ORG,
       threadId: 'thread-1',
       generation: 3,
@@ -620,12 +622,12 @@ describe('G5-C/G5-C2/G5-C3 — 24 action L5 direct_l5_v1: KHÔNG có tool đơn 
 it.each([null, {}, {status:'unknown'}])('không báo thành công với kết quả thực hiện không hợp lệ %j', async data => {
   rpc.mockResolvedValue({data,error:null});
   datNguCanhXacNhan({organizationId:ORG,threadId:'thread-1',generation:3});
-  await expect(thucThiXacNhanTheoTool('income_expense.annotate',NONCE,{}, {organizationId:ORG,threadId:'thread-1',generation:3})).rejects.toThrow('Chưa xác nhận');
+  await expect(thucThiXacNhanHanhDong('income_expense.annotate',NONCE,{}, {organizationId:ORG,threadId:'thread-1',generation:3})).rejects.toThrow('Chưa xác nhận');
 });
 it('tiếp nhận hàng đợi không khẳng định đã thực hiện ở hệ thống ngoài', async()=>{
   rpc.mockResolvedValue({data:{status:'da_gui',entity_id:'queue-1'},error:null});
   datNguCanhXacNhan({organizationId:ORG,threadId:'thread-1',generation:3});
-  const message=await thucThiXacNhanTheoTool('zalo.broadcast',NONCE,{}, {organizationId:ORG,threadId:'thread-1',generation:3});
+  const message=await thucThiXacNhanHanhDong('zalo.broadcast',NONCE,{}, {organizationId:ORG,threadId:'thread-1',generation:3});
   expect(message).toContain('Đã tiếp nhận');
   expect(message).not.toContain('✅');
 });

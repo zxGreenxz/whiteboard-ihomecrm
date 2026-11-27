@@ -1,4 +1,3 @@
-import {useState,useRef} from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useForm } from "react-hook-form";
@@ -31,9 +30,7 @@ interface AssetHandoverDialogProps {
 }
 
 export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogProps) {
-  const [failure,setFailure]=useState<unknown>();
   // Đợt 9 (luật 5): tạo biên bản dùng mã do trình duyệt sinh, bấm lại gửi đúng mã cũ nên kết quả chưa rõ không khoá hộp.
-  const draftKey=useRef<string|null>(null);
   const createHandover = useCreateAssetHandover();
   // Bàn giao tài sản (nhận/trả) thao tác trên HĐ đang hiệu lực → chỉ kéo
   // HĐ ACTIVE server-side thay vì full bảng.
@@ -71,7 +68,6 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);
       console.error("Failed:", error);
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo biên bản bàn giao') });
     }

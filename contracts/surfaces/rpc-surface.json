@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 3325,
+    "sourceCallSites": 3319,
     "catalogFunctions": 1712,
     "schemas": [
       "public",
@@ -9,13 +9,13 @@
     ]
   },
   "counts": {
-    "calledRpcs": 453,
+    "calledRpcs": 443,
     "byRisk": {
-      "normal": 344,
-      "financial": 108,
+      "normal": 336,
+      "financial": 106,
       "infrastructure": 1
     },
-    "securityDefiner": 422
+    "securityDefiner": 412
   },
   "missingOnServer": [],
   "rpcs": {
@@ -155,46 +155,6 @@
       ],
       "risk": "normal"
     },
-    "approve_invoice_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_invoice_id uuid",
-          "returns": "invoices",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ],
-      "risk": "financial"
-    },
-    "approve_meter_reading_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_id uuid",
-          "returns": "meter_readings",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMeterReadings.ts"
-      ],
-      "risk": "normal"
-    },
     "approve_pending_income_expense_checked_v1": {
       "definitions": [
         {
@@ -272,26 +232,6 @@
         "src/hooks/useInvoices.ts"
       ],
       "risk": "financial"
-    },
-    "bulk_approve_meter_readings_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_ids uuid[]",
-          "returns": "integer",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMeterReadings.ts"
-      ],
-      "risk": "normal"
     },
     "business_performance_break_even_v1": {
       "definitions": [
@@ -715,26 +655,6 @@
       ],
       "risk": "normal"
     },
-    "cancel_reconciliation": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_id uuid",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useReconciliations.ts"
-      ],
-      "risk": "normal"
-    },
     "cancel_utility_bill": {
       "definitions": [
         {
@@ -1140,26 +1060,6 @@
       ],
       "callers": [
         "src/hooks/useContractExitCases.ts"
-      ],
-      "risk": "normal"
-    },
-    "confirm_reconciliation": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_id uuid",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useReconciliations.ts"
       ],
       "risk": "normal"
     },
@@ -1908,26 +1808,6 @@
       ],
       "risk": "normal"
     },
-    "decide_financial_request_v2": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_request_id uuid, p_decision text, p_reason text DEFAULT NULL::text",
-          "returns": "json",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useApprovals.ts"
-      ],
-      "risk": "normal"
-    },
     "decide_owned_income_expense_v2": {
       "definitions": [
         {
@@ -2551,25 +2431,6 @@
       ],
       "callers": [
         "src/hooks/useAcceptanceGeofence.ts"
-      ],
-      "risk": "normal"
-    },
-    "get_approval_request_detail_compat_v2": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_request_id uuid",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useApprovals.ts"
       ],
       "risk": "normal"
     },
@@ -7775,46 +7636,6 @@
       ],
       "risk": "normal"
     },
-    "unapprove_invoice_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_invoice_id uuid",
-          "returns": "invoices",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ],
-      "risk": "financial"
-    },
-    "unapprove_meter_reading_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_id uuid",
-          "returns": "meter_readings",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMeterReadings.ts"
-      ],
-      "risk": "normal"
-    },
     "unapprove_voucher": {
       "definitions": [
         {
@@ -8302,26 +8123,6 @@
       ],
       "callers": [
         "src/lib/rentSupportApi.ts"
-      ],
-      "risk": "normal"
-    },
-    "withdraw_financial_request_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_request_id uuid, p_reason text DEFAULT NULL::text",
-          "returns": "json",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useApprovals.ts"
       ],
       "risk": "normal"
     },

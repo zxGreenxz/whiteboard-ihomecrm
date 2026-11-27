@@ -1,14 +1,11 @@
 import { requireReadRows, requireReadRow, profitPersonRow, buildingShareRow, readString, readNullableString } from "@/lib/accountProfitReadModels";
-import { persistentFinancialWorkflow } from "@/lib/persistentFinancialWorkflow";
 import { requireProfitRows } from "@/lib/profitConfigurationReceipt";
 import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
 import { validateShareRows } from "@/lib/profitFeedback";
-import { useRef } from "react";
 import { FinancialAlreadyRecordedError, FinancialWorkflowError, RepeatableWriteUnknownError, workflowErrorMessage } from "@/lib/financialWorkflow";
 import { notifyActionError } from "@/lib/actionFeedback";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { taoTaiKhoanQuanTri } from "@/lib/edgeFunctions";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
@@ -243,35 +240,6 @@ export const useDeleteShareholder = () => {
   });
 };
 
-// Upsert 1 ô tỷ lệ (building × shareholder).
-export const useUpsertBuildingShare = () => {
-  const qc = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
-  return useMutation({
-    mutationFn: async (input: { building_id: string; shareholder_id: string; percent: number }) => {
-      const auth = { user: await getSessionUser() };
-      if (!auth.user) throw new Error("User not authenticated");
-      const { data, error } = await supabase
-        .from("building_shareholders" as any)
-        .upsert(
-          withOrg({
-            user_id: auth.user.id,
-            building_id: input.building_id,
-            shareholder_id: input.shareholder_id,
-            percent: input.percent,
-          }, selectedOrganizationId),
-          { onConflict: "building_id,shareholder_id" }
-        ).select('*');
-      if (error) throw error;
-      return requireProfitRows(data, [{...input, user_id: auth.user.id}]);
-    },
-    onError: (error) => notifyActionError(error, "Chưa lưu tỷ lệ cổ đông."),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["building-shareholders"] });
-    },
-  });
-};
-
 // Đồng bộ toàn bộ tỷ lệ tòa cho 1 cổ đông = danh sách rows truyền vào
 // (xoá tòa không còn, upsert tòa mới/đổi %).
 //
@@ -327,66 +295,5 @@ export const useSyncShareholderBuildings = () => {
       catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['building-shareholders'] }); },
-  });
-};
-
-export const useDeleteBuildingShare = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { building_id: string; shareholder_id: string }) => {
-      const { data, error } = await supabase.from('building_shareholders' as any).delete().eq('building_id', input.building_id).eq('shareholder_id', input.shareholder_id).select('id, building_id, shareholder_id');
-      if (error) throw error;
-      const rows = requireProfitRows(data);
-      if (!rows.length) return false;
-      requireProfitRows(rows, [input]);
-      return true;
-    },
-    onError: (error) => notifyActionError(error, "Chưa xóa tỷ lệ cổ đông."),
-    onSuccess: (changed) => {
-      qc.invalidateQueries({ queryKey: ["building-shareholders"] });
-      if (!changed) toast.info('Không có tỷ lệ cổ đông nào được xóa.');
-    },
-  });
-};
-
-// Tạo tài khoản đăng nhập cho cổ đông (edge admin-create-user) + gán auth_user_id.
-export const useCreateShareholderLogin = () => {
-  const qc = useQueryClient();
-  const workflow = useRef(persistentFinancialWorkflow('shareholder-account-link'));
-  return useMutation({
-    mutationFn: async (input: {
-      shareholder_id: string;
-      email: string;
-      password: string;
-      full_name?: string;
-    }) => workflow.current.run(input.shareholder_id, "tạo và gán tài khoản cổ đông", async (progress) => {
-      // Qua wrapper — xem `src/lib/edgeFunctions.ts`. Trước đây chỗ này và
-      // `useAdminUsers` gọi CÙNG một Edge Function với hai thân yêu cầu khác nhau
-      // và hai cách đọc phản hồi khác nhau, cả hai đều qua `as any`. Giờ hình dạng
-      // chỉ khai một lần.
-      const { id: newUserId } = await taoTaiKhoanQuanTri(
-        (fn, options) => supabase.functions.invoke(fn, options),
-        {
-          email: input.email,
-          password: input.password,
-          full_name: input.full_name ?? "",
-        },
-      );
-
-      progress.completed.push({id:newUserId,label:"Đã tạo tài khoản đăng nhập"});
-      progress.stage = "gán tài khoản cho cổ đông";
-      const { data: linked, error: upErr } = await supabase
-        .from("shareholders" as any)
-        .update({ auth_user_id: newUserId })
-        .eq("id", input.shareholder_id).select("id");
-      if (upErr) throw upErr;
-      requireProfitRows(linked, [{id: input.shareholder_id}]);
-      return { userId: newUserId };
-    }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["shareholders"] });
-      toast.success("Đã tạo tài khoản đăng nhập cho cổ đông");
-    },
-    onError: (error) => toast.error(workflowErrorMessage(error,"tạo tài khoản cổ đông"), {description:error instanceof FinancialWorkflowError ? error.completed.map(step=>`${step.label}: ${step.id}`).join("; ") : undefined}),
   });
 };

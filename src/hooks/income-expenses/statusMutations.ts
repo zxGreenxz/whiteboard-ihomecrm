@@ -2,7 +2,7 @@ import {useRef} from 'react';
 import { interveneCommission } from './commissionIntervention';
 type LifecycleInterventionInput = string | { id: string; reason?: string };
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {FinancialWorkflowError,workflowErrorMessage,type FinancialWorkflowGuard,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
+import {FinancialWorkflowError,workflowErrorMessage,type FinancialWorkflowGuard,type FinancialWorkflowProgress,type PendingSweepHandler} from '@/lib/financialWorkflow';
 import {BEFORE_STATE,beforeStateMeta,priorAttemptSettled,transitionVerdict,type FinancialPendingMeta,type FinancialPendingRecord,type PendingReconciliation} from '@/lib/financialPending';
 import { VoucherPartialError, voucherFailureMessage } from "@/lib/voucherFeedback";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -208,6 +208,13 @@ const reconcileVoucherTransition = (id:string,operation:string,reached:(row:Vouc
 };
 /** Đọc phiếu trước khi ghi dấu; không thấy phiếu thì dấu không mang chữ ký (lần bấm sau chỉ còn hộp cảnh báo). */
 const lifecycleMeta = async (id:string) => { const row=await readVoucherState(id); return row?beforeStateMeta(lifecycleSignature(row)):undefined; };
+// Tên thao tác và trạng thái đích của hai chuyển trạng thái mà quét nền khi mở app (đợt 11) cũng đối chiếu: lần bấm và quét
+// nền dùng CÙNG hằng này, để hai bên không thể kết luận khác nhau.
+const UNAPPROVE_OPERATION='bỏ duyệt phiếu';
+const unapproveReached=(row:VoucherState)=>row.approval_status==='UNAPPROVED';
+const RESTORE_OPERATION='khôi phục phiếu';
+const restoreReached=(row:VoucherState)=>row.approval_status==='APPROVED'||row.approval_status==='UNAPPROVED';
+const VERIFY_OPERATION='cập nhật trạng thái đã kiểm';
 
 // Duyệt phiếu thu/chi (UNAPPROVED → APPROVED). Dùng khi đã thực thanh toán
 // phiếu nháp (vd phiếu chi hoa hồng tạo cùng hợp đồng).
@@ -273,7 +280,7 @@ export const useUnapproveVoucher = () => {
       // Cách C: unapprove_voucher (production 25/11/2026) khoá phiếu nhưng KHÔNG xét trạng thái hiện tại (chạy lại lên
       // phiên bản thêm lần nữa), nên đối chiếu bằng trạng thái phiếu và chỉ gửi lại sau 2 phút.
       const meta=await lifecycleMeta(id);
-      return runVoucherLifecycle(workflow,id,'bỏ duyệt phiếu',async progress=>{
+      return runVoucherLifecycle(workflow,id,UNAPPROVE_OPERATION,async progress=>{
       if (typeof input !== 'string' && input.reason !== undefined) {
         const expected = await readApprovalVersion(id);
         await interveneCommission(id, 'UNAPPROVE', input.reason, { expected_approval_version: expected });
@@ -312,7 +319,7 @@ export const useUnapproveVoucher = () => {
       }
       await readStatusReceipt(id,'UNAPPROVED');completedVoucher(progress,id,`Đã bỏ duyệt phiếu ${id}`);
       return false;
-    },reconcileVoucherTransition(id,'bỏ duyệt phiếu',row=>row.approval_status==='UNAPPROVED'),meta);
+    },reconcileVoucherTransition(id,UNAPPROVE_OPERATION,unapproveReached),meta);
     },
     onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
@@ -619,7 +626,7 @@ export const useRestoreIncomeExpense = () => {
       // Cách C: restore_income_expense (production 25/11/2026) KHÔNG khoá dòng (đọc rồi mới cập nhật, tạo lại khoản thanh
       // toán khi thiếu), nên chỉ gửi lại khi lần trước chắc chắn đã kết thúc và phiếu vẫn còn Đã huỷ như lúc bấm.
       const meta=await lifecycleMeta(id);
-      return runVoucherLifecycle(workflow,id,'khôi phục phiếu',async progress=>{
+      return runVoucherLifecycle(workflow,id,RESTORE_OPERATION,async progress=>{
       if (typeof input !== 'string' && input.reason !== undefined) {
         await interveneCommission(id, 'RESTORE', input.reason, {});
       } else {
@@ -630,7 +637,7 @@ export const useRestoreIncomeExpense = () => {
       const receipt=await readStatusReceipt(id);
       if(!['UNAPPROVED','APPROVED'].includes(String(receipt.approval_status)))throw new TypeError('Chưa xác nhận trạng thái khôi phục phiếu.');
       completedVoucher(progress,id,`Đã khôi phục phiếu ${id}`);return receipt;
-    },reconcileVoucherTransition(id,'khôi phục phiếu',row=>row.approval_status==='APPROVED'||row.approval_status==='UNAPPROVED'),meta);
+    },reconcileVoucherTransition(id,RESTORE_OPERATION,restoreReached),meta);
     },
     onSuccess: (data, input) => {
       const id = typeof input === 'string' ? input : input.id;
@@ -660,6 +667,30 @@ export const useRestoreIncomeExpense = () => {
 
 /** Khoá trong `meta` của dấu «đã kiểm» bản đặt giá trị (đợt 10c): giá trị đã gửi. Dấu bản trước (bật/tắt) không có. */
 const VERIFY_TARGET = 'target_verified';
+const verifySignature=(row:VoucherState)=>row.verified_at??'chua-kiem';
+/**
+ * Đối chiếu một dấu «Đã kiểm», dùng chung cho lần bấm và quét nền khi mở app (đợt 11). `requested`: giá trị lần bấm này
+ * muốn đặt; quét nền không có lần bấm nên truyền `undefined`.
+ * - Dấu của bản đặt giá trị (`meta.target_verified`): máy chủ khoá rồi mới so ⇒ gửi lại CÙNG giá trị ngay không đổi hai
+ *   lần, không đảo ngược (`serverDedupesRequestKey`; quét nền vì thế KHÔNG gỡ dấu này — «chưa ghi» chỉ an toàn nhờ chính lần
+ *   gửi lại). Lần bấm mang giá trị KHÁC: chỉ gửi khi lệnh cũ chắc chắn đã xong (lõi chờ 2 phút với `not-written` không khai
+ *   trùng). Không đọc gì.
+ * - Dấu BẢN TRƯỚC (ghi khi còn bật/tắt, chỉ có chữ ký trạng thái lúc bấm): đọc trạng thái phiếu (cách C của đợt 5) — đã đổi
+ *   so với lúc bấm ⇒ lần trước đã ghi; như lúc bấm ⇒ chưa ghi (lõi chỉ nhận sau 2 phút); dấu không mang chữ ký ⇒ chưa kết luận.
+ */
+const reconcileVoucherVerify=(id:string,requested:boolean|undefined)=>async (pending:FinancialPendingRecord):Promise<PendingReconciliation<never>>=>{
+  const target=pending.meta?.[VERIFY_TARGET];
+  if(typeof target==='boolean'){
+    if(requested!==undefined&&target!==requested)return {outcome:'not-written'};
+    return {outcome:'not-written',serverDedupesRequestKey:true};
+  }
+  const row=await readVoucherState(id);
+  const before=pending.meta?.[BEFORE_STATE];
+  const flipped=!!row&&typeof before==='string'&&verifySignature(row)!==before;
+  return transitionVerdict<never>({pending,current:row&&verifySignature(row),reached:flipped,
+    onReached:()=>({outcome:'already-written',message:`Phiếu ${voucherName(row!)} đã ở trạng thái ${row!.verified_at?'Đã kiểm':'Chưa kiểm'} (lần gửi trước đã đổi, hoặc người khác vừa đổi). Không gửi lại để khỏi đảo ngược.`,recordIds:[voucherName(row!)]}),
+    otherMessage:'',recordIds:row?[voucherName(row)]:[]});
+};
 
 // Đánh dấu "đã kiểm" / bỏ kiểm phiếu thu/chi: gửi GIÁ TRỊ MUỐN ĐẶT (đợt 10c), không bật/tắt. Note rỗng → lưu NULL.
 export const useVerifyIncomeExpense = () => {
@@ -677,9 +708,8 @@ export const useVerifyIncomeExpense = () => {
       // Thiếu giá trị đặt thì `p_verified` rơi khỏi JSON và máy chủ chạy kiểu bật/tắt: từ chối ngay, trước khi ghi dấu.
       if(typeof input.verified!=='boolean')throw new FinancialWorkflowError('Thiếu trạng thái «Đã kiểm» cần đặt. Chưa gửi gì lên máy chủ.','failure',[]);
       const before=await readVoucherState(input.id);
-      const verifySignature=(row:VoucherState)=>row.verified_at??'chua-kiem';
       let resent=false;
-      const result=await runVoucherLifecycle(workflow,input.id,'cập nhật trạng thái đã kiểm',async progress=>{
+      const result=await runVoucherLifecycle(workflow,input.id,VERIFY_OPERATION,async progress=>{
         const {data,error}=await supabase.rpc("verify_income_expense_v1",{
           p_id: input.id,
           p_note: input.note ?? undefined,
@@ -700,19 +730,10 @@ export const useVerifyIncomeExpense = () => {
         completedVoucher(progress,input.id,`Đã cập nhật trạng thái đã kiểm phiếu ${input.id}`);
         return {...status,changed:receipt.changed};
       },async pending=>{
-        // Dấu của bản đặt giá trị: máy chủ khoá rồi mới so ⇒ gửi lại CÙNG giá trị ngay không đổi hai lần, không đảo ngược.
-        // Giá trị khác lần trước: chỉ gửi khi lệnh cũ chắc chắn đã xong (lõi chờ 2 phút với `not-written` không khai trùng).
-        const target=pending.meta?.[VERIFY_TARGET];
-        if(typeof target==='boolean'){
-          if(target!==input.verified)return {outcome:'not-written'};
-          resent=true;return {outcome:'not-written',serverDedupesRequestKey:true};
-        }
-        const row=await readVoucherState(input.id);
-        const before=pending.meta?.[BEFORE_STATE];
-        const flipped=!!row&&typeof before==='string'&&verifySignature(row)!==before;
-        return transitionVerdict({pending,current:row&&verifySignature(row),reached:flipped,
-          onReached:()=>({outcome:'already-written',message:`Phiếu ${voucherName(row!)} đã ở trạng thái ${row!.verified_at?'Đã kiểm':'Chưa kiểm'} (lần gửi trước đã đổi, hoặc người khác vừa đổi). Không gửi lại để khỏi đảo ngược.`,recordIds:[voucherName(row!)]}),
-          otherMessage:'',recordIds:row?[voucherName(row)]:[]});
+        const verdict=await reconcileVoucherVerify(input.id,input.verified)(pending);
+        // Gửi lại cùng giá trị ngay: câu báo nói rõ là lần gửi lại (máy chủ không đổi hai lần).
+        if(verdict&&'outcome' in verdict&&verdict.outcome==='not-written'&&verdict.serverDedupesRequestKey)resent=true;
+        return verdict;
       },before?beforeStateMeta(verifySignature(before),{[VERIFY_TARGET]:input.verified}):{[VERIFY_TARGET]:input.verified});
       return resent?{...result,resent:true}:result;
     },
@@ -743,4 +764,16 @@ export const useVerifyIncomeExpense = () => {
       else toast.error(voucherFailureMessage(error,"cập nhật trạng thái đã kiểm"));
     },
   });
+};
+
+const VOUCHER_SWEEP_KEYS=['commission-interventions','income-expenses','income-expense-batches','voucher-with-batch','income-expense','accounts-with-balance','invoices','invoice','payments','invoice-statistics'] as const;
+/**
+ * Quét nền khi mở app (đợt 11, `src/lib/pendingSweep.ts`): ba chuyển trạng thái phiếu có hàm đối chiếu CHỈ ĐỌC dựng được từ
+ * dấu (khoá nghiệp vụ = mã phiếu, phạm vi `actor`). Đúng hàm lần bấm dùng. Duyệt (luôn gửi lại ngay) và huỷ (hàm đối chiếu
+ * có bước ghi tiếp) không đăng ký.
+ */
+export const VOUCHER_PENDING_SWEEP:Readonly<Record<string,PendingSweepHandler>>={
+  'voucher-unapprove':{scope:'actor',invalidate:VOUCHER_SWEEP_KEYS,reconcile:pending=>reconcileVoucherTransition(pending.businessKey,UNAPPROVE_OPERATION,unapproveReached)(pending)},
+  'voucher-restore':{scope:'actor',invalidate:VOUCHER_SWEEP_KEYS,reconcile:pending=>reconcileVoucherTransition(pending.businessKey,RESTORE_OPERATION,restoreReached)(pending)},
+  'voucher-verify':{scope:'actor',invalidate:VOUCHER_SWEEP_KEYS,reconcile:pending=>reconcileVoucherVerify(pending.businessKey,undefined)(pending)},
 };

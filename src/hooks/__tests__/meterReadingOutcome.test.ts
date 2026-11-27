@@ -8,7 +8,7 @@ vi.mock('@/lib/authSession', () => ({ getSessionUser: vi.fn().mockResolvedValue(
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-1' }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
 import { MeterReadingsRejectedError } from '@/lib/meterReadingRpc';
-import { useImportMeterReadings,useMeterReadingsList, useMeterReadingStats, useCreateMeterReading, useBulkCreateMeterReadings, useUpdateMeterReading, useDeleteMeterReading, useBulkDeleteMeterReadings, useApproveMeterReading, useBulkApproveMeterReadings, useUnapproveMeterReading } from '../useMeterReadings';
+import { useImportMeterReadings,useMeterReadingsList, useMeterReadingStats, useBulkCreateMeterReadings, useUpdateMeterReading, useDeleteMeterReading, useBulkDeleteMeterReadings } from '../useMeterReadings';
 
 beforeEach(()=>{localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org-1');});
 afterEach(() => { io.from.mockReset(); io.rpc.mockReset(); });
@@ -60,8 +60,8 @@ it.each([{ data: null, error: null }, { data: null, error: { message: 'offline' 
   await expect((useMeterReadingStats() as unknown as { queryFn: () => Promise<unknown> }).queryFn()).rejects.toThrow();
 });
 
+// Đợt 11: đã gỡ dòng «tạo» (useCreateMeterReading đã xoá: không còn nơi gọi).
 it.each([
-  ['tạo', useCreateMeterReading, { meter_id: 'meter-1', reading_date: '2026-09-30', current_reading: 1 }],
   ['sửa', useUpdateMeterReading, { id: 'reading-1', current_reading: 2 }],
 ])('%s chỉ số không success nếu server không trả hàng', async (_label, hook, input) => {
   const chain = { insert: vi.fn(), update: vi.fn(), eq: vi.fn(), select: vi.fn(), single: vi.fn().mockResolvedValue({ data: null, error: null }) };
@@ -87,28 +87,8 @@ it('bulk create/delete không nhận kết quả null như 0 hàng thành công'
   await expect((useBulkDeleteMeterReadings() as unknown as { mutationFn: (x: string[]) => Promise<unknown> }).mutationFn(['reading-1'])).rejects.toThrow('Chưa xác nhận');
 });
 
-it('bulk duyệt không chuyển RPC null thành đã duyệt 0', async () => {
-  io.rpc.mockResolvedValue({ data: null, error: null });
-  await expect((useBulkApproveMeterReadings() as unknown as { mutationFn: (x: string[]) => Promise<unknown> }).mutationFn(['reading-1'])).rejects.toThrow('Chưa xác nhận');
-});
-
-it.each([['duyệt', useApproveMeterReading], ['bỏ duyệt', useUnapproveMeterReading]])('%s một chỉ số cần ID và trạng thái được server xác nhận', async (_label, hook) => {
-  io.rpc.mockResolvedValue({ data: null, error: null });
-  await expect((hook() as unknown as { mutationFn: (id: string) => Promise<unknown> }).mutationFn('reading-1')).rejects.toThrow('Chưa xác nhận');
-});
-
-it('bulk duyệt một phần chỉ cảnh báo đúng số đã duyệt', async () => {
-  io.rpc.mockResolvedValue({ data: 1, error: null });
-  const hook = useBulkApproveMeterReadings() as unknown as { mutationFn: (ids: string[]) => Promise<number>; onSuccess: (count: number, ids: string[]) => void };
-  const count = await hook.mutationFn(['reading-1', 'reading-2']);
-  hook.onSuccess(count, ['reading-1', 'reading-2']);
-  const { toast } = await import('sonner');
-  expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining('1/2'));
-  expect(toast.success).not.toHaveBeenCalled();
-});
-
-it.each([['single',useCreateMeterReading,{meter_id:'m1',reading_date:'2026-09-30',current_reading:1}]])('unknown %s create holds across remount',async(_name,hook,input)=>{const writer={insert:vi.fn(),select:vi.fn(),single:vi.fn().mockResolvedValue({data:null,error:null}),then:(resolve:(v:unknown)=>void)=>resolve({data:null,error:null})};writer.insert.mockReturnValue(writer);writer.select.mockReturnValue(writer);io.from.mockReturnValue(writer);const useReadingsResult=()=>(hook() as unknown as {mutationFn:(x:unknown)=>Promise<unknown>}).mutationFn(input);await expect(useReadingsResult()).rejects.toThrow();await expect(useReadingsResult()).rejects.toThrow();expect(writer.insert).toHaveBeenCalledTimes(1);});
 // Đợt 9: nhập chỉ số đi qua record_meter_readings_v2 theo nhóm toà + ngày chốt. Biên nhận chưa rõ ⇒ lần sau gửi lại ĐÚNG mã
 // chống trùng của nhóm (không khoá); hàm ghi trả lại kết quả đã chốt.
 it('unknown import: lần sau gửi lại đúng mã của nhóm, không khoá; hàm ghi trả kết quả đã chốt',async()=>{const meters={select:vi.fn(),eq:vi.fn(),in:vi.fn(),is:vi.fn(),then:(resolve:(value:unknown)=>void)=>resolve({data:[{id:M1,code:'M1',building_id:B1}],error:null})};meters.select.mockReturnValue(meters);meters.eq.mockReturnValue(meters);meters.in.mockReturnValue(meters);meters.is.mockReturnValue(meters);io.from.mockReturnValue(meters);io.rpc.mockResolvedValueOnce({data:{created:[{reading_id:'r1'}]},error:null}).mockResolvedValueOnce({data:written,error:null});const input={readings:[{meter_code:'M1',reading_date:'2026-10-22',current_reading:1234}]};const useReadingsResult=()=>(useImportMeterReadings() as unknown as {mutationFn:(x:unknown)=>Promise<unknown>}).mutationFn(input);await expect(useReadingsResult()).rejects.toThrow('Chưa xác nhận');await expect(useReadingsResult()).resolves.toEqual([{reading_id:R1,reading_code:'CSS261000001',success:true,error_message:null}]);const keys=io.rpc.mock.calls.map(([name,args])=>[name,(args as {p_idempotency_key:string}).p_idempotency_key]);expect(keys[0][0]).toBe('record_meter_readings_v2');expect(keys[1]).toEqual(keys[0]);});
-it('NaN reading is rejected before the insert',async()=>{const writer={insert:vi.fn(),select:vi.fn(),single:vi.fn().mockResolvedValue({data:{id:'r1'},error:null})};writer.insert.mockReturnValue(writer);writer.select.mockReturnValue(writer);io.from.mockReturnValue(writer);await expect((useCreateMeterReading() as unknown as {mutationFn:(x:unknown)=>Promise<unknown>}).mutationFn({meter_id:'m1',reading_date:'2026-09-30',current_reading:NaN})).rejects.toThrow();expect(writer.insert).not.toHaveBeenCalled();});
+// Đợt 11: hàng rào này trước đây chạy trên useCreateMeterReading (đã xoá); nay chạy trên sửa chỉ số, cùng phép kiểm.
+it('NaN reading is rejected before the write',async()=>{const writer={update:vi.fn(),eq:vi.fn(),select:vi.fn(),single:vi.fn().mockResolvedValue({data:{id:'r1'},error:null})};writer.update.mockReturnValue(writer);writer.eq.mockReturnValue(writer);writer.select.mockReturnValue(writer);io.from.mockReturnValue(writer);await expect((useUpdateMeterReading() as unknown as {mutationFn:(x:unknown)=>Promise<unknown>}).mutationFn({id:'r1',current_reading:NaN})).rejects.toThrow();expect(writer.update).not.toHaveBeenCalled();});

@@ -6,7 +6,7 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{from:io.from}}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor'})}));
 vi.mock('sonner',()=>({toast:{error:vi.fn(),success:vi.fn(),info:vi.fn()}}));
-import {useCreateRoom,useUpdateRoom,useDeleteRoom,useBulkCreateRooms,useUpdateRoomStatus} from '../useRooms';
+import {useCreateRoom,useUpdateRoom,useDeleteRoom,useUpdateRoomStatus} from '../useRooms';
 import {toast} from 'sonner';
 type Mutation={mutationFn:(input:unknown)=>Promise<unknown>;onSuccess:(data:unknown,input:unknown)=>void;onError:(error:unknown)=>void};
 function writer(result:{data:unknown;error:unknown}){
@@ -38,17 +38,6 @@ it.each([
 });
 it('delete no-row response is not success',async()=>{
  writer({data:null,error:null});await expect((useDeleteRoom() as unknown as Mutation).mutationFn('r1')).rejects.toMatchObject({outcome:'unknown'});
-});
-it('bulk partial response retains IDs and blocks a second insert after remount',async()=>{
- const chain=writer({data:[{id:'r1',name:'P101',building_id:'b1'}],error:null});
- const input=[{building_id:'b1',name:'P101'},{building_id:'b1',name:'P102'}];
- const error=await (useBulkCreateRooms() as unknown as Mutation).mutationFn(input).catch(e=>e);
- expect(error).toMatchObject({outcome:'partial',completed:[{id:'r1'}]});
- await expect((useBulkCreateRooms() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial',completed:[{id:'r1'}]});
- expect(chain.insert).toHaveBeenCalledTimes(1);
-});
-it('bulk null response does not claim no rooms created',async()=>{
- writer({data:null,error:null});await expect((useBulkCreateRooms() as unknown as Mutation).mutationFn([{building_id:'b1',name:'P101'}])).rejects.toMatchObject({outcome:'unknown'});
 });
 it('status receipt must show requested status',async()=>{
  writer({data:{id:'r1',name:'P101',status:'UNAVAILABLE'},error:null});

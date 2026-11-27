@@ -1,4 +1,3 @@
-import {useState,useRef} from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -37,9 +36,7 @@ interface AssetMaintenanceDialogProps {
 }
 
 export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceDialogProps) {
-  const [failure,setFailure]=useState<unknown>();
   // Đợt 9 (luật 5): tạo phiếu bảo trì dùng mã do trình duyệt sinh, bấm lại gửi đúng mã cũ nên kết quả chưa rõ không khoá hộp.
-  const draftKey=useRef<string|null>(null);
   const createMaintenance = useCreateAssetMaintenance();
   // CHƯA GATE: useAssets chưa nhận `enabled` (hook thuộc plan con E). Dialog
   // này mount sẵn nên danh sách tài sản vẫn được kéo lúc vào trang.
@@ -105,7 +102,6 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);
       console.error("Failed to create maintenance:", error);
       form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo phiếu bảo trì') });
     }
