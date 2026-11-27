@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('zca-js', () => ({ ThreadType: { User: 0, Group: 1 } }));
 const state = vi.hoisted(() => ({
   sessions: new Map(), writes: [], calls: [], status: 'connected', persistError: null,
-  claimAllowed: true, fenceAllowed: true, autoAllowed: true,
+  claimAllowed: true, fenceAllowed: true, autoAllowed: true, automationResults: [],
   echoFirst: false, queueExists: true, priorJobs: [],
   forwardSource: null, beforeAdmissionReturns: null, threadType: 'user',
 }));
@@ -36,6 +36,7 @@ vi.mock('../lib/ctx.js', () => ({
         update: value => { patch = value; state.writes.push({ table, patch, filters }); return q; },
         delete: () => { deleting = true; return q; }, select: () => q,
         eq: (column, value) => { filters.push([column, value]); return q; },
+        is: (column, value) => { filters.push([column, value]); return q; },
         lt: (column, value) => { filters.push([column, value]); return q; },
         like: (column, value) => { filters.push([column, value]); return q; },
         neq: (column, value) => { filters.push([column, value]); return q; },
@@ -60,8 +61,8 @@ vi.mock('../lib/scope-guard.js', () => ({
   validateZaloCommandScope: async () => ({ ok: true, account: { status: state.status, user_id: 'owner' }, conv: { thread_id: 'thread', thread_type: state.threadType } }),
   formatScopeRejection: value => value.reason, logScopeRejection: vi.fn(), clampHistoryCount: value => value,
 }));
-vi.mock('../lib/automation-delivery.js', () => ({ validateAutomationDelivery: async () => state.autoAllowed
-  ? { ok: true } : { ok: false, reason: 'CANCELLED_AUTOMATION' } }));
+vi.mock('../lib/automation-delivery.js', () => ({ validateAutomationDelivery: async () => state.automationResults.shift()
+  ?? (state.autoAllowed ? { ok: true } : { ok: false, reason: 'CANCELLED_AUTOMATION' }) }));
 import { syncAccountGroups } from '../lib/inbound.js';
 import { processJob, recoverInterruptedJobs } from '../lib/queue.js';
 
@@ -73,6 +74,7 @@ const connect = () => {
 };
 beforeEach(() => {
   state.priorJobs = [];
+  state.automationResults = [];
   state.sessions.clear(); state.writes.length = 0; state.calls.length = 0;
   state.status = 'connected'; state.persistError = null;
   state.claimAllowed = true; state.fenceAllowed = true; state.autoAllowed = true;
@@ -151,6 +153,30 @@ describe('queue admission and delivery outcomes', () => {
     const content=api.sendMessage.mock.calls[0][0];
     if (status==='sent') expect(content.mentions).toEqual([{pos:text.length-4,uid:'-1',len:4}]);
     else expect(content).toEqual({msg:'Link danh sách'});
+  });
+  it('tag all ngay tại đầu tin Lock độc lập trong nhóm', async () => {
+    state.threadType = 'group';
+    const api = connect();
+    const body = '@all Lock 201 – Tòa Sen';
+    await processJob(makeJob({ tu_dong: true, automation_request_key: 'room-lock:room:123:conv', body }));
+    expect(api.sendMessage).toHaveBeenCalledWith({ msg: body, mentions: [{ pos: 0, uid: '-1', len: 4 }] }, 'thread', 1);
+  });
+  it.each([false, true])('thử lại tin Lock sau lỗi đọc trước khi gọi Zalo (đã claim=%s)', async claimed => {
+    const api = connect();
+    if (claimed) state.automationResults.push({ ok: true });
+    state.automationResults.push({ ok: false, reason: 'AUTOMATION_UNVERIFIED: offline' });
+    const job = makeJob({ tu_dong: true, automation_request_key: 'room-lock:r:100:conv', body: '@all Lock 201 – Tòa Sen' });
+    await processJob(job);
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0].patch).toMatchObject({ not_before: expect.any(String) });
+    expect(state.writes[0].patch.status).not.toBe('failed');
+    if (claimed) {
+      expect(state.writes[0].patch.status).toBe('queued');
+      expect(state.writes[0].filters).toEqual(expect.arrayContaining([['processing_instance_id', 'instance'], ['provider_started_at', null]]));
+    }
+    await processJob(job);
+    expect(api.sendMessage).toHaveBeenCalledOnce();
   });
   it.each([
     ['album', ['failed'], 'failed'],

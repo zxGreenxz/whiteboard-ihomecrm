@@ -24,6 +24,7 @@ import { sendForwardMediaJob } from './forward-media.js';
 import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clampHistoryCount } from './scope-guard.js';
 import { INSTANCE_ID } from './lease.js';
 import { validateAutomationDelivery } from './automation-delivery.js';
+import { lockNoticeKey } from './room-lock-notice.js';
 import { finalizeSend, sendReceipt } from './send-finalization.js';
 import { deliverSaleAdvice } from './sale-advice-channel.js';
 
@@ -51,10 +52,13 @@ async function jobFail(job, message, { claimed = true, unknown = false, receiptI
   }
 }
 
-async function deferJob(job, reason) {
-  const { error } = await sb.from('zalo_send_queue').update({
+async function deferJob(job, reason, claimed = false) {
+  let query = sb.from('zalo_send_queue').update({
     not_before: new Date(Date.now() + 15_000).toISOString(), last_error: reason,
-  }).eq('id', job.id).eq('status', 'queued');
+    ...(claimed ? { status: 'queued', processing_instance_id: null, processing_started_at: null } : {}),
+  }).eq('id', job.id).eq('status', claimed ? 'processing' : 'queued');
+  if (claimed) query = query.eq('processing_instance_id', INSTANCE_ID).is('provider_started_at', null);
+  const { error } = await query;
   if (error) log('deferJob', job.id, error.message);
 }
 
@@ -166,6 +170,9 @@ async function sendText(s, job, p, threadId, type) {
       .filter((m) => m && m.uid)
       .map((m) => ({ pos: Number(m.pos) || 0, uid: String(m.uid), len: Number(m.len) || 0 }));
   }
+  if (type === ThreadType.Group && lockNoticeKey(p) && content.msg.startsWith('@all ')) {
+    content.mentions = [{ pos: 0, uid: '-1', len: 4 }];
+  }
   if (p.tu_dong === true && type === ThreadType.Group && p.automation_request_key?.endsWith(':link')
       && /(?:^|\n)@all$/.test(content.msg)) {
     const prefix = p.automation_request_key.slice(0, -4);
@@ -265,7 +272,11 @@ export async function processJob(job) {
       return;
     }
     const automation = await validateAutomationDelivery(job);
-    if (!automation.ok) { await jobFail(job, automation.reason, { claimed: false }); return; }
+    if (!automation.ok) {
+      if (lockNoticeKey(job.payload) && automation.reason.startsWith('AUTOMATION_UNVERIFIED:')) await deferJob(job, automation.reason);
+      else await jobFail(job, automation.reason, { claimed: false });
+      return;
+    }
     if (!await roomPartReady(job)) return;
     const { data: claim, error: claimError } = await sb.rpc('zalo_worker_claim_job_v1', { p_job_id: job.id, p_instance_id: INSTANCE_ID });
     if (claimError) throw new Error(claimError.message);
@@ -329,6 +340,10 @@ export async function processJob(job) {
     }
   } catch (e) {
     log('job error', job.id, e?.message || e);
+    if (claimed && !delivery.started && lockNoticeKey(job.payload) && e?.message?.startsWith('AUTOMATION_UNVERIFIED:')) {
+      await deferJob(job, e.message, true);
+      return;
+    }
     const unknown = delivery.started && job.payload?.action !== 'sync_groups';
     if (claimed) await jobFail(job, `${unknown ? 'UNKNOWN_EFFECT: cần đối soát, không tự gửi lại. ' : ''}${e?.message || e}`, {
       claimed, unknown, receiptIds: delivery.receiptIds,

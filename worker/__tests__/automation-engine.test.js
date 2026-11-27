@@ -33,6 +33,7 @@ let oneshotCalls = [];
 let oneshotClaimError = null;
 let locCapNhat = [];
 let finishResult = null;
+let roomsForLock = [];
 
 /** Query builder giả — đủ chuỗi phương thức mà engine dùng, không hơn. */
 function taoQuery(bang) {
@@ -41,9 +42,17 @@ function taoQuery(bang) {
     select: () => q,
     eq: (c, v) => { ctx.loc[c] = v; return q; },
     in: () => q,
+    is: (c, v) => { ctx.loc[c] = v; return q; },
     order: () => q,
     limit: () => q,
-    maybeSingle: () => Promise.resolve({ data: bang === 'zalo_automations' ? structuredClone(duLieuAutomations[0] ?? null) : null, error: null }),
+    maybeSingle: () => {
+      if (bang === 'rooms') {
+        expect(ctx.loc).toEqual({ id: expect.any(String), organization_id: 'org-1', deleted_at: null,
+          'building.organization_id': 'org-1', 'building.deleted_at': null, 'building.is_virtual': false });
+        return Promise.resolve({ data: roomsForLock.find(room => room.id === ctx.loc.id) ?? null, error: null });
+      }
+      return Promise.resolve({ data: bang === 'zalo_automations' ? structuredClone(duLieuAutomations[0] ?? null) : null, error: null });
+    },
     single: () => Promise.resolve({ data: null, error: null }),
     then: (res) => Promise.resolve(ketQua(ctx)).then(res),
   };
@@ -203,7 +212,7 @@ function datCauHinh(over = {}, stats = {}) {
       antiSpam: { gapBetweenRecipientsSec: 180, gapBetweenRoomMsgsSec: 20, dailyCap: 120, maxRoomsPerRun: 5 },
       ...over,
     },
-    stats,
+    stats: { roomLockWatch: phongGia.map(room => ({ id: room.id, since: THU_HAI_0830.getTime() })), ...stats },
   }];
 }
 
@@ -215,6 +224,7 @@ beforeEach(() => {
   hermesRun = () => ({ data: { status: 'already_run' }, error: null });
   hermesSweep = SWEEP_OK; hermesProbe = () => ({ data: { status: 'healthy' }, error: null });
   workerLogs = [];
+  roomsForLock = [];
   rpcFailureFor = () => null;
   uploadError = null;
   tableInputs = [];
@@ -231,6 +241,57 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 /* -------------------------------------------------------------------- test */
 
 describe('engine broadcast — xếp hàng', () => {
+  it('báo từng lần phòng đang đăng bị lock, kể cả phòng cuối và khi nhóm rớt phiên', async () => {
+    phongGia.splice(1);
+    roomsForLock = [{ id: 'r1', code: 'P.201', building: { name: 'Tòa Sen' } }];
+    duLieuConversations = [conv('c1'), conv('c2', 'acc-2'), { ...conv('private'), thread_type: 'user' }];
+    datCauHinh({ recipients: ['c1', 'c2', 'private'], eventDriven: { enabled: false } },
+      { lastScheduledDate: '2026-08-31', roomLockWatch: undefined });
+    async function tick(minute) {
+      vi.setSystemTime(new Date(THU_HAI_0830.getTime() + minute * 60000));
+      await tickTuDongHoa();
+      duLieuAutomations[0].stats = structuredClone(capNhatAutomations.at(-1).stats);
+    }
+    await tick(0);
+    expect(rpcCalls).toHaveLength(0);
+    phongGia.length = 0;
+    await tick(1);
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0].args).toMatchObject({ p_conversation_id: 'c1', p_body: '@all Lock P.201 – Tòa Sen', p_attachment: null });
+    phienDangSong.set('acc-2', {});
+    await tick(2);
+    await tick(3);
+    expect(rpcCalls.map(c => c.args.p_conversation_id)).toEqual(['c1', 'c2']);
+    expect(duLieuAutomations[0].stats.sentToday).toBe(2);
+    const firstCycle = duLieuAutomations[0].stats.roomLockWatch[0];
+    expect(firstCycle).toMatchObject({ id: 'r1', since: THU_HAI_0830.getTime(), pending: [], completedOn: '2026-08-31' });
+    phongGia.push(phong('r1'));
+    await tick(8);
+    expect(duLieuAutomations[0].stats.roomLockWatch[0].since).toBeGreaterThan(firstCycle.since);
+    phongGia.length = 0;
+    await tick(9);
+    expect(rpcCalls.map(c => c.args.p_conversation_id)).toEqual(['c1', 'c2', 'c1', 'c2']);
+    expect(new Set(rpcCalls.map(c => c.args.p_request_key)).size).toBe(4);
+  });
+
+  it('giữ khóa gửi ổn định khi enqueue lỗi, bỏ thông báo khi gỡ link hoặc xóa phòng', async () => {
+    datCauHinh({}, { lastScheduledDate: '2026-08-31' });
+    roomsForLock = [{ id: 'r1', code: '101', building: { name: 'Tòa Sen' } }];
+    phongGia.length = 0;
+    rpcError = { message: 'timeout' };
+    await tickTuDongHoa();
+    const keys = rpcCalls.map(c => c.args.p_request_key);
+    expect(keys).toHaveLength(2);
+    expect(keys.every(key => key.startsWith('room-lock:r1:'))).toBe(true);
+    duLieuAutomations[0].stats = structuredClone(capNhatAutomations.at(-1).stats);
+    rpcCalls = [];
+    await tickTuDongHoa();
+    expect(rpcCalls.map(c => c.args.p_request_key)).toEqual(keys);
+    rpcCalls = []; rpcError = null; trangSaleGia = 0;
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(0);
+    expect(capNhatAutomations.at(-1).stats.roomLockWatch).toEqual([]);
+  });
   it('runs each slot once, queues close slots in order, and shares the daily quota', async () => {
     datCauHinh({ schedule: { time: '08:30', extraTimes: ['08:31', '09:10'], days: { mon: 'compact' }, skipIfUnchanged: false },
       antiSpam: { dailyCap: 8, gapBetweenRecipientsSec: 180, gapBetweenRoomMsgsSec: 5 } });
@@ -471,7 +532,7 @@ describe('engine broadcast — xếp hàng', () => {
     await tickTuDongHoa();
     const firstKeys = rpcCalls.map(call => call.args.p_request_key);
     expect(capNhatAutomations).toHaveLength(0);
-    expect(duLieuAutomations[0].stats).toEqual(previous);
+    expect(duLieuAutomations[0].stats).toMatchObject(previous);
     expect(daChen.runs[0]).toMatchObject({ mode: 'failed', detail: { retry_pending: true } });
     rpcError = null; rpcCalls = [];
     await tickTuDongHoa();
