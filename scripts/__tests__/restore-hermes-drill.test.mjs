@@ -20,6 +20,7 @@ async function database(run) {
     await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
       CREATE SCHEMA app_private;
       CREATE TABLE public.zalo_send_queue(id uuid); CREATE TABLE public.zalo_conversations(id uuid);
+      CREATE TABLE public.zalo_messages(id uuid);
       CREATE TABLE public.zalo_automations(id uuid);
       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated, anon, service_role;
       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO authenticated, anon, service_role;`);
@@ -90,6 +91,8 @@ test('catalog witnesses detect body, ACL, owner, volatility, search path, RLS an
     'ALTER TABLE public.zalo_worker_lease DROP CONSTRAINT zalo_worker_lease_id_check',
     'ALTER TABLE public.zalo_conversations ALTER COLUMN is_sale_partner SET DEFAULT true',
     'ALTER TABLE public.zalo_send_queue ALTER COLUMN result SET NOT NULL',
+    'ALTER TABLE public.zalo_messages ALTER COLUMN zalo_raw TYPE text',
+    "ALTER TABLE public.zalo_messages ALTER COLUMN zalo_raw SET DEFAULT '{}'::jsonb",
     "ALTER TABLE public.zalo_send_queue ALTER COLUMN result SET DEFAULT '{}'::jsonb",
     "INSERT INTO public.zalo_worker_lease(instance_id) VALUES ('00000000-0000-0000-0000-000000000001')",
   ];

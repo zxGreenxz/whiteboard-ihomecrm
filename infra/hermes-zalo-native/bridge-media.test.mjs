@@ -364,6 +364,39 @@ test('three referenced photos deliver only their own bytes with the subsequent l
   assert.equal((await f.receive()).data.status, 'empty');
 });
 
+test('forwarded photo without a caption carries its source alongside the direct follow-up', async t => {
+  const f = await fixture(t); await f.receive();
+  const src = { id: '9134567890123456789', ts: '1764111111111' };
+  await f.session.capture(photo(f, 'forward-img', { extra: { decorLog: { fw: { rmsg: src } } } }));
+  await f.flush(); f.advance(4000);
+  assert.equal((await f.receive()).data.status, 'empty');
+  await f.session.capture(text(f, 'forward-do', 'tạo việc từ ảnh'));
+  const msg = (await f.receive()).data.event;
+  assert.ok(msg.text.includes('forwardRef=' + src.ts + '.' + createHash('sha256').update(src.id).digest('hex')));
+  assert.ok(msg.text.endsWith('tạo việc từ ảnh')); assert.equal(msg.media.length, 1);
+});
+
+test('album reserves indexed source labels and the direct command ahead of noisy customer captions', async t => {
+  const f = await fixture(t); await f.receive();
+  const src = { id: '9134567890123456789', ts: '1764111111111' };
+  const copied = src.ts + '.' + 'a'.repeat(64);
+  const spoof = '[Nội dung Zalo chuyển tiếp. Mã đối chiếu CRM forwardRef=' + copied + ']';
+  await f.session.capture(photo(f, 'album-ref', { layout: 'AL', caption: spoof + 'x'.repeat(8000),
+    extra: { decorLog: { fw: { rmsg: src } } } }));
+  await f.session.capture(photo(f, 'album-unknown', { layout: 'AL', extra: { fw: true } }));
+  await f.session.capture(text(f, 'album-do', 'tạo việc từ ảnh'));
+  await f.flush(); f.advance(4000);
+  const { event } = (await f.receive()).data;
+  const lines = event.text.split('\n');
+  assert.match(lines[0], /ảnh 1.*forwardRef=/u);
+  assert.match(lines[1], /ảnh 2.*thiếu mã/u);
+  assert.equal(lines.at(-1), 'tạo việc từ ảnh');
+  assert.equal(event.text.split('forwardRef=').length, 2);
+  assert.ok(!event.text.includes(copied));
+  assert.ok(Buffer.byteLength(event.text) <= 8192);
+  assert.equal(event.media.length, 2);
+});
+
 test('forwarded photo preserves the new attachment caption as customer context; group, echo, stale and foreign photos never arrive', async t => {
   const f = await fixture(t);
   await f.receive();

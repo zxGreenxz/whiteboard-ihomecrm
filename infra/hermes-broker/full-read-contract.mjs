@@ -212,10 +212,42 @@ const REPORT_READS = Object.freeze({
   // invalid_request + hint (read-misuse-hints.mjs).
   pending_approvals: reportDefine('pending_approvals', `Chỉ "việc chờ TÔI duyệt"; phiếu chờ duyệt: income_expenses. Không lọc toà; phiếu (cả theo toà): crm_read_income_expenses status=UNAPPROVED. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: query('Mã/tên phiếu hoặc người lập.'), limit: LIMIT, offset: OFFSET }),
-  zalo_conversations: reportDefine('zalo_conversations', `Hội thoại Zalo của công ty như Chat Zalo (cần quyền Chat Zalo toàn công ty): người nhắn, SĐT, phòng/toà, chưa đọc, ghim, tin cuối ≤160 ký tự; query theo tên/SĐT/nhãn. ${PRIVATE_HINT} ${ORG_ONLY}`,
+  zalo_conversations: reportDefine('zalo_conversations', `Chat Zalo toàn công ty: người nhắn, SĐT, phòng/toà, chưa đọc, ghim, tin cuối ≤160 ký tự. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: query('Tên, SĐT hoặc nhãn; không khớp phòng.'), limit: LIMIT, offset: OFFSET }),
   contract_search: reportDefine('contract_search', `Tìm hợp đồng như danh sách Hợp đồng: query số HĐ/tên phòng/tên-SĐT khách; status ACTIVE (trừ đã thanh lý), TERMINATED, EXPIRING (≤30 ngày), EXPIRED; displayLabel như web. Tên khách chỉ khi có quyền khách hàng ở mọi toà của kết quả. Chi tiết: crm_read_contract_detail. ${PRIVATE_HINT}`,
     { status: { enum: [null, 'ACTIVE', 'TERMINATED', 'EXPIRING', 'EXPIRED'] }, buildingId: BUILDING, query: query('Số HĐ, tên phòng, tên/SĐT khách.'), limit: LIMIT, offset: OFFSET }),
+});
+
+// The ordinary conversation list keeps its original input, SQL and projection.
+// The source-message lookup has a closed input and never returns chat bodies.
+const zaloList = REPORT_READS.zalo_conversations;
+const forwardPattern = '^[1-9][0-9]{12}\\.[a-f0-9]{64}$';
+const forwardedRoom = { buildingId: id, buildingName: longText(200), roomId: id, roomName: longText(100) };
+const zaloWithSource = Object.freeze({
+  ...zaloList,
+  inputSchema: { ...zaloList.inputSchema, properties: { ...zaloList.inputSchema.properties,
+    forwardRef: { type: 'string', pattern: forwardPattern, description: 'Dùng riêng để tra phòng từ tin chuyển tiếp.' } } },
+  input(input) {
+    if (!record(input) || !Object.hasOwn(input, 'forwardRef')) return zaloList.input(input);
+    if (!exact(input, ['forwardRef']) || typeof input.forwardRef !== 'string' || input.forwardRef.length !== 78 ||
+        !new RegExp(forwardPattern).test(input.forwardRef)) fail();
+    return { forwardRef: input.forwardRef };
+  },
+  result(value, identity, input) {
+    if (!Object.hasOwn(input, 'forwardRef')) return zaloList.result(value, identity, input);
+    if (value.report !== 'forwarded_tenant' || value.source !== 'crm.zalo_messages' || value.unavailable !== null ||
+        value.nextOffset !== null || value.offset !== 0 || typeof value.sourceCapped !== 'boolean' ||
+        !exact(value.summary, ['match']) || !Array.isArray(value.items) || value.items.length > 20) fail();
+    const { match } = value.summary, rows = value.items;
+    const expected = rows.length > 1 ? 'choose_room' : rows.length === 1 ? 'matched' : null;
+    if ((expected ? match !== expected : !['ask_customer', 'ask_room'].includes(match)) ||
+        (value.sourceCapped && rows.length !== 20) || new Set(rows.map(row => row?.roomId)).size !== rows.length) fail();
+    for (const row of rows) {
+      if (!shaped(row, forwardedRoom) || !inScope(identity, 'customers.view', [row.buildingId]) ||
+          !inScope(identity, 'contracts.view', [row.buildingId])) fail();
+    }
+    return structuredClone(value);
+  },
 });
 
 export const FULL_READS = Object.freeze({
@@ -229,5 +261,5 @@ export const FULL_READS = Object.freeze({
     { input: detailInput('contractId'), inputSchema: detailSchema('contractId'), resultKeys: DETAIL_RESULT,
       result: detail('contractId', CONTRACT_DETAIL_FIELDS, item => [['contracts.view', [item.buildingId]], ...(item.tenantsVisible ? [['customers.view', [item.buildingId]]] : [])],
         item => !item.tenantsVisible && item.tenants.length > 0, ['publicPath']) }),
-  ...REPORT_READS,
+  ...REPORT_READS, zalo_conversations: zaloWithSource,
 });
