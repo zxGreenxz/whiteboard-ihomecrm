@@ -10,7 +10,8 @@ const bindingKeys = ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedPo
 // keys these families and the base authorization already grant.
 const FAMILY_NAMES = Object.freeze(Object.keys(DOMAIN_FAMILIES).filter(name => DOMAIN_FAMILIES[name].capabilitiesRpc !== null));
 export function createSupabaseDomainReads(options) {
-  const rpc = createBoundUserRpcTransport({ ...options, allowedNames: Object.values(DOMAIN_FAMILIES).flatMap(family => [family.readRpc, family.capabilitiesRpc]).filter(name => name !== null) });
+  const domainRpcs = Object.values(DOMAIN_FAMILIES).flatMap(family => [family.readRpc, family.capabilitiesRpc]).filter(name => name !== null);
+  const rpc = createBoundUserRpcTransport({ ...options, allowedNames: [...domainRpcs, 'hermes_zalo_forward_tenant_v1'] });
   return Object.freeze({
     // One fixed capability RPC per reviewed SQL family. A family not yet
     // deployed (PGRST202) is null: its tools stay unavailable, others continue.
@@ -34,6 +35,9 @@ export function createSupabaseDomainReads(options) {
           ['expectedEpoch', 'expectedAuthorizationVersion', 'expectedSessionRevision'].some(key => !positive(value.binding[key])) ||
           !(value.binding.expectedPolicyVersion === 0 || positive(value.binding.expectedPolicyVersion))) fail('invalid_request');
       let input; try { input = domainInput(operation, value.input); } catch { fail('invalid_request'); }
+      if (operation === 'zalo_conversations' && input.forwardRef) {
+        return rpc('hermes_zalo_forward_tenant_v1', value.accessToken, { p_binding: value.binding, p_reference: input.forwardRef }, callOptions);
+      }
       return rpc(domainFamily(operation).readRpc, value.accessToken, { p_binding: value.binding, p_domain: operation, p_input: input }, callOptions);
     },
   });

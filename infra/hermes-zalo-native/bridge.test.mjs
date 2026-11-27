@@ -120,6 +120,25 @@ test('a forwarded customer request and the operator’s follow-up arrive in orde
   assert.equal((await f.receive()).data.event.text, instruction.data.content);
 });
 
+test('a forward exposes one source fingerprint, conflicting references and ordinary quotes cannot select a tenant', async t => {
+  const f = await fixture(t), ts = '1764111111111';
+  const root = { id: '9134567890123456789', ts };
+  const ref = { type: 3, data: JSON.stringify(root) };
+  for (const [i, data] of [
+    { reference: JSON.stringify(ref) },
+    { decorLog: JSON.stringify({ fw: { rmsg: root, pmsg: root } }) },
+    { reference: ref, decorLog: { fw: { pmsg: { ...root, id: '9' } } } },
+    { quote: { ownerId: root.id, globalMsgId: root.id, ts } },
+  ].entries()) {
+    const msg = event('ref' + i); Object.assign(msg.data, data);
+    await f.session.capture(msg);
+    const received = (await f.receive()).data.event;
+    assert.equal(/forwardRef=1764111111111\.[a-f0-9]{64}/.test(received.text), i < 2);
+    assert.ok(!received.text.includes(root.id));
+    await f.request('/v1/ack', { generation: channel.generation, eventId: received.id, status: 'accepted' });
+  }
+});
+
 test('channel capability, generation, verified own UID and current session are mandatory', async t => {
   const f = await fixture(t);
   assert.equal((await f.request('/v1/channel', {}, 'hc_crm_token')).status, 401);

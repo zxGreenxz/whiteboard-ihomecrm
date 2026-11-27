@@ -7,6 +7,7 @@ import { nativeReconciliationFile, nativeReconciliationFor, readNativeReconcilia
 import { isHermesLinkMessage } from './hermes-link.js';
 import { describeReceiptShape, providerTextReceipt } from './hermes-native-receipt.js';
 import { loadNativePhoto, NATIVE_PHOTO_ERRORS, NATIVE_PHOTO_MAX_BYTES } from './hermes-native-media.js';
+import { forwardSource } from './hermes-forward-reference.js';
 
 const own = (value, key) => {
   if (!value || typeof value !== 'object') return undefined;
@@ -60,12 +61,25 @@ const exact = (value, keys) => value && !Array.isArray(value) &&
 const validText = (value, bytes) => typeof value === 'string' && value.trim().length > 0 &&
   !value.includes('\0') && Buffer.byteLength(value, 'utf8') <= bytes;
 // The personal journal keeps 8192 UTF-8 bytes. Quote only the new message body; reference/decorLog contain other people's identifiers.
-function forwardedNote(content) {
-  const prefix = '[Nội dung Zalo chuyển tiếp để tham khảo. Nếu chỉ có tin chuyển tiếp, tóm tắt việc và hỏi người gửi muốn giao cho ai.]\n';
-  const available = 8192 - Buffer.byteLength(prefix);
-  if (Buffer.byteLength(content) <= available) return prefix + content;
+function messageBody(content) {
+  return content.replace(/[1-9][0-9]{12}\.[0-9a-f]{64}/gi, '[mã trong lời nhắn]')
+    .replace(/forwardRef\s*=/gi, 'mã chép lại ').replace(/\[Nội dung Zalo chuyển tiếp/gi, '(trích lời nhắn');
+}
+function sourceLabel(source, index) {
+  const provenance = source?.ref ? 'Mã đối chiếu CRM forwardRef=' + source.ref
+    : source?.forwarded ? 'Tin forward, thiếu mã đối chiếu. Hỏi lại khách hoặc phòng khi cần.'
+      : 'Nội dung tham khảo từ tin có trích dẫn.';
+  return '[Nội dung Zalo chuyển tiếp' + (index == null ? '' : ', ảnh ' + (index + 1)) + '. ' + provenance + ']';
+}
+function clipBody(content, available) {
+  if (Buffer.byteLength(content) <= available) return content;
+  if (available < 3) return '';
   const clipped = Buffer.from(content).subarray(0, available - 3).toString('utf8').replace(/\uFFFD$/u, '');
-  return prefix + clipped + '…';
+  return clipped + '…';
+}
+function forwardedNote(content, source) {
+  const prefix = sourceLabel(source) + '\n';
+  return prefix + clipBody(messageBody(content), 8192 - Buffer.byteLength(prefix));
 }
 const publicChannel = c => ({ accountId: c.accountId, ownUid: c.ownUid, pairedUid: c.pairedUid,
   mainUid: c.mainUid, profile: c.profile, generation: c.generation });
@@ -160,7 +174,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
   }
   const pendingPhotos = entry => [...entry.items, ...[...entry.delivered.values()].map(({ item }) => item)]
     .reduce((count, item) => count + (item.photos ? item.photos.filter(photo => photo.state !== 'error').length : 0), 0);
-  function capturePhoto(entry, data, part, forwarded) {
+  function capturePhoto(entry, data, part, forwarded, source) {
     if (!accepts(entry, 'photo')) { fault('native_photo_dropped:not_declared'); return; }
     if (known(entry, part.id)) { fault('native_photo_dropped:duplicate'); return; }
     const content = own(data, 'content');
@@ -168,7 +182,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     const urls = [own(params, 'hd'), own(params, 'rawUrl'), own(content, 'href')].filter(url => typeof url === 'string');
     // Only the current attachment's caption is evidence. Embedded quote/reference bodies never enter the DM.
     const title = caption(own(content, 'title'));
-    const text = forwarded && title ? forwardedNote(title) : title;
+    const text = messageBody(title);
     const layout = own(own(parsed(own(data, 'extraData')), 'groupMediaMsg'), 'groupLayoutId');
     const key = (typeof layout === 'string' || Number.isSafeInteger(layout)) && nativeId(String(layout)) ? String(layout) : null;
     const at = now();
@@ -182,8 +196,8 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
       entry.items.push(group);
     }
     group.lastAt = at; group.key ||= key;
-    if (text && Buffer.byteLength([...group.caption, text].join('\n'), 'utf8') <= 8192) group.caption.push(text);
-    const photo = { ...part, state: 'loading' };
+    if (text) group.caption.push(text);
+    const photo = { ...part, state: 'loading', sourceNote: forwarded ? sourceLabel(source, group.photos.length) : null };
     const busy = pendingPhotos(entry) >= limits.photosPerChannel;
     group.photos.push(photo);
     if (busy) { photo.state = 'error'; photo.error = 'busy'; return; }
@@ -204,11 +218,16 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     now() - item.lastAt >= limits.settleMs && (item.caption.length > 0 || followed || now() - item.lastAt >= limits.waitMs);
   function claim(entry, item, texts) {
     const { channel, journal } = entry;
-    const dispatchedAt = stamp(entry), parts = [...(item.caption || [])], merged = [];
+    const dispatchedAt = stamp(entry), merged = [];
+    const labels = (item.photos || []).map(photo => photo.sourceNote).filter(Boolean);
+    const parts = [...labels];
     for (const record of texts) {
       if (Buffer.byteLength([...parts, record.text].join('\n'), 'utf8') > 8192) break;
       parts.push(record.text); merged.push(record);
     }
+    const captionBudget = 8192 - Buffer.byteLength(parts.join('\n')) - (parts.length ? 1 : 0);
+    const captions = clipBody((item.caption || []).join('\n'), captionBudget);
+    if (captions) parts.splice(labels.length, 0, captions);
     const base = part => ({ id: part.id, messageId: part.messageId, sentAt: part.sentAt, senderUid: channel.pairedUid,
       status: 'dispatch_unknown', dispatchedAt });
     // Same durable shape as a claimed text, so an older worker reads this journal.
@@ -264,7 +283,9 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
           // A reply can carry a new photo of its own. Read only that attachment, never the quoted message or its caption.
           const quoted = flagged(event, QUOTES) || flagged(data, QUOTES);
           if (quoted && kind !== 'photo' && msgType !== 'webchat') return drop('quoted');
-          const forwarded = flagged(event, FORWARDS) || flagged(data, FORWARDS);
+          const sourceRef = forwardSource(event, data);
+          const forwarded = sourceRef.forwarded || flagged(event, FORWARDS) || flagged(data, FORWARDS);
+          sourceRef.forwarded = forwarded;
           const messageId = own(data, 'msgId');
           const timestamp = own(data, 'ts');
           const sentAt = typeof timestamp === 'string' && /^[1-9][0-9]{0,15}$/.test(timestamp) ? Number(timestamp) : timestamp;
@@ -276,7 +297,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
             const content = own(data, 'content');
             if (!validText(content, 8192)) return true;
             const referenced = forwarded || quoted;
-            const text = referenced ? forwardedNote(content) : content;
+            const text = referenced ? forwardedNote(content, sourceRef) : clipBody(messageBody(content), 8192);
             // Only a fresh, plain DM from this peer can approve a pending deposit. The model never attests consent.
             const confirmation = text.trim().normalize('NFC');
             const consent = /^Xác nhận cọc [0-9A-F]{12} · [^\r\n]+$/u.test(confirmation) && confirmation.length <= 1600;
@@ -288,7 +309,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
             }
             journal.admit(id, { id, messageId, text, sentAt, senderUid: channel.pairedUid,
               digest: nativeDigest([messageId, sentAt, text]), status: 'queued' });
-          } else if (kind === 'photo') capturePhoto(entry, data, { id, messageId, sentAt }, forwarded || quoted);
+          } else if (kind === 'photo') capturePhoto(entry, data, { id, messageId, sentAt }, forwarded || quoted, sourceRef);
           else if (kind === 'notice') captureNotice(entry, NOTICES.get(msgType), { id, messageId, sentAt });
           // Stickers and unknown kinds are swallowed: still never CRM inbox.
           return true;

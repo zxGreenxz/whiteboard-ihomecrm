@@ -120,6 +120,39 @@ test('cachedBinding service: seven-key binding from the LIVE snapshot while the 
   assert.deepEqual([f.counts.verify, catalog.tally.check], [1, 0]);
 });
 
+test('a forwarded tenant lookup uses the bound user and rejects ambiguous or out-of-scope single-room projections', async t => {
+  const f = fixture(t), authority = f.stub(FULL_GRANTS), dependencyScope = createDependencyScope();
+  t.after(() => dependencyScope.close());
+  const forwardRef = '1764111111111.' + 'a'.repeat(64);
+  const row = { roomId: id(50), roomName: 'QA', buildingId: BUILDING, buildingName: 'DEMO' };
+  const result = { organizationId: ORG, domain: 'zalo_conversations', fetchedAt: new Date(NOW).toISOString(),
+    report: 'forwarded_tenant', source: 'crm.zalo_messages', unavailable: null, summary: { match: 'matched' },
+    items: [row], offset: 0, nextOffset: null, sourceCapped: false };
+  const service = createDomainMount({ authority, connectionStore: f.connectionStore, crypto: f.crypto, auth: f.auth,
+    supabase: { url: 'https://example.invalid/', publishableKey: 'sb_publishable_test' }, dependencyScope, clock: () => NOW,
+    fetch: async (url, request) => {
+      assert.equal(new URL(url).pathname, '/rest/v1/rpc/hermes_zalo_forward_tenant_v1');
+      const args = JSON.parse(request.body);
+      assert.equal(args.p_reference, forwardRef); assert.equal(args.p_binding.connectionId, CONNECTION);
+      assert.equal(request.headers.authorization, 'Bearer ' + bearer);
+      return Response.json(result);
+    } }).createService();
+  const run = async input => {
+    const options = { signal: f.signal };
+    const receipt = await service.prepareDomain(TOKEN, 'zalo_conversations', input, options);
+    return service.finalizeDomain(TOKEN, receipt, options);
+  };
+  assert.equal((await run({ forwardRef })).items[0].roomId, row.roomId);
+  await assert.rejects(run({ forwardRef, query: 'tenant' }));
+  await assert.rejects(run({ forwardRef: 'raw personal data' }));
+  result.items.push({ ...row, roomId: id(51) });
+  await assert.rejects(run({ forwardRef }));
+  result.summary.match = 'choose_room';
+  assert.equal((await run({ forwardRef })).items.length, 2);
+  result.items[0].buildingId = id(100);
+  await assert.rejects(run({ forwardRef }));
+});
+
 test('domain mount under the host opt-in: fast plan, cached seven-key admission through the read catalog, full lane for zalo_conversations; SQL verdicts map; a changed snapshot re-resolves', async t => {
   const f = fixture(t), catalog = f.stub(READ_GRANTS), full = f.stub(FULL_GRANTS);
   const readAuthority = createReadCatalogAuthority({ authority: catalog, connectionStore: f.connectionStore, clock: () => f.clock.now });

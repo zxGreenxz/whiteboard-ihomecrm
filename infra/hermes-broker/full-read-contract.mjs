@@ -218,6 +218,39 @@ const REPORT_READS = Object.freeze({
     { status: { enum: [null, 'ACTIVE', 'TERMINATED', 'EXPIRING', 'EXPIRED'] }, buildingId: BUILDING, query: query('Số HĐ, tên phòng, tên/SĐT khách.'), limit: LIMIT, offset: OFFSET }),
 });
 
+// The ordinary conversation list keeps its original input, SQL and projection.
+// The source-message lookup has a closed input and never returns chat bodies.
+const zaloList = REPORT_READS.zalo_conversations;
+const forwardPattern = '^[1-9][0-9]{12}\\.[a-f0-9]{64}$';
+const forwardedRoom = { buildingId: id, buildingName: longText(200), roomId: id, roomName: longText(100) };
+const zaloWithSource = Object.freeze({
+  ...zaloList,
+  description: zaloList.description + ' Với tin chuyển tiếp dùng riêng forwardRef do kênh cấp để tìm phòng khách đang thuê. ask_customer: hỏi khách; ask_room: hỏi phòng; choose_room: cho người gửi chọn; matched: dùng phòng trả về.',
+  inputSchema: { ...zaloList.inputSchema, properties: { ...zaloList.inputSchema.properties,
+    forwardRef: { type: 'string', pattern: forwardPattern, description: 'Mã đối chiếu gắn vào tin forward, dùng riêng.' } } },
+  input(input) {
+    if (!record(input) || !Object.hasOwn(input, 'forwardRef')) return zaloList.input(input);
+    if (!exact(input, ['forwardRef']) || typeof input.forwardRef !== 'string' || input.forwardRef.length !== 78 ||
+        !new RegExp(forwardPattern).test(input.forwardRef)) fail();
+    return { forwardRef: input.forwardRef };
+  },
+  result(value, identity, input) {
+    if (!Object.hasOwn(input, 'forwardRef')) return zaloList.result(value, identity, input);
+    if (value.report !== 'forwarded_tenant' || value.source !== 'crm.zalo_messages' || value.unavailable !== null ||
+        value.nextOffset !== null || value.offset !== 0 || typeof value.sourceCapped !== 'boolean' ||
+        !exact(value.summary, ['match']) || !Array.isArray(value.items) || value.items.length > 20) fail();
+    const { match } = value.summary, rows = value.items;
+    const expected = rows.length > 1 ? 'choose_room' : rows.length === 1 ? 'matched' : null;
+    if ((expected ? match !== expected : !['ask_customer', 'ask_room'].includes(match)) ||
+        (value.sourceCapped && rows.length !== 20) || new Set(rows.map(row => row?.roomId)).size !== rows.length) fail();
+    for (const row of rows) {
+      if (!shaped(row, forwardedRoom) || !inScope(identity, 'customers.view', [row.buildingId]) ||
+          !inScope(identity, 'contracts.view', [row.buildingId])) fail();
+    }
+    return structuredClone(value);
+  },
+});
+
 export const FULL_READS = Object.freeze({
   customer_detail: define('customers.view', 'crm_read_customer_detail',
     `Hồ sơ MỘT khách như /customers/:id: SĐT, email, CCCD (số, ngày/nơi cấp), ngày sinh, địa chỉ, thường trú, nghề nghiệp, nơi làm việc, liên hệ khẩn cấp, ghi chú; hợp đồng (≤20) khi có quyền hợp đồng (contractsVisible). Không ảnh CCCD. customerId từ crm_read_customers; item=null: ngoài phạm vi. ${PRIVATE_HINT}`,
@@ -229,5 +262,5 @@ export const FULL_READS = Object.freeze({
     { input: detailInput('contractId'), inputSchema: detailSchema('contractId'), resultKeys: DETAIL_RESULT,
       result: detail('contractId', CONTRACT_DETAIL_FIELDS, item => [['contracts.view', [item.buildingId]], ...(item.tenantsVisible ? [['customers.view', [item.buildingId]]] : [])],
         item => !item.tenantsVisible && item.tenants.length > 0, ['publicPath']) }),
-  ...REPORT_READS,
+  ...REPORT_READS, zalo_conversations: zaloWithSource,
 });
