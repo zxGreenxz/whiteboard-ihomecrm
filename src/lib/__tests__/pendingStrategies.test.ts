@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { PENDING_STRATEGIES, pendingStrategyOf } from "@/lib/pendingStrategies";
+import { PENDING_STRATEGIES, pendingStrategyOf, type PendingStrategy } from "@/lib/pendingStrategies";
 
 // Gate chống tái phát: mọi nơi dựng bộ chống ghi trùng bền phải dùng một namespace đã khai trong sổ chiến
 // lược. Namespace mới chưa khai là đỏ: người thêm phải quyết nơi đó đối chiếu với máy chủ bằng cách nào
@@ -73,6 +73,28 @@ function scanPendingUsage(source: string, fileName = "sample.ts"): FileUsage {
   return usage;
 }
 
+/**
+ * Namespace mà tệp GHI DẤU MỚI (không tính chỗ chỉ đọc dấu bản trước: `legacy`, `settleLegacyPending`, `forgetLegacyPending`):
+ * đối số đầu của `persistentFinancialWorkflow(…)` và `namespace` của `runFinancialPending({…})`, viết thẳng.
+ */
+function scanPendingWriters(source: string, fileName = "sample.ts"): string[] {
+  const writers: string[] = [];
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const first = node.arguments[0];
+      if (node.expression.text === "persistentFinancialWorkflow" && first && ts.isStringLiteralLike(first)) writers.push(first.text);
+      if (node.expression.text === "runFinancialPending" && first && ts.isObjectLiteralExpression(first)) {
+        const property = first.properties.find((item): item is ts.PropertyAssignment => ts.isPropertyAssignment(item) && item.name.getText(file) === "namespace");
+        if (property && ts.isStringLiteralLike(property.initializer)) writers.push(property.initializer.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return writers;
+}
+
 /** Mọi chuỗi ký tự viết trong mã của tệp (không gồm chú thích). */
 function stringLiterals(source: string, fileName: string): Set<string> {
   const found = new Set<string>();
@@ -104,6 +126,7 @@ function sourceFiles(root: string): string[] {
 function scanRepository() {
   const root = process.cwd();
   const used = new Map<string, Set<string>>();
+  const writers = new Map<string, Set<string>>();
   const undeclaredDynamic: string[] = [];
   const undeclaredDirect: string[] = [];
   const staleDeclarations: string[] = [];
@@ -120,6 +143,7 @@ function scanRepository() {
     const usage = scanPendingUsage(source, file);
     const strings = stringLiterals(source, file);
     usage.literals.forEach((namespace) => note(namespace, file));
+    scanPendingWriters(source, file).forEach((namespace) => writers.set(namespace, (writers.get(namespace) ?? new Set()).add(file)));
 
     const dynamic = DYNAMIC_SITES[file];
     if (usage.dynamicCalls !== (dynamic?.calls ?? 0)) undeclaredDynamic.push(`${file}: ${usage.dynamicCalls} lời gọi không viết thẳng namespace`);
@@ -128,13 +152,22 @@ function scanRepository() {
 
     for (const namespace of [...(dynamic?.namespaces ?? []), ...(direct ?? [])]) {
       // Lời khai phải còn đúng với tệp: namespace khai ở trên phải thật sự nằm trong mã của tệp đó.
-      if (strings.has(namespace)) note(namespace, file);
+      if (strings.has(namespace)) {
+        note(namespace, file);
+        // Nơi dựng guard không viết thẳng namespace / dựng guard trực tiếp: là nơi ghi dấu mới.
+        writers.set(namespace, (writers.get(namespace) ?? new Set()).add(file));
+      }
       else staleDeclarations.push(`${file}: ${namespace}`);
     }
   }
   // Tệp đã khai ở trên mà không còn dùng bộ chống ghi trùng: lời khai đã cũ.
   declared.forEach((file) => staleDeclarations.push(`${file}: không còn là nơi dùng`));
-  return { used, undeclaredDynamic, undeclaredDirect, staleDeclarations };
+  return { used, writers, undeclaredDynamic, undeclaredDirect, staleDeclarations };
+}
+
+/** Dòng tiền khai `van` mà không phải namespace chung bản trước (gate đợt 11). */
+function moneyValveRows(strategies: Readonly<Record<string, PendingStrategy>>): string[] {
+  return Object.entries(strategies).filter(([, row]) => row.money && row.reconcile === "van" && row.legacyOnly !== true).map(([namespace]) => namespace);
 }
 
 describe("sổ chiến lược đối chiếu", () => {
@@ -169,6 +202,39 @@ describe("sổ chiến lược đối chiếu", () => {
     };
     visit(file);
     expect(spreads).toEqual([]);
+  });
+
+  // Gate đợt 11: một lần rớt mạng của thao tác TIỀN không được dồn người dùng vào hộp cảnh báo. Mọi dòng tiền phải có cách
+  // tự đối chiếu (A/B/C/D); ngoại lệ DUY NHẤT là namespace chung của bản trước (`legacyOnly`), nơi không còn ai ghi dấu mới.
+  it("thao tác tiền không còn dòng `van` nào (trừ namespace chung bản trước chỉ còn đọc)", () => {
+    expect(moneyValveRows(PENDING_STRATEGIES)).toEqual([]);
+  });
+
+  it("quét nguồn sổ: không lời gọi `tien('van', …)` nào, không dòng tiền viết thẳng `reconcile: 'van'`", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/pendingStrategies.ts"), "utf8");
+    const file = ts.createSourceFile("pendingStrategies.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const found: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "tien"
+        && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0]) && node.arguments[0].text === "van") found.push(node.getText(file));
+      if (ts.isObjectLiteralExpression(node)) {
+        const value = (name: string) => node.properties.find((item): item is ts.PropertyAssignment => ts.isPropertyAssignment(item) && item.name.getText(file) === name)?.initializer.getText(file);
+        if (value("money") === "true" && value("reconcile") === "'van'" && value("legacyOnly") !== "true") found.push(node.getText(file));
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    expect(found).toEqual([]);
+  });
+
+  it("dòng `legacyOnly` là `van` và không còn nơi nào ghi dấu mới ở namespace đó (chỉ còn đọc qua `legacy`)", () => {
+    const legacy = Object.entries(PENDING_STRATEGIES).filter(([, row]) => row.legacyOnly);
+    expect(legacy.length).toBeGreaterThan(0);
+    for (const [namespace, row] of legacy) {
+      expect(row.reconcile, namespace).toBe("van");
+      expect([...(scan.writers.get(namespace) ?? [])], namespace).toEqual([]);
+      expect(scan.used.has(namespace), namespace).toBe(true);
+    }
   });
 
   it("mỗi dòng có nhãn đọc được và một cách đối chiếu hợp lệ", () => {
@@ -221,6 +287,25 @@ describe("bộ quét nơi dùng", () => {
       await runFinancialPending(scope, work);
       const guard = new FinancialWorkflowGuard({ scope: async key => ({ namespace: 'x', userId, organizationId, businessKey: key }) });
     `)).toEqual({ literals: [], dynamicCalls: 2, directGuards: 1 });
+  });
+
+  it("tách nơi GHI dấu mới khỏi nơi chỉ đọc dấu bản trước (`legacy`, settle/forget)", () => {
+    expect(scanPendingWriters(`
+      const guard = useRef(persistentFinancialWorkflow('voucher-approve', { scope: 'actor', legacy: 'voucher-lifecycle' }));
+      await runFinancialPending({ namespace: 'deposit-create', userId }, work);
+      await forgetLegacyPending({ namespace: 'cashbook-lifecycle', businessKey: id });
+      await settleLegacyPending({ namespace: 'customer-create', businessKey: 'create' }, decide);
+      // persistentFinancialWorkflow('ghost-line')
+    `)).toEqual(["voucher-approve", "deposit-create"]);
+  });
+
+  it("gate dòng tiền `van` bắt dòng mới, tha dòng chung bản trước", () => {
+    expect(moneyValveRows({
+      a: { money: true, reconcile: "van", label: "thu tiền mới" },
+      b: { money: true, reconcile: "van", label: "dấu chung cũ", legacyOnly: true },
+      c: { money: false, reconcile: "van", label: "ảnh hồ sơ" },
+      d: { money: true, reconcile: "B", label: "lập phiếu" },
+    })).toEqual(["a"]);
   });
 
   // Chú thích kể lại về mã không được tính là nơi dùng: nếu tính, một dòng sổ đã chết vẫn "còn dùng" nhờ một

@@ -1470,13 +1470,19 @@ const invoiceMeta=(row:InvoiceState|null)=>row?{meta:beforeStateMeta(invoiceSign
 const INVOICE_RESTORE={operation:'khôi phục hoá đơn',rule:{reached:(row:InvoiceState)=>['APPROVED','PARTIAL_PAID','PAID','OVERDUE'].includes(row.status??''),ready:(row:InvoiceState)=>row.status==='CANCELLED'}};
 const INVOICE_FORCE_CANCEL={operation:'huỷ hoá đơn',rule:{reached:(row:InvoiceState)=>row.status==='CANCELLED',ready:(row:InvoiceState)=>row.status!=='CANCELLED'}};
 const INVOICE_SWEEP_KEYS=['invoices','invoices-legacy','invoice','invoice-statistics','payments','invoice-payments-summary','excess-amount'] as const;
+/** Kết luận `{result:{invoice,noop}}` của `invoiceTransition` (hoá đơn đã ở đích): số hoá đơn cho câu báo của quét nền. */
+const invoiceResultIds=(result:unknown):string[]=>{
+  const row=(result as {invoice?:{id?:unknown;invoice_number?:unknown}|null}|null)?.invoice;
+  const name=typeof row?.invoice_number==='string'&&row.invoice_number?row.invoice_number:typeof row?.id==='string'?row.id:null;
+  return name?[name]:[];
+};
 /**
  * Quét nền khi mở app (đợt 11, `src/lib/pendingSweep.ts`): khôi phục và buộc huỷ một hoá đơn (khoá nghiệp vụ = mã hoá đơn,
  * phạm vi công ty đang chọn). Máy chủ khoá rồi mới xét, nên «như trước khi bấm» giữ dấu cho lần bấm gửi lại.
  */
 export const INVOICE_PENDING_SWEEP:Readonly<Record<string,PendingSweepHandler>>={
-  'invoice-restore':{scope:'selected',invalidate:INVOICE_SWEEP_KEYS,reconcile:pending=>invoiceTransition(pending.businessKey,INVOICE_RESTORE.operation,INVOICE_RESTORE.rule)(pending)},
-  'invoice-force-cancel':{scope:'selected',invalidate:INVOICE_SWEEP_KEYS,reconcile:pending=>invoiceTransition(pending.businessKey,INVOICE_FORCE_CANCEL.operation,INVOICE_FORCE_CANCEL.rule)(pending)},
+  'invoice-restore':{scope:'selected',invalidate:INVOICE_SWEEP_KEYS,resultRecordIds:invoiceResultIds,reconcile:pending=>invoiceTransition(pending.businessKey,INVOICE_RESTORE.operation,INVOICE_RESTORE.rule)(pending)},
+  'invoice-force-cancel':{scope:'selected',invalidate:INVOICE_SWEEP_KEYS,resultRecordIds:invoiceResultIds,reconcile:pending=>invoiceTransition(pending.businessKey,INVOICE_FORCE_CANCEL.operation,INVOICE_FORCE_CANCEL.rule)(pending)},
 };
 
 // =============================================

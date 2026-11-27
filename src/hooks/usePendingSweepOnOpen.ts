@@ -26,7 +26,7 @@ export function usePendingSweepOnOpen(userId: string | null, organizationId: str
       void import('@/lib/pendingSweep')
         .then(async (sweep) => {
           if (!alive) return;
-          const report = await sweep.runPendingSweepOnOpen({ userId, organizationId, queryClient, seen: state.seen });
+          const report = await sweep.runPendingSweepOnOpen({ userId, organizationId, queryClient, seen: state.seen, isActive: () => alive });
           if (!alive || report?.recheckAt == null || state.rechecks >= PENDING_SWEEP_MAX_RECHECKS) return;
           state.rechecks += 1;
           timer = setTimeout(run, Math.max(1_000, report.recheckAt - Date.now() + 1_000));

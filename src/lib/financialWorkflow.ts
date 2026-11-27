@@ -214,7 +214,7 @@ export class FinancialWorkflowGuard {
  *   cùng mã, dấu đã đổi).
  */
 export type PendingReadOnlyOutcome =
-  | {kind:'written';message:string|null;recordIds:readonly string[]}
+  | {kind:'written';message:string|null;recordIds:readonly string[];result?:unknown}
   | {kind:'not-written'}
   | {kind:'kept';reason:'running'|'unsettled'|'failed'|'inconclusive'|'resend-needed'|'gone'};
 
@@ -229,6 +229,8 @@ export interface PendingSweepHandler {
   reconcile:(pending:FinancialPendingRecord)=>Promise<PendingReconciliation<unknown>>;
   /** Gốc khoá react-query cần làm mới khi dấu được gỡ. */
   invalidate:readonly string[];
+  /** Kết luận `{result}`: mã bản ghi người dùng nhận ra (số hoá đơn…) để câu báo nêu được bản ghi. */
+  resultRecordIds?:(result:unknown)=>readonly string[];
 }
 
 /**
@@ -267,7 +269,7 @@ export async function reconcilePendingOnly<T>(
   try{cleared=store.clearConfirmed(scope,prior.attemptId);}
   catch{/* Kho không gỡ được: dấu còn nguyên, lần bấm sau đối chiếu lại. */}
   if(!cleared)return {kind:'kept',reason:'gone'};
-  if('result' in verdict)return {kind:'written',message:null,recordIds:[...prior.completedIds]};
+  if('result' in verdict)return {kind:'written',message:null,recordIds:[...prior.completedIds],result:verdict.result};
   if(verdict.outcome==='already-written')return {kind:'written',message:verdict.message,recordIds:[...(verdict.recordIds??[])]};
   return {kind:'not-written'};
 }

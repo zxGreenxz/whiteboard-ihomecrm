@@ -21,6 +21,7 @@ const io = vi.hoisted(() => ({
   reads: [] as string[],
   writes: [] as string[],
   toast: vi.fn(),
+  rpc: vi.fn(async () => ({ data: null, error: { code: '42501', message: 'quét nền không được gọi RPC' } })),
 }));
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
@@ -36,7 +37,8 @@ vi.mock('@/integrations/supabase/client', () => ({
         },
       });
     },
-    rpc: (name: string, args: Record<string, unknown>) => io.server.rpc(name, args),
+    // Bộ đối chiếu của quét nền chỉ đọc bảng: MỌI lời gọi RPC ở đây đều là điều không được xảy ra (ghi lại để test bắt).
+    rpc: io.rpc,
   },
 }));
 vi.mock('sonner', () => ({ toast: { info: io.toast, success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
@@ -73,6 +75,7 @@ beforeEach(() => {
   io.reads = [];
   io.writes = [];
   io.toast.mockReset();
+  io.rpc.mockClear();
 });
 afterEach(() => { vi.useRealTimers(); });
 
@@ -92,7 +95,7 @@ describe('quét nền khi mở app — ba kịch bản của plan', () => {
     expect(options.description).toContain('PT-v1');
     expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['income-expenses'] });
     expect(io.writes).toEqual([]);
-    expect(io.server.rpcCalls).toEqual([]);
+    expect(io.rpc).not.toHaveBeenCalled();
   });
 
   it('lần trước CHƯA ghi (tra chắc chắn: trạng thái y như lúc bấm, đã quá 2 phút) ⇒ gỡ dấu, KHÔNG gửi gì', async () => {
@@ -104,7 +107,7 @@ describe('quét nền khi mở app — ba kịch bản của plan', () => {
     expect(report.settled.map(item => item.outcome.kind)).toEqual(['not-written']);
     expect(pendingSweepNotice(report.settled)?.description).toMatch(/chưa được ghi; làm lại nếu vẫn cần/);
     expect(io.writes).toEqual([]);
-    expect(io.server.rpcCalls).toEqual([]);
+    expect(io.rpc).not.toHaveBeenCalled();
   });
 
   it('nơi máy chủ khử trùng theo mã (`serverDedupesRequestKey`) ⇒ dấu còn nguyên, KHÔNG có lệnh ghi nào', async () => {
@@ -123,7 +126,7 @@ describe('quét nền khi mở app — ba kịch bản của plan', () => {
       ['handover-confirm', 'resend-needed'], ['invoice-restore', 'resend-needed'], ['voucher-verify', 'resend-needed'],
     ]);
     expect(io.writes).toEqual([]);
-    expect(io.server.rpcCalls).toEqual([]);
+    expect(io.rpc).not.toHaveBeenCalled();
     expect(pendingSweepNotice(report.settled)).toBeNull();
   });
 });
@@ -201,6 +204,24 @@ describe('quét nền — dấu «Đã kiểm» bản trước và chạy trùng
     expect(io.writes).toEqual([]);
   });
 
+  it('hoá đơn đã ở đích (kết luận `{result}`) ⇒ câu báo nêu số hoá đơn', async () => {
+    io.server.rows.invoices = [{ id: 'i3', invoice_number: 'HD-0042', status: 'APPROVED', deleted_at: null, paid_amount: 0 }];
+    const key = seedMark('invoice-restore', 'i3', { organizationId: ORG, operation: 'khôi phục hoá đơn', meta: { before: 'CANCELLED||0' } });
+    const report = await sweep();
+    expect(localStorage.getItem(key)).toBeNull();
+    expect(pendingSweepNotice(report.settled)?.description).toMatch(/«khôi phục hoá đơn» gửi lúc .*: đã được ghi \(mã HD-0042\)\./);
+  });
+
+  it('màn đã thôi gắn giữa lượt (đăng xuất, đổi tài khoản) ⇒ dấu đã gỡ vẫn gỡ, không báo, không làm mới', async () => {
+    io.server.rows.income_expenses = [voucher('d1', { approval_status: 'UNAPPROVED' })];
+    seedMark('voucher-unapprove', 'd1', { meta: { before: 'APPROVED|POSTED|3|1' } });
+    const client = queryClient();
+    const report = await runPendingSweepOnOpen({ userId: USER, organizationId: ORG, queryClient: client, seen: new Set(), locks: null, isActive: () => false });
+    expect(report?.settled).toHaveLength(1);
+    expect(io.toast).not.toHaveBeenCalled();
+    expect(client.invalidateQueries).not.toHaveBeenCalled();
+  });
+
   it('nhiều dấu có kết luận ⇒ một thông báo gộp', async () => {
     io.server.rows.income_expenses = [voucher('a1', { approval_status: 'UNAPPROVED' }), voucher('a2', { approval_status: 'UNAPPROVED' }), voucher('a3', {})];
     seedMark('voucher-unapprove', 'a1', { meta: { before: 'APPROVED|POSTED|3|1' } });
@@ -248,7 +269,7 @@ describe('chế độ chỉ đối chiếu của lõi (`reconcilePendingOnly`)',
 
   it('không bao giờ gọi việc ghi: chỉ nhận hàm đối chiếu; kết luận gỡ đúng dấu theo attemptId', async () => {
     const store = clearing();
-    await expect(reconcilePendingOnly(prior(), async () => ({ result: 'x' }), { store })).resolves.toEqual({ kind: 'written', message: null, recordIds: ['rec-1'] });
+    await expect(reconcilePendingOnly(prior(), async () => ({ result: 'x' }), { store })).resolves.toEqual({ kind: 'written', message: null, recordIds: ['rec-1'], result: 'x' });
     await expect(reconcilePendingOnly(prior(), async () => ({ outcome: 'already-written', message: 'Đã ghi.', recordIds: ['R'] }), { store })).resolves.toEqual({ kind: 'written', message: 'Đã ghi.', recordIds: ['R'] });
     await expect(reconcilePendingOnly(prior(), async () => ({ outcome: 'not-written' }), { store })).resolves.toEqual({ kind: 'not-written' });
     expect(store.clearConfirmed).toHaveBeenCalledTimes(3);
@@ -372,7 +393,7 @@ describe('nơi đăng ký quét nền', () => {
         const key = seedMark(namespace, 'x', { organizationId: spec.organizationId, meta: { before: spec.before } });
         const report = await sweep();
         expect(io.writes, `${namespace}/${state}`).toEqual([]);
-        expect(io.server.rpcCalls, `${namespace}/${state}`).toEqual([]);
+        expect(io.rpc, `${namespace}/${state}`).not.toHaveBeenCalled();
         // Không thấy bản ghi (quyền, đã xoá) thì chưa kết luận được: dấu để nguyên.
         if (state === 'missing') expect(localStorage.getItem(key), `${namespace}/${state}`).not.toBeNull();
         // Đã ở đích hoặc đã đổi hẳn: lần trước (hoặc ai đó) đã làm — gỡ dấu.

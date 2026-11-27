@@ -17,6 +17,12 @@
 //             van  chưa có cách tự đối chiếu: dùng hộp cảnh báo.
 //   silent    Không mở hộp cảnh báo (trang công khai). Dấu vẫn chặn như cũ cho tới khi nơi gọi có đối chiếu đúng.
 //   label     Tên việc để câu báo gọi được dấu cũ không lưu tên thao tác. Không chứa tên khách hay số tiền.
+//   legacyOnly  Namespace CHUNG của bản trước (đợt 5–6 tách khoá theo thao tác): không nơi nào ghi dấu mới, chỉ còn đọc
+//             dấu cũ qua `legacy` của nơi ghi mới. Dấu cũ không cho biết thuộc thao tác nào nên không đối chiếu tự động
+//             được: `van` (hộp cảnh báo) là lối ra duy nhất, có chủ ý.
+//
+// GATE (đợt 11): thao tác TIỀN không còn dòng `van` nào, trừ dòng `legacyOnly`; `src/lib/__tests__/pendingStrategies.test.ts`
+// đỏ khi có dòng tiền `van` mới, hoặc dòng `legacyOnly` mà mã nguồn vẫn ghi dấu mới ở namespace đó.
 //
 // BỐ CỤC
 //   Các dòng xếp theo KHỐI TỪNG ĐỢT của plan sửa (tab «Plan từng nơi gọi»), mỗi khối một tiêu đề và cách
@@ -34,10 +40,14 @@ export interface PendingStrategy {
   label: string;
   /** Không mở hộp cảnh báo cho namespace này: nơi ghi chạy tự động trên trang công khai, người xem không phải nhân viên. */
   silent?: boolean;
+  /** Namespace chung của bản trước: không ai ghi dấu mới, chỉ còn đọc dấu cũ (xem cột `legacyOnly` ở đầu tệp). */
+  legacyOnly?: boolean;
 }
 
 const tien = (reconcile: PendingReconcile, label: string): PendingStrategy => ({ money: true, reconcile, label });
 const khac = (reconcile: PendingReconcile, label: string): PendingStrategy => ({ money: false, reconcile, label });
+/** Dấu tiền KHOÁ CHUNG của bản trước: chỉ còn đọc, lối ra là hộp cảnh báo. */
+const tienCu = (label: string): PendingStrategy => ({ money: true, reconcile: 'van', label, legacyOnly: true });
 
 export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   // Đợt 2: thu tiền, hoàn tác, hoàn trả (thu tiền hoá đơn dùng kho riêng `pendingCollection.ts`, không nằm ở sổ này)
@@ -71,7 +81,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   // Đợt 5: chuyển trạng thái phiếu, hoá đơn, bàn giao, chốt sổ. Ba dấu chung (`voucher-lifecycle`, `handover-lifecycle`,
   // `closing-request-lifecycle`) được tách theo thao tác; dòng của dấu chung giữ `van`: không ai ghi dấu mới ở đó, dấu
   // cũ không cho biết thuộc thao tác nào nên chặn đúng bản ghi đó qua hộp cảnh báo (`legacy` của nơi gọi mới).
-  'voucher-lifecycle': tien('van', 'duyệt, huỷ hoặc khôi phục phiếu thu chi'), // dấu chung bản trước của 7 thao tác phiếu; chỉ còn đọc
+  'voucher-lifecycle': tienCu('duyệt, huỷ hoặc khôi phục phiếu thu chi'), // dấu chung bản trước của 7 thao tác phiếu; chỉ còn đọc
   'voucher-approve': tien('A', 'duyệt phiếu'), // approve_pending_income_expense_checked_v1 khoá phiếu rồi trả `already`
   'voucher-unapprove': tien('C', 'bỏ duyệt phiếu'), // unapprove_voucher không xét trạng thái hiện tại: so trạng thái trước khi bấm, chờ 2 phút
   'voucher-cancel': tien('C', 'huỷ phiếu'), // thang huỷ cũ nhiều bước: đã hoàn tác mà chưa huỷ thì chỉ chạy bước huỷ
@@ -83,7 +93,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'voucher-v2-post': tien('B', 'ghi sổ phiếu'),
   'voucher-v2-approve-post': tien('B', 'duyệt và ghi sổ phiếu'),
   'voucher-v2-reverse': tien('B', 'hoàn tác ghi sổ phiếu'), // ngày ghi là hôm nay: qua ngày là nội dung khác ⇒ đọc trạng thái
-  'handover-lifecycle': tien('van', 'xác nhận hoặc huỷ phiên bàn giao tiền'), // dấu chung bản trước của 4 thao tác bàn giao; chỉ còn đọc
+  'handover-lifecycle': tienCu('xác nhận hoặc huỷ phiên bàn giao tiền'), // dấu chung bản trước của 4 thao tác bàn giao; chỉ còn đọc
   'handover-confirm': tien('C', 'xác nhận nhận bàn giao'), // bốn hàm bàn giao khoá phiên FOR UPDATE rồi mới xét trạng thái
   'handover-cancel-request': tien('C', 'xin huỷ phiên bàn giao'),
   'handover-cancel-confirm': tien('C', 'đồng ý huỷ phiên bàn giao'),
@@ -91,11 +101,11 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'invoice-restore': tien('C', 'khôi phục hoá đơn'), // khoá hoá đơn rồi trả noop
   'invoice-force-cancel': tien('C', 'buộc huỷ hoá đơn'),
   'closing-propose': tien('C', 'gửi đề nghị chốt sổ'), // mỗi sổ một đề nghị chờ (CLOSURE_PENDING dưới khoá sổ): đọc danh sách
-  'closing-request-lifecycle': tien('van', 'xác nhận hoặc huỷ đề nghị chốt sổ'), // dấu chung bản trước của xác nhận và huỷ; chỉ còn đọc
+  'closing-request-lifecycle': tienCu('xác nhận hoặc huỷ đề nghị chốt sổ'), // dấu chung bản trước của xác nhận và huỷ; chỉ còn đọc
   'closing-confirm': tien('C', 'xác nhận chốt sổ'), // còn chờ ⇒ gửi lại; đã có biên bản đúng ngày ⇒ báo
   'closing-cancel': tien('A', 'huỷ đề nghị chốt sổ'), // cancel_cashbook_closing_v1 khoá rồi trả {changed:false}
   'voucher-batch-cancel': tien('A', 'huỷ đợt phiếu'), // đọc lại phiếu còn hiệu lực, huỷ phần còn (sau 2 phút: đường phiếu chi không xét đã huỷ)
-  'cashbook-lifecycle': tien('van', 'sửa hoặc lưu trữ sổ quỹ'), // dấu chung bản trước; đợt 8: sửa sổ không ghi dấu mới (A, update_cashbook_metadata_v1 đặt giá trị, từ chối sổ đã lưu trữ), sửa thành công gỡ dấu của đúng sổ; lưu trữ (`cashbook-archive`) vẫn đọc dấu này qua `legacy`
+  'cashbook-lifecycle': tienCu('sửa hoặc lưu trữ sổ quỹ'), // dấu chung bản trước; đợt 8: sửa sổ không ghi dấu mới (A, update_cashbook_metadata_v1 đặt giá trị, từ chối sổ đã lưu trữ), sửa thành công gỡ dấu của đúng sổ; lưu trữ (`cashbook-archive`) vẫn đọc dấu này qua `legacy`
   'cashbook-archive': tien('C', 'lưu trữ sổ quỹ'), // archive_cashbook_v1 khoá sổ chưa lưu trữ rồi mới xét
 
   // Đợt 6: lương, tạo và gia hạn hợp đồng, lợi nhuận, sổ quỹ. Các hàm máy chủ đều khoá (công ty / dòng / khoá tư vấn theo
@@ -112,7 +122,7 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'cashbook-create': tien('B', 'tạo sổ quỹ'), // create_cashbook_v1 khoá công ty rồi tra mã; không băm mô tả, sổ mặc định, toà mặc định ⇒ không cho đổi khi đối chiếu
   'cashbook-reopening': tien('B', 'mở lại sổ quỹ'), // đọc lịch sử theo mã; chưa có ⇒ gửi lại cùng mã (reopen_cashbook_v1 khoá sổ + khoá tư vấn theo mã)
   'voucher-batch-account': tien('A', 'đổi sổ đợt phiếu'), // revise_pending_income_expense_v1 khoá phiếu rồi so phiên bản; vòng bỏ qua phiếu đã đúng sổ
-  'profit-close': tien('van', 'chốt lợi nhuận'), // dấu chung bản trước của chốt lần đầu và chốt lại (mã máy chủ không nằm trong dấu); chỉ còn đọc
+  'profit-close': tienCu('chốt lợi nhuận'), // dấu chung bản trước của chốt lần đầu và chốt lại (mã máy chủ không nằm trong dấu); chỉ còn đọc
   'profit-first-close': tien('B', 'chốt lợi nhuận lần đầu'), // _profit_write_close_v2_base khoá tư vấn theo mã rồi tra profit_close_runs
   'profit-reclose': tien('B', 'chốt lại lợi nhuận'),
   'profit-unlock': tien('B', 'mở khoá lợi nhuận'), // mã máy chủ suy từ mã của dấu; dấu bản trước (mã ngẫu nhiên) ⇒ hộp cảnh báo
@@ -191,14 +201,19 @@ export const PENDING_STRATEGIES: Readonly<Record<string, PendingStrategy>> = {
   'lucky-public-draw': { money: false, reconcile: 'C', label: 'quay số', silent: true }, // lucky_draw_v1 khoá sự kiện FOR UPDATE rồi mới xét «đã quay»: đọc trạng thái, đã quay ⇒ nhận, chưa quay ⇒ gửi lại
   'lucky-admin': khac('C', 'thao tác quản trị Quay số'), // chỉ lệnh quay giữ dấu (khoá draw:<sự kiện>, ba hàm quay khoá sự kiện rồi mới xét); 7 thao tác khác không ghi dấu, gỡ dấu chung bản trước
 
-  // Đã đúng theo plan: không đợt nào sửa nơi gọi; vẫn khai `van` cho tới khi được xác nhận lại
-  'profit-ledger-advance': tien('van', 'ghi tạm ứng lợi nhuận'),
-  'profit-ledger-settle': tien('van', 'chốt chi lợi nhuận'),
-  'profit-ledger-settle-void': tien('van', 'huỷ chốt chi lợi nhuận'),
-  'profit-ledger-cancel': tien('van', 'huỷ khoản trong sổ lợi nhuận'),
-  'profit-ledger-marker': tien('van', 'đặt mốc sổ lợi nhuận'),
-  'profit-ledger-salary-resolve': tien('van', 'xử lý lương trong sổ lợi nhuận'),
-  'shared-fund': tien('van', 'ghi quỹ chung'),
+  // Đợt 11 (siết gate: thao tác tiền không còn `van`): bảy dòng «đã đúng theo plan» được xác nhận lại bằng thân hàm đang chạy
+  // trên production (27/11/2026, md5 replace(prosrc, chr(13), '')). Mọi hàm khoá công ty (lock_org_for_decision_v1, FOR NO KEY
+  // UPDATE) TRƯỚC rồi mới tra / giữ mã yêu cầu có ràng buộc duy nhất; cùng mã cùng nội dung ⇒ trả kết quả cũ; khác nội dung ⇒
+  // 23505 (sổ lợi nhuận) / PT409 (quỹ chung). Hàm đối chiếu của trình duyệt gửi lại ĐÚNG mã cũ ngay.
+  'profit-ledger-advance': tien('B', 'ghi tạm ứng lợi nhuận'), // shareholder_profit_advance_v1 0e180034: khoá rồi claim canonical_write_operations (ON CONFLICT + FOR UPDATE)
+  'profit-ledger-settle': tien('B', 'chốt chi lợi nhuận'), // shareholder_profit_settle_v1 1674838b; SETTLE_CHANGED / SETTLE_NOTHING ném SAU bước claim ⇒ chứng minh chưa ghi
+  'profit-ledger-settle-void': tien('B', 'huỷ chốt chi lợi nhuận'), // shareholder_profit_settlement_void_v1 5ebbf3ed
+  'profit-ledger-cancel': tien('B', 'huỷ khoản trong sổ lợi nhuận'), // profit_ledger_payout_cancel_v1 a990969e: khoá phiếu + công ty rồi claim; đã huỷ ⇒ changed:false
+  'profit-ledger-marker': tien('B', 'đặt mốc sổ lợi nhuận'), // profit_ledger_set_marker_v1 99bf06d8 → app_private.profit_ledger_tao_set_marker_v1 6f68c04a
+  'profit-ledger-salary-resolve': tien('B', 'xử lý lương trong sổ lợi nhuận'), // profit_ledger_salary_resolve_v1 0d835486: khoá công ty, tra FOR UPDATE, khoá chính chặn cuối
+  'shared-fund': tien('B', 'ghi quỹ chung'), // quỹ chung: shared_fund_record_source_v1 / _distribute_v1 → shared_fund_write_v1 ead505a2, opening_advance 4df84bf1 (đối chiếu shared_fund_state_v1 theo người + mã); quỹ góp theo nhà: house_pool_activate_v1 966004d1 / _return_v1 4b1b8a74 (đợt 11: chưa thấy biên nhận ⇒ gửi lại ngay cùng mã)
+
+  // Đã đúng theo plan (không phải tiền): không đợt nào sửa nơi gọi; vẫn khai `van` cho tới khi được xác nhận lại
   'residence-dossier-upload': khac('van', 'tải ảnh hồ sơ tạm trú'),
   'residence-dossier-term': khac('van', 'lưu hạn hợp đồng của ảnh hồ sơ'),
   'residence-dossier-remove': khac('van', 'xoá ảnh hồ sơ tạm trú'),

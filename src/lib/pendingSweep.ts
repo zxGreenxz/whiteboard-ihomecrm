@@ -145,8 +145,14 @@ export async function sweepPendingMarks(options: PendingSweepOptions): Promise<P
     examined += 1;
     seen.add(pending.attemptId);
     const outcome = await reconcilePendingOnly(pending, handler.reconcile, { store, now });
-    if (outcome.kind === 'kept') report.kept.push({ pending, reason: outcome.reason });
-    else report.settled.push({ pending, outcome, invalidate: handler.invalidate });
+    if (outcome.kind === 'kept') { report.kept.push({ pending, reason: outcome.reason }); continue; }
+    // (3) Kết luận `{result}` không mang câu báo: lấy mã bản ghi người dùng nhận ra (số hoá đơn…) để câu báo nêu được bản ghi.
+    let named: readonly string[] = [];
+    if (outcome.kind === 'written' && outcome.result !== undefined && handler.resultRecordIds) {
+      try { named = handler.resultRecordIds(outcome.result).filter(id => typeof id === 'string' && id.length > 0); }
+      catch { named = []; /* chỉ để hiển thị: lấy mã hỏng thì câu báo dùng mã trong dấu */ }
+    }
+    report.settled.push({ pending, outcome: named.length && outcome.kind === 'written' ? { ...outcome, recordIds: named } : outcome, invalidate: handler.invalidate });
   }
   return report;
 }
@@ -166,7 +172,7 @@ export function pendingSweepNotice(settled: readonly PendingSweepSettled[]): { t
   if (settled.length > 3) shown.push(`Và ${settled.length - 3} yêu cầu khác.`);
   return {
     title: settled.length === 1 ? 'Đã đối chiếu một yêu cầu gửi trước đó' : `Đã đối chiếu ${settled.length} yêu cầu gửi trước đó`,
-    description: shown.join(' '),
+    description: shown.join('\n'),
   };
 }
 
@@ -180,6 +186,8 @@ export interface PendingSweepOnOpenInput {
   /** Mặc định: `navigator.locks` (nếu có). */
   locks?: Pick<LockManager, 'request'> | null;
   sweep?: (options: PendingSweepOptions) => Promise<PendingSweepReport>;
+  /** `false` khi màn đã thôi gắn (đăng xuất, đổi tài khoản / công ty giữa lượt): dấu đã gỡ vẫn đúng, nhưng không báo nữa. */
+  isActive?: () => boolean;
 }
 
 /**
@@ -189,9 +197,11 @@ export interface PendingSweepOnOpenInput {
 export async function runPendingSweepOnOpen(input: PendingSweepOnOpenInput): Promise<PendingSweepReport | null> {
   try { forgetDeadIntentKeys(); forgetOrphanLeadConversionTraces(); } catch { /* dọn khoá chết là việc phụ; hai hàm vốn không ném */ }
   const sweep = input.sweep ?? sweepPendingMarks;
-  const notify = input.notify ?? (notice => { toast.info(notice.title, { description: notice.description, duration: 12_000 }); });
+  // Mỗi yêu cầu một dòng (`whitespace-pre-line`): khổ điện thoại đọc được, không dồn thành một khối chữ.
+  const notify = input.notify ?? (notice => { toast.info(notice.title, { description: notice.description, descriptionClassName: 'whitespace-pre-line', duration: 15_000 }); });
   const once = async (): Promise<PendingSweepReport> => {
     const report = await sweep({ userId: input.userId, organizationId: input.organizationId, seen: input.seen });
+    if (input.isActive && !input.isActive()) return report;
     const keys = new Set(report.settled.flatMap(item => item.invalidate));
     for (const key of keys) void input.queryClient.invalidateQueries({ queryKey: [key] });
     const notice = pendingSweepNotice(report.settled);
