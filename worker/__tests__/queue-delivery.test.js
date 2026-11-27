@@ -152,6 +152,13 @@ describe('queue admission and delivery outcomes', () => {
     if (status==='sent') expect(content.mentions).toEqual([{pos:text.length-4,uid:'-1',len:4}]);
     else expect(content).toEqual({msg:'Link danh sách'});
   });
+  it('tag all ngay tại đầu tin Lock độc lập trong nhóm', async () => {
+    state.threadType = 'group';
+    const api = connect();
+    const body = '@all Lock 201 – Tòa Sen';
+    await processJob(makeJob({ tu_dong: true, automation_request_key: 'room-lock:room:123:conv', body }));
+    expect(api.sendMessage).toHaveBeenCalledWith({ msg: body, mentions: [{ pos: 0, uid: '-1', len: 4 }] }, 'thread', 1);
+  });
   it.each([
     ['album', ['failed'], 'failed'],
     ['album', ['processing'], 'wait'],

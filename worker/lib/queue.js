@@ -24,6 +24,7 @@ import { sendForwardMediaJob } from './forward-media.js';
 import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clampHistoryCount } from './scope-guard.js';
 import { INSTANCE_ID } from './lease.js';
 import { validateAutomationDelivery } from './automation-delivery.js';
+import { lockRoomId } from './room-lock-notice.js';
 import { finalizeSend, sendReceipt } from './send-finalization.js';
 import { deliverSaleAdvice } from './sale-advice-channel.js';
 
@@ -165,6 +166,9 @@ async function sendText(s, job, p, threadId, type) {
     content.mentions = p.mentions
       .filter((m) => m && m.uid)
       .map((m) => ({ pos: Number(m.pos) || 0, uid: String(m.uid), len: Number(m.len) || 0 }));
+  }
+  if (type === ThreadType.Group && lockRoomId(p) && content.msg.startsWith('@all ')) {
+    content.mentions = [{ pos: 0, uid: '-1', len: 4 }];
   }
   if (p.tu_dong === true && type === ThreadType.Group && p.automation_request_key?.endsWith(':link')
       && /(?:^|\n)@all$/.test(content.msg)) {

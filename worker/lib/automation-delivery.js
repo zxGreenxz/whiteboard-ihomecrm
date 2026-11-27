@@ -2,6 +2,7 @@ import { sb } from './ctx.js';
 import { chuanHoaBroadcast } from './automation-config.js';
 import { gioVietNam, trongKhungGio } from './automation-scenario.js';
 import { validateSaleContent } from './automation-content-guard.js';
+import { lockRoomId } from './room-lock-notice.js';
 
 // Lượt gửi MỘT LẦN còn hiệu lực cho tin đã xếp: đang chạy hoặc đã chốt (kể cả chốt lỗi một
 // phần). 'queued' chưa từng có tin; 'cancelled' là người dùng/dừng khẩn cấp đã huỷ.
@@ -30,6 +31,7 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
     return conv.is_sale_partner ? { ok: true } : reject('CANCELLED_AUTOMATION: hội thoại không còn là sale');
   }
   const config = chuanHoaBroadcast(auto?.config);
+  if (lockRoomId(job.payload) && conv.thread_type !== 'group') return reject('CANCELLED_AUTOMATION: tin Lock chỉ gửi trong nhóm');
   if (oneshotId) {
     const { data: shot, error: shotError } = await db.from('zalo_automation_oneshots')
       .select('organization_id, status, recipients').eq('id', oneshotId).maybeSingle();
