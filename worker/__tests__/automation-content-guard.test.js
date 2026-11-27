@@ -2,6 +2,7 @@ import { describe,expect,it,vi } from 'vitest';
 vi.mock('../lib/ctx.js',()=>({sb:{},log:vi.fn(),SUPABASE_URL:'https://example.invalid'}));
 const {saleContentGuard,validateSaleContent}=await import('../lib/automation-content-guard.js');
 const {mapPayloadSangToa}=await import('../lib/vacant-rooms.js');
+const {readLockNotice}=await import('../lib/room-lock-notice.js');
 const payload=()=>({pages:1,contact:{phone:'0900000000'},sale_policy:'Hoa hồng theo hợp đồng',
  buildings:[{id:'b',name:'Tòa A',address:'1 Đường A'}],
  rooms:[{id:'r',building_id:'b',name:'101',rent_price:3000000,status_public:'free',amenities:['Máy lạnh'],images:['a.jpg'],sale_note:'Wifi miễn phí'}]});
@@ -9,6 +10,29 @@ const template={roomTemplate:'{ma_phong} {gia} {khuyen_mai}'};
 const guardFor=data=>saleContentGuard({buildings:mapPayloadSangToa(data),hotline:data.contact.phone,trangSale:data.pages},template);
 const job={organization_id:'org',payload:{sale_content_guard:guardFor(payload())}};
 describe('H4 revalidate public sale snapshot before provider side effect',()=>{
+ it('tin Lock kiểm đúng phòng và tòa dù nội dung các phòng khác đổi', async () => {
+  const sale = payload();
+  let roomRow = { code: 'P.101', building: { name: 'Tòa Sen' } };
+  const query = { select: () => query, eq: () => query, is: () => query,
+    maybeSingle: async () => ({ data: roomRow, error: null }) };
+  const db = { rpc: async () => ({ data: sale }), from: () => query };
+  const notice = await readLockNotice(db, 'org', 'locked');
+  const lock = { organization_id: 'org', payload: { tu_dong: true, automation_request_key: 'room-lock:locked:123:conv',
+    body: notice.body, sale_content_guard: notice.contentGuard } };
+  const check = () => validateSaleContent(lock, db, template);
+  sale.rooms[0].sale_note = 'Đổi giá phòng khác';
+  expect(await check()).toEqual({ ok: true });
+  sale.rooms.push({ id: 'locked' });
+  expect((await check()).ok).toBe(false);
+  sale.rooms.pop(); sale.pages = 0;
+  expect((await check()).ok).toBe(false);
+  sale.pages = 1; roomRow.building.name = 'Tòa khác';
+  expect((await check()).ok).toBe(false);
+  roomRow = null;
+  expect((await check()).ok).toBe(false);
+  query.maybeSingle = async () => ({ error: { message: 'offline' } });
+  expect(await check()).toMatchObject({ ok: false, reason: expect.stringContaining('UNVERIFIED') });
+ });
  it('unchanged snapshot passes and RPC is scoped to the queued organization',async()=>{
   const rpc=vi.fn(async()=>({data:payload(),error:null}));
   expect(await validateSaleContent(job,{rpc},template)).toEqual({ok:true});

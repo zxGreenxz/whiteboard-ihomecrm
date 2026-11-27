@@ -32,6 +32,7 @@ import { chuanBiAnhPhong } from './automation-room-image.js';
 import { tickHermesSchedules } from './hermes-schedule.js';
 import { INSTANCE_ID } from './lease.js';
 import { saleContentGuard } from './automation-content-guard.js';
+import { processRoomLocks } from './room-lock-notice.js';
 
 /** Nhịp chạy engine. Lịch tính theo phút nên 60s là đủ mịn. */
 export const AUTOMATION_MS = 60_000;
@@ -294,17 +295,17 @@ async function xuLyMotCongTy(auto, now) {
   // Người nhận: chỉ hội thoại còn tồn tại, thuộc đúng công ty, và tài khoản Zalo
   // của nó đang có phiên sống. Xếp hàng cho tài khoản đã rớt chỉ tạo ra một đống
   // job failed và một khung chat đầy tin đỏ.
-  const { data: convsTho } = await sb.from('zalo_conversations')
+  const { data: convsTho, error: convError } = await sb.from('zalo_conversations')
     .select('id, user_id, organization_id, account_id, peer_name, thread_type, is_sale_partner')
     .in('id', config.recipients)
     .eq('organization_id', orgId);
+  if (convError) throw new Error(`Không đọc được hội thoại nhận phòng trống: ${convError.message}`);
   const convs = (convsTho || []).filter((c) => sessions.has(c.account_id));
-  if (!convs.length) return;
-
-  const accountId = convs[0].account_id;
+  const groups = new Map((convsTho || []).filter(c => c.thread_type === 'group').map(c => [c.id, c]));
+  if (!convs.length && !groups.size) return;
+  const accountId = convs[0]?.account_id ?? null;
 
   const khung = trongKhungGio(now, config.antiSpam);
-  const { conLai } = conLaiTrongTran(now, config, stats);
 
   let phong;
   try {
@@ -318,6 +319,25 @@ async function xuLyMotCongTy(auto, now) {
   }
 
   const t = gioVietNam(now);
+
+  if (phong.trangSale !== null && (groups.size || stats.roomLockWatch?.length)) {
+    const locks = await processRoomLocks({ db: sb, orgId, phong, watch: stats.roomLockWatch, groups, online: sessions,
+      now, antiSpam: config.antiSpam, remaining: conLaiTrongTran(now, config, stats).conLai,
+      earliestStart: Number(stats.nextScheduledStart) || 0, enqueue: xepMotTin, log });
+    if (locks.changed) {
+      stats.roomLockWatch = locks.watch;
+      if (locks.queued) {
+        congSoTin(stats, t.ngay, locks.queued);
+        stats.nextScheduledStart = locks.nextStart;
+        await ghiNhatKy({ organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
+          mode: 'event', reason: `Đã xếp ${locks.queued} thông báo Lock phòng.`,
+          recipients_count: locks.recipients, messages_count: locks.queued });
+      }
+      await luuSo(auto.id, stats);
+    }
+  }
+  if (!convs.length) return;
+  const { conLai } = conLaiTrongTran(now, config, stats);
 
   /* ---- Lượt theo lịch ---- */
   const luot = toiLuotTheoLich({ now, config, stats });
@@ -433,7 +453,7 @@ async function xuLyMotCongTy(auto, now) {
   const ketQua = await guiLo({
     convs, config, phong: { ...phong, rooms: phongMoi }, accountId, orgId, now,
     runKey: `event:${t.ngay}:${createHash('sha256').update([...idMoi].sort().join(',')).digest('hex')}`,
-    day: true, chiChiTiet: true, tranConLai: conLai,
+    day: true, chiChiTiet: true, tranConLai: conLai, earliestStart: Number(stats.nextScheduledStart) || 0,
   });
 
   if (ketQua.soTin === 0 && ketQua.soKhongXepDuoc > 0) {
@@ -451,6 +471,7 @@ async function xuLyMotCongTy(auto, now) {
   stats.pendingSince = null;
   stats.knownRoomIds = phong.rooms.map((r) => r.id);
   stats.lastEventAt = now.toISOString();
+  stats.nextScheduledStart = ketQua.nextScheduledStart;
   congSoTin(stats, t.ngay, ketQua.soTin);
   await luuSo(auto.id, stats);
 

@@ -3,6 +3,7 @@ vi.mock('../lib/ctx.js', () => ({ sb: {} }));
 const { validateAutomationDelivery } = await import('../lib/automation-delivery.js');
 const { saleContentGuard } = await import('../lib/automation-content-guard.js');
 const { chuanHoaBroadcast } = await import('../lib/automation-config.js');
+const { readLockNotice } = await import('../lib/room-lock-notice.js');
 
 const now = new Date('2026-10-11T12:59:00Z');
 const contentGuard = saleContentGuard({ buildings: [], hotline: '', trangSale: null }, chuanHoaBroadcast({}).template);
@@ -10,16 +11,17 @@ const job = { account_id: 'a', organization_id: 'o', conversation_id: 'c',
   payload: { tu_dong: true, sale_content_guard: contentGuard }, not_before: now.toISOString() };
 function database({ enabled = true, sale = true, recipients = ['c'], error = null,
   conversationOrg = 'o', conversationError = null, threadType = 'group', shot = null, shotError = null, automation = true,
-  stopAt = null, stopError = null, saves = [] } = {}) {
+  stopAt = null, stopError = null, saves = [], roomLockWatch = [], roomRow = null } = {}) {
   return { rpc: vi.fn(async () => ({ data: { buildings: [], rooms: [], contact: {} }, error: null })), from: vi.fn(table => {
     const data = table === 'zalo_automations'
-      ? (automation ? { enabled, config: { recipients, antiSpam: { allowedHours: { from: '08:00', to: '20:00' } } } } : null)
+      ? (automation ? { enabled, stats: { roomLockWatch }, config: { recipients, antiSpam: { allowedHours: { from: '08:00', to: '20:00' } } } } : null)
+      : table === 'rooms' ? roomRow
       : table === 'zalo_automation_oneshots' ? shot
         : table === 'zalo_automation_runs' ? (stopAt ? { created_at: stopAt } : null)
           : { account_id: 'a', organization_id: conversationOrg, is_sale_partner: sale, thread_type: threadType };
     const failure = table === 'zalo_automations' ? error : table === 'zalo_automation_oneshots' ? shotError
       : table === 'zalo_automation_runs' ? stopError : conversationError;
-    const q = { select: () => q, eq: () => q, order: () => q, limit: () => q,
+    const q = { select: () => q, eq: () => q, is: () => q, order: () => q, limit: () => q,
       maybeSingle: async () => ({ data, error: failure }),
       // List read (only the one-shot stop check reads every automation row's updated_at).
       then: (res, rej) => Promise.resolve({ data: table === 'zalo_automations' ? saves.map(updated_at => ({ updated_at })) : [], error: null }).then(res, rej) };
@@ -27,6 +29,16 @@ function database({ enabled = true, sale = true, recipients = ['c'], error = nul
   }) };
 }
 describe('automation dispatch checks current conditions', () => {
+  it('chỉ giao tin của lần lock mới nhất khi phòng mở rồi khóa lại lúc tin cũ còn chờ', async () => {
+    const db = database({ roomLockWatch: [{ id: 'r', since: 200, pending: [] }],
+      roomRow: { code: '201', building: { name: 'Tòa Sen' } } });
+    db.rpc.mockResolvedValue({ data: { rooms: [], buildings: [], pages: 1 }, error: null });
+    const notice = await readLockNotice(db, 'o', 'r');
+    const check = since => validateAutomationDelivery({ ...job, payload: { tu_dong: true, body: notice.body,
+      sale_content_guard: notice.contentGuard, automation_request_key: `room-lock:r:${since}:c` } }, db, now);
+    expect(await check(200)).toEqual({ ok: true });
+    expect(await check(100)).toMatchObject({ ok: false });
+  });
   it('leaves manually sent messages outside automation controls', async () => {
     const db = database({ enabled: false });
     expect(await validateAutomationDelivery({ ...job, payload: {} }, db, now)).toEqual({ ok: true });
