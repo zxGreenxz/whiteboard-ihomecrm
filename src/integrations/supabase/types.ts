@@ -22745,6 +22745,10 @@ export type Database = {
         Args: { _building_id: string; _owner: string }
         Returns: boolean
       }
+      can_manage_shareholder_forecast_v1: {
+        Args: { p_organization_id: string }
+        Returns: boolean
+      }
       can_reverse_collection_v1: {
         Args: { p_collection_ids: string[] }
         Returns: {
@@ -30673,6 +30677,14 @@ export type Database = {
       }
       shared_fund_state_v1: {
         Args: { p_organization_id: string }
+        Returns: Json
+      }
+      shareholder_month_forecast_v1: {
+        Args: {
+          p_month: string
+          p_organization_id: string
+          p_shareholder_id?: string
+        }
         Returns: Json
       }
       shareholder_profit_advance_options_v1: {

@@ -2,6 +2,7 @@ import { useState, type ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
 import { BarChart3, PieChart, CircleUserRound, Wallet, HandCoins } from "lucide-react";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import ShareholderForecast from "@/components/shareholders/ShareholderForecast";
 import { LoadingState, SkeletonBar } from "@/components/loading/LoadingState";
 import type { Shareholder } from "@/hooks/useShareholders";
 import type { ProfitManager } from "@/hooks/useProfitManagers";
@@ -23,11 +24,12 @@ import ProfitManagerSelfView from "@/components/shareholders/ProfitManagerSelfVi
 // Đợt 2: tab BC cần thêm quyền xem số toà; tab "Tạm ứng" cho người được cấp riêng quyền tạm ứng
 // mà không có tab "Của tôi".
 
-type TabKey = "report" | "overview" | "my" | "advance" | "salary";
+type TabKey = "report" | "overview" | "my" | "advance" | "salary" | "forecast";
 
 /** `?tab=` của trang (tên tab máy tính) → tab điện thoại. */
 const TAB_FROM_PARAM: Readonly<Record<string, TabKey>> = {
   report: "report",
+  forecast: "forecast",
   overview: "overview",
   "my-overview": "my",
   "my-advance": "advance",
@@ -69,6 +71,7 @@ export default function ProfitHubMobile({
   canViewPercent,
   canAdvanceOwn,
   requestedTab = null,
+  canSeeForecast = false,
 }: {
   canReport: boolean;
   isManager: boolean;
@@ -82,6 +85,7 @@ export default function ProfitHubMobile({
   canAdvanceOwn: boolean;
   /** `?tab=` của trang (tên tab máy tính); tab không có thì bỏ qua. */
   requestedTab?: string | null;
+  canSeeForecast?: boolean;
 }) {
   const navigate = useNavigate();
   const goBack = () => navigate(-1);
@@ -94,6 +98,7 @@ export default function ProfitHubMobile({
 
   const tabs: { key: TabKey; label: string; icon: ComponentType<{ className?: string }> }[] = [];
   if (canReport && canViewBuildingTotals) tabs.push({ key: "report", label: "BC Thu Chi", icon: BarChart3 });
+  if (canSeeForecast) tabs.push({ key: "forecast", label: "Dự kiến", icon: BarChart3 });
   if (isManager) tabs.push({ key: "overview", label: "Tổng quan", icon: PieChart });
   if (canSeeOwnShare) tabs.push({ key: "my", label: "Của tôi", icon: CircleUserRound });
   if (canSeeOwnAdvance) tabs.push({ key: "advance", label: "Tạm ứng", icon: HandCoins });
@@ -131,7 +136,7 @@ export default function ProfitHubMobile({
         <>
           <MobileHeader
             onBack={goBack}
-            right={!managerOnly && tabs.length > 0 && tab !== "salary" && tab !== "advance" ? yearPill : undefined}
+            right={!managerOnly && tabs.length > 0 && tab !== "salary" && tab !== "advance" && tab !== "forecast" ? yearPill : undefined}
           />
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden">
             <div className="mx-auto w-full max-w-[480px] px-3.5 pt-3 pb-2">
@@ -141,6 +146,8 @@ export default function ProfitHubMobile({
                 <p className="text-[13px] font-semibold text-[#8d8678] text-center pt-16 px-6">
                   Bạn không có quyền xem báo cáo này. Liên hệ quản trị.
                 </p>
+              ) : tab === "forecast" ? (
+                <ShareholderForecast />
               ) : tab === "salary" && myManager ? (
                 <ProfitManagerSelfView me={myManager} />
               ) : tab === "overview" ? (
