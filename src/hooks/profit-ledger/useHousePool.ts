@@ -309,10 +309,16 @@ export function useHousePoolWrite(org: string) {
         "house-pool-" + op.kind,
         "ghi quỹ góp theo nhà",
         (progress) => send(progress.requestKey),
-        async (prior, progress) => {
+        // Cách B (đợt 11). Đo production 26/11/2026 (`pg_get_functiondef`, chỉ đọc; md5(prosrc)): `house_pool_activate_v1`
+        // 966004d1 và `house_pool_return_v1` 4b1b8a74 khoá công ty (`lock_org_for_decision_v1`) TRƯỚC, rồi tra dòng theo
+        // (công ty, người ghi, mã yêu cầu): đã có thì cùng nội dung trả lại biên nhận cũ, khác nội dung PT409; chưa có mới
+        // ghi. Gửi lại cùng mã, kể cả khi lệnh cũ còn chạy, không ghi hai lần ⇒ không thấy biên nhận thì gửi lại NGAY.
+        // Bản trước trả `pendingHasSettled(prior) ? … : null`: luôn `null`, vì lõi đánh dấu dấu này «đang chạy» suốt lúc
+        // đối chiếu, nên dấu kẹt tới khi người dùng tự gỡ. Đọc biên nhận hỏng thì `readReceipt` ném: lõi giữ dấu.
+        async (_prior, progress) => {
           const result = await readReceipt(org, op.kind, progress.requestKey);
           if (result) return { result };
-          return pendingHasSettled(prior) ? { outcome: "not-written" } : null;
+          return { outcome: "not-written", serverDedupesRequestKey: true };
         },
         org,
       );
