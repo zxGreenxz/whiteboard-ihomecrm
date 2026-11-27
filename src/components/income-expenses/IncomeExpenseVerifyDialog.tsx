@@ -51,16 +51,17 @@ export function IncomeExpenseVerifyDialog({
   const handleConfirm = async () => {
     if (reconcileRequired) return;
     try {
-      const receipt = await verifyMutation.mutateAsync({id:voucher.id,note:note.trim() || null});
+      // Đợt 10c: gửi GIÁ TRỊ MUỐN ĐẶT theo đúng trạng thái hộp đang hiện, không bật/tắt.
+      const receipt = await verifyMutation.mutateAsync({id:voucher.id,note:note.trim() || null,verified:!isVerified});
       if (!receipt) {
-        setSubmitError("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra; không bấm đổi trạng thái thêm lần nữa.");
+        setSubmitError("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra trước khi thao tác tiếp.");
         setReconcileRequired(true); return;
       }
       onOpenChange(false);
     } catch(error) {
-      // Đợt 5: lần bấm sau tự so trạng thái đã kiểm với lúc bấm (đã đổi thì không gửi lần hai, vì gửi lại là đảo ngược),
-      // nên kết quả chưa rõ không khoá hộp nữa; câu báo vẫn hiện. Khi máy đã kết luận «đã ở trạng thái …», hộp đang giữ
-      // ảnh phiếu cũ: khoá nút tới khi mở lại, kẻo lần bấm sau (không còn dấu) đảo ngược trạng thái vừa xác nhận.
+      // Kết quả chưa rõ không khoá hộp: lần bấm sau gửi lại đúng giá trị đã chọn (đợt 10c), máy chủ khoá phiếu rồi so
+      // nên không đổi hai lần. Dấu bản trước (bật/tắt) vẫn có thể kết luận «đã ở trạng thái …»: khi đó hộp đang giữ ảnh
+      // phiếu cũ, khoá nút tới khi mở lại để người dùng chọn lại theo trạng thái mới.
       setSubmitError(voucherFailureMessage(error,"cập nhật trạng thái đã kiểm"));
       if (error instanceof FinancialAlreadyRecordedError) setReconcileRequired(true);
     }

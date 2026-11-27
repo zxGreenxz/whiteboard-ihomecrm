@@ -151,7 +151,7 @@ it('đổi sổ đợt giữ ID đổi xong và cùng requestKey qua timeout/rem
 
 // Đợt 5: mỗi thao tác phiếu một namespace riêng (trước: chung `voucher-lifecycle`). Dấu vẫn theo phạm vi người dùng
 // (đổi công ty đang chọn không vượt được); thao tác khác trên cùng phiếu không còn bị chặn.
-const voucherLifecycleCases=[['duyệt','voucher-approve',useApproveVoucher,{id:'v1',expectedApprovalVersion:1}],['bỏ duyệt','voucher-unapprove',useUnapproveVoucher,'v1'],['huỷ','voucher-cancel',useCancelIncomeExpense,'v1'],['khôi phục','voucher-restore',useRestoreIncomeExpense,'v1'],['đổi kiểm','voucher-verify',useVerifyIncomeExpense,{id:'v1',note:null}]] as const;
+const voucherLifecycleCases=[['duyệt','voucher-approve',useApproveVoucher,{id:'v1',expectedApprovalVersion:1}],['bỏ duyệt','voucher-unapprove',useUnapproveVoucher,'v1'],['huỷ','voucher-cancel',useCancelIncomeExpense,'v1'],['khôi phục','voucher-restore',useRestoreIncomeExpense,'v1'],['đổi kiểm','voucher-verify',useVerifyIncomeExpense,{id:'v1',note:null,verified:true}]] as const;
 const voucherScope=(namespace:string)=>({...scope(namespace,'v1'),organizationId:'actor-scope'});
 const voucherLifecycleScope=voucherScope('voucher-lifecycle');
 it.each(voucherLifecycleCases)('lifecycle phiếu %s timeout giữ dấu ở namespace riêng (phạm vi người dùng), không ghi dấu chung',async(_label,namespace,hook,input)=>{
@@ -172,11 +172,12 @@ it.each([null,{id:'other',approval_status:'UNAPPROVED',posting_status:'UNPOSTED'
  h.rpc.mockResolvedValueOnce({data:null,error:{code:'55000',message:'not a termination forfeit pair'}}).mockResolvedValueOnce({data:null,error:null});h.read.mockResolvedValue({data,error:null});await expect(mount(useUnapproveVoucher).mutation.mutationFn('v1')).rejects.toThrow();expect(financialPending.read(voucherScope('voucher-unapprove'))).not.toBeNull();
 });
 it.each([['voucher-restore',useRestoreIncomeExpense],['voucher-verify',useVerifyIncomeExpense]] as const)('%s không được giải phóng khóa khi readback thiếu',async(namespace,hook)=>{
- // Phép đọc trước khi ghi dấu thấy phiếu; phép đọc xác nhận sau lệnh ghi hỏng.
- h.rpc.mockResolvedValue({data:null,error:null});h.read.mockResolvedValueOnce({data:{id:'v1',code:'PT01',approval_status:'CANCELLED',verified_at:null},error:null}).mockResolvedValue({data:null,error:{code:'42501'}});await expect(mount(hook).mutation.mutationFn(hook===useRestoreIncomeExpense?'v1':{id:'v1',note:null})).rejects.toThrow();expect(financialPending.read(voucherScope(namespace))).not.toBeNull();
+ // Phép đọc trước khi ghi dấu thấy phiếu; phép đọc xác nhận sau lệnh ghi hỏng. «Đã kiểm» (đợt 10c) nhận biên nhận đúng
+ // của máy chủ, nên chỉ phép đọc xác nhận hỏng là lý do giữ dấu.
+ h.rpc.mockResolvedValue(hook===useRestoreIncomeExpense?{data:null,error:null}:{data:{id:'v1',changed:true,verified:false},error:null});h.read.mockResolvedValueOnce({data:{id:'v1',code:'PT01',approval_status:'CANCELLED',verified_at:null},error:null}).mockResolvedValue({data:null,error:{code:'42501'}});await expect(mount(hook).mutation.mutationFn(hook===useRestoreIncomeExpense?'v1':{id:'v1',note:null,verified:false})).rejects.toThrow();expect(financialPending.read(voucherScope(namespace))).not.toBeNull();
 });
 it.each([useRestoreIncomeExpense,useVerifyIncomeExpense])('đọc phiếu hỏng TRƯỚC khi ghi dấu: không ghi dấu, không gửi',async hook=>{
- h.read.mockResolvedValue({data:null,error:{code:'',message:'Failed to fetch'}});await expect(mount(hook).mutation.mutationFn(hook===useRestoreIncomeExpense?'v1':{id:'v1',note:null})).rejects.toBeTruthy();
+ h.read.mockResolvedValue({data:null,error:{code:'',message:'Failed to fetch'}});await expect(mount(hook).mutation.mutationFn(hook===useRestoreIncomeExpense?'v1':{id:'v1',note:null,verified:true})).rejects.toBeTruthy();
  expect(h.rpc).not.toHaveBeenCalled();expect(financialPending.read(voucherScope('voucher-restore'))).toBeNull();expect(financialPending.read(voucherScope('voucher-verify'))).toBeNull();
 });
 it('huỷ flex receipt thiếu ID/changed không phải thành công',async()=>{
@@ -188,7 +189,9 @@ it('huỷ sau hoàn tác phải dùng requestKey persisted và giữ đúng comp
 });
 it('duyệt và bỏ kiểm có receipt thật giải phóng marker và giữ trạng thái trả về',async()=>{
  h.rpc.mockResolvedValueOnce({data:{id:'v1',approved:true,already:false,mode:'VOUCHER'},error:null});await expect(mount(useApproveVoucher).mutation.mutationFn({id:'v1',expectedApprovalVersion:1})).resolves.toMatchObject({approved:true});expect(financialPending.read(voucherScope('voucher-approve'))).toBeNull();
- h.rpc.mockResolvedValueOnce({data:null,error:null});h.read.mockResolvedValue({data:{id:'v1',code:'PT01',verified_at:null},error:null});await expect(mount(useVerifyIncomeExpense).mutation.mutationFn({id:'v1',note:null})).resolves.toMatchObject({verified_at:null});expect(financialPending.read(voucherScope('voucher-verify'))).toBeNull();
+ h.rpc.mockResolvedValueOnce({data:{id:'v1',changed:true,verified:false,verified_at:null,verified_by_name:null},error:null});h.read.mockResolvedValue({data:{id:'v1',code:'PT01',verified_at:null},error:null});await expect(mount(useVerifyIncomeExpense).mutation.mutationFn({id:'v1',note:null,verified:false})).resolves.toMatchObject({verified_at:null,changed:true});expect(financialPending.read(voucherScope('voucher-verify'))).toBeNull();
+ // Đợt 10c: «bỏ kiểm» trả void (bản bật/tắt) không còn là biên nhận: giữ dấu, không báo thành công.
+ h.rpc.mockResolvedValueOnce({data:null,error:null});await expect(mount(useVerifyIncomeExpense).mutation.mutationFn({id:'v1',note:null,verified:false})).rejects.toThrow();expect(financialPending.read(voucherScope('voucher-verify'))).not.toBeNull();
 });
 
 it('huỷ canonical RETURNS void cần readback CANCELLED đúng phiếu trước khi gỡ khóa',async()=>{

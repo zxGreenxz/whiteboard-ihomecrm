@@ -6,7 +6,7 @@ import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeRecordServer, pendingKeys, seedLegacyPending, type FakeRecordServer } from '../../__tests__/fakeRecordServer';
 
-const io = vi.hoisted(() => ({ server: undefined as unknown as FakeRecordServer }));
+const io = vi.hoisted(() => ({ server: undefined as unknown as FakeRecordServer, serverBeforeMigration: false, verifyWrites: 0 }));
 vi.mock('@tanstack/react-query', () => ({ useMutation: (config: unknown) => config, useQuery: (config: unknown) => config, useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => io.server.from(table), get rpc() { return io.server.rpc; } } }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor' }) }));
@@ -32,6 +32,8 @@ beforeEach(() => {
   vi.setSystemTime(T0);
   localStorage.clear();
   io.server = fakeRecordServer();
+  io.serverBeforeMigration = false;
+  io.verifyWrites = 0;
   io.server.rows.income_expenses = ['v1', 'v2'].map(id => ({
     id, code: id === 'v1' ? 'PC2511001' : 'PC2511002', type: 'EXPENSE', payment_id: null, account_id: 'a1',
     approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED', approval_version: 1, posting_version: 1, verified_at: null,
@@ -61,11 +63,15 @@ beforeEach(() => {
     Object.assign(row, { approval_status: 'APPROVED' });
     return { data: { id: row.id, restored_payment_id: null }, error: null };
   };
-  // verify_income_expense_v1: nút bật/tắt.
+  // verify_income_expense_v1 sau migration đợt 10c (md5 prosrc 5c6cc367…): không p_verified ⇒ bật/tắt như cũ, trả NULL;
+  // có p_verified ⇒ khoá phiếu, so, đúng giá trị rồi thì {changed:false} không ghi; khác thì đặt đúng giá trị.
   h.verify_income_expense_v1 = args => {
+    if (io.serverBeforeMigration && 'p_verified' in args) return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.verify_income_expense_v1(p_id, p_note, p_verified) in the schema cache' } };
     const row = find(args.p_id);
-    row.verified_at = row.verified_at ? null : new Date().toISOString();
-    return { data: null, error: null };
+    if (typeof args.p_verified !== 'boolean') { row.verified_at = row.verified_at ? null : new Date().toISOString(); return { data: null, error: null }; }
+    const changed = (row.verified_at !== null) !== args.p_verified;
+    if (changed) { row.verified_at = args.p_verified ? new Date().toISOString() : null; io.verifyWrites += 1; }
+    return { data: { id: row.id, changed, verified: args.p_verified, verified_at: row.verified_at, verified_by_name: row.verified_at ? 'Nhân viên A' : null }, error: null };
   };
   const cancelLocked = (args: Row) => {
     const row = find(args.p_voucher);
@@ -211,28 +217,115 @@ describe('khôi phục phiếu (cách C)', () => {
   });
 });
 
-describe('«đã kiểm» (nút bật/tắt, cách C)', () => {
-  const verify = () => fn<{ id: string; note: string | null }, { verified_at: string | null }>(() => useVerifyIncomeExpense());
-  it('lệnh không tới máy chủ: quá 2 phút gửi lại, đánh dấu đúng một lần', async () => {
+describe('«đã kiểm» (đợt 10c: đặt giá trị, cách A)', () => {
+  type VerifyResult = { verified_at: string | null; changed?: boolean; resent?: boolean };
+  const verify = () => fn<{ id: string; note: string | null; verified: boolean }, VerifyResult>(() => useVerifyIncomeExpense());
+  const verifyCalls = () => io.server.rpcCalls.filter(call => call.name === 'verify_income_expense_v1');
+  const verifyScope = { namespace: 'voucher-verify', userId: 'actor', organizationId: 'actor-scope', businessKey: 'v1' };
+  /** Dấu «đã kiểm» do bản đợt 5 ghi (nút bật/tắt): chỉ có chữ ký trạng thái lúc bấm, không có giá trị đặt. */
+  const seedToggleEraPending = (before: string, startedAt: Date) => localStorage.setItem(
+    'ihome:financial-pending:v1:voucher-verify:actor:actor-scope:v1',
+    JSON.stringify({ ...verifyScope, attemptId: 'dot5-old', requestKey: 'dot5-old', completedIds: [], startedAt: startedAt.toISOString(), operation: 'cập nhật trạng thái đã kiểm', meta: { before } }));
+  afterEach(() => {
+    // Mọi lệnh trình duyệt mới gửi đều là ĐẶT giá trị; không bao giờ bật/tắt, không rơi về hàm đường cũ.
+    expect(verifyCalls().every(call => typeof call.args.p_verified === 'boolean')).toBe(true);
+    expect(calls('verify_income_expense')).toBe(0);
+  });
+
+  it('lệnh không tới máy chủ: bấm lại gửi lại NGAY (không chờ 2 phút), đánh dấu đúng một lần, dấu được gỡ', async () => {
     io.server.failNext('verify_income_expense_v1', 'rpc', 'drop-before');
-    await expect(verify()({ id: 'v1', note: null })).rejects.toMatchObject({ outcome: 'unknown' });
-    later(130_000);
-    const receipt = await verify()({ id: 'v1', note: null });
-    expect(receipt.verified_at).not.toBeNull();
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    await expect(verify()({ id: 'v1', note: null, verified: true })).resolves.toMatchObject({ changed: true, resent: true });
+    expect(voucher().verified_at).not.toBeNull();
+    expect(io.verifyWrites).toBe(1);
     expect(pendingKeys()).toEqual([]);
   });
-  it('lệnh tới nhưng mất phản hồi: thấy trạng thái đã đổi so với lúc bấm, KHÔNG gửi lại (gửi lại là đảo ngược)', async () => {
+  it('lệnh tới nhưng mất phản hồi: gửi lại ngay, máy chủ trả «không đổi» — KHÔNG đảo ngược, chỉ một lần đổi', async () => {
     io.server.failNext('verify_income_expense_v1', 'rpc', 'drop-after');
-    await expect(verify()({ id: 'v1', note: null })).rejects.toMatchObject({ outcome: 'unknown' });
-    later(130_000);
-    await expect(verify()({ id: 'v1', note: null })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('Đã kiểm') });
-    expect(calls('verify_income_expense_v1')).toBe(1);
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    await expect(verify()({ id: 'v1', note: null, verified: true })).resolves.toMatchObject({ changed: false, resent: true });
     expect(voucher().verified_at).not.toBeNull();
+    expect(io.verifyWrites).toBe(1);
+    expect(verifyCalls().map(call => call.args.p_verified)).toEqual([true, true]);
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('bỏ kiểm mất phản hồi rồi bấm lại: vẫn «Chưa kiểm», không đánh dấu lại', async () => {
+    voucher().verified_at = '2026-11-24T01:00:00.000Z';
+    io.server.failNext('verify_income_expense_v1', 'rpc', 'drop-after');
+    await expect(verify()({ id: 'v1', note: null, verified: false })).rejects.toMatchObject({ outcome: 'unknown' });
+    await expect(verify()({ id: 'v1', note: null, verified: false })).resolves.toMatchObject({ changed: false, verified_at: null });
+    expect(voucher().verified_at).toBeNull();
+    expect(io.verifyWrites).toBe(1);
+  });
+  it('dấu đặt giá trị còn treo, người dùng chọn giá trị KHÁC: chờ lệnh cũ xong (2 phút) rồi mới gửi giá trị mới', async () => {
+    io.server.failNext('verify_income_expense_v1', 'rpc', 'drop-after');
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    await expect(verify()({ id: 'v1', note: null, verified: false })).rejects.toMatchObject({ message: expect.stringContaining('đang chờ kết quả') });
+    expect(verifyCalls()).toHaveLength(1);
+    later(130_000);
+    await expect(verify()({ id: 'v1', note: null, verified: false })).resolves.toMatchObject({ changed: true, verified_at: null });
+    expect(voucher().verified_at).toBeNull();
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('biên nhận sai phiếu, sai giá trị, thiếu «changed» hay đọc lại lệch giá trị không phải thành công: giữ dấu, lần sau gửi lại', async () => {
+    const real = io.server.rpcHandlers.verify_income_expense_v1;
+    // Biên nhận nói giá trị ngược với giá trị đã gửi (dù phép đọc lại thấy đúng): không tin biên nhận.
+    io.server.rpcHandlers.verify_income_expense_v1 = args => { voucher().verified_at = args.p_verified ? new Date().toISOString() : null; return { data: { id: 'v1', changed: true, verified: !args.p_verified }, error: null }; };
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    expect(pendingKeys()).toHaveLength(1);
+    voucher().verified_at = null;
+    io.server.rpcHandlers.verify_income_expense_v1 = () => ({ data: { id: 'v2', changed: true, verified: true }, error: null });
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    io.server.rpcHandlers.verify_income_expense_v1 = () => ({ data: { id: 'v1', verified: true }, error: null });
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    // Máy chủ báo đã đặt nhưng phép đọc lại vẫn thấy «Chưa kiểm».
+    io.server.rpcHandlers.verify_income_expense_v1 = () => ({ data: { id: 'v1', changed: true, verified: true }, error: null });
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'unknown' });
+    io.server.rpcHandlers.verify_income_expense_v1 = real;
+    await expect(verify()({ id: 'v1', note: null, verified: true })).resolves.toMatchObject({ changed: true });
+    expect(pendingKeys()).toEqual([]);
+  });
+  it.each([
+    ['PGRST202', 'Could not find the function public.verify_income_expense_v1(p_id, p_note, p_verified) in the schema cache'],
+    ['42883', 'function public.verify_income_expense_v1(p_id => uuid, p_note => text, p_verified => boolean) does not exist'],
+  ])('web lên trước migration (%s, hàm chưa có p_verified): từ chối rõ, không dấu, không đổi phiếu, không gọi bản bật/tắt', async (code, message) => {
+    io.server.rpcHandlers.verify_income_expense_v1 = () => ({ data: null, error: { code, message } });
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('Máy chủ chưa cập nhật') });
+    expect(voucher().verified_at).toBeNull();
+    expect(pendingKeys()).toEqual([]);
+    expect(verifyCalls()).toHaveLength(1);
+  });
+  it('máy chủ thật trước migration (bản hai tham số): lời gọi có p_verified nhận PGRST202 ⇒ từ chối rõ', async () => {
+    io.serverBeforeMigration = true;
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('Máy chủ chưa cập nhật') });
+    expect(voucher().verified_at).toBeNull();
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('thiếu giá trị đặt: từ chối trước khi ghi dấu, không gửi gì', async () => {
+    await expect(verify()({ id: 'v1', note: null } as unknown as { id: string; note: string | null; verified: boolean })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('Thiếu trạng thái') });
+    expect(verifyCalls()).toHaveLength(0);
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('dấu bản trước (bật/tắt, đợt 5) mà trạng thái đã đổi so với lúc bấm: báo kèm mã phiếu, KHÔNG gửi', async () => {
+    voucher().verified_at = '2026-11-24T01:00:00.000Z';
+    seedToggleEraPending('chua-kiem', new Date(T0 - 10 * 60_000));
+    await expect(verify()({ id: 'v1', note: null, verified: false })).rejects.toMatchObject({ outcome: 'failure', message: expect.stringContaining('PC2511001') });
+    expect(verifyCalls()).toHaveLength(0);
+    expect(voucher().verified_at).not.toBeNull();
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('dấu bản trước như lúc bấm: dưới 2 phút chờ, quá 2 phút gửi lại bằng lệnh ĐẶT giá trị (không bật/tắt)', async () => {
+    seedToggleEraPending('chua-kiem', new Date(T0 - 60_000));
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ message: expect.stringContaining('đang chờ kết quả') });
+    expect(verifyCalls()).toHaveLength(0);
+    later(70_000);
+    await expect(verify()({ id: 'v1', note: null, verified: true })).resolves.toMatchObject({ changed: true });
+    expect(verifyCalls().map(call => call.args.p_verified)).toEqual([true]);
     expect(pendingKeys()).toEqual([]);
   });
   it('dấu khoá chung bản trước: chặn, không gửi', async () => {
     seedLegacyPending(legacyScope('v1'), new Date(T0 - 10 * 60_000));
-    await expect(verify()({ id: 'v1', note: null })).rejects.toMatchObject({ message: expect.stringContaining('đối chiếu') });
+    await expect(verify()({ id: 'v1', note: null, verified: true })).rejects.toMatchObject({ message: expect.stringContaining('đối chiếu') });
     expect(calls('verify_income_expense_v1')).toBe(0);
   });
 });
