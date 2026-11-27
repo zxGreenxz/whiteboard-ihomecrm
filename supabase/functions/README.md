@@ -2,6 +2,15 @@
 
 > **Reviewed:** 2026-07-20. Legacy `ai-chat`, `ai-embeddings` và RAG `ai_*` đã bị xoá; không deploy theo hướng dẫn cũ.
 
+## Chọn nguồn AI theo ứng dụng
+
+Quản trị hệ thống mở **Cài đặt hệ thống → Nguồn AI** (`/settings/ai-routing`). Đồng bộ danh mục bằng khóa của từng nguồn, mở danh mục và bấm **Thử các model tương thích**. Kiểm thử dùng dữ liệu tổng hợp và tiêu thụ lượt của gói đang kết nối. Chỉ model đã trả đúng kết quả mới xuất hiện trong bộ chọn. Báo chi nhanh, Ví cá nhân và worker đồng hồ cần model đọc ảnh trả JSON. Chép giọng tiếp tục dùng giao thức audio hiện hành. Các hồ sơ bot Hermes được quản lý trên VPS.
+
+1. Áp dụng migration `20261127170740` theo forward lane đã review. Bảng cấu hình khởi tạo bốn tuyến rỗng.
+2. Phát hành các Edge Function `ai-routing`, `quick-entry`, `meter-capture-worker` trước khi bật định tuyến. Cấu hình khóa dịch vụ của team trong `AI_NOUS_API_KEY` trên Edge và worker đồng hồ. Dùng khóa 9router hiện hữu của mỗi dịch vụ. Với Nous, kiểm tra gói ChatGPT đã chia sẻ cho team phát hành khóa và kiểm nhãn **ChatGPT** trong Usage sau một lượt thử. [Hướng dẫn Nous](https://portal.nousresearch.com/help/chatgpt-plan-sharing)
+3. Đồng bộ, thử và lưu cặp model ở đúng ứng dụng. Sau khi kiểm trên TEST, bật `AI_ROUTING_ENABLED=true` trên Edge. Tuyến rỗng tiếp tục dùng cấu hình hiện hành. Worker cũ tiếp tục nhận định dạng job hiện hành cho đến khi được cập nhật.
+4. Kiểm lượt thử chính và dự phòng trên DEMO. Đối chiếu nguồn, model và trạng thái từng lần gọi trong `ai_usage_logs` của báo chi hoặc trong bằng chứng của worker đồng hồ. Nút **Trở về cấu hình hiện hành** trả riêng ứng dụng đó về đường cũ. Tắt cờ ở Edge để khôi phục định tuyến hiện hành cho lượt mới của cả hệ thống.
+
 ## Functions hiện hành
 
 | Function | Vai trò | Auth chính |
@@ -94,7 +103,7 @@ Copilot. Hai đường, mỗi đường một nhà cung cấp:
 Chuỗi đọc đổi 03/10/2026 theo lượt đo 02/10 trên 421 câu chi thật, từng mô hình chạy riêng (câu lệnh chỉ hỏi
 hạng mục mà trang dùng khi thẻ đã đủ tiền + toà): Terra low đúng 98,6%, trung vị 2,7 s, không câu nào quá
 5 s; Luna low 97,6%, 1,8 s. Gemini (`ag/…`, gói miễn phí) không vào chuỗi: không gửi chứng từ thật qua gói
-miễn phí, p90 6–28 s. Trang gửi `max_tokens` 1.000 cho câu lệnh rút gọn, 4.000 cho câu lệnh đầy đủ.
+miễn phí, p90 6–28 s. Quản trị hệ thống có thể chọn một model Antigravity đã kiểm cho ứng dụng, khi đó ảnh của ứng dụng sẽ được gửi qua kết nối này. Trang gửi `max_tokens` 1.000 cho câu lệnh rút gọn, 4.000 cho câu lệnh đầy đủ.
 
 Chuỗi chép giọng theo xếp hạng tiếng Việt đo 01/10/2026 (16 câu × 2 giọng × sạch/ồn, chấm bằng bộ đọc
 số tiền của trang): chirp-3 64/64 > nova-3 62 = whisper-1 62 > gemini-3.5-transcribe 60 >

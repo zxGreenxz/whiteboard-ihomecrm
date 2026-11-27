@@ -4,6 +4,7 @@ import {cleanup,render,screen} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 const q=(data:unknown)=>({data,status:'success',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:vi.fn()});
 const h=vi.hoisted(()=>({update:vi.fn()}));
+vi.mock('@/hooks/useIsAdmin',()=>({useIsSuperAdmin:()=>({data:false,isSuccess:true})}));
 vi.mock('@/components/layout/MainLayout',()=>({default:({children}:{children:React.ReactNode})=><>{children}</>}));
 vi.mock('@/hooks/useSettings',()=>({
  useGeneralSettings:()=>q({contract_show_expiring_status:true}),

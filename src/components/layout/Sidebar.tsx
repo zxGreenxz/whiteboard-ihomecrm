@@ -243,6 +243,7 @@ export const navigationGroups: NavGroup[] = [
           { title: 'Mẫu vai trò', href: '/settings/roles', icon: ShieldCheck, module: 'users' },
           // Kết nối cá nhân: route cần đăng nhập, backend kiểm quyền và chủ sở hữu.
           { title: 'Kết nối Hermes', href: '/settings/hermes', icon: Bot },
+          { title: 'Nguồn AI', href: '/settings/ai-routing', icon: Settings, superAdminOnly: true },
           // Sự kiện quay số may mắn: không gắn `module` vì tính năng nằm ngoài
           // ma trận phân quyền theo sổ/toà — RPC tự chặn OWNER/STAFF (42501).
           { title: 'Quay số may mắn', href: '/quayso/admin', icon: Gift },

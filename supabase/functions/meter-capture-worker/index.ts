@@ -1,4 +1,5 @@
 import { sha256 } from '@noble/hashes/sha256';
+import { applicationRoutes } from '../_shared/ai-routing.ts';
 
 type Json = Record<string, unknown>;
 type Fetcher = typeof fetch;
@@ -140,7 +141,10 @@ export function createHandler(dependencies: Dependencies = {}) {
         if (!await secretMatches(auth.slice(7), env('METER_CAPTURE_WORKER_TOKEN') ?? '')) throw new RequestError(403, 'worker_forbidden');
         if (worker === 'claim') {
           const workerId = requiredString(body.workerId); if (workerId.length > 100) throw new RequestError(400, 'invalid_worker_id');
-          return response(200, await rpc('meter_capture_claim_v1', { p_worker_id: workerId }));
+          const job = await rpc('meter_capture_claim_v1', { p_worker_id: workerId });
+          if (!object(job) || body.supportsAiRouting !== true) return response(200, job);
+          const routes = await applicationRoutes('meter_vision', env, fetcher);
+          return response(200, routes.length ? { ...job, aiRoutes: routes } : job);
         }
         const jobId = requiredString(body.jobId, UUID); const leaseToken = requiredString(body.leaseToken, UUID);
         if (worker === 'complete') {
