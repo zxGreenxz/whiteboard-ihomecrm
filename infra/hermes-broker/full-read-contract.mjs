@@ -212,7 +212,7 @@ const REPORT_READS = Object.freeze({
   // invalid_request + hint (read-misuse-hints.mjs).
   pending_approvals: reportDefine('pending_approvals', `Chỉ "việc chờ TÔI duyệt"; phiếu chờ duyệt: income_expenses. Không lọc toà; phiếu (cả theo toà): crm_read_income_expenses status=UNAPPROVED. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: query('Mã/tên phiếu hoặc người lập.'), limit: LIMIT, offset: OFFSET }),
-  zalo_conversations: reportDefine('zalo_conversations', `Hội thoại Zalo của công ty như Chat Zalo (cần quyền Chat Zalo toàn công ty): người nhắn, SĐT, phòng/toà, chưa đọc, ghim, tin cuối ≤160 ký tự; query theo tên/SĐT/nhãn. ${PRIVATE_HINT} ${ORG_ONLY}`,
+  zalo_conversations: reportDefine('zalo_conversations', `Chat Zalo toàn công ty: người nhắn, SĐT, phòng/toà, chưa đọc, ghim, tin cuối ≤160 ký tự. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: query('Tên, SĐT hoặc nhãn; không khớp phòng.'), limit: LIMIT, offset: OFFSET }),
   contract_search: reportDefine('contract_search', `Tìm hợp đồng như danh sách Hợp đồng: query số HĐ/tên phòng/tên-SĐT khách; status ACTIVE (trừ đã thanh lý), TERMINATED, EXPIRING (≤30 ngày), EXPIRED; displayLabel như web. Tên khách chỉ khi có quyền khách hàng ở mọi toà của kết quả. Chi tiết: crm_read_contract_detail. ${PRIVATE_HINT}`,
     { status: { enum: [null, 'ACTIVE', 'TERMINATED', 'EXPIRING', 'EXPIRED'] }, buildingId: BUILDING, query: query('Số HĐ, tên phòng, tên/SĐT khách.'), limit: LIMIT, offset: OFFSET }),
@@ -225,9 +225,8 @@ const forwardPattern = '^[1-9][0-9]{12}\\.[a-f0-9]{64}$';
 const forwardedRoom = { buildingId: id, buildingName: longText(200), roomId: id, roomName: longText(100) };
 const zaloWithSource = Object.freeze({
   ...zaloList,
-  description: zaloList.description + ' Với tin chuyển tiếp dùng riêng forwardRef do kênh cấp để tìm phòng khách đang thuê. ask_customer: hỏi khách; ask_room: hỏi phòng; choose_room: cho người gửi chọn; matched: dùng phòng trả về.',
   inputSchema: { ...zaloList.inputSchema, properties: { ...zaloList.inputSchema.properties,
-    forwardRef: { type: 'string', pattern: forwardPattern, description: 'Mã đối chiếu gắn vào tin forward, dùng riêng.' } } },
+    forwardRef: { type: 'string', pattern: forwardPattern, description: 'Dùng riêng để tra phòng từ tin chuyển tiếp.' } } },
   input(input) {
     if (!record(input) || !Object.hasOwn(input, 'forwardRef')) return zaloList.input(input);
     if (!exact(input, ['forwardRef']) || typeof input.forwardRef !== 'string' || input.forwardRef.length !== 78 ||

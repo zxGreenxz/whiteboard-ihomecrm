@@ -26466,6 +26466,10 @@ export type Database = {
         Args: { p_binding: Json; p_input: Json }
         Returns: Json
       }
+      hermes_zalo_forward_tenant_v1: {
+        Args: { p_binding: Json; p_reference: string }
+        Returns: Json
+      }
       hermes_zalo_ingress_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_private_command_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_private_reply_v1: { Args: { p: Json }; Returns: Json }

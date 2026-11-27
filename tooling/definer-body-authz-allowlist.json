@@ -5,6 +5,10 @@
   "generated": "2026-09-15",
   "allow": [
     {
+      "function": "public.hermes_zalo_forward_tenant_v1",
+      "reason": "Lượt đọc tin gốc đi qua app_private.hermes_sale_binding_v1 để buộc JWT, session và membership với đúng kết nối. Trước truy vấn, RPC kiểm chat_zalo.view của kết nối và tổ chức, quyền inbox toàn tổ chức của người gọi và phạm vi độc lập customers.view/contracts.view. Tin, khách và hợp đồng đều lọc theo tổ chức đó, khách lọc theo current_visible_owner_ids. Có phòng ngoài phạm vi thì không trả phòng nào. Fixture scripts/test-env/hermes-forward-tenant.sql kiểm binding ngoại và quyền đọc bị thu hồi bằng vai authenticated."
+    },
+    {
       "function": "public.house_pool_state_v1",
       "reason": "RPC từ chối trước khi đọc sổ nếu app_private.shared_fund_owner_v1(p_organization_id) không trả membership. Helper lọc auth.uid(), đúng công ty hoạt động, membership OWNER còn hiệu lực và quyền shareholder_profit.distribute. Truy vấn nguồn, đợt hoàn và phiếu đều giới hạn theo công ty. Kiểm PGlite từ chối cổ đông chỉ xem và chủ ở công ty khác."
     },
