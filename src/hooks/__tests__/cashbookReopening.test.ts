@@ -68,16 +68,19 @@ describe('cashbook reopening boundary', () => {
     await expect(write(input)).resolves.toMatchObject({ status: 'REOPENED' });
     expect(financialPending.read(scope)).toBeNull();
   });
-  it('unknown completion survives remount and organization change without another write', async () => {
+  // Đợt 6 (cách B): lịch sử chưa có lần mở mang mã đó ⇒ gửi lại ĐÚNG mã cũ (reopen_cashbook_v1 khoá sổ + khoá tư vấn theo mã
+  // rồi mới tra mã), không bao giờ mã mới. Đổi tổ chức đang chọn không lách được dấu.
+  it('unknown completion survives remount and organization change; the next press reads history then resends the same key', async () => {
     h.rpc.mockResolvedValueOnce({ data: null, error: { status: 504, message: 'timeout' } });
     await expect(mutation().mutationFn(input)).rejects.toMatchObject({ outcome: 'unknown' });
     const pending = financialPending.read(scope);
     expect(pending?.requestKey).toBe(h.rpc.mock.calls[0][1].p_idempotency_key);
     localStorage.setItem('ihomecrm.selectedOrganizationId', 'another-organization');
-    h.rpc.mockResolvedValueOnce({ data: state, error: null });
-    await expect(mutation().mutationFn(input)).rejects.toMatchObject({ outcome: 'unknown' });
-    expect(h.rpc.mock.calls.map(call => call[0])).toEqual(['reopen_cashbook_v1', 'cashbook_reopening_state_v1']);
-    expect(financialPending.read(scope)?.requestKey).toBe(pending?.requestKey);
+    h.rpc.mockResolvedValueOnce({ data: state, error: null }).mockResolvedValueOnce({ data: receipt(pending!.requestKey!), error: null });
+    await expect(mutation().mutationFn(input)).resolves.toEqual(receipt(pending!.requestKey!));
+    expect(h.rpc.mock.calls.map(call => call[0])).toEqual(['reopen_cashbook_v1', 'cashbook_reopening_state_v1', 'reopen_cashbook_v1']);
+    expect(h.rpc.mock.calls[2][1].p_idempotency_key).toBe(pending?.requestKey);
+    expect(financialPending.read(scope)).toBeNull();
   });
   it('recovers from the exact recorded request after re-close without reopening the new period', async () => {
     h.rpc.mockResolvedValueOnce({ data: null, error: { status: 504, message: 'timeout' } });

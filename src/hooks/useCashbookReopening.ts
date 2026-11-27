@@ -29,8 +29,11 @@ export const useReopenCashbook = () => {
         progress => reopenCashbook(checked, progress.requestKey),
         async pending => {
           const state = await readCashbookReopeningState(checked.cashbookId);
-          const event = state.history.find(row => row.idempotency_key === pending.requestKey);
-          if (!event) return null;
+          const event = state.history.find(row => row.idempotency_key === (pending.requestKey ?? pending.attemptId));
+          // Chưa có lần mở mang mã đó: gửi lại ngay cùng mã (cách B, đợt 6). reopen_cashbook_v1 (production 25/11/2026)
+          // khoá sổ FOR UPDATE, khoá công ty và khoá tư vấn theo mã TRƯỚC khi tra mã: lệnh cũ còn chạy thì lệnh gửi lại chờ
+          // rồi nhận kết quả cũ (`idempotent_replay`); khác nội dung ⇒ [REOPEN_KEY_REUSED].
+          if (!event) return { outcome: 'not-written', serverDedupesRequestKey: true };
           // A receipt proves the old attempt completed. A later re-close remains
           // intact; recovery never issues another write against the new period.
           const result: CashbookReopeningReceipt = {

@@ -54,7 +54,10 @@ describe('profitLedgerErrorMessage', () => {
     expect(profitLedgerErrorMessage(err('40001', 'could not serialize access'), 'marker').kind).toBe('BUSY');
   });
   it('42501: mã máy có câu riêng; câu tiếng Việt thô của máy chủ giữ nguyên', () => {
-    expect(profitLedgerErrorMessage(err('42501', 'PROFIT_LEDGER_MAKER_SELF_APPROVE: x'), 'approve')).toMatchObject({ kind: 'FORBIDDEN', message: expect.stringMatching(/người được chỉ định/) });
+    expect(profitLedgerErrorMessage(err('42501', 'PROFIT_LEDGER_MAKER_SELF_APPROVE: x'), 'approve')).toMatchObject({ kind: 'FORBIDDEN', message: expect.stringMatching(/Người lập không tự duyệt được phiếu này/) });
+    expect(profitLedgerErrorMessage(err('42501', 'PROFIT_LEDGER_PAYEE_SELF_APPROVE: x'), 'approve').message).toMatch(/Người nhận tiền không tự duyệt được phiếu này/);
+    // Màn Chờ duyệt đã bỏ 25/11/2026: câu báo chỉ về Thu chi, không chỉ sang màn không còn.
+    expect(profitLedgerErrorMessage(err('55000', 'PROFIT_LEDGER_V2_ONLY: x'), 'approve').message).toBe('Duyệt hoặc chi phiếu này bằng nút Duyệt / Chi ở Thu chi.');
     expect(profitLedgerErrorMessage(err('42501', 'PROFIT_LEDGER_ADVANCE_CASHBOOK: quyền tạm ứng chỉ chi từ sổ quỹ bạn đang giữ'), 'advance').message).toMatch(/sổ quỹ bạn đang giữ/);
     expect(profitLedgerErrorMessage(err('42501', 'Không có quyền chi lợi nhuận cổ đông'), 'settle')).toMatchObject({ kind: 'FORBIDDEN', message: 'Không có quyền chi lợi nhuận cổ đông' });
     expect(profitLedgerErrorMessage(err('42501', 'permission denied for function shareholder_profit_ledger_v1'), 'read').message).not.toMatch(/function|shareholder_profit/);

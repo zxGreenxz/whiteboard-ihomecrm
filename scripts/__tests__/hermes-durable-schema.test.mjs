@@ -173,6 +173,8 @@ const TABLES = ['capabilities', 'assistants', 'org_policies', 'sessions', 'conne
 const TYPE = /^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*(?:\[\])?$/;
 const REVIEWED_DEFAULTS = new Map([
   ...FORWARD_DEFAULTS,
+  // The deposit migration retires the Hermes customer-assignment operation and preserves this existing default.
+  ['app_private.assert_room_reservation_legacy_sources_v1', [["p_allowed_vouchers uuid[] DEFAULT '{}'::uuid[]", 'p_allowed_vouchers uuid[]']]],
   ['public.hermes_room_schedule_due_v1', [["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']]],
   ['public.hermes_room_schedule_sweep_v1', [["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']]],
   ['app_private.hermes_task_follow_tick_v1', [['p_limit integer DEFAULT 500', 'p_limit integer']]],
@@ -784,6 +786,23 @@ BEGIN
 END $fn$`)],
 ]);
 
+// These CRM signatures already existed before the first Hermes migration in this
+// replay that replaces their bodies. CREATE OR REPLACE retains their prior ACL.
+// Pin the historical declarations and the roles verified in the rollout catalog.
+const depositTrigger = 'public.trg_contract_link_orphan_deposits()';
+const inheritedDeposits = [
+  ['app_private.assert_room_reservation_legacy_sources_v1(uuid,uuid,uuid[])','20260928025848_room_reservation_workflow.sql',[]],
+  ['app_private.contract_room_deposit_sources_v1(uuid,uuid,uuid)','20261125102224_contract_room_deposit_sources.sql',[]],
+  [depositTrigger,'20260731140000_orphan_deposit_trigger_flex.sql',['service_role']],
+];
+for (const [key,file] of inheritedDeposits) {
+  const historical = splitSqlStatements(readFileSync(join(directory,file),'utf8')).map(clean);
+  assert(historical.some(statement => {
+    const match = /^CREATE OR REPLACE FUNCTION ((?:app_private|public)\.\w+)\(([^)]*)\)/i.exec(statement);
+    return match && match[1] === key.split('(')[0] && signature(match[1],match[2],true) === key;
+  }), `Missing historical deposit declaration: ${key}`);
+}
+
 function securityContract(sql = all, registry = functions) {
   const expandedStatements = expandReviewedFunctionAcl(sql);
   sql = expandedStatements.join(';\n');
@@ -846,27 +865,34 @@ function securityContract(sql = all, registry = functions) {
   // existing subset. Replay ACL statements in order, rather than requiring each
   // historical GRANT to contain the entire future surface (or unioning grants
   // that a later REVOKE actually removed). CREATE OR REPLACE keeps its old ACL.
-  const acl = new Map();
+  const acl = new Map(inheritedDeposits.map(([key,,roles]) => [key,new Set(roles)]));
   // The room-link forward migration also replaces the existing guest sale page
   // and worker reader. Their grants do not make any Hermes RPC public.
   const guestPage = 'public.get_public_available_rooms(text)';
   const readyRoomWriter = 'public.set_public_room_link_ready_room_v1(text,uuid,boolean)';
   const stockWorker = 'public.zalo_phong_trong_cho_worker_v1(uuid)';
+  // Sale phòng đợt 2 (20261125034429_sale_phong_theo_cong_ty.sql) thay hàm đọc phòng nội bộ, «Phòng trống», và thêm RPC
+  // cài đặt chung / quản link có kiểm quyền cùng file với trang Hermes; các grant này không mở hàm Hermes nào.
+  const saleCompanyCaller = ['public.get_sale_room_inventory_v1(uuid,uuid,uuid)', 'public.get_my_available_rooms(uuid)',
+    'public.get_public_room_settings_v1(uuid)', 'public.save_public_room_settings_v1(uuid,timestamptz,integer,boolean,uuid,text)',
+    'public.list_public_room_tokens_v1(uuid)', 'public.manage_public_room_token_v1(uuid,text,text,text)'];
   const allowed = new Map([
     ['anon', new Set([guestPage])],
     ['authenticated', new Set([...PUBLIC.map(name => `public.${name}`), ...TASK_FUNCTIONS.filter(spec => spec.authenticated).map(spec => spec.signature),
       ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target), ...TASK_FOLLOW_STEPS,
       ...ZALO_ONESHOT_CALLER, ...W2_CALLER, ...INHERITED_CRM_ACL.map(spec => spec.signature),
+      // CRM-only reconciliation in the migration that retires Hermes customer assignment.
+      'public.reconcile_deposit_income_hold_v1(uuid,uuid,uuid,bigint,numeric,numeric)',
       ...FORWARD_ACL_BLOCKS.find(block => block.name === 'shared-read').targets.map(([target]) => target),
       'public.vehicles_list_core_v1(uuid,uuid[],uuid[],boolean,text,text,uuid,uuid,integer,integer,boolean)',
       'app_private.hermes_domain_read_scope_fast_v1(jsonb,text,jsonb,text)',
       // R2d (20261021063452): the fast reader's DEFINER count, reachable only through its bound OID (no app_private USAGE).
       'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])',
       // Shared write foundation: SQL-standard INVOKER wrappers bind these app_private OIDs at creation (no app_private USAGE).
-      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER, ...LEARNING_ACTION_CALLER, guestPage, readyRoomWriter])],
+      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER, ...LEARNING_ACTION_CALLER, guestPage, readyRoomWriter, ...saleCompanyCaller])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
-    ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER, guestPage, stockWorker])],
+    ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER, guestPage, stockWorker, depositTrigger, 'public.get_my_available_rooms(uuid)'])],
     ['hermes_learning_ingest', new Set(LEARNING_INGEST)],
   ]);
   for (const statement of expandedStatements) {
@@ -1038,7 +1064,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all seventy-four reviewed forward migrations and their 151 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all reviewed forward migrations and their latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -1086,7 +1112,8 @@ test('all seventy-four reviewed forward migrations and their 151 latest definiti
   // chạy được; thân bước 025453 thành ghim superseded).
   // Kết nối tự hồi (13/11): hàm gia hạn của kho dựng lại ở 20261113131751 (bỏ trần created_at + 30 ngày, dời mốc created_at của token; +1
   // file, +1 tên mới: hàm hồi token hết hạn chưa quá 7 ngày, chỉ vai kho chạy được; thân gia hạn 20261019034754 thành ghim superseded).
-  assert.equal(paths.length, 74);
+  // Tìm khách theo tên: thêm một migration thay thân lõi danh sách khách hàng.
+  assert.equal(paths.length, 75);
   assert.equal(FORWARD_FUNCTIONS.length, 151);
   assert.equal(FORWARD_BY_NAME.size, 151, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);

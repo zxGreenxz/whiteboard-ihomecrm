@@ -1,6 +1,5 @@
-import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {FinancialAlreadyRecordedError,FinancialWorkflowError,RepeatableWriteUnknownError} from '@/lib/financialWorkflow';
+import {confirmedRecordId,recordWriteMessage,repeatableWrite,settleZeroRowDelete} from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -68,31 +67,50 @@ export const useLeadActivities = (leadId?: string) => {
   });
 };
 
+/**
+ * Mã hoạt động của lần thêm CHƯA biết chắc kết quả, theo (người, công ty, khách hẹn, nội dung): lần bấm lại cùng nội
+ * dung gửi lại ĐÚNG mã đó nên khoá chính chặn bản thứ hai. Giờ hoàn tất không nằm trong khoá vì form dựng lại mỗi lần
+ * bấm. Sống theo tab, không ghi vào trình duyệt: tải lại trang thì quên (một dòng nhật ký trùng là vô hại).
+ */
+const unconfirmedActivityIds = new Map<string, string>();
+const activityDraftKey = (userId: string, organizationId: string | null | undefined, data: CreateLeadActivityData) =>
+  JSON.stringify([userId, organizationId ?? null, data.lead_id, data.activity_type, data.description ?? null, data.notes ?? null, data.scheduled_at ?? null, data.old_value ?? null, data.new_value ?? null]);
+
 // Create lead activity
 export const useCreateLeadActivity = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
-    mutationFn: async (data: CreateLeadActivityData) => {
+    // Đợt 8: thêm mới không lặp lại được nếu chạy lại INSERT trần, nên mã hoạt động do trình duyệt sinh (bảng nhận `id`,
+    // không trigger nào ghi đè, chỉ mục duy nhất duy nhất là khoá chính — đo production 26/11/2026). Không giữ dấu «chờ đối
+    // chiếu»: kết quả chưa rõ báo rõ và cho bấm lại; lần bấm lại gửi đúng mã cũ (xem `insertWithClientId`).
+    mutationFn: async (data: CreateLeadActivityData): Promise<LeadActivity> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
-
-      return persistentFinancialWorkflow('lead-activity-create',{scope:'actor'}).run(data.lead_id,'thêm hoạt động khách hẹn',async()=>{
-      const { data: activity, error } = await supabase
-        .from("lead_activities")
-        .insert(withOrg({
-          ...data,
-          user_id: user.id,
-          performed_by: user.id,
-        }, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      confirmedRecordId(activity,'thêm hoạt động khách hẹn');
+      const draft = activityDraftKey(user.id, selectedOrganizationId, data);
+      const reused = unconfirmedActivityIds.get(draft);
+      const id = reused ?? crypto.randomUUID();
+      unconfirmedActivityIds.set(draft, id);
+      const payload = withOrg({ ...data, user_id: user.id, performed_by: user.id }, selectedOrganizationId);
+      let activity: LeadActivity;
+      try {
+        activity = await repeatableWrite('thêm hoạt động khách hẹn', async () => {
+          const { insertWithClientId } = await import('@/lib/clientRecordCreate');
+          const { row } = await insertWithClientId<LeadActivity>('lead_activities', id, payload, 'thêm hoạt động khách hẹn');
+          return row;
+        });
+      } catch (error) {
+        // Đã có kết luận cho mã này (máy chủ báo mã đã có, hoặc từ chối rõ một mã mới): quên mã, lần bấm sau là lượt mới.
+        // Mã của lần gửi trước còn chưa rõ thì giữ: lời từ chối của lần này không nói gì về lần trước.
+        if (error instanceof FinancialAlreadyRecordedError || (!(error instanceof RepeatableWriteUnknownError) && !reused)) unconfirmedActivityIds.delete(draft);
+        throw error;
+      }
+      unconfirmedActivityIds.delete(draft);
+      const leadId = data.lead_id;
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'lead-activity-create', businessKey: leadId }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần ghi sau gỡ lại. */ }
       return activity;
-      });
     },
     onSuccess: (_activity, variables) => {
       queryClient.invalidateQueries({ queryKey: ["lead-activities", variables.lead_id] });
@@ -111,21 +129,30 @@ export const useDeleteLeadActivity = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ activityId, leadId }: { activityId: string; leadId: string }) => {
-      return persistentFinancialWorkflow('lead-activity-delete',{scope:'actor'}).run(activityId,'xoá hoạt động khách hẹn',async()=>{
-      const { data, error } = await supabase
-        .from("lead_activities")
-        .delete()
-        .eq("id", activityId).eq('lead_id',leadId).select('id').single();
+    // Đợt 8 (luật 5): xoá theo mã lặp lại được, không giữ dấu. Khớp 0 dòng: đọc lại đúng hoạt động — không còn thấy là đã
+    // xoá trước đó (thành công); còn nguyên là máy chủ không cho xoá (RLS) ⇒ báo không có quyền.
+    mutationFn: async ({ activityId: id, leadId }: { activityId: string; leadId: string }): Promise<{ leadId: string; alreadyDeleted?: boolean }> => {
+      const result = await repeatableWrite('xoá hoạt động khách hẹn', async () => {
+        const { data, error } = await supabase
+          .from("lead_activities")
+          .delete()
+          .eq("id", id).eq('lead_id',leadId).select('id');
 
-      if (error) throw error;
-      confirmedRecordId(data,'xoá hoạt động khách hẹn',activityId);
-      return { leadId };
+        if (error) throw error;
+        if (Array.isArray(data) && data.length === 0) {
+          await settleZeroRowDelete('xoá hoạt động khách hẹn', () => supabase.from('lead_activities').select('id').eq('id', id).maybeSingle());
+          return { leadId, alreadyDeleted: true };
+        }
+        confirmedRecordId(Array.isArray(data) && data.length === 1 ? data[0] : null,'xoá hoạt động khách hẹn',id);
+        return { leadId };
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'lead-activity-delete', businessKey: id }, { organizationId: 'actor-scope' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
+      return result;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["lead-activities", data.leadId] });
-      toast.success('Đã xóa hoạt động khách hẹn');
+      toast.success(data.alreadyDeleted ? 'Hoạt động khách hẹn đã được xoá trước đó' : 'Đã xóa hoạt động khách hẹn');
     },
     onError: (error: Error) => {
       if(error instanceof FinancialWorkflowError){toast.error('Chưa xoá được hoạt động',{description:recordWriteMessage(error,'xoá hoạt động khách hẹn')});return;}
@@ -133,26 +160,4 @@ export const useDeleteLeadActivity = () => {
       toast.error(feedback.title, { description: feedback.description });
     },
   });
-};
-
-// Log activity when lead status changes
-export const logLeadStatusChange = async (
-  leadId: string,
-  oldStatus: string,
-  newStatus: string,
-  organizationId: string | null | undefined
-) => {
-  const user = await getSessionUser();
-  if (!user) return;
-
-  await supabase.from("lead_activities").insert(withOrg({
-    lead_id: leadId,
-    user_id: user.id,
-    activity_type: "STATUS_CHANGE",
-    description: `Chuyển trạng thái từ ${oldStatus} sang ${newStatus}`,
-    old_value: { status: oldStatus },
-    new_value: { status: newStatus },
-    performed_by: user.id,
-    completed_at: new Date().toISOString(),
-  }, organizationId));
 };

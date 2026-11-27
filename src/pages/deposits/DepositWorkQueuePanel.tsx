@@ -35,6 +35,7 @@ const CHIP_TONE: Record<DepositTaskTone, string> = {
 /** Nhãn ngắn của việc, để dòng đầu thẻ nói ngay đang xử lý loại gì. */
 function taskHeadline(task: DepositTask): string {
   switch (task.kind) {
+    case "RECONCILE": return `Đã thu · Chưa xác định lượt thuê · ${task.buildingName}`;
     case "HOLD_OVERDUE":
       return `QUÁ HẠN LÀM HĐ · ${task.buildingName}`;
     case "RESV_TOPUP_OVERDUE":
@@ -178,7 +179,7 @@ function TaskCard({ task, tone, actions }: {
             {actions.approvingId === task.voucherId ? "Đang duyệt..." : "Duyệt"}
           </Button>
         )}
-        {task.voucherId && task.kind !== "PENDING_APPROVAL" && actions.canEditDeadline(task) && (
+        {task.voucherId && task.kind !== "PENDING_APPROVAL" && task.kind !== "RECONCILE" && actions.canEditDeadline(task) && (
           <Button size="sm" variant="outline" onClick={() => actions.onEditDeadline(task)}>
             {task.dueDate ? "Sửa kỳ hạn" : "Đặt kỳ hạn"}
           </Button>

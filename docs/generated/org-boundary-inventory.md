@@ -2,7 +2,7 @@
 
 > Sinh bằng máy — `node scripts/build-org-boundary-inventory.mjs --write`. Đừng sửa tay.
 
-Chụp lúc 2026-10-22T15:07:18.588Z · DA_CO_BOUNDARY=263 · EXEMPT=1 · NO_ORG_COLUMN=23
+Chụp lúc 2026-11-26T03:30:13.462Z · DA_CO_BOUNDARY=269 · EXEMPT=1 · NO_ORG_COLUMN=23
 
 | Bảng | Nhóm | Giai đoạn | Có cột org | Biên giới | authenticated đọc | Realtime | Dòng trong plan |
 |---|---|---|---|---|---|---|---|
@@ -45,6 +45,9 @@ Chụp lúc 2026-10-22T15:07:18.588Z · DA_CO_BOUNDARY=263 · EXEMPT=1 · NO_ORG
 | building_shareholders | DA_CO_BOUNDARY | — | có | building_shareholders_org_boundary | có | không | — |
 | building_utility_accounts | DA_CO_BOUNDARY | — | có | building_utility_accounts_org_boundary | có | có | — |
 | buildings | DA_CO_BOUNDARY | — | có | buildings_org_boundary | có | có | 844 |
+| camera_events | DA_CO_BOUNDARY | — | có | camera_events_org_boundary | có | không | — |
+| camera_recorder_current | DA_CO_BOUNDARY | — | có | camera_recorder_current_org_boundary | có | không | — |
+| camera_recorders | DA_CO_BOUNDARY | — | có | camera_recorders_org_boundary | có | không | — |
 | cash_handover_items | DA_CO_BOUNDARY | — | có | cash_handover_items_org_boundary | có | không | 823 |
 | cash_handovers | DA_CO_BOUNDARY | — | có | cash_handovers_org_boundary | có | có | — |
 | cashbook_possession_bindings | DA_CO_BOUNDARY | — | có | cashbook_possession_bindings_org_boundary | không | không | — |
@@ -62,6 +65,7 @@ Chụp lúc 2026-10-22T15:07:18.588Z · DA_CO_BOUNDARY=263 · EXEMPT=1 · NO_ORG
 | contract_draft_versions | DA_CO_BOUNDARY | — | có | contract_draft_versions_org_boundary | có | không | — |
 | contract_drafts | DA_CO_BOUNDARY | — | có | contract_drafts_org_boundary | có | không | — |
 | contract_exit_cases | DA_CO_BOUNDARY | — | có | contract_exit_cases_org_boundary | không | không | — |
+| contract_exit_early_terms | DA_CO_BOUNDARY | — | có | contract_exit_early_terms_org_boundary | có | không | — |
 | contract_extensions | DA_CO_BOUNDARY | — | có | contract_extensions_org_boundary | có | không | 680 |
 | contract_meter_boundaries | DA_CO_BOUNDARY | — | có | contract_meter_boundaries_org_boundary | không | không | — |
 | contract_meter_boundary_sets | DA_CO_BOUNDARY | — | có | contract_meter_boundary_sets_org_boundary | không | không | — |
@@ -133,6 +137,8 @@ Chụp lúc 2026-10-22T15:07:18.588Z · DA_CO_BOUNDARY=263 · EXEMPT=1 · NO_ORG
 | issue_status_history | DA_CO_BOUNDARY | — | có | issue_status_history_org_boundary | có | không | — |
 | issues | DA_CO_BOUNDARY | — | có | issues_org_boundary | có | không | — |
 | job_groups | DA_CO_BOUNDARY | — | có | job_groups_org_boundary | có | không | 780 |
+| job_recurrence_occurrences | DA_CO_BOUNDARY | — | có | job_recurrence_occurrences_org_boundary | có | không | — |
+| job_recurrence_rules | DA_CO_BOUNDARY | — | có | job_recurrence_rules_org_boundary | có | không | — |
 | job_types | DA_CO_BOUNDARY | — | có | job_types_org_boundary | có | không | 776 |
 | jobs | DA_CO_BOUNDARY | — | có | jobs_org_boundary | có | có | 776 |
 | lead_activities | DA_CO_BOUNDARY | — | có | lead_activities_org_boundary | có | không | — |

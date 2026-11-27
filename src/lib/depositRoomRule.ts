@@ -2,7 +2,7 @@ import { get, set, type FieldErrors, type FieldValues, type Resolver } from 'rea
 
 /**
  * Phiếu có hạng mục cọc (`is_deposit`) phải gắn phòng. Cọc chỉ vào được hợp đồng theo phòng —
- * form tạo HĐ (`useOrphanDepositVouchers`) lẫn trigger `trg_contract_link_orphan_deposits` đều lọc
+ * form tạo HĐ (`useContractRoomDeposits`) lẫn trigger `trg_contract_link_orphan_deposits` đều lọc
  * `room_id` — nên phiếu cọc chỉ có toà sẽ treo mãi, không HĐ nào nhận. Ca thật: PT2609155
  * (29/09/2026) nhập lại thành PT2610026 ⇒ sổ thừa 1.000.000đ. Máy chủ chặn cùng luật bằng trigger
  * `zz_ie_deposit_requires_room`, và trả đúng câu này (xem `voucherErrorRules.ts`).
@@ -31,13 +31,31 @@ export function withDepositRoomRule<T extends FieldValues>(
   resolver: Resolver<T>,
   missingRoomPaths: (values: T) => readonly string[],
 ): Resolver<T> {
+  return withFieldErrors(resolver, (values) =>
+    missingRoomPaths(values).map((path) => ({ path, type: 'deposit_room', message: DEPOSIT_ROOM_REQUIRED_MESSAGE })));
+}
+
+export interface FieldRuleError {
+  path: string;
+  type: string;
+  message: string;
+}
+
+/**
+ * Bọc resolver: thêm lỗi của luật ngoài zod (cần dữ liệu zod không biết, vd tập hạng mục cọc, hợp đồng của phòng) CÙNG
+ * LƯỢT với lỗi zod. Không ghi đè lỗi zod sẵn có ở cùng ô.
+ */
+export function withFieldErrors<T extends FieldValues>(
+  resolver: Resolver<T>,
+  rule: (values: T) => readonly FieldRuleError[],
+): Resolver<T> {
   return async (values, context, options) => {
     const result = await resolver(values, context, options);
-    const paths = missingRoomPaths(values);
-    if (paths.length === 0) return result;
+    const extra = rule(values);
+    if (extra.length === 0) return result;
     const errors: FieldErrors<T> = Object.assign({}, result.errors);
-    for (const path of paths) {
-      if (!get(errors, path)) set(errors, path, { type: 'deposit_room', message: DEPOSIT_ROOM_REQUIRED_MESSAGE });
+    for (const { path, type, message } of extra) {
+      if (!get(errors, path)) set(errors, path, { type, message });
     }
     return { values: {}, errors };
   };

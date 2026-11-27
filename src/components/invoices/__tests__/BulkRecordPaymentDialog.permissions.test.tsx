@@ -28,7 +28,14 @@ vi.mock('@/components/ui/select', async importOriginal => {
   const actual = await importOriginal<typeof import('@/components/ui/select')>();
   return { ...actual, SelectContent: (props: React.ComponentProps<typeof actual.SelectContent>) => <actual.SelectContent {...props} position="item-aligned" /> };
 });
-afterEach(cleanup);
+// Radix FocusScope hẹn `setTimeout(…, 0)` lúc tháo hộp thoại để trả focus (react-focus-scope, nhánh unmount).
+// Chờ một vòng hẹn giờ ngay sau cleanup: hẹn giờ cùng độ trễ chạy theo thứ tự tạo, nên hẹn giờ của Radix chạy khi
+// jsdom của tệp này còn sống. Không chờ thì trên CI nó có thể chạy sau khi môi trường đã bị thay và ném
+// "Failed to execute 'dispatchEvent' on 'EventTarget': parameter 1 is not of type 'Event'" (lỗi chập chờn).
+afterEach(async () => {
+  cleanup();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+});
 beforeEach(() => {
   mocks.permissions = { invoices: { record_payment: true, edit: false } };
   vi.stubGlobal('PointerEvent', MouseEvent);

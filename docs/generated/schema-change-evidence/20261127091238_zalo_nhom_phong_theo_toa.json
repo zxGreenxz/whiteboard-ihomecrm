@@ -1,0 +1,40 @@
+{
+  "file": "supabase/migrations/20261127091238_zalo_nhom_phong_theo_toa.sql",
+  "sha256": "21dfe07e1bc4ebce15698ed9f35bec7d77d1786d520311d647bafa0bce23d103",
+  "appliedAt": "2026-11-27T09:31:50.587Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "environment": "prod",
+  "evidenceComplete": true,
+  "lockName": "ihomecrm:forward-migration:v1",
+  "statementTimeout": "120s",
+  "authorization": {
+    "loai": "bien-nhan-backup",
+    "chiTiet": "19f1d7da5f0b085e",
+    "backupFile": "C:\\Users\\Nguyen Tam\\ihomecrm-backups\\ihomecrm-full-2026-11-27T09-28-59-585Z.dump",
+    "backupSha256": "e7ce56cb2326f352825f9e2f362d205a0de0721878b2fd4a89c4999944ecb480",
+    "backupCreatedAt": "2026-11-27T09:31:46.230Z",
+    "backupTablesWithData": 752,
+    "backupProjectRef": "tryymsxyyckgbrmmvozx",
+    "backupEnvironment": "prod"
+  },
+  "actor": "nguyentamca165@gmail.com",
+  "repoCommit": "df10a3d3e7589b8796c8cb5a00a192a6a7b04cab",
+  "reviewedBlob": "7cf5998188f4d96d5926c82f86ccab39b62fdef1",
+  "statementBytes": 9154,
+  "normalizedDigest": "04cf88f5aa44a7ad9bf60694f294f338da6dc87c0a4089909ca4a330ed6d2e96",
+  "catalog": {
+    "before": "e2b598b0b088c1233abd6b97c696f6329aca7dc94308f2cb562de80f579ffdae",
+    "after": "e2b598b0b088c1233abd6b97c696f6329aca7dc94308f2cb562de80f579ffdae",
+    "changed": false,
+    "countsAfter": {
+      "logicalTables": 293,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 2958,
+      "securityDefinerFunctions": 2151,
+      "enums": 30,
+      "realtimeTables": 29
+    }
+  },
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này."
+}

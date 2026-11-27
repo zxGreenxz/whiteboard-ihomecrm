@@ -57,7 +57,15 @@ function SalePhongDesktopPage() {
 
   const [tab, setTab] = useState<TabKey>("rooms");
   const [tabBusy, setTabBusy] = useState(false);
+  // Tab đang mở còn bản sửa chưa lưu (sơ đồ toà, thông tin sale): đổi tab là mất bản đó nên hỏi trước.
+  const [tabDirty, setTabDirty] = useState(false);
   const activeTab = tabs.some((t) => t.key === tab) ? tab : tabs[0]?.key;
+  const changeTab = (next: string) => {
+    if (tabBusy || next === activeTab) return;
+    if (tabDirty && !window.confirm("Tab đang mở còn thay đổi chưa lưu. Bỏ các thay đổi này và chuyển tab?")) return;
+    setTabDirty(false);
+    setTab(next as TabKey);
+  };
 
   return (
     <MainLayout>
@@ -69,56 +77,50 @@ function SalePhongDesktopPage() {
           </p>
         </div>
 
-        {tabs.length === 0 ? (
-          <p className="text-sm text-muted-foreground border rounded-lg p-6 text-center">
-            Bạn chỉ có quyền xem trang này — chưa được cấp quyền quản lý link chia sẻ,
-            cài đặt, hình ảnh hay sơ đồ. Liên hệ quản trị viên nếu cần thêm quyền.
-          </p>
-        ) : (
-          <Tabs value={activeTab} onValueChange={(v) => { if (!tabBusy) setTab(v as TabKey); }}>
-            <TabsList className="flex-wrap h-auto">
-              <TabsTrigger disabled={tabBusy} value="rooms" className="gap-1.5"><ClipboardList className="h-4 w-4" />Cập nhật phòng</TabsTrigger>
-              {tabs.some((t) => t.key === "tokens") && (
-                <TabsTrigger disabled={tabBusy} value="tokens" className="gap-1.5">
-                  <Share2 className="h-4 w-4" />Link chia sẻ
-                </TabsTrigger>
-              )}
-              {tabs.some((t) => t.key === "settings") && (
-                <TabsTrigger disabled={tabBusy} value="settings" className="gap-1.5">
-                  <SlidersHorizontal className="h-4 w-4" />Cài đặt hiển thị
-                </TabsTrigger>
-              )}
-              {tabs.some((t) => t.key === "images") && (
-                <TabsTrigger disabled={tabBusy} value="images" className="gap-1.5">
-                  <Info className="h-4 w-4" />Thông tin sale
-                </TabsTrigger>
-              )}
-              {tabs.some((t) => t.key === "pass") && (
-                <TabsTrigger disabled={tabBusy} value="pass" className="gap-1.5">
-                  <Repeat className="h-4 w-4" />Khách nhờ sale
-                </TabsTrigger>
-              )}
-              {tabs.some((t) => t.key === "floorplan") && (
-                <TabsTrigger disabled={tabBusy} value="floorplan" className="gap-1.5">
-                  <LayoutGrid className="h-4 w-4" />Sơ đồ tòa nhà
-                </TabsTrigger>
-              )}
-              {tabs.some((t) => t.key === "analytics") && (
-                <TabsTrigger disabled={tabBusy} value="analytics" className="gap-1.5">
-                  <BarChart3 className="h-4 w-4" />Thống kê
-                </TabsTrigger>
-              )}
-            </TabsList>
+        {/* Tab "Cập nhật phòng" luôn có (quyền từng phòng do máy chủ trả) nên danh sách tab không bao giờ rỗng. */}
+        <Tabs value={activeTab} onValueChange={changeTab}>
+          <TabsList className="flex-wrap h-auto">
+            <TabsTrigger disabled={tabBusy} value="rooms" className="gap-1.5"><ClipboardList className="h-4 w-4" />Cập nhật phòng</TabsTrigger>
+            {tabs.some((t) => t.key === "tokens") && (
+              <TabsTrigger disabled={tabBusy} value="tokens" className="gap-1.5">
+                <Share2 className="h-4 w-4" />Link chia sẻ
+              </TabsTrigger>
+            )}
+            {tabs.some((t) => t.key === "settings") && (
+              <TabsTrigger disabled={tabBusy} value="settings" className="gap-1.5">
+                <SlidersHorizontal className="h-4 w-4" />Cài đặt hiển thị
+              </TabsTrigger>
+            )}
+            {tabs.some((t) => t.key === "images") && (
+              <TabsTrigger disabled={tabBusy} value="images" className="gap-1.5">
+                <Info className="h-4 w-4" />Thông tin sale
+              </TabsTrigger>
+            )}
+            {tabs.some((t) => t.key === "pass") && (
+              <TabsTrigger disabled={tabBusy} value="pass" className="gap-1.5">
+                <Repeat className="h-4 w-4" />Khách nhờ sale
+              </TabsTrigger>
+            )}
+            {tabs.some((t) => t.key === "floorplan") && (
+              <TabsTrigger disabled={tabBusy} value="floorplan" className="gap-1.5">
+                <LayoutGrid className="h-4 w-4" />Sơ đồ tòa nhà
+              </TabsTrigger>
+            )}
+            {tabs.some((t) => t.key === "analytics") && (
+              <TabsTrigger disabled={tabBusy} value="analytics" className="gap-1.5">
+                <BarChart3 className="h-4 w-4" />Thống kê
+              </TabsTrigger>
+            )}
+          </TabsList>
 
-            <TabsContent value="rooms" className="mt-4"><SaleRoomWorkspace onBusyChange={setTabBusy} /></TabsContent>
-            <TabsContent value="tokens" className="mt-4"><ShareTokensTab /></TabsContent>
-            <TabsContent value="settings" className="mt-4"><DisplaySettingsTab onBusyChange={setTabBusy} /></TabsContent>
-            <TabsContent value="images" className="mt-4"><SaleImagesTab onBusyChange={setTabBusy} /></TabsContent>
-            <TabsContent value="pass" className="mt-4"><PassListingsTab /></TabsContent>
-            <TabsContent value="floorplan" className="mt-4"><FloorPlanEditorTab /></TabsContent>
-            <TabsContent value="analytics" className="mt-4"><AnalyticsTab /></TabsContent>
-          </Tabs>
-        )}
+          <TabsContent value="rooms" className="mt-4"><SaleRoomWorkspace onBusyChange={setTabBusy} /></TabsContent>
+          <TabsContent value="tokens" className="mt-4"><ShareTokensTab /></TabsContent>
+          <TabsContent value="settings" className="mt-4"><DisplaySettingsTab onBusyChange={setTabBusy} /></TabsContent>
+          <TabsContent value="images" className="mt-4"><SaleImagesTab onBusyChange={setTabBusy} onDirtyChange={setTabDirty} /></TabsContent>
+          <TabsContent value="pass" className="mt-4"><PassListingsTab /></TabsContent>
+          <TabsContent value="floorplan" className="mt-4"><FloorPlanEditorTab onDirtyChange={setTabDirty} onBusyChange={setTabBusy} /></TabsContent>
+          <TabsContent value="analytics" className="mt-4"><AnalyticsTab /></TabsContent>
+        </Tabs>
       </div>
     </MainLayout>
   );

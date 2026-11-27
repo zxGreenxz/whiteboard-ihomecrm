@@ -18,14 +18,22 @@ Màn **Sale Phòng** là nơi bạn vận hành trang phòng trống công khai 
 
 ::: info Điều kiện tiên quyết
 - Quyền **Sale Phòng => Xem** (module `sale_phong`, action `view`) để mở màn.
-- Mỗi tab cần một quyền chi tiết riêng: **Link chia sẻ** (`manage_tokens`), **Cài đặt hiển thị** (`manage_settings`), **Thông tin sale** (`manage_images`), **Khách nhờ sale** (`manage_pass_listings`), **Sơ đồ tòa nhà** (`edit_floor_plan`), **Thống kê** (`view_analytics`). Thiếu quyền nào thì ẩn tab đó; thiếu tất cả thì màn chỉ hiện dòng "Bạn chỉ có quyền xem trang này…".
+- Tab **Cập nhật phòng** luôn hiện; sửa được gì ở từng phòng (giá, ảnh, lock, cọc, pass) do quyền của bạn ở toà đó quyết định. Sáu tab còn lại mỗi tab cần một quyền chi tiết riêng: **Link chia sẻ** (`manage_tokens`), **Cài đặt hiển thị** (`manage_settings`), **Thông tin sale** (`manage_images`), **Khách nhờ sale** (`manage_pass_listings`), **Sơ đồ tòa nhà** (`edit_floor_plan`), **Thống kê** (`view_analytics`). Thiếu quyền nào thì ẩn tab đó.
 - Đã có **toà nhà** và **phòng** trong hệ thống. Trang công khai chỉ hiện toà có ít nhất một phòng **trống / sắp trống / khách nhờ sale**.
 - Là nhân viên, bạn chỉ thao tác trên các toà được gán phạm vi cho mình.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Tại menu bên trái, vào **Danh mục dữ liệu** => **Sale Phòng**. Màn mở ra với **6 tab**: **Link chia sẻ**, **Cài đặt hiển thị**, **Thông tin sale**, **Khách nhờ sale**, **Sơ đồ tòa nhà** và **Thống kê**. Bạn chỉ thấy những tab mà mình có quyền.
+**Bước 1**: Tại menu bên trái, vào **Danh mục dữ liệu** => **Sale Phòng**. Màn mở ra với **7 tab**: **Cập nhật phòng**, **Link chia sẻ**, **Cài đặt hiển thị**, **Thông tin sale**, **Khách nhờ sale**, **Sơ đồ tòa nhà** và **Thống kê**. Bạn chỉ thấy những tab mà mình có quyền (tab **Cập nhật phòng** luôn có).
+
+Tab **Cập nhật phòng** liệt kê mọi phòng trong phạm vi được giao để sửa nhanh:
+
+- Ô **Tìm tòa hoặc phòng** tìm theo từng từ, không cần đúng thứ tự: gõ `111PVC · 101` (chép từ nhãn phòng) hay `101 111pvc` đều ra cùng phòng; không cần gõ dấu.
+- Ô **Giá niêm yết** nhận cả kiểu có dấu chấm như `4.250.000`; chỉ đổi cách viết (`4250000` thành `4.250.000`) không tính là sửa giá. Giá 0 đ, dưới 500.000 đ hoặc trên 100.000.000 đ/tháng hiện dòng cảnh báo màu cam để bạn kiểm lại số 0 — vẫn lưu được nếu đúng ý.
+- Nút **Báo pass** và **Báo sắp trống** chỉ hiện ở phòng đang có khách (đã thuê, sắp trống, khách pass). Phòng trống, phòng đang **Lock tạm** và phòng đang giữ cho khách sang nhượng không có các nút này.
+- Trên điện thoại, danh sách mở sẵn bộ lọc **Còn chào được** (mọi phòng trừ phòng đã thuê / giữ chỗ — vẫn gồm phòng đang lock, khách pass, chờ khách sang nhượng). Dòng **Đang ẩn N phòng đã thuê / giữ chỗ** cho biết số phòng bị ẩn, bấm **Hiện cả phòng đã thuê** để xem. Ô tìm nằm trên cùng; gõ tên phòng thì tìm trên mọi tình trạng (ví dụ gõ `101` để **Báo sắp trống** phòng đang có khách). Chọn toà và tình trạng khác ở nút **Bộ lọc** (chạm để mở/thu gọn).
+- **Cập nhật nhiều phòng / chính sách** lấy đúng các phòng đang hiện trong danh sách; nếu bộ lọc đang ẩn phòng đã thuê, khung lô ghi rõ số phòng không nằm trong lô.
 
 ![Màn Sale Phòng, tab Link chia sẻ: DEMO chưa có link nào, nút Tạo link mới ở góc phải](./images/buoc-01-man-hinh.webp)
 
@@ -59,11 +67,15 @@ Trên điện thoại (màn **Quản lý** => **Cài đặt hiển thị**), b�
 **Bước 5**: Đăng ảnh và thông tin sale — sang tab **Thông tin sale**, gồm hai khối:
 
 - **Thông tin toà nhà**: chọn **Toà nhà**, nhập **Liên hệ quản lý toà** (**Người liên hệ**, **Số điện thoại**) và **Ảnh toà nhà** — hiển thị ở đầu mỗi toà trên trang công khai.
-- **Thông tin phòng**: chọn **Phòng** (sau khi đã chọn toà ở khối trên), nhập **Nội thất** dạng thẻ (ví dụ Máy lạnh, Tủ lạnh, Giường) và **Ảnh phòng** (thêm nhiều ảnh, sắp thứ tự, **Đặt làm ảnh bìa**). Mục **Đồng bộ ảnh sang phòng tương tự** cho chọn các phòng cùng mẫu để dùng chung bộ ảnh — nội thất vẫn giữ riêng từng phòng.
+- **Thông tin phòng**: chọn **Phòng** (sau khi đã chọn toà ở khối trên), nhập **Nội thất** dạng thẻ (ví dụ Máy lạnh, Tủ lạnh, Giường) và **Ảnh phòng** (thêm nhiều ảnh PNG, JPG hoặc WEBP — ảnh lưu từ Zalo, Android thường là WEBP; sắp thứ tự, **Đặt làm ảnh bìa**). Mục **Đồng bộ ảnh sang phòng tương tự** cho chọn các phòng cùng mẫu để dùng chung bộ ảnh — nội thất vẫn giữ riêng từng phòng.
 
 ![Tab Thông tin sale: khối Thông tin toà nhà và Thông tin phòng, chờ chọn toà](./images/buoc-03-thong-tin-sale.webp)
 
 **Bước 6**: Vẽ sơ đồ tầng — sang tab **Sơ đồ tòa nhà**. Chọn **Toà nhà** và **Tầng**, rồi **kéo-thả** vị trí từng phòng, thang máy/cầu thang, hành lang cho khớp thực tế. Thanh công cụ có công tắc **Bắt lưới**, nút **Tự sắp xếp**, **Hoàn tác** và **Lưu sơ đồ**. Trên trang công khai, khách chuyển sang chế độ **Sơ đồ** sẽ thấy đúng bố trí bạn đã vẽ; phòng chưa đặt vị trí thì hệ thống tự xếp tạm.
+
+- **Lưu sơ đồ** chỉ ghi các tầng bạn đã sửa (thanh công cụ ghi **Chưa lưu: tầng …**); tầng bạn chỉ mở xem giữ nguyên bản trên máy chủ.
+- Còn tầng chưa lưu mà đổi toà, đổi tab hoặc đóng/tải lại trang thì màn hỏi trước khi bỏ thay đổi.
+- Người khác đã lưu đúng tầng bạn đang sửa sau lúc bạn mở toà: màn báo **Đã có người sửa sơ đồ tầng …**, không ghi đè. Bấm **Tải bản mới nhất** để xem bản của họ rồi sửa lại. Người khác lưu tầng khác thì hai bên không mất việc của nhau.
 
 ![Tab Sơ đồ tòa nhà: ô chọn Toà nhà, Tầng và các nút Bắt lưới, Tự sắp xếp, Hoàn tác, Lưu sơ đồ](./images/buoc-04-so-do.webp)
 
@@ -90,7 +102,7 @@ Bảng liệt kê **Phòng**, **Liên hệ khách**, **Chính sách sale**, **Gi
 
 ### Trang công khai khách nhìn thấy gì
 
-Xem chi tiết ở trang [Trang phòng trống công khai](/03-quan-ly-van-hanh/trang-phong-trong/): danh sách/sơ đồ phòng, lọc theo quận, toà, khoảng giá, bảng chi tiết phòng với các nút **Gọi / Zalo / Chỉ đường / Chia sẻ / Tải ảnh**. Riêng nút **Tạo cọc giữ phòng** chỉ hiện khi **người mở đang đăng nhập và có quyền tạo cọc nhanh** (`create_deposit`), và nút **Lock tạm** chỉ hiện khi có quyền **Lock tạm phòng** (`lock_room`) — khách vãng lai không bao giờ thấy.
+Xem chi tiết ở trang [Trang phòng trống công khai](/03-quan-ly-van-hanh/trang-phong-trong/): danh sách/sơ đồ phòng, lọc theo quận, toà, khoảng giá, bảng chi tiết phòng với các nút **Gọi / Zalo / Chỉ đường / Chia sẻ / Tải ảnh**. Riêng nút **Tạo cọc giữ phòng** chỉ hiện khi **người mở đang đăng nhập và có quyền** **Đặt cọc => Tạo phiếu cọc** (`deposits.create`) ở đúng toà đó, và nút **Lock tạm** chỉ hiện khi có quyền **Lock tạm phòng** (`lock_room`) — khách vãng lai không bao giờ thấy.
 
 ### Lock tạm phòng
 
@@ -99,6 +111,15 @@ Quyền **Lock tạm phòng** (`sale_phong.lock_room`, nhóm Sale Phòng) mặc 
 - Phòng biến khỏi link công khai, ảnh **Danh sách phòng trống** và tin Zalo ngay; trong app nhân viên vẫn thấy phòng với nhãn **Đã chốt tạm · còn X giờ · bởi …**.
 - Hết giờ mà chưa ai tạo phiếu cọc thì phòng tự hiện lại, không cần ai bấm. Phòng hiện lại được coi như phòng mới với worker gửi tin Zalo phòng trống.
 - Gỡ lock sớm: người đã lock (còn quyền) hoặc người có quyền tạo cọc ở toà đó, có bước xác nhận. Quản lý tạo phiếu cọc cho phòng đang lock thì lock tự gỡ trong cùng lần lưu (xem [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/)).
+
+### Phòng chờ khách sang nhượng
+
+Khi khách cũ trả phòng trước hạn theo trường hợp **Nhờ sale tìm khách sang phòng** hoặc **Tự tìm khách sang phòng** (xem [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/)), phòng được giữ **3 ngày** cho khách nhận: không được chào trên link công khai, bot và Hermes. Trong app, nhân viên đăng nhập vẫn thấy phòng với nhãn **Chờ khách Sang/Nhượng phòng** kèm khách cũ (tên và số hợp đồng), trường hợp (kèm tên sale), người ghi và giờ **giữ đến**. Người khác vẫn nhận cọc hoặc tạo hợp đồng cho phòng này được.
+
+- **Mở bán lại**: rao phòng ngay (khi khách nhận huỷ). Hộp xác nhận nhắc rằng hợp đồng mới tạo sau đó **không tự nối** với hồ sơ trả phòng cũ; lý do là tuỳ chọn.
+- **Giữ tiếp**: giữ phòng thêm 1 đến 7 ngày (mặc định 3), tính từ lúc bấm.
+- Hết hạn giữ: phòng tự rao lại, thẻ phòng ghi "Hết hạn giữ cho khách sang nhượng" và chỉ còn **Giữ tiếp**; hồ sơ trả phòng vẫn chờ hợp đồng khách nhận.
+- Hai nút này chỉ hiện với người có quyền **Thanh lý hợp đồng** ở toà đó (`contracts.terminate`).
 
 ### Phiên bản điện thoại
 
@@ -114,6 +135,7 @@ Mở `/sale-phong` trên điện thoại, màn chuyển sang bản mobile: xem n
 | Phòng hiện **"Cần xác nhận ngày trống"** hoặc **"Đang chuẩn bị"** | Khách đã báo trả nhưng ngày trống đã qua mà chưa ghi trả phòng, hoặc phòng đang dọn/sửa. Cập nhật trả phòng ở [hợp đồng](/03-quan-ly-van-hanh/thanh-ly-move-out/) hoặc **Cập nhật dọn/sửa** ở màn [Căn hộ](/03-quan-ly-van-hanh/can-ho-phong/). |
 | Ô **Thưởng sale** khách có nhìn thấy không | Không. **Thưởng sale** chỉ hiện cho người đang đăng nhập; khách vãng lai không thấy. **Khuyến mãi** (nếu có) thì hiện cho khách. |
 | Phòng trống **biến mất** khỏi link, ảnh và tin Zalo dù chưa có hợp đồng hay cọc | Phòng có thể đang bị **Lock tạm**. Trong app (danh sách phòng trống đăng nhập) phòng vẫn hiện với nhãn **Đã chốt tạm · còn X giờ · bởi …**; hết giờ phòng tự hiện lại, hoặc người đã lock / người có quyền tạo cọc gỡ lock sớm. |
+| Phòng **biến khỏi link** và hiện nhãn **Chờ khách Sang/Nhượng phòng** trong app | Phòng đang giữ 3 ngày cho khách sang nhượng. Hết hạn giữ phòng tự rao lại; cần rao ngay thì **Mở bán lại**, cần giữ thêm thì **Giữ tiếp** (cần quyền thanh lý hợp đồng ở toà). |
 | Không thấy một số tab | Mỗi tab cần quyền chi tiết riêng (xem Điều kiện tiên quyết). Nhờ quản trị bật quyền `sale_phong.*` tương ứng ở [Phân quyền](/05-cai-dat/phan-quyen/). |
 | Tab **Lỗi** có hàng nghìn dòng | Mặc định chỉ xem **Lỗi ứng dụng**. Lỗi **Ngoài app** chủ yếu do trình duyệt trong Zalo chèn script, không cần xử lý. |
 
@@ -123,7 +145,7 @@ Mở `/sale-phong` trên điện thoại, màn chuyển sang bản mobile: xem n
 
 Thực hành làm quen các tab, chỉ xem:
 
-1. Lần lượt mở **6 tab**: **Link chia sẻ**, **Cài đặt hiển thị**, **Thông tin sale**, **Khách nhờ sale**, **Sơ đồ tòa nhà**, **Thống kê**.
+1. Lần lượt mở **7 tab**: **Cập nhật phòng**, **Link chia sẻ**, **Cài đặt hiển thị**, **Thông tin sale**, **Khách nhờ sale**, **Sơ đồ tòa nhà**, **Thống kê**.
 2. Ở tab **Link chia sẻ**, quan sát dòng "Chưa có link chia sẻ nào" và nút **Tạo link mới** — không tạo link trên tài khoản dùng chung.
 3. Ở tab **Sơ đồ tòa nhà**, chọn **DEMO Toà A** và một tầng để xem bố trí, không bấm **Lưu sơ đồ**.
 4. Ở tab **Thống kê**, mở tab con **Lỗi** để xem bộ lọc **Lỗi ứng dụng / Ngoài app / Tất cả**.
@@ -138,6 +160,7 @@ Kết quả mong đợi: bạn biết mỗi tab dùng để làm gì và không 
 - [Hotline](/05-cai-dat/hotline/) — quản lý số điện thoại khách bấm Gọi/Zalo trên trang công khai (chọn ở tab Cài đặt hiển thị).
 - [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — giữ chỗ và cọc trước hợp đồng; phòng đã giữ chỗ tự biến khỏi danh sách trống trên trang công khai.
 - [Căn hộ / Phòng](/03-quan-ly-van-hanh/can-ho-phong/) — nơi nhập giá, trạng thái và theo dõi dọn/sửa phòng.
+- [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) — luồng trả phòng trước hạn sinh ra nhãn **Chờ khách Sang/Nhượng phòng**.
 - [Toà nhà](/03-quan-ly-van-hanh/toa-nha/) — thông tin toà và địa chỉ dùng cho trang công khai.
 - [Phân quyền](/05-cai-dat/phan-quyen/) — bật các quyền chi tiết `sale_phong.*` cho từng tab và quyền tạo cọc nhanh.
 - [Chat Zalo](/03-quan-ly-van-hanh/chat-zalo/) — kênh trả lời khách nhắn tới từ trang phòng trống.

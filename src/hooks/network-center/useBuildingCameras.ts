@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useQuery, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import type { CameraEventCursor, CameraRepository, CameraScope } from "@/lib/network-center/cameraContracts";
+import type { CameraAlertRepository, CameraEventCursor, CameraRepository, CameraScope } from "@/lib/network-center/cameraContracts";
+import { cameraAlertRepositoryFor } from "./useCameraAlerts";
 import { demoCameraRepository } from "@/lib/network-center/cameraDemo";
 import { supabaseCameraRepository } from "@/lib/network-center/cameraRepository";
 import { shouldRetryNetworkCenterQuery } from "@/lib/network-center/retryPolicy";
@@ -44,9 +45,10 @@ export const cameraQueryKey = (scope: BuildingCameraScope) => [
   "network-center", scope.actorId, scope.organizationId, "building", scope.buildingId, "camera", scope.mode,
 ] as const;
 
-export function useBuildingCameras(scope: BuildingCameraScope, repository?: CameraRepository) {
+export function useBuildingCameras(scope: BuildingCameraScope, repository?: CameraRepository, alertRepository?: CameraAlertRepository) {
   const queryClient = useQueryClient();
   const service = repository ?? (scope.mode === "demo" ? demoCameraRepository : supabaseCameraRepository);
+  const alerts = alertRepository ?? cameraAlertRepositoryFor(scope.mode);
   const enabled = scope.canView && Boolean(scope.actorId && scope.organizationId && scope.buildingId) && scope.mode !== "off";
   const key = cameraQueryKey(scope);
   const [now, setNow] = useState(Date.now);
@@ -75,10 +77,32 @@ export function useBuildingCameras(scope: BuildingCameraScope, repository?: Came
     // to cached data; status changes must still update a currently locked view.
     notifyOnChangeProps: "all",
   });
+  // Sự cố camera đang mở (bộ cảnh báo v2, giữ từ #384). Cùng quyền với snapshot
+  // nên từ chối quyền ở đây cũng khoá tab; lỗi khác (kể cả RPC chưa triển khai)
+  // chỉ hiện tại chỗ, không che trạng thái camera đã đo được.
+  const incidentsQuery = useQuery({
+    queryKey: [...key, "incidents"],
+    queryFn: ({ queryKey, signal }) => readCameraQuery(queryClient, queryKey, signal, () => alerts.listIncidents(scope), (error) => error instanceof NetworkCenterRepositoryError && cameraAccessErrors.has(error.code ?? "")),
+    enabled: enabled && snapshotQuery.isSuccess,
+    refetchInterval: 30_000, retry: shouldRetryNetworkCenterQuery, retryOnMount: false,
+    notifyOnChangeProps: "all",
+  });
+  // Trạng thái tắt báo theo kênh + quyền sửa (chủ công ty/superadmin). Lỗi chỉ
+  // hiện tại chỗ: thiếu dữ liệu này không làm sai trạng thái camera.
+  const mutesQuery = useQuery({
+    queryKey: [...key, "mutes"],
+    queryFn: () => alerts.listBuildingMutes(scope),
+    enabled: enabled && snapshotQuery.isSuccess,
+    refetchInterval: 60_000, retry: shouldRetryNetworkCenterQuery, retryOnMount: false,
+  });
   return {
-    now, enabled, snapshotQuery, eventsQuery,
-    blockingError: cameraQueryBlock(queryClient, [...key, "snapshot"]) ?? cameraQueryBlock(queryClient, [...key, "events"]),
+    now, enabled, key, snapshotQuery, eventsQuery, incidentsQuery, mutesQuery,
+    blockingError: cameraQueryBlock(queryClient, [...key, "snapshot"]) ?? cameraQueryBlock(queryClient, [...key, "events"])
+      ?? cameraQueryBlock(queryClient, [...key, "incidents"]),
     recorders: snapshotQuery.data?.recorders ?? [],
+    incidents: incidentsQuery.data?.items ?? [],
+    mutes: mutesQuery.data?.items ?? [],
+    canEditAlerts: mutesQuery.data?.canEdit === true,
     events: [...new Map(eventsQuery.data?.pages.flatMap((page) => page.items).map((event) => [event.id, event])).values()],
   };
 }

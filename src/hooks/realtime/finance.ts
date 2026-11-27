@@ -100,6 +100,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       "profit-ledger",
       "profit-ledger-entries",
       "shared-fund",
+      "house-pool",
       "profit-ledger-payout",
       "profit-ledger-marker-preview",
       // 18/11/2026 tạm ứng + chốt chi lợi nhuận: hai con số của vị thế và hai bản xem trước cũng đổi khi máy

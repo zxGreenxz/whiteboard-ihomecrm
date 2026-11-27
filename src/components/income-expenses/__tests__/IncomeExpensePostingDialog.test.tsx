@@ -26,6 +26,7 @@ const H = vi.hoisted(() => ({
   /** supabase.rpc — cố ý KHÔNG đặt tên `rpc`. */
   goiMayChu: vi.fn(),
   taiLen: vi.fn(),
+  taoAnhXacNhan: vi.fn(),
   xoaFile: vi.fn(),
   /** Ba đường ghi-ngay cũ mà trang vẫn truyền vào — hộp thoại không được gọi. */
   dinhNgay: vi.fn(),
@@ -56,6 +57,8 @@ vi.mock('@/lib/storage', () => ({
 }));
 vi.mock('@/lib/storage/resilientUpload', () => ({ warmUploadConnection: () => H.lamAm() }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: USER } }) }));
+vi.mock('@/hooks/useProfile', () => ({ useProfile: () => ({ data: { id: USER, full_name: 'Nguyễn An' } }) }));
+vi.mock('@/lib/postingConfirmationImage', () => ({ createPostingConfirmationImage: H.taoAnhXacNhan }));
 vi.mock('@/components/ui/storage-image', () => ({
   StorageImage: ({ value, alt }: { value: string; alt: string }) => <img src={value} alt={alt} />,
 }));
@@ -133,6 +136,7 @@ function Khung({
   const [phieu] = useState(() => ({
     subjectKind: 'VOUCHER' as const,
     subjectId: PHIEU,
+    code: 'PC-TEST-01',
     isCommission: hoaHong,
     type: loai,
     approvedTotal: 1_500_000,
@@ -195,6 +199,7 @@ function bamGo(url: string) {
 }
 
 beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   may.anh = [];
   may.loiGhiAnh = null;
   H.goiMayChu.mockReset().mockImplementation(goiMayChuGia);
@@ -203,6 +208,7 @@ beforeEach(() => {
       `https://kho.test/storage/v1/object/public/${bucket}/${path}`,
   );
   H.xoaFile.mockReset().mockResolvedValue(undefined);
+  H.taoAnhXacNhan.mockReset().mockImplementation(async () => new File(['x'], 'xac-nhan.png', { type: 'image/png' }));
   H.dinhNgay.mockReset();
   H.goNgay.mockReset();
   H.khoChungTu.mockReset().mockResolvedValue('ev-kho-chung-tu-rieng');
@@ -212,6 +218,69 @@ beforeEach(() => {
   H.lamAm.mockReset();
 });
 afterEach(cleanup);
+
+describe('Ảnh xác nhận của người đang duyệt và chi', () => {
+  const checkbox = () => screen.getByRole('checkbox', { name: 'Dùng ảnh xác nhận của tôi' });
+
+  it('tạo ảnh theo tài khoản và phiếu đang mở, chỉ ghi chứng từ sau khi bấm Duyệt và Chi', async () => {
+    render(<Khung che="APPROVE_AND_POST" />);
+    expect(checkbox().getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(checkbox());
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    expect(H.taoAnhXacNhan).toHaveBeenCalledWith({
+      actorId: USER, actorName: 'Nguyễn An', voucherId: PHIEU, voucherCode: 'PC-TEST-01', amount: 1_500_000,
+    });
+    const [bucket, path, file] = H.taiLen.mock.calls[0];
+    expect([bucket, path.startsWith(`${USER}/`), file.type]).toEqual([BUCKET, true, 'image/png']);
+    const url = KHO + path;
+    await waitFor(() => expect(oAnh(url)).not.toBeNull());
+    expect(checkbox().getAttribute('aria-checked')).toBe('true');
+    expect(lenhGhiAnh()).toHaveLength(0);
+    expect(H.ghiSo).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi' }));
+    await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
+    expect(H.ghiSo.mock.calls[0][0]).toMatchObject({ subjectId: PHIEU, evidenceIds: [maChungTu(url)] });
+    expect(may.anh).toEqual([url]);
+  });
+
+  it('bỏ tick sau khi thêm ảnh thật chỉ gỡ ảnh xác nhận nội bộ', async () => {
+    render(<Khung che="APPROVE_AND_POST" />);
+    fireEvent.click(checkbox());
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    const path = H.taiLen.mock.calls[0][1];
+    await waitFor(() => expect(oAnh(KHO + path)).not.toBeNull());
+    const { url } = await themAnh('chung-tu-that.png');
+    fireEvent.click(checkbox());
+    await waitFor(() => expect(H.xoaFile).toHaveBeenCalledWith(BUCKET, path));
+    expect(oAnh(KHO + path)).toBeNull();
+    expect(oAnh(url)).not.toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Dùng ảnh xác nhận của tôi' })).toBeNull();
+    expect(lenhGhiAnh()).toHaveLength(0);
+  });
+
+  it('huỷ khi đang tạo ảnh bỏ kết quả đến trễ', async () => {
+    let finish!: (file: File) => void;
+    H.taoAnhXacNhan.mockImplementation(() => new Promise<File>(resolve => { finish = resolve; }));
+    render(<Khung che="APPROVE_AND_POST" giuKhiDong />);
+    fireEvent.click(checkbox());
+    fireEvent.click(screen.getByRole('button', { name: 'Huỷ bỏ' }));
+    await act(async () => finish(new File(['x'], 'tre.png', { type: 'image/png' })));
+    expect(H.taiLen).not.toHaveBeenCalled();
+    expect(H.ghiSo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['EXPENSE', 'POST_APPROVED', false],
+    ['INCOME', 'APPROVE_AND_POST', false],
+    ['EXPENSE', 'APPROVE_AND_POST', true],
+  ] as const)('ẩn lựa chọn cho %s, %s, có ảnh sẵn = %s', async (loai, che, coAnh) => {
+    if (coAnh) may.anh = [ANH_CU];
+    render(<Khung loai={loai} che={che} />);
+    if (coAnh) await waitFor(() => expect(oAnh(ANH_CU)).not.toBeNull());
+    expect(screen.queryByRole('checkbox', { name: 'Dùng ảnh xác nhận của tôi' })).toBeNull();
+    expect(H.taoAnhXacNhan).not.toHaveBeenCalled();
+  });
+});
 
 describe('Hộp Thu/Chi — ảnh gom tới lúc xác nhận (E2)', () => {
   it('dán ảnh rồi Huỷ bỏ: xoá đúng file vừa tải, không ghi ảnh lên phiếu, không ghi sổ', async () => {

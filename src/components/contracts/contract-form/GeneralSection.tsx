@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { useWatch } from "react-hook-form";
+import { ExitHoldRoomBanner } from "../ExitHoldRoomBanner";
 
 import type { ContractFormState } from "./useContractFormState";
 
@@ -26,7 +28,17 @@ type GeneralSectionProps = Pick<
   | "filteredRooms"
   | "handleBuildingChange"
   | "handleRoomChange"
-> & { buildingDisabled?: boolean };
+> & {
+  buildingDisabled?: boolean;
+  /** Hợp đồng mới (không phải sửa hợp đồng đã ký): báo phòng đang chờ khách sang nhượng. */
+  exitHoldNotice?: boolean;
+};
+
+/** Theo dõi riêng phòng và ngày bắt đầu để chỉ băng báo vẽ lại khi hai ô này đổi. */
+function ContractExitHoldNotice({ form }: Pick<ContractFormState, "form">) {
+  const [roomId, startDate] = useWatch({ control: form.control, name: ["room_id", "start_date"] });
+  return <ExitHoldRoomBanner variant="contract" roomId={roomId} startDate={startDate} />;
+}
 
 /** ===== Section 1: Thông tin chung ===== (JSX chuyển NGUYÊN VĂN) */
 export function GeneralSection({
@@ -37,6 +49,7 @@ export function GeneralSection({
   handleBuildingChange,
   handleRoomChange,
   buildingDisabled = false,
+  exitHoldNotice = false,
 }: GeneralSectionProps) {
   return (
     <div className="space-y-4">
@@ -112,6 +125,8 @@ export function GeneralSection({
         />
 
       </div>
+
+      {exitHoldNotice && <ContractExitHoldNotice form={form} />}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Ngày ký */}

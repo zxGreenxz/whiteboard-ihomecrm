@@ -307,7 +307,7 @@ const MUTATIONS = [
     patches: [[BRIDGE, 'if (unknown.length && !reconciled(entry, unknown))', 'if (unknown.length)']],
     probe: async (t, impl) => (await releaseProbe(t, impl)).released },
   { name: 'production entry omits the ledger path',
-    patches: [[BRIDGE, 'createNativeBridge({ config, onFault, reconciliationFile: nativeReconciliationFile(configFile) })', 'createNativeBridge({ config, onFault })']],
+    patches: [[BRIDGE, ', reconciliationFile: nativeReconciliationFile(configFile) }', ' }']],
     probe: async (t, impl) => (await releaseProbe(t, impl)).released },
   { name: 'unreadable ledger treated as released',
     patches: [[BRIDGE, "catch { onFault('native_reconciliation_unreadable'); return false; }", "catch { onFault('native_reconciliation_unreadable'); return true; }"]],

@@ -10,7 +10,6 @@
 import {
   ArrowRightLeft,
   Calendar,
-  MoveRight,
   Pencil,
   Printer,
   QrCode,
@@ -119,7 +118,6 @@ interface Props {
   onShowQR: () => void;
   onRenew: () => void;
   onTransferRoom: () => void;
-  onTransferContract: () => void;
   onMoveOut: () => void;
   onTerminate: () => void;
   onDelete: () => void;
@@ -140,7 +138,6 @@ export function ContractTopBar({
   onShowQR,
   onRenew,
   onTransferRoom,
-  onTransferContract,
   onMoveOut,
   onTerminate,
   onDelete,
@@ -236,9 +233,6 @@ export function ContractTopBar({
               )}
               {canTransferRoom(perms, contract.room?.building_id ?? contract.room?.building?.id) && (
                 <NutHeader icon={ArrowRightLeft} nhan="Chuyển phòng" onClick={onTransferRoom} />
-              )}
-              {canUse(perms, 'contracts', 'transfer') && (
-                <NutHeader icon={MoveRight} nhan="Nhượng HĐ" onClick={onTransferContract} />
               )}
               {canUse(perms, 'contracts', 'terminate') && (
                 <NutHeader icon={Calendar} nhan="Đăng ký chuyển đi" onClick={onMoveOut} />

@@ -1,4 +1,4 @@
-import {PendingCollectionError,CollectionStorageError} from './pendingCollection';
+import {PendingCollectionError,CollectionStorageError,PriorCollectionSettledError} from './pendingCollection';
 import {friendlyError} from './friendlyError';
 import {voucherOutcomeUnknown} from './voucherFeedback';
 
@@ -18,7 +18,7 @@ rules.push({message:'Không thể giữ credit cho hóa đơn không có hợp �
 rules.push({message:'Hóa đơn không gắn hợp đồng nên không thể giữ credit',description:'Hoá đơn chưa gắn hợp đồng nên chưa thể giữ tiền dư cho kỳ sau. Kiểm tra hợp đồng của hoá đơn.'});
 
 export function collectionFailureMessage(error:unknown):string {
-  if(error instanceof PendingCollectionError||error instanceof CollectionStorageError)return error.message;
+  if(error instanceof PendingCollectionError||error instanceof CollectionStorageError||error instanceof PriorCollectionSettledError)return error.message;
   if(voucherOutcomeUnknown(error)) return 'Chưa xác nhận được kết quả thu tiền. Hãy tải lại hoá đơn và đối chiếu các khoản thu trước khi thực hiện tiếp.';
   const feedback=friendlyError(error,'Không thể ghi nhận thu tiền',{operation:'ghi nhận thu tiền',financial:true,rules});
   return feedback.description;

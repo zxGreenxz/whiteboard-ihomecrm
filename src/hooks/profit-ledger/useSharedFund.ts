@@ -52,6 +52,7 @@ const openingHistory = opening.extend({
   request_key: z.string(),
   reconciled_approved: z.number().finite().nonnegative(),
   reconciled_count: z.number().int().nonnegative(),
+  historical_count: z.number().int().nonnegative().optional(),
 });
 const stateSchema = z.object({
   organization_id: z.string(),
@@ -61,6 +62,10 @@ const stateSchema = z.object({
   last_effective_date: z.string().nullable(),
   sources: z.array(source),
   distributions: z.array(distribution),
+  expense_vouchers: z.array(z.object({
+    id:z.string(), source_id:z.string(), code:z.string().nullable(), date:z.string(),
+    amount, name:z.string(), account:z.string().nullable(), status:z.string(), posting:z.string().nullable(),
+  })).optional(),
   shareholders: z.array(
     z.object({
       shareholder_id: z.string(),
@@ -103,6 +108,7 @@ export type FundWrite =
     };
 
 type RpcArgs = {
+  shareholder_record_opening_receipts_v1: { p_organization_id: string; p_shareholder_id: string; p_opening_id: string; p_receipts: OpeningReceiptInput[] };
   shared_fund_state_v1: { p_organization_id: string };
   shared_fund_record_source_v1: {
     p_organization_id: string;
@@ -153,6 +159,29 @@ export function useSharedFund(org: string) {
     staleTime: 0,
     meta: { label: 'sổ quỹ chung', errorDisplay: 'inline' },
     queryFn: () => readState(org),
+  });
+}
+
+export type OpeningReceiptInput = { source_refs?: { code: string; date: string; amount: number }[]; period_month: string; amount: number; external_profit: number | null; evidence: string };
+
+export function useRecordOpeningReceipts(org: string, shareholderId: string, openingId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: async (receipts: OpeningReceiptInput[]) => {
+      const reply = await call('shareholder_record_opening_receipts_v1', {
+        p_organization_id: org, p_shareholder_id: shareholderId, p_opening_id: openingId, p_receipts: receipts,
+      });
+      const result = z.object({ opening_id: z.string(), count: amount, amount }).parse(reply);
+      if (result.opening_id !== openingId || result.count !== receipts.length ||
+          result.amount !== receipts.reduce((sum, receipt) => sum + receipt.amount, 0)) {
+        throw new Error('Cần kiểm tra lại biên nhận đối chiếu.');
+      }
+    },
+    onSettled: async () => {
+      invalidateProfitLedgerQueries(client);
+      await client.invalidateQueries({ queryKey: ['shared-fund', org] });
+    },
   });
 }
 

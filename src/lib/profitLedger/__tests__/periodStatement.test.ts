@@ -32,7 +32,28 @@ describe('đối chiếu kỳ lợi nhuận và đợt ứng tháng kế tiếp'
     expect(run([settlement({ cash_voucher_posting_status: 'POSTED' })]).periods.get('2025-12-01'))
       .toMatchObject({ cash: 40, status: 'Lần chốt đã chi', pending: 90 });
   });
+  it('phiếu chi lợi nhuận riêng thuộc tháng chi và chỉ vào cột chi một lần, kể cả trước mốc', () => {
+    const cash = { ...payout('profit', 23, '2025-12-05'), is_advance:false, excluded_by_marker:true };
+    const record = periodStatement({...base,payouts:[cash]} as MyProfitLedger, {settlements:[],components:{opening_advance:0}} as MyShareholderPosition);
+    expect(record.periods.get('2025-12-01')).toMatchObject({approved:0,cash:23});
+    expect(record.periods.get('2025-11-01')).toMatchObject({approved:0,cash:0});
+  });
   it('không suy ngược dư ứng khi còn số đầu kỳ ngoài các sự kiện theo tháng', () => {
     expect(run([settlement()], { advance_outstanding: 1000 }).periods.get('2025-12-01')?.balance).toBeNull();
+  });
+  it('hiện bảy phiếu lịch sử và ba phiếu trước mốc đúng mười kỳ nhưng không cộng lại vào dư hiện tại', () => {
+    const month = (n: number) => `2025-${String(n).padStart(2,'0')}-01`;
+    const history = Array.from({length:7},(_,i)=>({id:'h'+i,code:'LS'+i,period_month:month(i+1),amount:i+1,
+      evidence:'Đối chiếu kỳ',external_profit:i<4 ? 1 : null}));
+    const ledger = { marker:{settled_through_month:month(10)}, salary:[], historical_advances:history,
+      months:Array.from({length:6},(_,i)=>({period_month:month(i+5),amount:1,excluded_by_marker:true,buildings:[]})),
+      payouts:[8,9,10].map(n=>({...payout(String(n),n,month(n+1)),excluded_by_marker:true})) } as MyProfitLedger;
+    const result = periodStatement(ledger,{settlements:[],advance_outstanding:45,components:{opening_advance:45}} as MyShareholderPosition);
+    expect(Array.from({length:10},(_,i)=>result.periods.get(month(i+1))?.approved)).toEqual([1,2,3,4,5,6,7,8,9,10]);
+    expect(result.periods.get(month(1))).toMatchObject({allocation:1,excluded:true,balance:0,netClosing:0});
+    expect(result.periods.get(month(9))).toMatchObject({approved:9,netClosing:-36,balance:36});
+    expect(result.periods.get(month(10))).toMatchObject({approved:10,netClosing:-45,balance:45});
+    expect(result.periods.get(month(8))?.vouchers).toHaveLength(1);
+    expect(postedCash(ledger.payouts)).toBe(0);
   });
 });

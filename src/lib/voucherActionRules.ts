@@ -25,21 +25,20 @@
 // xét TRƯỚC mọi luật trên (can_flex_cancel_v1 trả NOT_MANUAL cho phiếu hệ thống). Chốt F1/F1b/F2/F5 của
 // máy chủ (Đợt 1, d1_chan_interface §2) chặn: sửa (LOCKED), huỷ duyệt / hoàn tác / khôi phục / rút /
 // từ chối vì sai (CANCEL_ONLY), đổi hạng mục (ITEMS_LOCKED), đổi sổ quỹ (ACCOUNT_LOCKED); cho: ghi chú /
-// ảnh, đánh dấu đã kiểm, chi phiếu đã duyệt từ ĐÚNG sổ lúc lập. Duyệt đi màn Chờ duyệt (thấy số dư sổ
-// tổng); bỏ phiếu chỉ bằng hộp huỷ có lý do (profit_ledger_payout_cancel_v1). Phiếu nguồn cũ
-// (profit.distribution / salary.manager) giữ luật thường.
-// Phiếu CHỦ lập (maker_kind OWNER: chốt chi lợi nhuận, lương điều hành) — chốt F1 nới 19/11/2026: người có quyền
-// chi của loại chủ thể tự duyệt được phiếu mình lập, duyệt / chi được dù mình là người nhận. Máy chủ loại người lập
-// khỏi danh sách người duyệt của Chờ duyệt (materialize_step_candidates_v1) ⇒ người lập có nút Duyệt (kèm "Duyệt và
-// Chi…") ngay ở Thu chi; người nhận / chủ khác vẫn duyệt ở Chờ duyệt (thấy số dư); Chi theo trạng thái như cũ.
-// Phiếu tạm ứng (người giữ sổ lập, maker_kind CUSTODIAN_*) giữ luật cũ.
+// ảnh, đánh dấu đã kiểm, chi phiếu đã duyệt từ ĐÚNG sổ lúc lập; bỏ phiếu chỉ bằng hộp huỷ có lý do
+// (profit_ledger_payout_cancel_v1). Phiếu nguồn cũ (profit.distribution / salary.manager) giữ luật thường.
+// DUYỆT phiếu sổ tổng cũng làm NGAY Ở THU CHI (chủ chốt 25/11/2026: một đường duyệt, bỏ màn Chờ duyệt): ai có quyền chi
+// của loại chủ thể thì có nút Duyệt; hộp xác nhận duyệt hiện thẻ số dư sổ tổng và tự khoá khi máy chủ chắc chắn từ
+// chối. Duyệt phiếu cổ đông cần quyền chi lợi nhuận và quyền duyệt thu chi tại toà của phiếu,
+// kể cả khi chính người duyệt lập phiếu hoặc nhận tiền.
+// Trường hợp biết trước là máy chủ từ chối ⇒ nút vẫn bấm được nhưng mờ, hộp duyệt nói rõ lý do và khoá nút xác nhận
+// (`approveBlockedReason`; nút mờ không hiện được lý do trên điện thoại — cùng cách với nút Huỷ).
 import type { IncomeExpenseWithRelations } from "@/hooks/income-expenses/types";
 import { flexCancelGate, type FlexCancelBlockCode, type FlexCancelEligibility } from "@/hooks/income-expenses/flexMutations";
 import { voucherCancelDecision, type IncomeCancelEligibility } from "@/hooks/income-expenses/incomeVoucherCancel";
 import { canUse, type PermsLike } from "@/lib/permissionCheck";
 import { voucherEditAction } from "@/lib/incomeExpenseRevision";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
-import type { PayoutMakerKind } from "@/lib/profitLedger/sharedReaders";
 import {
   expectedCancelState, isProfitLedgerVoucher,
   type ProfitLedgerSource, type ProfitPayoutCancelTarget,
@@ -68,12 +67,6 @@ export interface VoucherActionState {
   flexEligibility?: FlexCancelEligibility;
   /** Dòng can_cancel_income_voucher_v1 của phiếu (phiếu thu). */
   incomeEligibility?: IncomeCancelEligibility;
-  /**
-   * Phiếu chi lợi nhuận cổ đông theo sổ tổng (`profit.ledger_payout`): loại người lập theo dòng sổ lúc lập
-   * (E7 `at_create.maker_kind`) — chỉ hỏi cho dòng `needsLedgerMakerKind`. Vắng = chưa biết ⇒ không mở Duyệt ngay
-   * ở Thu chi (giữ lối sang Chờ duyệt). Phiếu lương điều hành sổ tổng luôn do chủ lập, không cần trường này.
-   */
-  ledgerMakerKind?: PayoutMakerKind | null;
 }
 
 export interface CancelAvailability {
@@ -89,8 +82,10 @@ export interface VoucherActionAvailability {
   edit: { show: boolean; title: string };
   annotate: boolean;
   approve: boolean;
-  /** Phiếu chi theo sổ tổng duyệt ở màn Chờ duyệt (thấy số dư sổ tổng) ⇒ hiện lối sang đó thay nút Duyệt. */
-  approveVia: "INBOX" | null;
+  /**
+   * Phiếu chi theo sổ tổng thiếu quyền tại toà của phiếu: nút Duyệt hiện mờ kèm lý do, hộp duyệt khoá xác nhận. null = không có gì phải nói.
+   */
+  approveBlockedReason: string | null;
   /** Thu / Chi phiếu đã duyệt (kể cả thu / chi lại sau hoàn tác). */
   postApproved: boolean;
   /** Hoàn tác / Mở lại phiếu đã ghi sổ. */
@@ -182,17 +177,22 @@ export function ledgerApproveAndPostAllowed(
   return payoutPostAllowedAsPayee(perms, profitLedgerPermissionFor(v.system_source));
 }
 
-/**
- * Dòng phải đọc loại người lập (E7) mới quyết được nút Duyệt: phiếu chi lợi nhuận cổ đông theo sổ tổng còn chờ duyệt,
- * do CHÍNH người xem lập, người xem có quyền chi lợi nhuận — có thể là phiếu chủ lập (tự duyệt được) hoặc phiếu tạm ứng
- * người xem tự lập khi đang giữ sổ (không tự duyệt được). Phiếu lương điều hành luôn do chủ lập: không cần đọc.
- */
-export function needsLedgerMakerKind(
-  v: Pick<ActionVoucher, "system_source" | "approval_status" | "maker_user_id">,
-  viewer: VoucherActionViewer,
-): boolean {
-  return v.system_source === "profit.ledger_payout" && v.approval_status === "UNAPPROVED" && isLedgerMaker(v, viewer)
-    && canUse(viewer.perms, "shareholder_profit", "distribute");
+export const LEDGER_APPROVE_PERMISSION_REASON =
+  "Cần thêm quyền duyệt thu chi ở toà của phiếu mới duyệt được phiếu này.";
+
+export function ledgerApproveBlockReason(
+  voucher: Pick<ActionVoucher, "system_source" | "building_id">,
+  perms: PermsLike,
+): string | null {
+  if (!isProfitLedgerVoucher(voucher.system_source)) return null;
+  const building = voucher.building_id ?? NO_BUILDING;
+  if (!canUse(perms, "income_expenses", "approve", building)) return LEDGER_APPROVE_PERMISSION_REASON;
+  if (!canUse(perms, "shareholder_profit", profitLedgerPermissionFor(voucher.system_source), building)) {
+    return voucher.system_source === "profit.manager_salary"
+      ? "Cần quyền chi lương điều hành tại toà của phiếu."
+      : "Cần quyền chi lợi nhuận cổ đông tại toà của phiếu.";
+  }
+  return null;
 }
 
 function ledgerVoucherAvailability(
@@ -204,7 +204,7 @@ function ledgerVoucherAvailability(
   const isCancelled = v.approval_status === "CANCELLED";
   const isUnapproved = v.approval_status === "UNAPPROVED";
   const posting = v.posting_status ?? null;
-  // Chỉ là lớp hiển thị (máy chủ còn đòi khác người lập / người nhận, giữ đúng sổ khi phiếu đã chi…).
+  // Chỉ là lớp hiển thị (máy chủ kiểm phạm vi quyền và sổ quỹ khi ghi chi).
   const canLedger = canUse(viewer.perms, "shareholder_profit", profitLedgerPermissionFor(source));
   // NGƯỜI LẬP phiếu của CỔ ĐÔNG (tự tạm ứng, hoặc người giữ sổ lập hộ ở Thu chi) tự huỷ được phiếu còn CHỜ duyệt
   // của mình dù không có quyền chi lợi nhuận — đúng luật E6 của máy chủ (kỳ vọng PENDING). Phiếu đã duyệt / đã chi
@@ -213,13 +213,8 @@ function ledgerVoucherAvailability(
   // (hộp chi tiết mở từ nơi khác) ⇒ coi như không phải người lập, không đoán.
   const isMaker = isLedgerMaker(v, viewer);
   const makerCanCancelPending = source === "profit.ledger_payout" && isUnapproved && isMaker;
-  // Phiếu CHỦ lập (F1 nới 19/11/2026): người lập có quyền chi tự duyệt được ⇒ nút Duyệt ngay ở Thu chi (Chờ duyệt không
-  // liệt kê phiếu cho chính người lập). Lương điều hành sổ tổng luôn do chủ lập; phiếu cổ đông phải biết chắc OWNER
-  // (E7) — phiếu tạm ứng người xem tự lập khi giữ sổ vẫn cần chủ khác duyệt (luật cũ).
-  // Duyệt V2 còn đòi quyền duyệt thu chi ở ĐÚNG toà của phiếu (approve_income_expense_v2) — không hứa nút máy chủ từ chối.
-  const ownerMade = source === "profit.manager_salary" || state.ledgerMakerKind === "OWNER";
-  const selfApprove = isUnapproved && canLedger && ownerMade && isMaker && state.canonicalRead && state.monetaryActionsAllowed
-    && canUse(viewer.perms, "income_expenses", "approve", v.building_id ?? NO_BUILDING);
+  // Quyền theo phạm vi phiếu quyết định ai được duyệt.
+  const approve = isUnapproved && canLedger && state.canonicalRead && state.monetaryActionsAllowed;
   return {
     edit: { show: false, title: "" },
     annotate: canShowAnnotateAction({
@@ -229,8 +224,8 @@ function ledgerVoucherAvailability(
       isCreator: !!viewer.currentUserId && v.user_id === viewer.currentUserId,
       canEdit: canUse(viewer.perms, "income_expenses", "edit", v.building_id ?? NO_BUILDING),
     }),
-    approve: selfApprove,
-    approveVia: isUnapproved && canLedger && !selfApprove ? "INBOX" : null,
+    approve,
+    approveBlockedReason: approve ? ledgerApproveBlockReason(v, viewer.perms) : null,
     // Hộp Thu/Chi khoá đúng sổ quỹ lúc lập (ACCOUNT_LOCKED); phiếu từng bị đảo không chi lại (REPOST).
     postApproved: state.canonicalRead && v.approval_status === "APPROVED" && (posting === null || posting === "UNPOSTED"),
     reverse: false,
@@ -291,7 +286,7 @@ export function voucherActionAvailability(
       canEdit: canUse(viewer.perms, "income_expenses", "edit", building),
     }),
     approve: state.monetaryActionsAllowed && isUnapproved && canUse(viewer.perms, "income_expenses", "approve", building),
-    approveVia: null,
+    approveBlockedReason: null,
     postApproved: state.monetaryActionsAllowed && !isCancelled && v.approval_status === "APPROVED" &&
       posting !== "POSTED" && posting !== "NOT_APPLICABLE" && state.canonicalRead,
     reverse: (state.monetaryActionsAllowed || state.canReverseSettlementRefund) && !isCancelled &&

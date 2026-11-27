@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/hooks/useAuth";
+import type { DoorAction } from "@/lib/door-access/dto";
 import { doorAccessEdge, type DoorAccessCaller } from "@/lib/door-access/edge";
 import {
   ACTION_LOG_PAGE_SIZE,
@@ -65,6 +66,8 @@ export const doorKeys = {
   logs: (caller: DoorAccessCaller | null, deviceId: string | null) => [...root(caller), "logs", deviceId] as const,
   tempPasswordLogs: (caller: DoorAccessCaller | null, deviceId: string | null) =>
     [...root(caller), "logs", deviceId, "TEMP_PASSWORD_CREATE"] as const,
+  /** Khoá MUTATION mở cửa (biến = id máy): biết còn lệnh nào đang chạy kể cả khi nút gửi đã bị gỡ khỏi màn. */
+  remoteUnlock: (caller: DoorAccessCaller | null) => [...root(caller), "remote-unlock"] as const,
 };
 
 const common = { retry: false, meta: { errorDisplay: "inline" } } as const;
@@ -202,16 +205,22 @@ export function useDoorTempPasswordLogs(caller: DoorAccessCaller | null, deviceI
   });
 }
 
-export function useDoorActionLogs(caller: DoorAccessCaller | null, deviceId: string | null) {
+/**
+ * Nhật ký thao tác của máy, mới ⇒ cũ. `actions` (màn điện thoại lọc theo nhóm) lọc ở máy chủ (`p_actions`)
+ * để trang sau không thiếu dòng; khoá vẫn nằm dưới `doorKeys.logs` nên mọi chỗ làm mới nhật ký sau thao tác
+ * ghi vẫn trúng.
+ */
+export function useDoorActionLogs(caller: DoorAccessCaller | null, deviceId: string | null, actions: readonly DoorAction[] | null = null) {
   return useInfiniteQuery({
     ...common,
-    queryKey: doorKeys.logs(caller, deviceId),
+    queryKey: actions ? ([...doorKeys.logs(caller, deviceId), "feed", ...actions] as const) : doorKeys.logs(caller, deviceId),
     enabled: caller !== null && deviceId !== null,
     staleTime: 15_000,
     initialPageParam: null as ActionLogCursor | null,
     queryFn: ({ pageParam }) =>
       doorAccessRepository.listActionLogs(need(caller).organizationId, {
         deviceId: needId(deviceId),
+        ...(actions ? { actions: [...actions] } : {}),
         limit: ACTION_LOG_PAGE_SIZE,
         cursor: pageParam,
       }),

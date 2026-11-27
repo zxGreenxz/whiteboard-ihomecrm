@@ -16,15 +16,24 @@ type Functions=Database['public']['Functions'];
 // Literal RPC names preserve the normal generated-client boundary.
 const invoke:ContractExitRpcInvoker=(name,args)=>{
   const settlement = args.p_settlement;
-  if ((name === 'confirm_contract_return_v1' || name === 'finalize_contract_exit_case_v1') && settlement && typeof settlement === 'object' && !Array.isArray(settlement)) {
+  if ((name === 'confirm_contract_return_v2' || name === 'confirm_contract_return_v1' || name === 'finalize_contract_exit_case_v1') && settlement && typeof settlement === 'object' && !Array.isArray(settlement)) {
     const charges = settlement.extra_charges;
     const sources = Array.isArray(charges) ? charges.flatMap(charge => {
       if (!charge || typeof charge !== 'object' || Array.isArray(charge) || !charge.meter_source) return [];
       return [meterSourceReferenceSchema.parse(charge.meter_source)];
     }) : [];
+    // Đường ảnh đồng hồ nhận cả writer v2 (migration 20261124154554): trả phòng trước hạn + quyết toán ngay đi qua v2 kèm
+    // trường hợp (chỉ chủ nhà hỗ trợ được quyết toán ngay; hai trường hợp sang nhượng máy chủ vẫn chỉ cho quyết toán sau).
+    // Loại khác giữ writer v1 và bỏ p_early_terms: bộ gọi writer của máy chủ dựng jsonb từ khoá, p_early_terms=null thành
+    // jsonb 'null' (khác SQL NULL) và v2 sẽ từ chối "chỉ trả phòng trước hạn mới có trường hợp".
+    if (sources.length && name === 'confirm_contract_return_v2' && args.p_initial_kind !== 'EARLY_RETURN') {
+      const { p_early_terms: _unused, ...v1Args } = args;
+      return exitWithMeterSources(String(args.p_organization_id), 'confirm_contract_return_v1', v1Args, sources).then(data => ({ data, error: null }));
+    }
     if (sources.length) return exitWithMeterSources(String(args.p_organization_id), name, args, sources).then(data => ({ data, error: null }));
   }
   switch(name){
+    case 'confirm_contract_return_v2': return supabase.rpc('confirm_contract_return_v2',args as Functions['confirm_contract_return_v2']['Args']);
     case 'confirm_contract_return_v1': return supabase.rpc('confirm_contract_return_v1',args as Functions['confirm_contract_return_v1']['Args']);
     case 'finalize_contract_exit_case_v1': return supabase.rpc('finalize_contract_exit_case_v1',args as Functions['finalize_contract_exit_case_v1']['Args']);
     case 'update_contract_exit_case_kind_v1': return supabase.rpc('update_contract_exit_case_kind_v1',args as Functions['update_contract_exit_case_kind_v1']['Args']);
@@ -48,7 +57,7 @@ function useExitMutation<Input>(mutationFn:(input:Input,organizationId:string)=>
     return mutationFn(input,selectedOrganizationId);
   },retry:false,onError:(error)=>toast.error(contractExitErrorMessage(error)),onSuccess:async(result)=>{
     toast.success(kindChange?'Đã cập nhật loại thanh lý':result.state==='PENDING'?'Đã trả phòng • Chờ quyết toán':'Đã quyết toán');
-    await Promise.all(['contract-exit-cases','contract-exit-case','contract-meter-boundaries','contract-meter-followups','contracts','contract','rooms','my-available-rooms','phong-trong','invoices','income-expenses','excess-amount','contract-pending-forfeit',...EXIT_SETTLEMENT_DRAFT_KEYS].map(key=>cache.invalidateQueries({queryKey:[key]})));
+    await Promise.all(['contract-exit-cases','contract-exit-case','contract-exit-early-terms','sale-room-inventory','contract-meter-boundaries','contract-meter-followups','contracts','contract','rooms','my-available-rooms','phong-trong','invoices','income-expenses','excess-amount','contract-pending-forfeit',...EXIT_SETTLEMENT_DRAFT_KEYS].map(key=>cache.invalidateQueries({queryKey:[key]})));
   }});
 }
 export function useConfirmContractReturn(){return useExitMutation((input:ConfirmContractReturnInput,org:string)=>confirmContractReturn(invoke,input,org));}

@@ -6,14 +6,15 @@
 // thoại mỗi trang tự chép một bản và đã lệch nhau (điện thoại thiếu hàng rào chi cổ đông, thiếu
 // Huỷ duyệt…). Chủ chốt: "đừng để phân mảnh mất sự thống nhất" — mọi màn mở phiếu (Thu chi hai
 // khổ, Báo cáo lợi nhuận) dùng đúng bộ này; sửa luồng nào thì sửa Ở ĐÂY.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { isCommissionVoucher } from "@/lib/commissionIntervention";
 import { isCommissionReasonValid } from "@/lib/commissionAudit";
 import { useIncomeExpenseRevisions, useReviseIncomeExpense } from "@/hooks/income-expenses/revisions";
 import { checkSelfApproveBeforeApprove, useSelfApproveGate } from "@/hooks/income-expenses/selfApproveGate";
 import { focusFirstError } from "@/lib/formErrors";
-import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
+import { FinancialAlreadyRecordedError } from "@/lib/financialWorkflow";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -49,8 +50,14 @@ import {
 // Đợt 2 sổ tổng: phiếu chi lợi nhuận / lương điều hành lập theo sổ tổng chỉ huỷ bằng hộp riêng có lý
 // do (E6) và chỉ chi từ đúng sổ quỹ lúc lập.
 import { isProfitLedgerVoucher, type ProfitPayoutCancelTarget } from "@/lib/profitLedger/vouchers";
-import { ledgerApproveAndPostAllowed, profitCancelTargetFromVoucher } from "@/lib/voucherActionRules";
+import { ledgerApproveAndPostAllowed, ledgerApproveBlockReason, profitCancelTargetFromVoucher } from "@/lib/voucherActionRules";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
+// Một đường duyệt (chủ chốt 25/11/2026): phiếu chi theo sổ tổng duyệt ngay ở hộp Duyệt của Thu chi — hộp đọc E7 để hiện
+// số dư sổ tổng và khoá xác nhận khi máy chủ chắc chắn từ chối (trước đây chỉ màn Chờ duyệt làm việc này).
+import { useProfitLedgerPayoutDetail } from "@/hooks/profit-ledger/useProfitLedgerQueries";
+import { invalidateProfitLedgerQueries } from "@/hooks/profit-ledger/useProfitLedgerMutations";
+import { ledgerApprovalGate } from "@/lib/profitLedger/approvalGate";
+import { ledgerAwareVoucherFailure } from "@/lib/profitLedger/voucherFailure";
 
 export interface VoucherActionsOptions {
   /**
@@ -189,13 +196,33 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     () => (postApprovedLedger ? custodianBooks.filter((book) => book.id === postApprovedTarget?.account_id) : custodianBooks),
     [postApprovedLedger, custodianBooks, postApprovedTarget?.account_id],
   );
-  // Chủ tự duyệt phiếu sổ tổng mình lập ngay ở Thu chi (F1 nới 19/11/2026): "Duyệt và Chi…" cũng chỉ chi từ ĐÚNG sổ lúc
-  // lập, như nút Chi.
+  // Duyệt phiếu sổ tổng ngay ở Thu chi: "Duyệt và Chi…" cũng chỉ chi từ ĐÚNG sổ lúc lập, như nút Chi.
   const approveLedger = !!approveTarget && isProfitLedgerVoucher(approveTarget.system_source);
   const approveAndPostBooks = useMemo(
     () => (approveLedger ? custodianBooks.filter((book) => book.id === approveTarget?.account_id) : custodianBooks),
     [approveLedger, custodianBooks, approveTarget?.account_id],
   );
+  // Hộp Duyệt của phiếu sổ tổng đọc E7 (cùng cache với thẻ số dư ProfitLedgerApprovalNote) và KHOÁ xác nhận khi: chưa
+  // thấy số dư; máy chủ chắc chắn từ chối (sổ tổng chưa bật / đóng băng, phiếu chết, người nhận đã xoá, lương điều hành
+  // vượt — ledgerApprovalGate); hoặc người xem thiếu quyền duyệt tại toà của phiếu. Máy chủ vẫn là chốt cuối.
+  const approveLedgerDetail = useProfitLedgerPayoutDetail(approveLedger ? approveTarget?.id : null);
+  const ledgerDetail = approveLedgerDetail.isError ? undefined : approveLedgerDetail.data;
+  const approveLedgerGate = approveLedger && ledgerDetail ? ledgerApprovalGate(ledgerDetail) : null;
+  const workflowBlockReason = approveLedger && !v2ApproveOnly ? "Luồng duyệt thu chi của công ty chưa mở cho phiếu sổ tổng." : null;
+  const approveLedgerViewerReason = workflowBlockReason ?? (approveLedger && approveTarget
+    ? ledgerApproveBlockReason(approveTarget, myPerms)
+    : null);
+  const approveLedgerReason = approveLedgerViewerReason ?? approveLedgerGate?.blockReason
+    ?? (approveLedger && !approveLedgerGate ? "Chưa đọc được số dư sổ tổng của phiếu." : null);
+  const approveLedgerBlocked = !!approveLedgerReason;
+  const postLedgerReason = approveLedgerReason
+    ?? (approveLedger && !v2ApproveAndPost ? "Chưa thể duyệt và chi từ sổ quỹ này." : null);
+  // Sau khi chờ cổng tự duyệt hoặc tải chứng từ, kiểm lại đúng phiếu và trạng thái mới nhất trước khi ghi.
+  const approvalState = useRef({ id: approveTarget?.id, approveLedgerReason, postLedgerReason });
+  useLayoutEffect(() => {
+    approvalState.current = { id: approveTarget?.id, approveLedgerReason, postLedgerReason };
+    return () => { approvalState.current.id = undefined; };
+  }, [approveTarget?.id, approveLedgerReason, postLedgerReason]);
 
   const { cancelEligibility, incomeCancelEligibility } = useVoucherCancelEligibility(vouchers);
 
@@ -279,7 +306,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   const confirmApprove = useCallback(async () => {
     const target = approveTarget;
     if (!target) return;
-    if (blockedVoucherId === target.id || approveHistoryBlocked) return;
+    if (blockedVoucherId === target.id || approveHistoryBlocked || approveLedgerBlocked) return;
     if (!v2ApproveOnly && approveNeedsReason && !approveReasonOk) {
       setReasonError("approveReason");
       void focusFirstError({ approveReason: "Nhập lý do thay đổi có ít nhất 8 ký tự." });
@@ -291,6 +318,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     setSelfApproveChecking(true);
     const selfCheck = await checkSelfApproveBeforeApprove(queryClient, target.id);
     setSelfApproveChecking(false);
+    if (approvalState.current.id !== target.id || approvalState.current.approveLedgerReason) return;
     if (!selfCheck.ok) {
       if (selfCheck.reason === "unverified") setActionError(selfCheck.message);
       return;
@@ -303,11 +331,14 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
           voucherId: target.id,
           expectedApprovalVersion: (target as { approval_version?: number }).approval_version ?? 1,
         });
+        // Duyệt phiếu sổ tổng đổi số dư sổ tổng: làm mới cả các màn sổ tổng.
+        if (isProfitLedgerVoucher(target.system_source)) invalidateProfitLedgerQueries(queryClient);
         setApproveTarget(null);
         changed();
       } catch (error) {
-        setActionError(voucherFailureMessage(error, "duyệt phiếu"));
-        if (voucherOutcomeUnknown(error)) setBlockedVoucherId(target.id);
+        // Lỗi chốt sổ tổng (PROFIT_LEDGER_…) ra câu riêng; lỗi khác như cũ.
+        // Đợt 5: duyệt V2 gửi lại đúng mã ở lần bấm sau (máy chủ trả kết quả cũ), nên không khoá phiếu tới khi tải lại trang.
+        setActionError(ledgerAwareVoucherFailure(error, "duyệt phiếu"));
       }
       return;
     }
@@ -336,7 +367,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       setActionError(revisionSaved
         ? `Đã lưu thay đổi của phiếu nhưng chưa hoàn tất duyệt. ${voucherFailureMessage(error, "duyệt phiếu")} Tải lại phiếu trước khi tiếp tục.`
         : voucherFailureMessage(error, "duyệt phiếu"));
-      if (revisionSaved || voucherOutcomeUnknown(error)) setBlockedVoucherId(target.id);
+      // Đã lưu sửa đổi thì hộp đang giữ phiên bản cũ: phải tải lại phiếu. Duyệt chưa rõ kết quả thì lần bấm sau tự đối chiếu.
+      if (revisionSaved) setBlockedVoucherId(target.id);
       if (revisionSaved) changed();
     }
   }, [
@@ -344,7 +376,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     approveAccountId,
     approveAttachments,
     approveReason,
-    approveNeedsReason, approveReasonOk, blockedVoucherId, approveHistoryBlocked,
+    approveNeedsReason, approveReasonOk, blockedVoucherId, approveHistoryBlocked, approveLedgerBlocked,
     approveMutation,
     reviseMutation,
     v2ApproveOnly,
@@ -356,16 +388,17 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   // "Duyệt và Thu/Chi…": kiểm cổng tự duyệt trước khi mở hộp ghi sổ (hộp đó nhận chứng từ
   // trước khi duyệt).
   const openApproveAndPost = useCallback(async () => {
-    if (!approveTarget) return;
+    if (!approveTarget || approveLedgerBlocked) return;
     setSelfApproveChecking(true);
     const selfCheck = await checkSelfApproveBeforeApprove(queryClient, approveTarget.id);
     setSelfApproveChecking(false);
+    if (approvalState.current.id !== approveTarget.id || approvalState.current.postLedgerReason) return;
     if (!selfCheck.ok) {
       if (selfCheck.reason === "unverified") setActionError(selfCheck.message);
       return;
     }
     setApproveAndPostOpen(true);
-  }, [approveTarget, queryClient]);
+  }, [approveTarget, approveLedgerBlocked, queryClient]);
 
   const confirmUnapprove = async () => {
     if (!unapproveTarget || unapproveMutation.isPending) return;
@@ -374,7 +407,12 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       await unapproveMutation.mutateAsync({ id: unapproveTarget, reason: unapproveNeedsReason ? lifecycleReason : undefined });
       setUnapproveTarget(null);
       changed();
-    } catch (error) { setActionError(voucherFailureMessage(error, "bỏ duyệt phiếu")); }
+    } catch (error) {
+      // Đợt 5: máy đã kết luận phiếu «đã ở trạng thái …» (hook đã báo): đóng hộp đang giữ ảnh cũ và làm mới, vì bỏ duyệt
+      // không xét trạng thái hiện tại nên bấm lại sẽ lên phiên bản phiếu thêm lần nữa.
+      if (error instanceof FinancialAlreadyRecordedError) { setUnapproveTarget(null); changed(); return; }
+      setActionError(voucherFailureMessage(error, "bỏ duyệt phiếu"));
+    }
   };
 
   const confirmRestore = async () => {
@@ -384,7 +422,10 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       await restoreMutation.mutateAsync({ id: restoreTarget, reason: restoreNeedsReason ? lifecycleReason : undefined });
       setRestoreTarget(null);
       changed();
-    } catch (error) { setActionError(voucherFailureMessage(error, "khôi phục phiếu")); }
+    } catch (error) {
+      if (error instanceof FinancialAlreadyRecordedError) { setRestoreTarget(null); changed(); return; }
+      setActionError(voucherFailureMessage(error, "khôi phục phiếu"));
+    }
   };
 
   const confirmCancel = async () => {
@@ -401,8 +442,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       setCancelTarget(null); setCancelTargetType(null); setCancelReason("");
       changed();
     } catch (error) {
+      // Đợt 5: ba cửa huỷ tự đối chiếu ở lần bấm sau (huỷ đường cũ chỉ chạy bước còn thiếu), nên không khoá phiếu.
       setActionError(voucherFailureMessage(error, "huỷ phiếu"));
-      if (voucherOutcomeUnknown(error) || error instanceof VoucherPartialError) setBlockedVoucherId(cancelTarget);
     }
   };
 
@@ -413,8 +454,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     try {
       const result = await cancelBatchMutation.mutateAsync({ batchId: cancelBatchTarget, reason: batchCancelReason });
       if (result.failures?.length) {
+        // Bấm lại thì đọc lại phiếu còn hiệu lực của đợt và chỉ huỷ phần còn (đợt 5), nên không khoá đợt.
         setActionError(`Đã huỷ ${result.count} phiếu; ${result.failures.length} phiếu chưa hoàn tất. Kiểm tra từng phiếu trong đợt trước khi thao tác tiếp.`);
-        setBlockedVoucherId(cancelBatchTarget);
         changed();
         return;
       }
@@ -422,7 +463,6 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       changed();
     } catch (error) {
       setActionError(voucherFailureMessage(error, "huỷ đợt phiếu"));
-      if (error instanceof VoucherPartialError || voucherOutcomeUnknown(error)) setBlockedVoucherId(cancelBatchTarget);
     }
   };
 
@@ -436,7 +476,6 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       changed();
     } catch (error) {
       setActionError(voucherFailureMessage(error, "hoàn tác thu/chi"));
-      if (voucherOutcomeUnknown(error)) setBlockedVoucherId(reverseTarget.id);
     }
   };
 
@@ -504,13 +543,22 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
         attachments: approveAttachments, setAttachments: setApproveAttachments,
         needsReason: approveNeedsReason, reason: approveReason, setReason: setApproveReason,
         pending: approveMutation.isPending || reviseMutation.isPending || approveV2Mutation.isPending,
+        /**
+         * Phiếu chi theo sổ tổng: hộp hiện thẻ số dư sổ tổng; `blocked` khoá "Chỉ duyệt" và "Duyệt và Chi…";
+         * `viewerReason` = vì sao NGƯỜI XEM không duyệt được (lý do của sổ tổng đã nằm trong thẻ số dư).
+         */
+        ledger: { isLedger: approveLedger, blocked: approveLedgerBlocked, viewerReason: approveLedgerViewerReason },
       },
       approveAndPost: {
         open: approveAndPostOpen, setOpen: setApproveAndPostOpen,
         /** Sổ chào trong hộp Duyệt và Thu/Chi; phiếu sổ tổng: chỉ sổ lúc lập (rỗng nếu không giữ sổ đó). */
-        cashbookOptions: approveAndPostBooks, cashbookLocked: approveLedger,
+        cashbookOptions: approveAndPostBooks, cashbookLocked: approveLedger, blockReason: postLedgerReason,
         submit: async (input: Parameters<typeof approveAndPostV2Mutation.mutateAsync>[0]) => {
+          const { id, postLedgerReason: reason } = approvalState.current;
+          if (id !== input.subjectId) throw new Error("Phiếu đang duyệt đã thay đổi. Mở lại phiếu để kiểm tra.");
+          if (reason) throw new Error(reason);
           await approveAndPostV2Mutation.mutateAsync(input);
+          if (approveLedger) invalidateProfitLedgerQueries(queryClient);
           setApproveAndPostOpen(false);
           setApproveTarget(null);
           changed();

@@ -42,6 +42,8 @@ export interface SetForfeitKqkdResult {
   business_result_accounting: boolean | null;
   kqkd_amount: number | string | null;
   total_amount?: number | string | null;
+  /** Lượt này là lần gửi lại sau một lần bấm chưa rõ kết quả: `changed:false` có thể là do chính lần bấm đó đã đổi. */
+  resent?: boolean;
 }
 
 /**
@@ -70,7 +72,11 @@ export const useSetForfeitVoucherKqkd = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: SetForfeitKqkdInput) => workflow.run(input.voucherId,'đổi cách hạch toán phiếu',async progress=>{
+    // TIỀN (đổi lợi nhuận đem chia): giữ dấu «chờ đối chiếu», cách A (đợt 8). set_forfeit_voucher_kqkd_v1 (production
+    // 26/11/2026, md5 ea8a777e…) khoá phiếu FOR UPDATE rồi so cờ: đã đúng p_kqkd ⇒ trả {changed:false}, không mở writer,
+    // không ghi nhật ký; khác thì ĐẶT tuyệt đối p_kqkd và tự kiểm cặp phiếu trong cùng giao dịch. Gửi lại vì thế không đổi
+    // hai lần, không đảo cờ: dấu của lần gửi trước luôn được gửi lại NGAY, không chặn mãi.
+    mutationFn: async (input: SetForfeitKqkdInput) => { let resent=false; return workflow.run(input.voucherId,'đổi cách hạch toán phiếu',async progress=>{
       const { data, error } = await supabase.rpc("set_forfeit_voucher_kqkd_v1", {
         p_voucher: input.voucherId,
         p_kqkd: input.kqkd,
@@ -87,14 +93,16 @@ export const useSetForfeitVoucherKqkd = () => {
       if(receipt?.id!==input.voucherId || typeof receipt.changed!=='boolean')throw new TypeError('Chưa xác nhận kết quả đổi hạch toán của đúng phiếu.');
       progress.completed.push({id:input.voucherId,label:`Đã nhận kết quả cập nhật cách hạch toán phiếu ${input.voucherId}`});
       if(receipt.changed && receipt.business_result_accounting!==input.kqkd)throw new TypeError('Chưa xác nhận được cách tính phiếu vào kết quả kinh doanh.');
-      return receipt;
-    }),
+      return resent?{...receipt,resent:true}:receipt;
+    },async()=>{resent=true;return {outcome:'not-written',serverDedupesRequestKey:true};}); },
     onSuccess: (data, variables) => {
       for (const key of INVALIDATE_KEYS) {
         queryClient.invalidateQueries({ queryKey: key as unknown as string[] });
       }
       if (data?.changed === false) {
-        toast.info("Phiếu đã ở đúng trạng thái hạch toán này từ trước. Không có thay đổi mới.");
+        toast.info(data.resent
+          ? "Phiếu đã ở đúng trạng thái hạch toán này (do lần bấm trước đã lưu, hoặc đã đúng từ trước). Không có thay đổi mới."
+          : "Phiếu đã ở đúng trạng thái hạch toán này từ trước. Không có thay đổi mới.");
         return;
       }
       if (typeof data.business_result_accounting !== "boolean") {

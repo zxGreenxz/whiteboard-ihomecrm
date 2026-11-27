@@ -6,13 +6,14 @@ import type { ContractFormState } from '../contract-form/useContractFormState';
 import { ContractFormDialog } from '../ContractFormDialog';
 
 const fixtures = vi.hoisted(() => ({ rows: [], save: vi.fn(), submit: vi.fn() }));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({ useContractExitEarlyTerms: () => ({ data: [], isError: false, error: null, refetch: () => undefined }) }));
 vi.mock('@/hooks/useContracts', () => ({ useCreateContract: () => ({ isPending: false }),
   useUpdateContract: () => ({ isPending: false }), useSyncContractCustomers: () => ({ isPending: false }),
   useSyncContractServices: () => ({ isPending: false }) }));
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: fixtures.rows }) }));
 vi.mock('@/hooks/useRooms', () => ({ useRooms: () => ({ data: fixtures.rows }) }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: fixtures.rows }) }));
-vi.mock('@/hooks/useDeposits', () => ({ useOrphanDepositVouchers: () => ({ data: fixtures.rows }) }));
+vi.mock('@/hooks/useDeposits', () => ({ useContractRoomDeposits: () => ({ data: {hold:null,vouchers:fixtures.rows} }) }));
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: fixtures.rows }) }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'actor' } }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true } }) }));

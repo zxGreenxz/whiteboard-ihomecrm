@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:null,isError:false,isLoading:false,refetch:vi.fn()})}));
 //
 // FORM ĐÓNG THÌ KHÔNG ĐƯỢC ĐỌC GÌ.
 //

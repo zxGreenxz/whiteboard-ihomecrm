@@ -16,21 +16,21 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 435 |
-| Hàm trong catalog (public + api) | 1668 |
-| File mã nguồn đã quét | 3161 |
-| SECURITY DEFINER | 409 |
+| RPC được gọi từ mã nguồn | 443 |
+| Hàm trong catalog (public + api) | 1712 |
+| File mã nguồn đã quét | 3324 |
+| SECURITY DEFINER | 412 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 325 | còn lại |
-| tiền | 109 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| thường | 336 | còn lại |
+| tiền | 106 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | hạ tầng | 1 | nơi gọi thuộc Network Center |
 
-## 109 RPC chạm TIỀN
+## 106 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -40,7 +40,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `adjust_invoice_v2` | ✔ | lib/invoiceAdjustmentRpc.ts |
 | `annotate_income_expense_v1` | ✔ | hooks/income-expenses/annotateMutations.ts |
 | `append_income_expense_supplement_v1` | ✔ | hooks/income-expenses/supplements.ts |
-| `approve_invoice_v1` | ✔ | hooks/useInvoices.ts |
 | `approve_pending_income_expense_checked_v1` | ✔ | hooks/income-expenses/revisions.ts |
 | `award_job_bonus` | ✔ | lib/salaryBonusNotify.ts |
 | `bulk_approve_invoices_v1` | ✔ | hooks/useInvoices.ts |
@@ -131,7 +130,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `set_forfeit_voucher_kqkd_v1` | ✔ | hooks/income-expenses/forfeitKqkd.ts |
 | `set_personal_cash_book_v1` | ✔ | hooks/useReceivingCashbooks.ts |
 | `set_salary_v5_config` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |
-| `unapprove_invoice_v1` | ✔ | hooks/useInvoices.ts |
 | `unapprove_voucher` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `unlock_salary_month_v2` | ✔ | hooks/useManagerSalary.ts |
 | `update_invoice_v1` | ✔ | hooks/useInvoices.ts |
@@ -144,7 +142,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `v5_run_job` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `v5_shadow_report` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |
 | `v5_verdict` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |
-| `verify_income_expense` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `verify_income_expense_v1` | ✔ | hooks/income-expenses/statusMutations.ts |
 
 ## 0 RPC mức an ninh

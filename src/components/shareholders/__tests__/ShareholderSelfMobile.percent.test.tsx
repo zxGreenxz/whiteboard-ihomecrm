@@ -158,3 +158,20 @@ describe('ShareholderSelfMobile — màn sổ tổng (ready)', () => {
     expect(h.distribute).toHaveBeenLastCalledWith(expect.objectContaining({ open: true, organizationId: 'org-a', me: { shareholderId: 'sh-1', name: 'Cổ đông 1' } }));
   });
 });
+
+it('sáu ô nằm trên bảng kỳ và giữ bảng mở khi xem chi tiết ứng', () => {
+  h.ledgerData = ledger();
+  view();
+  const statement = screen.getByRole('region', {name: 'Đối chiếu lợi nhuận và tạm ứng'});
+  for (const label of ['Lợi nhuận', 'Chi lợi nhuận', 'Tạm ứng', 'Số dư kỳ', 'Quỹ chung', 'Chi quỹ chung']) {
+    const card = screen.getByRole('button', { name: new RegExp('^' + label + ' ') });
+    expect(card.compareDocumentPosition(statement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }
+  const advance = screen.getByRole('button', { name: /^Tạm ứng / });
+  fireEvent.click(advance);
+  expect(screen.getByRole('region', {name: 'Chi tiết Tạm ứng'})).toBeTruthy();
+  expect(statement.closest('details')).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: 'Đóng chi tiết'}));
+  expect(advance.getAttribute('aria-expanded')).toBe('false');
+  expect(statement.isConnected).toBe(true);
+});

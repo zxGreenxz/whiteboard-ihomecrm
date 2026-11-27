@@ -18,6 +18,8 @@
  * khi cọc và credit đã cấn xong — xem `chargesLeft`.
  */
 
+import type { ExtraChargeItem } from "@/lib/contractValidation";
+
 /** Làm tròn về 2 số lẻ, khớp numeric(15,2) bên Postgres. */
 function money(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -25,6 +27,48 @@ function money(value: number): number {
 }
 
 const atLeastZero = (value: number): number => Math.max(money(value), 0);
+
+/** Kind và tên dòng "Cọc giữ lại theo thoả thuận" — phải khớp đúng từng chữ với kiểm ở máy chủ. */
+export const DEPOSIT_RETAINED_KIND = "DEPOSIT_RETAINED" as const;
+export const DEPOSIT_RETAINED_LABEL = "Cọc giữ lại theo thoả thuận";
+
+/**
+ * Sàn cọc đem ra quyết toán (đợt 4, khớp `terminate_contract_move_out_impl`): số nhỏ hơn giữa cọc đã thu và cọc
+ * theo hợp đồng. Máy chủ từ chối cọc đem ra thấp hơn sàn. Phần sổ cọc ghi dôi trên cọc hợp đồng nằm trên sàn: người
+ * dùng đối chiếu rồi nhập số thực giữ, không thành doanh thu.
+ */
+export function depositFloor(depositPaid: number, totalDeposit: number | null | undefined): number {
+  return money(Math.min(atLeastZero(depositPaid), atLeastZero(totalDeposit ?? 0)));
+}
+
+export interface DepositRetention {
+  /** Sàn: min(cọc đã thu, cọc theo hợp đồng). */
+  floor: number;
+  /** Cọc đem ra quyết toán gửi máy chủ: không thấp hơn sàn. */
+  depositSent: number;
+  /** Phần cọc không hoàn theo thoả thuận ⇒ dòng DEPOSIT_RETAINED (doanh thu). 0 nếu số nhập từ sàn trở lên. */
+  retained: number;
+}
+
+/**
+ * Số "Tiền cọc hoàn trả" người dùng nhập là số hoàn theo thoả thuận (trước khấu trừ). Nhập thấp hơn sàn thì gửi cọc
+ * đem ra bằng sàn và phần chênh thành dòng "Cọc giữ lại theo thoả thuận"; khách nhận đúng như số đã nhập trừ khấu trừ.
+ */
+export function resolveDepositRetention(input: {
+  depositPaid: number; totalDeposit: number | null | undefined; requested: number;
+}): DepositRetention {
+  const floor = depositFloor(input.depositPaid, input.totalDeposit);
+  const requested = atLeastZero(input.requested);
+  if (requested >= floor) return { floor, depositSent: requested, retained: 0 };
+  return { floor, depositSent: floor, retained: money(floor - requested) };
+}
+
+/** Khoản thu thêm gửi máy chủ: bỏ mọi dòng DEPOSIT_RETAINED tự thêm, nối đúng một dòng theo số giữ lại (nếu có). */
+export function withDepositRetainedLine(charges: ExtraChargeItem[], retained: number): ExtraChargeItem[] {
+  const rest = charges.filter((item) => item.kind !== DEPOSIT_RETAINED_KIND);
+  const amount = atLeastZero(retained);
+  return amount > 0 ? [...rest, { kind: DEPOSIT_RETAINED_KIND, description: DEPOSIT_RETAINED_LABEL, amount }] : rest;
+}
 
 export interface TerminationSettlementInput {
   /** Cọc THỰC THU — trần cứng của số hoàn cọc (server kẹp LEAST). */

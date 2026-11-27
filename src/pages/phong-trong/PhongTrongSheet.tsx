@@ -1,3 +1,4 @@
+import { hasPrecontractDeposit } from './depositHold';
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { Icon, amenIcon } from "./icons";
 import { STATUS_META, fmtPrice, genInfoLines, type Room, type Building } from "./sampleData";
@@ -5,6 +6,8 @@ import { useTrack } from "./useTracking";
 import { corsFetchUrl } from "@/lib/storage/r2Config";
 import { isUnavailableTestMedia, TEST_MEDIA_MESSAGE, testMediaSource } from '@/lib/storage/testMedia';
 import { saleLockRemaining } from "@/lib/roomSaleLockRpc";
+import { EXIT_HOLD_STATUS_LABEL, exitHoldLines, isExitHeld } from "./exitHold";
+import { buildShareText } from "./shareText";
 
 import { isRoomVideo, roomAlbum } from '@/lib/roomMedia';
 
@@ -83,36 +86,6 @@ function Lightbox({ images, index, onClose, onSaveAll }: {
   );
 }
 
-/** Rút gọn địa chỉ gửi khách: số nhà "102/30…"/"331/70/101G…" -> giữ phần trước "/" đầu ("102","331");
- *  bỏ đuôi tỉnh/thành "… Hồ Chí Minh" / "TP.HCM" / "HCM". */
-function shortAddr(addr: string): string {
-  const s = addr.replace(/^(\d+)\/\S*/, "$1");
-  const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
-  const isCity = (p: string) =>
-    /^(thành phố\s+)?hồ chí minh$/i.test(p) || /^tp\.?\s*hcm$/i.test(p) || /^hcm$/i.test(p);
-  while (parts.length && isCity(parts[parts.length - 1])) parts.pop();
-  return parts.join(", ");
-}
-function buildShareText(r: Room, building?: Building): string {
-  const isPass = r.status === "pass";
-  return [
-    `🏠 ${r.buildingName} — Phòng ${r.code}${r.type ? ` · ${r.type}` : ""}`,
-    `• Giá: ${fmtPrice(r.price)} triệu/tháng`,
-    isPass
-      ? (r.passContactManager
-          ? `• Tình trạng: Khách pass phòng — Liên hệ quản lý`
-          : `• Tình trạng: Khách pass phòng${r.passContactPhone ? " — LH " + r.passContactPhone + (r.passContactName ? " (" + r.passContactName + ")" : "") : ""}`)
-      : `• Tình trạng: ${r.saleFact?.label || SM[r.status].label}`,
-    `• Nội thất: ${r.amenities.join(", ")}`,
-    ...(isPass && r.passAvailDate ? [`• Dự kiến trống từ: ${r.passAvailDate}`] : []),
-    ...(isPass && r.passSalePolicy ? [`• Chính sách sale: ${r.passSalePolicy}`] : []),
-    ...(r.saleNote ? [`• Khuyến mãi: ${r.saleNote}`] : []),
-    `• Địa chỉ: ${shortAddr(r.buildingAddr)}`,
-    ...(genInfoLines(building).length ? ['', '📋 Thông tin chung:'] : []),
-    ...genInfoLines(building).map((t) => `• ${t}`),
-  ].join("\n");
-}
-
 // Web Share API level 2 (chia sẻ kèm File[]). iOS/Android hỗ trợ; desktop thường không.
 type ShareNav = Navigator & {
   canShare?: (d: { files?: File[] }) => boolean;
@@ -142,6 +115,7 @@ type FilesCacheEntry = { key: string; promise: Promise<File[]>; done: boolean };
 
 export function DetailSheet({
   room, show, onClose, onToast, saved, toggleSave, onGo, buildings, onQuickDeposit, onLock, onReleaseLock, canReleaseLock,
+  onReopenHold, onExtendHold,
 }: {
   room: Room | null;
   show: boolean;
@@ -158,6 +132,9 @@ export function DetailSheet({
   /** Gỡ lock: hiện khi phòng đang chốt tạm và canReleaseLock(r) đúng (người lock hoặc người tạo cọc). */
   onReleaseLock?: (r: Room) => void;
   canReleaseLock?: (r: Room) => boolean;
+  /** Phòng đang giữ cho khách sang nhượng: chỉ truyền khi trong app; nút hiện khi máy chủ báo exitHold.canManage. */
+  onReopenHold?: (r: Room) => void;
+  onExtendHold?: (r: Room) => void;
 }) {
   const track = useTrack();
   const [lb, setLb] = useState<number | null>(null);
@@ -194,7 +171,7 @@ export function DetailSheet({
   // Phong cung toa (con trong) de chuyen nhanh truoc/sau
   const building = buildings.find((b) => b.id === r.buildingId);
   const siblings = building
-    ? building.rooms.filter((x) => x.status !== "rented").sort((a, b) => b.floor - a.floor || a.no - b.no)
+    ? building.rooms.filter((x) => x.status !== "rented" || hasPrecontractDeposit(x) || isExitHeld(x)).sort((a, b) => b.floor - a.floor || a.no - b.no)
     : [r];
   const idx = siblings.findIndex((x) => x.id === r.id);
   const prev = idx > 0 ? siblings[idx - 1] : null;
@@ -345,9 +322,27 @@ export function DetailSheet({
               </div>
             )}
 
-            {onQuickDeposit && r.status !== "rented" && r.status !== "pass" && (
+            {r.exitHold && (
+              <div className={"eh-banner" + (r.exitHold.active ? "" : " expired")} role="note" aria-label="Giữ phòng cho khách sang nhượng">
+                {(r.exitHold.active ? [EXIT_HOLD_STATUS_LABEL, ...exitHoldLines(r.exitHold)] : exitHoldLines(r.exitHold))
+                  .map((line, i) => i === 0 ? <b key={line}>{line}</b> : <span key={line}>{line}</span>)}
+              </div>
+            )}
+
+            {/* Phòng đang giữ cho khách sang nhượng: người khác vẫn cọc được (máy chủ quyết định). */}
+            {onQuickDeposit && (r.status !== "rented" || hasPrecontractDeposit(r) || isExitHeld(r)) && r.status !== "pass" && (
               <button className="qd-trigger" onClick={() => onQuickDeposit(r)}>
                 <Icon.Money />{r.status === "locked" ? "Tạo phiếu cọc" : "Tạo cọc giữ phòng"}
+              </button>
+            )}
+            {onReopenHold && r.exitHold?.canManage && r.exitHold.active && (
+              <button className="eh-trigger" onClick={() => onReopenHold(r)}>
+                <Icon.Tag />Mở bán lại
+              </button>
+            )}
+            {onExtendHold && r.exitHold?.canManage && (
+              <button className="eh-trigger" onClick={() => onExtendHold(r)}>
+                <Icon.Refresh />Giữ tiếp
               </button>
             )}
             {onLock && (r.status === "free" || r.status === "soon") && (

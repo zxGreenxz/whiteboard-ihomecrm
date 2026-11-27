@@ -75,15 +75,19 @@ describe('cashbook reopening form', () => {
     expect(document.body.textContent).not.toContain('private SQL diagnostics');
   });
 
-  it('blocks resubmission after an unknown result while retaining the draft', async () => {
-    h.save.mockRejectedValue(new FinancialWorkflowError('Cần đối chiếu lịch sử mở khóa.', 'unknown', []));
+  // Đợt 6: mở khóa chưa rõ kết quả tự đối chiếu ở lần bấm sau (đọc lịch sử theo mã, chưa có thì gửi lại cùng mã), nên hộp
+  // không khoá nút; bản nháp lý do vẫn giữ để lần bấm sau gửi lại đúng nội dung.
+  it('keeps the draft after an unknown result and lets the next press reconcile instead of locking the button', async () => {
+    h.save.mockRejectedValueOnce(new FinancialWorkflowError('Cần đối chiếu lịch sử mở khóa.', 'unknown', []));
     show();
     fireEvent.change(screen.getByLabelText(/Lý do mở khóa/), { target: { value: 'Kiểm tra phiếu bị ghi nhầm' } });
     fireEvent.click(screen.getByRole('button', { name: 'Xác nhận mở khóa' }));
     await screen.findByText(/Cần đối chiếu lịch sử mở khóa/);
-    expect(screen.getByRole('button', { name: 'Xác nhận mở khóa' }).hasAttribute('disabled')).toBe(true);
+    expect((screen.getByLabelText(/Lý do mở khóa/) as HTMLTextAreaElement).value).toBe('Kiểm tra phiếu bị ghi nhầm');
+    expect(screen.getByRole('button', { name: 'Xác nhận mở khóa' }).hasAttribute('disabled')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Xác nhận mở khóa' }));
-    expect(h.save).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(h.save).toHaveBeenCalledTimes(2));
+    expect(h.save.mock.calls[1][0]).toMatchObject({ reason: 'Kiểm tra phiếu bị ghi nhầm' });
   });
 
   it('separates unreadable state from denied permission and hides stale history', () => {

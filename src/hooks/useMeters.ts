@@ -1,6 +1,5 @@
-import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {confirmedRecordId,recordWriteMessage,repeatableWrite} from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -15,7 +14,8 @@ import { friendlyError } from '@/lib/friendlyError';
 
 class MeterServiceError extends Error {}
 function meterMutationFailure(error: unknown, action: string) {
-  if (isDuplicateMeterCode(error)) { toast.error('Mã công tơ đã tồn tại'); return; }
+  // Đợt 9: trùng mã mà đã tra ra công tơ đang giữ mã đó thì câu báo nêu mã công tơ đó.
+  if (isDuplicateMeterCode(error)) { toast.error('Mã công tơ đã tồn tại', error instanceof FinancialWorkflowError ? { description: error.message } : undefined); return; }
   if (error instanceof MeterServiceError) { toast.error(error.message); return; }
   if(error instanceof FinancialWorkflowError){toast.error(`Chưa ${action} được công tơ`,{description:recordWriteMessage(error,`${action} công tơ`)});return;}
   const feedback = friendlyError(error, `Chưa ${action} được công tơ`, { operation: `${action} công tơ` });
@@ -326,12 +326,33 @@ export const useUnrecordedMeters = (params: {
 // Mutation hooks
 // ============================================================================
 
-/** Mutation INSERT vào meters với user_id = auth.uid() */
+/** Đợt 9: so các trường ĐÃ GỬI với dòng đọc lại (tên công tơ do trigger sinh khi không gửi nên không so). Bỏ `user_id`. */
+const canonical = (value: unknown): string => JSON.stringify(value ?? null, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+const sentFieldsMatch = (saved: Record<string, unknown>, sent: Record<string, unknown>) => Object.keys(sent).every(key => key === 'user_id' || canonical(saved[key]) === canonical(sent[key]));
+/**
+ * Mã công tơ trùng một công tơ KHÁC của cùng người (`meters_user_id_code_key`, duy nhất theo người tạo, kể cả công tơ đã xoá):
+ * tra công tơ đó để câu từ chối nêu mã. Lỗi mới giữ lời từ chối gốc ở `cause` để form vẫn đánh dấu ô mã. Không thấy (khác
+ * công ty, ngoài phạm vi tòa) hoặc tra hỏng thì trả lời từ chối gốc («Mã công tơ đã tồn tại»).
+ */
+async function meterCodeTaken(error: unknown, userId: string, code: string): Promise<unknown> {
+  if (!isDuplicateMeterCode(error)) return error;
+  try {
+    const { data, error: readError } = await supabase.from('meters').select('id,code,deleted_at').eq('user_id', userId).eq('code', code).maybeSingle();
+    if (!readError && data?.id) return new FinancialWorkflowError(`Mã công tơ «${data.code}» đã dùng cho một công tơ khác${data.deleted_at ? ' (đã xoá)' : ''} (mã ${data.id}). Nhập mã khác, hoặc mở công tơ đó để sửa.`, 'failure', [], error);
+  } catch { /* Tra hỏng: giữ lời từ chối gốc, không đoán mã. */ }
+  return error;
+}
+
+/**
+ * Đợt 9 (luật 5): tạo công tơ không giữ dấu «chờ đối chiếu» nào. Mã công tơ do trình duyệt sinh (`createRecordOnce`;
+ * `meters` nhận `id`, trigger `auto_generate_meter_name` chỉ đặt tên khi trống — production 26/11/2026): kết quả chưa rõ báo
+ * «bấm lại», lần bấm lại cùng mã công tơ gửi ĐÚNG mã cũ nên khoá chính chặn công tơ thứ hai. Dấu bản trước (khoá chung
+ * `create`, công ty đang chọn) gỡ sau lần tạo xong.
+ */
 export const useCreateMeter = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
 
-  const guard=persistentFinancialWorkflow('meter-create');
   return useMutation({
     meta:{handlesFeedback:true},
     mutationFn: async (meter: Omit<MeterInsert, "user_id">) => {
@@ -339,20 +360,22 @@ export const useCreateMeter = () => {
 
       if (!user) throw new Error("User not authenticated");
 
-      // Auto-resolve service_id from meter_type
+      // Auto-resolve service_id from meter_type (chỉ đọc, đứng trước lệnh ghi).
       const serviceId = await resolveServiceId(meter.meter_type);
-
-      return guard.run('create','tạo công tơ',async()=>{
-      const { data, error } = await supabase
-        .from("meters")
-        .insert(withOrg({ ...meter, user_id: user.id, service_id: serviceId }, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      confirmedRecordId(data,'tạo công tơ');
-      return data;
-      },undefined,selectedOrganizationId??undefined);
+      const payload = withOrg({ ...meter, user_id: user.id, service_id: serviceId }, selectedOrganizationId);
+      const created = await repeatableWrite('tạo công tơ', async () => {
+        const { createRecordOnce } = await import('@/lib/clientRecordCreate');
+        const { row } = await createRecordOnce<Meter>({
+          table: 'meters', userId: user.id, organizationId: payload.organization_id,
+          matchKeys: [`c:${String(meter.code ?? '').trim()}`],
+          payload, operation: 'tạo công tơ',
+          sameAs: saved => sentFieldsMatch(saved, payload), describe: saved => `Công tơ ${String(saved.code)}`,
+        });
+        return row;
+      }).catch(async (error: unknown) => { throw await meterCodeTaken(error, user.id, meter.code); });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'meter-create', businessKey: 'create' }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần tạo sau gỡ lại. */ }
+      return created;
     },
     onSuccess: (meter) => {
       queryClient.invalidateQueries({ queryKey: ["meters"] });

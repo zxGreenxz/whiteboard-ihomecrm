@@ -19,17 +19,28 @@ const core=(action:'renew'|'transfer')=>({id:id(2),organization_id:id(1),contrac
 const event=(action:'renew'|'transfer')=>({id:id(5),organization_id:id(1),contract_id:id(2),result_contract_id:id(2),request_id:h.rpc.mock.calls[0][1].p_request_id,operation:action==='renew'?'RENEW':'TRANSFER_ROOM',notice_choice:action==='renew'?'KEEP':'CANCEL',previous_notice_date:'2026-11-01',expected_updated_at:'2026-09-28T00:00:00Z'});
 beforeEach(()=>{localStorage.clear();h.org=id(1);h.rpc.mockReset();h.responses=[];h.reads=[];h.toast.success.mockReset();h.toast.error.mockReset();});
 it.each(['renew','transfer'] as const)('B16 %s does not succeed from a null RPC receipt',async action=>{h.rpc.mockResolvedValue({data:null,error:null});await expect(useNoticeOptions(action).mutationFn(input(action))).rejects.toBeInstanceOf(FinancialWorkflowError);});
-it.each(['renew','transfer'] as const)('B16 %s retains the positive contract ID if the authoritative read fails and blocks another operation after remount',async action=>{
+// Đợt 6: gia hạn tách khỏi dấu chung `contract-notice-transition` (chuyển phòng vẫn ở đó tới đợt 7). Chuyển phòng kẹt vẫn chặn
+// gia hạn đúng hợp đồng đó (qua `legacy`); gia hạn kẹt không còn chặn chuyển phòng (máy chủ còn so `expected_updated_at`).
+it('B16 transfer retains the positive contract ID if the authoritative read fails and blocks a renewal after remount',async()=>{
  h.rpc.mockResolvedValue({data:id(2),error:null});h.responses=[()=>({data:null,error:{code:'42501',message:'denied'}})];
- await expect(useNoticeOptions(action).mutationFn(input(action))).rejects.toMatchObject({outcome:'partial',completed:expect.arrayContaining([expect.objectContaining({id:id(2)})])});
- h.org=id(9);await expect(useNoticeOptions(action==='renew'?'transfer':'renew').mutationFn(input(action==='renew'?'transfer':'renew'))).rejects.toBeInstanceOf(FinancialWorkflowError);expect(h.rpc).toHaveBeenCalledTimes(1);
+ await expect(useNoticeOptions('transfer').mutationFn(input('transfer'))).rejects.toMatchObject({outcome:'partial',completed:expect.arrayContaining([expect.objectContaining({id:id(2)})])});
+ h.org=id(9);await expect(useNoticeOptions('renew').mutationFn(input('renew'))).rejects.toBeInstanceOf(FinancialWorkflowError);expect(h.rpc).toHaveBeenCalledTimes(1);
+});
+it('B16 renew retains the positive contract ID if the authoritative read fails; the next renewal reads the request event instead of writing again',async()=>{
+ h.rpc.mockResolvedValue({data:id(2),error:null});h.responses=[()=>({data:null,error:{code:'42501',message:'denied'}})];
+ await expect(useNoticeOptions('renew').mutationFn(input('renew'))).rejects.toMatchObject({outcome:'partial',completed:expect.arrayContaining([expect.objectContaining({id:id(2)})])});
+ expect(financialPending.read({namespace:'contract-renew',userId:'actor',organizationId:'actor-scope',businessKey:id(2)})?.completedIds).toContain(id(2));
+ h.responses=[()=>({data:{id:id(5)},error:null}),()=>({data:core('renew'),error:null}),()=>({data:event('renew'),error:null})];
+ await expect(useNoticeOptions('renew').mutationFn(input('renew'))).resolves.toMatchObject({contractId:id(2)});
+ expect(h.rpc).toHaveBeenCalledTimes(1);
+ expect(financialPending.read({namespace:'contract-renew',userId:'actor',organizationId:'actor-scope',businessKey:id(2)})).toBeNull();
 });
 it.each(['renew','transfer'] as const)('B16 %s confirms exact core and request event, then reports the contract and actual date/room',async action=>{
  h.rpc.mockResolvedValue({data:id(2),error:null});h.responses=[()=>({data:core(action),error:null}),()=>({data:event(action),error:null})];
  const hook=useNoticeOptions(action);const result=await hook.mutationFn(input(action));expect(result).toMatchObject({contractId:id(2),contractNumber:'HĐ26-009'});hook.onSuccess(result,input(action));
  expect(h.toast.success.mock.calls[0][0]).toContain('HĐ26-009');expect(h.toast.success.mock.calls[0][0]).toContain(action==='renew'?'31/12/2027':'P203');
  expect(h.reads).toEqual(['contracts','contract_notice_transition_events']);
- expect(h.rpc.mock.calls[0][1].p_request_id).not.toBe(id(3));expect(financialPending.read({namespace:'contract-notice-transition',userId:'actor',organizationId:'actor-scope',businessKey:id(2)})).toBeNull();
+ expect(h.rpc.mock.calls[0][1].p_request_id).not.toBe(id(3));expect(financialPending.read({namespace:action==='renew'?'contract-renew':'contract-notice-transition',userId:'actor',organizationId:'actor-scope',businessKey:id(2)})).toBeNull();
 });
 it.each(['renew','transfer'] as const)('B16 %s cannot accept a current contract without the matching request event',async action=>{
  h.rpc.mockResolvedValue({data:id(2),error:null});h.responses=[()=>({data:core(action),error:null}),()=>({data:null,error:null})];await expect(useNoticeOptions(action).mutationFn(input(action))).rejects.toMatchObject({outcome:'partial'});
@@ -65,13 +76,14 @@ it('báo cần đối chiếu khi đã có mã hợp đồng nhưng chưa đọc
   expect(h.toast.error.mock.calls[0][0]).not.toMatch(/^Chưa chuyển phòng/);
 });
 
+// Đợt 7: không còn nút «Kiểm tra kết quả» riêng; lần bấm Chuyển phòng kế tiếp tự đọc sự kiện theo mã của dấu.
 it('chỉ đọc lại biên nhận sau lỗi xác nhận và giữ request id, không gửi writer lần hai', async () => {
   const hook = useNoticeOptions('transfer');
   h.rpc.mockResolvedValue({data:id(2),error:null});
   h.responses = [() => ({data:null,error:{code:'42501',message:'denied'}})];
   await expect(hook.mutationFn(transfer)).rejects.toMatchObject({outcome:'partial'});
-  h.responses = [() => ({data:core('transfer'),error:null}),() => ({data:event('transfer'),error:null})];
-  await expect(hook.mutationFn({...transfer,reconcileOnly:true})).resolves.toMatchObject({contractId:id(2)});
+  h.responses = [() => ({data:{id:id(5),operation:'TRANSFER_ROOM',result_contract_id:id(2)},error:null}),() => ({data:core('transfer'),error:null}),() => ({data:event('transfer'),error:null})];
+  await expect(hook.mutationFn(transfer)).resolves.toMatchObject({contractId:id(2)});
   expect(h.rpc).toHaveBeenCalledTimes(1);
   expect(h.rpc.mock.calls[0][0]).toBe('transfer_room_with_notice_v2');
   expect(h.rpc.mock.calls[0][1]).toMatchObject({p_new_deposit:200,p_quote_key:'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'});

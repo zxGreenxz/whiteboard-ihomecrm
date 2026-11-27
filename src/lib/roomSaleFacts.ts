@@ -5,6 +5,8 @@ export interface RoomSaleFactInput {
   today?: string | null;
   availableOn?: string | null;
   expectedReadyOn?: string | null;
+  /** Chỉ reader trong app: phòng 'rented' vì đang giữ bằng cọc chờ hợp đồng (đợt giữ chỗ #499 hoặc phiếu cọc treo). */
+  hasDepositHold?: boolean;
 }
 
 export interface RoomSaleFact {
@@ -23,8 +25,27 @@ function dateLabel(day: string): string {
   return `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
 }
 
+/** Quá số ngày này mà phiếu cọc giữ phòng chưa thành hợp đồng thì trang Sale tô cảnh báo (không tự gỡ: tiền đã thu). */
+export const DEPOSIT_HOLD_STALE_DAYS = 14;
+
+/** Nhãn CÔNG KHAI của phòng đang giữ bằng cọc: đi vào saleFact.label ⇒ tin «Chia sẻ» gửi khách, ảnh / xuất bảng, Copilot. */
+export const DEPOSIT_HOLD_PUBLIC_LABEL = 'Đang giữ chỗ';
+
+/**
+ * «Đã cọc · người nộp · N ngày» — CHỈ cho bảng Sale nội bộ (QuickRoomBoard), không bao giờ vào saleFact.label: tên người
+ * nộp không được theo tin chia sẻ ra ngoài. Người xem không có deposits.view thì máy chủ không trả tên ⇒ «Đã cọc · N ngày».
+ */
+export function roomSaleDepositLabel(hold: { source?: 'hold' | 'voucher'; payerName?: string | null; heldDays: number }): string {
+  const days = Number.isFinite(hold.heldDays) && hold.heldDays > 0 ? `${Math.floor(hold.heldDays)} ngày` : 'hôm nay';
+  if (hold.source === 'voucher') return 'Phiếu cọc · Chưa xác định lượt thuê';
+  return ['Đã cọc', hold.payerName?.trim() || null, days].filter(Boolean).join(' · ');
+}
+
 export function roomSaleFacts(input: RoomSaleFactInput): RoomSaleFact {
-  if (input.status === 'rented') return { kind: 'rented', label: 'Đã thuê / giữ chỗ', availableOn: null };
+  if (input.status === 'rented') {
+    const label = input.hasDepositHold ? DEPOSIT_HOLD_PUBLIC_LABEL : 'Đã thuê / giữ chỗ';
+    return { kind: 'rented', label, availableOn: null };
+  }
   if (input.status === 'pass') return { kind: 'pass', label: 'Khách pass phòng', availableOn: null };
   const today = validDay(input.today) ? input.today : null;
   if (input.status === 'free' && input.state === 'PREPARING') {
@@ -77,7 +98,44 @@ export function roomSalePassLabel(contact: RoomSalePassContact): string {
   return who ? `Khách pass phòng: ${who}` : 'Khách pass phòng';
 }
 
+/**
+ * Nhịp tự đọc lại khi trang đang hiện. Mỗi lần đọc là toàn bộ kho phòng, nên đợt 4 «Tải nhẹ»
+ * (25/11/2026) giãn từ 5 giây ở mọi nơi thành 30 giây cho bảng nội bộ/điện thoại và 60 giây cho
+ * link công khai. Thao tác của chính người dùng vẫn hiện ngay vì mutation invalidate; quay lại tab
+ * và có mạng lại vẫn đọc ngay (hook đặt refetchOnWindowFocus/refetchOnReconnect 'always').
+ */
+export const ROOM_SALE_POLL_MS = { internal: 30_000, public: 60_000 } as const;
+export type RoomSalePollAudience = keyof typeof ROOM_SALE_POLL_MS;
+/** Lỗi liên tiếp giãn gấp đôi nhịp, không quá 5 phút. */
+export const ROOM_SALE_POLL_MAX_MS = 300_000;
+
 /** TanStack also suppresses background intervals; explicit visibility handles errors consistently. */
-export function roomSalePollingInterval(errorCount: number, visible = typeof document === 'undefined' || document.visibilityState !== 'hidden'): number | false {
-  return visible ? Math.min(60_000, 5_000 * 2 ** Math.min(4, Math.max(0, errorCount))) : false;
+export function roomSalePollingInterval(audience: RoomSalePollAudience, errorCount: number, visible = typeof document === 'undefined' || document.visibilityState !== 'hidden'): number | false {
+  return visible ? Math.min(ROOM_SALE_POLL_MAX_MS, ROOM_SALE_POLL_MS[audience] * 2 ** Math.min(4, Math.max(0, errorCount))) : false;
+}
+
+/** Phần state TanStack Query cần để đếm lỗi (Query thật có đủ các trường này). */
+export interface RoomSalePollQuery { state: { status: string; error: unknown; errorUpdateCount: number } }
+const errorCountAtLastSuccess = new WeakMap<object, number>();
+
+/**
+ * Số lần đọc lỗi LIÊN TIẾP kể từ lần đọc thành công gần nhất. `errorUpdateCount` của TanStack
+ * cộng dồn cả đời query (thành công không đưa về 0), nên dùng thẳng thì lỗi lẻ tẻ trong phiên
+ * cộng dồn và một lỗi đơn cũng nhảy tới trần 5 phút. TanStack gọi refetchInterval sau mọi lần
+ * cập nhật query: lúc `status === 'success'` thì ghi mốc, lúc lỗi thì đếm từ mốc đó. Không ghi mốc
+ * theo `error == null`: query chưa từng có dữ liệu bị đưa về `pending`, `error: null` mỗi lần đọc lại.
+ */
+export function roomSaleConsecutiveErrors(query: RoomSalePollQuery): number {
+  const { status, error, errorUpdateCount } = query.state;
+  if (status === 'success') {
+    errorCountAtLastSuccess.set(query, errorUpdateCount);
+    return 0;
+  }
+  if (!error) return 0;
+  return Math.max(1, errorUpdateCount - (errorCountAtLastSuccess.get(query) ?? 0));
+}
+
+/** refetchInterval dùng chung cho bảng nội bộ, «Phòng trống» trong app và link công khai. */
+export function roomSaleQueryInterval(audience: RoomSalePollAudience, query: RoomSalePollQuery): number | false {
+  return roomSalePollingInterval(audience, roomSaleConsecutiveErrors(query));
 }

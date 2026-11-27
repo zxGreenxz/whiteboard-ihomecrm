@@ -241,6 +241,26 @@ export const useCashbookCloseConfirmers = (cashbookId: string | null | undefined
     },
   });
 
+// ── Đối chiếu đề nghị / xác nhận / huỷ chốt sổ (đợt 5) ─────────────────────────────────────────────────────────────
+// Thân hàm production (25/11/2026):
+//   propose_cashbook_closing_v1  khoá sổ FOR UPDATE + khoá quyết định của công ty, rồi chạy cashbook_closing_blockers_v1
+//                                (CLOSURE_PENDING chặn đề nghị thứ hai): mỗi sổ chỉ một đề nghị chờ.
+//   confirm_cashbook_closing_v1  khoá đề nghị FOR UPDATE rồi đòi PENDING (khác ⇒ 23505 «đã … rồi»).
+//   cancel_cashbook_closing_v1   khoá đề nghị FOR UPDATE; không còn PENDING ⇒ trả {changed:false, status}.
+// Cả ba khoá rồi mới xét, nên gửi lại sớm không ghi hai lần. Danh sách đọc qua list_cashbook_closings_v1 (đề nghị đang
+// chờ + biên bản đã chốt; đề nghị đã huỷ không hiện).
+interface ClosingLists { pending: PendingClosure[]; closures: ConfirmedClosure[] }
+async function readCashbookClosings(cashbookId: string | null): Promise<ClosingLists> {
+  const { data, error } = await supabase.rpc("list_cashbook_closings_v1", { p_cashbook: cashbookId ?? undefined });
+  if (error) throw error;
+  const value = closingRecord(data);
+  if (!Array.isArray(value.pending) || !Array.isArray(value.closures)) throw new TypeError('Chưa đọc được danh sách chốt sổ.');
+  return { pending: value.pending as PendingClosure[], closures: value.closures as ConfirmedClosure[] };
+}
+const closingDate = (value: string) => { try { return format(new Date(value), 'dd/MM/yyyy'); } catch { return value; } };
+/** Giờ máy và giờ máy chủ có thể lệch: biên bản chốt trong khoảng này trước giờ kẹt vẫn tính là sau lần gửi đó. */
+const CLOCK_MARGIN_MS = 10 * 60_000;
+
 export interface ProposeClosingInput {
   cashbookId: string;
   cashbookName?: string | null;
@@ -263,6 +283,18 @@ export const useProposeCashbookClosing = () => {
       const value = closingRecord(data);
       if (typeof value.request_id !== 'string' || !value.request_id || value.cashbook_id!==input.cashbookId || value.status !== 'PENDING') unknownClosing('gửi đề nghị chốt sổ');
       return value;
+    }, async pending => {
+      // Cách C: đọc danh sách của đúng sổ. Đã có đề nghị chờ (của lần trước, hoặc của người khác) ⇒ không gửi thêm.
+      const lists = await readCashbookClosings(input.cashbookId);
+      const [row] = lists.pending.filter(item => item.cashbook_id === input.cashbookId);
+      if (row) {
+        return { outcome: 'already-written', message: `Sổ ${row.cashbook_name || input.cashbookName || ''} đã có đề nghị chốt đến ngày ${closingDate(row.closed_through)} đang chờ ${row.confirmer_name ?? 'người nhận'} xác nhận. Không gửi thêm đề nghị.`, recordIds: [row.request_id] };
+      }
+      // Đề nghị của lần trước đã được ký ngay sau đó: biên bản chốt mới xuất hiện sau giờ gửi.
+      const since = Date.parse(pending.startedAt) - CLOCK_MARGIN_MS;
+      const signed = lists.closures.find(row => row.cashbook_id === input.cashbookId && Date.parse(row.confirmed_at) >= since);
+      if (signed) return { outcome: 'already-written', message: `Sổ ${signed.cashbook_name || input.cashbookName || ''} đã được chốt đến ngày ${closingDate(signed.closed_through)} sau lần gửi trước. Không gửi thêm đề nghị.`, recordIds: [String(signed.closure_id)] };
+      return { outcome: 'not-written', serverDedupesRequestKey: true };
     }),
     onSuccess: (_res, input) => {
       invalidateAll(qc);
@@ -273,10 +305,15 @@ export const useProposeCashbookClosing = () => {
 
 export const useConfirmCashbookClosing = () => {
   const qc = useQueryClient();
-  const guard = useRef(persistentFinancialWorkflow('closing-request-lifecycle',{scope:'actor'}));
+  // Đợt 5: xác nhận và huỷ tách khỏi dấu chung `closing-request-lifecycle` (dấu cũ ở đó chặn đề nghị đó qua hộp cảnh báo).
+  const guard = useRef(persistentFinancialWorkflow('closing-confirm',{scope:'actor',legacy:'closing-request-lifecycle'}));
   return useMutation({
     meta: {handlesFeedback: true},
-    mutationFn: async (input: { requestId: string; countedBalance: number; cashbookName?: string }) => guard.current.run(input.requestId, 'xác nhận chốt sổ', async () => {
+    mutationFn: async (input: { requestId: string; countedBalance: number; cashbookName?: string; cashbookId?: string; closedThrough?: string }) => {
+      // Cách C: đọc đề nghị TRƯỚC khi ghi dấu (sổ và ngày chốt của nó), để lần bấm sau tìm đúng biên bản nếu lần trước đã ký.
+      const before = (await readCashbookClosings(input.cashbookId ?? null)).pending.find(row => row.request_id === input.requestId);
+      const meta = before ? { before: 'PENDING', cashbookId: before.cashbook_id, closedThrough: before.closed_through } : undefined;
+      return guard.current.run(input.requestId, 'xác nhận chốt sổ', async () => {
       const { data, error } = await supabase.rpc('confirm_cashbook_closing_v1', {
         p_request: input.requestId, p_counted_balance: input.countedBalance,
       });
@@ -284,7 +321,19 @@ export const useConfirmCashbookClosing = () => {
       const value = closingRecord(data);
       if (value.request_id!==input.requestId || !Number.isSafeInteger(value.closure_id) || Number(value.closure_id)<=0 || value.status !== 'CONFIRMED' || typeof value.closed_through !== 'string' || normalizeDateOnly(value.closed_through)!==value.closed_through) unknownClosing('xác nhận chốt sổ');
       return value as {closed_through: string; closure_id: number};
-    }),
+    }, async pending => {
+      const cashbookId = typeof pending.meta?.cashbookId === 'string' ? pending.meta.cashbookId : null;
+      const closedThrough = typeof pending.meta?.closedThrough === 'string' ? pending.meta.closedThrough : null;
+      const lists = await readCashbookClosings(cashbookId);
+      // Đề nghị vẫn chờ như lúc bấm: lần trước chưa ký. Máy chủ khoá đề nghị rồi mới xét nên gửi lại ngay được.
+      if (lists.pending.some(row => row.request_id === input.requestId)) return { outcome: 'not-written', serverDedupesRequestKey: true };
+      const signed = cashbookId && closedThrough ? lists.closures.find(row => row.cashbook_id === cashbookId && row.closed_through === closedThrough) : undefined;
+      if (signed) return { outcome: 'already-written', message: `Sổ ${signed.cashbook_name || input.cashbookName || ''} đã được chốt đến ngày ${closingDate(signed.closed_through)} (có thể do lần ký trước). Không ký lại.`, recordIds: [String(signed.closure_id)] };
+      // Không còn chờ mà cũng không thấy biên bản: đề nghị đã bị huỷ, hoặc không đọc được sổ của nó.
+      if (!cashbookId) return null;
+      return { outcome: 'already-written', message: `Đề nghị chốt sổ ${input.cashbookName || ''} không còn chờ xác nhận (đã bị huỷ hoặc thay đổi kể từ lần gửi trước). Không ký lại; tải lại danh sách để kiểm tra.`, recordIds: [input.requestId] };
+    }, undefined, meta ? { meta } : {});
+    },
     onSuccess: (res, input) => {
       invalidateAll(qc);
       toast.success('Đã chốt sổ ' + (input.cashbookName || '') + ' đến ngày ' + format(new Date(res.closed_through), 'dd/MM/yyyy') + '. Các giao dịch đến ngày này đã khóa.');
@@ -341,9 +390,11 @@ export function useCashbookClosingDeepLink(handlers: {
 
 export const useCancelCashbookClosing = () => {
   const qc = useQueryClient();
-  const guard = useRef(persistentFinancialWorkflow('closing-request-lifecycle',{scope:'actor'}));
+  const guard = useRef(persistentFinancialWorkflow('closing-cancel',{scope:'actor',legacy:'closing-request-lifecycle'}));
   return useMutation({
     meta: {handlesFeedback: true},
+    // Cách A: cancel_cashbook_closing_v1 khoá đề nghị rồi trả {changed:false} khi đề nghị đã không còn chờ, nên dấu của lần
+    // gửi trước luôn được gửi lại ngay; câu báo «đã thay đổi trước đó» không khẳng định lần nào đã huỷ.
     mutationFn: async (input: { requestId: string; reason: string; cashbookName?: string }) => guard.current.run(input.requestId, 'hủy đề nghị chốt sổ', async () => {
       const { data, error } = await supabase.rpc('cancel_cashbook_closing_v1', {
         p_request: input.requestId, p_reason: input.reason,
@@ -352,7 +403,7 @@ export const useCancelCashbookClosing = () => {
       const value = closingRecord(data);
       if (value.request_id !== input.requestId || typeof value.changed !== 'boolean' || (value.changed && value.status !== 'CANCELLED')) unknownClosing('hủy đề nghị chốt sổ');
       return value;
-    }),
+    }, async () => ({ outcome: 'not-written', serverDedupesRequestKey: true })),
     onSuccess: (res, input) => {
       invalidateAll(qc);
       if (!res.changed) toast.info('Đề nghị chốt sổ ' + (input.cashbookName || '') + ' đã thay đổi trước đó. Danh sách đang được cập nhật.');

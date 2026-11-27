@@ -3,6 +3,7 @@ import {useOrganization} from '@/contexts/OrganizationContext';
 import {getSessionUser} from '@/lib/authSession';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { readCreatedVoucherReceipt } from '@/lib/createdVoucherReceipt';
+import { feeVoucherCancelledBefore } from '@/lib/feeFeedback';
 // =============================================
 // useUtilityBills — data layer cho "Đóng tiền Điện nước" (/thu-tien).
 //
@@ -299,7 +300,12 @@ export const usePayUtilityBill = () => {
       progress.recordCompleted([receipt.id]);
       if(!receipt.approval_status||!receipt.posting_status)throw new TypeError("Chưa xác nhận trạng thái phiếu phí đã tạo");
       return receipt;
-      });
+      },undefined,{operation:'đóng điện nước',reconcile:async pending=>{
+        if(pending.completedIds.length)return {outcome:'already-written',message:'Phiếu điện/nước của kỳ này đã được tạo ở lần gửi trước.',recordIds:pending.completedIds};
+        // pay_utility_bill (production 24/11/2026) khoá tư vấn theo công tơ × tháng rồi mới tìm phiếu của slot; đã có
+        // thì ném 55000 [UTILITY_BILL_DUPLICATE] kèm mã phiếu, không ghi. Gửi lại ngay không thể ra phiếu thứ hai.
+        return {outcome:'not-written',serverDedupesRequestKey:true};
+      }});
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['utility-payments', vars.billingMonth] });
@@ -319,12 +325,19 @@ export const useCancelUtilityBill = (billingMonth: string) => {
     meta: {handlesFeedback: true},
     mutationFn: async (voucherId: string) => {
       const user=await getSessionUser();
+      // cancel_utility_bill (production 24/11/2026) khoá dòng rồi xét deleted_at: chạy lại không huỷ hai lần, "đã bị
+      // hủy trước đó" ở lần gửi lại nghĩa là xong (cách A).
+      let resend=false;
       return runFinancialPending({namespace:'utility-cancel',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:voucherId},async progress=>{
         const {data,error}=await supabase.rpc('cancel_utility_bill',{p_voucher_id:voucherId});
-        if(error)throw error;
+        if(error){if(resend&&feeVoucherCancelledBefore(error)){progress.recordCompleted([voucherId]);return;}throw error;}
         if(!data || typeof data!=='object' || Array.isArray(data) || data.ok!==true || data.voucher_id!==voucherId) throw new TypeError('Chưa xác nhận được phiếu điện/nước đã hủy.');
         progress.recordCompleted([voucherId]);
-      });
+      },undefined,{operation:'huỷ phiếu điện nước',reconcile:async pending=>{
+        if(pending.completedIds.includes(voucherId))return {result:undefined};
+        resend=true;
+        return {outcome:'not-written',serverDedupesRequestKey:true};
+      }});
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['utility-payments', billingMonth] });

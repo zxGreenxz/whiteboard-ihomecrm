@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+vi.mock('@/hooks/useDepositIncomeHold',()=>({useDepositIncomeHold:()=>({data:null,isError:false,isLoading:false,refetch:vi.fn()})}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'o1'})}));
 //
 // Form SỬA phiếu Chờ duyệt (đợt 1 sửa phiếu, 25/09/2026): lưu đi qua

@@ -1,3 +1,4 @@
+import { managedChannel, bindingAllowed } from './hermes-binding-guard.js';
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { createNativeJournal, nativeDigest } from './hermes-native-journal.js';
@@ -70,7 +71,7 @@ export const nativeTextReceipt = providerTextReceipt;
  * Without reconciliationFile (the operator ledger of the running config) an
  * outcome_unknown send keeps the channel quarantined permanently. */
 export function createNativeBridge({ config, reconciliationFile = null, now = Date.now, providerTimeoutMs = 60000, maxProviderPending = 8,
-  onFault = () => {}, fetchMedia = (...args) => fetch(...args), media: mediaOverrides = {} }) {
+  authorizeBinding = async () => false, onFault = () => {}, fetchMedia = (...args) => fetch(...args), media: mediaOverrides = {} }) {
   if (!Number.isInteger(maxProviderPending) || maxProviderPending < 1 || maxProviderPending > 32 ||
       !Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1 || providerTimeoutMs > 60000) throw new Error('invalid_native_limits');
   const limits = { ...NATIVE_MEDIA_DEFAULTS, ...mediaOverrides };
@@ -258,6 +259,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
           const sentAt = typeof timestamp === 'string' && /^[1-9][0-9]{0,15}$/.test(timestamp) ? Number(timestamp) : timestamp;
           if (!nativeId(messageId) || !Number.isSafeInteger(sentAt)) return drop('invalid');
           if (sentAt < Math.max(source.connectedAt - 30000, now() - 300000) || sentAt > now() + 30000) return drop('stale');
+          if (managedChannel(channel) && (!(await authorizeBinding(channel)) || activeSource(channel) !== source)) return true;
           const id = nativeDigest([channel.accountId, channel.generation, channel.pairedUid, messageId]);
           if (msgType === 'webchat') {
             const text = own(data, 'content');
@@ -303,6 +305,9 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
       entry.accept = { photo: declared.includes('photo') ? until : 0, notice: declared.includes('notice') ? until : 0 };
       discard(entry, item => declared.includes(item.notice ? 'notice' : 'photo'), 'native_media_not_accepted');
       if (!activeSource(channel)) return { status: 'unavailable' };
+      if (managedChannel(channel) && (entry.items.length || journal.values('inbound').some(record => record.status === 'queued'))) {
+        if (!(await authorizeBinding(channel)) || !activeSource(channel)) return { status: 'unavailable' };
+      }
       sweep();
       const queued = journal.values('inbound').filter(record => record.status === 'queued');
       const [item, after] = entry.items;
@@ -325,6 +330,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     if (route === '/v1/media' && exact(body, ['generation', 'eventId', 'index']) &&
         Number.isInteger(body.index) && body.index >= 0 && body.index < limits.photosPerEvent) {
       // Only a delivered, unacknowledged group of this channel, for a bounded time.
+      if (managedChannel(channel) && !(await authorizeBinding(channel))) throw new MediaUnavailable();
       const group = typeof body.eventId === 'string' ? entry.delivered.get(body.eventId) : undefined;
       const photo = group && now() - group.dispatchedAt <= limits.deliveredMs ? group.item.photos?.[body.index] : null;
       if (!photo?.bytes) throw new MediaUnavailable();
@@ -347,6 +353,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     }
     if (route === '/v1/send' && exact(body, ['generation', 'requestId', 'text']) &&
         nativeId(body.requestId) && validText(body.text, 32768)) {
+      if (managedChannel(channel) && !(await authorizeBinding(channel))) return { status: 'unavailable' };
       const digest = nativeDigest(body.text);
       const prior = journal.get('outbound', body.requestId);
       if (prior) {
@@ -476,7 +483,7 @@ export async function startNativeBridge({ onFault } = {}) {
   if (nativeBridge) throw new Error('native_bridge_already_started');
   // The operator ledger beside this exact config is re-read before each new
   // send on a quarantined channel; no restart is needed after reconcile.
-  const bridge = createNativeBridge({ config, onFault, reconciliationFile: nativeReconciliationFile(configFile) });
+  const bridge = createNativeBridge({ config, onFault, authorizeBinding: channel => bindingAllowed(configFile, channel), reconciliationFile: nativeReconciliationFile(configFile) });
   await bridge.listen(); nativeBridge = bridge;
   return bridge;
 }

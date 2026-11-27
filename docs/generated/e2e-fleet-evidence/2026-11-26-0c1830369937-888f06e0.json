@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "kind": "e2e-fleet-local-receipt",
+  "suiteId": "e2e-fleet",
+  "status": "passed",
+  "commit": "0c183036993769440998f133669b2edec620b7b2",
+  "fleetTree": "0a27b2868545f4bed504e998924a482379f67ffc",
+  "environment": "TEST",
+  "target": {
+    "kind": "loopback",
+    "origin": "http://127.0.0.1:55183"
+  },
+  "targetSupabaseRef": "hzulujxgonszuleqticb",
+  "targetBuildSha": "0c183036993769440998f133669b2edec620b7b2",
+  "actor": {
+    "gitUser": "zxGreenxz",
+    "agent": "codex"
+  },
+  "reportSha256": "0fe505b45b103254c33017f52c7f0d477c93372e5bbcc4125e38affe98293ff3",
+  "runner": {
+    "node": "v22.20.0",
+    "playwright": "1.61.1"
+  },
+  "runId": "888f06e0-b94a-4185-897b-bc8692a7a30a",
+  "startedAt": "2026-11-26T03:34:32.301Z",
+  "completedAt": "2026-11-26T03:35:10.010Z",
+  "specs": [
+    {
+      "file": ".e2e-fleet/specs/deposit-dialog-account-attachments.spec.ts",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/ie-deposit-room-reserve.spec.ts",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    }
+  ]
+}

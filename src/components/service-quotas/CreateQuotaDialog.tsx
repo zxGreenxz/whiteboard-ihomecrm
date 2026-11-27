@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -25,7 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, X } from "lucide-react";
 import { ServiceQuotaPartialError, useCreateServiceQuota } from "@/hooks/useServices";
 import { focusFirstError } from "@/lib/formErrors";
-import { recordWriteBlocked, recordWriteMessage } from "@/lib/recordWriteOutcome";
+import { recordWriteMessage } from "@/lib/recordWriteOutcome";
 
 const tierSchema = z.object({
   from_value: z.string().min(1, "Bắt buộc"),
@@ -47,11 +47,11 @@ interface CreateQuotaDialogProps {
 }
 
 export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps) {
-  const [failure,setFailure]=useState<unknown>();
-  const [blocked,setBlocked]=useState(false);
-  const draftKey=useRef<string|null>(null);
   const createMutation = useCreateServiceQuota();
-  const [partialQuotaId, setPartialQuotaId] = useState<string | null>(null);
+  // Đợt 9 (luật 5): tạo định mức không còn khoá form. Kết quả chưa rõ chỉ báo. Định mức đã tạo mà chưa ghi xong bậc giá: hộp
+  // giữ mã định mức đó, khoá tên / mô tả (bậc vẫn sửa được) và gửi kèm mã ở lần Lưu sau để hook ghi lại đúng bộ bậc cho đúng
+  // định mức đó (đọc lại trước: đã xoá thì tạo mới). Đóng hộp là bỏ qua: quên mã, xoá nội dung (định mức vẫn nằm trong danh sách).
+  const [partial, setPartial] = useState<{ id: string; message: string } | null>(null);
 
   const form = useForm<QuotaFormValues>({
     resolver: zodResolver(quotaSchema),
@@ -66,9 +66,10 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
     control: form.control,
     name: "tiers",
   });
+  useEffect(() => { if (!open && partial) { setPartial(null); form.reset(); } }, [open, partial, form]);
 
   const onSubmit = async (data: QuotaFormValues) => {
-    if (blocked || partialQuotaId) return;
+    if (createMutation.isPending) return;
     form.clearErrors('root.server');
     try {
       await createMutation.mutateAsync({
@@ -80,12 +81,13 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
           to_value: t.to_value ? Number(t.to_value) : null,
           unit_price: Number(t.unit_price),
         })),
+        ...(partial ? { continueId: partial.id } : {}),
       });
+      setPartial(null);
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      setFailure(error);setBlocked(recordWriteBlocked(error) || error instanceof ServiceQuotaPartialError);
-      if (error instanceof ServiceQuotaPartialError) setPartialQuotaId(error.quotaId);
+      if (error instanceof ServiceQuotaPartialError) setPartial({ id: error.quotaId, message: error.message });
       else form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo định mức') });
     }
   };
@@ -105,11 +107,10 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
         <ScrollArea className="max-h-[calc(90vh-100px)] pr-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
-              {partialQuotaId && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
-                Định mức đã tạo với ID {partialQuotaId}, nhưng bậc giá chưa hoàn tất. Mở định mức này trong danh sách để kiểm tra; không tạo lại.
-              </div>}
+              {partial && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">{partial.message} Tên và mô tả định mức đã khoá cho tới khi ghi xong bậc giá; đóng hộp để bỏ qua (định mức đã tạo vẫn nằm trong danh sách).</div>}
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
-              <fieldset disabled={blocked || form.formState.isSubmitting} className="space-y-4">
+              <fieldset disabled={form.formState.isSubmitting} className="space-y-4">
+              <fieldset disabled={!!partial} className="space-y-4">
               <FormField
                 control={form.control}
                 name="name"
@@ -137,6 +138,7 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
                   </FormItem>
                 )}
               />
+              </fieldset>
 
               {/* Tier rows */}
               <div className="space-y-3">
@@ -246,7 +248,7 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={blocked || form.formState.isSubmitting || createMutation.isPending || !!partialQuotaId}>
+                <Button type="submit" disabled={form.formState.isSubmitting || createMutation.isPending}>
                   {createMutation.isPending ? "Đang lưu..." : "Lưu"}
                 </Button>
               </div>

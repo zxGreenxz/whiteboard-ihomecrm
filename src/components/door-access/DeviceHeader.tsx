@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useRemoteUnlock } from "@/hooks/door-access/useDoorAccessMutations";
+import { useRemoteUnlock, useRemoteUnlockPending } from "@/hooks/door-access/useDoorAccessMutations";
 import type { DoorAccessMode, DoorDevice } from "@/lib/door-access/dto";
 import type { DoorAccessCaller } from "@/lib/door-access/edge";
 import { doorErrorMessage, isDoorAccessError } from "@/lib/door-access/errors";
@@ -86,13 +86,15 @@ const UNKNOWN_UNLOCK = "Chưa rõ cửa đã mở chưa — xem Lịch sử ra v
 
 function RemoteUnlock({ caller, device, writable }: { caller: DoorAccessCaller; device: DoorDevice; writable: boolean }) {
   const unlock = useRemoteUnlock(caller);
+  // Lệnh mở cùng máy gửi từ màn khác (vd màn điện thoại trước khi xoay ngang) còn đang chạy: không gửi chồng.
+  const pendingElsewhere = useRemoteUnlockPending(caller, device.id) && !unlock.isPending;
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [result, setResult] = useState<(ActionResult & { deviceId: string }) | null>(null);
   const shown = result && result.deviceId === device.id ? result : null;
 
   const run = () => {
     setConfirmOpen(false);
-    if (unlock.isPending) return;
+    if (unlock.isPending || pendingElsewhere) return;
     setResult(null);
     const target = device;
     unlock.mutate(target.id, {
@@ -122,15 +124,15 @@ function RemoteUnlock({ caller, device, writable }: { caller: DoorAccessCaller; 
         size="lg"
         className="h-11 w-full"
         disabledReason={writable ? null : READ_ONLY_REASON}
-        disabled={unlock.isPending}
+        disabled={unlock.isPending || pendingElsewhere}
         onClick={() => setConfirmOpen(true)}
       >
-        {unlock.isPending ? (
+        {unlock.isPending || pendingElsewhere ? (
           <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden="true" />
         ) : (
           <DoorOpen className="mr-2 h-5 w-5" aria-hidden="true" />
         )}
-        {unlock.isPending ? "Đang mở cửa…" : "Mở cửa"}
+        {unlock.isPending || pendingElsewhere ? "Đang mở cửa…" : "Mở cửa"}
       </GuardedButton>
       {shown && <ActionNotice result={shown} />}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>

@@ -1,8 +1,8 @@
 import { parseLuckyState, parseLuckyAdminState, PublicRequestError } from './publicFeedback';
 import { z } from 'zod';
 import { persistentFinancialWorkflow } from './persistentFinancialWorkflow';
-import { FinancialWorkflowError, FinancialWorkflowGuard } from './financialWorkflow';
-import { financialPending, FinancialPendingStorageError } from './financialPending';
+import { FinancialWorkflowError, FinancialWorkflowGuard, RepeatableWriteUnknownError, type PendingReconciliation } from './financialWorkflow';
+import { financialPending, formatPendingTime, isAttemptRunning } from './financialPending';
 import { getSessionUser } from './authSession';
 /**
  * Tầng dữ liệu cho sự kiện trao thưởng + vòng xoay may mắn (/quayso).
@@ -192,20 +192,28 @@ export function luckyCheckin(code: string) {
   return publicRpc('lucky_checkin_v1', { p_code: code });
 }
 
+/** Kết quả của một lệnh quay. `replayed`: lần bấm trước đã quay xong, lần này chỉ đọc lại kết quả đó (không gửi lệnh quay). */
+export type LuckyDrawResult = LuckyPublicState & { replayed?: boolean };
+
+/**
+ * Quay công khai (đợt 9, cách C). Thân hàm production `lucky_draw_v1` (md5 baefd8cc, đọc 26/11/2026) khoá dòng sự kiện
+ * `FOR UPDATE` RỒI MỚI xét trạng thái; đã quay thì trả lại đúng kết quả cũ, không bốc lại. Lần gửi trước chưa rõ kết quả
+ * (dấu `lucky-public-draw`, khoá = mã sự kiện): đọc trạng thái công khai — đã quay ⇒ nhận kết quả đó, không gửi lệnh quay;
+ * chưa quay ⇒ gửi lại ngay (lệnh cũ có còn chạy thì máy chủ cũng chỉ quay một lần); đọc hỏng ⇒ chưa kết luận, giữ dấu và
+ * lần mở trang sau đọc lại. Người xem ẩn danh không thấy hộp cảnh báo (`silent`), nên dấu không bao giờ được kẹt ở «chưa
+ * kết luận» khi đọc được trạng thái.
+ */
 const publicDrawGuard = new FinancialWorkflowGuard({ scope: async businessKey => ({
   namespace: 'lucky-public-draw', userId: 'public-viewer', organizationId: 'public-event', businessKey,
 }) });
-export function luckyDraw(eventId: string) {
+export function luckyDraw(eventId: string): Promise<LuckyDrawResult> {
   const intent: DrawIntent = { eventId, ordinal: null };
-  return publicDrawGuard.run(eventId, 'xác nhận kết quả quay', async () => {
+  return publicDrawGuard.run<LuckyDrawResult>(eventId, 'xác nhận kết quả quay', async () => {
     const result = await publicRpc('lucky_draw_v1', { p_event: eventId });
     if (!result.ok && result.reason && knownDrawRefusals.has(result.reason)) return result;
     if (!confirmsDraw(result, intent)) throw invalidReceipt();
     return result;
-  }, async () => {
-    const result = await fetchLuckyPublicState(eventId, null);
-    return confirmsDraw(result, intent) ? { result } : null;
-  });
+  }, async () => drawVerdict(await fetchLuckyPublicState(eventId, null), intent));
 }
 
 /**
@@ -280,11 +288,15 @@ export const PROOF_MAX_BYTES = 10 * 1024 * 1024;
  * Anon chỉ có quyền INSERT nên không đọc chéo được file đội khác.
  * Đường dẫn: <eventId>/<uuid>.<ext> — policy INSERT bắt thư mục gốc là sự kiện
  * còn mở, và RPC lưu path cũng kiểm lại tiền tố này.
+ *
+ * Đợt 9 (mẫu PR #478): MỖI LẦN TẢI LÀ MỘT ĐƯỜNG DẪN MỚI (`x-upsert: false`) và đường dẫn chỉ vào danh sách giấy cọc của đội
+ * khi tải xong (biên nhận dương) rồi được `lucky_save_payout_v1` lưu. Lần tải chưa rõ kết quả nhiều nhất để lại một tệp
+ * mồ côi chưa gắn vào đội nào (bucket private, anon không đọc được), nên tải lại luôn an toàn: không còn ghi dấu «đã lên
+ * kế hoạch tải» trước khi gửi.
  */
 export async function uploadLuckyProof(
   eventId: string,
   file: File,
-  lifecycle?: { onPlanned?: (proof: LuckyProof) => void; onRejected?: (proof: LuckyProof) => void },
 ): Promise<{ path: string; name: string }> {
   if (file.size > PROOF_MAX_BYTES) {
     throw new Error('Ảnh lớn hơn 10MB — chụp lại nhỏ hơn giúp mình nhé.');
@@ -296,8 +308,6 @@ export async function uploadLuckyProof(
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const path = `${eventId}/${rand}.${ext}`;
   const proof = { path, name: file.name };
-  // Record the object identity before sending: a lost response must not create a new upload.
-  lifecycle?.onPlanned?.(proof);
 
   const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/${PROOF_BUCKET}/${path}`;
   const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
@@ -316,10 +326,7 @@ export async function uploadLuckyProof(
       body: file,
       signal: controller.signal,
     });
-    if (!res.ok) {
-      if ([400, 401, 403, 404, 410, 413, 415, 422].includes(res.status)) lifecycle?.onRejected?.(proof);
-      throw new PublicRequestError(res.status);
-    }
+    if (!res.ok) throw new PublicRequestError(res.status);
     return proof;
   } finally {
     clearTimeout(timer);
@@ -353,22 +360,56 @@ export async function adminRpc(
   return data;
 }
 
+/*
+ * Thao tác quản trị Quay số (đợt 9). Bản trước giữ MỘT dấu chung `lucky-admin` (khoá = mã sự kiện) cho cả 9 thao tác:
+ * điểm danh hay sửa đội chưa rõ kết quả cũng khoá nút quay, và hàm đối chiếu chỉ hiểu lệnh quay nên dấu kẹt mãi.
+ *
+ * - Lệnh QUAY (mở lượt, quay ngay) giữ dấu riêng, khoá `draw:<sự kiện>`, cách C. Thân hàm production `lucky_draw_round_v1`
+ *   (md5 a847eb2d) và `lucky_admin_force_draw_v1` (01f0d93a), đọc 26/11/2026: khoá dòng sự kiện `FOR UPDATE` TRƯỚC khi xét
+ *   lượt / sự kiện đã quay chưa; đã quay thì trả lại kết quả cũ, không bốc lại (`lucky_round_winners` còn duy nhất (lượt,
+ *   đội) và (lượt, thứ hạng)). Lần bấm sau một lần chưa rõ đọc trạng thái NGOÀI vùng giữ dấu: đã quay ⇒ nhận đúng kết quả
+ *   đó, không gửi; chưa quay ⇒ gửi lại ngay; đọc hỏng ⇒ không gửi gì.
+ * - Bảy thao tác còn lại ghi lặp lại được (đặt giá trị theo mã, hoặc thay cả bộ trong một giao dịch): không ghi dấu, chưa rõ
+ *   thì báo và cho bấm lại. Thêm đội: máy chủ có duy nhất (sự kiện, tên) `lucky_event_teams_event_id_name_key`. Tạo sự
+ *   kiện: hàm máy chủ tự sinh mã nên trình duyệt gửi kèm một đường dẫn ngắn ngẫu nhiên, duy nhất toàn hệ thống
+ *   (`lucky_events_slug_key`), nhớ theo tab cho tới khi tạo xong.
+ * - Dấu chung bản trước (khoá = mã sự kiện, hoặc `new-event`) không còn chặn gì; gỡ sau lần ghi thành công kế tiếp.
+ */
 const adminWriteGuard = persistentFinancialWorkflow('lucky-admin', { scope: 'actor' });
-const drawIntentKey = (requestKey: string) => 'ihome:lucky-draw-intent:v1:' + requestKey;
+const drawKey = (eventId: string) => 'draw:' + eventId;
+const drawScope = (userId: string, eventId: string) => ({ namespace: 'lucky-admin', userId, organizationId: 'actor-scope', businessKey: drawKey(eventId) });
 type DrawIntent = { eventId: string; ordinal: number | null };
-function rememberDraw(requestKey: string, intent: DrawIntent) {
-  try { localStorage.setItem(drawIntentKey(requestKey), JSON.stringify(intent)); }
-  catch { throw new FinancialPendingStorageError(); }
-}
-function readDraw(requestKey: string): DrawIntent | null {
+/** Ý định quay của BẢN TRƯỚC, lưu riêng theo mã yêu cầu. Bản này lưu lượt vào `meta` của dấu; khoá cũ chỉ còn được gỡ. */
+const legacyDrawIntentKey = (requestKey: string) => 'ihome:lucky-draw-intent:v1:' + requestKey;
+/** Gỡ dấu chung `lucky-admin` bản trước của đúng khoá (mã sự kiện / `new-event`) sau một lần ghi thành công; không ném lỗi. */
+async function forgetLegacyAdmin(businessKey: string): Promise<void> {
   try {
-    const raw = localStorage.getItem(drawIntentKey(requestKey));
-    if (!raw) return null;
-    const value: unknown = JSON.parse(raw);
-    const result = z.object({ eventId: z.string().min(1), ordinal: z.number().int().positive().nullable() }).safeParse(value);
-    if (!result.success) throw new FinancialPendingStorageError();
-    return {eventId:result.data.eventId,ordinal:result.data.ordinal};
-  } catch (error) { if (error instanceof FinancialPendingStorageError) throw error; throw new FinancialPendingStorageError(); }
+    const { settleLegacyPending } = await import('./legacyPendingExit');
+    await settleLegacyPending({ namespace: 'lucky-admin', businessKey }, async pending => {
+      try { localStorage.removeItem(legacyDrawIntentKey(pending.requestKey ?? pending.attemptId)); }
+      catch { /* Ý định quay cũ chỉ còn là một khoá thừa, không chặn gì. */ }
+      return true;
+    }, { organizationId: 'actor-scope' });
+  } catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần ghi sau gỡ lại. */ }
+}
+/**
+ * Ghi lặp lại được: không giữ dấu. Lời từ chối rõ đi nguyên; chưa rõ (mạng, 5xx, biên nhận hay bản đọc lại sai dạng) ⇒
+ * `RepeatableWriteUnknownError`, form không khoá, bấm lại cho cùng kết quả. `advice` thay câu dặn mặc định.
+ */
+async function repeatable<T>(operation: string, task: () => Promise<T>, advice?: string): Promise<T> {
+  const { repeatableWrite } = await import('./recordWriteOutcome');
+  try {
+    return await repeatableWrite(operation, async () => {
+      try { return await task(); }
+      catch (error) {
+        if (error instanceof PublicRequestError) throw new FinancialWorkflowError(`Chưa xác nhận được kết quả ${operation}.`, 'unknown', [], error);
+        throw error;
+      }
+    });
+  } catch (error) {
+    if (advice && error instanceof RepeatableWriteUnknownError) throw new RepeatableWriteUnknownError(operation, error.cause, error.completed, advice);
+    throw error;
+  }
 }
 const getAdminState = async () => parseLuckyAdminState(await adminRpc(() => supabase.rpc('lucky_admin_get_v1')));
 const invalidReceipt = () => new PublicRequestError(0, 'invalid-response');
@@ -407,112 +448,239 @@ function confirmsDraw(state: LuckyPublicState, intent: DrawIntent): boolean {
   return state.event.status === 'drawn' && !!state.event.drawnAt && !!state.event.winnerTeamId;
 }
 const knownDrawRefusals = new Set(['forbidden', 'not_found', 'closed', 'not_time', 'round_not_found', 'previous_round_pending', 'no_checked_in_teams']);
-async function reconcileDrawReceipt(requestKey: string, expected: DrawIntent): Promise<{ result: LuckyPublicState } | null> {
-  const intent = readDraw(requestKey);
-  if (!intent || intent.eventId !== expected.eventId || intent.ordinal !== expected.ordinal) return null;
-  const { event } = await requireAdminEvent(intent.eventId);
-  const state = publicFromAdmin(event);
-  return confirmsDraw(state, intent) ? { result: state } : null;
+/** Lượt / sự kiện của lệnh quay đã «đã quay» trên máy chủ (kể cả khi đội trúng đã bị xoá sau đó). */
+function drawReached(state: LuckyPublicState, intent: DrawIntent): boolean {
+  if (!state.ok || state.event?.id !== intent.eventId) return false;
+  if (intent.ordinal === null) return state.event.status === 'drawn';
+  return state.rounds?.some(r => r.ordinal === intent.ordinal && r.status === 'drawn') ?? false;
 }
-async function runAdminDraw(intent: DrawIntent, run: () => PromiseLike<{ data: unknown; error: PostgrestError | null }>) {
-  await requireAdminEvent(intent.eventId);
-  return adminWriteGuard.run(intent.eventId, intent.ordinal === null ? 'quay sự kiện' : 'chốt lượt quay', async progress => {
-    rememberDraw(progress.requestKey, intent);
+/**
+ * Kết luận cho dấu của một lệnh quay chưa rõ, từ trạng thái vừa đọc được (đọc hỏng thì nơi gọi ném lỗi, lõi giữ dấu).
+ * Đã quay ⇒ nhận đúng kết quả đó, không gửi lệnh quay. Chưa quay, hoặc sự kiện không còn (máy chủ sẽ từ chối rõ) ⇒ gửi lại
+ * ngay: hàm quay khoá dòng sự kiện rồi mới xét «đã quay», nên gửi lại sớm (kể cả khi lệnh cũ còn đang chạy) cũng không quay
+ * hai lần. Cờ `serverDedupesRequestKey` ở đây nghĩa là «máy chủ tự chống quay trùng», không phải máy chủ nhận mã yêu cầu.
+ */
+function drawVerdict(state: LuckyPublicState, intent: DrawIntent): PendingReconciliation<LuckyDrawResult> {
+  if (state.ok && state.event?.id !== intent.eventId) return null;
+  if (drawReached(state, intent)) return { result: { ...state, replayed: true } };
+  return { outcome: 'not-written', serverDedupesRequestKey: true };
+}
+async function runAdminDraw(intent: DrawIntent, run: () => PromiseLike<{ data: unknown; error: PostgrestError | null }>): Promise<LuckyDrawResult> {
+  // Đọc trạng thái TRƯỚC khi ghi dấu (ngoài vùng giữ dấu): hàm đối chiếu dùng bản đọc này nếu còn dấu của lần bấm trước.
+  // Đọc hỏng ⇒ dừng ở đây, không gửi lệnh quay nào.
+  const before = publicFromAdmin((await requireAdminEvent(intent.eventId)).event);
+  const operation = intent.ordinal === null ? 'quay sự kiện' : `chốt lượt quay ${intent.ordinal}`;
+  const result = await adminWriteGuard.run<LuckyDrawResult>(drawKey(intent.eventId), operation, async () => {
     const state = parseLuckyState(await adminRpc(run));
     if (!state.ok) {
       if (!state.reason || !knownDrawRefusals.has(state.reason)) throw invalidReceipt();
-      return state; // These SQL branches return before the writer.
+      return state; // Các nhánh SQL này trả về trước khi ghi.
     }
     if (!confirmsDraw(state, intent)) throw invalidReceipt();
-    progress.completed.push({ id: intent.eventId, label: 'Đã xác nhận kết quả quay' });
     return state;
-  }, pending => reconcileDrawReceipt(pending.requestKey ?? pending.attemptId, intent));
+  }, async () => drawVerdict(before, intent), undefined, { meta: { ordinal: intent.ordinal } });
+  await forgetLegacyAdmin(intent.eventId);
+  return result;
 }
+/** Sự kiện đang mở và không còn kết quả quay nào: đích của «đặt lại kết quả». */
+const drawCleared = (e: LuckyEventAdmin) => e.status === 'open' && e.drawnAt === null && e.winnerTeamId === null &&
+  e.rounds.every(r => r.status === 'pending' && r.drawnAt === null && r.winners.length === 0);
+const refused = (value: unknown, reason: string) => !!value && typeof value === 'object' && (value as { ok?: unknown }).ok === false && (value as { reason?: unknown }).reason === reason;
+const eventReceipt = z.object({ ok: z.literal(true), eventId: z.string().min(1), slug: z.string().nullable(), game: z.enum(['wheel', 'race']) });
+type LuckyEventInput = {
+  id?: string; title?: string; slug?: string; prizeLabel?: string; prizeAmount?: number;
+  drawAt?: string | null; status?: 'open' | 'closed'; game?: LuckyGame; raceSeconds?: number;
+};
+type LuckyEventSaved = z.infer<typeof eventReceipt> & { replayed?: boolean };
+/** Đường dẫn ngắn do tab này sinh cho sự kiện mới đang chờ tạo (một sự kiện mới mỗi tổ chức), giữ tới khi tạo xong. */
+let pendingNewEvent: { organizationId: string; slug: string } | null = null;
+async function createEvent(p: LuckyEventInput): Promise<LuckyEventSaved> {
+  const { organizationId } = await getAdminState();
+  const own = !p.slug?.trim();
+  if (own && pendingNewEvent?.organizationId !== organizationId) {
+    pendingNewEvent = { organizationId, slug: 'qs-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10) };
+  }
+  const slug = own ? pendingNewEvent!.slug : p.slug!.trim().toLowerCase();
+  try {
+    const result = await repeatable('tạo sự kiện quay số', async () => {
+      const result = checkedReceipt(eventReceipt, await adminRpc(() => supabase.rpc('lucky_admin_upsert_event_v1', { p: { ...p, slug } })));
+      if (result.slug !== slug) throw invalidReceipt();
+      return result;
+    });
+    if (own) pendingNewEvent = null;
+    await forgetLegacyAdmin('new-event');
+    return result;
+  } catch (error) {
+    if (!own || !error || typeof error !== 'object' || (error as { code?: unknown }).code !== '23505') throw error;
+    // Đường dẫn ngẫu nhiên do chính tab này sinh đã có sự kiện của tổ chức mình: lần bấm trước đã tạo. Không tạo thêm.
+    const source = await repeatable('kiểm tra sự kiện vừa tạo', getAdminState);
+    pendingNewEvent = null;
+    const created = source.events.find(e => e.slug === slug);
+    if (!created) throw error;
+    await forgetLegacyAdmin('new-event');
+    return { ok: true, eventId: created.id, slug: created.slug, game: luckyGameOf(created.game), replayed: true };
+  }
+}
+
+/** Kết luận của «Tải lại trạng thái» cho một lệnh quay chưa rõ kết quả. */
+export type LuckyDrawReconciliation =
+  | { outcome: 'none' }
+  | { outcome: 'drawn'; ordinal: number | null; state: LuckyPublicState }
+  | { outcome: 'not-drawn'; ordinal: number | null }
+  /** Dấu thiếu lượt (hỏng dạng): không biết lần trước quay lượt nào; gửi lại vẫn an toàn nên vẫn gỡ dấu. */
+  | { outcome: 'unknown-intent' };
 
 export const luckyAdminApi = {
   get: getAdminState,
-  upsertEvent: async (p: {
-    id?: string; title?: string; slug?: string; prizeLabel?: string; prizeAmount?: number;
-    drawAt?: string | null; status?: 'open' | 'closed'; game?: LuckyGame; raceSeconds?: number;
-  }) => {
-    if (p.id) await requireAdminEvent(p.id); else await getAdminState();
-    return adminWriteGuard.run(p.id ?? 'new-event', 'lưu sự kiện quay số', async progress => {
-      const value = await adminRpc(() => supabase.rpc('lucky_admin_upsert_event_v1', { p }));
-      const result = checkedReceipt(z.object({ ok: z.literal(true), eventId: z.string().min(1), slug: z.string().nullable(), game: z.enum(['wheel', 'race']) }), value);
-      progress.completed.push({ id: result.eventId, label: 'Đã nhận mã sự kiện' });
-      if (p.id && result.eventId !== p.id) throw invalidReceipt();
+  upsertEvent: async (p: LuckyEventInput): Promise<LuckyEventSaved> => {
+    if (!p.id) return createEvent(p);
+    const id = p.id;
+    await requireAdminEvent(id);
+    // Sửa theo mã: đặt giá trị tuyệt đối (thân hàm production 11dd61e8), chạy lại cho cùng kết quả.
+    const result = await repeatable('lưu sự kiện quay số', async () => {
+      const result = checkedReceipt(eventReceipt, await adminRpc(() => supabase.rpc('lucky_admin_upsert_event_v1', { p })));
+      if (result.eventId !== id) throw invalidReceipt();
       return result;
     });
+    await forgetLegacyAdmin(id);
+    return result;
   },
   drawRound: (eventId: string, ordinal: number) => runAdminDraw({ eventId, ordinal }, () => supabase.rpc('lucky_draw_round_v1', { p_event: eventId, p_ordinal: ordinal })),
   setRounds: async (eventId: string, rounds: LuckyRoundInput[]) => {
     const before = await requireAdminEvent(eventId);
-    return adminWriteGuard.run(eventId, 'lưu thể lệ quay số', async progress => {
+    // Xoá rồi chèn lại cả bộ lượt trong MỘT hàm (một giao dịch, 9906fdf5), từ chối khi đã quay: chạy lại cho cùng kết quả.
+    const result = await repeatable('lưu thể lệ quay số', async () => {
       const result = checkedReceipt(z.object({ ok: z.literal(true), rounds: z.number().int().nonnegative() }), await adminRpc(() => supabase.rpc('lucky_admin_set_rounds_v1', {
         p_event: eventId, p_rounds: rounds.map(r => ({ label: r.label ?? '', amount: r.amount, winnersCount: r.winnersCount })),
       })));
-      progress.completed.push({ id: eventId, label: 'Đã tiếp nhận yêu cầu lưu thể lệ' });
       const after = await requireAdminEvent(eventId);
       // The equal-length check short-circuits before indexing the submitted round array.
       if (result.rounds !== rounds.length || after.source.organizationId !== before.source.organizationId ||
           after.event.rounds.length !== rounds.length || after.event.rounds.some((r, i) => r.ordinal !== i + 1 || r.amount !== rounds[i]!.amount || r.winnersCount !== rounds[i]!.winnersCount || (rounds[i]!.label?.trim() && r.label !== rounds[i]!.label?.trim()))) throw invalidReceipt();
       return result;
     });
+    await forgetLegacyAdmin(eventId);
+    return result;
   },
   addTeam: async (p: { eventId: string; name: string; deals?: number; topRank?: number | null; topPrize?: number | null; inWheel?: boolean; sale?: string | null }) => {
-    await requireAdminEvent(p.eventId);
-    return adminWriteGuard.run(p.eventId, 'thêm đội tham gia', async progress => {
-      const result = checkedReceipt(teamReceipt, await adminRpc(() => supabase.rpc('lucky_admin_add_team_v1', {
-        p_event: p.eventId, p_name: p.name, p_deals: p.deals ?? 1, p_top_rank: p.topRank ?? undefined,
-        p_top_prize: p.topPrize ?? undefined, p_in_wheel: p.inWheel ?? true, p_sale: p.sale ?? undefined,
-      })));
-      progress.completed.push({ id: result.teamId, label: 'Đã tạo đội tham gia' }); return result;
-    });
+    const name = p.name.trim();
+    const { event } = await requireAdminEvent(p.eventId);
+    // Duy nhất (sự kiện, tên) trên máy chủ: gửi lại không thêm đội thứ hai. Tên đã có thì báo trước, kèm mã điểm danh.
+    const existing = event.teams.find(t => t.name === name);
+    if (existing) {
+      throw new FinancialWorkflowError(`Sự kiện đã có đội ${name} (mã điểm danh ${existing.code}). Nếu vừa bấm thêm mà chưa nhận được kết quả thì đội này có thể đã được thêm ở lần bấm trước; xem lại đội trong danh sách thay vì thêm lần nữa.`, 'failure', []);
+    }
+    const result = await repeatable('thêm đội tham gia', async () => checkedReceipt(teamReceipt, await adminRpc(() => supabase.rpc('lucky_admin_add_team_v1', {
+      p_event: p.eventId, p_name: name, p_deals: p.deals ?? 1, p_top_rank: p.topRank ?? undefined,
+      p_top_prize: p.topPrize ?? undefined, p_in_wheel: p.inWheel ?? true, p_sale: p.sale ?? undefined,
+    }))));
+    await forgetLegacyAdmin(p.eventId);
+    return result;
   },
   updateTeam: async (teamId: string, p: { name?: string; sale?: string | null; deals?: number; topRank?: number | null; topPrizeAmount?: number | null; inWheel?: boolean; checkedIn?: boolean; regenCode?: boolean }) => {
     const { event } = await requireAdminTeam(teamId);
-    return adminWriteGuard.run(event.id, 'cập nhật đội tham gia', async progress => {
-      const result = checkedReceipt(teamReceipt, await adminRpc(() => supabase.rpc('lucky_admin_update_team_v1', { p_team: teamId, p })));
-      progress.completed.push({ id: result.teamId, label: 'Đã nhận kết quả cập nhật đội' });
-      if (result.teamId !== teamId) throw invalidReceipt(); return result;
-    });
-  },
-  deleteTeam: async (teamId: string) => {
-    const before = await requireAdminTeam(teamId);
-    return adminWriteGuard.run(before.event.id, 'xóa đội tham gia', async progress => {
-      const result = checkedReceipt(ackReceipt, await adminRpc(() => supabase.rpc('lucky_admin_delete_team_v1', { p_team: teamId })));
-      progress.completed.push({ id: teamId, label: 'Đã tiếp nhận yêu cầu xóa đội' });
-      const after = await requireAdminEvent(before.event.id);
-      if (after.source.organizationId !== before.source.organizationId || after.event.teams.some(t => t.id === teamId)) throw invalidReceipt();
+    const priorCode = event.teams.find(t => t.id === teamId)?.code;
+    // Thân hàm 45d1f552: mọi trường là đặt giá trị tuyệt đối; điểm danh giữ giờ điểm danh đầu tiên. Riêng cấp lại mã KHÔNG
+    // lặp lại được (mỗi lần một mã mới): chưa rõ thì đọc lại mã hiện tại thay vì mời bấm lại.
+    const operation = p.regenCode ? 'cấp lại mã điểm danh' : Object.keys(p).length === 1 && p.checkedIn !== undefined ? 'điểm danh đội' : 'cập nhật đội tham gia';
+    try {
+      const result = await repeatable(operation, async () => {
+        const result = checkedReceipt(teamReceipt, await adminRpc(() => supabase.rpc('lucky_admin_update_team_v1', { p_team: teamId, p })));
+        if (result.teamId !== teamId) throw invalidReceipt();
+        return result;
+      });
+      await forgetLegacyAdmin(event.id);
       return result;
-    });
+    } catch (error) {
+      if (!p.regenCode || !(error instanceof RepeatableWriteUnknownError)) throw error;
+      let current: string | undefined;
+      try { current = (await requireAdminTeam(teamId)).event.teams.find(t => t.id === teamId)?.code; }
+      catch (readError) { throw new RepeatableWriteUnknownError(operation, readError, [], 'Mã cũ có thể đã hết hiệu lực. Tải lại danh sách để xem mã hiện tại trước khi gửi cho đội.'); }
+      if (current && current !== priorCode) return { ok: true as const, teamId, code: current };
+      throw new RepeatableWriteUnknownError(operation, error, [], 'Mã điểm danh hiện tại vẫn là mã cũ. Tải lại danh sách sau ít giây trước khi gửi mã cho đội; bấm cấp lại nếu vẫn cần mã mới.');
+    }
+  },
+  /** `eventId`: sự kiện của đội lúc bấm. Có nó thì đội đã không còn trong sự kiện nghĩa là đã xoá (không gửi lệnh nữa). */
+  deleteTeam: async (teamId: string, eventId?: string) => {
+    const source = await getAdminState();
+    const event = source.events.find(e => eventId ? e.id === eventId : e.teams.some(t => t.id === teamId));
+    if (!event) throw new FinancialWorkflowError('Đội không còn trong danh sách bạn được quản lý. Tải lại danh sách trước khi tiếp tục.', 'failure', []);
+    if (!event.teams.some(t => t.id === teamId)) {
+      await forgetLegacyAdmin(event.id);
+      return { ok: true as const, alreadyDeleted: true };
+    }
+    const result = await repeatable('xoá đội tham gia', async () => {
+      const value = await adminRpc(() => supabase.rpc('lucky_admin_delete_team_v1', { p_team: teamId }));
+      // Thân hàm 1ec42d37: không thấy đội ⇒ `not_found`. Đó là lần xoá trước đã tới (hoặc người khác vừa xoá): xác nhận
+      // bằng bản đọc lại bên dưới, không coi là lời từ chối.
+      const gone = refused(value, 'not_found');
+      if (!gone) checkedReceipt(ackReceipt, value);
+      const after = await requireAdminEvent(event.id);
+      if (after.source.organizationId !== source.organizationId || after.event.teams.some(t => t.id === teamId)) throw invalidReceipt();
+      return { ok: true as const, alreadyDeleted: gone };
+    }, 'Đội có thể đã bị xoá. Bấm xoá lại để kiểm tra: đội đã xoá thì báo đã xoá, không xoá gì thêm.');
+    await forgetLegacyAdmin(event.id);
+    return result;
   },
   forceDraw: (eventId: string) => runAdminDraw({ eventId, ordinal: null }, () => supabase.rpc('lucky_admin_force_draw_v1', { p_event: eventId })),
-  resetDraw: async (eventId: string) => {
+  /**
+   * Đặt lại kết quả (thân hàm 97a61cd3: xoá người trúng, đặt mọi lượt và sự kiện về «đang mở»). Đọc trạng thái trước:
+   * đã sạch ⇒ báo đã huỷ, không gửi. `expectedDrawnAt` (giờ quay của kết quả người bấm đang xem): kết quả trên máy chủ đã
+   * khác thì không huỷ, để một lần bấm lại không xoá mất một kết quả mới mà người chơi đã thấy.
+   */
+  resetDraw: async (eventId: string, expectedDrawnAt?: string | null) => {
     const before = await requireAdminEvent(eventId);
-    return adminWriteGuard.run(eventId, 'đặt lại kết quả quay số', async progress => {
-      const result = checkedReceipt(ackReceipt, await adminRpc(() => supabase.rpc('lucky_admin_reset_draw_v1', { p_event: eventId })));
-      progress.completed.push({ id: eventId, label: 'Đã tiếp nhận yêu cầu đặt lại kết quả' });
-      const after = await requireAdminEvent(eventId); const e = after.event;
-      if (after.source.organizationId !== before.source.organizationId || e.status !== 'open' || e.drawnAt !== null || e.winnerTeamId !== null || e.rounds.some(r => r.status !== 'pending' || r.drawnAt !== null || r.winners.length > 0)) throw invalidReceipt();
-      return result;
-    });
+    if (drawCleared(before.event)) {
+      await forgetLegacyAdmin(eventId);
+      return { ok: true as const, alreadyReset: true };
+    }
+    if (expectedDrawnAt !== undefined && before.event.drawnAt !== expectedDrawnAt) {
+      throw new FinancialWorkflowError(`Kết quả quay trên máy chủ đã khác kết quả đang hiện${before.event.drawnAt ? ` (quay lúc ${formatPendingTime(before.event.drawnAt)})` : ''}. Tải lại trạng thái trước khi huỷ.`, 'failure', []);
+    }
+    const result = await repeatable('đặt lại kết quả quay số', async () => {
+      checkedReceipt(ackReceipt, await adminRpc(() => supabase.rpc('lucky_admin_reset_draw_v1', { p_event: eventId })));
+      const after = await requireAdminEvent(eventId);
+      if (after.source.organizationId !== before.source.organizationId) throw invalidReceipt();
+      if (drawCleared(after.event)) return { ok: true as const, alreadyReset: false };
+      // Biên nhận dương nghĩa là máy chủ đã huỷ; kết quả mới (giờ quay khác) có sau đó, thường vì giờ mở thưởng đã qua nên
+      // trang người xem tự quay. Không mời bấm huỷ lần nữa: lần đó sẽ xoá kết quả mới mà người chơi có thể đã thấy.
+      if (after.event.drawnAt && after.event.drawnAt !== before.event.drawnAt) {
+        throw new FinancialWorkflowError(`Đã huỷ kết quả cũ, nhưng sự kiện vừa được quay lại lúc ${formatPendingTime(after.event.drawnAt)} (giờ mở thưởng đã qua nên trang người xem tự quay). Đổi giờ mở thưởng rồi tải lại trạng thái trước khi huỷ tiếp.`, 'failure', []);
+      }
+      throw invalidReceipt();
+    }, 'Kết quả cũ có thể đã bị huỷ. Bấm huỷ lại để kiểm tra: đã huỷ thì báo, không huỷ thêm lần nào.');
+    await forgetLegacyAdmin(eventId);
+    return result;
   },
+  /** Còn dấu của một lệnh QUAY chưa rõ kết quả cho sự kiện này. Chỉ lệnh quay giữ dấu; dấu chung bản trước không tính. */
   hasPendingAction: async (eventId: string) => {
     const user = await getSessionUser();
     if (!user) return false;
-    return !!financialPending.read({ namespace: 'lucky-admin', userId: user.id, organizationId: 'actor-scope', businessKey: eventId });
+    return !!financialPending.read(drawScope(user.id, eventId));
   },
-  /** Read-only recovery: a generic successful refresh cannot release an unresolved draw. */
-  reconcileDraw: async (eventId: string) => {
+  /**
+   * «Tải lại trạng thái» cho lệnh quay chưa rõ: chỉ ĐỌC trạng thái rồi kết luận, không gửi lệnh quay. Lượt đó đã quay ⇒
+   * `drawn`; chưa quay ⇒ `not-drawn` (bấm quay lại là an toàn: hàm quay khoá sự kiện rồi mới xét «đã quay»); cả hai đều gỡ
+   * dấu. Không còn dấu ⇒ `none`. Lệnh còn đang chạy trong tab, hoặc đọc hỏng ⇒ ném lỗi, giữ dấu.
+   */
+  reconcileDraw: async (eventId: string): Promise<LuckyDrawReconciliation> => {
     const user = await getSessionUser();
     if (!user) throw new FinancialWorkflowError('Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục.', 'failure', []);
-    const pending = financialPending.read({ namespace: 'lucky-admin', userId: user.id, organizationId: 'actor-scope', businessKey: eventId });
-    if (!pending) return null;
-    const intent = readDraw(pending.requestKey ?? pending.attemptId);
-    if (!intent || intent.eventId !== eventId) return null;
-    return adminWriteGuard.run(eventId, 'đối chiếu kết quả quay', async () => { throw invalidReceipt(); },
-      row => reconcileDrawReceipt(row.requestKey ?? row.attemptId, intent));
+    const scope = drawScope(user.id, eventId);
+    const pending = financialPending.read(scope);
+    if (!pending) return { outcome: 'none' };
+    if (isAttemptRunning(pending.attemptId)) throw new FinancialWorkflowError('Lệnh quay của lần bấm trước vẫn đang chờ máy chủ trả lời. Thử lại sau ít giây.', 'unknown', []);
+    const state = publicFromAdmin((await requireAdminEvent(eventId)).event);
+    const ordinal = pending.meta?.ordinal;
+    const known = ordinal === null || typeof ordinal === 'number';
+    const intent: DrawIntent = { eventId, ordinal: typeof ordinal === 'number' ? ordinal : null };
+    const verdict: LuckyDrawReconciliation = !known ? { outcome: 'unknown-intent' }
+      : drawReached(state, intent) ? { outcome: 'drawn', ordinal: intent.ordinal, state }
+        : { outcome: 'not-drawn', ordinal: intent.ordinal };
+    if (!financialPending.clearConfirmed(scope, pending.attemptId)) {
+      throw new FinancialWorkflowError('Yêu cầu quay vừa thay đổi ở nơi khác. Bấm «Tải lại trạng thái» lần nữa.', 'unknown', []);
+    }
+    return verdict;
   },
 };
 

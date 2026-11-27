@@ -54,8 +54,9 @@ export function CustomerSelectionDialog({
   // và handleConfirm bên dưới) nên chuỗi contract_customers → contracts → rooms
   // → buildings là thuần lãng phí — ở ~500 khách nó là 7 request nối tiếp sau
   // request chính. Cờ đặt Ở ĐÂY chứ không nhận qua prop: component này mount ở
-  // hai nơi (ContractFormDialog, TransferContractDialog), và hai nơi truyền hai
-  // giá trị khác nhau sẽ thành hai hình dạng dữ liệu trong CÙNG một ô cache.
+  // nhiều nơi (ContractFormDialog, CreateDepositDialog, RoomReservationPanel,
+  // QuickDepositModal), và mỗi nơi truyền một giá trị khác nhau sẽ thành nhiều
+  // hình dạng dữ liệu trong CÙNG một ô cache.
   const sourceQuery = useCustomers(undefined, undefined, {
     enabled: open,
     skipLocationEnrichment: true,

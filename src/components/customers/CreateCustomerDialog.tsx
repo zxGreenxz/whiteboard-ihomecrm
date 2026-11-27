@@ -107,6 +107,8 @@ interface CreateCustomerDialogProps {
 
 export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCustomerDialogProps) {
   const createCustomer = useCreateCustomer();
+  // Chặn bấm đúp trước khi isPending kịp đổi (đợt 4: tạo khách không còn khoá bằng dấu bền).
+  const busy = useRef(false);
   const [customerType, setCustomerType] = useState<"INDIVIDUAL" | "ORGANIZATION">("INDIVIDUAL");
   const scanContextRef = useRef({ open, customerType, generation: 0 });
   if (
@@ -184,6 +186,8 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
   };
 
   const onSubmit = async (data: CustomerFormValues) => {
+    if (busy.current) return;
+    busy.current = true;
     try {
       const created = await createCustomer.mutateAsync({
         customer_type: data.customer_type || null,
@@ -241,6 +245,8 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
       onOpenChange(false);
     } catch (error) {
       // Error is handled by the mutation
+    } finally {
+      busy.current = false;
     }
   };
 

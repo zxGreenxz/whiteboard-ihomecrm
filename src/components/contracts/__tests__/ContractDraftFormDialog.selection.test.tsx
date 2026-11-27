@@ -8,6 +8,7 @@ import { ContractDraftFormDialog } from '../ContractDraftFormDialog';
 const actions = vi.hoisted(() => ({ save: vi.fn(), export: vi.fn(), submit: vi.fn(), templates: [] as unknown[], templatesLoading: false, templatesError: false, payload: {} as ContractDraftPayload, draftIds: [] as (string | undefined)[],
   request: undefined as ContractCreateRequest | undefined, onCreateRequest: undefined as ((request: ContractCreateRequest) => Promise<void>) | undefined,
 }));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({ useContractExitEarlyTerms: () => ({ data: [], isError: false, error: null, refetch: () => undefined }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: '11111111-1111-4111-8111-111111111111' }) }));
 vi.mock('@/hooks/useDocumentTemplates', () => ({ useDocumentTemplatesByType: () => ({ data: actions.templatesLoading || actions.templatesError ? undefined : actions.templates, isLoading: actions.templatesLoading, isError: actions.templatesError }) }));
 vi.mock('@/hooks/useContractDrafts', () => ({

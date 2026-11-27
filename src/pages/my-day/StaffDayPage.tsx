@@ -5,6 +5,8 @@ import { Building2, CheckCircle2, CircleDashed, ClipboardList, Clock, Flame, Map
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardTitle, PersonAvatar, StaffHeader, StaffShell, StatusPill } from "@/components/staff-day/StaffShell";
 import { PersonPicker } from "@/components/staff-day/PersonPicker";
+import HermesShiftCard from "@/components/my-day/HermesShiftCard";
+import { IS_TEST_ENV } from "@/lib/appEnvironment";
 import { LeaveApprovalCard } from "@/components/staff-day/LeaveApprovalCard";
 import { SlotLegend, SlotStrip } from "@/components/staff-day/SlotStrip";
 import { StaffPhotoGallery } from "@/components/staff-day/StaffThumb";
@@ -145,6 +147,7 @@ export default function StaffDayPage() {
         right={name ? <PersonAvatar name={name} /> : undefined}
       />
       <PersonPicker active={userId ?? ""} />
+      {IS_TEST_ENV && userId && <HermesShiftCard staff={userId} />}
       <LeaveApprovalCard userId={userId} />
 
       <QueryRegion label="việc của người này" skeleton="list" rows={4} queries={[summaryQuery, routeQuery]}>

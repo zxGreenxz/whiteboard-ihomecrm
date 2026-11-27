@@ -8,13 +8,21 @@ import type { ExitSettlementDraft, ExtraChargesDraft, RefundItemsDraft } from '@
 const spies = vi.hoisted(() => ({ finalize: vi.fn(), save: vi.fn(), discard: vi.fn(), refetch: vi.fn(), extraProps: [] as Record<string, unknown>[], refundProps: [] as Record<string, unknown>[] }));
 const drafts = vi.hoisted(() => ({ data: null as ExitSettlementDraft | null, isPending: false, isError: false }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock('@/hooks/contracts/useContractTransferLinks', () => ({
-  useContractTransferLinks: () => ({ data: [], isPending: false, isError: false }),
-  useFinalizeContractTransferExit: () => ({ mutateAsync: vi.fn(), isPending: false }),
-}));
+// Hồ sơ trả phòng trước hạn trong các bài này: chủ nhà hỗ trợ (không giữ phòng, không phí môi giới).
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', async () => {
+  const { exitTermsRow } = await import('./exitEarlyTermsFixture');
+  const row = exitTermsRow({ early_reason: 'LANDLORD_AGREEMENT', sale_name: null, broker_fee: 0, hold_until: null, pending_link: false, hold_open: false });
+  return {
+    useContractExitEarlyTerms: () => ({ data: [row], isPending: false, isError: false, refetch: vi.fn() }),
+    useSetContractExitEarlyTerms: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useUpdateContractExitBrokerFee: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useCreateContractExitCommission: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  };
+});
 vi.mock('@/hooks/useContractExitCases', () => ({
   useConfirmContractReturn: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useFinalizeContractExitCase: () => ({ mutateAsync: spies.finalize, isPending: false }),
+  useUpdateContractExitKind: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({
   useContractExitSettlementDraft: () => ({ data: drafts.data, isPending: drafts.isPending, isError: drafts.isError, isSuccess: !drafts.isPending && !drafts.isError,
@@ -93,6 +101,8 @@ describe('lưu nháp ở bước quyết toán', () => {
     await waitFor(() => expect(screen.getByText('Quyết toán — Khách rời phòng')).toBeTruthy());
     expect((screen.getByPlaceholderText('Ghi chú thanh lý...') as HTMLTextAreaElement).value).toBe('Đã trừ tiền vệ sinh');
     expect((screen.getByLabelText('Tiền cọc hoàn trả') as HTMLInputElement).value).toBe('3.000.000');
+    // Nháp cũ có số hoàn thấp hơn cọc đã thu: áp luật mới ngay khi mở (dòng giữ lại hiện trước khi bấm quyết toán).
+    expect(screen.getByTestId('deposit-retained-line').textContent).toContain('Cọc giữ lại theo thoả thuận: 1.000.000đ');
     expect(lastExtra()).toMatchObject({ initialDraft: extra });
     expect(lastExtra().meterOptional).toBeFalsy();
     expect(lastRefund()).toMatchObject({ initialDraft: refund });

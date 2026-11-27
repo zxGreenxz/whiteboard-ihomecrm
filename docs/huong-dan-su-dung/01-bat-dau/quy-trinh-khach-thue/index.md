@@ -32,7 +32,7 @@ flowchart TD
   K -->|"Lưu nháp"| D["Hợp đồng nháp<br/>In gửi khách → Xác nhận đã ký và nhận phòng"]
   K -->|"Xác nhận ký"| A["3 · Hợp đồng hiệu lực · Phòng Đang thuê<br/>cọc thiếu: Nợ cọc hoặc gộp hoá đơn đầu"]
   D --> A
-  A --> O["4 · Ở / vận hành<br/>hoá đơn hằng tháng · gia hạn · chuyển phòng · nhượng<br/>hồ sơ CT01 / tạm trú"]
+  A --> O["4 · Ở / vận hành<br/>hoá đơn hằng tháng · gia hạn · chuyển phòng · sang nhượng phòng<br/>hồ sơ CT01 / tạm trú"]
   O -->|"khách báo trả phòng"| T["5 · Thanh lý<br/>Hết hạn / Trả trước hạn / Bỏ cọc"]
   T --> E(["HĐ Đã thanh lý · phòng trống<br/>quyết toán ngay hoặc vào Chờ quyết toán"])
 ```
@@ -75,9 +75,9 @@ Nếu số cọc đã đặt chưa bằng **Tiền cọc**, form hiện khung đ
 **Bước 4**: **Ở — vận hành.** Mỗi tháng phòng đi qua chu kỳ ghi chỉ số, lập hoá đơn và thu tiền — xem [Quy trình: Chu kỳ thu tiền hàng tháng](/01-bat-dau/quy-trinh-thu-tien/). Trong lúc khách ở:
 
 - **Gia hạn** (dời ngày kết thúc, có thể đổi giá/cọc), **Chuyển phòng** (sang phòng **Trống**, phòng cũ về Trống) — cả hai **giữ nguyên hợp đồng đang hiệu lực** và ghi dòng **GIA HẠN** / **CHUYỂN PHÒNG** vào **Lịch sử hợp đồng**.
-- **Nhượng HĐ** — **không** sửa hợp đồng cũ: khách cũ thanh lý như bình thường (chọn **Trả phòng, quyết toán sau**), khách mới ký hợp đồng mới từ nháp, hai bên nối bằng **liên kết nhượng**. Hệ thống chưa hỗ trợ chuyển cọc giữa hai hợp đồng; khách mới nộp cọc mới độc lập.
+- **Sang nhượng phòng** — **không** sửa hợp đồng cũ: khách cũ trả phòng trước hạn trong hộp **Thanh lý**, chọn **Nhờ sale tìm khách sang phòng** hoặc **Tự tìm khách sang phòng** (phòng giữ 3 ngày, không rao; chỉ ghi **Trả phòng, quyết toán sau**). Khách nhận ký hợp đồng mới, hệ thống tự nối với hồ sơ cũ rồi mới quyết toán. Khách nhận nộp cọc riêng; hệ thống không tự chuyển cọc giữa hai hợp đồng.
 
-Chi tiết: [Gia hạn, chuyển phòng & nhượng hợp đồng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/). Hồ sơ người ở xem tại [Cư dân](/03-quan-ly-van-hanh/cu-dan/); khai báo cư trú bằng [Hồ sơ CT01](/03-quan-ly-van-hanh/ho-so-ct01/) và [Đăng ký tạm trú trên Cổng DVC](/03-quan-ly-van-hanh/dang-ky-tam-tru-dvc/).
+Chi tiết: [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/). Hồ sơ người ở xem tại [Cư dân](/03-quan-ly-van-hanh/cu-dan/); khai báo cư trú bằng [Hồ sơ CT01](/03-quan-ly-van-hanh/ho-so-ct01/) và [Đăng ký tạm trú trên Cổng DVC](/03-quan-ly-van-hanh/dang-ky-tam-tru-dvc/).
 
 **Bước 5**: **Thanh lý.** Khi khách báo sẽ trả, bấm **Đăng ký chuyển đi** để ghi ngày dự kiến (hợp đồng vẫn đang ở, không ghi tiền). Khi khách bàn giao thực tế, bấm **Thanh lý**: nhập **Ngày khách thực tế trả phòng**, chọn **Loại thanh lý** (**Hết hạn hợp đồng** / **Trả phòng trước hạn** / **Bỏ cọc**), **Nội dung thanh lý** (bắt buộc) và chỉ số bàn giao (được chọn bổ sung sau), rồi chọn **Trả phòng, quyết toán sau** (hồ sơ vào tab **Chờ quyết toán**) hoặc **Tiếp tục quyết toán ngay**. Toàn bộ chặng này xem [Quy trình: Thanh lý hợp đồng](/01-bat-dau/quy-trinh-thanh-ly/).
 
@@ -92,8 +92,8 @@ Quyết toán tạo hoá đơn thanh lý, quyết toán công nợ, chuyển c�
 | [Khách hẹn](/03-quan-ly-van-hanh/khach-hen/) | Phễu sale 5 cột **Mới / Đã hẹn / Đang tư vấn / Đã chuyển đổi / Thất bại**. Chưa đụng phòng, chưa ghi tiền. |
 | [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/) | **Tạo đặt cọc** → giữ chỗ + phiếu cọc, phòng **Đã đặt cọc**; chế độ **Cần xử lý** (việc quá hạn, sẵn sàng ký) và **Sổ cọc đầy đủ** (4 tab); **Xử lý bỏ cọc** khi khách không ký. |
 | [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) | Tab **Danh sách / Chờ quyết toán / Hợp đồng nháp**; ký mới, ký từ nháp; badge **Đủ cọc / Thiếu cọc**. |
-| [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) | Toàn cảnh một hợp đồng; nút **Gia hạn / Chuyển phòng / Nhượng HĐ / Đăng ký chuyển đi / Thanh lý**; khối **Tài chính** gom cọc và hoá đơn. |
-| [Gia hạn, chuyển phòng & nhượng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) | Biến động khi đang ở; gia hạn/chuyển phòng giữ hợp đồng hiệu lực, nhượng dùng liên kết hai hợp đồng. |
+| [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) | Toàn cảnh một hợp đồng; nút **Gia hạn / Chuyển phòng / Đăng ký chuyển đi / Thanh lý**; khối **Tài chính** gom cọc và hoá đơn. |
+| [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) | Biến động khi đang ở; gia hạn/chuyển phòng giữ hợp đồng hiệu lực, sang nhượng phòng đi qua **Thanh lý** → **Trả phòng trước hạn** (ba trường hợp). |
 | [Cư dân](/03-quan-ly-van-hanh/cu-dan/) | Hồ sơ khách (`customers`), đọc CCCD, phương tiện, khối **Hồ sơ tạm trú**. |
 | [Hồ sơ CT01](/03-quan-ly-van-hanh/ho-so-ct01/) · [Tạm trú DVC](/03-quan-ly-van-hanh/dang-ky-tam-tru-dvc/) | Tờ khai CT01, bộ CT01 + hợp đồng (Word), nộp đăng ký tạm trú trên Cổng DVC. |
 | [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) | Đối chiếu cọc đã hoàn / đã bỏ; `/finance/refund-log` là **Sổ tiền thối / Sổ làm tròn**, không phải sổ hoàn cọc. |
@@ -109,7 +109,7 @@ Quyết toán tạo hoá đơn thanh lý, quyết toán công nợ, chuyển c�
 | Nút **Xác nhận đã ký và nhận phòng** mờ | Chưa tích đủ hai xác nhận, chưa nhập chỉ số bàn giao đã kiểm tra, ngày nhận phòng không khớp tài liệu, hoặc nháp đã sửa sau lần in (phải **In** lại). |
 | Hợp đồng hiện **Thiếu cọc** dù khách nói đã đóng | Số đã thu tính từ phiếu cọc **đã duyệt** gắn hợp đồng. Kiểm khối **Tài chính** ở trang chi tiết và màn Đặt cọc; không sửa tay con số. |
 | Gia hạn xong không thấy hợp đồng "mới" | Đúng thiết kế: gia hạn giữ nguyên hợp đồng, chỉ dời ngày kết thúc; xem dòng **GIA HẠN** ở **Lịch sử hợp đồng**. |
-| Muốn nhượng và cấn cọc cũ sang khách mới | Hệ thống chưa hỗ trợ chuyển cọc giữa hai hợp đồng. Khách cũ quyết toán cọc theo thanh lý, khách mới nộp cọc mới độc lập. |
+| Muốn sang nhượng phòng và cấn cọc cũ sang khách nhận | Hệ thống không tự chuyển cọc giữa hai hợp đồng. Khách cũ quyết toán cọc theo thanh lý (phí môi giới, nếu có, trừ vào cọc cũ), khách nhận nộp cọc riêng. |
 
 ## Thử trực tiếp trên sandbox
 
@@ -134,7 +134,7 @@ Trên sandbox cứ mở xem thoải mái — đây là dữ liệu demo, không 
 - [Khách hẹn](/03-quan-ly-van-hanh/khach-hen/) — chặng 1: phễu sale.
 - [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/) — chặng 2: giữ chỗ, phiếu cọc, xử lý bỏ cọc giữ chỗ.
 - [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) và [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) — chặng 3: ký mới, ký từ nháp, xem toàn cảnh.
-- [Gia hạn, chuyển phòng & nhượng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) — chặng 4: biến động khi khách đang ở.
+- [Gia hạn, chuyển phòng & sang nhượng phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) — chặng 4: biến động khi khách đang ở.
 - [Cư dân](/03-quan-ly-van-hanh/cu-dan/) · [Hồ sơ CT01](/03-quan-ly-van-hanh/ho-so-ct01/) · [Đăng ký tạm trú trên Cổng DVC](/03-quan-ly-van-hanh/dang-ky-tam-tru-dvc/) — hồ sơ và cư trú của khách.
 - [Quy trình: Chu kỳ thu tiền hàng tháng](/01-bat-dau/quy-trinh-thu-tien/) — việc lặp lại mỗi tháng khi khách ở.
 - [Quy trình: Thanh lý hợp đồng](/01-bat-dau/quy-trinh-thanh-ly/) — chặng 5.

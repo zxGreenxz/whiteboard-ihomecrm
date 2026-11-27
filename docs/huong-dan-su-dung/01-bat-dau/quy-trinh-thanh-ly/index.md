@@ -57,7 +57,7 @@ Hồ sơ để sau được mở lại bằng nút **Quyết toán** ở tab **C
 
 ![Tab Chờ quyết toán trên màn Hợp đồng thuê của DEMO: dòng giải thích theo dõi quyết toán và bổ sung chỉ số bàn giao, bảng báo Không có hợp đồng chờ quyết toán](./images/buoc-01-cho-quyet-toan.webp)
 
-**Bước 4a — Khách rời phòng** (loại **Hết hạn hợp đồng** / **Trả phòng trước hạn**): form **Quyết toán — Khách rời phòng** gồm **CÔNG NỢ KHÁCH HÀNG** (hoá đơn chưa thanh toán), **HOÀN CỌC VÀ TIỀN THỪA** (**Tiền cọc hoàn trả** mặc định bằng cọc **đã thu**, ô **Tiền thừa của khách (credit) áp vào quyết toán**), **THU THÊM** (tiền phòng + nước + PDV theo ngày ở, tiền điện chốt, tiền vệ sinh, khoản tuỳ ý — vào **hoá đơn thanh lý riêng**), **HOÀN LẠI KHÁCH** (tiền phòng ngày không ở…) và **TỔNG HỢP** với kết quả **Chủ nhà trả lại khách** hoặc **Khách còn phải trả**. Nếu khách còn phải trả, chọn ghi nhận thu ngay (chọn sổ nhận tiền) hoặc **Ghi nợ**. Bấm **Lập hoá đơn & Thanh lý** → hộp **Xác nhận thanh lý — khách rời phòng** → **Xác nhận thanh lý**. Chi tiết: [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/).
+**Bước 4a — Khách rời phòng** (loại **Hết hạn hợp đồng** / **Trả phòng trước hạn**): form **Quyết toán — Khách rời phòng** gồm **CÔNG NỢ KHÁCH HÀNG** (hoá đơn chưa thanh toán), **HOÀN CỌC VÀ TIỀN THỪA** (**Tiền cọc hoàn trả** là số hoàn theo thoả thuận, mặc định bằng cọc **đã thu** (không quá cọc HĐ); nhập thấp hơn thì phần không hoàn tự thành dòng **Cọc giữ lại theo thoả thuận** — doanh thu, không để treo cọc; ô **Tiền thừa của khách (credit) áp vào quyết toán**), **THU THÊM** (tiền phòng + nước + PDV theo ngày ở, tiền điện chốt, tiền vệ sinh, khoản tuỳ ý — vào **hoá đơn thanh lý riêng**), **HOÀN LẠI KHÁCH** (tiền phòng ngày không ở…) và **TỔNG HỢP** với kết quả **Chủ nhà trả lại khách** hoặc **Khách còn phải trả**. Nếu khách còn phải trả, chọn ghi nhận thu ngay (chọn sổ nhận tiền) hoặc **Ghi nợ**. Bấm **Lập hoá đơn & Thanh lý** → hộp **Xác nhận thanh lý — khách rời phòng** → **Xác nhận thanh lý**. Chi tiết: [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/).
 
 ::: danger Phiếu "Trả khách thanh lý" chưa phải tiền đã chi
 Phần dư trả khách sinh **phiếu chi "Trả khách thanh lý …" ở trạng thái Chờ duyệt và chưa có sổ quỹ**. Trang chi tiết hợp đồng hiện dải **Phiếu thanh lý chờ xử lý** để nhắc. Người có quyền mở phiếu (màn [Thu chi](/03-quan-ly-van-hanh/thu-chi/), tab **Chờ xử lý**), **chọn sổ quỹ chi tiền**, rồi duyệt/chi. Tiền chỉ thật sự ra khỏi quỹ khi phiếu ở trạng thái **Đã Chi** (`POSTED`).
@@ -103,7 +103,7 @@ Số quyết toán = (Cọc hoàn trả + Tiền thừa áp vào + Hoàn lại k
     = 0  → huề
 ```
 
-**Tiền cọc hoàn trả** không vượt quá cọc **đã thu**: hợp đồng ghi cọc 3.000.000 đ nhưng khách mới nộp 0 đ thì số hoàn là 0 đ — hệ thống không hoàn một nghĩa vụ cọc khách chưa nộp.
+**Tiền cọc hoàn trả** không vượt quá cọc **đã thu**: hợp đồng ghi cọc 3.000.000 đ nhưng khách mới nộp 0 đ thì số hoàn là 0 đ — hệ thống không hoàn một nghĩa vụ cọc khách chưa nộp. Ngược lại, cọc đã thu (tới mức cọc HĐ) phải được xử lý hết: phần không hoàn theo thoả thuận ghi thành dòng **Cọc giữ lại theo thoả thuận** (xem [Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/)).
 
 ## Các màn liên quan trong chuỗi
 
@@ -114,7 +114,7 @@ Số quyết toán = (Cọc hoàn trả + Tiền thừa áp vào + Hoàn lại k
 | [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/) | Form quyết toán rời phòng, hoàn cọc dư, thu thêm. |
 | [Thanh lý — Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/) | Form quyết toán bỏ cọc, huỷ nợ, hoá đơn thu thêm riêng. |
 | [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) | Tab **Hoàn / Bỏ cọc**, khối **Chờ hoàn cọc**, thẻ **Đối soát hoàn cọc**. |
-| [Thu chi](/03-quan-ly-van-hanh/thu-chi/) · [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) | Chọn sổ và duyệt/chi phiếu **Trả khách thanh lý**; tra phiếu **Doanh thu bỏ cọc**. |
+| [Thu chi](/03-quan-ly-van-hanh/thu-chi/) | Chọn sổ và duyệt/chi phiếu **Trả khách thanh lý**; tra phiếu **Doanh thu bỏ cọc**. |
 | [Tiền thừa](/03-quan-ly-van-hanh/tien-thua/) | Báo cáo legacy; credit chuẩn hiện ở ô credit của form quyết toán. |
 
 ## Tình huống & lỗi thường gặp

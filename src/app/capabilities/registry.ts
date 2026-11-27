@@ -121,7 +121,7 @@ export const COPILOT_PAGE_EXEMPTIONS = [
   { route: "/reports/finance/quyet-toan-van-hanh", reason: "landlord settlement is owner/super-admin only behind RPC guards and is deferred" },
   { route: "/finance/refund-log", reason: "refund log is a financial detail surface deferred pending read-only proof" },
   { route: "/thanh-toan", reason: "payment surface is deferred" },
-  { route: "/approvals", reason: "approval surface is deferred" },
+  { route: "/approvals", reason: "legacy approval inbox path; redirects to the cashbook pending tab" },
   { route: "/my-day", reason: "personal dashboard surface is deferred" },
   { route: "/my-day/*", reason: "owner staff-day and GPS check-in surfaces are deferred" },
   { route: "/viec-cua-toi", reason: "device-local personal tasks are not a business-data Copilot surface" },

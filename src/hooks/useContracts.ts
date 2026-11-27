@@ -1,6 +1,7 @@
 import {reconcileResidenceMembers} from '@/lib/customerResidenceHistory';
 import {matchesContractMoneyReceipt} from '@/lib/contractMoneyReceipt';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialAlreadyRecordedError,FinancialWorkflowError} from '@/lib/financialWorkflow';
 import {sameContractFields,type ContractRelationWriteProgress} from '@/lib/contractEditWorkflow';
 import {sameContractServices} from '@/lib/contractRelationReconcile';
 import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
@@ -507,6 +508,24 @@ export const useContract = (id?: string) => {
 // Requirements: 2.11, 2.13, 3.3
 // =============================================
 
+/**
+ * Lần gửi lại tạo hợp đồng bị máy chủ báo trùng (23505): «idempotency_key đã dùng với nội dung khác» nghĩa là mã của lần
+ * trước đã được dùng, tức hợp đồng đã tạo; «Phòng đã có hợp đồng đang hiệu lực» có thể là hợp đồng của lần trước. Đọc
+ * hợp đồng hiệu lực của phòng để báo mã. Đọc hỏng vẫn báo đã tạo (không tạo lần hai), chỉ thiếu mã.
+ */
+async function contractAlreadyCreated(roomId:string,error:unknown):Promise<FinancialAlreadyRecordedError>{
+  const keyReused=/idempotency_key/i.test(String((error as {message?:unknown}|null)?.message??''));
+  let found:{id:string;contract_number:string|null}|null=null;
+  try{
+    const {data}=await supabase.from('contracts').select('id,contract_number').eq('room_id',roomId).eq('status','ACTIVE').is('deleted_at',null).limit(1).maybeSingle();
+    if(data&&typeof data.id==='string')found={id:data.id,contract_number:data.contract_number??null};
+  }catch{/* Báo không kèm mã. */}
+  const label=found?` ${found.contract_number||found.id}`:'';
+  return new FinancialAlreadyRecordedError(keyReused
+    ?`Hợp đồng${label} của phòng đã được tạo ở lần gửi trước (nội dung lúc đó khác nội dung đang lưu). Mở hợp đồng để kiểm tra; không tạo lần hai.`
+    :`Phòng đã có hợp đồng${label} đang hiệu lực (có thể là hợp đồng của lần gửi trước). Mở hợp đồng để kiểm tra; không tạo lần hai.`,found?[found.id]:[]);
+}
+
 export const useCreateContract = () => {
   const queryClient = useQueryClient();
   const workflow=persistentFinancialWorkflow('contract-create',{scope:'actor'});
@@ -515,17 +534,41 @@ export const useCreateContract = () => {
       // Local validation runs before the durable marker/writer.
       buildCreateContractRpcArgs(request);
       const roomId=request.payload.contract.room_id;
+      // Cách B (đợt 6): create_contract_v2 (production 25/11/2026) khoá phòng FOR UPDATE và khoá công ty TRƯỚC khi tra mã;
+      // cùng mã cùng nội dung ⇒ trả hợp đồng cũ; khác nội dung ⇒ 23505 «idempotency_key đã dùng với nội dung khác».
+      let resend=false;
       return workflow.run(roomId,'tạo hợp đồng',async progress=>{
-        const response=await createContractV2(async(fn,args)=>{
+        let response;
+        try{response=await createContractV2(async(fn,args)=>{
           const result=await supabase.rpc(fn,args);
           const raw=result.data as unknown as {contract?:{id?:unknown;contract_number?:unknown}}|null;
           if(!result.error&&typeof raw?.contract?.id==='string'&&raw.contract.id)progress.completed.push({id:raw.contract.id,label:`Đã nhận hợp đồng ${typeof raw.contract.contract_number==='string'?raw.contract.contract_number:raw.contract.id}`});
           return result;
-        },{...request,idempotencyKey:progress.requestKey});
+        },{...request,idempotencyKey:progress.requestKey});}
+        catch(error){
+          // Gửi lại mà máy chủ báo trùng (mã đã dùng với nội dung khác, hoặc phòng đã có hợp đồng hiệu lực): lần trước đã
+          // tạo. Đọc hợp đồng hiệu lực của phòng để báo mã, không tạo lần hai. Đổi ngày bắt đầu là phạm vi khoá khác của máy
+          // chủ: khi đó phòng không còn trống (55000) báo trước; có hợp đồng hiệu lực thì cũng là có thể của lần trước.
+          const code=String((error as {code?:unknown}|null)?.code??'');
+          if(resend&&code==='23505')throw await contractAlreadyCreated(roomId,error);
+          if(resend&&code==='55000'&&/Trạng thái phòng không cho phép tạo hợp đồng/.test(String((error as {message?:unknown}).message??''))){
+            const created=await contractAlreadyCreated(roomId,error);
+            if(created.recordIds.length)throw created;
+          }
+          throw error;
+        }
         const receipt=response.contract;
+        // Hàng rào biên nhận giữ nguyên: lệch phòng / trạng thái / tiền ⇒ chưa xác nhận, dấu giữ mã hợp đồng. Lần bấm sau
+        // không gửi gì: hàm đối chiếu thấy mã hợp đồng trong dấu, báo đã tạo kèm mã rồi gỡ dấu (không khoá mãi).
         if(!receipt||typeof receipt.id!=='string'||!receipt.id||receipt.room_id!==roomId||receipt.status!=='ACTIVE')throw new TypeError('Chưa xác nhận được đúng hợp đồng và phòng vừa tạo.');
         if(!matchesContractMoneyReceipt(receipt.rent_price,request.payload.contract.rent_price)||!matchesContractMoneyReceipt(receipt.total_deposit,request.payload.contract.total_deposit))throw new TypeError('Chưa xác nhận được đúng tiền thuê và tiền cọc của hợp đồng vừa tạo.');
         return receipt;
+      },async pending=>{
+        // Dấu đã nhận mã hợp đồng (rồi biên nhận lệch hoặc mất bước sau): hợp đồng đã tạo; máy chủ cũng không cho phòng có hợp
+        // đồng hiệu lực thứ hai. Báo kèm mã, gỡ dấu, không gửi.
+        if(pending.completedIds.length)return {outcome:'already-written',message:'Hợp đồng của phòng này đã được tạo ở lần gửi trước (thông tin máy chủ trả về lúc đó chưa khớp form). Mở hợp đồng để kiểm tra; không tạo lần hai.',recordIds:pending.completedIds};
+        resend=true;
+        return {outcome:'not-written',serverDedupesRequestKey:true};
       });
     },
     // 15/09 (plan con B): chín lượt invalidate ở đây là lượt ĐÁNH THỨ NHẤT.
@@ -544,6 +587,9 @@ export const useCreateContract = () => {
       queryClient.invalidateQueries({ queryKey: ["contract-commission-followups"] });
       queryClient.invalidateQueries({ queryKey: ["contract-rent-support"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      // Hợp đồng mới đầu tiên của phòng có thể vừa tự nối với hồ sơ trả phòng trước hạn (trigger máy chủ).
+      queryClient.invalidateQueries({ queryKey: ["contract-exit-early-terms"] });
+      queryClient.invalidateQueries({ queryKey: ["sale-room-inventory"] });
       markLocalWrite([
         "contracts",
         "rooms",
@@ -597,7 +643,8 @@ export const useUpdateContract = () => {
       suppressSuccessToast?: boolean;
     }) => {
       const user = await getSessionUser();
-      if (!user) throw new Error("Not authenticated");
+      // Đợt 7: hết phiên là từ chối rõ (chưa gửi gì), để lần sửa hợp đồng không giữ pha «đang gửi» rồi khoá.
+      if (!user) throw { code: "PGRST301", message: "Not authenticated" };
 
       const patch: ContractUpdate = { ...updates };
       if (commissionChangeReason) patch.commission_change_reason = commissionChangeReason.trim();
@@ -656,22 +703,27 @@ export const useSyncContractCustomers = () => {
 };
 
 // =============================================
-// useSyncContractServices — replace contract_services for a contract.
-// Dùng cho luồng Cập nhật hợp đồng: xoá hết dòng dịch vụ cũ rồi insert lại
-// theo danh sách trong form (đổi loại điện, đơn giá, chỉ số đầu, …). Luồng
-// update không tự đụng contract_services nên phải gọi tay sau khi update HĐ
-// — giống useSyncContractCustomers.
+// useSyncContractServices — thay toàn bộ dịch vụ của hợp đồng khi SỬA hợp đồng.
+// Luồng update không tự đụng contract_services nên `runContractEdit` gọi bước này sau khi lưu thông tin hợp đồng — giống
+// useSyncContractCustomers. Đợt 10b: MỘT lời gọi `replace_contract_services_v1` (SECURITY INVOKER: RLS và trigger như ghi
+// thẳng; khoá tư vấn theo hợp đồng) xoá mọi dòng cũ rồi chèn đúng danh sách trong form (loại điện, đơn giá, chỉ số đầu…)
+// trong một giao dịch: hoặc chưa ghi gì, hoặc đã ghi đủ. Dùng pha `reconciling` của thao tác nguyên tử (máy chủ không so bộ
+// trước như CAS của phần khách; `runContractEdit` tự đọc lại và so với lúc mở form): không chờ 2 phút,
+// đọc lại thấy còn nguyên như lúc mở form thì gửi lại ngay, khớp đích thì xong, bị từ chối rõ thì `rejected`. `skipDelete` không
+// còn nghĩa (hàm luôn thay nguyên tử). Không gửi organization_id: trigger suy công ty từ hợp đồng.
 // =============================================
 
+type ContractServiceTarget = { service_id: string; unit_price: number; initial_reading: number | null };
+type ReplaceContractServicesRpc = (name: "replace_contract_services_v1", args: { p_contract_id: string; p_services: ContractServiceTarget[] }) =>
+  PromiseLike<{ data: unknown; error: unknown }>;
 export const useSyncContractServices = () => {
   const queryClient = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({
       contractId,
       services,
-      organizationId,skipDelete,onPhase,
+      onPhase,
     }: {
       contractId: string;
       services: Array<{
@@ -680,30 +732,33 @@ export const useSyncContractServices = () => {
         initial_reading?: number | null;
       }>;
     } & ContractRelationWriteProgress) => {
-      if(!skipDelete){
-      onPhase?.("deleting");
-      const { data: deleted,error: delErr } = await supabase
-        .from("contract_services")
-        .delete()
-        .eq("contract_id", contractId).select("service_id,unit_price,initial_reading");
-      if (delErr) throw delErr;
-      financialReadRows(deleted);onPhase?.("deleted");
-      }
-      if (services.length === 0) {onPhase?.("done");return;}
-
-      const rows = services.map((s) => ({
-        contract_id: contractId,
+      const sent: ContractServiceTarget[] = services.map((s) => ({
         service_id: s.service_id,
         unit_price: s.unit_price,
         initial_reading: s.initial_reading ?? null,
       }));
-
-      onPhase?.("inserting");
-      const {data:inserted,error: insErr } = await supabase
-        .from("contract_services")
-        .insert(withOrgAll(rows, organizationId??selectedOrganizationId)).select("service_id,unit_price,initial_reading");
-      if (insErr) throw insErr;
-      if(!sameContractServices(financialReadRows(inserted),services))throw new TypeError("Chưa xác nhận được đầy đủ dịch vụ của hợp đồng.");onPhase?.("done");
+      // Chỉ cần lúc lưu: không kéo thêm module vào gói tải trang.
+      const { repeatableWrite } = await import("@/lib/recordWriteOutcome");
+      onPhase?.("reconciling");
+      await repeatableWrite("lưu dịch vụ của hợp đồng", async () => {
+        const client = supabase as unknown as { rpc: ReplaceContractServicesRpc };
+        const { data, error } = await client.rpc("replace_contract_services_v1", { p_contract_id: contractId, p_services: sent });
+        // Từ chối rõ đi nguyên (giữ mã lỗi) để `runContractEdit` đặt pha `rejected`; cả giao dịch đã lùi.
+        if (error) throw error;
+        // Biên nhận phải khớp ĐÚNG bộ đã gửi: đúng số dòng, mã dòng là chuỗi không trùng, đúng hợp đồng, cùng dịch vụ / đơn giá /
+        // chỉ số đầu. Lệch hay sai dạng ⇒ chưa rõ (pha giữ `reconciling`, lần bấm sau đọc lại).
+        const rows: unknown[] = Array.isArray(data) ? data : [];
+        const ids = rows.map(row => (row && typeof row === "object" ? (row as { id?: unknown }).id : undefined));
+        let same = false;
+        try {
+          same = Array.isArray(data) && rows.length === sent.length
+            && ids.every(id => typeof id === "string" && id !== "") && new Set(ids).size === ids.length
+            && rows.every(row => (row as { contract_id?: unknown }).contract_id === contractId)
+            && sameContractServices(rows as ContractServiceTarget[], sent);
+        } catch { same = false; /* Đơn giá rỗng / sai dạng: financialReadNumber ném, coi là biên nhận lệch. */ }
+        if (!same) throw new FinancialWorkflowError("Chưa xác nhận được đầy đủ dịch vụ của hợp đồng.", "unknown", [], new TypeError("Mismatched contract services receipt"));
+      });
+      onPhase?.("done");
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });

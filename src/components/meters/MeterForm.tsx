@@ -141,7 +141,8 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
       onOpenChange(false);
       form.reset();
     } catch (error: unknown) {
-      setFailure(error);setBlocked(recordWriteBlocked(error));
+      // Đợt 9 (luật 5): đường TẠO không bao giờ khoá form (hook gửi lại đúng mã công tơ cũ). Đường sửa giữ như trước.
+      setFailure(error);setBlocked(isEditing && recordWriteBlocked(error));
       form.setError('root.server',{type:'server',message:recordWriteMessage(error,'lưu công tơ')});
       if (isDuplicateMeterCode(error)) {
         form.setError('code', { message: 'Mã công tơ đã tồn tại' });

@@ -43,9 +43,9 @@ describe('Tên phiếu lẻ trong phiếu tổng', () => {
     expect(result.voucherIds).toEqual(['v1', 'v2', 'v3']);
     const names = h.rpc.mock.calls.map(([fn, args]) => [fn, (args as { p_row: { name: string } }).p_row.name]);
     expect(names).toEqual([
-      ['ie_compat_insert_v2', 'VSML 101 (3/7) - Chốt ML đợt 1'],
-      ['ie_compat_insert_v2', 'Chốt ML đợt 1 - Điện lạnh'],
-      ['ie_compat_insert_v2', 'Chốt ML đợt 1 - Điện lạnh'],
+      ['ie_compat_insert_keyed_v1', 'VSML 101 (3/7) - Chốt ML đợt 1'],
+      ['ie_compat_insert_keyed_v1', 'Chốt ML đợt 1 - Điện lạnh'],
+      ['ie_compat_insert_keyed_v1', 'Chốt ML đợt 1 - Điện lạnh'],
     ]);
   });
 });

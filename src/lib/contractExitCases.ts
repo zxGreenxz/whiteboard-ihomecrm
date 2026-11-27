@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Json } from '@/integrations/supabase/types';
 import type { ExtraChargeItem, RefundItem } from '@/lib/contractValidation';
 import { buildMeterBoundaryPayload,type MeterBoundaryInput } from '@/lib/contractMeterBoundaries';
+import { buildEarlyTermsPayload,type EarlyTermsChoice } from '@/lib/contractExitEarlyTerms';
 
 export const EXIT_KINDS = ['NATURAL_EXPIRY', 'EARLY_RETURN', 'FORFEIT'] as const;
 export type ExitKind = typeof EXIT_KINDS[number];
@@ -32,6 +33,8 @@ export type ExitSettlementInput = ContractExitSettlementInput;
 interface ReturnBase {
   contractId:string; expectedContractUpdatedAt:string; idempotencyKey:string;
   actualMoveOutOn:string; initialKind:ExitKind;returnNote:string;meterBoundary?:MeterBoundaryInput;
+  /** Bắt buộc khi initialKind = EARLY_RETURN (một trong ba trường hợp); loại khác không gửi. */
+  earlyTerms?:EarlyTermsChoice;
 }
 export type ConfirmContractReturnInput = ReturnBase & (
   {settlementMode:'DEFERRED'; settlement?:never} |
@@ -60,7 +63,7 @@ const responseSchema = z.object({
 });
 export type ContractExitCase = z.infer<typeof responseSchema>;
 export interface ContractExitCasePage {items:ContractExitCase[];total:number;limit:number;offset:number;server_today?:string;server_now?:string}
-export type ContractExitRpcName = 'confirm_contract_return_v1'|'finalize_contract_exit_case_v1'|'update_contract_exit_case_kind_v1'|'list_contract_exit_cases_v1'|'get_contract_exit_case_v1';
+export type ContractExitRpcName = 'confirm_contract_return_v2'|'confirm_contract_return_v1'|'finalize_contract_exit_case_v1'|'update_contract_exit_case_kind_v1'|'list_contract_exit_cases_v1'|'get_contract_exit_case_v1';
 export interface ContractExitRpcError {code?:string;message?:string;details?:string;hint?:string}
 export type ContractExitRpcInvoker = (name:ContractExitRpcName,args:Record<string,Json|undefined>) => PromiseLike<{data:unknown;error:ContractExitRpcError|null}>;
 
@@ -79,13 +82,17 @@ export function buildConfirmContractReturnArgs(input:ConfirmContractReturnInput,
   const base=z.object({contractId:z.string().guid(),expectedContractUpdatedAt:z.string().datetime({offset:true}),
     idempotencyKey:keySchema,actualMoveOutOn:dateSchema,initialKind:kindSchema,
     returnNote:z.string().trim().min(1,'Vui lòng ghi nội dung thanh lý để đối chiếu'),
-    settlementMode:z.enum(['DEFERRED','IMMEDIATE']),settlement:z.unknown().optional(),meterBoundary:z.unknown().optional()}).strict().parse(input);
+    settlementMode:z.enum(['DEFERRED','IMMEDIATE']),settlement:z.unknown().optional(),meterBoundary:z.unknown().optional(),earlyTerms:z.unknown().optional()}).strict().parse(input);
+  if(base.initialKind==='EARLY_RETURN' && !input.earlyTerms) throw new Error('Trả phòng trước hạn cần chọn một trong ba trường hợp');
+  if(base.initialKind!=='EARLY_RETURN' && input.earlyTerms) throw new Error('Chỉ trả phòng trước hạn mới có trường hợp sang nhượng');
+  const earlyTerms=input.earlyTerms?buildEarlyTermsPayload(input.earlyTerms):null;
+  if(input.earlyTerms && input.earlyTerms.earlyReason!=='LANDLORD_AGREEMENT' && base.settlementMode!=='DEFERRED') throw new Error('Khách sang nhượng phòng: chỉ ghi trả phòng, quyết toán sau khi có hợp đồng khách mới');
   if(base.settlementMode==='DEFERRED' && base.settlement!==undefined) throw new Error('Trả phòng, quyết toán sau không nhận dữ liệu tiền');
   if(base.settlementMode==='IMMEDIATE' && (base.settlement===undefined || base.settlement===null)) throw new Error('Quyết toán ngay cần dữ liệu quyết toán');
   return {p_organization_id:z.string().guid().parse(organizationId),p_contract_id:base.contractId,p_expected_contract_updated_at:base.expectedContractUpdatedAt,
     p_idempotency_key:base.idempotencyKey,p_actual_move_out_on:base.actualMoveOutOn,p_initial_kind:base.initialKind,p_return_note:base.returnNote,
     p_settlement_mode:base.settlementMode,p_settlement:base.settlementMode==='IMMEDIATE'?settlementPayload(base.initialKind,input.settlement!):null,
-    p_meter_boundary:base.meterBoundary===undefined?null:buildMeterBoundaryPayload(input.meterBoundary!)};
+    p_meter_boundary:base.meterBoundary===undefined?null:buildMeterBoundaryPayload(input.meterBoundary!),p_early_terms:earlyTerms};
 }
 export function buildFinalizeContractExitCaseArgs(input:FinalizeContractExitCaseInput,organizationId:string) {
   const value=z.object({caseId:z.string().guid(),expectedVersion:z.number().int().positive(),idempotencyKey:keySchema,
@@ -98,7 +105,7 @@ async function call(invoke:ContractExitRpcInvoker,name:ContractExitRpcName,args:
   const result=await invoke(name,args); if(result.error) throw result.error; return result.data;
 }
 export async function confirmContractReturn(invoke:ContractExitRpcInvoker,input:ConfirmContractReturnInput,organizationId:string):Promise<ContractExitCase>{
-  return parseContractExitCase(await call(invoke,'confirm_contract_return_v1',buildConfirmContractReturnArgs(input,organizationId)));
+  return parseContractExitCase(await call(invoke,'confirm_contract_return_v2',buildConfirmContractReturnArgs(input,organizationId)));
 }
 export async function finalizeContractExitCase(invoke:ContractExitRpcInvoker,input:FinalizeContractExitCaseInput,organizationId:string):Promise<ContractExitCase>{
   return parseContractExitCase(await call(invoke,'finalize_contract_exit_case_v1',buildFinalizeContractExitCaseArgs(input,organizationId)));

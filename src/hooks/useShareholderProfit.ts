@@ -1,7 +1,8 @@
 import {readProfitMonthly,readProfitAllocations,readManagerAllocations,readShareholderDistributions,readManagerPayouts,readAccrualByBuilding,readProfitScopes,readProfitPeers,readProfitState,readProfitPreview,profitRows,profitString} from '@/lib/profitReadModels';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { useRef } from "react";
-import { FinancialWorkflowError } from "@/lib/financialWorkflow";
+import { FinancialAlreadyRecordedError, FinancialWorkflowError, type PendingReconciliation } from "@/lib/financialWorkflow";
+import type { FinancialPendingRecord } from "@/lib/financialPending";
 import { profitActionErrorMessage, readProfitActionResult } from "@/lib/profitFeedback";
 import { useMemo } from "react";
 import { rpcNullable } from "@/lib/rpcNullable";
@@ -36,6 +37,7 @@ export interface MonthlyBuildingProfit {
 }
 
 export interface ProfitMonthly {
+  house_pool_amount?: number;
   id: string;
   user_id: string;
   building_id: string;
@@ -55,6 +57,7 @@ export interface ProfitMonthly {
 }
 
 export interface ProfitCloseSnapshot {
+  house_pool_amount?: number;
   id: string;
   status: "DRAFT" | "LOCKED";
   computed_profit: number;
@@ -73,6 +76,7 @@ export interface ProfitCloseSnapshot {
 }
 
 export interface ProfitClosePreviewRow {
+  house_pool_amount?: number;
   building_id: string;
   building_name: string;
   revenue: number;
@@ -374,6 +378,7 @@ export interface ProfitCloseOrganizationScope {
 }
 
 export interface ProfitCloseStateRow {
+  house_pool_amount?: number;
   id: string;
   building_id: string;
   building_name: string;
@@ -534,6 +539,7 @@ export interface CloseProfitPeriodInput {
 }
 
 function invalidateProfitCloseQueries(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["house-pool"] });
   qc.invalidateQueries({ queryKey: ["profit-close-preview"] });
   qc.invalidateQueries({ queryKey: ["profit-close-state"] });
   qc.invalidateQueries({ queryKey: ["monthly-building-profit"] });
@@ -546,13 +552,32 @@ function invalidateProfitCloseQueries(qc: ReturnType<typeof useQueryClient>) {
   invalidateProfitLedgerQueries(qc);
 }
 
+/**
+ * Đối chiếu một lần chốt / mở khoá / đặt lại lợi nhuận chưa rõ kết quả (đợt 6, cách B). Mã gửi máy chủ suy từ mã yêu cầu
+ * của dấu (bản trước sinh mã ngẫu nhiên mỗi lần bấm, không lưu vào dấu). Cả ba hàm (`_profit_write_close_v2_base`,
+ * `_profit_state_change_v2`, `profit_reset_checked_v2`, production 25/11/2026) giữ khoá tư vấn theo (công ty, mã) TRƯỚC khi
+ * tra `profit_close_runs`: cùng mã cùng nội dung ⇒ trả kết quả cũ kèm `idempotent_replay`; khác nội dung ⇒ 23505.
+ */
+const PROFIT_KEYED = 'serverKey';
+const profitResend = (pending: FinancialPendingRecord): PendingReconciliation<never> =>
+  // Dấu bản trước: mã đã gửi máy chủ không nằm trong dấu, không gửi lại được bằng đúng mã đó ⇒ hộp cảnh báo.
+  pending.meta?.[PROFIT_KEYED] === true ? { outcome: 'not-written', serverDedupesRequestKey: true } : null;
+const profitAlreadyRecorded = (error: unknown, operation: string, periodMonth: string) =>
+  String((error as { code?: unknown } | null)?.code ?? '') === '23505'
+    ? new FinancialAlreadyRecordedError(`Yêu cầu ${operation} tháng ${periodMonth.slice(5, 7)}/${periodMonth.slice(0, 4)} đã được ghi ở lần gửi trước (nội dung lúc đó khác nội dung đang gửi). Tải lại số liệu tháng để kiểm tra trước khi làm tiếp.`)
+    : error;
+
 export const useCloseProfitPeriod = () => {
   const qc = useQueryClient();
-  const workflow = useRef(persistentFinancialWorkflow('profit-close'));
+  // Đợt 6: chốt lần đầu và chốt lại tách khoá. Dấu chung `profit-close` của bản trước (không biết thuộc thao tác nào, mã
+  // gửi máy chủ không nằm trong dấu) chặn đúng tháng đó qua hộp cảnh báo.
+  const firstClose = useRef(persistentFinancialWorkflow('profit-first-close', { legacy: 'profit-close' }));
+  const reclose = useRef(persistentFinancialWorkflow('profit-reclose', { legacy: 'profit-close' }));
   return useMutation({
     mutationFn: async (input: CloseProfitPeriodInput) => {
       if (!input.organizationId) throw new FinancialWorkflowError("Không xác định được tổ chức", 'failure', []);
-      return workflow.current.run(`${input.organizationId}:${input.periodMonth}`, "chốt lợi nhuận", async () => {
+      let resend = false;
+      return (input.reclose ? reclose : firstClose).current.run(`${input.organizationId}:${input.periodMonth}`, input.reclose ? "chốt lại lợi nhuận" : "chốt lợi nhuận", async progress => {
       if (!input.expectedSourceHash) throw new FinancialWorkflowError("Thiếu mã nguồn dữ liệu để chốt", 'failure', []);
       if (input.buildingIds.length === 0) throw new FinancialWorkflowError("Không có nhà để chốt", 'failure', []);
       const rpcName = input.reclose ? PROFIT_CLOSE_RPC.reclose : PROFIT_CLOSE_RPC.close;
@@ -590,12 +615,16 @@ export const useCloseProfitPeriod = () => {
         p_building_ids: input.buildingIds,
         p_adjustments: input.adjustments,
         p_reason: reason,
-        p_idempotency_key: `profit-${input.reclose ? "reclose" : "close"}-${crypto.randomUUID()}`,
+        p_idempotency_key: `profit-${input.reclose ? "reclose" : "close"}-${progress.requestKey}`,
         p_expected_source_hash: input.expectedSourceHash,
       });
-      if (error) throw error;
+      if (error) throw resend ? profitAlreadyRecorded(error, input.reclose ? 'chốt lại lợi nhuận' : 'chốt lợi nhuận', input.periodMonth) : error;
       return readProfitActionResult(data,input.buildingIds.length);
-    }, undefined, input.organizationId);
+    }, async pending => {
+      const verdict = profitResend(pending);
+      resend = verdict !== null;
+      return verdict;
+    }, input.organizationId, { meta: { [PROFIT_KEYED]: true } });
     },
     onSuccess: (result, input) => {
       invalidateProfitCloseQueries(qc);
@@ -687,7 +716,8 @@ export const useUnlockProfitMonth = () => {
   return useMutation({
     mutationFn: async (input: UnlockProfitMonthInput): Promise<UnlockProfitMonthResult> => {
       if (!input.organizationId) throw new FinancialWorkflowError("Không xác định được tổ chức", 'failure', []);
-      return workflow.current.run(`${input.organizationId}:${input.periodMonth}`, "mở khóa lợi nhuận", async () => {
+      let resend = false;
+      return workflow.current.run(`${input.organizationId}:${input.periodMonth}`, "mở khóa lợi nhuận", async progress => {
       if (!/^\d{4}-\d{2}-01$/.test(input.periodMonth)) {
         throw new FinancialWorkflowError("Kỳ mở khoá phải là ngày đầu tháng (YYYY-MM-01)", 'failure', []);
       }
@@ -701,12 +731,16 @@ export const useUnlockProfitMonth = () => {
         p_organization_id: input.organizationId,
         p_period_month: input.periodMonth,
         p_reason: reason,
-        p_idempotency_key: `profit-unlock-${crypto.randomUUID()}`,
+        p_idempotency_key: `profit-unlock-${progress.requestKey}`,
         p_building_ids: buildingIds,
       });
-      if (error) throw error;
+      if (error) throw resend ? profitAlreadyRecorded(error, 'mở khoá lợi nhuận', input.periodMonth) : error;
       return readProfitActionResult(data,buildingIds.length);
-    }, undefined, input.organizationId);
+    }, async pending => {
+      const verdict = profitResend(pending);
+      resend = verdict !== null;
+      return verdict;
+    }, input.organizationId, { meta: { [PROFIT_KEYED]: true } });
     },
     onSuccess: (result, input) => {
       invalidateProfitCloseQueries(qc);
@@ -716,7 +750,9 @@ export const useUnlockProfitMonth = () => {
       qc.invalidateQueries({ queryKey: ["income-cancel-eligibility"] });
       qc.invalidateQueries({ queryKey: ["flex-cancel-eligibility"] });
       const thang = `${input.periodMonth.slice(5, 7)}/${input.periodMonth.slice(0, 4)}`;
-      toast.success(
+      // Gửi lại sau một lần chưa rõ kết quả mà máy chủ trả kết quả cũ: báo đã mở ở lần trước, không báo như vừa mở.
+      if (result.idempotent_replay) toast.info(`Yêu cầu đã hoàn tất trước đó: ${result.affected_buildings} toà tháng ${thang} đã được mở khoá ở lần gửi trước. Phần đã phân bổ cho cổ đông đã bị xoá, PHẢI chốt lại sau khi sửa xong.`);
+      else toast.success(
         `Đã mở khoá ${result.affected_buildings} toà tháng ${thang} — sửa/ghi phiếu của tháng này được, lý do đã được lưu lại. Phần đã phân bổ cho cổ đông đã bị xoá, PHẢI chốt lại sau khi sửa xong.`,
       );
     },
@@ -730,7 +766,8 @@ export const useResetProfitPeriod = () => {
   return useMutation({
     mutationFn: async (input: ResetProfitPeriodInput) => {
       if (!input.organizationId) throw new FinancialWorkflowError("Không xác định được tổ chức", 'failure', []);
-      return workflow.current.run(`${input.organizationId}:${input.periodMonth}`, "đặt lại lợi nhuận", async () => {
+      let resend = false;
+      return workflow.current.run(`${input.organizationId}:${input.periodMonth}`, "đặt lại lợi nhuận", async progress => {
       if (!input.expectedStateHash) throw new FinancialWorkflowError("Thiếu mã trạng thái snapshot để đặt lại", 'failure', []);
       if (input.expectedSnapshotIds.length === 0) throw new FinancialWorkflowError("Không có snapshot để đặt lại", 'failure', []);
       if (input.reason.trim().length < 8 || input.reason.trim().length > 1000) {
@@ -740,16 +777,20 @@ export const useResetProfitPeriod = () => {
         p_organization_id: input.organizationId,
         p_period_month: input.periodMonth,
         p_reason: input.reason.trim(),
-        p_idempotency_key: `profit-reset-${crypto.randomUUID()}`,
+        p_idempotency_key: `profit-reset-${progress.requestKey}`,
         p_expected_state_hash: input.expectedStateHash,
         p_expected_snapshot_ids: [...input.expectedSnapshotIds].sort(),
         p_target_building_ids: input.targetBuildingIds
           ? [...input.targetBuildingIds].sort()
           : undefined,
       });
-      if (error) throw error;
+      if (error) throw resend ? profitAlreadyRecorded(error, 'đặt lại lợi nhuận', input.periodMonth) : error;
       return readProfitActionResult(data,input.targetBuildingIds?.length ?? input.expectedSnapshotIds.length);
-    }, undefined, input.organizationId);
+    }, async pending => {
+      const verdict = profitResend(pending);
+      resend = verdict !== null;
+      return verdict;
+    }, input.organizationId, { meta: { [PROFIT_KEYED]: true } });
     },
     onSuccess: (result,input) => {
       invalidateProfitCloseQueries(qc);

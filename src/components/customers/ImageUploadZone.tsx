@@ -1,15 +1,58 @@
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
+import { financialPending } from '@/lib/financialPending';
 import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useState, useCallback, useRef } from 'react';
-import { Upload, X, ImageIcon } from 'lucide-react';
+import { X, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { imageValidation } from '@/lib/vehicleValidation';
 import { uploadFile, type UploadImagePolicy } from '@/lib/storage';
 import { StorageImage } from '@/components/ui/storage-image';
-import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
+
+/**
+ * VÌ SAO Ô ẢNH KHÔNG DÙNG DẤU "CHỜ ĐỐI CHIẾU" (23/11/2026):
+ * Mỗi lần tải là một tên tệp MỚI (`<uid>/<thời điểm>-<stt>.<đuôi>`, upsert:false) và đường
+ * dẫn chỉ tới biểu mẫu khi tải xong. Lần tải hỏng giữa chừng — kể cả khi máy chủ lỡ lưu —
+ * chỉ để lại tệp mồ côi chưa gắn vào hồ sơ nào, nên tải lại luôn an toàn, không trùng gì.
+ * Trước đây ô này ghi dấu chờ đối chiếu bền trong trình duyệt theo người dùng + tên ô mà
+ * không có bước đối chiếu: một lần rớt mạng trên iPhone khoá ô "CCCD mặt trước" của người đó
+ * ở MỌI khách, tải lại trang hay đăng xuất cũng không gỡ được.
+ */
+const DAU_CHO_CU = 'image-upload-zone';
+function boDauChoCu(userId: string, bucket: string, label: string) {
+  try {
+    // 'actor-scope' là phạm vi persistentFinancialWorkflow dùng cho {scope:'actor'}.
+    const scope = { namespace: DAU_CHO_CU, userId, organizationId: 'actor-scope', businessKey: `${bucket}:${label}` };
+    const prior = financialPending.read(scope);
+    if (prior) financialPending.clearConfirmed(scope, prior.attemptId);
+  } catch {
+    // Không còn đường nào đọc dấu này nữa; đọc/gỡ hỏng không được chặn việc tải ảnh.
+  }
+}
+
+/**
+ * Định dạng ảnh nhận theo đúng nơi dùng (lỗi 9 audit Sale phòng 24/11/2026): ô nào khai `accept` có WebP
+ * (ảnh phòng — ảnh lưu từ Zalo/Android thường là WebP, kho R2 nhận và bộ nén vẫn xuất WebP) thì nhận WebP;
+ * ô mặc định và mọi ô ảnh giấy tờ (`identity-original`, giữ nguyên bytes để đọc QR) chỉ nhận PNG/JPEG.
+ */
+const ANH_GIAY_TO = ['image/png', 'image/jpeg', 'image/jpg'];
+const TEN_DINH_DANG: Record<string, string> = { 'image/png': 'PNG', 'image/jpeg': 'JPG', 'image/jpg': 'JPEG', 'image/webp': 'WEBP' };
+function dinhDangAnhNhan(accept: string, imagePolicy?: UploadImagePolicy): string[] {
+  const khai = accept.split(',').map(item => item.trim().toLowerCase()).filter(item => item.startsWith('image/') && item !== 'image/*');
+  const nhan = khai.length ? khai : imageValidation.acceptedFormats;
+  return imagePolicy === 'identity-original' ? nhan.filter(type => ANH_GIAY_TO.includes(type)) : nhan;
+}
+function loiDinhDangAnh(file: Pick<File, 'type'>, nhan: string[]): string | null {
+  if (nhan.includes(file.type.toLowerCase())) return null;
+  return `Chỉ chấp nhận file ${[...new Set(nhan.map(type => TEN_DINH_DANG[type] ?? type.replace('image/', '').toUpperCase()))].join(', ')}`;
+}
+
+const CHUA_TAI_XONG = 'Chưa tải xong ảnh — mạng chập chờn hoặc bị ngắt giữa chừng. Ảnh chưa gắn vào hồ sơ; bấm "Thử lại ảnh chưa tải" hoặc chọn lại ảnh.';
+function loiTaiAnh(error: unknown): string {
+  if (error instanceof FinancialWorkflowError) return error.outcome === 'failure' ? error.message : CHUA_TAI_XONG;
+  return recordWriteBlocked(error) ? CHUA_TAI_XONG : recordWriteMessage(error, 'tải ảnh');
+}
 
 interface ImageUploadZoneProps {
   label: string;
@@ -55,8 +98,6 @@ export default function ImageUploadZone({
   const inputRef = useRef<HTMLInputElement>(null);
   const zoneRef = useRef<HTMLDivElement>(null);
   const busy = useRef(false);
-  const guard = useRef(persistentFinancialWorkflow('image-upload-zone',{scope:'actor'}));
-  const [blocked,setBlocked]=useState(false);
   const [failedFiles,setFailedFiles]=useState<File[]>([]);
 
   const validateFile = useCallback(
@@ -65,19 +106,20 @@ export default function ImageUploadZone({
         if (!/\.mp4$/i.test(file.name)) return 'Video phải có đuôi .mp4';
         return file.size > 0 && file.size <= 32 * 1024 * 1024 ? null : 'Video MP4 tối đa 32 MB';
       }
-      const result = imageValidation.validate(file);
-      if (!result.valid) return result.error || 'File không hợp lệ';
+      const formatError = loiDinhDangAnh(file, dinhDangAnhNhan(accept, imagePolicy));
+      if (formatError) return formatError;
+      if (file.size > imageValidation.maxSizeBytes) return `Kích thước file tối đa ${imageValidation.maxSizeMB}MB`;
       if (maxSizeMB !== 10 && file.size > maxSizeMB * 1024 * 1024) {
         return `Kích thước file tối đa ${maxSizeMB}MB`;
       }
       return null;
     },
-    [maxSizeMB, allowRoomVideo, bucket]
+    [maxSizeMB, allowRoomVideo, bucket, accept, imagePolicy]
   );
 
   const handleUpload = useCallback(
     async (files: File[]) => {
-      if(busy.current || blocked || disabled)return;
+      if(busy.current || disabled)return;
       const picked=multiple?files:files.slice(0,1);if(!picked.length)return;
       const valid:File[]=[];const failed:File[]=[];const messages:string[]=[];
       for(const file of picked){const problem=validateFile(file);if(problem){failed.push(file);messages.push(`${file.name}: ${problem}`);}else valid.push(file);}
@@ -85,34 +127,37 @@ export default function ImageUploadZone({
       busy.current=true;setIsUploading(true);onUploadingChange?.(true);setUploadingCount(valid.length);setError(null);
       const urls:string[]=[];
       try {
-        for(let i=0;i<valid.length;i++){
-          const file=valid[i];
-          try{
-            const url=await guard.current.run(`${bucket}:${label}`,'tải ảnh',async(progress)=>{
-              const user=await getSessionUser();if(!user)throw new FinancialWorkflowError('Phiên đăng nhập đã hết. Đăng nhập lại trước khi tải ảnh.','failure',[]);
+        let user:Awaited<ReturnType<typeof getSessionUser>>=null;let noSession='Phiên đăng nhập đã hết. Đăng nhập lại trước khi tải ảnh.';
+        try{user=await getSessionUser();}catch(error){noSession=recordWriteMessage(error,'đọc phiên đăng nhập');}
+        if(!user){failed.push(...valid);messages.push(noSession);}
+        else{
+          boDauChoCu(user.id,bucket,label);
+          for(let i=0;i<valid.length;i++){
+            const file=valid[i];
+            try{
               const ext=file.name.split('.').pop()||'jpg';const path=`${user.id}/${Date.now()}-${i}.${ext}`;
               const saved=imagePolicy?await uploadFile(bucket,path,file,{imagePolicy}):await uploadFile(bucket,path,file);
-              if(typeof saved!=='string'||!saved.trim())throw new FinancialWorkflowError('Chưa xác nhận được đường dẫn ảnh. Giữ tệp để đối chiếu.','unknown',[{id:`${bucket}/${path}`,label:'Đường dẫn ảnh cần đối chiếu'}]);
-              return saved;
-            });
-            urls.push(url);
-          }catch(error){
-            failed.push(file);messages.push(`${file.name}: ${recordWriteMessage(error,'tải ảnh')}`);
-            if(recordWriteBlocked(error)){
-              setBlocked(true);const rest=valid.slice(i+1);failed.push(...rest);
-              if(rest.length)messages.push(`Chưa gửi: ${rest.map(item=>item.name).join(', ')}.`);
-              break;
+              if(typeof saved!=='string'||!saved.trim())throw new FinancialWorkflowError(CHUA_TAI_XONG,'unknown',[]);
+              urls.push(saved);
+            }catch(error){
+              failed.push(file);messages.push(`${file.name}: ${loiTaiAnh(error)}`);
+              // Kết quả chưa rõ thường là mất mạng: dừng các ảnh còn lại, giữ chúng để Thử lại.
+              if(recordWriteBlocked(error)){
+                const rest=valid.slice(i+1);failed.push(...rest);
+                if(rest.length)messages.push(`Chưa gửi: ${rest.map(item=>item.name).join(', ')}.`);
+                break;
+              }
             }
           }
         }
         if(urls.length){if(multiple&&onAddMany)onAddMany(urls);else onChange(urls[0]);}
         setFailedFiles(failed);
-        setError(messages.length?`Đã nhận đường dẫn ${urls.length}/${picked.length} ảnh. ${messages.join(' ')}`:null);
+        setError(messages.length?`${picked.length>1?`Đã tải ${urls.length}/${picked.length} ảnh. `:''}${messages.join(' ')}`:null);
         if(messages.length)zoneRef.current?.focus();
       }finally{busy.current=false;setIsUploading(false);onUploadingChange?.(false);setUploadingCount(0);}
 
     },
-    [bucket, label, imagePolicy, multiple, onAddMany, onChange, validateFile, blocked, disabled, onUploadingChange]
+    [bucket, label, imagePolicy, multiple, onAddMany, onChange, validateFile, disabled, onUploadingChange]
   );
 
   const handleDrop = useCallback(
@@ -142,13 +187,13 @@ export default function ImageUploadZone({
   );
 
   const handleRemove = useCallback(() => {
-    if(busy.current || blocked || disabled)return;
+    if(busy.current || disabled)return;
     onChange('');
-  }, [onChange, blocked, disabled]);
+  }, [onChange, disabled]);
 
   const { onMouseEnter: onPasteMouseEnter, onMouseLeave: onPasteMouseLeave } = useClipboardImagePaste({
     onFiles: (files) => handleUpload(files),
-    enabled: !value && !isUploading && !blocked && !disabled,
+    enabled: !value && !isUploading && !disabled,
     multiple,
   });
   const handleClipboardMouseEnter = useCallback(() => {
@@ -186,14 +231,14 @@ export default function ImageUploadZone({
           tabIndex={0}
           aria-label={label}
           aria-invalid={Boolean(error)}
-          aria-disabled={isUploading || blocked || disabled}
-          onKeyDown={event=>{if((event.key==='Enter'||event.key===' ')&&!busy.current&&!blocked&&!disabled){event.preventDefault();inputRef.current?.click();}}}
+          aria-disabled={isUploading || disabled}
+          onKeyDown={event=>{if((event.key==='Enter'||event.key===' ')&&!busy.current&&!disabled){event.preventDefault();inputRef.current?.click();}}}
           data-clipboard-image-paste-target="upload"
           data-clipboard-image-paste-active={isClipboardHover && !isUploading ? 'true' : undefined}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onClick={() => {if(!busy.current&&!blocked&&!disabled)inputRef.current?.click();}}
+          onClick={() => {if(!busy.current&&!disabled)inputRef.current?.click();}}
           onMouseEnter={handleClipboardMouseEnter}
           onMouseLeave={handleClipboardMouseLeave}
           className={cn(
@@ -201,7 +246,7 @@ export default function ImageUploadZone({
             isDragOver
               ? 'border-primary bg-primary/5'
               : 'border-gray-300 hover:border-gray-400 bg-gray-50',
-            (isUploading || blocked || disabled) && 'pointer-events-none opacity-60'
+            (isUploading || disabled) && 'pointer-events-none opacity-60'
           )}
         >
           {isUploading ? (
@@ -227,14 +272,14 @@ export default function ImageUploadZone({
         ref={inputRef}
         type="file"
         aria-label={`Chọn ${label}`}
-        disabled={isUploading || blocked || disabled}
+        disabled={isUploading || disabled}
         accept={accept}
         multiple={multiple}
         onChange={handleFileChange}
         className="hidden"
       />
       {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
-      {failedFiles.length>0&&!blocked&&<button type="button" disabled={isUploading || disabled} onClick={()=>{void handleUpload(failedFiles);}} className="text-sm underline">Thử lại ảnh chưa tải</button>}
+      {failedFiles.length>0&&<button type="button" disabled={isUploading || disabled} onClick={()=>{void handleUpload(failedFiles);}} className="text-sm underline">Thử lại ảnh chưa tải</button>}
     </div>
   );
 }

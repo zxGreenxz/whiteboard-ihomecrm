@@ -17,7 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { todayISO } from '@/lib/collect';
 import { validateMaterialUsageRows } from '@/lib/materialUsageValidation';
 import { focusFirstError } from '@/lib/formErrors';
-import { materialVoucherFailureMessage, materialVoucherRetryBlocked } from '@/lib/materialVoucherOutcome';
+import { materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 import { validateInputDrafts } from '@/lib/inputDraftValidation';
 
@@ -42,6 +42,7 @@ const newRow = (): ItemRow => ({
 });
 
 const NONE = '__none__';
+const NEW_DRAFT = '__new__';
 
 function useSuppliersList() {
   return useQuery({
@@ -75,30 +76,39 @@ export default function MaterialPurchaseFormDialog({ open, onOpenChange, editing
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [rootError, setRootError] = useState('');
-  const [blocked, setBlocked] = useState(false);
+  // Đợt 8 (sửa) và đợt 9 (tạo): kết quả chưa rõ không khoá form. Tạo phiếu dùng mã do trình duyệt sinh; `createDraft`
+  // cho hook biết các lần bấm của cùng bản nháp là cùng một phiếu (bấm lại sau khi sửa dòng vẫn không tạo phiếu thứ hai).
   const [saving, setSaving] = useState(false);
   const isEditing = !!editing;
+  // Bản nháp thuộc về đúng phiếu đang mở (NEW_DRAFT khi tạo). Sau một lần lưu hỏng, đóng / mở lại ĐÚNG phiếu đó thì giữ
+  // bản nháp để bấm lưu lại (dòng cũ có thể đã bị xoá trên máy chủ); mở phiếu khác thì nạp phiếu đó, không mang bản nháp
+  // và lời báo của phiếu trước sang (hộp này luôn gắn sẵn, chỉ `editing` đổi).
+  const draftOf = useRef<string | null>(null);
+  const createDraft = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
-    if (open && !rootError && !blocked) {
-      if (editing) {
-        setPurchaseDate(editing.purchase_date);
-        setSupplierId(editing.supplier_id ?? NONE);
-        setNotes(editing.notes ?? '');
-        setItems(
-          editing.items.map((it) => ({
-            key: it.id,
-            material_id: it.material_id,
-            quantity: String(it.quantity),
-            unit_price: String(it.unit_price),
-          })),
-        );
-      } else {
-        setPurchaseDate(todayISO());
-        setSupplierId(NONE);
-        setNotes('');
-        setItems([newRow()]);
-      }
+    if (!open) return;
+    const target = editing ? editing.id : NEW_DRAFT;
+    if (rootError && draftOf.current === target) return;
+    draftOf.current = target;
+    if (!editing) createDraft.current = crypto.randomUUID();
+    setRootError(''); setErrors({});
+    if (editing) {
+      setPurchaseDate(editing.purchase_date);
+      setSupplierId(editing.supplier_id ?? NONE);
+      setNotes(editing.notes ?? '');
+      // Phiếu đang không còn dòng nào (lần sửa trước xoá dòng cũ rồi chèn hỏng) vẫn mở với một dòng trống để nhập lại.
+      setItems(editing.items.length ? editing.items.map((it) => ({
+        key: it.id,
+        material_id: it.material_id,
+        quantity: String(it.quantity),
+        unit_price: String(it.unit_price),
+      })) : [newRow()]);
+    } else {
+      setPurchaseDate(todayISO());
+      setSupplierId(NONE);
+      setNotes('');
+      setItems([newRow()]);
     }
   }, [open, editing]);
 
@@ -118,7 +128,7 @@ export default function MaterialPurchaseFormDialog({ open, onOpenChange, editing
 
   const onSubmit = async () => {
     if(!validateInputDrafts(root.current))return;
-    if (blocked || saving || createMut.isPending || updateMut.isPending) return;
+    if (saving || createMut.isPending || updateMut.isPending) return;
     const rowErrors = validateMaterialUsageRows(items);
     items.forEach((row, index) => {
       if (!Number.isFinite(Number(row.unit_price)) || Number(row.unit_price) < 0) rowErrors[`materials.${index}.unit_price`] = 'Nhập đơn giá không âm.';
@@ -135,12 +145,11 @@ export default function MaterialPurchaseFormDialog({ open, onOpenChange, editing
       items: items.map(row => ({ material_id: row.material_id!, quantity: Number(row.quantity), unit_price: Number(row.unit_price) })) };
     try {
       if (editing) await updateMut.mutateAsync({ id: editing.id, input: payload });
-      else await createMut.mutateAsync(payload);
+      else await createMut.mutateAsync({ ...payload, draft: createDraft.current });
       onOpenChange(false);
     } catch (error) {
       const ids = error instanceof FinancialWorkflowError ? error.completed.map(step => step.id) : [];
       setRootError(materialVoucherFailureMessage(error, editing ? 'cập nhật phiếu nhập' : 'tạo phiếu nhập') + (ids.length ? ` ID cần đối chiếu: ${ids.join(', ')}.` : ''));
-      setBlocked(materialVoucherRetryBlocked(error));
     } finally { setSaving(false); }
   };
   const isSubmitting = saving || createMut.isPending || updateMut.isPending;
@@ -156,7 +165,7 @@ export default function MaterialPurchaseFormDialog({ open, onOpenChange, editing
         <div className="space-y-4">
           {rootError && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{rootError}</p>}
           {suppliersQuery.isError && <Button type="button" variant="outline" onClick={() => void suppliersQuery.refetch()}>Tải lại nhà cung cấp</Button>}
-          <fieldset disabled={isSubmitting || blocked} className="space-y-4">
+          <fieldset disabled={isSubmitting} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Ngày nhập *</Label>
@@ -271,9 +280,9 @@ export default function MaterialPurchaseFormDialog({ open, onOpenChange, editing
 
         <DialogFooter className="pt-3">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-            {blocked ? 'Đóng để đối chiếu' : 'Huỷ'}
+            Huỷ
           </Button>
-          <Button type="button" onClick={onSubmit} disabled={isSubmitting || blocked || suppliersQuery.isPending || suppliersQuery.isError}>
+          <Button type="button" onClick={onSubmit} disabled={isSubmitting || suppliersQuery.isPending || suppliersQuery.isError}>
             {isSubmitting ? 'Đang lưu…' : isEditing ? 'Cập nhật' : 'Tạo phiếu nhập'}
           </Button>
         </DialogFooter>

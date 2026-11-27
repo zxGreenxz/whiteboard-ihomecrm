@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { canUse } from '@/lib/permissionPages';
 import { compatibleDraftDocument, type ContractDraft } from '@/lib/contractDrafts';
 import { buildPreparedSigningCreation, type PreparedSigningCreation } from '@/lib/contractSigning';
@@ -31,6 +32,7 @@ import { ServicesSection } from "./contract-form/ServicesSection";
 import { FirstInvoicePreview } from "./contract-form/FirstInvoicePreview";
 import { ContractFormFooter } from "./contract-form/ContractFormFooter";
 import { useContractDraftEditor } from './contract-form/useContractDraftEditor';
+import { openCommissionUnlessExitLinked } from './contract-form/exitLinkedCommission';
 import { CommissionReasonField } from '@/components/income-expenses/CommissionReasonField';
 import { hasCommissionBasisChange } from '@/lib/commissionAudit';
 
@@ -87,6 +89,7 @@ export function ContractFormDialog({
     setSavedDraft(value); onSaved?.(value);
   } });
   const { data: permissions } = useMyPermissions();
+  const { selectedOrganizationId } = useOrganization();
   const canExport = (canExportProp ?? true) && canUse(permissions, 'contracts', 'print', state.selectedBuildingId || undefined);
   const canSign = canUse(permissions, 'contracts', 'create', state.selectedBuildingId || undefined);
   const canSaveDraft = !state.readonlySupportSchedule && canUse(permissions, 'contracts', editor.current ? 'edit' : 'create', state.selectedBuildingId || undefined);
@@ -106,20 +109,21 @@ export function ContractFormDialog({
     formRoot:()=>formRoot.current,
     contract,
     commissionChangeReason,
+    organizationId: selectedOrganizationId,
     onOpenChange,
     onCreated,
     onCreateRequest: editor.current ? async request => {
       if (!canSign) return;
       const current = editor.current;
       if (current && editor.matchesSavedDocument(request) && compatibleDraftDocument(current)) {
-        setSigning({ draft: current, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal) });
+        setSigning({ draft: current, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal + (state.exitSupport?.applied ?? 0), state.approvedOrphanTotal) });
         return;
       }
       if (!canSaveDraft || !canExport) {
         toast.error('Nội dung đã đổi hoặc chưa có tài liệu. Cần lưu và in bản nháp trước khi ký.'); return;
       }
       const saved = await editor.persist({ signingRequest: request });
-      if (saved) setPrintBeforeSigning({ draft: saved, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal) });
+      if (saved) setPrintBeforeSigning({ draft: saved, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal + (state.exitSupport?.applied ?? 0), state.approvedOrphanTotal) });
     } : undefined,
   });
   const { form, isEditMode, onInvalid } = state;
@@ -168,7 +172,7 @@ export function ContractFormDialog({
               {state.partialSyncIssue && <Alert variant="destructive" role="alert"><AlertDescription>{state.partialSyncIssue}</AlertDescription></Alert>}
               <fieldset disabled={pending || !!signing || !!printBeforeSigning || !!state.readonlySupportSchedule} className="space-y-6">
               {/* ===== Section 1: Thông tin chung ===== */}
-              <GeneralSection {...state} buildingDisabled={!!editor.current} />
+              <GeneralSection {...state} buildingDisabled={!!editor.current} exitHoldNotice={!isEditMode} />
 
               {/* ===== Section 2: Khách hàng ===== */}
               <CustomersSection {...state} />
@@ -244,7 +248,8 @@ export function ContractFormDialog({
     {signing && <Suspense fallback={<p role="status">Đang mở xác nhận ký…</p>}>
       <SigningDialog open draft={signing.draft} preparedCreation={signing.prepared} canSign={canSign} canPrint={canExport}
         onOpenChange={value => { if (!value) setSigning(undefined); }} onSigned={result => {
-          setSigning(undefined); onOpenChange(false); onCreated?.(result.contract_id); state.setCommissionContractId(result.contract_id);
+          setSigning(undefined); onOpenChange(false); onCreated?.(result.contract_id);
+          void openCommissionUnlessExitLinked({ contractId: result.contract_id, organizationId: selectedOrganizationId, openCommission: state.setCommissionContractId });
         }} />
     </Suspense>}
 

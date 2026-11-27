@@ -4,8 +4,9 @@ import type { ConfirmContractReturnInput, FinalizeContractExitCaseInput, UpdateC
 
 const mocks=vi.hoisted(()=>({
   org:'00000000-0000-4000-8000-000000000001' as string|null,
-  rpc:vi.fn(),invalidate:vi.fn(),error:vi.fn(),success:vi.fn(),
+  rpc:vi.fn(),invalidate:vi.fn(),error:vi.fn(),success:vi.fn(),meter:vi.fn(),
 }));
+vi.mock('@/lib/meter-capture/service',()=>({exitWithMeterSources:mocks.meter}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:mocks.org})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:mocks.rpc}}));
 vi.mock('sonner',()=>({toast:{error:mocks.error,success:mocks.success}}));
@@ -27,8 +28,8 @@ describe('selected organization at the exit-case hook boundary',()=>{
   });
   it('injects the selected org into all mutation DTOs and distinguishes pending/finalized success',async()=>{
     const confirm=useConfirmContractReturn() as unknown as MutationOptions<ConfirmContractReturnInput>;
-    await confirm.mutationFn({contractId:id,expectedContractUpdatedAt:'2026-09-27T00:00:00Z',idempotencyKey:'return-key-0001',actualMoveOutOn:'2026-09-28',initialKind:'EARLY_RETURN',settlementMode:'DEFERRED',returnNote:'Khách chuyển nhà.'});
-    expect(mocks.rpc).toHaveBeenLastCalledWith('confirm_contract_return_v1',expect.objectContaining({p_organization_id:row.organization_id,p_settlement:null,p_return_note:'Khách chuyển nhà.'}));
+    await confirm.mutationFn({contractId:id,expectedContractUpdatedAt:'2026-09-27T00:00:00Z',idempotencyKey:'return-key-0001',actualMoveOutOn:'2026-09-28',initialKind:'EARLY_RETURN',settlementMode:'DEFERRED',returnNote:'Khách chuyển nhà.',earlyTerms:{earlyReason:'LANDLORD_AGREEMENT'}});
+    expect(mocks.rpc).toHaveBeenLastCalledWith('confirm_contract_return_v2',expect.objectContaining({p_organization_id:row.organization_id,p_settlement:null,p_return_note:'Khách chuyển nhà.',p_early_terms:{early_reason:'LANDLORD_AGREEMENT'}}));
     await confirm.onSuccess(row);expect(mocks.success).toHaveBeenLastCalledWith('Đã trả phòng • Chờ quyết toán');
     const finalize=useFinalizeContractExitCase() as unknown as MutationOptions<FinalizeContractExitCaseInput>;
     await finalize.mutationFn({caseId:id,expectedVersion:1,idempotencyKey:'settle-key-0001',currentKind:'FORFEIT',settlement:{}});
@@ -38,6 +39,26 @@ describe('selected organization at the exit-case hook boundary',()=>{
     await kind.mutationFn({caseId:id,expectedVersion:1,idempotencyKey:'kind-key-0001',kind:'FORFEIT',reason:'Facts'});
     expect(mocks.rpc).toHaveBeenLastCalledWith('update_contract_exit_case_kind_v1',expect.objectContaining({p_organization_id:row.organization_id,p_reason:'Facts'}));
     expect(finalize.retry).toBe(false);
+  });
+  it('trả phòng trước hạn + quyết toán ngay kèm ảnh đồng hồ đi qua writer v2 (giữ trường hợp), không còn bị chặn ở trình duyệt',async()=>{
+    mocks.meter.mockResolvedValue({...row,state:'FINALIZED'});
+    const source={meterId:id,contractId:id,month:'2026-09',readingDate:'2026-09-28',purpose:'MOVE_OUT',startReadingId:null,startVersion:'1',
+      endReadingId:id,endVersion:'1',previousReading:'10',currentReading:'20',sortOrder:0};
+    const confirm=useConfirmContractReturn() as unknown as MutationOptions<ConfirmContractReturnInput>;
+    await confirm.mutationFn({contractId:id,expectedContractUpdatedAt:'2026-09-27T00:00:00Z',idempotencyKey:'return-key-0002',actualMoveOutOn:'2026-09-28',
+      initialKind:'EARLY_RETURN',settlementMode:'IMMEDIATE',returnNote:'Khách chuyển nhà.',earlyTerms:{earlyReason:'LANDLORD_AGREEMENT'},
+      settlement:{depositRefund:0,extraCharges:[{kind:'ELECTRIC',description:'Điện',amount:35000,previous_reading:10,current_reading:20,unit_price:3500,meter_source:source}]}} as ConfirmContractReturnInput);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.meter).toHaveBeenCalledWith(row.organization_id,'confirm_contract_return_v2',
+      expect.objectContaining({p_initial_kind:'EARLY_RETURN',p_settlement_mode:'IMMEDIATE',p_early_terms:{early_reason:'LANDLORD_AGREEMENT'}}),[source]);
+    // Hết hạn hợp đồng kèm ảnh đồng hồ: vẫn writer v1, không gửi p_early_terms (jsonb null sẽ làm v2 từ chối).
+    await confirm.mutationFn({contractId:id,expectedContractUpdatedAt:'2026-09-27T00:00:00Z',idempotencyKey:'return-key-0003',actualMoveOutOn:'2026-09-28',
+      initialKind:'NATURAL_EXPIRY',settlementMode:'IMMEDIATE',returnNote:'Hết hạn.',
+      settlement:{depositRefund:0,extraCharges:[{kind:'ELECTRIC',description:'Điện',amount:35000,previous_reading:10,current_reading:20,unit_price:3500,meter_source:source}]}} as ConfirmContractReturnInput);
+    const [, writer, v1Args] = mocks.meter.mock.calls.at(-1)!;
+    expect(writer).toBe('confirm_contract_return_v1');
+    expect(v1Args).not.toHaveProperty('p_early_terms');
+    expect(v1Args).toMatchObject({p_initial_kind:'NATURAL_EXPIRY'});
   });
   it('denies mutation with no selected organization and maps CAS failure to an actionable toast',async()=>{
     mocks.org=null;

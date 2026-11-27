@@ -11,10 +11,10 @@ import SheetDraftStatus from './SheetDraftStatus';
 
 export default function DisplaySettingsTab({ onBusyChange }: { onBusyChange?: (busy: boolean) => void }) {
   const sheet = useRoomListSheetDraft(onBusyChange);
-  const { settings, hotlines: hotlineQuery, root, form, days, errors, writeError, canSave, set, changeDays, rooms } = sheet;
+  const { settings, root, form, days, errors, writeError, canSave, set, changeDays, rooms } = sheet;
 
   return (
-    <div ref={root}><QueryRegion label="cài đặt hiển thị" queries={sheet.canManageSettings ? [settings,hotlineQuery] : []} skeleton="detail" rows={4}><Card>
+    <div ref={root}><QueryRegion label="cài đặt hiển thị" queries={sheet.canManageSettings ? [settings] : []} skeleton="detail" rows={4}><Card>
       <CardHeader>
         <CardTitle>Bảng phòng trống — điền như Excel</CardTitle>
         <CardDescription>

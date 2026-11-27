@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {FinancialWorkflowError,isConfirmedFinancialRejection} from '@/lib/financialWorkflow';
+import {FinancialAlreadyRecordedError,FinancialWorkflowError,isConfirmedFinancialRejection} from '@/lib/financialWorkflow';
 import {financialPending} from '@/lib/financialPending';
 import {getSessionUser} from '@/lib/authSession';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -35,26 +35,52 @@ export function useContractSigning(organizationId:string,draftId?:string) {
     if(!selectedOrganizationId||selectedOrganizationId!==organizationId)throw new FinancialWorkflowError('Tổ chức đang chọn đã đổi. Mở lại bản nháp trong đúng tổ chức.','failure',[]);
     const target=draftId??input?.source.draftId;if(!target||input&&input.source.draftId!==target)throw new FinancialWorkflowError('Chưa xác định được đúng bản nháp để ký. Tải lại bản nháp.','failure',[]);
     if(input)buildContractSigningArgs(organizationId,input);
-    return workflow.run(target,'ghi nhận ký hợp đồng',async progress=>{
-      if(!input)throw new FinancialWorkflowError('Không có lần ký đang chờ đối chiếu. Tải lại bản nháp.','failure',[]);
+    // Cách B (đợt 7): sign_and_checkin_contract_draft_v1 (production 26/11/2026) khoá phòng FOR UPDATE, khoá công ty và bản
+    // nháp FOR UPDATE TRƯỚC khi tra lần ký; mỗi bản nháp chỉ có MỘT lần ký (contract_draft_signings_draft_id_key): cùng nội
+    // dung ⇒ trả lại lần ký cũ, khác nội dung ⇒ 23505. Lần bấm sau đọc lần ký của bản nháp; chưa có thì gửi lại đúng mã.
+    let resend=false;
+    return workflow.run<ContractSigning>(target,'ghi nhận ký hợp đồng',async progress=>{
+      if(!input)throw new FinancialWorkflowError('Chưa thấy lần ký đã gửi trên máy chủ. Kiểm tra thông tin rồi bấm «Xác nhận đã ký và nhận phòng» để gửi lại; mỗi bản nháp chỉ được ghi nhận ký một lần.','failure',[]);
       setPendingRequestId(progress.requestKey);
       const record=(raw:unknown)=>{const id=raw&&typeof raw==='object'?(raw as {contract_id?:unknown}).contract_id:undefined;if(typeof id==='string'&&id&&!progress.completed.some(step=>step.id===id))progress.completed.push({id,label:`Đã nhận hợp đồng chính thức ${id}`});};
-      const raw=await signAndCheckinDraft(organizationId,{...input,requestId:progress.requestKey},record);record(raw);
+      let raw:unknown;
+      try{raw=await signAndCheckinDraft(organizationId,{...input,requestId:progress.requestKey},record);}
+      catch(error){
+        // Gửi lại mà máy chủ báo trùng: lần ký cũ của bản nháp đã ghi (lệnh cũ tới sau lần đọc) với nội dung khác lần này.
+        if(resend&&String((error as {code?:unknown}|null)?.code??'')==='23505'){
+          const prior=await readContractDraftSigning(organizationId,target).then(snapshot=>snapshot.signing,()=>null);
+          if(prior&&prior.draft_id===target)throw new FinancialAlreadyRecordedError(`Bản nháp đã được ghi nhận ký ở lần gửi trước (hợp đồng ${prior.contract_number}) với thông tin lúc đó. Tải lại bản nháp để xem kết quả.`,[prior.contract_id]);
+        }
+        throw error;
+      }
+      record(raw);
       const signing=contractSigningSchema.parse(raw);
       if(signing.organization_id!==organizationId||signing.draft_id!==target||signing.revision!==input.source.revision||signing.document_id!==input.source.documentId||signing.document_sha256!==input.source.documentSha256)throw new TypeError('Chưa xác nhận được đúng nguồn ký và hợp đồng chính thức.');
       return signing;
     },async(pending,progress)=>{
-      const snapshot=await readContractDraftSigning(organizationId,target);if(!snapshot.signing)return null;
-      const signing=contractSigningSchema.parse(snapshot.signing);
-      if(signing.organization_id!==organizationId||signing.draft_id!==target||signing.request_id!==(pending.requestKey??pending.attemptId))return null;
-      progress.completed.push({id:signing.contract_id,label:`Đã đối chiếu hợp đồng ${signing.contract_number}`});return {result:signing};
+      const snapshot=await readContractDraftSigning(organizationId,target);
+      if(snapshot.signing){
+        const signing=contractSigningSchema.parse(snapshot.signing);
+        if(signing.organization_id!==organizationId||signing.draft_id!==target)return null;
+        if(signing.request_id===(pending.requestKey??pending.attemptId)){
+          progress.completed.push({id:signing.contract_id,label:`Đã đối chiếu hợp đồng ${signing.contract_number}`});return {result:signing};
+        }
+        // Bản nháp đã được ký bởi một lần gửi khác (máy khác, hoặc một mã yêu cầu khác): lần này không ký nữa.
+        return {outcome:'already-written',message:`Bản nháp đã được ghi nhận ký (hợp đồng ${signing.contract_number}). Tải lại bản nháp để xem kết quả.`,recordIds:[signing.contract_id]};
+      }
+      // Hàng rào biên nhận: lần trước đã nhận mã hợp đồng chính thức (biên nhận lệch nguồn) mà nay không thấy lần ký nào của
+      // bản nháp. Không gửi lại; giữ dấu và mã để đối chiếu qua hộp cảnh báo.
+      if(pending.completedIds.length)return null;
+      resend=true;
+      return {outcome:'not-written',serverDedupesRequestKey:true};
     },organizationId);
   },onSuccess:async signing=>{
     setPendingRequestId(null);queryClient.setQueryData(['contract-draft-signing',organizationId,signing.draft_id],(current:{server_today?:string}|undefined)=>({...current,signing}));
-    await Promise.all(['contract-drafts','contracts','rooms','my-available-rooms','room-reservations','contract-draft-signing','contract-transfer-links','contract-commission-followups'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
+    await Promise.all(['contract-drafts','contracts','rooms','my-available-rooms','orphan-deposit-vouchers','room-reservations','contract-draft-signing','contract-exit-early-terms','sale-room-inventory','contract-commission-followups'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
     toast.success(`Đã ghi nhận ký và nhận phòng · ${signing.contract_number}`);
-  },onError:(error,input)=>{
-    if(input && isConfirmedFinancialRejection(error))setPendingRequestId(null);
+  },onError:error=>{
+    // Từ chối rõ (kể cả «đã ghi nhận ở lần trước» và lần đối chiếu không thấy lần ký nào): dấu đã gỡ, nút ký không còn chờ.
+    if(isConfirmedFinancialRejection(error))setPendingRequestId(null);
     toast.error(signingErrorMessage(error));
   }});
   return {...mutation,pendingRequestId,isPending:mutation.isPending||hydrating};

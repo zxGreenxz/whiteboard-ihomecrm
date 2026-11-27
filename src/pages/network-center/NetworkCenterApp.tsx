@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes, useMatch } from "react-router-dom";
 
 import { BuildingWorkspace } from "@/components/network-center/BuildingWorkspace";
@@ -12,6 +13,9 @@ import {
 } from "@/components/network-center/NetworkCenterStates";
 import { useNetworkCenter, type NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
 import "./networkCenter.css";
+
+// Cài đặt cảnh báo camera cấp công ty: chunk riêng, chỉ tải khi mở trang.
+const CameraAlertSettingsRoute = lazy(() => import("@/components/network-center/camera-alerts/CameraAlertSettingsRoute"));
 
 export default function NetworkCenterApp() {
   const buildingMatch = useMatch("/network-center/buildings/:buildingId");
@@ -52,6 +56,7 @@ export default function NetworkCenterApp() {
       <Routes>
         <Route index element={<FleetOverview controller={controller} />} />
         <Route path="buildings/:buildingId" element={<BuildingRoute controller={controller} />} />
+        <Route path="camera-alerts" element={<Suspense fallback={<NetworkCenterSectionLoading />}><CameraAlertSettingsRoute controller={controller} /></Suspense>} />
         <Route path="*" element={<NetworkCenterNotFound />} />
       </Routes>
     </NetworkCenterShell>

@@ -1,4 +1,4 @@
-import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -70,7 +70,7 @@ interface EditLeadDialogProps {
 
 export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [blocked,setBlocked]=useState(false);
+  // Đợt 8 (luật 5): sửa / xoá khách hẹn ghi lặp lại được, nên kết quả chưa rõ chỉ báo (giữ bản nháp và mã), không khoá nút.
   const busy=useRef(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteFailure,setDeleteFailure]=useState('');
@@ -107,8 +107,8 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
 
   useEffect(() => {
     if (lead) {
-      if(draftKey.current===lead.id && (form.formState.isDirty || form.formState.errors.root?.server || blocked || deleteFailure))return;
-      draftKey.current=lead.id;setBlocked(false);setDeleteFailure('');
+      if(draftKey.current===lead.id && (form.formState.isDirty || form.formState.errors.root?.server || deleteFailure))return;
+      draftKey.current=lead.id;setDeleteFailure('');
       form.reset({
         customer_name: lead.customer_name || "",
         phone: lead.phone || "",
@@ -128,7 +128,7 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
   }, [lead, form]);
 
   const onSubmit = async (data: LeadFormValues) => {
-    if(blocked || busy.current || updateLead.isPending || sourceBlocked)return;
+    if(busy.current || updateLead.isPending || sourceBlocked)return;
     busy.current=true;form.clearErrors('root.server');
     try {
       await updateLead.mutateAsync({
@@ -146,20 +146,19 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
       } as any);
       onOpenChange(false);
     } catch (error) {
-      setBlocked(recordWriteBlocked(error));
       form.setError('root.server',{type:'server',message:recordWriteMessage(error,'cập nhật khách hẹn')});
     } finally {busy.current=false;}
   };
 
   const handleDelete = async () => {
-    if(blocked || busy.current || deleteLead.isPending || updateLead.isPending)return;
+    if(busy.current || deleteLead.isPending || updateLead.isPending)return;
     busy.current=true;
     try {
       await deleteLead.mutateAsync(lead.id);
       setShowDeleteDialog(false);
       onOpenChange(false);
     } catch (error) {
-      setBlocked(recordWriteBlocked(error));setDeleteFailure(recordWriteMessage(error,'xoá khách hẹn'));
+      setDeleteFailure(recordWriteMessage(error,'xoá khách hẹn'));
     } finally {busy.current=false;}
   };
 
@@ -179,7 +178,7 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
               <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
               {form.formState.errors.root?.server?.message && <p role="alert" className="text-destructive">{form.formState.errors.root.server.message}</p>}
               {sourceBlocked && <div role="alert" className="text-destructive">Chưa tải đủ toà nhà hoặc căn hộ. <Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void roomsQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
-              <fieldset disabled={updateLead.isPending || blocked || sourceBlocked} className="space-y-4">
+              <fieldset disabled={updateLead.isPending || sourceBlocked} className="space-y-4">
                 {/* Tên & SĐT */}
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
@@ -427,7 +426,7 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                     >
                       Hủy
                     </Button>
-                    <Button type="submit" disabled={updateLead.isPending || blocked || sourceBlocked}>
+                    <Button type="submit" disabled={updateLead.isPending || sourceBlocked}>
                       {updateLead.isPending ? "Đang lưu..." : "Lưu thay đổi"}
                     </Button>
                   </div>
@@ -451,7 +450,7 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
             <AlertDialogCancel>Hủy</AlertDialogCancel>
             {deleteFailure && <p role="alert" className="text-destructive">{deleteFailure}</p>}
             <AlertDialogAction
-              disabled={deleteLead.isPending || blocked}
+              disabled={deleteLead.isPending}
               onClick={event=>{event.preventDefault();void handleDelete();}}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

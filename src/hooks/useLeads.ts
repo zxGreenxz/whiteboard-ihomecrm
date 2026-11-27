@@ -1,6 +1,7 @@
-import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {FinancialWorkflowError} from '@/lib/financialWorkflow';
-import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {FinancialAlreadyRecordedError,FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {confirmedRecordId,recordWriteMessage,repeatableWrite,settleZeroRowDelete} from '@/lib/recordWriteOutcome';
+// Nạp động: hai module của đợt 4 chỉ cần lúc tạo, nạp tĩnh từ nhiều trang làm Vite tách thành chunk dùng chung và
+// thêm tên chunk vào danh sách phụ thuộc của chunk entry (cửa bundle-inventory).
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -120,34 +121,54 @@ export const useLead = (id: string) => {
   });
 };
 
+/**
+ * Dấu khoá chung của bản trước đợt 4 (`useCreateLead`/`create`): đọc một lần, tra khách hẹn người này tạo quanh giờ
+ * kẹt (chưa xoá), gỡ dấu. Khách hẹn đang tạo giống một khách hẹn như thế (cùng SĐT; không có SĐT thì cùng tên) thì báo
+ * «có thể đã tạo» kèm mã.
+ */
+async function checkLegacyLeadPending(matchKeys: readonly string[]): Promise<void> {
+  const {legacyWindow,settleLegacyPending}=await import('@/lib/legacyPendingExit');
+  const {personMatchKeys}=await import('@/lib/clientRecordCreate');
+  const settled = await settleLegacyPending({ namespace: 'useCreateLead', businessKey: 'create' }, async (pending, context) => {
+    const { from, to } = legacyWindow(pending);
+    const { data, error } = await supabase.from('leads').select('id, customer_name, phone, created_at')
+      .eq('user_id', context.userId).eq('organization_id', context.organizationId).is('deleted_at', null)
+      .gte('created_at', from).lte('created_at', to).order('created_at', { ascending: false }).limit(50);
+    if (error || !Array.isArray(data)) throw error ?? new Error('Chưa đọc được khách hẹn quanh giờ kẹt.');
+    return data as { id: string; customer_name: string | null; phone: string | null }[];
+  });
+  const match = settled?.verdict.find(candidate => personMatchKeys({ name: candidate.customer_name, phone: candidate.phone }).some(key => matchKeys.includes(key)));
+  if (match) throw new FinancialAlreadyRecordedError(`Có thể khách hẹn ${match.customer_name || ''} đã được tạo ở lần gửi trước bị kẹt (mã ${match.id}). Mở danh sách khách hẹn để kiểm tra; bấm tạo lại nếu vẫn muốn tạo thêm.`.replace(/\s+/g, ' '), [match.id]);
+}
+
 // Create lead
 export const useCreateLead = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
-    mutationFn: async (data: LeadInsert) => {
+    // Không còn khoá chung (đợt 4): mã khách hẹn do trình duyệt sinh, gửi lại cùng mã cho cùng khách hẹn; khoá chính
+    // của `leads` chặn bản ghi thứ hai. Một lần kẹt chỉ liên quan đúng khách hẹn đó.
+    mutationFn: async (data: LeadInsert): Promise<Lead & { replayed?: boolean }> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
-
-      return persistentFinancialWorkflow('useCreateLead').run('create', 'tạo khách hẹn', async () => {
-      const { data: lead, error } = await supabase
-        .from("leads")
-        .insert(withOrg({
-          ...data,
-          user_id: user.id,
-        }, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      confirmedRecordId(lead,'tạo khách hẹn');
-      return lead;
-      }, undefined, selectedOrganizationId);
+      const payload = withOrg({ ...data, user_id: user.id } as Record<string, unknown>, selectedOrganizationId);
+      delete payload.id;
+      const person = { name: data.customer_name, phone: data.phone };
+      const {createWithClientMemory,personMatchKeys}=await import('@/lib/clientRecordCreate');
+      await checkLegacyLeadPending(personMatchKeys(person));
+      const { row, replayed } = await createWithClientMemory<Lead>({
+        table: 'leads', userId: user.id, organizationId: payload.organization_id, payload, person,
+        personOf: row => ({ name: row.customer_name, phone: row.phone }),
+        operation: 'tạo khách hẹn', describe: row => `Khách hẹn ${String(row.customer_name ?? '')}`.trim(),
+      });
+      return replayed ? { ...row, replayed } : row;
     },
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success(`Đã tạo khách hẹn ${lead.customer_name || ''}`.trim());
+      toast.success(lead.replayed
+        ? `Khách hẹn ${lead.customer_name || ''} đã có trên máy chủ (lần gửi trước hoặc lần gửi mất phản hồi đã tạo); không tạo thêm.`.replace(/\s+/g, ' ')
+        : `Đã tạo khách hẹn ${lead.customer_name || ''}`.trim());
     },
     onError: (error: Error) => {
       queryClient.invalidateQueries({queryKey:['leads']});
@@ -163,19 +184,24 @@ export const useUpdateLead = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // Đợt 8 (luật 5): đặt giá trị theo mã, chạy lại cho cùng kết quả: không giữ dấu «chờ đối chiếu»; kết quả chưa rõ báo
+    // rõ và cho lưu lại. Khớp 0 dòng (RLS, khách hẹn đã mất) là PGRST116: từ chối rõ.
     mutationFn: async ({ id, ...data }: LeadUpdate & { id: string }) => {
-      return persistentFinancialWorkflow('useUpdateLead').run(id, 'cập nhật khách hẹn', async () => {
-      const { data: lead, error } = await supabase
-        .from("leads")
-        .update(data)
-        .eq("id", id)
-        .select()
-        .single();
+      const lead = await repeatableWrite('cập nhật khách hẹn', async () => {
+        const { data: lead, error } = await supabase
+          .from("leads")
+          .update(data)
+          .eq("id", id)
+          .select()
+          .single();
 
-      if (error) throw error;
-      confirmedRecordId(lead,'cập nhật khách hẹn',id);
-      return lead;
+        if (error) throw error;
+        confirmedRecordId(lead,'cập nhật khách hẹn',id);
+        return lead;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'useUpdateLead', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần ghi sau gỡ lại. */ }
+      return lead;
     },
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
@@ -195,21 +221,31 @@ export const useDeleteLead = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      return persistentFinancialWorkflow('useDeleteLead').run(id, 'xoá khách hẹn', async () => {
-      const { data: lead, error } = await supabase
-        .from("leads")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id).select('id').single();
+    // Đợt 8 (luật 5): xoá mềm theo mã lặp lại được, không giữ dấu. Chỉ xoá khách hẹn còn sống: lần bấm lại sau một lần
+    // mất phản hồi khớp 0 dòng (không đổi giờ xoá), đọc lại thấy đã xoá ⇒ thành công «đã xoá trước đó»; còn nguyên ⇒
+    // máy chủ không cho xoá (RLS) ⇒ báo không có quyền.
+    mutationFn: async (id: string): Promise<{ id: string; alreadyDeleted?: boolean }> => {
+      const result = await repeatableWrite('xoá khách hẹn', async () => {
+        const { data, error } = await supabase
+          .from("leads")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", id).is('deleted_at', null).select('id');
 
-      if (error) throw error;
-      confirmedRecordId(lead,'xoá khách hẹn',id);
-      return lead;
+        if (error) throw error;
+        if (Array.isArray(data) && data.length === 0) {
+          await settleZeroRowDelete('xoá khách hẹn', () => supabase.from('leads').select('id, deleted_at').eq('id', id).maybeSingle());
+          return { id, alreadyDeleted: true };
+        }
+        confirmedRecordId(Array.isArray(data) && data.length === 1 ? data[0] : null,'xoá khách hẹn',id);
+        return { id };
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'useDeleteLead', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
+      return result;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success('Đã xóa khách hẹn');
+      toast.success(result.alreadyDeleted ? 'Khách hẹn đã được xoá trước đó.' : 'Đã xóa khách hẹn');
     },
     onError: (error: Error) => {
       queryClient.invalidateQueries({queryKey:['leads']});

@@ -20,7 +20,8 @@ describe('actual writer smoke intents',()=>{
  it('zero MOVE_OUT starts at the invoice endpoint and uses DEBT without cash, credit or refund operations',()=>{
   const source=financialSource(f,{...meter,start:point('120.25',id(10),'invoice-end-version'),end:point('120.25',id(11),'exit-version')},'MOVE_OUT');
   const request=zeroMoveOutRequest(f,source,'2026-10-23T01:00:00Z',20000);
-  expect(request).toMatchObject({action:'exit',rpcName:'confirm_contract_return_v1'});
+  expect(request).toMatchObject({action:'exit',rpcName:'confirm_contract_return_v2'});
+  expect(request.arguments).toMatchObject({p_initial_kind:'EARLY_RETURN',p_settlement_mode:'IMMEDIATE',p_early_terms:{early_reason:'LANDLORD_AGREEMENT'}});
   expect(request.arguments.p_settlement).toMatchObject({shortfall_mode:'DEBT',outstanding_debt:20000,deposit_refund:0,penalty_fee:0,excess_rent:0,receipt_account_id:null,refund_items:[],extra_charges:[{amount:0,previous_reading:120.25,current_reading:120.25,meter_source:source}]});
   expect(request.arguments.p_meter_boundary).toMatchObject({state:'VERIFIED',readings:[{meter_id:f.meterId,reading:120.25}]});
   expect(()=>financialSource(f,meter,'MOVE_OUT')).toThrow();

@@ -20,6 +20,46 @@ export interface RoomSaleLockInfo {
   lockedByMe: boolean;
 }
 
+/**
+ * Hồ sơ trả phòng trước hạn "Nhờ sale / Tự tìm khách sang phòng" còn chờ hợp đồng khách nhận — chỉ nhân viên
+ * trong app thấy. `active` = còn hạn giữ (máy chủ che phòng thành "rented" như Lock); hết hạn thì phòng rao lại
+ * nhưng hồ sơ vẫn chờ. `version` là phiên bản hồ sơ trường hợp, gửi kèm khi Mở bán lại / Giữ tiếp.
+ */
+export interface RoomExitHoldInfo {
+  exitCaseId: string;
+  version: number;
+  earlyReason: 'SALE_ASSISTED' | 'SELF_FOUND';
+  saleName: string | null;
+  oldCustomerName: string | null;
+  oldContractNumber: string | null;
+  actualMoveOutOn: string;
+  recordedByName: string;
+  recordedByMe: boolean;
+  holdUntil: string;
+  active: boolean;
+  canManage: boolean;
+}
+
+/**
+ * Phòng đang giữ bằng phiếu cọc chờ hợp đồng (Sale phòng đợt 3) — chỉ nhân viên trong app thấy (khoá deposit_hold của
+ * get_sale_room_inventory_v1 / get_my_available_rooms). Phiếu cũ nhất của phòng; `roomOccupied` = phòng còn khách ở.
+ */
+export interface RoomDepositHoldInfo {
+  /** 'hold' = đợt giữ chỗ đang mở (#499); 'voucher' = phiếu cọc treo chưa nối đợt (dữ liệu cũ). */
+  source: 'hold' | 'voucher';
+  holdId: string | null;
+  voucherId: string | null;
+  code: string | null;
+  codes: string[];
+  voucherDate: string;
+  payerName: string | null;
+  heldDays: number;
+  voucherCount: number;
+  roomOccupied: boolean;
+  /** false: người xem không có deposits.view ở toà — máy chủ bỏ người gửi, mã phiếu, id; chỉ còn cờ + ngày. */
+  detail: boolean;
+}
+
 export interface Room extends Box {
   id: string;
   no: number;
@@ -36,6 +76,7 @@ export interface Room extends Box {
   amenities: string[];
   availDate: string | null;
   saleFact?: RoomSaleFact;
+  hasDepositHold?: boolean;
   imgCount: number;
   phClass: string;
   images?: string[];   // ảnh thật từ Supabase; rỗng -> chưa có ảnh
@@ -51,6 +92,8 @@ export interface Room extends Box {
   passAvailDate?: string | null;  // "dd/mm" — ngày dự kiến trống (tuỳ chọn)
   passContactManager?: boolean;   // true = khách ẩn SĐT, chỉ "Liên hệ quản lý" (dùng SĐT QL tòa)
   saleLock?: RoomSaleLockInfo | null; // status === "locked"
+  exitHold?: RoomExitHoldInfo | null; // chỉ reader trong app; link công khai không bao giờ có
+  depositHold?: RoomDepositHoldInfo | null; // chỉ reader trong app; link công khai không bao giờ có
 }
 
 export interface Fixture extends Box {

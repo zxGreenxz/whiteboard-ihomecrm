@@ -28,7 +28,7 @@ export interface PermissionHint {
 }
 
 export const PROFIT_PERMISSION_HINTS = {
-  advanceInfo: 'Người này được tạm ứng lợi nhuận: tự lập phiếu từ sổ quỹ đang giữ, hoặc nhận phiếu Tạm Ứng do người giữ sổ khác lập ở Thu chi. Mọi khoản chờ chủ duyệt; tạm ứng được khấu trừ khi chủ chốt chi lợi nhuận.',
+  advanceInfo: 'Người này được tạm ứng lợi nhuận: tự lập phiếu từ sổ quỹ đang giữ, hoặc nhận phiếu Tạm Ứng do người giữ sổ khác lập ở Thu chi. Mọi khoản chờ người có quyền duyệt. Tạm ứng được khấu trừ khi chủ chốt chi lợi nhuận.',
   advanceNoCashbook: 'Người này chưa giữ sổ quỹ nào — chưa tự lập phiếu tạm ứng được; vẫn nhận được phiếu Tạm Ứng do người giữ sổ khác lập ở Thu chi.',
   distributeNonOwner: 'Người này không phải chủ: quyền chi lợi nhuận cho họ thấy số dư và tỷ lệ của MỌI cổ đông, và lập được phiếu chi cho bất kỳ cổ đông nào.',
 } as const;

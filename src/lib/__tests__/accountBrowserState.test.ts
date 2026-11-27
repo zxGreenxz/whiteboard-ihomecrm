@@ -52,6 +52,7 @@ describe("clearAccountBrowserState", () => {
       "sb-tryymsxyyckgbrmmvozx-auth-token": "{}",
       "ihome:pending-collection:v1:user-a:org-1:inv-1": "{}",
       "ihome:financial-pending:v1:ns:user-a:org-1:key": "{}",
+      "ihome:pending-valve-log:v1:user-a": "[]",
       "ihome:quick-entry:models:user-a": "{}",
       "ihomecrm.selectedOrganizationId:user-a": "{}",
       "ihomecrm.camera-quality:user-a:playback": '{"quality":"hd"}',
@@ -63,6 +64,7 @@ describe("clearAccountBrowserState", () => {
     expect(local.keys()).toEqual([
       "ihome:financial-pending:v1:ns:user-a:org-1:key",
       "ihome:pending-collection:v1:user-a:org-1:inv-1",
+      "ihome:pending-valve-log:v1:user-a",
       "ihome:quick-entry:models:user-a",
       "ihomecrm.camera-quality:user-a:playback",
       "ihomecrm.selectedOrganizationId:user-a",
@@ -123,7 +125,7 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/hooks/usePersonalTasks.ts": "gan-nguoi-dung",
   "src/hooks/usePersonalTaskReminders.ts": "gan-nguoi-dung",
   // Máy cửa vừa chọn: khoá `door-access.last-device.v1:<công ty>:<người dùng>` — không sang tài khoản khác.
-  "src/components/door-access/DoorAccessScreen.tsx": "gan-nguoi-dung",
+  "src/hooks/door-access/useSelectedDoorDevice.ts": "gan-nguoi-dung",
   // Bộ lọc nhà bảng "LN được chia Nhà × Tháng": khoá `ihome:ln-nha-thang:bo-loc:v1:<công ty>:<cổ đông>`;
   // cổ đông gắn một tài khoản đăng nhập nên không sang tài khoản khác.
   "src/hooks/useBuildingFilterState.ts": "gan-nguoi-dung",
@@ -132,11 +134,23 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/lib/contractImportWorkflow.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/financialPending.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/pendingCollection.ts": "nhat-ky-chong-ghi-trung",
+  // Nhật ký tự gỡ dấu chờ đối chiếu: khoá `ihome:pending-valve-log:v1:<người dùng>`, chờ đẩy lên máy chủ.
+  // Đăng xuất không được xoá, nếu không lần tự gỡ mất dấu vết.
+  "src/lib/pendingValve.ts": "nhat-ky-chong-ghi-trung",
+  // Phần nhẹ của cùng hàng đợi đó (khoá, «còn dòng chờ đẩy») và hook mở ứng dụng đọc nó để đẩy phần còn lại;
+  // chỉ đọc, đợt 1b.
+  "src/lib/pendingValveLogQueue.ts": "nhat-ky-chong-ghi-trung",
+  "src/hooks/usePendingValveLogFlushOnOpen.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/persistentFinancialWorkflow.ts": "nhat-ky-chong-ghi-trung",
+  // Đọc công ty đang chọn để tìm dấu khoá chung bản trước để lại (đợt 4), gỡ nó qua kho dấu chung.
+  "src/lib/legacyPendingExit.ts": "nhat-ky-chong-ghi-trung",
   "src/hooks/income-expenses/batch.ts": "nhat-ky-chong-ghi-trung",
+  // Vết chuyển khách hẹn bản trước (đợt 11: gỡ khi xong việc; vết mồ côi gỡ bằng `forgetOrphanLeadConversionTraces`).
   "src/lib/leadConversionProgress.ts": "nhat-ky-chong-ghi-trung",
-  "src/lib/templateDefaultIntent.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/luckyDrawApi.ts": "nhat-ky-chong-ghi-trung",
+  // Quét nền khi mở app (đợt 11): liệt kê khoá của kho dấu chung, đối chiếu chỉ đọc, gỡ dấu qua kho dấu chung; `forgetDeadIntentKeys`
+  // dọn hai họ khoá «ý định» không còn ai đọc (gồm `ihome:template-default-intent:v1:*` của `templateDefaultIntent.ts` đã xoá).
+  "src/lib/pendingSweep.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/luckyProofPending.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/network-center/intentRegistry.ts": "nhat-ky-chong-ghi-trung",
   "src/integrations/supabase/client.ts": "phien-dang-nhap",

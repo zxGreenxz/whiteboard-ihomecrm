@@ -209,10 +209,13 @@ const INVALIDATE_KEYS = [
 ] as const;
 
 export const useCancelIncomeVoucher = () => {
-  const workflow=persistentFinancialWorkflow('voucher-lifecycle',{scope:'actor'});
+  const workflow=persistentFinancialWorkflow('voucher-income-cancel',{scope:'actor',legacy:'voucher-lifecycle'});
   const queryClient = useQueryClient();
 
   return useMutation({
+    // Cách A (đợt 5): cancel_income_voucher_v1 (production 25/11/2026) khoá phiếu FOR UPDATE rồi trả {changed:false} khi
+    // phiếu đã huỷ; nhánh đợt thu gửi reverse_invoice_collection_v5 một khoá cố định theo phiếu và lý do. Gửi lại luôn an
+    // toàn: dấu của lần gửi trước được gửi lại ngay, máy chủ tự trả «đã huỷ trước đó» (hoặc báo đợt thu đã hoàn tác).
     mutationFn: async (input: CancelIncomeVoucherInput) => workflow.run(input.voucherId,'huỷ phiếu thu',async progress=>{
       const { data, error } = await supabase.rpc(
         "cancel_income_voucher_v1",
@@ -226,7 +229,7 @@ export const useCancelIncomeVoucher = () => {
       if(receipt?.id!==input.voucherId || typeof receipt.changed!=='boolean' || (receipt.mode!==undefined && !['MANUAL','COLLECTION','FORFEIT_PAIR'].includes(String(receipt.mode))))throw new TypeError('Chưa xác nhận được kết quả huỷ của đúng phiếu.');
       progress.completed.push({id:input.voucherId,label:`Đã huỷ phiếu ${input.voucherId}`});
       return data as unknown as CancelIncomeVoucherResult;
-    }),
+    },async()=>({outcome:'not-written',serverDedupesRequestKey:true})),
     onSuccess: (data) => {
       for (const key of INVALIDATE_KEYS) {
         queryClient.invalidateQueries({ queryKey: key as unknown as string[] });

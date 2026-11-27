@@ -4,9 +4,11 @@ function feedbackRecordName(value:unknown,fallback?:string):string {
 }
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {withOrg} from '@/lib/orgPayload';
-import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
-import { confirmedRecordId, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { confirmedRecordId, recordWriteMessage, repeatableWrite, settleZeroRowDelete } from '@/lib/recordWriteOutcome';
+// Nạp động: hai module của đợt 4 chỉ cần lúc tạo, nạp tĩnh từ nhiều trang làm Vite tách thành chunk dùng chung và
+// thêm tên chunk vào danh sách phụ thuộc của chunk entry (cửa bundle-inventory).
+import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -253,6 +255,35 @@ export const useHiddenInReportTypes = () => {
   });
 };
 
+/**
+ * Loại thu chi trùng ràng buộc duy nhất `income_expense_types_org_side_normalized_name_uq` của production:
+ * (công ty, chiều thu/chi, `normalize_income_expense_type_name(name)` = bỏ dấu, chữ thường, đ→d, gộp khoảng trắng).
+ * `missing`: đọc được nhưng không thấy (RLS ẩn hạng mục hạn chế của người khác cũng là không thấy); `unreadable`: đọc hỏng.
+ */
+async function findIncomeExpenseTypeByName(organizationId: string, side: 'income' | 'expense', name: string, normalizeVietnameseName: (value: unknown) => string): Promise<{ state: 'found'; row: IncomeExpenseType } | { state: 'missing' } | { state: 'unreadable' }> {
+  try {
+    const { data, error } = await supabase.from('income_expense_types').select('*').eq('organization_id', organizationId);
+    if (error || !Array.isArray(data)) return { state: 'unreadable' };
+    const wanted = normalizeVietnameseName(name);
+    const row = (data as unknown as IncomeExpenseType[]).find(item => String(item.type ?? '').trim().toLowerCase() === side && normalizeVietnameseName(item.name) === wanted);
+    return row ? { state: 'found', row } : { state: 'missing' };
+  } catch {
+    /* Lỗi mạng khi tra: không kết luận được. */
+    return { state: 'unreadable' };
+  }
+}
+
+// Tên loại (công ty, chiều, tên chuẩn hoá) có lần tạo chưa rõ kết quả trong tab này: lần bấm sau gặp trùng tên thì đó là
+// loại của chính lần gửi trước, trả lại loại đó. Không phải lần gửi lại thì trùng tên là lỗi của người dùng như cũ.
+const unconfirmedTypeNames = new Set<string>();
+const typeNameKey = (organizationId: string, side: string, name: string, normalizeVietnameseName: (value: unknown) => string) => `${organizationId}|${side}|${normalizeVietnameseName(name)}`;
+
+/**
+ * Loại đã có này trả lại cho nơi gọi được không: không lưu trữ, không gộp, không chỉ hệ thống, không ẩn khỏi ô chọn; hạn
+ * chế chỉ khi chính người dùng đang tạo một loại hạn chế.
+ */
+const usableType = (row: IncomeExpenseType, wantRestricted: boolean) => !row.archived_at && !row.merged_into_id && !row.system_only && !row.manual_hidden && (!row.is_restricted || wantRestricted);
+
 // --- Mutation Hooks ---
 
 export const useCreateIncomeExpenseType = () => {
@@ -274,10 +305,7 @@ export const useCreateIncomeExpenseType = () => {
       if (!user) throw new Error("User not authenticated");
 
       // Trigger strict yêu cầu tổ chức được chọn trong payload; không suy từ toà.
-      return persistentFinancialWorkflow('income-expense-type-create').run('create', 'tạo loại thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_types" as any)
-        .insert(withOrg({
+      const payload = withOrg({
           user_id: user.id,
           name: input.name,
           type: input.type,
@@ -291,17 +319,53 @@ export const useCreateIncomeExpenseType = () => {
           ...(input.keywords && input.keywords.length ? { keywords: input.keywords } : {}),
           ...(input.sort_order != null ? { sort_order: input.sort_order } : {}),
           ...(input.quick_entry_hidden ? { quick_entry_hidden: true } : {}),
-        },selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-      const created = data as unknown as { id?: string; name?: string } | null;
-      if (!created?.id || created.name !== input.name) {
-        throw new FinancialWorkflowError('Chưa xác nhận được loại thu chi vừa tạo. Giữ bản nháp và đối chiếu danh sách trước khi tạo tiếp.', 'unknown', created?.id ? [{id:created.id,label:'Loại thu chi cần đối chiếu'}] : []);
+        },selectedOrganizationId);
+      // Đợt 4: không còn khoá chung. Dấu khoá chung của bản trước chỉ được gỡ: tên loại là duy nhất trong công ty
+      // nên mọi lần tạo sau đều tự đối chiếu được theo tên, không cần tra gì thêm cho dấu cũ.
+      const {isUniqueViolation,normalizeVietnameseName}=await import('@/lib/clientRecordCreate');
+      const {settleLegacyPending}=await import('@/lib/legacyPendingExit');
+      await settleLegacyPending({ namespace: 'income-expense-type-create', businessKey: 'create' }, async () => true);
+      let response: { data: unknown; error: unknown };
+      try {
+        response = await supabase.from("income_expense_types" as any).insert(withOrg(payload, selectedOrganizationId)).select().single();
+      } catch (thrown) {
+        response = { data: null, error: thrown };
       }
-      return data;
-      },undefined,selectedOrganizationId);
+      const { data, error } = response;
+      const created = data as { id?: unknown; name?: unknown } | null;
+      const nameKey = typeNameKey(payload.organization_id, input.type, input.name, normalizeVietnameseName);
+      if (!error && typeof created?.id === 'string' && created.id && created.name === input.name) {
+        unconfirmedTypeNames.delete(nameKey);
+        return data as IncomeExpenseType;
+      }
+      const nameTaken = isUniqueViolation(error) && /normalized_name/.test(String((error as { message?: unknown }).message ?? ''));
+      // Máy chủ từ chối rõ vì lý do khác (quyền, cột lạ…): lỗi thật, không có gì để đối chiếu.
+      if (error && !nameTaken && !hasUnconfirmedResponse(error)) throw error;
+      // Trùng tên, hoặc chưa rõ kết quả: tra đúng loại theo ràng buộc duy nhất (công ty, chiều, tên chuẩn hoá).
+      const found = await findIncomeExpenseTypeByName(payload.organization_id, input.type, input.name, normalizeVietnameseName);
+      if (found.state === 'found') {
+        const existing = found.row;
+        const retry = unconfirmedTypeNames.has(nameKey);
+        unconfirmedTypeNames.delete(nameKey);
+        // Trùng tên mà không phải lần gửi lại: người dùng tạo trùng một loại đã có. Báo như trước (giữ nguyên form và
+        // thiết lập đang nhập), kèm mã loại đó.
+        if (nameTaken && !retry) {
+          throw new FinancialWorkflowError(`Loại thu chi «${existing.name}» đã có trong công ty (mã ${existing.id}). Chọn loại đó trong danh sách hoặc đặt tên khác.`, 'failure', []);
+        }
+        if (!usableType(existing, !!input.is_restricted)) {
+          throw new FinancialWorkflowError(`Tên «${existing.name}» trùng với một loại thu chi đã lưu trữ, đã gộp, chỉ hệ thống dùng, đang ẩn hoặc hạn chế (mã ${existing.id}). Khôi phục hoặc chọn loại đó ở Cài đặt › Loại thu chi nếu được phép, hoặc đặt tên khác.`, 'failure', []);
+        }
+        // Lần gửi trước (hoặc chính lần gửi mất phản hồi này) đã tạo loại đó: trả lại nó, không tạo thêm.
+        return nameTaken ? { ...existing, existed: true } : existing;
+      }
+      if (nameTaken) {
+        unconfirmedTypeNames.delete(nameKey);
+        throw new FinancialWorkflowError(found.state === 'missing'
+          ? 'Tên loại thu chi này đã có trong công ty nhưng bạn không xem được (có thể là hạng mục hạn chế). Đặt tên khác, hoặc nhờ chủ công ty kiểm tra.'
+          : 'Tên loại thu chi này đã có trong công ty; chưa đọc lại được loại đó. Tải lại danh sách loại thu chi rồi chọn hoặc đặt tên khác.', 'failure', []);
+      }
+      unconfirmedTypeNames.add(nameKey);
+      throw new FinancialWorkflowError('Chưa xác nhận được kết quả tạo loại thu chi. Giữ nguyên thông tin rồi bấm lưu lại: tên loại là duy nhất trong công ty nên không tạo trùng.', 'unknown', [], error);
     },
     onSuccess: (data) => {
       invalidateIeTypesCache();
@@ -309,6 +373,10 @@ export const useCreateIncomeExpenseType = () => {
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],
       });
+      if ((data as { existed?: boolean } | null)?.existed) {
+        toast.success(`Loại thu chi ${feedbackRecordName(data)} đã được tạo ở lần gửi trước; dùng loại này, không tạo thêm.`);
+        return;
+      }
       toast.success(`Đã tạo loại thu chi ${feedbackRecordName(data)}`);
     },
     onError: (error) => {
@@ -342,18 +410,25 @@ export const useUpdateIncomeExpenseType = () => {
         hide_in_report?: boolean;
       } & IncomeExpenseTypeCatalogUpdates;
     }) => {
-      return persistentFinancialWorkflow('income-expense-type-update').run(id, 'cập nhật loại thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_types" as any)
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
+      // Đợt 8 (luật 5): sửa theo mã, đặt giá trị tuyệt đối ⇒ lưu lại cho cùng kết quả, không giữ dấu «chờ đối chiếu» nào.
+      // Chưa rõ kết quả (mất mạng, biên nhận sai mã) ⇒ báo rõ, form không khoá, bấm lại ghi lại đúng nội dung đó. Khớp 0
+      // dòng (PGRST116: RLS không cho sửa, loại đã bị xoá) là chưa ghi gì: lời từ chối rõ, đi nguyên.
+      const data = await repeatableWrite('cập nhật loại thu chi', async () => {
+        const { data, error } = await supabase
+          .from("income_expense_types" as any)
+          .update(updates)
+          .eq("id", id)
+          .select()
+          .single();
 
-      if (error) throw error;
-      confirmedRecordId(data, 'cập nhật loại thu chi', id);
-      return data;
+        if (error) throw error;
+        confirmedRecordId(data, 'cập nhật loại thu chi', id);
+        return data;
       });
+      // Dấu bản trước của đúng loại này (công ty đang chọn) không còn chặn gì: gỡ sau khi lưu xong.
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'income-expense-type-update', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần lưu sau gỡ lại. */ }
+      return data;
     },
     onSuccess: (data) => {
       invalidateIeTypesCache();
@@ -399,20 +474,27 @@ export const useDeleteIncomeExpenseType = () => {
         );
       }
 
-      return persistentFinancialWorkflow('income-expense-type-delete').run(id, 'xoá loại thu chi', async () => {
-      const { data, error } = await supabase
-        .from("income_expense_types" as any)
-        .delete()
-        .eq("id", id)
-        .select('id,name')
-        .single();
+      // Đợt 8 (luật 5): xoá theo mã ⇒ xoá lại cho cùng kết quả, không giữ dấu nào. Khớp 0 dòng (PGRST116) thì đọc lại đúng
+      // loại đó: không còn ⇒ đã xoá ở lần gửi trước (báo thành công); còn nguyên ⇒ RLS không cho xoá (từ chối rõ).
+      const deleted = await repeatableWrite('xoá loại thu chi', async (): Promise<unknown> => {
+        const { data, error } = await supabase
+          .from("income_expense_types" as any)
+          .delete()
+          .eq("id", id)
+          .select('id,name')
+          .single();
 
-      if (error) {
-        throw error;
-      }
-      confirmedRecordId(data, 'xoá loại thu chi', id);
-      return data;
+        if (error) {
+          if ((error as { code?: unknown }).code !== 'PGRST116') throw error;
+          await settleZeroRowDelete('xoá loại thu chi', () => supabase.from('income_expense_types').select('id,name').eq('id', id));
+          return { id, alreadyDeleted: true };
+        }
+        confirmedRecordId(data, 'xoá loại thu chi', id);
+        return data;
       });
+      try { const { forgetLegacyPending } = await import('@/lib/legacyPendingExit'); await forgetLegacyPending({ namespace: 'income-expense-type-delete', businessKey: id }); }
+      catch { /* Dấu bản trước không còn chặn gì; gỡ hỏng thì lần xoá sau gỡ lại. */ }
+      return deleted;
     },
     onSuccess: (data) => {
       invalidateIeTypesCache();
@@ -420,6 +502,10 @@ export const useDeleteIncomeExpenseType = () => {
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],
       });
+      if ((data as { alreadyDeleted?: unknown } | null)?.alreadyDeleted === true) {
+        toast.success('Loại thu chi này đã được xoá ở lần gửi trước (hoặc bởi người khác). Không còn gì để xoá thêm.');
+        return;
+      }
       toast.success(`Đã xóa loại thu chi ${feedbackRecordName(data)}`);
     },
     onError: (error) => {

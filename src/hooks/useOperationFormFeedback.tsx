@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { focusFirstError } from '@/lib/formErrors';
-import { FinancialWorkflowError, workflowErrorMessage } from '@/lib/financialWorkflow';
+import { FinancialWorkflowError, RepeatableWriteUnknownError, workflowErrorMessage } from '@/lib/financialWorkflow';
 import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 import { friendlyError, type FeedbackOptions } from '@/lib/friendlyError';
 
@@ -22,7 +22,12 @@ export function useOperationFormFeedback(operation: string, options: FeedbackOpt
   });
   const issue = (name: string) => errors[name]?.message
     ? <p id={`${id}-${name}`} className="text-sm text-red-600" role="alert">{String(errors[name]?.message)}</p> : null;
-  const run = async (action: () => unknown | Promise<unknown>, onSuccess: () => void, invalid: Record<string, string | undefined> = {}) => {
+  /**
+   * `retryable`: thao tác tự đối chiếu được ở lần bấm sau (máy chủ không cho ghi hai lần, ví dụ lập phiên bàn giao),
+   * nên kết quả chưa rõ KHÔNG khoá form; câu báo vẫn hiện. Lỗi `RepeatableWriteUnknownError` (đợt 8: thao tác ghi lặp lại
+   * được) cũng không khoá form.
+   */
+  const run = async (action: () => unknown | Promise<unknown>, onSuccess: () => void, invalid: Record<string, string | undefined> = {}, runOptions: {retryable?: boolean} = {}) => {
     if (pending.current || blocked) return;
     form.clearErrors(); setFailure(undefined);
     const entries = Object.entries(invalid).filter((entry): entry is [string, string] => !!entry[1]);
@@ -38,7 +43,7 @@ export function useOperationFormFeedback(operation: string, options: FeedbackOpt
       for (const [name, message] of Object.entries(feedback.fieldErrors ?? {})) form.setError(name, {type: 'server', message});
       await focusFirstError(feedback.fieldErrors, {root: root.current});
       setFailure(error);
-      setBlocked((error instanceof FinancialWorkflowError && error.outcome !== 'failure') || voucherOutcomeUnknown(error));
+      setBlocked(!runOptions.retryable && !(error instanceof RepeatableWriteUnknownError) && ((error instanceof FinancialWorkflowError && error.outcome !== 'failure') || voucherOutcomeUnknown(error)));
     } finally { pending.current = false; setSaving(false); }
   };
   const notice = failure ? <div role="alert" className="m-3 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">

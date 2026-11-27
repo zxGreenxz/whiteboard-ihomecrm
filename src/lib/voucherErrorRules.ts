@@ -1,5 +1,6 @@
 import type { OperationErrorRule } from './friendlyError';
 import { DEPOSIT_ROOM_REQUIRED_MESSAGE } from './depositRoomRule';
+import { DEPOSIT_AMOUNT_REQUIRED_MESSAGE, DEPOSIT_AMOUNT_SERVER_MESSAGE, DEPOSIT_INCOME_LINE_INVALID_MESSAGE } from './incomeExpenseValidation';
 
 // Reviewed RPC reasons: sua_phieu_cho_duyet (20260925080906), ie_annotate_v1
 // (20260730120000), wp1_evidence_protection (20260801000000). This list must
@@ -17,6 +18,10 @@ export const VOUCHER_ERROR_RULES: readonly OperationErrorRule[] = [
     ['Sổ quỹ không thuộc tổ chức của phiếu','account_id','Chọn sổ quỹ thuộc công ty của phiếu.'],
     ['Không có quyền sử dụng sổ quỹ này','account_id','Không có quyền sử dụng sổ quỹ này. Chọn sổ quỹ bạn có quyền sử dụng.'],
   ] as const).map(([message,field,description])=>({message,description,fieldErrors:{[field]:description}})),
+  // Trigger a1_ie_item_deposit_amount_positive (20261125165113): không biết dòng nào nên chỉ báo câu, cùng chữ hộp Cọc trang Sale.
+  {code:'23514',message:DEPOSIT_AMOUNT_SERVER_MESSAGE,description:DEPOSIT_AMOUNT_REQUIRED_MESSAGE},
+  // attach_deposit_income_v1 (#499, 20261125133852): tiền cọc ≤ 0 hoặc dòng cọc lệch hạng mục. Câu gốc nêu mã phiếu đã bị huỷ cùng giao dịch.
+  {code:'22023',message:/^Phiếu \S* ?(thiếu dòng cọc hợp lệ|chưa có dòng tiền cọc)$/,description:DEPOSIT_INCOME_LINE_INVALID_MESSAGE},
   ...([
     'Lý do sửa tối đa 1000 ký tự', 'Phiếu đã ghi sổ — không sửa ở đây',
     'Phiếu thuộc luồng hệ thống — sửa ở luồng gốc',

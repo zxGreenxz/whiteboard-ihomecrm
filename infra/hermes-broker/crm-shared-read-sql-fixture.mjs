@@ -70,6 +70,26 @@ function definitions() {
 }
 
 const live = definitions();
+// `live` dừng ở mốc của fixture này (thân production khi B3 được duyệt). Hàm đã forward-fix sau mốc đó
+// (vd. đợt 2 Sale phòng 20261125034429: trang Sale / Hermes theo CÔNG TY) đo bằng latestLive(): lần CREATE cuối
+// theo thứ tự timestamp trên MỌI migration, cùng khuôn liveDefinitionOf() của repo.
+let latestCache = null;
+function latestLive(name) {
+  if (!latestCache) {
+    latestCache = new Map();
+    for (const n of readdirSync('supabase/migrations').filter(f => f.endsWith('.sql')).sort()) {
+      const sql = readFileSync(`supabase/migrations/${n}`, 'utf8').replaceAll('\r\n', '\n');
+      if (!/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public|app_private)\./i.test(sql)) continue;
+      for (const statement of splitSqlStatements(sql)) {
+        const match = /(?:^|\n)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+((?:public|app_private)\.\w+)\s*\(/i.exec(statement);
+        if (match) latestCache.set(match[1].toLowerCase(), { file: n, sql: statement.slice(match.index).trim() });
+      }
+    }
+  }
+  const hit = latestCache.get(name.toLowerCase());
+  assert(hit, `Không tìm thấy định nghĩa nào của ${name}`);
+  return hit;
+}
 const lit = value => `'${value.replaceAll("'", "''")}'`;
 const array = values => `ARRAY[${values.map(lit).join(',')}]::text[]`;
 const schema = `
@@ -362,4 +382,4 @@ async function normal1(pool,binding,domain,input={},actor={}) {
  return (await c.query('SELECT public.hermes_domain_read_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);
 }
 
-export {settings,localCluster,setup,applyWebBuildingScope,applyEffectiveOutstanding,withLocalFastSqlbodyMd5,jwt,fast,normal,normal1,web,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};
+export {settings,localCluster,setup,applyWebBuildingScope,applyEffectiveOutstanding,withLocalFastSqlbodyMd5,jwt,fast,normal,normal1,web,live,latestLive,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};

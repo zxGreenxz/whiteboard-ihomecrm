@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-21T02:48:54.862Z",
+  "generatedAt": "2026-11-27T09:32:26.653Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 981,
+    "ledger-applied": 1002,
     "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
@@ -14681,6 +14681,237 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-21T02:47:35.261Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261124075933_tra_phong_truoc_han_ba_truong_hop.sql",
+      "version": "20261124075933",
+      "name": "tra_phong_truoc_han_ba_truong_hop",
+      "scheme": "timestamp14",
+      "sha256": "24e7b09713df84552e3450ac3bf2e71e0615129c39d29a77f7a960089e770cc3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-24T14:46:04.699Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261124131052_nhat_ky_tu_go_khoa_cho_doi_chieu.sql",
+      "version": "20261124131052",
+      "name": "nhat_ky_tu_go_khoa_cho_doi_chieu",
+      "scheme": "timestamp14",
+      "sha256": "46fc29ed8abf885a48058db7208f49a705f1d8959b55bb0a8a36895575f3ebc5",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-24T15:28:39.530Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261124154554_so_ho_tro_sang_nhuong_chuyen_coc.sql",
+      "version": "20261124154554",
+      "name": "so_ho_tro_sang_nhuong_chuyen_coc",
+      "scheme": "timestamp14",
+      "sha256": "5257d38bfe327fb2c278950760cfce03d9f399f18b5f8e5cd7e90c571eaf36bd",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-24T19:33:02.834Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261124171545_link_chia_se_va_thong_ke_ghi_ro_cong_ty.sql",
+      "version": "20261124171545",
+      "name": "link_chia_se_va_thong_ke_ghi_ro_cong_ty",
+      "scheme": "timestamp14",
+      "sha256": "c78a366eeae6e12442f9e4d9e6f3f7ae1ac85786a6e65a1d30d54fee6b062ab5",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T02:43:56.634Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261124171943_network_center_camera_alerts_v2.sql",
+      "version": "20261124171943",
+      "name": "network_center_camera_alerts_v2",
+      "scheme": "timestamp14",
+      "sha256": "98753b258e0bd8a1a3cc87c8a14141637b3f1beb3ab1e08a316187a68ff5912f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T08:32:42.998Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261124201133_coc_giu_lai_theo_thoa_thuan.sql",
+      "version": "20261124201133",
+      "name": "coc_giu_lai_theo_thoa_thuan",
+      "scheme": "timestamp14",
+      "sha256": "f0f56d709e82944eb4ff88c2c73db25950cc255ef5627029b584954cb3783ba8",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-24T21:24:15.556Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261125034429_sale_phong_theo_cong_ty.sql",
+      "version": "20261125034429",
+      "name": "sale_phong_theo_cong_ty",
+      "scheme": "timestamp14",
+      "sha256": "216eecfdbc7e89df8e358a64cfa715c8efc572049107331111cb5c3d7a05b2e0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T15:51:08.450Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261125102224_contract_room_deposit_sources.sql",
+      "version": "20261125102224",
+      "name": "contract_room_deposit_sources",
+      "scheme": "timestamp14",
+      "sha256": "f00ecc40f9d910be0dff1fa8361c76c576136825f99fcf562f6f223e88ec4af2",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T11:00:06.764Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261125124010_duyet_tam_ung_co_dong_theo_quyen.sql",
+      "version": "20261125124010",
+      "name": "duyet_tam_ung_co_dong_theo_quyen",
+      "scheme": "timestamp14",
+      "sha256": "2be9363d52840e6cc02a212615589cba0e7c3935cdc3ea0108828bd939d1bb87",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T13:03:44.869Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261125133852_unified_deposit_voucher_workflow.sql",
+      "version": "20261125133852",
+      "name": "unified_deposit_voucher_workflow",
+      "scheme": "timestamp14",
+      "sha256": "5547b30fd43ced8d4540a7a088d864db24d443c3b0d52530370ea7c4e1fe9856",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T15:55:43.569Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261125165113_coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho.sql",
+      "version": "20261125165113",
+      "name": "coc_thu_chi_chan_0d_va_khoi_da_coc_tren_dot_giu_cho",
+      "scheme": "timestamp14",
+      "sha256": "aa8a0e414362ac56c5b34fac57220f5bb2da7e72955c39f5664215157a9abdcd",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-25T19:24:46.476Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126015743_gom_loi_nhuan_va_hoan_quy_dong_loat.sql",
+      "version": "20261126015743",
+      "name": "gom_loi_nhuan_va_hoan_quy_dong_loat",
+      "scheme": "timestamp14",
+      "sha256": "0009fac3f817672b95f5441ed8e21ef9dec7cd7b5bf078b7e556f9a6ac9e1be0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T02:41:17.036Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126030341_coc_doi_chieu_theo_dot.sql",
+      "version": "20261126030341",
+      "name": "coc_doi_chieu_theo_dot",
+      "scheme": "timestamp14",
+      "sha256": "aa58151f01933cf26e582be198895a6c3161c9d8ffec244a5ef02f35d17c5833",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T03:29:47.063Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126034144_phieu_tam_ung_lich_su_theo_ky.sql",
+      "version": "20261126034144",
+      "name": "phieu_tam_ung_lich_su_theo_ky",
+      "scheme": "timestamp14",
+      "sha256": "7c35a7024b5e069f670c5386ea9cc911663356dafce90aff79346ad7e152642f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T05:09:48.597Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126035812_quy_gop_gan_phieu_chi_goc.sql",
+      "version": "20261126035812",
+      "name": "quy_gop_gan_phieu_chi_goc",
+      "scheme": "timestamp14",
+      "sha256": "03f0fdd3f3747078f32f83496e34dfd7221df4677867e08f1076bd18293be504",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T04:20:21.228Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126041014_lich_chi_quy_cua_co_dong.sql",
+      "version": "20261126041014",
+      "name": "lich_chi_quy_cua_co_dong",
+      "scheme": "timestamp14",
+      "sha256": "8fe619a0cec99477b7bee83f56a235d5593d7c2c67e5f74123ee5273bf6bafa3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T05:13:07.728Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126065343_customer_search_name_priority.sql",
+      "version": "20261126065343",
+      "name": "customer_search_name_priority",
+      "scheme": "timestamp14",
+      "sha256": "2e7151866dcc2e84e62b4361c1f14d040df7180a99b2bcad5363d7a5d3d05bed",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T07:47:55.897Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126130735_ma_chong_trung_phieu_tao_moi.sql",
+      "version": "20261126130735",
+      "name": "ma_chong_trung_phieu_tao_moi",
+      "scheme": "timestamp14",
+      "sha256": "23f6aa929558e501a2a3879332a51ee7742d01bdc2b25b533af7e5e60bb71df2",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T14:51:50.359Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126180450_xoa_chen_mot_giao_dich.sql",
+      "version": "20261126180450",
+      "name": "xoa_chen_mot_giao_dich",
+      "scheme": "timestamp14",
+      "sha256": "4fd93294dfabedeb4d77b19e6ef8fc8f2487b758daf36d31a145bdb52c2ca585",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T20:00:17.501Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261126202634_da_kiem_dat_gia_tri.sql",
+      "version": "20261126202634",
+      "name": "da_kiem_dat_gia_tri",
+      "scheme": "timestamp14",
+      "sha256": "a74bb3d4b5dd4774f4f8211e63a0b0596ff2b49052d4ac719572ed036cbc253e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-26T21:55:56.198Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261127091238_zalo_nhom_phong_theo_toa.sql",
+      "version": "20261127091238",
+      "name": "zalo_nhom_phong_theo_toa",
+      "scheme": "timestamp14",
+      "sha256": "21dfe07e1bc4ebce15698ed9f35bec7d77d1786d520311d647bafa0bce23d103",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-27T09:31:50.587Z|bien-nhan-backup"
       ]
     },
     {

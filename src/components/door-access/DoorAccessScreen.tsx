@@ -4,8 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { doorKeys, useDoorDevices, useDoorScope, useDoorStatus } from "@/hooks/door-access/useDoorAccessQueries";
+import { useSelectedDoorDevice } from "@/hooks/door-access/useSelectedDoorDevice";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
-import type { DiscoverResult, DoorAccessMode, DoorDevice } from "@/lib/door-access/dto";
+import type { DiscoverResult, DoorAccessMode } from "@/lib/door-access/dto";
 import type { DoorAccessCaller } from "@/lib/door-access/edge";
 import { isDoorAccessError } from "@/lib/door-access/errors";
 import { DOOR_TAB_LABEL, isDoorTab, visibleTabs, type DoorTab } from "@/lib/door-access/view";
@@ -20,45 +21,12 @@ import { ErrorPanel, Notice } from "./parts";
 import { ReconcileTab } from "./ReconcileTab";
 import { TempPasswordTab } from "./TempPasswordTab";
 
-const STORAGE_PREFIX = "door-access.last-device.v1";
-
-function readRemembered(key: string): string | null {
-  let remembered: string | null = null;
-  try {
-    remembered = window.localStorage.getItem(key);
-  } catch {
-    /* Trình duyệt chặn bộ nhớ (chế độ riêng tư…): coi như chưa nhớ máy nào — chọn máy đầu danh sách. */
-  }
-  return remembered;
-}
-
-function writeRemembered(key: string, value: string) {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // Trình duyệt chặn bộ nhớ (chế độ riêng tư…): chỉ mất phần ghi nhớ, không ảnh hưởng thao tác.
-  }
-}
-
-/** Máy đang chọn: nhớ lần chọn trước theo công ty + người (chỉ là tiện ích trên máy người xem). */
-function useSelectedDevice(caller: DoorAccessCaller, devices: readonly DoorDevice[]) {
-  const storageKey = `${STORAGE_PREFIX}:${caller.organizationId}:${caller.actorId}`;
-  const [selected, setSelected] = useState<{ key: string; id: string | null }>(() => ({ key: storageKey, id: readRemembered(storageKey) }));
-  const wanted = selected.key === storageKey ? selected.id : readRemembered(storageKey);
-  const device = devices.find((item) => item.id === wanted) ?? devices[0] ?? null;
-  const select = (id: string) => {
-    setSelected({ key: storageKey, id });
-    writeRemembered(storageKey, id);
-  };
-  return { device, select };
-}
-
 function ConnectedDoorAccess({ caller, mode }: { caller: DoorAccessCaller; mode: Exclude<DoorAccessMode, "off"> }) {
   const devicesQuery = useDoorDevices(caller);
   const permissions = useMyPermissions();
   const canManageAnywhere = canUse(permissions.data, "door_access", "manage_devices");
   const devices = devicesQuery.data ?? [];
-  const { device, select } = useSelectedDevice(caller, devices);
+  const { device, select } = useSelectedDoorDevice(caller, devices);
   const tabs = visibleTabs(device?.can ?? null, canManageAnywhere);
   const [tab, setTab] = useState<DoorTab>("history");
   const active = tabs.includes(tab) ? tab : tabs[0] ?? null;

@@ -17,13 +17,14 @@
 //   • Tôn trọng not_before (job hẹn giờ — bỏ qua tới lúc đến hạn).
 // =============================================================
 import { ThreadType } from 'zca-js';
-import { sb, log, sessions, orgOf } from './ctx.js';
+import { sb, log, sessions, orgOf, sleep } from './ctx.js';
 import { syncAccountGroups, upsertMessagesForThread, emojiToZca } from './inbound.js';
 import { sendMediaJob } from './media.js';
 import { sendForwardMediaJob } from './forward-media.js';
 import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clampHistoryCount } from './scope-guard.js';
 import { INSTANCE_ID } from './lease.js';
 import { validateAutomationDelivery } from './automation-delivery.js';
+import { LOCK_NOTICE_GAP_MS, lockNoticeKey } from './room-lock-notice.js';
 import { finalizeSend, sendReceipt } from './send-finalization.js';
 import { deliverSaleAdvice } from './sale-advice-channel.js';
 
@@ -51,17 +52,25 @@ async function jobFail(job, message, { claimed = true, unknown = false, receiptI
   }
 }
 
-async function deferJob(job, reason) {
-  const { error } = await sb.from('zalo_send_queue').update({
+async function deferJob(job, reason, claimed = false) {
+  let query = sb.from('zalo_send_queue').update({
     not_before: new Date(Date.now() + 15_000).toISOString(), last_error: reason,
-  }).eq('id', job.id).eq('status', 'queued');
+    ...(claimed ? { status: 'queued', processing_instance_id: null, processing_started_at: null } : {}),
+  }).eq('id', job.id).eq('status', claimed ? 'processing' : 'queued');
+  if (claimed) query = query.eq('processing_instance_id', INSTANCE_ID).is('provider_started_at', null);
+  const { error } = await query;
   if (error) log('deferJob', job.id, error.message);
 }
+
+const nextLockSendAt = new Map();
+let nextLockAfterRecovery = 0;
 
 export async function recoverInterruptedJobs() {
   const { data, error } = await sb.rpc('zalo_worker_recover_jobs_v1', { p_instance_id: INSTANCE_ID });
   if (error) throw new Error(`Không đối soát được hàng đợi sau khởi động: ${error.message}`);
   if (data?.reason === 'lease_lost') throw new Error('Không còn lease để đối soát hàng đợi');
+  // The previous lease holder may have just sent an overdue Lock before handing off.
+  nextLockAfterRecovery = performance.now() + LOCK_NOTICE_GAP_MS;
   log('queue recovery', data);
   return data;
 }
@@ -74,6 +83,11 @@ function fencedSession(session, job, delivery) {
       const method = target[key];
       if (typeof method !== 'function') return method;
       return async (...args) => {
+        const isLock = key === 'sendMessage' && args[2] === ThreadType.Group && lockNoticeKey(job.payload);
+        if (isLock) {
+          const remaining = Math.max(nextLockSendAt.get(job.organization_id) ?? 0, nextLockAfterRecovery) - performance.now();
+          if (remaining > 0) await sleep(Math.ceil(remaining));
+        }
         if (sessions.get(job.account_id) !== session) throw new Error('SESSION_CHANGED: phiên đã dừng hoặc thay thế');
         const automation = await validateAutomationDelivery(job);
         if (!automation.ok) throw new Error(automation.reason);
@@ -109,6 +123,7 @@ function fencedSession(session, job, delivery) {
         let deadline;
         let result;
         try {
+          if (isLock) nextLockSendAt.set(job.organization_id, performance.now() + LOCK_NOTICE_GAP_MS);
           result = await Promise.race([
             method.apply(target, args),
             new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('PROVIDER_TIMEOUT: chưa xác nhận kết quả sau ' + timeoutMs / 1000 + ' giây')), timeoutMs); }),
@@ -143,6 +158,18 @@ function buildQuote(p) {
 // Album của lượt cũ có thể được xếp trước tin chữ, khi đó nó chưa phụ thuộc tin nào.
 async function roomPartReady(job) {
   if (job.payload?.tu_dong !== true) return true;
+  const key = job.payload.automation_request_key || '';
+  if (key.endsWith(':contact')) {
+    const { data, error } = await sb.from('zalo_send_queue').select('status')
+      .eq('organization_id', job.organization_id).eq('account_id', job.account_id).eq('conversation_id', job.conversation_id)
+      .like('payload->>automation_request_key', key.slice(0, -'contact'.length) + 'room:%');
+    if (error) throw new Error(`Chưa kiểm được tin phòng trước khi tag nhóm: ${error.message}`);
+    if (!data.length || data.some(row => row.status === 'failed')) {
+      await jobFail(job, 'Chưa gửi đủ phòng của tòa để báo nhóm.', { claimed: false });
+      return false;
+    }
+    return data.every(row => row.status === 'sent');
+  }
   const part = /^(.*:room:[^:]+):(album|divider)$/.exec(job.payload.automation_request_key || '');
   if (!part) return true;
   const [, roomKey, kind] = part;
@@ -166,9 +193,16 @@ async function sendText(s, job, p, threadId, type) {
       .filter((m) => m && m.uid)
       .map((m) => ({ pos: Number(m.pos) || 0, uid: String(m.uid), len: Number(m.len) || 0 }));
   }
-  if (p.tu_dong === true && type === ThreadType.Group && p.automation_request_key?.endsWith(':link')
+  if (type === ThreadType.Group && lockNoticeKey(p) && content.msg.startsWith('@all ')) {
+    content.mentions = [{ pos: 0, uid: '-1', len: 4 }];
+  }
+  const footer = p.automation_request_key?.split(':').at(-1);
+  if (p.tu_dong === true && type === ThreadType.Group && footer === 'contact' && /(?:^|\n)@all$/.test(content.msg)) {
+    content.mentions = [{ pos: content.msg.length - 4, uid: '-1', len: 4 }];
+  }
+  if (p.tu_dong === true && type === ThreadType.Group && footer === 'link'
       && /(?:^|\n)@all$/.test(content.msg)) {
-    const prefix = p.automation_request_key.slice(0, -4);
+    const prefix = p.automation_request_key.slice(0, -footer.length);
     const { data: prior, error } = await sb.from('zalo_send_queue').select('status,payload->>automation_request_key')
       .eq('organization_id', job.organization_id).eq('account_id', job.account_id)
       .eq('conversation_id', job.conversation_id).like('payload->>automation_request_key', prefix + '%').neq('id', job.id);
@@ -265,7 +299,11 @@ export async function processJob(job) {
       return;
     }
     const automation = await validateAutomationDelivery(job);
-    if (!automation.ok) { await jobFail(job, automation.reason, { claimed: false }); return; }
+    if (!automation.ok) {
+      if (lockNoticeKey(job.payload) && automation.reason.startsWith('AUTOMATION_UNVERIFIED:')) await deferJob(job, automation.reason);
+      else await jobFail(job, automation.reason, { claimed: false });
+      return;
+    }
     if (!await roomPartReady(job)) return;
     const { data: claim, error: claimError } = await sb.rpc('zalo_worker_claim_job_v1', { p_job_id: job.id, p_instance_id: INSTANCE_ID });
     if (claimError) throw new Error(claimError.message);
@@ -329,6 +367,10 @@ export async function processJob(job) {
     }
   } catch (e) {
     log('job error', job.id, e?.message || e);
+    if (claimed && !delivery.started && lockNoticeKey(job.payload) && e?.message?.startsWith('AUTOMATION_UNVERIFIED:')) {
+      await deferJob(job, e.message, true);
+      return;
+    }
     const unknown = delivery.started && job.payload?.action !== 'sync_groups';
     if (claimed) await jobFail(job, `${unknown ? 'UNKNOWN_EFFECT: cần đối soát, không tự gửi lại. ' : ''}${e?.message || e}`, {
       claimed, unknown, receiptIds: delivery.receiptIds,

@@ -23,7 +23,6 @@ import {
   Undo2,
   BadgeCheck,
   CalendarX,
-  ClipboardCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
@@ -327,27 +326,14 @@ function IncomeExpenseDetailMobileContent({
                 className="vd-act"
                 style={{ background: "#16a34a" }}
                 aria-label="Duyệt"
+                // Phiếu chi theo sổ tổng cũng duyệt ở đây: hộp xác nhận hiện số dư sổ tổng và nói rõ khi không duyệt được.
+                title={can.approveBlockedReason ? `Duyệt phiếu — ${can.approveBlockedReason}` : undefined}
                 onClick={() => {
                   onApprove(v);
                   onClose();
                 }}
               >
                 <CheckCircle2 size={15} />
-              </button>
-            )}
-            {/* Phiếu chi theo sổ tổng: duyệt ở màn Chờ duyệt (thấy số dư sổ tổng trước khi duyệt). */}
-            {can.approveVia === "INBOX" && (
-              <button
-                className="vd-act"
-                style={{ background: "#16a34a" }}
-                aria-label="Duyệt ở màn Chờ duyệt"
-                title="Duyệt ở màn Chờ duyệt (xem số dư sổ tổng trước khi duyệt)"
-                onClick={() => {
-                  onClose();
-                  navigate("/approvals");
-                }}
-              >
-                <ClipboardCheck size={15} />
               </button>
             )}
             {monetaryActionsAllowed && !locked && <QuickExpenseButton voucher={v} quick={quickExpense} />}

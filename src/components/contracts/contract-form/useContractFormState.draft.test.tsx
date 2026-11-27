@@ -8,13 +8,15 @@ import { buildContractDraftPayload } from '@/lib/contractDraftEditor';
 import { useContractFormState } from './useContractFormState';
 
 const defaults = vi.hoisted(() => ({ rows: [] as unknown[], buildingError: false, roomError: false, serviceError: false, accountError: false, orphanError: false }));
+vi.mock('@/hooks/contracts/useContractExitEarlyTerms', () => ({ useContractExitEarlyTerms: () => ({ data: [], isError: false, error: null, refetch: () => undefined }) }));
+vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true } }) }));
 vi.mock('@/hooks/useContracts', () => ({ useCreateContract: () => ({ isPending: false }),
   useUpdateContract: () => ({ isPending: false }), useSyncContractCustomers: () => ({ isPending: false }),
   useSyncContractServices: () => ({ isPending: false }) }));
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: defaults.buildingError ? undefined : [], isError: defaults.buildingError, refetch: vi.fn() }) }));
 vi.mock('@/hooks/useRooms', () => ({ useRooms: () => ({ data: defaults.roomError ? undefined : [{ id: '11111111-1111-4111-8111-111111111111', rent_price: 9000000 }], isError: defaults.roomError, refetch: vi.fn() }) }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: defaults.serviceError ? undefined : defaults.rows, isError: defaults.serviceError, refetch: vi.fn() }) }));
-vi.mock('@/hooks/useDeposits', () => ({ useOrphanDepositVouchers: () => ({ data: defaults.orphanError ? undefined : [], isError: defaults.orphanError, refetch: vi.fn() }) }));
+vi.mock('@/hooks/useDeposits', () => ({ useContractRoomDeposits: () => ({ data: defaults.orphanError ? undefined : {hold:null,vouchers:[]}, isError: defaults.orphanError, refetch: vi.fn() }) }));
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: defaults.accountError ? undefined : [], isError: defaults.accountError, refetch: vi.fn() }) }));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: '99999999-9999-4999-8999-999999999999' } }) }));

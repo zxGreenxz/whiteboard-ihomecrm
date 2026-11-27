@@ -290,6 +290,8 @@ export function TerminationExtraCharges({
     setCustomRows((rows) => rows.filter((r) => r.id !== id));
 
   const onDateChange = (which: "from" | "to") => (iso: string) => {
+    // Ngày không đổi (ô ngày phát lại đúng giá trị đang có) thì giữ số thu đã gõ tay; chỉ đổi ngày thật mới tính lại.
+    if (iso === (which === "from" ? fromDate : toDate)) return;
     if (which === "from") setFromDate(iso);
     else setToDate(iso);
     setProratedTouched(false);
