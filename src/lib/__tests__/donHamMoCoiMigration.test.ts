@@ -393,6 +393,16 @@ describe('migration dọn hàm mồ côi: hàng rào dừng cả tệp khi có n
     expect(await applyWith(`CREATE FUNCTION public.nguoi_goi_moi(p jsonb) RETURNS jsonb LANGUAGE sql SECURITY DEFINER AS
       $$ SELECT public.bulk_create_meter_readings(p) $$`)).toMatch(/bulk_create_meter_readings còn được nhắc trong thân hàm: public\.nguoi_goi_moi/);
   });
+  it('tên viết HOA không nháy (Postgres tự hạ chữ) vẫn bị bắt', async () => {
+    expect(await applyWith(`CREATE FUNCTION public.nguoi_goi_moi(p jsonb) RETURNS jsonb LANGUAGE sql SECURITY DEFINER AS
+      $$ SELECT PUBLIC.BULK_CREATE_METER_READINGS(p) $$`)).toMatch(/bulk_create_meter_readings còn được nhắc trong thân hàm: public\.nguoi_goi_moi/);
+  });
+  it('hàm SECURITY DEFINER mới gọi hàm sắp thu quyền nhưng CHỦ của nó không có EXECUTE ⇒ hậu kiểm dừng', async () => {
+    expect(await applyWith(`CREATE ROLE chu_khac NOSUPERUSER;
+      CREATE FUNCTION public.nguoi_goi_khac(p uuid) RETURNS text LANGUAGE sql SECURITY DEFINER AS $$ SELECT (public.approve_invoice_v1(p)).status $$;
+      ALTER FUNCTION public.nguoi_goi_khac(uuid) OWNER TO chu_khac;`))
+      .toMatch(/chủ của public\.nguoi_goi_khac không còn gọi được public\.approve_invoice_v1\(uuid\)/);
+  });
   it('một hàm INVOKER mới gọi hàm sắp thu quyền ⇒ dừng; hàm SECURITY DEFINER gọi thì vẫn áp được', async () => {
     expect(await applyWith(`CREATE FUNCTION public.nguoi_goi_moi(p uuid) RETURNS text LANGUAGE sql AS
       $$ SELECT (public.approve_invoice_v1(p)).status $$`)).toMatch(/approve_invoice_v1 còn được nhắc trong thân hàm: public\.nguoi_goi_moi \(INVOKER\)/);

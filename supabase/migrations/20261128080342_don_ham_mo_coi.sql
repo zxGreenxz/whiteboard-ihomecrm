@@ -130,7 +130,7 @@ BEGIN
       FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
        AND NOT (n.nspname = 'public' AND p.proname = v_ten)
-       AND p.prosrc ~ v_re
+       AND p.prosrc ~* v_re
        AND CASE WHEN v_ten = ANY (v_xoa)
                 THEN NOT (n.nspname = 'public' AND p.proname = ANY (v_xoa))
                 ELSE NOT p.prosecdef END;
@@ -144,21 +144,21 @@ BEGIN
       SELECT 'trigger ' || t.tgrelid::regclass::text || '.' || t.tgname AS x
         FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid = t.tgfoid
         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-       WHERE NOT t.tgisinternal AND ((n.nspname = 'public' AND p.proname = v_ten) OR pg_catalog.pg_get_triggerdef(t.oid) ~ v_re)
+       WHERE NOT t.tgisinternal AND ((n.nspname = 'public' AND p.proname = v_ten) OR pg_catalog.pg_get_triggerdef(t.oid) ~* v_re)
       UNION ALL
       SELECT 'policy ' || po.schemaname || '.' || po.tablename || '.' || po.policyname
-        FROM pg_catalog.pg_policies po WHERE coalesce(po.qual, '') ~ v_re OR coalesce(po.with_check, '') ~ v_re
+        FROM pg_catalog.pg_policies po WHERE coalesce(po.qual, '') ~* v_re OR coalesce(po.with_check, '') ~* v_re
       UNION ALL
       SELECT 'view ' || vw.schemaname || '.' || vw.viewname FROM pg_catalog.pg_views vw
-       WHERE vw.schemaname NOT IN ('pg_catalog', 'information_schema') AND vw.definition ~ v_re
+       WHERE vw.schemaname NOT IN ('pg_catalog', 'information_schema') AND vw.definition ~* v_re
       UNION ALL
-      SELECT 'matview ' || mv.schemaname || '.' || mv.matviewname FROM pg_catalog.pg_matviews mv WHERE mv.definition ~ v_re
+      SELECT 'matview ' || mv.schemaname || '.' || mv.matviewname FROM pg_catalog.pg_matviews mv WHERE mv.definition ~* v_re
       UNION ALL
       SELECT 'mặc định cột ' || ad.adrelid::regclass::text FROM pg_catalog.pg_attrdef ad
-       WHERE pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) ~ v_re
+       WHERE pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) ~* v_re
       UNION ALL
       SELECT 'ràng buộc ' || co.conrelid::regclass::text || '.' || co.conname FROM pg_catalog.pg_constraint co
-       WHERE co.contype IN ('c', 'x') AND pg_catalog.pg_get_constraintdef(co.oid) ~ v_re
+       WHERE co.contype IN ('c', 'x') AND pg_catalog.pg_get_constraintdef(co.oid) ~* v_re
       UNION ALL
       SELECT 'pg_depend ' || d.classid::regclass::text || ' #' || d.objid::text FROM pg_catalog.pg_depend d
         JOIN pg_catalog.pg_proc p ON p.oid = d.refobjid JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
@@ -170,7 +170,7 @@ BEGIN
 
     -- Sổ hành động của trợ lý (người gọi nằm trong DỮ LIỆU): không dòng nào được khai hàm này ở bất kỳ cột nào.
     IF to_regclass('app_private.copilot_action_registry') IS NOT NULL THEN
-      EXECUTE 'SELECT string_agg(r.action_id, '', '') FROM app_private.copilot_action_registry r WHERE row_to_json(r)::text ~ $1'
+      EXECUTE 'SELECT string_agg(r.action_id, '', '') FROM app_private.copilot_action_registry r WHERE row_to_json(r)::text ~* $1'
         INTO v_noi USING v_re;
       IF v_noi IS NOT NULL THEN
         RAISE EXCEPTION 'don_ham_mo_coi: sổ hành động trợ lý còn khai % ở: % — DỪNG', v_ten, v_noi USING ERRCODE = '55000';
@@ -179,7 +179,7 @@ BEGIN
 
     -- Việc cron (chạy bằng quyền chủ việc nhưng sẽ hỏng nếu hàm bị xoá; với hàm thu quyền thì là người gọi chưa rà).
     IF to_regclass('cron.job') IS NOT NULL THEN
-      EXECUTE 'SELECT string_agg(j.jobname, '', '') FROM cron.job j WHERE j.command ~ $1' INTO v_noi USING v_re;
+      EXECUTE 'SELECT string_agg(j.jobname, '', '') FROM cron.job j WHERE j.command ~* $1' INTO v_noi USING v_re;
       IF v_noi IS NOT NULL THEN
         RAISE EXCEPTION 'don_ham_mo_coi: việc cron còn gọi %: % — DỪNG', v_ten, v_noi USING ERRCODE = '55000';
       END IF;
@@ -246,7 +246,7 @@ BEGIN
       FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
        AND p.oid <> to_regprocedure(r.fn)
-       AND p.prosrc ~ ('\m' || r.ten || '\M')
+       AND p.prosrc ~* ('\m' || r.ten || '\M')
        AND NOT has_function_privilege(p.proowner, to_regprocedure(r.fn), 'EXECUTE');
     IF v_con IS NOT NULL THEN
       RAISE EXCEPTION 'don_ham_mo_coi: chủ của % không còn gọi được % — DỪNG', v_con, r.fn USING ERRCODE = '55000';
