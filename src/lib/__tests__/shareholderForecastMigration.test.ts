@@ -10,6 +10,7 @@ const contract = "40000000-0000-4000-8000-000000000001";
 const invoice = "50000000-0000-4000-8000-000000000001";
 const voucher = "60000000-0000-4000-8000-000000000001";
 const migration = readFileSync("supabase/migrations/20261127085824_du_kien_doanh_thu_co_dong.sql","utf8");
+const settlementForecast = readFileSync("supabase/migrations/20261127230121_du_kien_tien_thue_da_quyet_toan.sql","utf8");
 
 beforeAll(async () => {
   await db.exec(`
@@ -27,6 +28,8 @@ beforeAll(async () => {
       expected_move_out_date date,actual_end_date date,organization_id uuid,room_id uuid,deleted_at date,status text,signed_date date);
     CREATE TABLE invoices(id uuid,contract_id uuid,organization_id uuid,building_id uuid,billing_month text,status text,deleted_at date,
       kind text,remaining_amount numeric,total_amount numeric,paid_amount numeric,subtotal numeric,discount_amount numeric);
+    CREATE TABLE contract_terminations(contract_id uuid,organization_id uuid,actual_move_out_date date,status text,
+      approved_at timestamptz,prorated_rent numeric,outstanding_debt numeric);
     CREATE TABLE invoice_items(invoice_id uuid,accounting_class text,type text,amount numeric,from_date date,to_date date);
     CREATE TABLE income_expenses(id uuid,organization_id uuid,invoice_id uuid,name text);
     CREATE TABLE income_expense_types(id uuid,organization_id uuid,fee_category text,category text,name text);
@@ -61,12 +64,13 @@ beforeAll(async () => {
     INSERT INTO rooms VALUES ('${room}','${org}','${house}');
   `);
   await db.exec(migration);
+  await db.exec(settlementForecast);
 },30000);
 afterAll(()=>db.close());
 
 async function inputs(setup: string) {
   return db.transaction(async tx=>{
-    await tx.exec("TRUNCATE contracts,invoices,invoice_items,income_expenses,income_expense_types,fixture_lines,building_fee_accounts,app_private.contract_rent_support_plans,app_private.contract_rent_support_months");
+    await tx.exec("TRUNCATE contracts,contract_terminations,invoices,invoice_items,income_expenses,income_expense_types,fixture_lines,building_fee_accounts,app_private.contract_rent_support_plans,app_private.contract_rent_support_months");
     if (setup) await tx.exec(setup);
     const result = await tx.query<Record<string,string> & {detail_lines: {bucket:string; label:string; amount:number; room?:string}[]}>(
       "SELECT * FROM app_private.forecast_house_report_v1($1,$2,'2025-11-01',true)",[org,house]);
@@ -82,6 +86,34 @@ describe("Dự kiến doanh thu của nhà",()=>{
   });
   it("chỉ dự kiến các ngày thực sự có hợp đồng, kể cả khách đã trả phòng",async()=>{
     expect(Number((await inputs(lease)).unbilled)).toBe(1500000);
+  });
+  const settled = `INSERT INTO contract_terminations VALUES
+    ('${contract}','${org}','2025-11-15','COMPLETED','2025-11-16',0,0);`;
+  it("không ước tính lại tiền thuê tháng thanh lý đã chốt 0 đồng, giữ hóa đơn còn phải thu",async()=>{
+    const result=await inputs(lease+settled+`
+      INSERT INTO invoices VALUES
+        ('${invoice}','${contract}','${org}','${house}','2025-11','CANCELLED',NULL,'MONTHLY',0,0,0,0,0),
+        ('${voucher}','${contract}','${org}','${house}','2025-11','PARTIAL_PAID',NULL,'SETTLEMENT',100000,250000,150000,250000,0);`);
+    expect(Number(result.unbilled)).toBe(0);
+    expect(Number(result.unpaid)).toBe(100000);
+    expect(result.detail_lines.some(line=>line.bucket==="unbilled")).toBe(false);
+  });
+  it.each([
+    ["khác tổ chức", "UPDATE contract_terminations SET organization_id='10000000-0000-4000-8000-000000000002'"],
+    ["khác hợp đồng", "UPDATE contract_terminations SET contract_id='40000000-0000-4000-8000-000000000002'"],
+    ["chưa duyệt", "UPDATE contract_terminations SET approved_at=NULL"],
+    ["chưa hoàn tất", "UPDATE contract_terminations SET status='PENDING'"],
+    ["có dư nợ", "UPDATE contract_terminations SET outstanding_debt=100000"],
+    ["chưa rõ tiền thuê", "UPDATE contract_terminations SET prorated_rent=NULL"],
+    ["khác ngày trả", "UPDATE contract_terminations SET actual_move_out_date='2025-11-14'"],
+  ])("giữ phép tính thuê khi hồ sơ %s",async(_reason,change)=>{
+    expect(Number((await inputs(lease+settled+change)).unbilled)).toBe(1500000);
+  });
+  it("quyết toán tháng sau không xóa tiền dự kiến của kỳ trước",async()=>{
+    const result=await inputs(lease+settled+`
+      UPDATE contracts SET actual_end_date='2025-12-01';
+      UPDATE contract_terminations SET actual_move_out_date='2025-12-01',approved_at='2025-12-02';`);
+    expect(Number(result.unbilled)).toBe(3000000);
   });
   it("ưu tiên ngày trả thực tế, kể cả khi trả sau ngày dự kiến",async()=>{
     const r=await inputs(lease+"UPDATE contracts SET expected_move_out_date='2025-11-05'");
