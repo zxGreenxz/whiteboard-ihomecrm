@@ -106,7 +106,7 @@ export function soanTinPhong(room, mau, hotline) {
  * Chèn 1 dòng zalo_messages (pending) + 1 job zalo_send_queue hẹn giờ.
  * Trả về true nếu xếp được.
  */
-async function xepMotTin({ conv, khiNao, body, anh, requestKey, oneshotId, contentGuard }) {
+async function xepMotTin({ conv, khiNao, body, anh, requestKey, oneshotId, contentGuard, onSkipped }) {
   try {
     // One transaction reserves quota and creates both rows. Retrying the same
     // logical run after a lost response reuses its message/job, never resends it.
@@ -126,6 +126,7 @@ async function xepMotTin({ conv, khiNao, body, anh, requestKey, oneshotId, conte
     if (error) throw new Error(error.message);
     if (data?.status === 'queued') return true;
     if (data?.status === 'skipped') {
+      onSkipped?.(data.reason);
       log('automation: không xếp tin', conv.id, data.reason);
       return false;
     }
@@ -170,6 +171,7 @@ async function xepLo({ convs, plans, config, tranConLai, runKey, now, oneshotId,
   let soNguoiNhan = 0;
   let soBoQuaKhungGio = 0;
   let soKhongXepDuoc = 0;
+  let lyDoTuChoi = '';
   const ngayLuot = gioVietNam(now).ngay;
   let duKien = 0;
   let activeRecipients = 0;
@@ -199,7 +201,7 @@ async function xepLo({ convs, plans, config, tranConLai, runKey, now, oneshotId,
         soBoQuaKhungGio++;
         return false;
       }
-      if (await xepMotTin({ conv, khiNao, requestKey, oneshotId, contentGuard, ...content })) {
+      if (await xepMotTin({ conv, khiNao, requestKey, oneshotId, contentGuard, onSkipped: reason => { lyDoTuChoi = reason; }, ...content })) {
         nextScheduledStart = Math.max(nextScheduledStart, khiNao.getTime() + gapTin * 1000,
           convs.length > 1 ? bayGio + (i + 1) * gapNguoi * 1000 : 0);
         soTin++; daGuiChoNguoiNay = true;
@@ -255,7 +257,7 @@ async function xepLo({ convs, plans, config, tranConLai, runKey, now, oneshotId,
     }
     if (daGuiChoNguoiNay) soNguoiNhan++;
   }
-  return { soTin, soNguoiNhan, soBoQuaKhungGio, soKhongXepDuoc, nextScheduledStart,
+  return { soTin, soNguoiNhan, soBoQuaKhungGio, soKhongXepDuoc, lyDoTuChoi, nextScheduledStart,
     soChuaXep: Math.max(0, duKien - soTin),
     soBoQuaTran: Math.max(0, duKien - soTin - soBoQuaKhungGio - soKhongXepDuoc) };
 }
@@ -563,6 +565,12 @@ function groupContactText(intro, hotline) {
 }
 
 export async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey, oneshotId, earliestStart }) {
+  const registration = await sb.rpc('zalo_worker_register_sale_batch_v1', {
+    p_instance: INSTANCE_ID, p_org: orgId, p_key: runKey, p_mode: chiChiTiet ? 'event' : day ? 'full' : 'compact',
+    p_recipients: convs.map(conv => conv.id), p_event_rooms: chiChiTiet ? phong.rooms.map(room => room.id) : null,
+    p_fingerprint: saleContentGuard(phong, config.template).fingerprint, p_oneshot: oneshotId ?? null,
+  });
+  if (registration.error || registration.data !== true) throw new Error(registration.error?.message || 'Đợt gửi đã đổi hoặc đang thu hồi');
   const byScope = new Map();
   const plans = new Map();
   const recipients = [];
@@ -635,6 +643,16 @@ async function congTranDinhKy(orgId, ngay, soTin) {
   if (saveError) log('automation: cộng trần lượt một lần lỗi', saveError.message);
 }
 
+async function retryReplacementShot(claim) {
+  const shot = claim.oneshot;
+  if (!shot.result?.sale_refresh_parent) return false;
+  const { data, error } = await sb.rpc('zalo_worker_retry_sale_oneshot_v1', {
+    p_instance: INSTANCE_ID, p_shot: shot.id, p_budget: shot.result.rebuild_budget ?? claim.con_lai,
+  });
+  if (error) throw new Error(error.message);
+  return data === true;
+}
+
 async function chayMotHenGio(claim, now) {
   const shot = claim.oneshot;
   const orgId = shot.organization_id;
@@ -658,10 +676,16 @@ async function chayMotHenGio(claim, now) {
     .select('id, user_id, organization_id, account_id, peer_name, thread_type, thread_id, is_sale_partner')
     .in('id', nhan)
     .eq('organization_id', orgId);
-  if (error) return thatBai('khong_doc_duoc_nhom', 'Không đọc được danh sách nhóm nhận.');
+  if (error) {
+    if (await retryReplacementShot(claim)) return;
+    return thatBai('khong_doc_duoc_nhom', 'Không đọc được danh sách nhóm nhận.');
+  }
   // Giữ thứ tự của lượt; chỉ nhóm sale còn hợp lệ và tài khoản đang có phiên sống.
   const convs = nhan.map(id => (convsTho || []).find(c => c.id === id)).filter(c => c
     && c.organization_id === orgId && c.thread_type === 'group' && c.is_sale_partner && sessions.has(c.account_id));
+  if (shot.result?.sale_refresh_parent && convs.length < (convsTho ?? []).filter(c => c.thread_type === 'group' && c.is_sale_partner).length) {
+    if (await retryReplacementShot(claim)) return;
+  }
   if (!convs.length) {
     return thatBai('khong_co_nhom_san_sang', 'Không có nhóm sale nào của lượt này đang có tài khoản Zalo kết nối.');
   }
@@ -669,13 +693,14 @@ async function chayMotHenGio(claim, now) {
 
   const khung = trongKhungGio(now, config.antiSpam);
   if (!khung.trong) return thatBai('ngoai_khung_gio', khung.lyDo);
-  const tranConLai = Math.max(0, Math.floor(Number(claim.con_lai) || 0));
+  const tranConLai = Math.max(0, Math.floor(Number(shot.result?.rebuild_budget ?? claim.con_lai) || 0));
   if (tranConLai <= 0) return thatBai('het_tran_ngay', `Đã chạm trần ${config.antiSpam.dailyCap} tin tự động trong ngày.`);
 
   let phong;
   try {
     phong = await docPhongTrong(orgId);
   } catch (e) {
+    if (await retryReplacementShot(claim)) return;
     return thatBai('khong_doc_duoc_phong', `Không đọc được danh sách phòng: ${e?.message || e}`);
   }
   if (!phong.rooms.length) {
@@ -686,8 +711,9 @@ async function chayMotHenGio(claim, now) {
 
   const ketQua = await guiLo({
     convs, config, phong, accountId, orgId, now,
-    runKey: `oneshot:${shot.id}`, day: mode === 'full', tranConLai, oneshotId: shot.id,
+    runKey: `oneshot:${shot.id}`, day: mode === 'full', tranConLai, oneshotId: shot.id, earliestStart: shot.result?.earliest_start,
   });
+  if (ketQua.soKhongXepDuoc && !ketQua.lyDoTuChoi && await retryReplacementShot(claim)) return;
   const detail = {
     oneshot_id: shot.id, luot_mot_lan: true, nguon: shot.origin, che_do: mode,
     so_phong: phong.rooms.length,
@@ -746,8 +772,64 @@ async function xuLyHenGio(orgFilter, now) {
       await chayMotHenGio(data, now);
     } catch (e) {
       log('automation: lượt một lần lỗi', data.oneshot.id, e?.message || e);
+      if (await retryReplacementShot(data)) continue;
       await chotHenGio(data.oneshot, false, { code: 'loi_worker', reason: String(e?.message || e).slice(0, 500) });
     }
+  }
+}
+
+// Rebuild with the same audience and mode after all provider recalls have receipts.
+async function rebuildSaleBatch(plan, now) {
+  const config = chuanHoaBroadcast(plan.config);
+  const ids = plan.recipients.filter(id => config.recipients.includes(id));
+  if (!ids.length) return 'Đã bỏ các nhóm nhận của đợt gửi.';
+  const { data, error } = await sb.from('zalo_conversations').select('id,user_id,organization_id,account_id,thread_id,thread_type,is_sale_partner')
+    .eq('organization_id', plan.org).in('id', ids);
+  if (error) throw new Error(error.message);
+  const convs = ids.map(id => data.find(conv => conv.id === id)).filter(Boolean);
+  if (!convs.length) return 'Các hội thoại nhận đã đóng.';
+  if (convs.some(conv => !sessions.has(conv.account_id))) return null;
+  const phong = await docPhongTrong(plan.org);
+  if (plan.mode === 'event') {
+    const wanted = new Set(plan.rooms);
+    phong.rooms = phong.rooms.filter(room => wanted.has(room.id));
+  }
+  if (!phong.rooms.length) return 'Danh sách mới không còn phòng để gửi.';
+  const result = await guiLo({ config, phong, orgId: plan.org, accountId: convs[0].account_id, convs, now,
+    runKey: plan.run_key, earliestStart: plan.earliest_start, day: plan.mode !== 'compact', chiChiTiet: plan.mode === 'event', tranConLai: plan.remaining });
+  if (result.lyDoTuChoi) return `Đợt mới xếp được ${result.soTin} tin. ${result.lyDoTuChoi}`;
+  if (result.soKhongXepDuoc) return null;
+  if (result.soChuaXep) return `Đợt mới xếp được ${result.soTin} tin, còn ${result.soChuaXep} tin chưa xếp.`;
+  return `Đã thu hồi xong và xếp lại ${result.soTin} tin theo danh sách mới.`;
+}
+
+async function tickSaleBatchRecovery(orgs, now) {
+  const { data: ids, error } = await sb.rpc('zalo_worker_sale_batches_due_v1', {
+    p_instance: INSTANCE_ID, p_orgs: orgs.length ? orgs : null,
+  });
+  if (error) throw new Error(error.message);
+  const currentLists = new Map();
+  for (const id of ids) {
+    const advance = async (finish = null) => {
+      const response = await sb.rpc('zalo_worker_advance_sale_batch_v1', { p_instance: INSTANCE_ID, p_batch: id, p_finish: finish });
+      if (response.error || !response.data?.phase) throw new Error(response.error?.message || 'Thiếu trạng thái thu hồi');
+      return response.data;
+    };
+    try {
+      const plan = await advance();
+      if (plan.phase === 'watching') {
+        if (!currentLists.has(plan.org)) currentLists.set(plan.org, await docPhongTrong(plan.org));
+        const current = saleContentGuard(currentLists.get(plan.org), chuanHoaBroadcast(plan.config).template);
+        if (current.fingerprint !== plan.fingerprint) {
+          const stopped = await sb.rpc('zalo_worker_stop_sale_batch_v1', { p_instance: INSTANCE_ID, p_job: plan.job });
+          if (stopped.error) throw new Error(stopped.error.message);
+        }
+        continue;
+      }
+      if (plan.phase !== 'rebuilding') continue;
+      const finish = await rebuildSaleBatch(plan, now);
+      if (finish) await advance(finish);
+    } catch (error) { log('automation: chưa chốt đợt thu hồi', id, error.message); }
   }
 }
 
@@ -763,6 +845,8 @@ export async function tickTuDongHoa(orgFilter = []) {
   try {
     try { await tickHermesSchedules({ db: sb, instanceId: INSTANCE_ID, organizationIds: orgFilter, log }); }
     catch (error) { log('hermes schedule tick unverified', error?.message || error); }
+    try { await tickSaleBatchRecovery(orgFilter, now); }
+    catch (error) { log('automation: chưa đọc được các đợt đang thu hồi', error.message); }
     // One-shots first: the scheduled pass below then reads the quota book they updated.
     try { await xuLyHenGio(orgFilter, now); }
     catch (error) { log('automation: lượt một lần chưa xác minh', error?.message || error); }

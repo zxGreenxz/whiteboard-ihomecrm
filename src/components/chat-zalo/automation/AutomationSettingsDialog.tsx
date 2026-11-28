@@ -45,7 +45,7 @@ import TemplateBuilder from './TemplateBuilder';
 import AntiSpamFields from './AntiSpamFields';
 import AutoReplyFields from './AutoReplyFields';
 import RunLog from './RunLog';
-import { CHU_MO, VIEN, KhoiCaiDat, BangCanhBao } from './uiChung';
+import { CHU_MO, VIEN, KhoiCaiDat, BangCanhBao, SoNguyenInput, TruongNhap } from './uiChung';
 
 interface Props {
   open: boolean;
@@ -229,6 +229,13 @@ export default function AutomationSettingsDialog({ open, onOpenChange, account, 
                   ten="Bật gửi phòng trống định kỳ"
                   moTa="Tắt thì mọi lịch và quy tắc bên dưới vẫn được giữ nguyên, chỉ là không có lượt nào chạy."
                 />
+
+                <TruongNhap id="as-gap-nguoi" nhan="Thời gian gửi giữa các nhóm"
+                  ghiChu="Khoảng cách giữa thời điểm bắt đầu gửi cho hai nhóm liên tiếp. Áp dụng cho cả lượt định kỳ và gửi một lần.">
+                  <SoNguyenInput id="as-gap-nguoi" value={bc.antiSpam.gapBetweenRecipientsSec}
+                    onChange={gap => setBc(current => ({ ...current, antiSpam: { ...current.antiSpam, gapBetweenRecipientsSec: gap } }))}
+                    min={30} max={3600} macDinh={180} donVi="giây" />
+                </TruongNhap>
 
                 {bcBat && khongNguoiNhan && (
                   <BangCanhBao>

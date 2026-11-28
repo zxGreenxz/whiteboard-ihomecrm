@@ -27,7 +27,7 @@ const WHOLE_DAY = { recipients: [], antiSpam: { allowedHours: { from: '00:00', t
 type Shot = { id: string; status: string; mode: string; run_at: string; send_now: boolean; recipients: string[]; origin: string; attempts?: number; result: Record<string, unknown> };
 type CreateResult = { ok: boolean; reused?: boolean; code?: string; reason?: string; oneshot?: Shot; nguoi_nhan_loi?: string[]; khung_gio?: { from: string; to: string }; goi_y_run_at?: string };
 type Claim = { status: string; code?: string; oneshot?: Shot & { attempts: number }; config?: Record<string, unknown>; con_lai?: number };
-type Enqueue = { status: string; reused?: boolean; reason?: string; job_id?: string };
+type Enqueue = { message_id?: string; status: string; reused?: boolean; reason?: string; job_id?: string };
 
 beforeAll(async () => {
   await db.exec(`
@@ -84,11 +84,15 @@ beforeAll(async () => {
   const live = readFileSync(LIVE_STOP, 'utf8').replace(/\r\n/g, '\n').match(/CREATE OR REPLACE FUNCTION public\.zalo_dung_khan_cap[\s\S]*?END \$fn\$;/);
   if (!live) throw new Error('missing live public.zalo_dung_khan_cap');
   await db.exec(live[0]); await db.exec(live[0]);
+  await db.exec('ALTER TABLE public.zalo_messages ADD COLUMN zalo_msg_id text, ADD COLUMN cli_msg_id text');
+  const batches = readFileSync('supabase/migrations/20261128022009_zalo_thu_hoi_va_gui_lai_dot_phong.sql', 'utf8');
+  await db.exec(batches); await db.exec(batches);
 }, 60_000);
 afterAll(() => db.close());
 
 beforeEach(async () => {
   await db.exec(`
+    DELETE FROM app_private.zalo_sale_batches;
     DELETE FROM public.zalo_automation_oneshots; DELETE FROM public.zalo_send_queue; DELETE FROM public.zalo_messages;
     DELETE FROM public.zalo_automation_runs; DELETE FROM public.zalo_automations; DELETE FROM app_private.hermes_group_jobs;
     UPDATE public.zalo_conversations SET is_sale_partner=(id<>'${UNMARKED}');
@@ -142,6 +146,96 @@ async function claimed(recipients = [G1, G2], requestId = 'req-1') {
   expect(c.status).toBe('claimed');
   return c.oneshot!.id;
 }
+
+describe('thu hồi đợt đang gửi khi danh sách phòng đổi', () => {
+  it('dừng riêng giờ gửi đang chạy, chặn enqueue muộn và phục hồi cùng mã đợt sau khi worker khởi động lại', async () => {
+    await setConfig({ ...WHOLE_DAY, recipients:[G1,G2] }, true);
+    const key = 'scheduled:2026-11-28';
+    const slot = key+':12:30';
+    const register = (k:string) => as(null,'service_role','SELECT public.zalo_worker_register_sale_batch_v1($1,$2,$3,$4,$5,NULL,$6,NULL) v',
+      [INSTANCE,ORG,k,'full',uuids([G2,G1]),'b'.repeat(64)]);
+    const queue = (k:string,conv:string,part:string) => as<Enqueue>(null,'service_role',
+      "SELECT public.zalo_enqueue_broadcast_v1($1,'phòng',clock_timestamp(),$2,NULL) v",[conv,k+':'+conv+':'+part]);
+    await register(key); await register(slot);
+    const stale = await queue(key,G1,'link');
+    const later = await queue(slot,G2,'contact');
+    const id = await scalar<string>('SELECT id v FROM app_private.zalo_sale_batches WHERE run_key=$1',[key]);
+    const advance = (inst=INSTANCE) => as<{phase:string;remaining?:number;earliest_start?:number}>(null,'service_role','SELECT public.zalo_worker_advance_sale_batch_v1($1,$2) v',[inst,id]);
+    expect(await advance()).toMatchObject({phase:'watching',job:stale.job_id});
+    await expect(as(null,'service_role','SELECT public.zalo_worker_stop_sale_batch_v1($1,$2) v',[OLD_INSTANCE,stale.job_id])).rejects.toThrow(/lease/);
+    await as(null,'service_role','SELECT public.zalo_worker_stop_sale_batch_v1($1,$2) v',[INSTANCE,stale.job_id]);
+    await expect(queue(key,G2,'link')).rejects.toThrow(/thu hồi/);
+    expect(await scalar('SELECT status v FROM public.zalo_send_queue WHERE id=$1',[later.job_id])).toBe('queued');
+    expect(await scalar('SELECT app_private.zalo_oneshot_tin_hom_nay_v1($1,clock_timestamp()) v',[ORG])).toBe(1);
+    const oldEnd = Date.now() + 3600000;
+    await db.query("UPDATE public.zalo_automations SET stats=jsonb_build_object('nextScheduledStart',$1::bigint)",[oldEnd]);
+    const plan = await advance();
+    expect(plan.earliest_start).toBeLessThan(oldEnd);
+    expect(plan).toMatchObject({phase:'rebuilding',mode:'full',recipients:[G2,G1],run_key:'refresh:'+id});
+    await db.query("UPDATE public.zalo_worker_lease SET instance_id=$1, heartbeat_at=clock_timestamp()",[OLD_INSTANCE]);
+    expect(await advance(OLD_INSTANCE)).toEqual(plan);
+    expect(await as(null,'service_role','SELECT public.zalo_worker_sale_batches_due_v1($1,$2) v',[OLD_INSTANCE,uuids([OTHER_ORG])])).toEqual([]);
+  });
+
+  it.each(['confirmed','unknown','recallFailed','stop','stopBeforeRecall'] as const)('dừng đúng đợt và chỉ gửi lại sau đủ biên nhận (%s)', async outcome => {
+    const shot = await claimed();
+    const register = [INSTANCE, ORG, 'oneshot:' + shot, 'full', uuids([G1,G2]), null, 'a'.repeat(64), shot];
+    const registerSql = 'SELECT public.zalo_worker_register_sale_batch_v1($1,$2,$3,$4,$5,$6,$7,$8) v';
+    await expect(as(null,'authenticated',registerSql,register)).rejects.toThrow(/permission denied/i);
+    expect(await as(null,'service_role',registerSql,register)).toBe(true);
+    const sent = await enqueue(shot,G1);
+    const pending = await enqueue(shot,G2);
+    const other = await claimed([G1],'other-run');
+    const outside = await enqueue(other,G1);
+    await db.query("UPDATE public.zalo_send_queue SET status='sent',provider_started_at=now() WHERE id=$1",[sent.job_id]);
+    const album = await scalar<string>("INSERT INTO public.zalo_messages(organization_id,account_id,conversation_id,direction,zalo_msg_id,status) VALUES($1,$2,$3,'out','photo-2','sent') RETURNING id v",[ORG,ACC,G1]);
+    await db.query("UPDATE public.zalo_messages SET zalo_msg_id='photo-1',status='sent' WHERE id=$1",[sent.message_id]);
+    await db.query("UPDATE public.zalo_send_queue SET payload=payload||jsonb_build_object('message_ids',jsonb_build_array(message_id,$2::uuid)) WHERE id=$1",[sent.job_id,album]);
+    if (outcome==='unknown') {
+      const unknown=await enqueue(shot,G1,'room:unknown');
+      await db.query("UPDATE public.zalo_send_queue SET status='failed',provider_started_at=now(),result=jsonb_build_object('outcome','unknown') WHERE id=$1",[unknown.job_id]);
+    }
+    await finish(shot,true);
+    const signal=() => as(null,'service_role','SELECT public.zalo_worker_stop_sale_batch_v1($1,$2) v',[INSTANCE,pending.job_id]);
+    expect(await signal()).toBe(true);
+    expect(await signal()).toBe(true);
+    expect(await scalar('SELECT status v FROM public.zalo_send_queue WHERE id=$1',[pending.job_id])).toBe('failed');
+    expect(await scalar('SELECT status v FROM public.zalo_send_queue WHERE id=$1',[outside.job_id])).toBe('queued');
+    const [batch] = await as<string[]>(null,'service_role','SELECT public.zalo_worker_sale_batches_due_v1($1,$2) v',[INSTANCE,uuids([ORG])]);
+    const step=() => as<{phase:string;reason?:string}>(null,'service_role','SELECT public.zalo_worker_advance_sale_batch_v1($1,$2) v',[INSTANCE,batch]);
+    if (outcome==='stopBeforeRecall') {
+      await stop();
+      expect((await step()).phase).toBe('closed');
+      expect(await scalar("SELECT count(*)::int v FROM public.zalo_send_queue WHERE payload ? 'sale_recall_message'")).toBe(0);
+      return;
+    }
+    expect((await step()).phase).toBe('recalling');
+    expect((await step()).phase).toBe('recalling');
+    expect(await scalar("SELECT count(*)::int v FROM public.zalo_send_queue WHERE payload->>'sale_recall_batch'=$1",[batch])).toBe(2);
+    expect(await scalar("SELECT count(*)::int v FROM public.zalo_automation_oneshots WHERE request_id LIKE 'refresh:%'")).toBe(0);
+    if (outcome==='stop') {
+      await stop();
+      const recall = await scalar<string>("SELECT id v FROM public.zalo_send_queue WHERE payload->>'sale_recall_batch'=$1 LIMIT 1",[batch]);
+      await expect(beginProvider(recall)).rejects.toThrow(/dừng thu hồi/);
+    } else {
+      await db.query("UPDATE public.zalo_send_queue SET status='processing' WHERE payload->>'sale_recall_batch'=$1",[batch]);
+      await db.query("UPDATE public.zalo_send_queue SET status=$2 WHERE payload->>'sale_recall_batch'=$1",[batch,outcome==='recallFailed'?'failed':'sent']);
+      expect(await scalar('SELECT msg_type v FROM public.zalo_messages WHERE id=$1',[sent.message_id])).toBe(outcome==='recallFailed'?'text':'sys');
+    }
+    expect((await step()).phase).toBe('closed');
+    await step();
+    expect(await scalar("SELECT count(*)::int v FROM public.zalo_automation_oneshots WHERE request_id LIKE 'refresh:%'")).toBe(outcome==='confirmed'?1:0);
+    if (outcome==='confirmed') {
+      const clone=(await claim()).oneshot!;
+      expect(clone.result.sale_refresh_parent).toBe(batch);
+      const first=await enqueue(clone.id,G1);
+      expect(await as(null,'service_role','SELECT public.zalo_worker_retry_sale_oneshot_v1($1,$2,20) v',[INSTANCE,clone.id])).toBe(true);
+      await db.query("UPDATE public.zalo_automation_oneshots SET run_at=now() WHERE id=$1",[clone.id]);
+      expect((await claim()).oneshot).toMatchObject({id:clone.id,result:{rebuild_budget:20}});
+      expect(await enqueue(clone.id,G1)).toMatchObject({job_id:first.job_id,reused:true});
+    }
+  });
+});
 
 describe('zalo broadcast one-shot — tạo lượt', () => {
   it('gửi ngay được khi lịch định kỳ TẮT, mặc định ĐẦY ĐỦ, không cần nằm trong config.recipients', async () => {

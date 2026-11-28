@@ -90,7 +90,10 @@ function fencedSession(session, job, delivery) {
         }
         if (sessions.get(job.account_id) !== session) throw new Error('SESSION_CHANGED: phiên đã dừng hoặc thay thế');
         const automation = await validateAutomationDelivery(job);
-        if (!automation.ok) throw new Error(automation.reason);
+        if (!automation.ok) {
+          if (automation.restartBatch) await stopStaleBatch(job);
+          throw new Error(automation.reason);
+        }
         const ingress = job.hermes_group_dispatch_id ? session.hermesIngress?.privateReplySource() : null;
         if (job.hermes_group_dispatch_id && (key !== 'sendMessage' || args.length !== 3 ||
             !args[0] || Object.keys(args[0]).length !== 1 || typeof args[0].msg !== 'string' ||
@@ -278,6 +281,11 @@ async function seenJob(s, job, p, type) {
   await jobDone(job.id);
 }
 
+async function stopStaleBatch(job) {
+  const { data, error } = await sb.rpc('zalo_worker_stop_sale_batch_v1', { p_instance: INSTANCE_ID, p_job: job.id });
+  if (error || data !== true) throw new Error('AUTOMATION_UNVERIFIED: chưa xác nhận dừng đợt gửi');
+}
+
 export async function processJob(job) {
   let claimed = false;
   const delivery = { started: false, receiptIds: [] };
@@ -300,6 +308,7 @@ export async function processJob(job) {
     }
     const automation = await validateAutomationDelivery(job);
     if (!automation.ok) {
+      if (automation.restartBatch) { await stopStaleBatch(job); return; }
       if (lockNoticeKey(job.payload) && automation.reason.startsWith('AUTOMATION_UNVERIFIED:')) await deferJob(job, automation.reason);
       else await jobFail(job, automation.reason, { claimed: false });
       return;
@@ -367,7 +376,7 @@ export async function processJob(job) {
     }
   } catch (e) {
     log('job error', job.id, e?.message || e);
-    if (claimed && !delivery.started && lockNoticeKey(job.payload) && e?.message?.startsWith('AUTOMATION_UNVERIFIED:')) {
+    if (claimed && !delivery.started && job.payload?.tu_dong === true && e?.message?.startsWith('AUTOMATION_UNVERIFIED:')) {
       await deferJob(job, e.message, true);
       return;
     }

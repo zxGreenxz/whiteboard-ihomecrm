@@ -50,6 +50,14 @@ describe('H4 revalidate public sale snapshot before provider side effect',()=>{
   const fresh=payload();change(fresh);
   expect(await validateSaleContent(job,{rpc:async()=>({data:fresh,error:null})},template)).toMatchObject({ok:false,reason:expect.stringContaining('STALE_SALE_CONTENT')});
  });
+ it('đổi chính sách ở tòa đã gửi cũng dừng các nhóm tòa khác trong cùng đợt', async()=>{
+  const data=payload();
+  data.buildings.push({id:'other',name:'Tòa B'});
+  const phong={buildings:mapPayloadSangToa(data),hotline:data.contact.phone,trangSale:1};
+  const group={organization_id:'org',payload:{sale_content_guard:saleContentGuard(phong,template,'other'),sale_batch_fingerprint:guardFor(data).fingerprint}};
+  data.rooms[0].sale_note='Mới';
+  expect(await validateSaleContent(group,{rpc:async()=>({data})},template,'other')).toMatchObject({ok:false,restartBatch:true});
+ });
  it('template changed after enqueue blocks old text',async()=>{
   expect(await validateSaleContent(job,{rpc:async()=>({data:payload(),error:null})},{roomTemplate:'new'})).toMatchObject({ok:false,reason:expect.stringContaining('STALE')});
  });
