@@ -764,10 +764,9 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(harness.invalidateQueries).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1);
-    // Entry buildings: ["buildings"], ["rooms"] + MỘT lượt gom báo cáo. Hai event
-    // nhả một lần — nhiều hơn 3 lời gọi nghĩa là debounce đã không gộp.
-    expect(originalInvalidations()).toHaveLength(3);
-    expect(invalidatedRoots()).toEqual(["buildings", "rooms", "business-performance"]);
+    // One refresh for each affected read, including the new building fee directory.
+    expect(originalInvalidations()).toHaveLength(5);
+    expect(invalidatedRoots()).toEqual(["fee-config-matrix", "spend-engine", "buildings", "rooms", "business-performance"]);
   });
 
   // ── TRẦN CHỜ (MAX_WAIT_MS) ────────────────────────────────────────────────
@@ -850,7 +849,7 @@ describe("useRealtimeDataSync report invalidation", () => {
   it.each([
     ["rooms", ["rooms", "rooms-with-contracts", "room-detail-contracts", "room-detail-tenants",
       "room-active-contract", "business-performance"]],
-    ["buildings", ["buildings", "rooms", "business-performance"]],
+    ["buildings", ["fee-config-matrix", "spend-engine", "buildings", "rooms", "business-performance"]],
   ])("%s làm mới màn phòng/toà + đúng một lượt báo cáo", (table, expected) => {
     useRealtimeDataSync();
     triggerTable(table);

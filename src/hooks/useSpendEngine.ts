@@ -145,17 +145,18 @@ export interface SpendCommitmentRow {
   note: string | null;
 }
 
-export const useSpendCommitments = (orgId: string | null, fromMonth: string, toMonth: string) =>
+export const useSpendCommitments = (orgId: string | null, fromMonth: string, toMonth: string, buildingId?: string) =>
   useQuery({
     enabled: !!orgId,
     meta:{label:'quy tắc duyệt chi',errorDisplay:'inline'},
-    queryKey: ['spend-engine', 'commitments', orgId, fromMonth, toMonth],
+    queryKey: ['spend-engine', 'commitments', orgId, fromMonth, toMonth, buildingId],
     queryFn: async (): Promise<SpendCommitmentRow[]> => {
-      const { data, error } = await supabase.rpc('list_spend_commitments_v1', {
+      const request = supabase.rpc('list_spend_commitments_v1', {
         p_organization_id: orgId as string,
         p_from_month: monthToDate(fromMonth),
         p_to_month: monthToDate(toMonth),
       });
+      const { data, error } = await (buildingId ? request.eq('building_id', buildingId) : request);
       if (error) throw error;
       return financialReadRows(data).map((r) => ({
         ...r,
@@ -198,15 +199,21 @@ export interface SpendSwitchRow {
   enabled_at: string;
 }
 
-export const useSpendSwitches = (orgId: string | null) =>
+export const useSpendSwitches = (orgId: string | null, buildingId?: string, month?: string) =>
   useQuery({
     enabled: !!orgId,
     meta:{label:'quy tắc duyệt chi',errorDisplay:'inline'},
-    queryKey: ['spend-engine', 'switches', orgId],
+    queryKey: ['spend-engine', 'switches', orgId, buildingId, month],
     queryFn: async (): Promise<SpendSwitchRow[]> => {
-      const { data, error } = await supabase.rpc('list_spend_policy_switches_v1', {
+      let request = supabase.rpc('list_spend_policy_switches_v1', {
         p_organization_id: orgId as string,
       });
+      if (buildingId) request = request.or(`building_id.is.null,building_id.eq.${buildingId}`);
+      if (month) {
+        const day = monthToDate(month);
+        request = request.lte('period_from', day).or(`period_to.is.null,period_to.gte.${day}`);
+      }
+      const { data, error } = await request;
       if (error) throw error;
       return financialReadRows(data) as SpendSwitchRow[];
     },

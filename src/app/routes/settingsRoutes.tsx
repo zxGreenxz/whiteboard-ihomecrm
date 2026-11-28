@@ -16,8 +16,7 @@ import {
   CashbookClosureRecord,
   CashbooksPage,
   CategoriesPage,
-  FixedFeesPage,
-  SpendEnginePage,
+  BuildingExpensesPage,
   FloorsPage,
   GeneralCategoriesPage,
   SystemSettingsPage,
@@ -60,13 +59,9 @@ export const settingsRoutes = (
     {/* Cashbooks (Tài khoản): canonical URL is /finance/cashbooks under
         VẬN HÀNH → Tài chính (cùng nhóm với Thu chi). Legacy URLs aliased. */}
     <Route path="/finance/cashbooks" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbooksPage /></RequirePermission></ProtectedRoute>} />
-    {/* Cấu hình giá phí cố định theo toà. Gate trùng /thanh-toan
-        (thu_tien/collect) để ai đóng được phí thì cấu hình được — server
-        vẫn kiểm lại từng toà trong upsert_building_fee_account. */}
-    <Route path="/settings/finance/fixed-fees" element={<ProtectedRoute><RequirePermission module="thu_tien" action="collect"><FixedFeesPage /></RequirePermission></ProtectedRoute>} />
-    {/* Cam kết chi — một bộ máy duyệt chi (26/09/2026). Gate hiển thị trùng /thanh-toan;
-        hàng rào thật là RPC: chỉ chủ công ty / super admin đọc & sửa được (42501). */}
-    <Route path="/settings/finance/cam-ket-chi" element={<ProtectedRoute><RequirePermission module="thu_tien" action="collect"><SpendEnginePage /></RequirePermission></ProtectedRoute>} />
+    <Route path="/finance/chi-phi-theo-toa" element={<ProtectedRoute><RequirePermission module="thu_tien" action="collect"><BuildingExpensesPage /></RequirePermission></ProtectedRoute>} />
+    <Route path="/settings/finance/fixed-fees" element={<Navigate to="/finance/chi-phi-theo-toa" replace />} />
+    <Route path="/settings/finance/cam-ket-chi" element={<Navigate to="/finance/chi-phi-theo-toa" replace />} />
     {/* Biên bản chốt & bàn giao quỹ — in được, ký tay. Gác bằng chính
         quyền xem sổ quỹ; nội dung biên bản đã khoá vĩnh viễn. */}
     <Route path="/finance/cashbooks/closure/:closureId" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbookClosureRecord /></RequirePermission></ProtectedRoute>} />
