@@ -43,6 +43,7 @@ interface Kich {
   nineBase?: string | null;
   nineKey?: string | null;
   managed?: boolean;
+  gatewayKey?: string;
   subscription?: boolean;
   /** Có NINEROUTER_* của Copilot. */
   copilotNine?: boolean;
@@ -112,6 +113,7 @@ function setup(k: Kich = {}) {
     SUPABASE_SERVICE_ROLE_KEY: "service-role",
     SUPABASE_ANON_KEY: "anon-key",
     AI_ROUTING_ENABLED: k.managed ? "true" : undefined,
+    CRM_AI_VPS_KEY: k.gatewayKey,
     AI_NOUS_API_KEY: k.managed ? "shared-key" : undefined,
     QUICK_ENTRY_DAILY_CALLS: k.dailyCalls,
     QUICK_ENTRY_CHOICES: k.choices,
@@ -198,6 +200,29 @@ const readReq = (body: unknown, headers: Record<string, string> = {}) =>
     body: JSON.stringify(body),
   });
 const codeOf = async (r: Response) => ((await r.json()) as { error?: { code?: string } }).error?.code;
+
+Deno.test("chép giọng vẫn gọi thẳng OpenRouter khi bật Hermes cho toàn CRM", async () => {
+  const s = setup({ mode: "all", managed: true, gatewayKey: "test-gateway", key: "audio-only",
+    upstream: [{ status: 200, body: { text: "kiểm tra" } }] });
+  const result = await xuLy(sttReq({ format: "webm", data: AUDIO }), s.deps);
+  assertEquals(result.status, 200);
+  const call = s.calls.find(c => c.url === "https://openrouter.ai/api/v1/audio/transcriptions");
+  assert(call);
+  assertEquals(new Headers(call.init?.headers).get("authorization"), "Bearer audio-only");
+  assertEquals(new Headers(call.init?.headers).has("x-crm-ai-key"), false);
+  assert(s.calls.every(c => !c.url.includes("/ai-gateway/")));
+});
+
+Deno.test("a completion explicitly billed to Nous credits cannot complete a subscription route", async () => {
+  const answer = { choices: [{ message: { content: "{}" } }] };
+  const s = setup({ mode: "all", managed: true, subscription: true, upstream: [
+    { status: 200, body: { ...answer, model: "openai/gpt-6-luna", usage: { billing_mode: "credits" } } },
+    { status: 200, body: answer },
+  ] });
+  const res = await xuLy(readReq({ application: "wallet_read", messages: [{ role: "user", content: "fixture" }] }), s.deps);
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("x-quick-entry-model"), "cx/gpt-6-luna[1m]");
+});
 
 Deno.test("managed wallet falls back to 9router on quota or loss of subscription without sending content against credits", async () => {
   for (const subscription of [true, false]) {

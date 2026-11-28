@@ -1,0 +1,19 @@
+[Unit]
+Description=CRM AI routing on the Hermes VPS
+After=network-online.target
+
+[Service]
+User=ihome-crm-ai
+Group=ihome-crm-ai
+EnvironmentFile=/etc/ihome-crm-ai/gateway.env
+ExecStart=/usr/bin/node /opt/ihome-crm-ai/current/server.mjs
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

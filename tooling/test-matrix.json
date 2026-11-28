@@ -2367,6 +2367,7 @@
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
+        "infra/hermes-ai-gateway/server.test.mjs",
         "scripts/__tests__/meter-capture-sql.test.mjs",
         "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
         "scripts/__tests__/meter-capture-fixture.test.mjs",

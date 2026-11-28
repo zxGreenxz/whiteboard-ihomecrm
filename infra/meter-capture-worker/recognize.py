@@ -15,6 +15,7 @@ import urllib.request
 
 from domain import MAX_AI_FRAMES, MAX_SECONDS, VERSION, InvalidInput, ai_prompt, ocr_reading, parse_ai, stable_reading
 
+CRM_AI_GATEWAY = "https://crm-hermes.chillhome.io.vn/ai-gateway/"
 AI_MODEL = "cx/gpt-6.1-sol"
 AI_REASONING = "medium"
 AI_DETAIL = "original"
@@ -40,7 +41,10 @@ def request_headers(token: str) -> dict[str, str]:
 
 
 def request_json(url: str, token: str, body: dict | None, timeout: float = 45, limit: int = 256_000) -> Any:
-    request = urllib.request.Request(url, None if body is None else json.dumps(body).encode(), request_headers(token))
+    headers = request_headers(token)
+    if url.startswith(CRM_AI_GATEWAY):
+        headers["X-CRM-AI-Key"] = os.environ["CRM_AI_VPS_KEY"]
+    request = urllib.request.Request(url, None if body is None else json.dumps(body).encode(), headers)
     with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
         raw = response.read(limit + 1)
         if len(raw) > limit:
@@ -175,6 +179,13 @@ def read_ai(frames: list[dict], meter: dict, *, timeout: float = 90, route: dict
             key = os.environ.get("AI_NOUS_API_KEY", "")
     if not base or not key:
         raise InvalidInput("ai_not_configured")
+    if os.environ.get("CRM_AI_VPS_KEY"):
+        provider = route["provider"] if route else "9router"
+        expected = {"9router": ("https://ai.chillhome.io.vn/v1", "https://cli.chillhome.io.vn/v1"),
+                    "nous": ("https://inference-api.nousresearch.com/v1",)}
+        if https_base(base) not in expected[provider]:
+            raise InvalidInput("unmapped_ai_endpoint")
+        base = CRM_AI_GATEWAY + provider
     if route is not None:
         if route["provider"] == "nous":
             if not model.startswith("openai/"):

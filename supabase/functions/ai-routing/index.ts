@@ -1,5 +1,6 @@
 import { APPS, inScope, loadCatalog, endpoint, isObject, routePair, type App, type CatalogModel, type Env } from '../_shared/ai-routing.ts';
 import { probe } from './probe.ts';
+import { viaHermesVps } from '../_shared/hermes-vps.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Cache-Control': 'no-store' };
 const reply = (status: number, data: unknown) => Response.json(data, { status, headers: cors });
@@ -28,14 +29,30 @@ export async function manage(req: Request, env: Env, send: typeof fetch = fetch)
     try { const text = await req.text(); if (text.length > 2500) return reply(413, { error: 'body_size' }); input = JSON.parse(text); }
     catch { return reply(400, { error: 'invalid_request' }); }
     if (!isObject(input) || !['read', 'sync', 'save', 'verify'].includes(String(input.action))) return reply(400, { error: 'invalid_request' });
+    let actor: string | undefined;
+    if (env('CRM_AI_OWNER_ID') && env('CRM_AI_OWNER_CONNECTOR_KEY')) {
+      const user = await send(base + '/auth/v1/user', { headers: { apikey: anon, Authorization: auth },
+        redirect: 'error', signal: AbortSignal.timeout(5000) });
+      if (!user.ok) return reply(503, { error: 'auth_unavailable' });
+      actor = (await user.json()).id;
+    }
     const syncErrors: string[] = [];
     if (input.action === 'sync') {
       await Promise.all(providers.map(async provider => {
-        const target = endpoint(provider, env);
+        const target = endpoint(provider, env, actor);
         if (!target) { syncErrors.push(provider); return; }
         try {
-          const models = await loadCatalog(provider, target, send, 20000);
+          const models = await loadCatalog(provider, target, viaHermesVps(provider, env, send), 20000);
           if (!models.length) throw Error('empty_entitlement');
+          // Syncing Nous should preserve verified 9router models if its catalog is unchanged.
+          if (provider === '9router') {
+            const previous = await db('ai_route_catalogs?select=provider,models&provider=eq.9router');
+            if (!previous.ok) throw Error('catalog_store_unavailable');
+            const rows = await previous.json();
+            const saved: CatalogModel[] = rows.find((row: { provider: string }) => row.provider === provider)?.models ?? [];
+            if (saved.length === models.length && models.every((m, i) => m.id === saved[i].id &&
+                m.vision === saved[i].vision && m.text === saved[i].text)) return;
+          }
           const stored = await db('ai_route_catalogs?on_conflict=provider', { method: 'POST',
             headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ provider, models, synced_at: new Date().toISOString() }) });
           if (!stored.ok) throw Error('catalog_store_unavailable');
@@ -50,9 +67,9 @@ export async function manage(req: Request, env: Env, send: typeof fetch = fetch)
       const model = catalog?.models.find(m => m.id === input.model && (m.vision || m.text));
       if (!catalog || !model) return reply(422, { error: 'incompatible_model' });
       if (catalog.synced_at !== input.snapshot) return reply(409, { error: 'config_changed' });
-      const target = endpoint(catalog.provider, env);
+      const target = endpoint(catalog.provider, env, actor);
       if (!target) return reply(422, { error: 'provider_unconfigured' });
-      const result = await probe(catalog.provider, target, model, send);
+      const result = await probe(catalog.provider, target, model, viaHermesVps(catalog.provider, env, send));
       if (result.stop) return reply(200, result);
       const record = await db('rpc/record_ai_route_probe', { method: 'POST', body: JSON.stringify({
         p_provider: catalog.provider, p_synced_at: catalog.synced_at, p_model: model.id, p_passed: result.passed,
@@ -66,7 +83,7 @@ export async function manage(req: Request, env: Env, send: typeof fetch = fetch)
       for (const route of input.routes) {
         const choice = catalogs.find(c => c.provider === route.provider)?.models.find(m => m.id === route.model);
         if (!inScope(route.provider, route.model) || !choice?.verified || input.app === 'quick_stt' || !choice.vision) return reply(422, { error: 'incompatible_model' });
-        if (!endpoint(route.provider, env)) return reply(422, { error: 'provider_unconfigured' });
+        if (!endpoint(route.provider, env, input.app === 'meter_vision' ? undefined : actor)) return reply(422, { error: 'provider_unconfigured' });
       }
       const revision = Number(input.revision);
       const update = await db('ai_application_routes?app=eq.' + input.app + '&revision=eq.' + revision, {
@@ -78,7 +95,8 @@ export async function manage(req: Request, env: Env, send: typeof fetch = fetch)
     const rows = await db('ai_application_routes?select=app,revision,routes&order=app');
     if (!rows.ok) throw Error('route_store_unavailable');
     return reply(200, { apps: await rows.json(), catalogs, syncErrors, enabled: env('AI_ROUTING_ENABLED') === 'true',
-      ready: { nous: !!endpoint('nous', env), '9router': !!endpoint('9router', env) } });
+      ready: { nous: !!endpoint('nous', env, actor), '9router': !!endpoint('9router', env) },
+      meterNousReady: !!endpoint('nous', env) });
   } catch { return reply(503, { error: 'ai_routing_unavailable' }); }
 }
 

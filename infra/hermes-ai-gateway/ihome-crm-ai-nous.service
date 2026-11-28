@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes owner Nous inference socket for CRM
+Requires=docker.service
+After=docker.service
+
+[Service]
+EnvironmentFile=/etc/ihome-crm-ai/sidecar.env
+ExecStartPre=/usr/bin/install -d -o ${OWNER_UID} -g ihome-crm-ai -m 2710 /run/ihome-hermes-models
+ExecStart=/usr/bin/docker run --rm --name ihome-crm-ai-nous --read-only --tmpfs /tmp:rw,nosuid,nodev --cap-drop=ALL --security-opt=no-new-privileges --user ${OWNER_UID}:${OWNER_GID} --pids-limit 128 --memory=384m -e HOME=/home/hermes -e HERMES_HOME=/home/hermes/.hermes/profiles/owner -e PYTHONDONTWRITEBYTECODE=1 --mount type=bind,src=${PROFILE_DIR},dst=/home/hermes/.hermes/profiles/owner --mount type=bind,src=/run/ihome-hermes-models,dst=/run/ihome-hermes-models --mount type=bind,src=/opt/ihome-crm-ai/current/owner.py,dst=/opt/crm-owner.py,readonly --entrypoint /opt/hermes/.venv/bin/python ${HERMES_IMAGE} /opt/crm-owner.py
+ExecStop=/usr/bin/docker stop -t 10 ihome-crm-ai-nous
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

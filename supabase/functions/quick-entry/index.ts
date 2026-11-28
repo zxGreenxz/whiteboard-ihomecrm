@@ -26,6 +26,7 @@
 // Không lưu, không ghi log nội dung âm thanh hay chữ của người dùng.
 
 import { applicationRoutes, endpoint, isObject, loadCatalog } from "../_shared/ai-routing.ts";
+import { viaHermesVps } from "../_shared/hermes-vps.ts";
 
 export const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -376,6 +377,7 @@ interface KetQuaGoi {
   status: number;
   body: Record<string, unknown> | null;
   cost: number;
+  credits?: boolean;
   tokens: { prompt: number; completion: number; total: number };
 }
 
@@ -414,6 +416,7 @@ async function goiNhaCungCap(
     ok: res.ok,
     status: res.status,
     body,
+    credits: [body?.billing_mode, usage.billing_mode, res.headers.get("x-billing-mode")].some(v => v === "credits" || v === "credit"),
     cost: so(usage.cost),
     tokens: { prompt, completion, total: so(usage.total_tokens) || prompt + completion },
   };
@@ -615,10 +618,11 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
   const app = route === "stt" ? "quick_stt" : body.application === "wallet_read" ? "wallet_read" : "quick_read";
   const configured = await applicationRoutes(app, env, f);
   const legacyModels = chon ? [chon, ...macDinh.filter((m) => m !== chon)] : macDinh;
-  const targets = configured.length ? configured.flatMap(({ provider, model }) => {
-    const upstream = endpoint(provider, env);
+  const selected = configured.flatMap(({ provider, model }) => {
+    const upstream = endpoint(provider, env, userId);
     return upstream ? [{ ten: String(provider), ...upstream, model }] : [];
-  }) : legacyReady ? legacyModels.map(model => ({ ...legacy, model })) : [];
+  });
+  const targets = selected.length ? selected : legacyReady ? legacyModels.map(model => ({ ...legacy, model })) : [];
   if (!targets.length) return loi(503, "quick_entry_unavailable", "Nguồn AI chưa sẵn sàng. Bạn vẫn nhập tay được.");
   const models = targets.map(target => target.model);
   const skipRaw = Number(req.headers.get("x-quick-entry-skip") ?? 0);
@@ -705,10 +709,11 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
     const ncc = targets[i];
     // Verify this credential still has subscription coverage before forwarding any content.
     const checkPlan = configured.length > 0 && ncc.ten === "nous";
-    const entitled = !checkPlan || (await loadCatalog("nous", ncc, f, 3500).catch(() => []))
+    const sendToProvider = route === "stt" ? f : viaHermesVps(ncc.ten, env, f);
+    const entitled = !checkPlan || (await loadCatalog("nous", ncc, sendToProvider, 3500).catch(() => []))
       .some(m => m.id === ncc.model && m.vision);
     const r = entitled ? await goiNhaCungCap(
-      f,
+      sendToProvider,
       ncc.base,
       ncc.key,
       route === "stt" ? "/audio/transcriptions" : "/chat/completions",
@@ -720,7 +725,7 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
       : String(((r.body?.choices as Array<{ message?: { content?: unknown } }> | undefined)?.[0]?.message?.content) ?? "").trim();
     let thanhCong = r.ok && text.length > 0;
     if (thanhCong && configured.length && route === "read") {
-      try { thanhCong = isObject(JSON.parse(text)) && (ncc.ten !== "nous" || r.body?.model === models[i]); }
+      try { thanhCong = isObject(JSON.parse(text)) && (ncc.ten !== "nous" || (!r.credits && r.body?.model === models[i])); }
       catch { thanhCong = false; }
     }
 
