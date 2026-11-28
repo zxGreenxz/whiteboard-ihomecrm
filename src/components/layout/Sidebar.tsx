@@ -190,9 +190,7 @@ export const navigationGroups: NavGroup[] = [
           ...navFieldsFor('funds').map((x) => ({ ...x, icon: Wallet }) satisfies NavItem),
           ...navFieldsFor('bank-events').map((x) => ({ ...x, icon: Landmark }) satisfies NavItem),
           // Cấu hình giá phí cố định theo toà — nguồn gợi ý số tiền cho /thanh-toan.
-          { title: 'Phí cố định', href: '/settings/finance/fixed-fees', icon: Settings, module: 'thu_tien', action: 'collect' },
-          // Cam kết chi — một bộ máy duyệt chi; chỉ chủ công ty đọc/sửa được (server chặn người khác).
-          { title: 'Cam kết chi', href: '/settings/finance/cam-ket-chi', icon: BadgeCheck, module: 'thu_tien', action: 'collect' },
+          { title: 'Chi phí theo tòa', href: '/finance/chi-phi-theo-toa', icon: BadgeCheck, module: 'thu_tien', action: 'collect' },
           ...navFieldsFor('salary').map((x) => ({ ...x, icon: HandCoins, selfHref: '/finance/my-salary' }) satisfies NavItem),
           ...navFieldsFor('personal-wallet').map((x) => ({ ...x, icon: Coins }) satisfies NavItem),
         ],

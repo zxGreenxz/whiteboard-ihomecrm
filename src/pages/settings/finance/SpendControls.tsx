@@ -1,10 +1,8 @@
-import {QueryRegion} from '@/components/errors/QueryRegion';
 import { SkeletonBar } from '@/components/loading/LoadingState';
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import {useOperationFormFeedback} from '@/hooks/useOperationFormFeedback';
 import {SPEND_ERROR_RULES,parseCommitmentAmount,validateSpendSwitch} from '@/lib/spendFeedback';
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,20 +12,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { AlertTriangle, RefreshCw, Pencil, Plus, Trash2, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
-import { useIncomeExpenseTypes } from '@/hooks/useIncomeExpenseTypes';
+import { useExpenseBuildings, useOrgExpenseRules } from '@/hooks/useBuildingExpenseDirectory';
 import {
   SPEND_FEE_KEYS, SPEND_FEE_LABEL, SPEND_MODE_LABEL, SPEND_REASON_LABEL, SPEND_WRITER_LABEL,
-  useMySpendOrganizations, useSpendEngineStatus, useSpendCommitments, useSetSpendCommitment,
+  useSpendEngineStatus, useSpendCommitments, useSetSpendCommitment,
   useSpendSwitches, useSetSpendSwitch, useSpendShadowReport, useSelfApprovedVouchers,
   useSetTypeSpendRule,
   type SpendFeeKey, type SpendMode, type SpendCommitmentRow,
@@ -41,8 +37,13 @@ const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${pad
 const isoDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return isoDay(d); };
 
-/** Cam kết dưới mức này gần như chắc là số sót (vd phí công an 7.000đ). */
-const SO_NHO_BAT_THUONG = 50_000;
+export interface SpendCell {
+  orgId: string;
+  buildingId: string;
+  buildingName: string;
+  fee: SpendFeeKey;
+  month: string;
+}
 
 const ROUTE_LABEL: Record<string, { text: string; tone: 'secondary' | 'default' | 'destructive' | 'outline' }> = {
   LEGACY: { text: 'Đang tắt', tone: 'outline' },
@@ -58,35 +59,12 @@ const STATUS_LABEL: Record<string, string> = {
 // ─────────────────────────────── Cam kết tháng ───────────────────────────────
 interface EditCommit { buildingId: string; buildingName: string; fee: SpendFeeKey; month: string; amount: string; note: string; current: SpendCommitmentRow | null }
 
-function CommitmentsTab({ orgId }: { orgId: string }) {
-  const [month, setMonth] = useState(thisMonth());
-  const q = useSpendCommitments(orgId, month, month);
+export function CommitmentEditor({ orgId, buildingId, buildingName, fee, month }: SpendCell) {
+  const q = useSpendCommitments(orgId, month, month, buildingId);
   const save = useSetSpendCommitment();
-  const feedback=useOperationFormFeedback("lưu cam kết chi",{rules:SPEND_ERROR_RULES});
+  const feedback = useOperationFormFeedback("lưu cam kết chi", {rules: SPEND_ERROR_RULES});
   const [edit, setEdit] = useState<EditCommit | null>(null);
-  const buildings = useQuery({
-    queryKey: ['spend-engine', 'buildings', orgId],
-    meta:{label:'tòa nhà cho quy tắc duyệt chi',errorDisplay:'inline'},
-    queryFn: async () => {
-      const { data, error } = await supabase.from('buildings').select('id, name')
-        .eq('organization_id', orgId).is('deleted_at', null).order('name');
-      if (error) throw error;
-      return (data ?? []) as { id: string; name: string }[];
-    },
-    staleTime: 10 * 60_000,
-  });
-
-  const byCell = useMemo(() => {
-    const m = new Map<string, SpendCommitmentRow>();
-    for (const r of q.data ?? []) m.set(`${r.building_id}:${r.fee_category}`, r);
-    return m;
-  }, [q.data]);
-  const rows = useMemo(() => {
-    const withData = new Set((q.data ?? []).map((r) => r.building_id));
-    return (buildings.data ?? []).filter((b) => withData.has(b.id) || (q.data ?? []).length === 0);
-  }, [buildings.data, q.data]);
-  const tong = useMemo(() => (q.data ?? []).filter((r) => r.fee_category === 'tien_nha')
-    .reduce((s, r) => s + r.amount, 0), [q.data]);
+  const current = q.data?.find(r => r.building_id === buildingId && r.fee_category === fee) ?? null;
 
   const onSave = async () => {
     if (!edit) return;
@@ -101,72 +79,15 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <Label htmlFor="ck-thang">Tháng</Label>
-          <Input id="ck-thang" type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="w-44" />
-        </div>
-        <p className="text-sm text-muted-foreground max-w-2xl">
-          Mỗi ô là số tiền bạn <strong>ký trước</strong> cho toà × hạng mục trong tháng. Phiếu chi nằm trong phần
-          còn lại thì máy duyệt; vượt thì chờ bạn duyệt và cam kết <strong>không tự nới</strong>. Tháng đã có khoản
-          chi thì không sửa được nữa (không hồi tố). Tổng tiền nhà tháng này: <strong>{q.data !== undefined ? fmt(tong) : q.isLoading ? <SkeletonBar className="inline-block h-3.5 align-middle" style={{ width: '6rem' }} /> : '—'}</strong>.
-        </p>
-      </div>
-      {/* Tháng + mô tả hiện ngay; chỉ bảng cam kết chờ dữ liệu (chủ chốt 02/10/2026). */}
-      <QueryRegion label="cam kết chi" queries={[q,buildings]} skeleton="table" rows={6}>
-      {q.isLoading || buildings.isLoading ? <Skeleton className="h-64 w-full" /> : (
-        <div className="overflow-x-auto rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="sticky left-0 bg-background">Toà</TableHead>
-                {SPEND_FEE_KEYS.map((k) => (
-                  <TableHead key={k} className="text-right whitespace-nowrap">
-                    {SPEND_FEE_LABEL[k]}{(k === 'dien' || k === 'nuoc') && <span className="block text-[10px] font-normal text-muted-foreground">đi theo trần</span>}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((b) => (
-                <TableRow key={b.id}>
-                  <TableCell className="sticky left-0 bg-background font-medium whitespace-nowrap">{b.name}</TableCell>
-                  {SPEND_FEE_KEYS.map((k) => {
-                    const c = byCell.get(`${b.id}:${k}`) ?? null;
-                    const nho = c != null && c.amount < SO_NHO_BAT_THUONG;
-                    const vuot = c != null && c.remaining < 0;
-                    return (
-                      <TableCell key={k} className="text-right align-top">
-                        <button
-                          type="button"
-                          className="w-full text-right rounded px-1 py-0.5 hover:bg-muted"
-                          onClick={() => setEdit({ buildingId: b.id, buildingName: b.name, fee: k, month, amount: c ? String(Math.round(c.amount)) : '', note: c?.note ?? '', current: c })}
-                          disabled={feedback.blocked||q.isError||buildings.isError} title="Bấm để sửa cam kết"
-                        >
-                          {c ? (
-                            <>
-                              <span className={`font-medium ${nho ? 'text-amber-600' : ''}`}>{fmt(c.amount)}</span>
-                              {nho && <AlertTriangle className="inline h-3 w-3 ml-1 text-amber-600" aria-label="Số nhỏ bất thường" />}
-                              <span className={`block text-xs whitespace-nowrap ${vuot ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
-                                còn {fmt(c.remaining)}
-                              </span>
-                            </>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </button>
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <QueryRegion label="cam kết chi" queries={[q]} skeleton="lines">
+        {current && <p className="text-sm">Cam kết tháng {month} <strong>{fmt(current.amount)}</strong> · còn {fmt(current.remaining)}</p>}
+        <Button size="sm" variant="outline" title="Bấm để sửa cam kết" disabled={q.isError || !q.data || feedback.blocked}
+          onClick={() => setEdit({ buildingId, buildingName, fee, month, current,
+            amount: current ? String(current.amount) : '', note: current?.note ?? '' })}>
+          {current ? 'Sửa cam kết' : 'Ký cam kết tháng'}
+        </Button>
+        {current && current.amount < 50_000 && <p className="text-sm text-amber-700">Cam kết dưới 50.000đ. Kiểm tra lại số đã ký.</p>}
       </QueryRegion>
-      <p className="text-xs text-muted-foreground">
-        <AlertTriangle className="inline h-3 w-3 mr-1 text-amber-600" />
-        Ô vàng: số dưới {fmt(SO_NHO_BAT_THUONG)} — thường là số sót từ lần đóng cũ; nên kiểm lại trước khi bật áp dụng.
-      </p>
 
       <Dialog open={!!edit} onOpenChange={(o) => !o && feedback.close(()=>setEdit(null))}>
         <DialogContent ref={feedback.root}>
@@ -193,7 +114,7 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
           {feedback.notice}
           <DialogFooter>
             <Button variant="outline" onClick={() => feedback.close(()=>setEdit(null))}>Huỷ</Button>
-            <Button onClick={onSave} disabled={save.isPending||feedback.saving||feedback.blocked||q.isError||buildings.isError}>Lưu</Button>
+            <Button onClick={onSave} disabled={save.isPending||feedback.saving||feedback.blocked||q.isError}>Lưu</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -204,16 +125,16 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
 // ─────────────────────────────── Luật hạng mục ───────────────────────────────
 interface TypeRow { id: string; name: string; fee_category?: string | null; spend_mode?: string | null; force_approval?: boolean | null; organization_id?: string | null }
 
-function RulesTab({ orgId }: { orgId: string }) {
-  const types = useIncomeExpenseTypes('expense');
+export function RulesTab({ orgId, fee }: { orgId: string; fee?: SpendFeeKey }) {
+  const types = useOrgExpenseRules(orgId);
   const setRule = useSetTypeSpendRule();
   const feedback=useOperationFormFeedback("đổi quy tắc duyệt chi",{rules:SPEND_ERROR_RULES});
   const [chiCoLuat, setChiCoLuat] = useState(true);
   const list = useMemo(() => {
-    const rows = ((types.data ?? []) as unknown as TypeRow[]).filter((t) => !t.organization_id || t.organization_id === orgId);
-    const shown = chiCoLuat ? rows.filter((t) => t.fee_category || (t.spend_mode && t.spend_mode !== 'TUNG_PHIEU')) : rows;
+    const rows = types.data ?? [];
+    const shown = fee ? rows.filter(t => t.fee_category === fee) : chiCoLuat ? rows.filter((t) => t.fee_category || (t.spend_mode && t.spend_mode !== 'TUNG_PHIEU')) : rows;
     return [...shown].sort((a, b) => Number(!!b.fee_category) - Number(!!a.fee_category) || a.name.localeCompare(b.name, 'vi'));
-  }, [types.data, orgId, chiCoLuat]);
+  }, [types.data, chiCoLuat, fee]);
 
   const change = async (t:TypeRow,mode:SpendMode)=>{
     if(t.spend_mode===mode)return;
@@ -223,15 +144,15 @@ function RulesTab({ orgId }: { orgId: string }) {
   return (
     <div ref={feedback.root} className="space-y-3">{feedback.notice}
       <p className="text-sm text-muted-foreground max-w-3xl">
-        Luật chi khai <strong>trên hạng mục</strong>: <strong>Theo cam kết</strong> (tiền nhà, internet, quản lý…) —
+        Luật chi của hạng mục áp dụng <strong>cho toàn công ty</strong>: <strong>Theo cam kết</strong> (tiền nhà, internet, quản lý…) —
         so với số đã ký của tháng; <strong>Theo trần</strong> (điện, nước) — so với trần đã công bố;
-        <strong> Từng phiếu</strong> — như cũ: người có quyền duyệt tự duyệt, còn lại từ 600.000đ thì chờ duyệt.
+        <strong> Từng phiếu</strong> — như cũ: người có quyền duyệt tự duyệt, còn lại từ ngưỡng tự duyệt của công ty thì chờ duyệt.
         Hạng mục mới mặc định Từng phiếu (chặt nhất). Chỉ chủ công ty đổi được.
       </p>
-      <label className="flex items-center gap-2 text-sm">
+      {!fee && <label className="flex items-center gap-2 text-sm">
         <Checkbox checked={chiCoLuat} onCheckedChange={(v) => setChiCoLuat(v === true)} />
         Chỉ hiện hạng mục đã gắn khoá phí hoặc có luật riêng
-      </label>
+      </label>}
       {/* Mô tả + bộ lọc hiện ngay; chỉ bảng hạng mục chờ dữ liệu (chủ chốt 02/10/2026). */}
       <QueryRegion label="quy tắc hạng mục chi" queries={[types]} skeleton="table" rows={6}>
       {types.isLoading ? <Skeleton className="h-48 w-full" /> : (
@@ -246,6 +167,7 @@ function RulesTab({ orgId }: { orgId: string }) {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {list.length === 0 && <TableRow><TableCell colSpan={4}>Chưa có hạng mục chi phù hợp.</TableCell></TableRow>}
               {list.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>
@@ -254,7 +176,7 @@ function RulesTab({ orgId }: { orgId: string }) {
                     <Select value={(t.spend_mode as SpendMode) ?? 'TUNG_PHIEU'} onValueChange={(v) => change(t, v as SpendMode)} disabled={setRule.isPending||feedback.saving||feedback.blocked||types.isError}>
                       <SelectTrigger className="w-40 h-8"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {(['CAM_KET', 'TRAN', 'TUNG_PHIEU'] as SpendMode[]).map((m) => (
+                        {(['CAM_KET', 'TRAN', 'TUNG_PHIEU'] as SpendMode[]).filter(m => m === 'TUNG_PHIEU' || (m === 'CAM_KET' ? !!t.fee_category : ['dien','nuoc'].includes(t.fee_category ?? ''))).map((m) => (
                           <SelectItem key={m} value={m}>{SPEND_MODE_LABEL[m]}</SelectItem>
                         ))}
                       </SelectContent>
@@ -273,25 +195,18 @@ function RulesTab({ orgId }: { orgId: string }) {
 }
 
 // ─────────────────────────────── Bật áp dụng ───────────────────────────────
-function SwitchesTab({ orgId, route }: { orgId: string; route: string | undefined }) {
-  const q = useSpendSwitches(orgId);
+export function SwitchesTab({ orgId, route, cell }: { orgId: string; route?: string; cell?: SpendCell }) {
+  const q = useSpendSwitches(orgId, cell?.buildingId);
   const set = useSetSpendSwitch();
   const feedback=useOperationFormFeedback("lưu phạm vi áp dụng quy tắc chi",{rules:SPEND_ERROR_RULES});
-  const [fee, setFee] = useState<SpendFeeKey>('tien_nha');
-  const [from, setFrom] = useState(thisMonth());
+  const [fee, setFee] = useState<SpendFeeKey>(cell?.fee ?? 'tien_nha');
+  const [from, setFrom] = useState(cell?.month ?? thisMonth());
   const [to, setTo] = useState('');
-  const [building, setBuilding] = useState<string>('ALL');
-  const buildings = useQuery({
-    queryKey: ['spend-engine', 'buildings', orgId],
-    meta:{label:'tòa nhà cho quy tắc duyệt chi',errorDisplay:'inline'},
-    queryFn: async () => {
-      const { data, error } = await supabase.from('buildings').select('id, name')
-        .eq('organization_id', orgId).is('deleted_at', null).order('name');
-      if (error) throw error;
-      return (data ?? []) as { id: string; name: string }[];
-    },
-    staleTime: 10 * 60_000,
-  });
+  const [building, setBuilding] = useState<string>(cell?.buildingId ?? 'ALL');
+  const buildings = useExpenseBuildings(orgId);
+
+  const scopes = (q.data ?? []).filter(s => !cell || (s.fee_category === cell.fee &&
+    (s.building_id === null || s.building_id === cell.buildingId)));
 
   const add=async()=>{
     await feedback.run(async()=>{
@@ -313,20 +228,19 @@ function SwitchesTab({ orgId, route }: { orgId: string; route: string | undefine
       <div className={`rounded-md border p-3 text-sm ${route === 'CANONICAL' ? 'border-primary/40 bg-primary/5' : 'bg-muted/40'}`}>
         {route === 'CANONICAL'
           ? <>Bộ máy <strong>đang áp dụng</strong>: hạng mục × toà × tháng nào có công tắc dưới đây thì phiếu chi được máy quyết theo luật; còn lại đi như cũ.</>
-          : <>Bộ máy <strong>đang chạy thử</strong>: mọi phiếu vẫn duyệt như cũ, máy chỉ ghi lại nó <em>sẽ</em> quyết thế nào (thẻ “Máy chấm thử”).
-              Công tắc dưới đây chỉ có hiệu lực khi bộ máy chuyển sang áp dụng — theo plan đã chốt, sau ít nhất 14 ngày chạy thử (định kỳ: 30 ngày) và bạn xem thấy đúng.</>}
+          : <>Trạng thái: <strong>{ROUTE_LABEL[route ?? '']?.text ?? 'Chưa xác định'}</strong>. Phạm vi đã lưu sẽ có hiệu lực khi bộ máy áp dụng.</>}
       </div>
       <div className="flex flex-wrap items-end gap-3 rounded-md border p-3">
         <div className="space-y-1">
           <Label>Hạng mục</Label>
-          <Select value={fee} onValueChange={(v) => setFee(v as SpendFeeKey)}>
+          <Select disabled={!!cell} value={fee} onValueChange={(v) => setFee(v as SpendFeeKey)}>
             <SelectTrigger data-field-name="feeCategory" aria-invalid={!!feedback.issue("feeCategory")} className="w-40 h-9"><SelectValue /></SelectTrigger>
             <SelectContent>{SPEND_FEE_KEYS.map((k) => <SelectItem key={k} value={k}>{SPEND_FEE_LABEL[k]}</SelectItem>)}</SelectContent>
           </Select>{feedback.issue("feeCategory")}
         </div>
         <div className="space-y-1">
           <Label>Toà</Label>
-          <Select value={building} onValueChange={setBuilding}>
+          <Select disabled={!!cell} value={building} onValueChange={setBuilding}>
             <SelectTrigger data-field-name="buildingId" aria-invalid={!!feedback.issue("buildingId")} className="w-48 h-9"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Tất cả toà</SelectItem>
@@ -351,17 +265,17 @@ function SwitchesTab({ orgId, route }: { orgId: string; route: string | undefine
               <TableRow><TableHead>Hạng mục</TableHead><TableHead>Toà</TableHead><TableHead>Từ</TableHead><TableHead>Tới</TableHead><TableHead /></TableRow>
             </TableHeader>
             <TableBody>
-              {(q.data ?? []).length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Chưa bật công tắc nào — mọi phiếu đi luật cũ.</TableCell></TableRow>
+              {scopes.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Chưa có phạm vi nào đang bật ở đây.</TableCell></TableRow>
               )}
-              {(q.data ?? []).map((s) => (
+              {scopes.map((s) => (
                 <TableRow key={s.switch_id}>
                   <TableCell>{SPEND_FEE_LABEL[s.fee_category] ?? s.fee_category}</TableCell>
                   <TableCell>{s.building_name ?? 'Tất cả toà'}</TableCell>
                   <TableCell>{s.period_from.slice(0, 7)}</TableCell>
                   <TableCell>{s.period_to ? s.period_to.slice(0, 7) : 'không hạn'}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => off(s)} disabled={set.isPending||feedback.saving||feedback.blocked||q.isError||buildings.isError}><Trash2 className="h-4 w-4 mr-1" />Tắt</Button>
+                    <Button variant="ghost" size="sm" onClick={() => off(s)} disabled={(!!cell && s.building_id === null)||set.isPending||feedback.saving||feedback.blocked||q.isError||buildings.isError}><Trash2 className="h-4 w-4 mr-1" />Tắt</Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -374,7 +288,7 @@ function SwitchesTab({ orgId, route }: { orgId: string; route: string | undefine
 }
 
 // ─────────────────────────────── Máy chấm thử ───────────────────────────────
-function ShadowTab({ orgId }: { orgId: string }) {
+export function ShadowTab({ orgId }: { orgId: string }) {
   const [from, setFrom] = useState(daysAgo(30));
   const [to, setTo] = useState(isoDay(new Date()));
   const [chiLech, setChiLech] = useState(false);
@@ -444,7 +358,7 @@ function ShadowTab({ orgId }: { orgId: string }) {
 }
 
 // ─────────────────────────────── Tự duyệt ───────────────────────────────
-function SelfApprovedTab({ orgId }: { orgId: string }) {
+export function SelfApprovedTab({ orgId }: { orgId: string }) {
   const [from, setFrom] = useState(daysAgo(30));
   const [to, setTo] = useState(isoDay(new Date()));
   const q = useSelfApprovedVouchers(orgId, from, to);
@@ -494,41 +408,10 @@ function SelfApprovedTab({ orgId }: { orgId: string }) {
   );
 }
 
-// ─────────────────────────────── Trang ───────────────────────────────
-export default function SpendEnginePage() {
-  const orgs = useMySpendOrganizations();
-  const [chosen, setChosen] = useState<string | null>(null);
-  const orgId = chosen ?? orgs.data?.[0]?.id ?? null;
+export function SpendStatus({ orgId }: { orgId: string }) {
   const status = useSpendEngineStatus(orgId);
-  const route = status.data?.route;
-  const r = ROUTE_LABEL[route ?? ''] ?? null;
-
-  return (
-    <MainLayout>
-      <div className="p-4 md:p-6 space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">Cam kết chi — một bộ máy duyệt chi</h1>
-            <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-              Mọi cửa chi (Thu chi, Thanh toán, điện nước, phiếu định kỳ, sinh phí hàng loạt) hỏi <strong>cùng một luật</strong>,
-              và luật nằm <strong>trên hạng mục</strong>. Bạn ký trước số tiền mỗi tháng; chi trong cam kết thì máy duyệt,
-              vượt thì chờ bạn duyệt.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {(orgs.data?.length ?? 0) > 1 && (
-              <Select value={orgId ?? ''} onValueChange={setChosen}>
-                <SelectTrigger className="w-52 h-9"><SelectValue placeholder="Chọn công ty" /></SelectTrigger>
-                <SelectContent>{(orgs.data ?? []).map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent>
-              </Select>
-            )}
-            <Button variant="outline" size="sm" onClick={() => status.refetch()} disabled={status.isFetching}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${status.isFetching ? 'animate-spin' : ''}`} />Tải lại
-            </Button>
-          </div>
-        </div>
-
-        <QueryRegion label="công ty và trạng thái quy tắc duyệt chi" queries={orgId?[orgs,status]:[orgs]} skeleton="detail" rows={4}>
+  const r = ROUTE_LABEL[status.data?.route ?? ''];
+  return <QueryRegion label="trạng thái quy tắc duyệt chi" queries={[status]}>
         {status.data && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border p-3 text-sm">
             <div className="flex items-center gap-2">Bộ máy: {r ? <Badge variant={r.tone}>{r.text}</Badge> : 'Chưa xác định trạng thái'}</div>
@@ -540,24 +423,5 @@ export default function SpendEnginePage() {
           </div>
         )}
 
-        {orgId && !status.isError && (
-          <Tabs defaultValue="cam-ket">
-            <TabsList className="flex-wrap h-auto">
-              <TabsTrigger value="cam-ket"><Pencil className="h-4 w-4 mr-1" />Cam kết tháng</TabsTrigger>
-              <TabsTrigger value="luat">Luật hạng mục</TabsTrigger>
-              <TabsTrigger value="cong-tac">Bật áp dụng</TabsTrigger>
-              <TabsTrigger value="bong">Máy chấm thử</TabsTrigger>
-              <TabsTrigger value="tu-duyet">Tự duyệt</TabsTrigger>
-            </TabsList>
-            <TabsContent value="cam-ket"><CommitmentsTab orgId={orgId} /></TabsContent>
-            <TabsContent value="luat"><RulesTab orgId={orgId} /></TabsContent>
-            <TabsContent value="cong-tac"><SwitchesTab orgId={orgId} route={route} /></TabsContent>
-            <TabsContent value="bong"><ShadowTab orgId={orgId} /></TabsContent>
-            <TabsContent value="tu-duyet"><SelfApprovedTab orgId={orgId} /></TabsContent>
-          </Tabs>
-        )}
-        </QueryRegion>
-      </div>
-    </MainLayout>
-  );
+  </QueryRegion>;
 }

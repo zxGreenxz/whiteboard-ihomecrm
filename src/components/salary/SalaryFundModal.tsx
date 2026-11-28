@@ -72,7 +72,7 @@ function Funding({ fee, periodMonth, recurring, available, canEdit, onAddSupplem
             <div style={{ fontSize: 12, color: MUTED }}>Phí quản lý {fee.rows.length} tòa {salFmt(fee.total)}{owner.rows.length ? ` · chủ cấp thêm ${owner.rows.length} tòa ${salFmt(owner.total)}` : ""}</div>
           </>}
         </div>
-        <Link to="/settings/finance/fixed-fees" className="sal-btn sal-btn--outline" style={{ color: "hsl(var(--primary))", textDecoration: "none" }}>+ Công bố giá phí Quản lý</Link>
+        <Link to="/finance/chi-phi-theo-toa" className="sal-btn sal-btn--outline" style={{ color: "hsl(var(--primary))", textDecoration: "none" }}>+ Công bố giá phí Quản lý</Link>
       </div>
 
       <div style={card}>
