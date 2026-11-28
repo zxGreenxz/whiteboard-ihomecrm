@@ -34,7 +34,7 @@ test('restore uses immutable source bodies and ACLs after measured legacy stops'
   assert.equal(buildHermesRestoreFixture(Object.fromEntries(Object.entries(sources).map(([file, text]) =>
     [file, text.replaceAll('\r\n', '\n').replaceAll('\n', '\r\n')]))), sql);
   assert.equal((sql.match(/CREATE TABLE/g) ?? []).length, 1);
-  assert.equal((sql.match(/CREATE OR REPLACE FUNCTION/g) ?? []).length, 1);
+  assert.equal((sql.match(/CREATE OR REPLACE FUNCTION/g) ?? []).length, 2);
   assert.doesNotMatch(sql, /CREATE (?:OR REPLACE )?FUNCTION public\.zalo_authorized_org_ids|INSERT INTO|CREATE POLICY/);
   for (const file of Object.keys(sources)) {
     assert.throws(() => buildHermesRestoreFixture({ ...sources, [file]: sources[file] + '\n-- altered' }), /digest mismatch/);
@@ -80,6 +80,7 @@ test('catalog witnesses detect body, ACL, owner, volatility, search path, RLS an
       SELECT pg_get_functiondef('public.zalo_worker_begin_provider_v1(uuid,uuid)'::regprocedure) INTO definition;
       EXECUTE replace(definition,'RETURN true;','RETURN false;'); END $mutation$`,
     'GRANT EXECUTE ON FUNCTION public.zalo_worker_begin_provider_v1(uuid,uuid) TO anon',
+    'GRANT EXECUTE ON FUNCTION app_private.zalo_config_int_v1(jsonb,integer,integer) TO service_role',
     'ALTER FUNCTION public.zalo_worker_begin_provider_v1(uuid,uuid) OWNER TO authenticated',
     'ALTER FUNCTION public.zalo_worker_begin_provider_v1(uuid,uuid) STABLE',
     'ALTER FUNCTION public.zalo_worker_begin_provider_v1(uuid,uuid) SECURITY INVOKER',
