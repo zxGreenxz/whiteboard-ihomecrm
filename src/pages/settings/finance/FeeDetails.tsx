@@ -121,14 +121,15 @@ export default function FeeDetails({ cell, price, month }: {
         notApplicable: !c.notApplicable,
       });
       toast.success(!c.notApplicable
-        ? `Đã tắt "${FEE_KINDS.find((k) => k.key === c.feeCategory)?.label}" cho toà này`
-        : 'Đã bật lại hạng mục');
+        ? `Đã ẩn "${FEE_KINDS.find((k) => k.key === c.feeCategory)?.label}" cho toà này`
+        : 'Đã hiển thị lại hạng mục');
     } catch (e) {
       toast.error(feeFailureMessage(e,'đổi áp dụng phí; trạng thái vẫn giữ theo lần lưu trước'));
     }
   };
 
   const c = cell;
+  const hideLabel = c.feeCategory === 'dien' || c.feeCategory === 'nuoc' ? 'Ẩn ở tổng quan phí' : 'Ẩn trên lưới đóng phí';
   const feeLabel = FEE_KINDS.find(k => k.key === c.feeCategory)?.label ?? c.feeCategory;
   return (
     <div className="space-y-3">
@@ -213,7 +214,7 @@ export default function FeeDetails({ cell, price, month }: {
                   onClick={() => toggleNotApplicable(c)}
                   disabled={save.isPending}
                   className="text-[11px] text-muted-foreground hover:text-foreground underline decoration-dotted">
-            {c.notApplicable ? 'Bật lại' : 'Tắt hạng mục'}
+            {c.notApplicable ? 'Hiện lại' : hideLabel}
           </button>
         </div>
       )}

@@ -24,14 +24,14 @@ export interface ExpensePolicy {
 // A standalone TUNG_PHIEU line cannot activate ie_spend_gate_v1 (all_switched).
 export function describeExpensePolicy(input: ExpenseRuleInput): ExpensePolicy {
   const { buildingId, month, fee, mode, route, commitment, price } = input;
-  if (input.disabled) return { label: 'Đã tắt ở Thanh toán' };
+  const utility = fee === 'dien' || fee === 'nuoc';
+  if (input.disabled && !utility) return { label: 'Ẩn trên lưới đóng phí' };
   if (!route || !['CANONICAL', 'LEGACY', 'FROZEN', 'SHADOW'].includes(route)) {
     return { label: 'Chưa xác định cách duyệt' };
   }
   const enabled = route === 'CANONICAL' && input.switches.some(s =>
     s.fee_category === fee && (s.building_id === null || s.building_id === buildingId) &&
     s.period_from.slice(0, 7) <= month && (!s.period_to || s.period_to.slice(0, 7) >= month));
-  const utility = fee === 'dien' || fee === 'nuoc';
   if (enabled && mode === 'CAM_KET') {
     return {
       label: 'Duyệt trong hạn mức tháng',
@@ -45,5 +45,5 @@ export function describeExpensePolicy(input: ExpenseRuleInput): ExpensePolicy {
   }
   if (utility) return { label: 'Theo ngưỡng và trần điện nước', note: 'Áp dụng cho phiếu đóng điện, nước' };
   if (price !== null) return { label: 'Duyệt đúng giá', amount: price };
-  return { label: 'Theo quy trình đóng phí', note: 'Chưa công bố giá cho kỳ này' };
+  return { label: 'Tự duyệt khi chưa công bố giá', note: 'Phiếu đóng phí được duyệt và ghi sổ' };
 }

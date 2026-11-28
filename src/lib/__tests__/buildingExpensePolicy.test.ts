@@ -19,7 +19,7 @@ describe('quy tắc hiển thị cho phiếu một khoản trong một tháng', 
     expect(describeExpensePolicy({...input,switches:[other,{...sw,period_to:null}],month:'2027-01'}).label).toBe('Duyệt trong hạn mức tháng');
   });
   it.each(['LEGACY','SHADOW','FROZEN'])('công tắc đã lưu nhưng route %s không áp quy tắc',route=>{
-    expect(describeExpensePolicy({...input,route,price:null}).label).toBe('Theo quy trình đóng phí');
+    expect(describeExpensePolicy({...input,route,price:null}).label).toBe('Tự duyệt khi chưa công bố giá');
   });
   it('kiểu từng phiếu tự nó không thay luật giá của cửa đóng phí',()=>{
     expect(describeExpensePolicy({...input,mode:'TUNG_PHIEU'}).label).toBe('Duyệt đúng giá');
@@ -27,10 +27,11 @@ describe('quy tắc hiển thị cho phiếu một khoản trong một tháng', 
   it('trần điện nước dùng đúng hạng mục và giữ quy trình ngưỡng khi chưa bật',()=>{
     const en={...input,fee:'dien' as const,mode:'TRAN',switches:[{...sw,fee_category:'dien' as const}]};
     expect(describeExpensePolicy(en).label).toBe('Duyệt theo trần điện nước');
+    expect(describeExpensePolicy({...en, disabled:true}).label).toBe('Duyệt theo trần điện nước');
     expect(describeExpensePolicy({...en,switches:[]}).label).toBe('Theo ngưỡng và trần điện nước');
   });
   it('hạng mục tắt và trạng thái bộ máy lạ có nhãn riêng',()=>{
-    expect(describeExpensePolicy({...input,disabled:true}).label).toBe('Đã tắt ở Thanh toán');
+    expect(describeExpensePolicy({...input,disabled:true}).label).toBe('Ẩn trên lưới đóng phí');
     expect(describeExpensePolicy({...input,route:'UNKNOWN'}).label).toBe('Chưa xác định cách duyệt');
   });
 });

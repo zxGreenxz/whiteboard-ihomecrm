@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import BuildingExpensesPage from '../BuildingExpensesPage';
 
-const state = vi.hoisted(() => ({owner: true, route: 'CANONICAL', fail: false, org: 'org-a', month: '2026-11'}));
+const state = vi.hoisted(() => ({noBuildings: false, owner: true, route: 'CANONICAL', fail: false, org: 'org-a', month: '2026-11'}));
 const query = <T,>(data: T, fail = false) => ({
   data, status: fail ? 'error' : 'success', fetchStatus: 'idle', isLoading: false, isError: fail,
   error: fail ? {code:'FETCH_ERROR'} : null, refetch: vi.fn(),
@@ -13,7 +13,7 @@ const cell = (id: string) => ({ buildingId: id, buildingName: id, feeCategory: '
 vi.mock('@/components/layout/MainLayout', () => ({default: ({children}: {children: ReactNode}) => children}));
 vi.mock('@/contexts/OrganizationContext', () => ({useOrganization: () => ({selectedOrganizationId: state.org})}));
 vi.mock('@/hooks/useBuildingExpenseDirectory', () => ({
-  useExpenseBuildings: () => query([{id:'a',name:'A'},{id:'b',name:'B'},{id:'c',name:'C'}]),
+  useExpenseBuildings: () => query(state.noBuildings ? [] : [{id:'a',name:'A'},{id:'b',name:'B'},{id:'c',name:'C'}]),
   useOrgExpenseRules: () => query([{id:'t',name:'Internet',fee_category:'internet',spend_mode:'CAM_KET'}]),
 }));
 vi.mock('@/hooks/useMyBuildingScope', () => ({useMyBuildingScope: () => ({canManageBuilding:(b:string) => b!=='c'})}));
@@ -33,10 +33,10 @@ vi.mock('@/hooks/useSpendEngine', () => ({
   useSpendCommitments: () => query([{building_id:'a',fee_category:'internet',amount:800000,remaining:400000}]),
 }));
 vi.mock('../SpendControls', () => ({
-  CommitmentEditor:()=>null, RulesTab:()=>null, SelfApprovedTab:()=>null, ShadowTab:()=>null, SpendStatus:()=>null, SwitchesTab:()=>null,
+  CommitmentEditor:()=>null, RulesTab:()=> <p>Luật của công ty</p>, SelfApprovedTab:()=>null, ShadowTab:()=>null, SpendStatus:()=>null, SwitchesTab:()=>null,
 }));
 vi.mock('../FeeDetails', () => ({default: ()=> <p>Chi tiết Internet</p>}));
-afterEach(() => { cleanup(); state.owner=true; state.route='CANONICAL'; state.fail=false; state.org='org-a'; });
+afterEach(() => { cleanup(); state.noBuildings=false; state.owner=true; state.route='CANONICAL'; state.fail=false; state.org='org-a'; });
 function openAt(month='2026-11') {
   render(<BuildingExpensesPage/>);
   fireEvent.change(screen.getByLabelText('Tháng'),{target:{value:month}});
@@ -68,4 +68,13 @@ it('chạy thử vẫn dùng luồng đóng phí và không hiện số còn l�
   state.route='SHADOW';openAt();
   expect(screen.getByText('Duyệt đúng giá')).toBeTruthy();
   expect(screen.queryByText('400.000đ')).toBeNull();
+});
+it('chủ công ty vẫn mở được luật và lịch sử khi chưa có tòa', () => {
+  state.noBuildings = true;
+  render(<BuildingExpensesPage/>);
+  expect(screen.getByText('Chưa có tòa nào trong phạm vi của bạn.')).toBeTruthy();
+  fireEvent.mouseDown(screen.getByRole('tab', {name:'Luật hạng mục'}), {button:0,ctrlKey:false});
+  expect(screen.getByText('Luật của công ty')).toBeTruthy();
+  fireEvent.mouseDown(screen.getByRole('tab', {name:'Lịch sử duyệt'}), {button:0,ctrlKey:false});
+  expect(screen.getByRole('tab', {name:'Tự duyệt'})).toBeTruthy();
 });
