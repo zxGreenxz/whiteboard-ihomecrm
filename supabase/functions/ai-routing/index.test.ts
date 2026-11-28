@@ -42,7 +42,7 @@ function fixture(body: unknown, role: boolean, conflict = false) {
     if (url.includes('/ai_route_catalogs?on_conflict')) { stored.push(JSON.parse(String(init?.body))); return new Response(null,{ status:201 }); }
     if (url.endsWith('&provider=eq.9router')) return Response.json([]);
     if (url.includes('/ai_route_catalogs?select')) return Response.json([
-      { provider:'nous', models:catalogModels('nous',{data:[nus]}).map(m => ({...m,verified:true})) }, { provider:'9router',models:catalogModels('9router',{data:[cx,ag]}).map(m => ({...m, verified:m.id === cx.id})) }]);
+      { provider:'nous', models:catalogModels('nous',{data:[nus,...['openai/text','openai/text-2'].map(id => ({...nus,id,architecture:{input_modalities:['text'],output_modalities:['text']}}))]}) }, { provider:'9router',models:catalogModels('9router',{data:[cx,ag]}).map(m => ({...m, verified:m.id === cx.id})) }]);
     if (init?.method === 'PATCH') { equal(url.endsWith('app=eq.quick_read&revision=eq.2'), true); stored.push(JSON.parse(String(init.body))); return Response.json(conflict ? [] : [{}]); }
     if (url.includes('/ai_application_routes?select')) return Response.json([]);
     throw Error(url);
@@ -78,6 +78,12 @@ Deno.test('A failed subscription sync preserves its snapshot, while updating the
 Deno.test('Revision conflicts and incompatible or unlisted models cannot overwrite working routes',async () => {
   equal((await fixture(configuration,true,true).res).status,409);
   equal((await fixture(configuration,true).res).status,200);
+  const textRoutes = [{provider:'nous',model:'openai/text'}, configuration.routes[1]];
+  equal((await fixture({...configuration,routes:textRoutes},true).res).status,200);
+  equal((await fixture({...configuration,app:'meter_vision',routes:textRoutes},true).res).status,422);
+  const textOnlyPair = [textRoutes[0],{provider:'nous',model:'openai/text-2'}];
+  const invalid = await fixture({...configuration,routes:textOnlyPair},true).res;
+  equal(invalid.status,422); equal(await invalid.json(),{error:'image_route_required'});
   for (const bad of [{...configuration,app:'quick_stt'}, {...configuration,routes:[configuration.routes[0],{provider:'9router',model:ag.id}]},
     {...configuration,routes:[{provider:'nous',model:'openai/credits'},configuration.routes[1]]}]) {
     const f=fixture(bad,true); equal((await f.res).status,422); equal(f.stored,[]);

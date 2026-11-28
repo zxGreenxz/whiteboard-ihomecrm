@@ -18,8 +18,11 @@ function AppRoutes({ row, data, busy, save }: { row: Row; data: AiSettings; busy
   const available = (provider: AiProvider) => data.ready[provider] &&
     (row.app !== 'meter_vision' || provider !== 'nous' || data.meterNousReady !== false);
   const models = (provider: AiProvider) => available(provider)
-    ? data.catalogs.find(c => c.provider === provider)?.models.filter(m => m.vision && m.verified) ?? [] : [];
-  const valid = draft.length === 2 && draft.every(r => data.ready[r.provider] && models(r.provider).some(m => m.id === r.model)) &&
+    ? data.catalogs.find(c => c.provider === provider)?.models.filter(m => provider === 'nous' && row.app !== 'meter_vision'
+      ? m.vision || m.text : m.vision && m.verified) ?? [] : [];
+  const choices = draft.map(r => models(r.provider).find(m => m.id === r.model));
+  const needsImage = choices.every(m => m && !m.vision);
+  const valid = draft.length === 2 && choices.every(Boolean) && !needsImage &&
     (draft[0].provider !== draft[1].provider || draft[0].model !== draft[1].model);
   return <section className="rounded-lg border bg-card p-4 space-y-3" aria-label={names[row.app]}>
     <h2 className="font-semibold">{names[row.app]}</h2>
@@ -34,8 +37,9 @@ function AppRoutes({ row, data, busy, save }: { row: Row; data: AiSettings; busy
         <label className="block text-sm">Model<select className={selectStyle} value={r.model} onChange={e => update(index, { ...r, model: e.target.value })}>
           <option value="">Chọn model</option>
           {r.model && !models(r.provider).some(m => m.id === r.model) && <option value={r.model} disabled>{r.model} · ngoài danh mục</option>}
-          {models(r.provider).map(m => <option key={m.id}>{m.id}</option>)}</select></label>
+          {models(r.provider).map(m => <option value={m.id} key={m.id}>{m.id}{!m.vision && ' · chỉ văn bản'}{!m.verified && (m.tested ? ' · lần thử chưa đạt' : ' · chưa thử')}</option>)}</select></label>
       </fieldset>)}</div>
+      {needsImage && <p role="status" className="text-sm">Chọn ít nhất một model đọc được ảnh để dùng với hóa đơn.</p>}
       <div className="flex flex-wrap gap-2"><Button disabled={busy || !valid || JSON.stringify(row.routes) === JSON.stringify(draft)} onClick={() => save(draft)}>Lưu lựa chọn</Button>
         {row.routes.length > 0 && <Button disabled={busy} variant="outline" onClick={() => save([])}>Trở về cấu hình hiện hành</Button>}</div>
     </>}
@@ -84,7 +88,9 @@ export default function AiRoutingPage() {
               <p className="mt-2">{data.ready[provider] ? 'Đã cấu hình kết nối.' : 'Chưa cấu hình kết nối.'} {catalog && 'Đồng bộ lúc ' + new Date(catalog.synced_at).toLocaleString('vi-VN') + '.'}</p>
               {catalog && <><Button variant="outline" className="my-2" disabled={testing || change.isPending || !data.ready[provider] || !catalog.models.some(m => (m.vision || m.text) && !m.verified)} onClick={() => void testModels(catalog)}>Thử các model chưa đạt</Button>
                 <p>{catalog.models.filter(m => m.verified).length} model đã trả đúng kết quả. Từng ứng dụng chỉ hiển thị model hỗ trợ đầu vào tương ứng.</p>
-                <ul className="mt-2 max-h-48 overflow-auto">{catalog.models.filter(m => m.verified).map(m => <li key={m.id}>{m.id}</li>)}</ul></>}</details>;
+                <ul className="mt-2 max-h-48 overflow-auto">{catalog.models.filter(m => provider === 'nous' || m.verified).map(m => <li key={m.id}>
+                  {m.id}{provider === 'nous' && <span className="text-muted-foreground"> · {m.vision ? 'ảnh' : m.text ? 'văn bản' : 'không dùng cho các tác vụ này'}{(m.vision || m.text) && (m.verified ? ' · đã thử đạt' : m.tested ? ' · lần thử chưa đạt' : ' · chưa thử')}</span>}
+                </li>)}</ul></>}</details>;
           })}
           {data.syncErrors.length > 0 && <p role="alert">Chưa cập nhật được {data.syncErrors.map(p => sources[p]).join(', ')}. Danh mục đã lưu vẫn có thể xem.</p>}
           {change.isSuccess && !data.syncErrors.length && <p role="status">Đã cập nhật cấu hình.</p>}

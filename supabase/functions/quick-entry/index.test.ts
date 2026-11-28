@@ -45,6 +45,7 @@ interface Kich {
   managed?: boolean;
   gatewayKey?: string;
   subscription?: boolean;
+  textOnly?: boolean;
   /** Có NINEROUTER_* của Copilot. */
   copilotNine?: boolean;
   user?: string | null;
@@ -130,7 +131,7 @@ function setup(k: Kich = {}) {
       { provider: "nous", model: "openai/gpt-6-luna" }, { provider: "9router", model: "cx/gpt-6-luna[1m]" },
     ] }]);
     if (url.endsWith("/models")) return j(200, { data: [{ id: "openai/gpt-6-luna", billing_mode: k.subscription ? "subscription" : "credits",
-      architecture: { input_modalities: ["image"], output_modalities: ["text"] }, supported_parameters: ["response_format"] }] });
+      architecture: { input_modalities: k.textOnly ? ["text"] : ["text","image"], output_modalities: ["text"] }, supported_parameters: ["response_format"] }] });
     if (url.includes("/rest/v1/rpc/get_my_permissions_v2")) {
       return j(200, k.perms ?? { income_expenses: { create: { org_wide: false, building_ids: ["b1"], cashbook_ids: [] } } });
     }
@@ -200,6 +201,22 @@ const readReq = (body: unknown, headers: Record<string, string> = {}) =>
     body: JSON.stringify(body),
   });
 const codeOf = async (r: Response) => ((await r.json()) as { error?: { code?: string } }).error?.code;
+
+Deno.test("text-only Nous handles text and skips straight to the image-capable backup for photos", async () => {
+  for (const image of [false, true]) {
+    const model = image ? "cx/gpt-6-luna[1m]" : "openai/gpt-6-luna";
+    const s = setup({ mode: "all", managed: true, subscription: true, textOnly: true,
+      upstream: [{ status: 200, body: { model, choices: [{ message: { content: "{}" } }] } }] });
+    const content = image ? [{ type: "image_url", image_url: { url: "data:image/png;base64,YWJj" } }] : "fixture";
+    const response = await xuLy(readReq({ messages: [{ role: "user", content }] }), s.deps);
+    assertEquals(response.status, 200);
+    assertEquals(response.headers.get("x-quick-entry-model"), model);
+    assertEquals(s.upstreamBodies.map(body => body.model), [model]);
+    assertEquals("response_format" in s.upstreamBodies[0], image);
+    assertEquals(response.headers.get("x-quick-entry-attempts"), "1");
+    assertEquals(s.logs.map(row => row.status), ["ok"]);
+  }
+});
 
 Deno.test("chép giọng vẫn gọi thẳng OpenRouter khi bật Hermes cho toàn CRM", async () => {
   const s = setup({ mode: "all", managed: true, gatewayKey: "test-gateway", key: "audio-only",
