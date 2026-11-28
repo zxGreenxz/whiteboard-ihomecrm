@@ -32,6 +32,10 @@ verify_jwt = true
 [functions.ai-routing]
 verify_jwt = true
 
+[functions.zalo-owner-voice]
+# Machine endpoint. The handler verifies the dedicated 256-bit transcription credential before reading any audio.
+verify_jwt = false
+
 [functions.meter-capture-worker]
 # Worker uses a dedicated bearer; user routes forward their JWT to scoped SQL RPCs.
 verify_jwt = false

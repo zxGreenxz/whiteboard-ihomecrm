@@ -49,7 +49,14 @@ Container chạy user 10002, hệ file chỉ đọc, giới hạn 384 MB RAM và
 khi lỗi. Mặc định chỉ thư mục `/opt/ihome-zalo-worker/sessions` và tmpfs `/tmp` ghi được;
 sessions giữ phiên Zalo đã mã hoá. Lùi bản: `zalo-worker.sh run ihome-zalo-worker:<sha12 cũ>`.
 
-Kênh Hermes cá nhân bật riêng bằng `run <image> --native`. Launcher kiểm cấu hình bằng
+Kênh Hermes cá nhân bật riêng bằng `run <image> --native`. Để chép tin nhắn thoại riêng của chủ, triển khai Edge Function
+`zalo-owner-voice` theo `supabase/config.toml`. Đặt cùng một token riêng `HERMES_OWNER_VOICE_TOKEN`
+(32 byte ngẫu nhiên dạng hex) ở Edge secrets và `worker.env`. Đặt `HERMES_OWNER_VOICE_MODEL=google/chirp-3` hoặc `elevenlabs/scribe-v2`
+trong `worker.env`, rồi chạy launcher. Bỏ biến và chạy lại để tắt. Worker lấy âm thanh tối đa 4 MiB
+từ CDN Zalo sau khi xác minh người gửi của profile `owner`. Edge dùng `QUICK_ENTRY_OPENROUTER_KEY`
+để chép tiếng Việt. Hermes nhận bản chép trong cuộc trò chuyện riêng và trả lời bằng chữ.
+
+Khi thay worker có bật kênh cá nhân, launcher kiểm cấu hình bằng
 chính validator của image đã chọn, dưới UID/GID 10002 và không có network, trước khi
 dừng worker cũ. Config/token ở `/opt/ihome-zalo-worker/native-config` được mount chỉ đọc;
 `/opt/ihome-zalo-worker/native-state` được mount đọc/ghi. Host và container dùng cùng

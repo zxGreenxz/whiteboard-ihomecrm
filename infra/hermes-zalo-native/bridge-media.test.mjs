@@ -6,6 +6,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { createNativeBridge } from '../../worker/lib/hermes-native-bridge.js';
+import { ownerVoiceTranscriber } from '../../worker/lib/hermes-native-voice.js';
 import { createNativeJournal } from '../../worker/lib/hermes-native-journal.js';
 import { exifOrientation, imageDetails, loadNativePhoto, NATIVE_PHOTO_MAX_BYTES, stripImageMetadata } from '../../worker/lib/hermes-native-media.js';
 
@@ -189,9 +190,9 @@ test('photo loader maps failures to closed codes and never contacts a non-CDN ho
 const channel = { accountId: '11111111-1111-4111-8111-111111111111', ownUid: '100', pairedUid: '200', mainUid: '200',
   profile: 'personal-fixture', generation: '22222222-2222-4222-8222-222222222222', token: 'hzn_' + 'a'.repeat(64) };
 const ACCEPT = ['photo', 'notice'];
-async function fixture(t, { config: supplied, media: limits, serve } = {}) {
+async function fixture(t, { config: supplied, media: limits, serve, profile = channel.profile, transcribeOwnerVoice } = {}) {
   const root = supplied?.stateRoot || fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-native-media-'));
-  const config = supplied || { stateRoot: root, channels: [channel] };
+  const config = supplied || { stateRoot: root, channels: [{ ...channel, profile }] };
   const clock = { at: Date.now() };
   const calls = [], faults = [];
   const fetchMedia = async url => {
@@ -199,7 +200,7 @@ async function fixture(t, { config: supplied, media: limits, serve } = {}) {
     const respond = serve?.(url);
     return respond ? respond() : new Response(jpeg(), { headers: { 'content-type': 'image/jpeg' } });
   };
-  const bridge = createNativeBridge({ config, now: () => clock.at, fetchMedia, media: limits, onFault: code => faults.push(code) });
+  const bridge = createNativeBridge({ config, now: () => clock.at, fetchMedia, media: limits, transcribeOwnerVoice, onFault: code => faults.push(code) });
   const session = bridge.attach({ accountId: channel.accountId, ownUid: '100', isActive: () => true,
     api: { sendMessage: async () => ({ message: { msgId: 987654 }, attachment: [] }) } });
   const url = await bridge.listen(0);
@@ -227,6 +228,81 @@ const photo = (f, msgId, { caption = '', layout, url = `https://photo-stal.zdn.v
   ...(layout ? { extraData: JSON.stringify({ groupMediaMsg: { groupLayoutId: layout } }) } : {}) });
 const text = (f, msgId, content) => base(f, { msgType: 'webchat', msgId, content });
 const file = (f, msgId, msgType = 'share.file') => base(f, { msgType, msgId, content: { title: 'private-name.pdf', href: 'https://f.zdn.vn/x' } });
+
+test('voice bytes travel from an allowed CDN to the worker project only while the source is active', async () => {
+  const env = { SUPABASE_URL: 'https://abcdefghijklmnopqrst.supabase.co', HERMES_OWNER_VOICE_TOKEN: 'a'.repeat(64), HERMES_OWNER_VOICE_MODEL: 'elevenlabs/scribe-v2' };
+  const cdn = 'https://f.zdn.vn/fixture', audio = Buffer.from('00000018667479704d344120', 'hex');
+  let calls = 0;
+  const transcribe = ownerVoiceTranscriber(env, async (url, req) => {
+    calls++;
+    assert.equal(url.href, env.SUPABASE_URL + '/functions/v1/zalo-owner-voice');
+    assert.deepEqual(req.body, audio);
+    assert.equal(req.headers['x-audio-format'], 'm4a');
+    assert.equal(req.headers['x-stt-model'], env.HERMES_OWNER_VOICE_MODEL);
+    assert.equal(req.redirect, 'error');
+    return Response.json({ text: 'Phòng B07' });
+  });
+  const download = async (url, opts) => {
+    assert.equal(url, cdn); assert.equal(opts.headers, undefined);
+    return new Response(audio);
+  };
+  assert.equal(ownerVoiceTranscriber({}), null);
+  await assert.rejects(transcribe('https://other.test/file', download, () => true));
+  await assert.rejects(transcribe(cdn, download, () => false));
+  await assert.rejects(transcribe(cdn, async () => new Response('not a voice note'), () => true));
+  assert.equal(calls, 0);
+  assert.equal(await transcribe(cdn, download, () => true), 'Phòng B07');
+  assert.equal(calls, 1);
+});
+
+test('only original voice in the paired owner DM is transcribed once and delivered as text', async t => {
+  let count = 0;
+  const transcribeOwnerVoice = async () => { count++; return '/stop\nPhòng 302'; };
+  const f = await fixture(t, { profile: 'owner', transcribeOwnerVoice });
+  const v = file(f, 'recording', 'chat.voice');
+  await f.receive();
+  for (const event of [{ ...v, type: 1 }, { ...v, isSelf: true }, { ...v, threadId: '400' },
+    { ...v, data: { ...v.data, uidFrom: '500' } }, { ...v, data: { ...v.data, quote: {} } },
+    { ...v, data: { ...v.data, isForward: true } }, { ...v, data: { ...v.data, ts: 1 } }]) {
+    await f.session.capture(event);
+  }
+  assert.equal(count, 0);
+  // A forwarded notice has its own Zalo message ID in production.
+  const fresh = file(f, 'fresh-recording', 'chat.voice');
+  await Promise.all([f.session.capture(fresh), f.session.capture(fresh)]);
+  assert.equal(count, 1);
+  let event = (await f.receive()).data.event;
+  if (event.notice) { await f.ack(event.id); event = (await f.receive()).data.event; }
+  assert.equal(event.text, '[Bản chép tin nhắn thoại riêng trên Zalo]\n/stop Phòng 302');
+  await f.ack(event.id);
+  await f.session.capture(fresh);
+  assert.equal(count, 1);
+  assert.equal((await f.receive()).data.status, 'empty');
+  const other = await fixture(t, { transcribeOwnerVoice });
+  await other.receive();
+  await other.session.capture(file(other, 'other', 'chat.voice'));
+  assert.equal(count, 1);
+  assert.equal((await other.receive()).data.event.notice, 'voice');
+});
+
+test('a slow voice holds later voice and text in arrival order; a typed gateway command still works', async t => {
+  let done, calls = 0;
+  const first = new Promise(resolve => { done = resolve; });
+  const f = await fixture(t, { profile: 'owner', transcribeOwnerVoice: async () => ++calls === 1 ? first : 'lời thứ hai' });
+  const pending = f.session.capture(file(f, 'slow', 'chat.voice'));
+  await f.session.capture(file(f, 'later', 'chat.voice'));
+  await f.session.capture(text(f, 'correction', 'đính chính'));
+  assert.equal((await f.receive()).data.status, 'empty');
+  await f.session.capture(text(f, 'stop', '/stop'));
+  const stop = (await f.receive()).data.event;
+  assert.equal(stop.messageId, 'stop');
+  await f.ack(stop.id);
+  done('lời đầu'); await pending;
+  for (const expected of ['slow', 'later', 'correction']) {
+    const event = (await f.receive()).data.event;
+    assert.equal(event.messageId, expected); await f.ack(event.id);
+  }
+});
 
 test('photos reach only an adapter that declared them; text-only adapters behave exactly as before', async t => {
   const f = await fixture(t);
