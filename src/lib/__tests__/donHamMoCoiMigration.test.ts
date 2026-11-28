@@ -373,12 +373,14 @@ describe('migration dọn hàm mồ côi: hàng rào dừng cả tệp khi có n
   let fresh: Db;
   beforeAll(async () => { fresh = await dungTruoc(); }, 120_000);
 
-  /** Thêm `setup` rồi áp migration trong MỘT giao dịch ROLLBACK: trả câu lỗi (hoặc 'ok'). */
-  async function applyWith(setup: string): Promise<string> {
+  /** Thêm `setup` rồi áp migration trong MỘT giao dịch ROLLBACK: trả câu lỗi (hoặc 'ok'); `after` đọc trạng thái sau áp. */
+  async function applyWith(setup: string, after?: string): Promise<string> {
     await fresh.exec('BEGIN');
     try {
       await fresh.exec(setup);
-      return await fresh.exec(migrationSql).then(() => 'ok', (e: Error) => e.message);
+      const res = await fresh.exec(migrationSql).then(() => 'ok', (e: Error) => e.message);
+      if (res !== 'ok' || !after) return res;
+      return JSON.stringify(await one(fresh, after));
     } finally {
       await fresh.exec('ROLLBACK');
     }
@@ -418,6 +420,30 @@ describe('migration dọn hàm mồ côi: hàng rào dừng cả tệp khi có n
     const changed = liveBefore('public.cancel_reconciliation').replace("'status', 'CANCELLED')", "'status', 'CANCELLED ')");
     expect(changed).not.toBe(liveBefore('public.cancel_reconciliation'));
     expect(await applyWith(`SET LOCAL check_function_bodies = off; ${changed}`)).toMatch(/cancel_reconciliation\(uuid\) KHÁC thân đã rà/);
+  });
+  it('hàm giữ nguyên HẸP quyền hơn production, hoặc đổi thân ⇒ dừng; service_role mất quyền hàm sắp thu ⇒ dừng', async () => {
+    expect(await applyWith('REVOKE EXECUTE ON FUNCTION public.unapprove_invoice_v1(uuid) FROM authenticated'))
+      .toMatch(/unapprove_invoice_v1\(uuid\) \(giữ nguyên\) hẹp quyền hơn production — authenticated không gọi được/);
+    expect(await applyWith('REVOKE EXECUTE ON FUNCTION public.get_approval_request_detail_compat_v2(uuid) FROM authenticated'))
+      .toMatch(/get_approval_request_detail_compat_v2\(uuid\) \(giữ nguyên\) hẹp quyền hơn production/);
+    const changed = liveBefore('public.verify_income_expense_v1').replace("raise exception 'Không tìm thấy phiếu';", "raise exception 'Không tìm thấy phiếu!';");
+    expect(changed).not.toBe(liveBefore('public.verify_income_expense_v1'));
+    expect(await applyWith(`SET LOCAL check_function_bodies = off; ${changed}`))
+      .toMatch(/verify_income_expense_v1\(uuid,text,boolean\) \(giữ nguyên\) KHÁC thân đã rà/);
+    expect(await applyWith('REVOKE EXECUTE ON FUNCTION public.approve_invoice_v1(uuid) FROM service_role'))
+      .toMatch(/service_role đang không gọi được public\.approve_invoice_v1\(uuid\)/);
+  });
+  it('quyền RỘNG hơn production (như bản dựng lại của Restore Drill: mọi hàm public cấp cho anon) ⇒ vẫn áp được; quyền của hàm giữ nguyên không bị đụng, hàm thu quyền về đúng tập', async () => {
+    const grants = [...XOA, ...THU, ...GIU].map((fn) => `GRANT EXECUTE ON FUNCTION ${fn} TO service_role, anon, authenticated;`).join('\n');
+    expect(JSON.parse(await applyWith(grants, `SELECT
+        has_function_privilege('anon', 'public.unapprove_invoice_v1(uuid)', 'EXECUTE') AS giu_anon,
+        has_function_privilege('anon', 'public.get_approval_request_detail_compat_v2(uuid)', 'EXECUTE') AS giu2_anon,
+        has_function_privilege('service_role', 'public.get_approval_request_detail_compat_v2(uuid)', 'EXECUTE') AS giu2_svc,
+        has_function_privilege('anon', 'public.approve_invoice_v1(uuid)', 'EXECUTE') AS thu_anon,
+        has_function_privilege('authenticated', 'public.verify_income_expense(uuid,text)', 'EXECUTE') AS thu_auth,
+        has_function_privilege('service_role', 'public.approve_meter_reading_v1(uuid)', 'EXECUTE') AS thu_svc,
+        to_regprocedure('public.bulk_create_meter_readings(jsonb)') IS NULL AS xoa`)))
+      .toEqual({ giu_anon: true, giu2_anon: true, giu2_svc: true, thu_anon: false, thu_auth: false, thu_svc: true, xoa: true });
   });
   it('có bản trùng tên chưa rà, hoặc hàm sắp thu quyền đã vắng ⇒ dừng', async () => {
     expect(await applyWith(`CREATE FUNCTION public.approve_invoice_v1(p uuid, q text) RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$`))

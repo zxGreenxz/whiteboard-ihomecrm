@@ -24,8 +24,10 @@
 --     verify_income_expense_v1.
 --
 -- HÀNG RÀO (hai khối DO chạy TRƯỚC mọi lệnh; lỗi thì dừng cả tệp)
---   $requires$ — thân đang chạy phải đúng thân đã rà (md5 prosrc, bỏ CR); mỗi tên đúng một bản ở public; hàm sắp xoá đã
---     vắng (lượt hai) thì bỏ qua; hàm sắp thu quyền phải còn.
+--   $requires$ — thân đang chạy phải đúng thân đã rà (md5 prosrc, bỏ CR) cho cả 14 hàm; mỗi tên bị đụng đúng một bản ở
+--     public; hàm sắp xoá đã vắng (lượt hai) thì bỏ qua; hàm sắp thu quyền phải còn và service_role còn gọi được; hàm giữ
+--     nguyên không được HẸP quyền hơn production (so «tập production ⊆ tập đang có», không so tuyệt đối — bản dựng lại
+--     của Restore Drill mang quyền rộng hơn production); chụp thân + ACL hàm giữ nguyên để hậu kiểm so lại.
 --   $hang_rao$ — hàm sắp XOÁ: không thân hàm nào khác (mọi schema người dùng), trigger, policy, view, matview, mặc định
 --     cột, ràng buộc, phụ thuộc pg_depend, việc cron hay dòng sổ hành động trợ lý còn nhắc tên. Hàm sắp THU QUYỀN: mọi
 --     thân hàm nhắc tên đều SECURITY DEFINER, và không trigger / policy / view / mặc định cột / ràng buộc / phụ thuộc /
@@ -72,7 +74,40 @@ BEGIN
     IF v_md5 IS DISTINCT FROM r.base_md5 THEN
       RAISE EXCEPTION 'don_ham_mo_coi: % KHÁC thân đã rà (md5 %) — DỪNG, đo lại người gọi', r.fn, v_md5 USING ERRCODE = '55000';
     END IF;
+    -- Hàm sắp thu quyền: service_role phải đang gọi được (tệp giữ quyền đó; hậu kiểm đòi nó còn).
+    IF r.muc = 'thu_quyen' AND NOT has_function_privilege('service_role', r.fn, 'EXECUTE') THEN
+      RAISE EXCEPTION 'don_ham_mo_coi: service_role đang không gọi được % — khác lúc đo, DỪNG', r.fn USING ERRCODE = '55000';
+    END IF;
   END LOOP;
+
+  -- Sáu hàm GIỮ NGUYÊN (tệp không đụng): thân đúng thân đã rà; quyền KHÔNG HẸP hơn production (mỗi vai production được
+  -- EXECUTE thì nay vẫn được). Không so quyền tuyệt đối: bản dựng lại của Restore Drill (baseline chụp --no-acl +
+  -- platform-shim cấp EXECUTE mọi hàm public) mang quyền RỘNG hơn production, mà tệp này không kéo ACL của các hàm đó.
+  -- Chụp lại thân + ACL ngay trước các lệnh để hậu kiểm chứng minh tệp này không làm chúng đổi.
+  FOR r IN SELECT * FROM (VALUES
+      ('public.decide_financial_request_v2(uuid,text,text)', 'de18b25abe4d72a7de5eb9ff6b79e461', ARRAY['authenticated', 'service_role']),
+      ('public.unapprove_invoice_v1(uuid)',                  'a7fbfae5812272a8ad2b0236126f46f5', ARRAY['authenticated', 'service_role']),
+      ('public.unapprove_meter_reading_v1(uuid)',            'afa86393045e9b270b3c226b99b43d58', ARRAY['authenticated', 'service_role']),
+      ('public.get_approval_request_detail_compat_v2(uuid)', '733a1e80b9d35dfd60f5e773e4654cfa', ARRAY['authenticated']),
+      ('public.withdraw_financial_request_v1(uuid,text)',    'e017dc822074b30cb800645d8dadeb48', ARRAY['authenticated', 'service_role']),
+      ('public.verify_income_expense_v1(uuid,text,boolean)', '5c6cc367eb9324083277f1b72061dbef', ARRAY['authenticated', 'service_role'])
+    ) AS v(fn, base_md5, vai) LOOP
+    SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5 FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure(r.fn);
+    IF v_md5 IS DISTINCT FROM r.base_md5 THEN
+      RAISE EXCEPTION 'don_ham_mo_coi: % (giữ nguyên) KHÁC thân đã rà (md5 %) — DỪNG', r.fn, v_md5 USING ERRCODE = '55000';
+    END IF;
+    SELECT string_agg(x, ', ') INTO v_khac FROM unnest(r.vai) AS x WHERE NOT has_function_privilege(x, r.fn, 'EXECUTE');
+    IF v_khac IS NOT NULL THEN
+      RAISE EXCEPTION 'don_ham_mo_coi: % (giữ nguyên) hẹp quyền hơn production — % không gọi được — DỪNG', r.fn, v_khac
+        USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
+  PERFORM set_config('don_ham_mo_coi.giu_nguyen_truoc', (
+    SELECT jsonb_object_agg(x.fn, jsonb_build_object('md5', md5(replace(p.prosrc, chr(13), '')), 'acl', coalesce(p.proacl::text, 'NULL')))::text
+      FROM unnest(ARRAY['public.decide_financial_request_v2(uuid,text,text)', 'public.unapprove_invoice_v1(uuid)',
+                        'public.unapprove_meter_reading_v1(uuid)', 'public.get_approval_request_detail_compat_v2(uuid)',
+                        'public.withdraw_financial_request_v1(uuid,text)', 'public.verify_income_expense_v1(uuid,text,boolean)']) AS x(fn)
+      JOIN pg_catalog.pg_proc p ON p.oid = to_regprocedure(x.fn)), false);
 END
 $requires$;
 
@@ -170,7 +205,7 @@ DO $hau_kiem$
 DECLARE
   r record;
   v_md5 text;
-  v_acl text[];
+  v_truoc jsonb;
   v_con text;
 BEGIN
   -- Năm hàm bị xoá: không còn bản nào mang tên đó ở public.
@@ -218,24 +253,19 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- Sáu hàm GIỮ NGUYÊN: thân y như lúc đo; ACL y như lúc đo (đúng tập vai khác chủ hàm được EXECUTE, không PUBLIC ngầm).
-  FOR r IN SELECT * FROM (VALUES
-      ('public.decide_financial_request_v2(uuid,text,text)',   'de18b25abe4d72a7de5eb9ff6b79e461', '{authenticated:EXECUTE,service_role:EXECUTE}'),
-      ('public.unapprove_invoice_v1(uuid)',                    'a7fbfae5812272a8ad2b0236126f46f5', '{authenticated:EXECUTE,service_role:EXECUTE}'),
-      ('public.unapprove_meter_reading_v1(uuid)',              'afa86393045e9b270b3c226b99b43d58', '{authenticated:EXECUTE,service_role:EXECUTE}'),
-      ('public.get_approval_request_detail_compat_v2(uuid)',   '733a1e80b9d35dfd60f5e773e4654cfa', '{authenticated:EXECUTE}'),
-      ('public.withdraw_financial_request_v1(uuid,text)',      'e017dc822074b30cb800645d8dadeb48', '{authenticated:EXECUTE,service_role:EXECUTE}'),
-      ('public.verify_income_expense_v1(uuid,text,boolean)',   '5c6cc367eb9324083277f1b72061dbef', '{authenticated:EXECUTE,service_role:EXECUTE}')
-    ) AS v(fn, base_md5, base_acl) LOOP
-    SELECT md5(replace(p.prosrc, chr(13), '')),
-           CASE WHEN p.proacl IS NULL THEN ARRAY['(NULL = PUBLIC)']
-                ELSE ARRAY(SELECT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END || ':' || a.privilege_type
-                             FROM pg_catalog.aclexplode(p.proacl) a WHERE a.grantee <> p.proowner ORDER BY 1) END
-      INTO v_md5, v_acl
-      FROM pg_catalog.pg_proc p WHERE p.oid = to_regprocedure(r.fn);
-    IF v_md5 IS DISTINCT FROM r.base_md5 OR v_acl IS DISTINCT FROM r.base_acl::text[] THEN
-      RAISE EXCEPTION 'don_ham_mo_coi: % (giữ nguyên) đã đổi: md5 %, ACL %', r.fn, v_md5, v_acl USING ERRCODE = '55000';
-    END IF;
-  END LOOP;
+  -- Sáu hàm GIỮ NGUYÊN: thân + ACL y như ảnh chụp ngay trước các lệnh ($requires$) — tệp này không làm chúng đổi.
+  v_truoc := nullif(current_setting('don_ham_mo_coi.giu_nguyen_truoc', true), '')::jsonb;
+  SELECT string_agg(x.fn, ', ') INTO v_con
+    FROM unnest(ARRAY['public.decide_financial_request_v2(uuid,text,text)', 'public.unapprove_invoice_v1(uuid)',
+                      'public.unapprove_meter_reading_v1(uuid)', 'public.get_approval_request_detail_compat_v2(uuid)',
+                      'public.withdraw_financial_request_v1(uuid,text)', 'public.verify_income_expense_v1(uuid,text,boolean)']) AS x(fn)
+    LEFT JOIN pg_catalog.pg_proc p ON p.oid = to_regprocedure(x.fn)
+   WHERE p.oid IS NULL OR v_truoc IS NULL
+      OR md5(replace(p.prosrc, chr(13), '')) IS DISTINCT FROM v_truoc -> x.fn ->> 'md5'
+      OR coalesce(p.proacl::text, 'NULL') IS DISTINCT FROM v_truoc -> x.fn ->> 'acl';
+  IF v_con IS NOT NULL THEN
+    RAISE EXCEPTION 'don_ham_mo_coi: hàm giữ nguyên bị đổi thân / ACL trong lúc áp: %', v_con USING ERRCODE = '55000';
+  END IF;
+  PERFORM set_config('don_ham_mo_coi.giu_nguyen_truoc', '', false);
 END
 $hau_kiem$;
