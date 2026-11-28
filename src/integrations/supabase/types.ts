@@ -32486,6 +32486,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      zalo_worker_advance_sale_batch_v1: {
+        Args: { p_batch: string; p_finish?: string; p_instance: string }
+        Returns: Json
+      }
       zalo_worker_attachment_allowed_v1: {
         Args: {
           p_account: string
@@ -32536,6 +32540,27 @@ export type Database = {
         Args: { p_instance_id: string }
         Returns: Json
       }
+      zalo_worker_register_sale_batch_v1: {
+        Args: {
+          p_event_rooms: string[]
+          p_fingerprint: string
+          p_instance: string
+          p_key: string
+          p_mode: string
+          p_oneshot: string
+          p_org: string
+          p_recipients: string[]
+        }
+        Returns: boolean
+      }
+      zalo_worker_retry_sale_oneshot_v1: {
+        Args: { p_budget: number; p_instance: string; p_shot: string }
+        Returns: boolean
+      }
+      zalo_worker_sale_batches_due_v1: {
+        Args: { p_instance: string; p_orgs: string[] }
+        Returns: string[]
+      }
       zalo_worker_settle_task_reminder_v1: {
         Args: {
           p_error_code?: string
@@ -32546,6 +32571,10 @@ export type Database = {
         Returns: Json
       }
       zalo_worker_status_v1: { Args: never; Returns: Json }
+      zalo_worker_stop_sale_batch_v1: {
+        Args: { p_instance: string; p_job: string }
+        Returns: boolean
+      }
     }
     Enums: {
       ai_message_role: "user" | "assistant" | "system"
