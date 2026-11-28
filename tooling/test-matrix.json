@@ -150,11 +150,13 @@
       "id": "quick-entry-edge",
       "sourcePaths": [
         "supabase/functions/quick-entry/**",
+        "supabase/functions/zalo-owner-voice/**",
         "supabase/functions/_shared/ai-routing.ts",
         "supabase/functions/ai-routing/**"
       ],
       "suiteId": "edge-deno-quick-entry",
       "testPatterns": [
+        "supabase/functions/zalo-owner-voice/index.test.ts",
         "supabase/functions/quick-entry/index.test.ts",
         "supabase/functions/ai-routing/index.test.ts"
       ]
@@ -2116,11 +2118,12 @@
       "ciExecutor": "gate-registry",
       "runner": "deno",
       "ciJob": "ci-gates / quality-gates",
-      "command": "deno test --config supabase/functions/quick-entry/deno.json supabase/functions/quick-entry/index.test.ts supabase/functions/ai-routing/index.test.ts --allow-env",
+      "command": "deno test --config supabase/functions/quick-entry/deno.json supabase/functions/quick-entry/index.test.ts supabase/functions/ai-routing/index.test.ts supabase/functions/zalo-owner-voice/index.test.ts --allow-env",
       "runtime": "deno 2.9.4",
       "risk": "normal",
       "includes": [
         "supabase/functions/quick-entry/index.test.ts",
+        "supabase/functions/zalo-owner-voice/index.test.ts",
         "supabase/functions/ai-routing/index.test.ts"
       ],
       "note": "Hàm AI của trang Báo chi nhanh /chi-tieu: công tắc, JWT, quyền ghi chi, chế độ thử, trần lượt/ngày giờ VN, chuỗi mô hình dự phòng, chép giọng qua OpenRouter, đọc chữ/ảnh qua 9router, trần âm thanh. Nối vào ci-gates.yml ngày 01/10/2026, ngay sau bước llm-proxy (cùng bước cài Deno).",

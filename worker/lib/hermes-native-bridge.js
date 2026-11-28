@@ -8,6 +8,7 @@ import { isHermesLinkMessage } from './hermes-link.js';
 import { describeReceiptShape, providerTextReceipt } from './hermes-native-receipt.js';
 import { loadNativePhoto, NATIVE_PHOTO_ERRORS, NATIVE_PHOTO_MAX_BYTES } from './hermes-native-media.js';
 import { forwardSource } from './hermes-forward-reference.js';
+import { ownerVoiceTranscriber } from './hermes-native-voice.js';
 
 const own = (value, key) => {
   if (!value || typeof value !== 'object') return undefined;
@@ -43,6 +44,9 @@ const NOTICES = new Map([['share.file', 'file'], ['chat.voice', 'voice'], ['chat
 const ACCEPT = ['photo', 'notice'];
 // Gateway commands (/stop, /new …) are never held behind or merged into a photo group.
 const command = record => record.text.trimStart().startsWith('/');
+const voicePrefix = '[Bản chép tin nhắn thoại riêng trên Zalo]\n';
+const voiceFailure = '[Tin nhắn thoại] Chưa chép được đoạn này. Hãy nhắn chủ gửi lại một đoạn ngắn hoặc nhập bằng chữ.';
+const voiceText = record => record.text.startsWith(voicePrefix) || record.text === voiceFailure;
 // Bad input answers 400 `native_request_rejected` (also what an older worker
 // answers to `accept`); internal failures such as an unwritable journal answer 503.
 const CLIENT_ERRORS = new Set(['invalid_request', 'body_too_large', 'generation_mismatch', 'invalid_native_request',
@@ -93,7 +97,7 @@ export const nativeTextReceipt = providerTextReceipt;
  * Without reconciliationFile (the operator ledger of the running config) an
  * outcome_unknown send keeps the channel quarantined permanently. */
 export function createNativeBridge({ config, reconciliationFile = null, now = Date.now, providerTimeoutMs = 60000, maxProviderPending = 8,
-  authorizeBinding = async () => false, onFault = () => {}, fetchMedia = (...args) => fetch(...args), media: mediaOverrides = {} }) {
+  authorizeBinding = async () => false, onFault = () => {}, fetchMedia = (...args) => fetch(...args), transcribeOwnerVoice = null, media: mediaOverrides = {} }) {
   if (!Number.isInteger(maxProviderPending) || maxProviderPending < 1 || maxProviderPending > 32 ||
       !Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1 || providerTimeoutMs > 60000) throw new Error('invalid_native_limits');
   const limits = { ...NATIVE_MEDIA_DEFAULTS, ...mediaOverrides };
@@ -106,7 +110,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     const lastStamp = journal.values('inbound').reduce((max, record) => Math.max(max, record.dispatchedAt || 0), 0);
     // Media lives only in RAM: captured items wait here (arrival order), then a
     // claimed group keeps its bytes until ack. The journal never sees bytes/URLs.
-    return { channel, pending: new Set(), journal, lastStamp, accept: { photo: 0, notice: 0 }, items: [], delivered: new Map() };
+    return { channel, pending: new Set(), voices: new Set(), journal, lastStamp, accept: { photo: 0, notice: 0 }, items: [], delivered: new Map() };
   });
   const stamp = entry => (entry.lastStamp = Math.max(now(), entry.lastStamp + 1));
   const attached = new Map();
@@ -212,6 +216,27 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     if (entry.items.length >= limits.itemsPerChannel) { fault('native_media_busy'); return; }
     entry.items.push({ notice, startedAt: part.sentAt, lastAt: at, entries: [part] });
   }
+
+  async function captureVoice(entry, part, url, source) {
+    const { journal, channel, voices } = entry;
+    if (known(entry, part.id)) return;
+    const active = () => activeSource(channel) === source;
+    // Reserve before touching the CDN. Duplicate events, including after restart, cannot bill twice.
+    const record = { ...part, senderUid: channel.pairedUid };
+    journal.update('inbound', part.id, { ...record, digest: nativeDigest([part.messageId, part.sentAt, 'voice']),
+      status: 'dispatch_unknown', dispatchedAt: stamp(entry) });
+    let text = voiceFailure;
+    if (voices.size < 2) {
+      voices.add(part.id);
+      try {
+        const words = (await transcribeOwnerVoice(url, fetchMedia, active)).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+        const transcript = voicePrefix + messageBody(words);
+        if (words && Buffer.byteLength(transcript) <= 8192) text = transcript;
+      } catch { fault('native_owner_voice_unavailable'); }
+      finally { voices.delete(part.id); }
+    } else { fault('native_owner_voice_busy'); }
+    if (active()) journal.update('inbound', part.id, { ...record, text, digest: nativeDigest([part.messageId, part.sentAt, text]), status: 'queued' });
+  }
   // A photo group is ripe when every download settled, the album gap passed,
   // and it has a caption, something followed it, or the command wait elapsed.
   const ripe = (item, followed) => item.notice ? true : item.photos.every(photo => photo.state !== 'loading') &&
@@ -309,6 +334,8 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
             }
             journal.admit(id, { id, messageId, text, sentAt, senderUid: channel.pairedUid,
               digest: nativeDigest([messageId, sentAt, text]), status: 'queued' });
+          } else if (msgType === 'chat.voice' && channel.profile === 'owner' && transcribeOwnerVoice && !forwarded && !quoted) {
+            await captureVoice(entry, { id, messageId, sentAt }, own(own(data, 'content'), 'href'), source);
           } else if (kind === 'photo') capturePhoto(entry, data, { id, messageId, sentAt }, forwarded || quoted, sourceRef);
           else if (kind === 'notice') captureNotice(entry, NOTICES.get(msgType), { id, messageId, sentAt });
           // Stickers and unknown kinds are swallowed: still never CRM inbox.
@@ -352,16 +379,23 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
         if (!(await authorizeBinding(channel)) || !activeSource(channel)) return { status: 'unavailable' };
       }
       sweep();
-      const queued = journal.values('inbound').filter(record => record.status === 'queued');
-      const [item, after] = entry.items;
+      const inbound = journal.values('inbound');
+      const barrier = entry.voices.size ? inbound.findIndex(record => entry.voices.has(record.id)) : -1;
+      const ready = barrier < 0 ? inbound : inbound.slice(0, barrier);
+      const queued = ready.filter(record => record.status === 'queued');
+      // Only typed gateway commands may overtake a voice note that is still being transcribed.
+      if (barrier >= 0) queued.push(...inbound.slice(barrier).filter(record => record.status === 'queued' && command(record)));
+      const [first, after] = entry.items;
+      const item = barrier >= 0 && first?.startedAt >= inbound[barrier].sentAt ? null : first;
       let next = queued[0];
       if (item && !(next?.sentAt < item.startedAt)) {
         next = queued.find(record => command(record));
         if (!next) {
           // Text typed after a photo joins its event; the text stays durable in
           // the journal while the group settles.
-          const texts = item.notice ? [] : queued.filter(record => record.sentAt >= item.startedAt && !(record.sentAt >= after?.startedAt));
-          return ripe(item, texts.length > 0 || !!after) ? claim(entry, item, texts) : { status: 'empty' };
+          const following = queued.filter(record => record.sentAt >= item.startedAt && !(record.sentAt >= after?.startedAt));
+          const texts = item.notice ? [] : following.filter(record => !voiceText(record));
+          return ripe(item, following.length > 0 || !!after) ? claim(entry, item, texts) : { status: 'empty' };
         }
       }
       if (!next) return { status: 'empty' };
@@ -526,7 +560,8 @@ export async function startNativeBridge({ onFault } = {}) {
   if (nativeBridge) throw new Error('native_bridge_already_started');
   // The operator ledger beside this exact config is re-read before each new
   // send on a quarantined channel; no restart is needed after reconcile.
-  const bridge = createNativeBridge({ config, onFault, authorizeBinding: channel => bindingAllowed(configFile, channel), reconciliationFile: nativeReconciliationFile(configFile) });
+  const bridge = createNativeBridge({ config, onFault, transcribeOwnerVoice: ownerVoiceTranscriber(process.env),
+    authorizeBinding: channel => bindingAllowed(configFile, channel), reconciliationFile: nativeReconciliationFile(configFile) });
   await bridge.listen(); nativeBridge = bridge;
   return bridge;
 }
