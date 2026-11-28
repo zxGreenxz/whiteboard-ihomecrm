@@ -2,15 +2,15 @@
 export default Object.freeze({
   schemaVersion: 1,
   projectRef: "tryymsxyyckgbrmmvozx",
-  reviewedGitSha: "98845e41c731fcbd04f1cb022279e421cece5dd5",
+  reviewedGitSha: "a9c0f445c00832cdcae01ebb90d612e46f6e3dc2",
   function: Object.freeze({
     slug: "llm-proxy",
     entrypoint: "index.ts",
     verifyJwt: true,
     files: Object.freeze([Object.freeze({
       path: "index.ts",
-      sha256: "4a26f7bc8ad51ba69ea242c584e1f534962fcba0333253d10e79d818713d44b3",
+      sha256: "c5a4a9066196920cc29e1751883f5d6b591ce00a35afe8637da6e4e3616837ce",
     })]),
-    bundleSha256: "d4f8473aa48a0e36079e05a34c429c0e5e317e03d666ca4613ec3dbad916f62e",
+    bundleSha256: "2399d7b30f423ae423b5f3556e66296a95225c641b3e57b1b8a5e5afc2a8bf0d",
   }),
 });
