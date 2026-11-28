@@ -28,6 +28,8 @@ export const OPERATIONS_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "buildings",
     keys: [
+      ["fee-config-matrix"],
+      ["spend-engine", "buildings"],
       ["business-performance"],
       ["buildings"], // useBuildings / useBuilding
       ["rooms"],

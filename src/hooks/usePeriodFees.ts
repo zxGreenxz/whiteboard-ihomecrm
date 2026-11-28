@@ -157,6 +157,8 @@ export type PayPeriodFeeResult =
 
 // ── Invalidate helper ──────────────────────────────────────────────────────
 const invalidateFees = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ['spend-engine', 'commitments'] });
+  qc.invalidateQueries({ queryKey: ['fee-config-matrix'] });
   qc.invalidateQueries({ queryKey: ['period-fee-status'] });
   qc.invalidateQueries({ queryKey: ['period-maintenance'] });
   qc.invalidateQueries({ queryKey: ['fee-accounts'] });
@@ -527,6 +529,7 @@ export const useUpsertFeeAccount = () => {
       return data;
     },
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fee-config-matrix'] });
       qc.invalidateQueries({ queryKey: ['fee-accounts'] });
       qc.invalidateQueries({ queryKey: ['period-fee-status'] });
     },
