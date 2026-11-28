@@ -50,6 +50,7 @@ export function buildHermesRestoreFixture(sources) {
     /^GRANT SELECT, INSERT, UPDATE, DELETE ON public\.zalo_worker_lease TO service_role$/,
   ].map(pattern => exactlyOne(statements[0], pattern));
   const result = exactlyOne(statements[0], /^ALTER TABLE public\.zalo_send_queue ADD COLUMN IF NOT EXISTS result jsonb$/);
+  const notBefore = exactlyOne(statements[0], /^ALTER TABLE public\.zalo_send_queue ADD COLUMN IF NOT EXISTS not_before timestamptz$/);
   const messageRaw = exactlyOne(statements[0], /^ALTER TABLE public\.zalo_messages ADD COLUMN IF NOT EXISTS zalo_raw jsonb$/);
   const groupFlag = exactlyOne(statements[2], /^ALTER TABLE public\.zalo_conversations\s+ADD COLUMN IF NOT EXISTS is_sale_partner boolean NOT NULL DEFAULT false$/);
   const provider = exactlyOne(statements[1], /^CREATE OR REPLACE FUNCTION public\.zalo_worker_begin_provider_v1\(/);
@@ -70,7 +71,7 @@ SET LOCAL search_path=public,pg_catalog;
 DO $before$ BEGIN
   IF current_user <> 'postgres' OR to_regclass('public.zalo_worker_lease') IS NOT NULL
     OR to_regprocedure('${SIGNATURE}') IS NOT NULL
-    OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_send_queue'::regclass AND attname='result' AND NOT attisdropped)
+    OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_send_queue'::regclass AND attname IN ('result','not_before') AND NOT attisdropped)
     OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_messages'::regclass AND attname='zalo_raw' AND NOT attisdropped)
     OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_conversations'::regclass AND attname='is_sale_partner' AND NOT attisdropped)
     OR to_regclass('public.zalo_automation_runs') IS NOT NULL
@@ -78,7 +79,7 @@ DO $before$ BEGIN
     RAISE EXCEPTION 'Hermes restore before catalog drift';
   END IF;
 END $before$;
-${[result, messageRaw, groupFlag, ...lease, provider, ...acl].join(';\n')};
+${[result, notBefore, messageRaw, groupFlag, ...lease, provider, ...acl].join(';\n')};
 ${hermesRestoreWitnessSql()}
 COMMIT;`;
 }
@@ -122,6 +123,11 @@ export function hermesRestoreWitnessSql() {
     WHERE a.attrelid='public.zalo_send_queue'::regclass AND a.attname='result' AND NOT a.attisdropped
       AND a.atttypid='jsonb'::regtype AND NOT a.attnotnull AND a.attgenerated='' AND d.oid IS NULL) THEN
     RAISE EXCEPTION 'Hermes restore result column witness drift';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+    WHERE a.attrelid='public.zalo_send_queue'::regclass AND a.attname='not_before' AND NOT a.attisdropped
+      AND a.atttypid='timestamptz'::regtype AND NOT a.attnotnull AND a.attgenerated='' AND d.oid IS NULL) THEN
+    RAISE EXCEPTION 'Restore queue schedule witness drift';
   END IF;
   IF NOT EXISTS(SELECT 1 FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
     WHERE a.attrelid='public.zalo_messages'::regclass AND a.attname='zalo_raw' AND NOT a.attisdropped

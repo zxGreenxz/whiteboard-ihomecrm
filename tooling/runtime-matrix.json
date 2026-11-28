@@ -19,7 +19,7 @@
     {
       "path": "worker/package.json",
       "node": ">=22",
-      "note": "Worker Zalo chạy Docker trên VPS Minh (worker/Dockerfile, node:22-bookworm-slim ghim digest). supabase-js hiện hành dựng Realtime ngay trong createClient và đòi WebSocket có sẵn của Node ≥22 — Node 20 chết lúc khởi động (đo 10/10/2026). Test ở worker/__tests__ chạy bằng vitest của root."
+      "note": "Worker Zalo chạy Docker trên VPS iHomeCRM (worker/Dockerfile, node:22-bookworm-slim ghim digest). supabase-js hiện hành dựng Realtime ngay trong createClient và đòi WebSocket có sẵn của Node ≥22 — Node 20 chết lúc khởi động (đo 10/10/2026). Test ở worker/__tests__ chạy bằng vitest của root."
     },
     {
       "path": "infra/cloudflare-worker/package.json",

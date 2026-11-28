@@ -2,7 +2,7 @@
 
 ## Camera: xem lại và xuất đoạn MP4
 
-Host camera hiện dùng mục **VPS Minh (NAT)** trong vault. Lấy endpoint và mật khẩu
+Host camera dùng alias SSH `ihome-vps` và mục **VPS iHomeCRM (NAT)** trong vault. Lấy endpoint và mật khẩu
 qua `scripts/lib/vault.mjs`, đối chiếu host key đã ghim; không suy ra host SSH từ
 tên miền `crm-hermes` hoặc alias `hermes-vps` cũ. Không in credential ra log.
 

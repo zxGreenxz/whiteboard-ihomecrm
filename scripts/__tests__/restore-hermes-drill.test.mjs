@@ -91,6 +91,7 @@ test('catalog witnesses detect body, ACL, owner, volatility, search path, RLS an
     'ALTER TABLE public.zalo_worker_lease DROP CONSTRAINT zalo_worker_lease_id_check',
     'ALTER TABLE public.zalo_conversations ALTER COLUMN is_sale_partner SET DEFAULT true',
     'ALTER TABLE public.zalo_send_queue ALTER COLUMN result SET NOT NULL',
+    'ALTER TABLE public.zalo_send_queue ALTER COLUMN not_before SET DEFAULT now()',
     'ALTER TABLE public.zalo_messages ALTER COLUMN zalo_raw TYPE text',
     "ALTER TABLE public.zalo_messages ALTER COLUMN zalo_raw SET DEFAULT '{}'::jsonb",
     "ALTER TABLE public.zalo_send_queue ALTER COLUMN result SET DEFAULT '{}'::jsonb",

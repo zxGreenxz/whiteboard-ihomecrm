@@ -61,7 +61,7 @@ Dành cho chủ công ty, quản trị CRM và người vận hành VPS. Cập n
 
 ```text
 Nick Zalo chính của bạn ──nhắn riêng──► Bot Zalo của công ty (nick phụ "Ihome")
-        ▲                                        │ worker Zalo trên VPS Minh
+        ▲                                        │ worker Zalo trên VPS iHomeCRM
         │ trả lời                                 ▼
         └──────────────── Hermes (Docker "hermes-owner", model qua 9router)
                                                  │ MCP, token kết nối riêng
@@ -137,7 +137,7 @@ Chưa ghi được qua Hermes (chủ hoãn 16/10): hợp đồng, cọc, hoá đ
 
 **Thu hồi khẩn:** bấm Thu hồi trên kết nối — Hermes mất quyền CRM ngay, phần trò chuyện cá nhân vẫn chạy.
 
-## 4. Vận hành VPS Minh
+## 4. Vận hành VPS iHomeCRM (`ihome-vps`)
 
 Runbook chi tiết: [HOST_SERVICE.md](../../../infra/hermes-runtime/HOST_SERVICE.md) (release, giới hạn, backup/restore, xoay khoá, sự cố, đồng bộ giờ), [CONNECTOR.md](../../../infra/hermes-broker/CONNECTOR.md) (cài vào Hermes upstream), [kênh Zalo native](../../../infra/hermes-zalo-native/README.md) (token kênh, plugin, đối soát, lệnh tạo sidecar).
 
