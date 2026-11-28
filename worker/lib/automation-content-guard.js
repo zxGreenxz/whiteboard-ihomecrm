@@ -54,9 +54,12 @@ export async function validateSaleContent(job, db, template, buildingId = null) 
     }
   }
   const buildings = mapPayloadSangToa(data);
-  const current = saleContentGuard({ buildings,
-    hotline: data.contact?.phone || buildings.find(b => b.phone)?.phone || '',
-    trangSale: Number.isInteger(data.pages) ? data.pages : null }, template, buildingId);
-  return current.fingerprint === guard.fingerprint ? { ok: true } :
-    reject('STALE_SALE_CONTENT: phòng hoặc nội dung sale đã thay đổi; không gửi bản cũ');
+  const phong = { buildings, hotline: data.contact?.phone || buildings.find(b => b.phone)?.phone || '',
+    trangSale: Number.isInteger(data.pages) ? data.pages : null };
+  const current = saleContentGuard(phong, template, buildingId);
+  const batch = job.payload.sale_batch_fingerprint;
+  const matchesBatch = batch == null || batch === (buildingId ? saleContentGuard(phong, template) : current).fingerprint;
+  return current.fingerprint === guard.fingerprint && matchesBatch ? { ok: true } : {
+    ok: false, restartBatch: true, reason: 'STALE_SALE_CONTENT: phòng hoặc nội dung sale đã thay đổi; dừng và thu hồi đợt cũ',
+  };
 }

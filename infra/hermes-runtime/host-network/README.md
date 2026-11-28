@@ -2,7 +2,7 @@
 
 Áp dụng khi sidecar Hermes (chung network namespace với `ihome-zalo-worker` trên bridge Docker mặc định) chạy **cùng VPS** với 9router và connector CRM. Hai dịch vụ này chỉ nghe `127.0.0.1`; trong container, `127.0.0.1` là chính container, nên trước đây Hermes phải gọi tên miền công khai (Cloudflare tunnel) rồi vòng về đúng VPS. Đường vòng đó làm bắt tay TLS treo 30 s mỗi lần (đo 15/10/2026: một câu hỏi mất 73,8 s, model chỉ 4,5 s). Plan và số đo: [TOI-UU-TOC-DO-DOT1](../../../docs/plans/hermes-crm/TOI-UU-TOC-DO-DOT1.md).
 
-Các file ở đây là bản cho VPS Minh; tên giao diện `docker0`, `eth0.209` và IP `172.17.0.1` là của host đó — đổi theo host khác. Khi cài hoặc kiểm, so sha256 file trên host với repo.
+Trên VPS iHomeCRM (`ihome-vps`), lưu lượng đi ra qua `eth0.209` và bridge `docker0` dùng `172.17.0.1`. Khi chuyển máy, kiểm lại bằng `ip route get 1.1.1.1` và `ip -4 addr show docker0`. Khi cài hoặc kiểm, so sha256 file trên host với repo.
 
 | File | Vai trò |
 | --- | --- |

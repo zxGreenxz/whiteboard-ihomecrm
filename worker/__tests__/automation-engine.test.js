@@ -33,6 +33,8 @@ let oneshotCalls = [];
 let oneshotClaimError = null;
 let locCapNhat = [];
 let finishResult = null;
+let recoveryPlan = null;
+let recoveryResult = null;
 let roomsForLock = [];
 let priorGroupLocks = [];
 
@@ -76,6 +78,13 @@ function ketQua(ctx) {
 
 const sbGia = {
   rpc: async (name, args) => {
+    if (name === 'zalo_worker_register_sale_batch_v1') return { data: true };
+    if (name === 'zalo_worker_sale_batches_due_v1') return { data: recoveryPlan ? ['batch'] : [] };
+    if (name === 'zalo_worker_advance_sale_batch_v1') {
+      if (args.p_finish) recoveryResult = args.p_finish;
+      return { data: args.p_finish ? { phase: 'closed' } : recoveryPlan };
+    }
+    if (name === 'zalo_worker_stop_sale_batch_v1') { recoveryResult = args.p_job; return { data: true }; }
     if (name === 'hermes_room_schedule_due_v1') {
       expect(Object.keys(args).sort()).toEqual(['p_instance_id', 'p_organization_ids']);
       expect(args.p_instance_id).toBe(INSTANCE_ID);
@@ -107,6 +116,7 @@ const sbGia = {
       if (oneshotClaimError) return { data: null, error: oneshotClaimError };
       return { data: structuredClone(oneshotClaims.shift() ?? { status: 'none' }), error: null };
     }
+    if (name === 'zalo_worker_retry_sale_oneshot_v1') { oneshotCalls.push({name,args}); return {data:true}; }
     if (name === 'zalo_worker_finish_oneshot_v1') {
       expect(Object.keys(args).sort()).toEqual(['p_instance_id', 'p_ok', 'p_oneshot_id', 'p_result']);
       expect(args.p_instance_id).toBe(INSTANCE_ID);
@@ -234,6 +244,7 @@ beforeEach(() => {
   hermesRun = () => ({ data: { status: 'already_run' }, error: null });
   hermesSweep = SWEEP_OK; hermesProbe = () => ({ data: { status: 'healthy' }, error: null });
   workerLogs = [];
+  recoveryPlan = null; recoveryResult = null;
   roomsForLock = [];
   priorGroupLocks = [];
   rpcFailureFor = () => null;
@@ -252,6 +263,35 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 /* -------------------------------------------------------------------- test */
 
 describe('engine broadcast — xếp hàng', () => {
+  it('kiểm lại đợt đang gửi trong khoảng chờ giữa hai nhóm', async () => {
+    recoveryPlan = { phase: 'watching', org: 'org-1', job: 'pending', fingerprint: 'a'.repeat(64), config: {} };
+    await tickTuDongHoa(['org-1']);
+    expect(recoveryResult).toBe('pending');
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it('dựng lại nội dung từ dữ liệu mới và rải nhịp theo cài đặt hiện tại', async () => {
+    phongGia[0].saleNote = 'Chính sách mới';
+    recoveryPlan = { phase: 'rebuilding', org: 'org-1', run_key: 'refresh:batch', mode: 'full', remaining: 40,
+      recipients: ['c2','c1'], config: { recipients: ['c1','c2'], antiSpam: { gapBetweenRecipientsSec: 240 },
+        template: { blocks: ['room_details'], roomTemplate: '{ma_phong} {khuyen_mai}' } } };
+    await tickTuDongHoa(['org-1']);
+    expect(rpcCalls.map(r => r.args.p_conversation_id)).toEqual(['c2','c2','c1','c1']);
+    expect(rpcCalls[0].args.p_body).toContain('Chính sách mới');
+    expect(Date.parse(rpcCalls[2].args.p_not_before)-Date.parse(rpcCalls[0].args.p_not_before)).toBe(240000);
+    expect(rpcCalls.every(r => r.args.p_request_key.startsWith('refresh:batch:'))).toBe(true);
+    expect(recoveryResult).toContain('xếp lại 4 tin');
+    const keys = rpcCalls.map(row => row.args.p_request_key);
+    rpcFailureFor = args => args.p_conversation_id === 'c2' ? { message: 'temporary timeout' } : null;
+    recoveryResult = null; rpcCalls = [];
+    await tickTuDongHoa(['org-1']);
+    expect(recoveryResult).toBeNull();
+    rpcFailureFor = () => null; rpcCalls = [];
+    await tickTuDongHoa(['org-1']);
+    expect(rpcCalls.map(row => row.args.p_request_key)).toEqual(keys);
+    expect(recoveryResult).toContain('xếp lại 4 tin');
+  });
+
   it('báo từng lần phòng đang đăng bị lock, kể cả phòng cuối và khi nhóm rớt phiên', async () => {
     phongGia.splice(1);
     roomsForLock = [{ id: 'r1', code: 'P.201', building: { name: 'Tòa Sen' } }];
@@ -793,6 +833,22 @@ describe('engine broadcast — lượt gửi một lần', () => {
     expect(finishCalls()).toHaveLength(1);
     expect(finishCalls()[0].args).toMatchObject({ p_oneshot_id: SHOT, p_ok: true, p_result: { so_tin: 8, so_nguoi_nhan: 2, che_do: 'full', partial: false } });
     expect(daChen.runs[0]).toMatchObject({ mode: 'full', messages_count: 8, recipients_count: 2, detail: { oneshot_id: SHOT, luot_mot_lan: true } });
+  });
+
+  it('lượt một lần tạo lại giữ cùng mã khi lỗi tạm ở nhóm thứ hai', async () => {
+    duLieuAutomations = [];
+    const replacement = { result: { sale_refresh_parent: 'old' } };
+    oneshotClaims = [claimOf(replacement)];
+    rpcFailureFor = args => args.p_conversation_id === 'c2' ? { message:'timeout' } : null;
+    await tickTuDongHoa();
+    expect(finishCalls()).toHaveLength(0);
+    expect(oneshotCalls.some(c => c.name==='zalo_worker_retry_sale_oneshot_v1')).toBe(true);
+    const keys = rpcCalls.map(c => c.args.p_request_key);
+    rpcCalls=[]; rpcFailureFor=()=>null;
+    oneshotClaims=[claimOf({result:{sale_refresh_parent:'old',rebuild_budget:120}}, {}, {con_lai:0})];
+    await tickTuDongHoa();
+    expect(rpcCalls.map(c=>c.args.p_request_key)).toEqual(keys);
+    expect(finishCalls()[0].args.p_ok).toBe(true);
   });
 
   it('chế độ GỌN chỉ gửi link + ảnh bảng', async () => {

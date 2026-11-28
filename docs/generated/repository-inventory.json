@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 2046,
   "soFileDocBangFs": 519,
-  "tongLoiGoi": 1419,
+  "tongLoiGoi": 1420,
   "khongPhanLoaiDuoc": 623,
   "theoLoai": {
     "ma-nguon": {
@@ -527,6 +527,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/zaloBroadcastOneshotMigration.test.ts",
+      "soGoi": 6,
+      "loai": {
+        "sql": 5
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "worker/deploy/native-deployment.test.mjs",
       "soGoi": 6,
       "loai": {
@@ -696,14 +704,6 @@
     },
     {
       "file": "src/lib/__tests__/soTongLoiNhuanTaoMigration.test.ts",
-      "soGoi": 5,
-      "loai": {
-        "sql": 4
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/zaloBroadcastOneshotMigration.test.ts",
       "soGoi": 5,
       "loai": {
         "sql": 4

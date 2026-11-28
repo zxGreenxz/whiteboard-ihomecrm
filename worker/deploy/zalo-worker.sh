@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dựng và chạy worker Zalo trên VPS bằng Docker trần (VPS Minh không có docker compose).
+# Dựng và chạy worker Zalo trên VPS bằng Docker trần (không cần Docker Compose).
 # Chạy bằng root. Mỗi bản là một image gắn tag theo SHA, nên lùi bản = `run` lại tag cũ.
 #
 #   zalo-worker.sh build <thư mục worker đã giải nén> <SHA 40 ký tự>

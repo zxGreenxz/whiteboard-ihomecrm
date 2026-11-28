@@ -12,6 +12,7 @@ vi.mock('../lib/ctx.js', () => ({
   sb: {
     rpc: async (name, args) => {
       state.calls.push({ name, args });
+      if (name === 'zalo_worker_stop_sale_batch_v1') return { data: true, error: null };
       if (name === 'zalo_worker_claim_job_v1') return { data: { ok: state.claimAllowed }, error: null };
       if (['zalo_worker_begin_provider_v1', 'zalo_worker_begin_hermes_group_provider_v1'].includes(name)) {
         await state.beforeAdmissionReturns?.();
@@ -85,6 +86,15 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('queue admission and delivery outcomes', () => {
+  it.each([false,true])('dừng cả đợt khi danh sách đổi, cả sau khi chiếm tin (%s)', async claimed => {
+    const api = connect();
+    state.automationResults = [...(claimed ? [{ ok: true }] : []), { ok: false, restartBatch: true, reason: 'STALE_SALE_CONTENT' }];
+    await processJob(makeJob({ tu_dong: true }));
+    expect(state.calls.filter(row => row.name === 'zalo_worker_stop_sale_batch_v1')).toEqual([
+      { name: 'zalo_worker_stop_sale_batch_v1', args: { p_instance: 'instance', p_job: 'job' } },
+    ]);
+    expect(api.sendMessage).not.toHaveBeenCalled();
+  });
   it('refreshes groups through the selected session without sending any message', async () => {
     const api = connect();
     api.getAllGroups = vi.fn(async () => ['g1', 'g2']);

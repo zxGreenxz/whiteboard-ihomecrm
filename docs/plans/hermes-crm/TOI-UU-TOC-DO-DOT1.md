@@ -89,7 +89,7 @@ Lý do đang đi vòng: Hermes chạy trong Docker, `127.0.0.1` trong container 
 
 ## 3. Các bước thực hiện
 
-Thứ tự: 0 → (1 chạy song song) → 2 → 3 → 4 → 5 → 6 → 7 → 8. Mọi lệnh chạy trên VPS Minh bằng SSH khóa (xem vault); không in secret ra log.
+Thứ tự: 0 → (1 chạy song song) → 2 → 3 → 4 → 5 → 6 → 7 → 8. Khi thực hiện lại, dùng alias SSH `ihome-vps` và thông tin xác thực trong mục **VPS iHomeCRM (NAT)** của vault.
 
 ### Bước 0 — Chuẩn bị (không gián đoạn)
 

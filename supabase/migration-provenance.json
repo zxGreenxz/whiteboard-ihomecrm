@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-28T01:36:50.072Z",
+  "generatedAt": "2026-11-28T02:44:57.142Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 1007,
+    "ledger-applied": 1008,
     "unknown": 80,
     "catalog-proven": 207,
     "superseded": 15
@@ -14967,6 +14967,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-28T01:36:30.934Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261128022009_zalo_thu_hoi_va_gui_lai_dot_phong.sql",
+      "version": "20261128022009",
+      "name": "zalo_thu_hoi_va_gui_lai_dot_phong",
+      "scheme": "timestamp14",
+      "sha256": "9127689395b0f7aa529ca655958d26c5547462f6eaa2e78072d66348303193d8",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-28T02:44:07.113Z|bien-nhan-backup"
       ]
     },
     {

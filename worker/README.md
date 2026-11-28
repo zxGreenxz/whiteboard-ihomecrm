@@ -27,12 +27,12 @@ tự re-login từ cookie; **dùng tài khoản phụ riêng cho worker**.
 
 ## Chạy bằng Docker trên VPS (giữ 24/7)
 
-Từ 10/2026 worker chạy trên VPS Minh, container `ihome-zalo-worker`, dựng từ đúng một SHA
-trên `main` bằng [`deploy/zalo-worker.sh`](deploy/zalo-worker.sh) (VPS không có docker compose).
+Worker chạy trên VPS iHomeCRM (alias SSH `ihome-vps`), container `ihome-zalo-worker`, dựng từ đúng một SHA
+trên `main` bằng [`deploy/zalo-worker.sh`](deploy/zalo-worker.sh).
 
 ```bash
 # 1. Trên máy dev: đưa đúng mã của SHA lên VPS
-git archive <sha> worker | ssh <vps> "mkdir -p /opt/ihome-zalo-worker/source/<sha12> && tar -x -C /opt/ihome-zalo-worker/source/<sha12>"
+git archive <sha> worker | ssh ihome-vps "mkdir -p /opt/ihome-zalo-worker/source/<sha12> && tar -x -C /opt/ihome-zalo-worker/source/<sha12>"
 
 # 2. Trên VPS (root): dựng image — tải font và so mã băm trong fonts.sha256
 /opt/ihome-zalo-worker/source/<sha12>/worker/deploy/zalo-worker.sh build /opt/ihome-zalo-worker/source/<sha12>/worker <sha>

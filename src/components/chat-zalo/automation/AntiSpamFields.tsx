@@ -51,23 +51,6 @@ export default function AntiSpamFields({ value, onChange }: Props) {
 
       <div style={{ height: 1, background: VIEN_NHAT }} />
 
-      {/* Giãn nhịp giữa người nhận */}
-      <TruongNhap
-        nhan="Giãn nhịp giữa hai người nhận"
-        id="as-gap-nguoi"
-        ghiChu="Sau khi gửi xong cho một người, chờ bấy nhiêu giây rồi mới sang người kế. Số này nhân với số người nhận ra tổng thời gian một lượt broadcast — 10 người × 180 giây là nửa tiếng."
-      >
-        <SoNguyenInput
-          id="as-gap-nguoi"
-          value={v.gapBetweenRecipientsSec}
-          onChange={(n) => onChange({ ...v, gapBetweenRecipientsSec: n })}
-          min={30}
-          max={3600}
-          macDinh={180}
-          donVi="giây"
-        />
-      </TruongNhap>
-
       {/* Giãn nhịp giữa các tin phòng */}
       <TruongNhap
         nhan="Giãn nhịp giữa các tin chi tiết phòng"

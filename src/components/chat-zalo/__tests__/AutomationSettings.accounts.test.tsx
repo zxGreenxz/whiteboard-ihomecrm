@@ -24,6 +24,16 @@ const conversations = ['a-1', 'a-2', 'b-1'].map(id => ({
   id, name: id, threadId: 'thread-' + id, accountId: id.split('-')[0], isGroup: true, initials: 'N', tone: 'emerald', profile: {},
 })) as ZaloConversation[];
 
+it('chỉnh khoảng cách giữa các nhóm ngay trước danh sách người nhận', () => {
+  render(<AutomationSettingsDialog account={accounts[0]} open onOpenChange={() => {}} conversations={conversations} />);
+  const gap = screen.getByLabelText('Thời gian gửi giữa các nhóm');
+  expect(gap.compareDocumentPosition(screen.getByText('Người nhận · Nick A')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.change(gap, { target: { value: '240' } });
+  fireEvent.blur(gap);
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu lịch gửi' }));
+  expect(mutate.mock.calls[0][0]).toMatchObject({ changes: { antiSpam: { gapBetweenRecipientsSec: 240 } }, add: [], remove: [] });
+});
+
 it('adds and removes daily slots without changing the selected groups or pacing', () => {
   render(<AutomationSettingsDialog account={accounts[0]} open onOpenChange={() => {}} conversations={conversations} />);
   const add = (value: string) => {

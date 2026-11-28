@@ -13,6 +13,8 @@ export const HERMES_RESTORE_SOURCES = Object.freeze({
   '20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql': 'bd9b2750983fa3285ec582cc19b6b8841bf76222dc9cfb684cf8d9e0966204bd',
 });
 const BODY_SHA = '2310b70ca4b48ba39cbda53f5baba9df5995f8c3eb028965f52dbd55f12a9402';
+const CONFIG_SIGNATURE = 'app_private.zalo_config_int_v1(jsonb,integer,integer)';
+const CONFIG_BODY_SHA = '95b56e7592a7a547644fff62ca213aaabd6efe41d37233a83da2fb76e3070bc5';
 const SIGNATURE = 'public.zalo_worker_begin_provider_v1(uuid,uuid)';
 const STOPS = Object.freeze({
   '20260813110000_zalo_gui_media_va_idempotency.sql': 'zalo_authorized_org_ids(unknown) does not exist',
@@ -50,8 +52,14 @@ export function buildHermesRestoreFixture(sources) {
     /^GRANT SELECT, INSERT, UPDATE, DELETE ON public\.zalo_worker_lease TO service_role$/,
   ].map(pattern => exactlyOne(statements[0], pattern));
   const result = exactlyOne(statements[0], /^ALTER TABLE public\.zalo_send_queue ADD COLUMN IF NOT EXISTS result jsonb$/);
+  const notBefore = exactlyOne(statements[0], /^ALTER TABLE public\.zalo_send_queue ADD COLUMN IF NOT EXISTS not_before timestamptz$/);
   const messageRaw = exactlyOne(statements[0], /^ALTER TABLE public\.zalo_messages ADD COLUMN IF NOT EXISTS zalo_raw jsonb$/);
   const groupFlag = exactlyOne(statements[2], /^ALTER TABLE public\.zalo_conversations\s+ADD COLUMN IF NOT EXISTS is_sale_partner boolean NOT NULL DEFAULT false$/);
+  const config = exactlyOne(statements[1], /^CREATE OR REPLACE FUNCTION app_private\.zalo_config_int_v1\(/);
+  if (extractFunctionDefinitions(config)[0]?.bodyDigest !== CONFIG_BODY_SHA) throw Error('Restore config helper body mismatch');
+  const configTargets = CONFIG_SIGNATURE + ',app_private.zalo_in_allowed_hours_v1(timestamptz,jsonb)';
+  const configRevoke = statements[1].find(s => s === `REVOKE ALL ON FUNCTION ${configTargets} FROM PUBLIC,anon,authenticated,service_role`);
+  if (!configRevoke) throw Error('Restore config helper ACL source mismatch');
   const provider = exactlyOne(statements[1], /^CREATE OR REPLACE FUNCTION public\.zalo_worker_begin_provider_v1\(/);
   if (extractFunctionDefinitions(provider)[0]?.bodyDigest !== BODY_SHA) throw Error('Hermes restore provider body mismatch');
   // The original grants share a statement with claim/recover functions. Select
@@ -69,8 +77,9 @@ export function buildHermesRestoreFixture(sources) {
 SET LOCAL search_path=public,pg_catalog;
 DO $before$ BEGIN
   IF current_user <> 'postgres' OR to_regclass('public.zalo_worker_lease') IS NOT NULL
+    OR to_regprocedure('${CONFIG_SIGNATURE}') IS NOT NULL
     OR to_regprocedure('${SIGNATURE}') IS NOT NULL
-    OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_send_queue'::regclass AND attname='result' AND NOT attisdropped)
+    OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_send_queue'::regclass AND attname IN ('result','not_before') AND NOT attisdropped)
     OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_messages'::regclass AND attname='zalo_raw' AND NOT attisdropped)
     OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.zalo_conversations'::regclass AND attname='is_sale_partner' AND NOT attisdropped)
     OR to_regclass('public.zalo_automation_runs') IS NOT NULL
@@ -78,7 +87,7 @@ DO $before$ BEGIN
     RAISE EXCEPTION 'Hermes restore before catalog drift';
   END IF;
 END $before$;
-${[result, messageRaw, groupFlag, ...lease, provider, ...acl].join(';\n')};
+${[result, notBefore, messageRaw, groupFlag, ...lease, config, configRevoke.replace(configTargets, CONFIG_SIGNATURE), provider, ...acl].join(';\n')};
 ${hermesRestoreWitnessSql()}
 COMMIT;`;
 }
@@ -98,6 +107,12 @@ export function hermesRestoreWitnessSql() {
     OR f.provolatile IS DISTINCT FROM 'v'::"char" OR f.prosecdef IS DISTINCT FROM true
     OR f.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, public'] THEN
     RAISE EXCEPTION 'Hermes restore provider witness drift';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid=to_regprocedure('${CONFIG_SIGNATURE}')
+    AND encode(sha256(convert_to(prosrc,'UTF8')),'hex')='${CONFIG_BODY_SHA}' AND proowner='postgres'::regrole
+    AND proacl::text='{postgres=X/postgres}' AND provolatile='i' AND NOT prosecdef
+    AND proconfig=ARRAY['search_path=pg_catalog']) THEN
+    RAISE EXCEPTION 'Restore broadcast config helper witness drift';
   END IF;
   SELECT relowner::regrole::text owner, relacl::text acl, relrowsecurity, relforcerowsecurity
     INTO t FROM pg_class WHERE oid=to_regclass('public.zalo_worker_lease');
@@ -122,6 +137,11 @@ export function hermesRestoreWitnessSql() {
     WHERE a.attrelid='public.zalo_send_queue'::regclass AND a.attname='result' AND NOT a.attisdropped
       AND a.atttypid='jsonb'::regtype AND NOT a.attnotnull AND a.attgenerated='' AND d.oid IS NULL) THEN
     RAISE EXCEPTION 'Hermes restore result column witness drift';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+    WHERE a.attrelid='public.zalo_send_queue'::regclass AND a.attname='not_before' AND NOT a.attisdropped
+      AND a.atttypid='timestamptz'::regtype AND NOT a.attnotnull AND a.attgenerated='' AND d.oid IS NULL) THEN
+    RAISE EXCEPTION 'Restore queue schedule witness drift';
   END IF;
   IF NOT EXISTS(SELECT 1 FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
     WHERE a.attrelid='public.zalo_messages'::regclass AND a.attname='zalo_raw' AND NOT a.attisdropped
