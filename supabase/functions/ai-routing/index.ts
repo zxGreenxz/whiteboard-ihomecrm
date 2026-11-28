@@ -44,15 +44,13 @@ export async function manage(req: Request, env: Env, send: typeof fetch = fetch)
         try {
           const models = await loadCatalog(provider, target, viaHermesVps(provider, env, send), 20000);
           if (!models.length) throw Error('empty_entitlement');
-          // Syncing Nous should preserve verified 9router models if its catalog is unchanged.
-          if (provider === '9router') {
-            const previous = await db('ai_route_catalogs?select=provider,models&provider=eq.9router');
-            if (!previous.ok) throw Error('catalog_store_unavailable');
-            const rows = await previous.json();
-            const saved: CatalogModel[] = rows.find((row: { provider: string }) => row.provider === provider)?.models ?? [];
-            if (saved.length === models.length && models.every((m, i) => m.id === saved[i].id &&
-                m.vision === saved[i].vision && m.text === saved[i].text)) return;
-          }
+          // Keep probe results and in-flight snapshot IDs when the entitlement is unchanged.
+          const previous = await db('ai_route_catalogs?select=provider,models&provider=eq.' + provider);
+          if (!previous.ok) throw Error('catalog_store_unavailable');
+          const rows = await previous.json();
+          const saved: CatalogModel[] = rows.find((row: { provider: string }) => row.provider === provider)?.models ?? [];
+          if (saved.length === models.length && models.every((m, i) => m.id === saved[i].id &&
+              m.vision === saved[i].vision && m.text === saved[i].text)) return;
           const stored = await db('ai_route_catalogs?on_conflict=provider', { method: 'POST',
             headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ provider, models, synced_at: new Date().toISOString() }) });
           if (!stored.ok) throw Error('catalog_store_unavailable');
@@ -80,11 +78,17 @@ export async function manage(req: Request, env: Env, send: typeof fetch = fetch)
     }
     if (input.action === 'save') {
       if (!APPS.includes(input.app as App) || !routePair(input.routes) || !Number.isSafeInteger(input.revision) || Number(input.revision) < 0) return reply(400, { error: 'invalid_route' });
+      let canReadImages = false;
       for (const route of input.routes) {
         const choice = catalogs.find(c => c.provider === route.provider)?.models.find(m => m.id === route.model);
-        if (!inScope(route.provider, route.model) || !choice?.verified || input.app === 'quick_stt' || !choice.vision) return reply(422, { error: 'incompatible_model' });
+        const compatible = choice && (route.provider === 'nous' && input.app !== 'meter_vision'
+          ? choice.vision || choice.text
+          : choice.vision && choice.verified);
+        if (!inScope(route.provider, route.model) || input.app === 'quick_stt' || !compatible) return reply(422, { error: 'incompatible_model' });
+        if (choice.vision) canReadImages = true;
         if (!endpoint(route.provider, env, input.app === 'meter_vision' ? undefined : actor)) return reply(422, { error: 'provider_unconfigured' });
       }
+      if (input.routes.length && !canReadImages) return reply(422, { error: 'image_route_required' });
       const revision = Number(input.revision);
       const update = await db('ai_application_routes?app=eq.' + input.app + '&revision=eq.' + revision, {
         method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ routes: input.routes, revision: revision + 1 }),

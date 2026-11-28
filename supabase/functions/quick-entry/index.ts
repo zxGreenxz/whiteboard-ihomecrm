@@ -426,7 +426,7 @@ async function goiNhaCungCap(
 // Kiểm đầu vào từng route. Chỉ chuyển tiếp những khoá cần — khoá lạ của client không tới upstream.
 
 type DauVao =
-  | { ok: true; payload: (model: string, cumTu?: readonly string[]) => Record<string, unknown> }
+  | { ok: true; hasImage?: boolean; payload: (model: string, cumTu?: readonly string[]) => Record<string, unknown> }
   | { ok: false; res: Response };
 
 export function dauVaoNhanGiong(body: Record<string, unknown>): DauVao {
@@ -501,6 +501,7 @@ export function dauVaoDocChu(body: Record<string, unknown>): DauVao {
   const maxTokens = Number.isInteger(max) && max > 0 ? Math.min(max, TRAN_MAX_TOKENS) : TRAN_MAX_TOKENS;
   return {
     ok: true,
+    hasImage: anh > 0,
     payload: (model) => ({
       model,
       messages,
@@ -683,17 +684,21 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
   } catch {
     used = Number.POSITIVE_INFINITY;
   }
-  if (!(Number.isFinite(cap) && cap > 0) || used > cap) {
+  const releaseReservation = async () => {
     try {
       await f(`${logUrl}?${reservedFilter}`, { method: "DELETE", headers: { ...ghi, Prefer: "return=minimal" } });
     } catch (e) {
       console.error("quick-entry: trả chỗ ai_usage_logs lỗi", String(e).slice(0, 200));
     }
+  };
+  if (!(Number.isFinite(cap) && cap > 0) || used > cap) {
+    await releaseReservation();
     return loi(429, "quick_entry_daily_cap", "Hôm nay đã dùng hết lượt AI. Bạn vẫn nhập tay được.");
   }
 
   const batDau = now();
   let attempts = 0;
+  let skippedModality = false;
   let boGoiY = false;
   let cumTu: string[] | null = null;
 
@@ -703,21 +708,30 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
     if (dungGoiY && cumTu === null && cumTuSan) cumTu = await cumTuSan;
     const han = thoiGianLanThu(NGAN_SACH_MS[route], now() - batDau, MOI_LAN_MS[route]);
     if (han === 0) break;
-    attempts += 1;
     const t0 = now();
     const goiY = dungGoiY ? cumTu ?? [] : [];
     const ncc = targets[i];
     // Verify this credential still has subscription coverage before forwarding any content.
     const checkPlan = configured.length > 0 && ncc.ten === "nous";
     const sendToProvider = route === "stt" ? f : viaHermesVps(ncc.ten, env, f);
-    const entitled = !checkPlan || (await loadCatalog("nous", ncc, sendToProvider, 3500).catch(() => []))
-      .some(m => m.id === ncc.model && m.vision);
+    const planModel = checkPlan
+      ? (await loadCatalog("nous", ncc, sendToProvider, 3500).catch(() => [])).find(m => m.id === ncc.model)
+      : undefined;
+    if (planModel && !(dauVao.hasImage ? planModel.vision : planModel.text)) {
+      skippedModality = true;
+      continue;
+    }
+    attempts += 1;
+    const entitled = !checkPlan || !!planModel;
+    const payload = dauVao.payload(models[i], goiY);
+    // Older text-only GPT models accept a JSON instruction in the prompt but no response_format parameter.
+    if (planModel && !planModel.vision) delete payload.response_format;
     const r = entitled ? await goiNhaCungCap(
       sendToProvider,
       ncc.base,
       ncc.key,
       route === "stt" ? "/audio/transcriptions" : "/chat/completions",
-      dauVao.payload(models[i], goiY),
+      payload,
       han,
     ) : { ok: false, status: 402, body: null, cost: 0, tokens: { prompt: 0, completion: 0, total: 0 } };
     const text = route === "stt"
@@ -774,6 +788,10 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
     }
     if (configured.length || r.ok || nenThuMoHinhKe(r.status)) continue;
     break;
+  }
+  if (!attempts && skippedModality) {
+    await releaseReservation();
+    return loi(422, "input_not_supported", "Các model đã chọn chưa hỗ trợ đầu vào này.");
   }
   return loi(502, "quick_entry_all_failed", "Các mô hình AI đều đang lỗi. Thử lại sau, hoặc nhập tay.");
 }
