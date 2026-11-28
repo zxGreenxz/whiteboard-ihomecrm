@@ -1,11 +1,35 @@
 import { manage } from './index.ts';
 import { probe } from './probe.ts';
-import { catalogModels, routePair } from '../_shared/ai-routing.ts';
+import { catalogModels, endpoint, routePair } from '../_shared/ai-routing.ts';
+import { CRM_AI_VPS, OWNER_NOUS_BASE, viaHermesVps } from '../_shared/hermes-vps.ts';
 
 const equal = (a: unknown,b: unknown) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw Error(JSON.stringify([a,b])); };
 const nus = { id: 'openai/gpt-6-luna', billing_mode: 'subscription', architecture: { input_modalities: ['text','image'], output_modalities: ['text'] }, supported_parameters: ['response_format'] };
 const cx = { id: 'cx/gpt-6-luna[1m]', owned_by: 'cx', capabilities: { vision: true } };
 const ag = { id: 'ag/gemini', owned_by: 'ag', capabilities: { vision: true } };
+Deno.test('only the authenticated owner receives the personal Nous connector', async () => {
+  const owner = '11111111-1111-4111-8111-111111111111';
+  const values: Record<string, string> = { CRM_AI_OWNER_ID: owner, CRM_AI_VPS_KEY: 'gateway', CRM_AI_OWNER_CONNECTOR_KEY: 'private' };
+  const env = (k: string) => values[k];
+  equal(endpoint('nous', env), null);
+  equal(endpoint('nous', env, 'different'), null);
+  equal(endpoint('nous', env, owner), { base: OWNER_NOUS_BASE, key: 'private' });
+  values.AI_NOUS_API_KEY = 'shared';
+  equal(endpoint('nous', env, owner), endpoint('nous', env, 'different'));
+  const unknown = viaHermesVps('9router', env, () => { throw Error('unexpected_fetch'); });
+  const error = await unknown('https://other.invalid/v1/models').then(() => '', e => e.message);
+  equal(error, 'invalid_ai_destination');
+  for (const [provider, base, op, path] of [['nous', OWNER_NOUS_BASE, '/models', 'nous-owner'],
+    ['9router', 'https://ai.chillhome.io.vn/v1', '/chat/completions', '9router']]) {
+    const forward = viaHermesVps(provider, env, (input, init) => {
+      equal(String(input), CRM_AI_VPS + '/' + path + op);
+      equal(new Headers(init?.headers).get('X-CRM-AI-Key'), 'gateway');
+      equal(init?.redirect, 'error');
+      return Promise.resolve(new Response());
+    });
+    await forward(base + op);
+  }
+});
 const configuration = { routes: [{ provider: 'nous', model: nus.id }, { provider: '9router', model: cx.id }], app: 'quick_read', revision: 2, action: 'save' };
 const env = (k: string) => ({ SUPABASE_URL: 'https://crm.invalid', SUPABASE_ANON_KEY: 'anon', SUPABASE_SERVICE_ROLE_KEY: 'service', AI_NOUS_API_KEY: 'shared', QUICK_ENTRY_NINEROUTER_BASE_URL: 'https://nine.invalid/v1', QUICK_ENTRY_NINEROUTER_KEY: 'nine' })[k];
 function fixture(body: unknown, role: boolean, conflict = false) {
@@ -16,6 +40,7 @@ function fixture(body: unknown, role: boolean, conflict = false) {
     if (url.endsWith('/is_super_admin')) { equal(new Headers(init?.headers).get('Authorization'), 'Bearer user'); return Response.json(role); }
     if (url.endsWith('/models')) return Response.json({ data: url.includes('nine.invalid') ? [cx,ag] : [{ ...nus, billing_mode: 'credits' }] });
     if (url.includes('/ai_route_catalogs?on_conflict')) { stored.push(JSON.parse(String(init?.body))); return new Response(null,{ status:201 }); }
+    if (url.endsWith('&provider=eq.9router')) return Response.json([]);
     if (url.includes('/ai_route_catalogs?select')) return Response.json([
       { provider:'nous', models:catalogModels('nous',{data:[nus]}).map(m => ({...m,verified:true})) }, { provider:'9router',models:catalogModels('9router',{data:[cx,ag]}).map(m => ({...m, verified:m.id === cx.id})) }]);
     if (init?.method === 'PATCH') { equal(url.endsWith('app=eq.quick_read&revision=eq.2'), true); stored.push(JSON.parse(String(init.body))); return Response.json(conflict ? [] : [{}]); }

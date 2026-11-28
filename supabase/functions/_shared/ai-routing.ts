@@ -1,3 +1,5 @@
+import { canUseOwnerPlan, OWNER_NOUS_BASE } from './hermes-vps.ts';
+
 export const APPS = ['quick_read', 'wallet_read', 'quick_stt', 'meter_vision'] as const;
 export type App = typeof APPS[number];
 export type Provider = 'nous' | '9router';
@@ -50,7 +52,11 @@ export async function loadCatalog(provider: Provider, target: { base: string; ke
 }
 
 // These are service credentials for the shared application, never a user's OAuth token.
-export function endpoint(provider: Provider, env: Env) {
+export function endpoint(provider: Provider, env: Env, actor?: string) {
+  if (provider === 'nous' && !env('AI_NOUS_API_KEY')?.trim() && canUseOwnerPlan(env, actor)) {
+    const key = env('CRM_AI_OWNER_CONNECTOR_KEY')?.trim();
+    if (key && env('CRM_AI_VPS_KEY')?.trim()) return { base: OWNER_NOUS_BASE, key };
+  }
   const base = (provider === 'nous' ? env('AI_NOUS_BASE_URL') || 'https://inference-api.nousresearch.com/v1'
     : env('QUICK_ENTRY_NINEROUTER_BASE_URL') || env('NINEROUTER_BASE_URL') || '').trim().replace(/\/+$/, '');
   const key = (provider === 'nous' ? env('AI_NOUS_API_KEY') :

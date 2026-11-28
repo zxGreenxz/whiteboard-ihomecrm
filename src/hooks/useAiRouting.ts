@@ -10,6 +10,7 @@ const settings = z.object({
   apps: z.array(z.object({ app, revision: z.number().int(), routes: z.array(route) })),
   catalogs: z.array(z.object({ provider, synced_at: z.string(), models: z.array(z.object({ id: z.string(), vision: z.boolean(), text: z.boolean(), verified: z.boolean().optional(), tested: z.boolean().optional() })) })),
   enabled: z.boolean(), ready: z.object({ nous: z.boolean(), '9router': z.boolean() }), syncErrors: z.array(provider),
+  meterNousReady: z.boolean().optional(),
 });
 export type AiSettings = z.infer<typeof settings>;
 export type AiProvider = z.infer<typeof provider>;

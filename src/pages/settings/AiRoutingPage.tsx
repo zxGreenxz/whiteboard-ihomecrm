@@ -10,9 +10,15 @@ type Row = AiSettings['apps'][number];
 const selectStyle = 'mt-1 block w-full rounded-md border bg-background px-2 py-2 text-sm';
 
 function AppRoutes({ row, data, busy, save }: { row: Row; data: AiSettings; busy: boolean; save: (routes: AiRoute[]) => void }) {
-  const [draft, setDraft] = useState<AiRoute[]>(() => row.routes.length ? row.routes : [{ provider: 'nous', model: '' }, { provider: '9router', model: '' }]);
+  const [draft, setDraft] = useState<AiRoute[]>(() => row.routes.length ? row.routes : [
+    { provider: row.app === 'meter_vision' && data.meterNousReady === false ? '9router' : 'nous', model: '' },
+    { provider: '9router', model: '' },
+  ]);
   const update = (index: number, route: AiRoute) => setDraft(prev => prev.map((old, i) => i === index ? route : old));
-  const models = (provider: AiProvider) => data.catalogs.find(c => c.provider === provider)?.models.filter(m => m.vision && m.verified) ?? [];
+  const available = (provider: AiProvider) => data.ready[provider] &&
+    (row.app !== 'meter_vision' || provider !== 'nous' || data.meterNousReady !== false);
+  const models = (provider: AiProvider) => available(provider)
+    ? data.catalogs.find(c => c.provider === provider)?.models.filter(m => m.vision && m.verified) ?? [] : [];
   const valid = draft.length === 2 && draft.every(r => data.ready[r.provider] && models(r.provider).some(m => m.id === r.model)) &&
     (draft[0].provider !== draft[1].provider || draft[0].model !== draft[1].model);
   return <section className="rounded-lg border bg-card p-4 space-y-3" aria-label={names[row.app]}>
@@ -24,7 +30,7 @@ function AppRoutes({ row, data, busy, save }: { row: Row; data: AiSettings; busy
       <div className="grid gap-4 sm:grid-cols-2">{draft.map((r, index) => <fieldset key={index} className="min-w-0 space-y-2">
         <legend className="text-sm font-medium">{index ? 'Dự phòng' : 'Ưu tiên'}</legend>
         <label className="block text-sm">Nguồn<select className={selectStyle} value={r.provider} onChange={e => update(index, { provider: e.target.value as AiProvider, model: '' })}>
-          {Object.entries(sources).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+          {Object.entries(sources).map(([id, name]) => <option key={id} value={id} disabled={!available(id as AiProvider)}>{name}</option>)}</select></label>
         <label className="block text-sm">Model<select className={selectStyle} value={r.model} onChange={e => update(index, { ...r, model: e.target.value })}>
           <option value="">Chọn model</option>
           {r.model && !models(r.provider).some(m => m.id === r.model) && <option value={r.model} disabled>{r.model} · ngoài danh mục</option>}
@@ -47,7 +53,9 @@ export default function AiRoutingPage() {
     const run = ++sequence.current;
     setTesting(true);
     let passed = 0;
-    const candidates = catalog.models.filter(m => (m.vision || m.text) && !m.tested);
+    const remaining = catalog.models.filter(m => (m.vision || m.text) && !m.verified);
+    const pending = remaining.filter(m => !m.tested);
+    const candidates = pending.length ? pending : remaining;
     try {
       for (const [index, model] of candidates.entries()) {
         if (sequence.current !== run) return;
@@ -73,8 +81,8 @@ export default function AiRoutingPage() {
           {(Object.keys(sources) as AiProvider[]).map(provider => {
             const catalog = data.catalogs.find(c => c.provider === provider);
             return <details key={provider} className="rounded-md border p-3 text-sm"><summary className="cursor-pointer">{sources[provider]} · {catalog?.models.length ?? 0} model</summary>
-              <p className="mt-2">{data.ready[provider] ? 'Đã cấu hình khóa dịch vụ.' : 'Chưa có khóa dịch vụ dùng chung.'} {catalog && 'Đồng bộ lúc ' + new Date(catalog.synced_at).toLocaleString('vi-VN') + '.'}</p>
-              {catalog && <><Button variant="outline" className="my-2" disabled={testing || change.isPending || !data.ready[provider] || !catalog.models.some(m => (m.vision || m.text) && !m.tested)} onClick={() => void testModels(catalog)}>Thử các model tương thích</Button>
+              <p className="mt-2">{data.ready[provider] ? 'Đã cấu hình kết nối.' : 'Chưa cấu hình kết nối.'} {catalog && 'Đồng bộ lúc ' + new Date(catalog.synced_at).toLocaleString('vi-VN') + '.'}</p>
+              {catalog && <><Button variant="outline" className="my-2" disabled={testing || change.isPending || !data.ready[provider] || !catalog.models.some(m => (m.vision || m.text) && !m.verified)} onClick={() => void testModels(catalog)}>Thử các model chưa đạt</Button>
                 <p>{catalog.models.filter(m => m.verified).length} model đã trả đúng kết quả. Từng ứng dụng chỉ hiển thị model hỗ trợ đầu vào tương ứng.</p>
                 <ul className="mt-2 max-h-48 overflow-auto">{catalog.models.filter(m => m.verified).map(m => <li key={m.id}>{m.id}</li>)}</ul></>}</details>;
           })}

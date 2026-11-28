@@ -950,14 +950,22 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
   const timer = setTimeout(() => controller.abort(), TIMEOUT_KET_NOI_MS);
   let streamDangChay = false;
   try {
-    const res = await goiMang(`${upstream.baseURL}/chat/completions`, {
+    // This Edge function is released as a standalone file.
+    const gatewayKey = getEnv('CRM_AI_VPS_KEY')?.trim();
+    if (gatewayKey && provider === '9router' && !['https://ai.chillhome.io.vn/v1', 'https://cli.chillhome.io.vn/v1'].includes(upstream.baseURL.replace(/\/+$/, ''))) {
+      throw Error('unmapped_9router_endpoint');
+    }
+    const base = gatewayKey ? 'https://crm-hermes.chillhome.io.vn/ai-gateway/' + provider : upstream.baseURL;
+    const res = await goiMang(`${base}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
+        ...(gatewayKey ? { 'X-CRM-AI-Key': gatewayKey } : {}),
         ...upstream.extraHeaders,
       },
       body: JSON.stringify(outBody),
+      redirect: 'error',
       signal: controller.signal,
     });
 
