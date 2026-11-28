@@ -22339,15 +22339,6 @@ export type Database = {
         Args: { p_reading_ids: string[] }
         Returns: number
       }
-      bulk_approve_meter_readings_v1: {
-        Args: { p_ids: string[] }
-        Returns: number
-      }
-      bulk_create_meter_readings: { Args: { p_readings: Json }; Returns: Json }
-      bulk_create_meter_readings_v1: {
-        Args: { p_readings: Json }
-        Returns: Json
-      }
       bulk_delete_meter_readings_v1: {
         Args: { p_ids: string[] }
         Returns: Json
@@ -22879,7 +22870,6 @@ export type Database = {
         Returns: Json
       }
       cancel_period_fee: { Args: { p_voucher_id: string }; Returns: Json }
-      cancel_reconciliation: { Args: { p_id: string }; Returns: Json }
       cancel_room_sale_policy_v1: {
         Args: {
           p_expected_version: number
@@ -23233,7 +23223,6 @@ export type Database = {
         }
         Returns: Json
       }
-      confirm_reconciliation: { Args: { p_id: string }; Returns: Json }
       contract_deposit_paid_derived: {
         Args: { p_contract_id: string }
         Returns: number
